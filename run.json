@@ -1,0 +1,521 @@
+{
+  "title": "Implementation plan: MCP servers settings UI (`/settings/mcps`)",
+  "spec": {
+    "run_id": "01KWD1PBZDHNBM1MYZH168FVK0",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "# Implementation plan: MCP servers settings UI (`/settings/mcps`)\n\n> **For the implement-plan workflow.** This is a self-contained spec for adding a\n> web management UI for server-managed MCP servers. Implement **every** step.\n> Use red/green TDD: write the failing `bun test` first, then the code.\n>\n> **Delivery note (for the human, not the agent):** the workflow's implement step\n> reads \"the plan file referenced in the goal,\" so this file must be visible to\n> the cloned workspace — commit it at e.g. `docs/plans/mcp-settings-ui.md` on the\n> branch the instance clones, or paste its contents into the run goal.\n\n---\n\n## 1. What this task is (and what is already done)\n\nThe **entire backend for server-managed MCP servers is already built, merged, and\nlive on `main`.** That includes the on-disk store, the OpenAPI spec, the HTTP CRUD\nhandlers with credential-omitting reads, and the workflow-side reference resolver\nthat lets a workflow enable a stored server by name. **None of that is in scope\nhere and none of it should be changed.**\n\nThis task is **frontend only**: a settings catalog page at `/settings/mcps` that\nlets a user create, list, edit, and delete MCP server definitions through the\nalready-shipped HTTP API, following the exact patterns used by the existing\n`/settings/environments` and `/settings/secrets` pages.\n\nEverything you build lives under `apps/fabro-web/app/`. You consume the\n**already-generated** TypeScript client `@qltysh/fabro-api-client` (the\n`MCPServersApi` class and its models already exist — do not regenerate it).\n\n---\n\n## 2. Scope\n\n**In scope (all under `apps/fabro-web/app/`):**\n\n- A list page, a \"new\" page, and an \"edit\" page for MCP servers.\n- A shared MCP form component with stdio / http / sandbox transport variants.\n- Key/value editors for environment variables and HTTP headers.\n- A credential-looking-value warning with a \"use a secret instead\" nudge\n  (warn-but-allow — never block save).\n- Query hooks + query keys + API client wiring.\n- Route registration and (last) the settings nav link.\n- `bun test` unit tests for every pure helper and a render smoke test per page.\n\n**Out of scope — do NOT touch any of these (they are done or are future work):**\n\n- ❌ Any Rust crate: `fabro-config`, `fabro-types`, `fabro-mcp-store`,\n  `fabro-server`, `fabro-workflow`, `fabro-api`, etc. The resolver, store, and\n  handlers are complete.\n- ❌ The OpenAPI spec (`docs/public/api-reference/fabro-api.yaml`) and the\n  generated clients. `MCPServersApi` is already generated and importable. Do not\n  run `bun run generate`, do not edit `lib/packages/fabro-api-client`.\n- ❌ Adding/altering API endpoints or request/response shapes. In particular, do\n  **not** invent a PATCH/partial-update endpoint to work around the read model\n  omitting env/header values (see §5) — that is deliberately future work.\n- ❌ The reference-resolution behavior, the run-only `fabro exec` rejection, the\n  reference TOML syntax, or anything about how runs consume the catalog.\n- ❌ The SQLite migration of the store.\n- ❌ Documentation (`mcp.mdx`) and end-to-end Rust tests — separate task.\n\nIf you find yourself editing a `.rs` file or `fabro-api.yaml`, stop — you have\nleft scope.\n\n---\n\n## 3. Locked decisions — do NOT relitigate\n\nThese are settled. Build to them; don't redesign them.\n\n1. **Credentials: warn, don't block.** When an env-var or header looks\n   credential-bearing, show a warning and offer a one-click path to store it as a\n   secret and reference it with the secrets name rather than the value. **Still allow the user to\n   save.** Do not hard-reject. Ordinary literals (`NODE_ENV=production`, ports,\n   feature flags, non-sensitive headers) save without friction.\n2. **Reads never expose secret values.** The API returns only env/header **names**\n   (`env_keys` / `header_keys`), never values. The UI must never attempt to\n   display a stored value and must not assume it can read one back.\n3. **Settings-nested, not top-level.** This lives under `/settings/mcps`, mirroring\n   `/settings/environments` and `/settings/secrets`. It is not a top-level nav\n   destination.\n4. **Optimistic concurrency via `revision` + `If-Match`.** Same as environments:\n   capture `revision` from the read, pass it to replace/delete, surface a 409 as a\n   \"changed since you opened it — reload\" message. No auto-retry.\n5. **No form library, no `useEffect`.** Plain `useState` controlled inputs, pure\n   validation functions, SWR for server state, `key={revision}` to reset the edit\n   form. This is the house style and the repo enforces an effects policy\n   (`docs/internal/react-effects-policy.md`).\n6. **Transport type is chosen at create time and locked on edit** — mirroring how\n   environments lock `provider` at creation. (You may revisit later; for v1, lock\n   it. The id is likewise locked on edit.)\n\n---\n\n## 4. The API contract you consume\n\nAlready generated in `@qltysh/fabro-api-client`. Methods on `MCPServersApi`:\n\n| Method | Signature | Returns |\n|---|---|---|\n| list | `listMcpServers()` | `McpServerListResponse` (`{ data: McpServer[], meta: { total } }`) |\n| get | `retrieveMcpServer(id)` | `McpServer` |\n| create | `createMcpServer(CreateMcpServerRequest)` | `McpServer` |\n| replace | `replaceMcpServer(id, ifMatch, ReplaceMcpServerRequest)` | `McpServer` |\n| delete | `deleteMcpServer(id, ifMatch)` | `void` |\n\nThe generated client automatically sets the `If-Match` header from the `ifMatch`\nargument.\n\n**Read model — `McpServer` (values omitted):**\n\n```ts\ninterface McpServer {\n  id: string;                  // stable id; also the runtime MCP server name\n  revision: string;            // pass as If-Match on replace/delete\n  display_name: string;\n  description: string | null;\n  transport: McpTransportView; // union by `type`; VALUES OMITTED\n  startup_timeout_secs: number;\n  tool_timeout_secs: number;\n}\n\n// McpTransportView = http | sandbox | stdio, each WITHOUT values:\n//   stdio:   { type: 'stdio',   command: string[], env_keys: string[] }\n//   http:    { type: 'http',    protocol?: McpHttpProtocol, url: string, header_keys: string[] }\n//   sandbox: { type: 'sandbox', protocol?: McpHttpProtocol, command: string[], port: number, env_keys: string[] }\n```\n\n**Write model — `CreateMcpServerRequest` / `ReplaceMcpServerRequest` (values required):**\n\n```ts\ninterface CreateMcpServerRequest {\n  id: string;                  // create only; on replace the path id is authoritative\n  display_name: string;\n  description?: string | null;\n  transport: McpTransport;     // union by `type`; VALUES INCLUDED\n  startup_timeout_secs: number;\n  tool_timeout_secs: number;\n}\n// ReplaceMcpServerRequest is the same minus `id`.\n\n// McpTransport = http | sandbox | stdio, each WITH values:\n//   stdio:   { type: 'stdio',   command: string[], env: Record<string,string> }\n//   http:    { type: 'http',    protocol?: McpHttpProtocol, url: string, headers: Record<string,string> }\n//   sandbox: { type: 'sandbox', protocol?: McpHttpProtocol, command: string[], port: number, env: Record<string,string> }\n\n// McpHttpProtocol = 'streamable_http' | 'sse'  (default streamable_http; only on http/sandbox)\n```\n\n`replace` is a **full PUT** (whole transport replaced). There is no merge/preserve.\n\n---\n\n## 5. The one genuinely tricky UX decision: editing when values are write-only\n\nBecause reads return only `env_keys`/`header_keys` and replace is a full PUT, **the\nedit form cannot read back env/header values, and saving overwrites the entire\ntransport.** Handle it explicitly — do not try to fix it server-side:\n\n- On the **edit** form, pre-populate env/header rows with the existing **keys** and\n  **empty values**.\n- Show a clear banner on the edit form whenever the transport has any\n  `env_keys`/`header_keys`:\n  > \"Existing environment variable and header values are write-only and are not\n  > shown. Saving replaces the full set — re-enter every value you want to keep.\"\n- On the edit form only, **block save** (with an inline row error) if any row has a\n  non-empty key but an empty value, so the user can't silently blank out values.\n  (On the create form, empty values are simply allowed/optional per the API.)\n\nThis keeps the destructive-overwrite behavior visible and intentional.\n\n---\n\n## 6. Reference implementation to copy from\n\nMirror these existing files closely (same structure, naming, classes, helpers):\n\n- Routes: `apps/fabro-web/app/router.tsx` (environments entries, ~lines 147–166)\n- Nav: `apps/fabro-web/app/routes/settings.tsx` (`navSections`, `NavItem`/`NavSection`)\n- List: `apps/fabro-web/app/routes/settings-environments.tsx`\n- New: `apps/fabro-web/app/routes/settings-environments-new.tsx`\n- Edit: `apps/fabro-web/app/routes/settings-environments-edit.tsx`\n- Form + key/value editor: `apps/fabro-web/app/components/environment-form.tsx`\n  (`EnvironmentFormFields`, `KeyValueEditor`, `entriesFromMap`/`mapFromEntries`)\n- Panels: `apps/fabro-web/app/components/settings-panel.tsx`\n  (`Panel`, `Row`, `SettingsPageIntro`, `PanelSkeleton`, `Badge`, `Muted`)\n- Query keys: `apps/fabro-web/app/lib/query-keys.ts` (`environments.{list,detail}`)\n- Query hooks: `apps/fabro-web/app/lib/queries.ts` (`useEnvironments`, `useEnvironment`)\n- API client: `apps/fabro-web/app/lib/api-client.ts` (`environmentsApi`, `apiData`, `apiNullableData`, `ApiError`)\n- Secrets create flow (for the nudge target): `apps/fabro-web/app/routes/settings-secrets-new.tsx` (reads `?name=`)\n- Test convention: `apps/fabro-web/app/routes/settings-integrations.test.tsx`\n  (`bun:test`, `react-test-renderer`, `setupReactTestEnv`, `mock.module(\"../lib/queries\", ...)`)\n\n---\n\n## 7. Implementation steps (TDD; do them in this order)\n\nEach step: write the failing test(s) first where a test is called for, then\nimplement until green. Run `cd apps/fabro-web && bun test` and `bun run typecheck`\nfrequently.\n\n### Step 1 — Extract the shared key/value editor\n\n`KeyValueEditor`, the `KeyValueEntry` type, and `entriesFromMap` / `mapFromEntries`\ncurrently live inside `components/environment-form.tsx`. Move them verbatim (no\nbehavior change) into a new `apps/fabro-web/app/components/key-value-editor.tsx`\nand re-import them in `environment-form.tsx`. Both the MCP form and the environment\nform then share one implementation.\n\n- Test: `components/key-value-editor.test.tsx` — `mapFromEntries` drops blank keys\n  and trims, `entriesFromMap` round-trips; a render test adds/removes a row.\n- Verify environments still typecheck and any existing environment tests pass.\n\n### Step 2 — Query keys\n\nIn `lib/query-keys.ts`, add alongside `environments`:\n\n```ts\nmcpServers: {\n  list: () => [\"mcp-servers\", \"list\"] as const,\n  detail: (id: string) => [\"mcp-servers\", \"detail\", id] as const,\n},\n```\n\n### Step 3 — API client wiring\n\nIn `lib/api-client.ts`, import `MCPServersApi` from `@qltysh/fabro-api-client` and\ninstantiate it exactly like `environmentsApi`:\n\n```ts\nexport const mcpServersApi = new MCPServersApi(\n  generatedApiConfiguration,\n  \"\",\n  generatedAxios,\n);\n```\n\n### Step 4 — Query hooks\n\nIn `lib/queries.ts`, mirror the environments hooks:\n\n```ts\nexport function useMcpServers() {\n  return useSWR<McpServerListResponse>(\n    queryKeys.mcpServers.list(),\n    () => apiData(() => mcpServersApi.listMcpServers()),\n  );\n}\n\nexport function useMcpServer(id: string | undefined) {\n  return useSWR<McpServer | null>(\n    id ? queryKeys.mcpServers.detail(id) : null,\n    id ? () => apiNullableData(() => mcpServersApi.retrieveMcpServer(id)) : null,\n  );\n}\n```\n\n### Step 5 — Credential detection helper (pure, TDD)\n\nNew `apps/fabro-web/app/lib/credential-heuristics.ts`. Pure functions, fully unit\ntested first.\n\n```ts\n// True when a key/value pair looks credential-bearing and should be nudged\n// toward a secret. Never flags an already-templated value.\nexport function looksLikeCredential(key: string, value: string): boolean;\n\n// Suggest a secret name derived from the key (UPPER_SNAKE_CASE, alnum + _).\nexport function secretNameForKey(key: string): string;\n\n// The interpolation reference to store in place of a literal secret value.\nexport function secretReference(name: string): string; // `\\{\\{ secrets.NAME \\}\\}`\n```\n\nRules for `looksLikeCredential`:\n- Return **false** if `value` is empty, or already a template\n  (`/\\{\\{\\s*(secrets|env|vars)\\./` matches) — references are fine as-is.\n- Return **true** if the key (case-insensitive) matches any of:\n  `authorization`, `password`, `passwd`, `secret`, `token`, `api[-_]?key`,\n  or ends in `_key` / `_token` / `_secret`.\n- Otherwise return **true** if the value looks high-entropy: length ≥ 20, contains\n  a mix of at least two of {lowercase, uppercase, digit}, and has no spaces.\n- Otherwise **false**.\n\n`secretNameForKey`: uppercase, replace non-`[A-Za-z0-9]` with `_`, collapse\nrepeats, trim leading/trailing `_`; if empty, fall back to `SECRET`.\n\nTests must cover: `Authorization`/`Bearer abc...` → flagged; `API_KEY` → flagged;\n`NODE_ENV`/`production` → not flagged; a `\\{\\{ secrets.X \\}\\}` value → not flagged;\nempty value → not flagged; a long random-looking value under a benign key →\nflagged; `secretNameForKey(\"x-api-key\") === \"X_API_KEY\"`.\n\n### Step 6 — Form model: types, mappers, validation (pure, TDD)\n\nNew `apps/fabro-web/app/components/mcp-server-form.tsx` (form component) plus a\nsmall co-located or `lib/`-level module of pure helpers (tested first):\n\nForm value shape (flat, transport-discriminated):\n\n```ts\nexport type McpTransportKind = \"stdio\" | \"http\" | \"sandbox\";\n\nexport interface McpServerFormValues {\n  id: string;\n  displayName: string;\n  description: string;\n  startupTimeoutSecs: number;\n  toolTimeoutSecs: number;\n  transport: McpTransportKind;\n  // stdio + sandbox\n  command: string;            // shell-style words; split on whitespace -> string[]\n  // http + sandbox\n  protocol: McpHttpProtocol;  // default 'streamable_http'\n  // http\n  url: string;\n  headers: KeyValueEntry[];\n  // sandbox\n  port: number;\n  // stdio + sandbox env\n  env: KeyValueEntry[];\n}\n```\n\nPure helpers + tests:\n\n- `defaultMcpServerFormValues(kind): McpServerFormValues` — sensible defaults\n  (timeouts mirror `McpServerSettings::default()`: startup 10, tool 60).\n- `mcpServerToFormValues(server: McpServer): McpServerFormValues` — for edit.\n  Maps `transport` **view** into the form. **Env/header values are not available**,\n  so populate `env`/`headers` entries from `env_keys`/`header_keys` with **empty\n  values** (see §5).\n- `createRequestFromForm(values): CreateMcpServerRequest` and\n  `replaceRequestFromForm(values): ReplaceMcpServerRequest` — build the\n  `McpTransport` (values included), splitting `command` on whitespace, converting\n  entry arrays via `mapFromEntries`, omitting `protocol` when default.\n- `isMcpServerFormValid(values, { isEdit }): boolean` — id matches\n  `/^[a-z0-9][a-z0-9-]{0,62}$/` (create only), `displayName` non-empty, and per\n  transport: stdio needs `command`; http needs `url`; sandbox needs `command` and a\n  valid `port` (1–65535). On edit, additionally require a value for every row with\n  a non-empty key (the §5 guard).\n- `credentialWarnings(values): { field: 'env'|'headers'; index: number }[]` —\n  derived during render from `looksLikeCredential`, used to render per-row warnings.\n\nRound-trip test: `mcpServerToFormValues` → `replaceRequestFromForm` preserves id,\ndisplay name, transport type, url/command/port; and (documented) drops values that\nweren't re-entered.\n\n### Step 7 — The form component\n\n`McpServerFormFields({ values, onChange, lockId, lockTransport })` in\n`components/mcp-server-form.tsx`, built from `Panel` / `Row` and a local `patch()`\nhelper (copy the environment-form idiom):\n\n- **General panel:** `id` (locked on edit), `display_name`, `description`,\n  transport `<select>` (locked on edit), startup/tool timeout numeric inputs.\n- **Transport panel** — render fields by `values.transport` using the discriminated\n  conditional idiom (see `image_source` switching in `environment-form.tsx`):\n  - `stdio`: `command` text input; env `KeyValueEditor`.\n  - `http`: `protocol` select (`streamable_http`/`sse`), `url` text input; headers\n    `KeyValueEditor` (key placeholder `Authorization`, value `Bearer token`).\n  - `sandbox`: `protocol` select, `command` text input, `port` numeric input; env\n    `KeyValueEditor`.\n- **Credential nudge:** for each `KeyValueEditor` row flagged by\n  `looksLikeCredential`, render an inline warning (`text-amber`/warning tone) with a\n  \"Store as secret\" action. The action: set that row's value to\n  `secretReference(secretNameForKey(key))` and open\n  `/settings/secrets/new?name=<secretNameForKey(key)>` in a new tab (the user\n  finishes creating the secret there). This is warn-but-allow: saving with the\n  literal still works.\n\nKeep markup, class names, and helper conventions identical to the environment form\nso it reads as the same codebase.\n\n### Step 8 — List page\n\n`apps/fabro-web/app/routes/settings-mcps.tsx`, mirroring\n`settings-environments.tsx`:\n\n- `meta()` title.\n- Default component calls `useMcpServers()`, renders `SettingsPageIntro`\n  (description + a \"New MCP server\" control), and a panel listing servers\n  (display name, id, transport type badge, a row menu with Edit / Delete).\n- A \"New MCP server\" dropdown offering stdio / http / sandbox →\n  `/settings/mcps/new?type=<kind>` (mirror the environments provider dropdown).\n- Loading → `PanelSkeleton`; error → error panel; empty → friendly empty state.\n- **Delete:** confirm, then `apiData(() => mcpServersApi.deleteMcpServer(id, revision))`,\n  then `mutate(queryKeys.mcpServers.list())`, then success toast. 409 → toast\n  telling the user it changed; refresh the list.\n\n### Step 9 — New page\n\n`apps/fabro-web/app/routes/settings-mcps-new.tsx`, mirroring\n`settings-environments-new.tsx`:\n\n- Breadcrumb + `McpServerFormFields` (no locks).\n- Initial transport from `?type=` (`useSearchParams`), default `stdio`.\n- Submit: `createRequestFromForm`, `apiData(() => mcpServersApi.createMcpServer(req))`,\n  `mutate(list)`, success toast, navigate to `/settings/mcps`.\n- Errors via `ErrorMessage`; submit disabled unless `isMcpServerFormValid(values,{isEdit:false})`.\n\n### Step 10 — Edit page\n\n`apps/fabro-web/app/routes/settings-mcps-edit.tsx`, mirroring\n`settings-environments-edit.tsx`:\n\n- Read `:id` via `useParams`, fetch with `useMcpServer(id)`.\n- Render `<McpServerFormFields lockId lockTransport ... key={server.revision} />`\n  (the `key` remounts on revision change — copy this exactly).\n- Initialize from `mcpServerToFormValues(server)`.\n- Render the §5 write-only-values banner when keys exist.\n- Submit: `replaceRequestFromForm`, `apiData(() => mcpServersApi.replaceMcpServer(id, server.revision, req))`,\n  `mutate(list)` + `mutate(detail(id))`, success toast, navigate back.\n- 409: copy the environments `staleAwareMessage` pattern — show \"this MCP server\n  changed since you opened it; reload and reapply,\" do not auto-retry.\n\n### Step 11 — Route registration\n\nIn `app/router.tsx`, import the three modules and add under the `settings` children\n(next to the environments entries):\n\n```ts\nroute(\"mcps\", SettingsMcps),\nroute(\"mcps/new\", SettingsMcpsNew),\nroute(\"mcps/:id/edit\", SettingsMcpsEdit),\n```\n\n### Step 12 — Nav link (LAST)\n\nOnly after steps 1–11 are green, add a `NavItem` to `navSections` in\n`routes/settings.tsx`, in the same section as Environments:\n\n```ts\n{\n  name: \"MCP servers\",\n  href: \"/settings/mcps\",\n  icon: PuzzlePieceIcon, // or another existing @heroicons/react/24/outline icon\n  description: \"Server-managed MCP servers you can enable by name in workflows.\",\n  match: (p) => p.startsWith(\"/settings/mcps\"),\n},\n```\n\n---\n\n## 8. Tests to write (`bun test`, from `apps/fabro-web`)\n\nFollow `settings-integrations.test.tsx` conventions (`bun:test`,\n`react-test-renderer` + `act`, `setupReactTestEnv`, `mock.module(\"../lib/queries\",\n...)` to feed fixture data).\n\nRequired:\n\n1. `lib/credential-heuristics.test.ts` — all rules in §5/Step 5 (this is the\n   highest-value, purely-logical test surface).\n2. `components/key-value-editor.test.tsx` — map round-trip + add/remove row.\n3. `components/mcp-server-form.test.tsx` (or a `lib` test) — `mcpServerToFormValues`\n   populates keys with empty values; `createRequestFromForm`/`replaceRequestFromForm`\n   build correct discriminated transports; `isMcpServerFormValid` accepts/rejects\n   per transport and enforces the edit value-required guard.\n4. `routes/settings-mcps.test.tsx` — list renders rows from mocked\n   `useMcpServers`; empty state renders.\n5. `routes/settings-mcps-edit.test.tsx` — with a mocked `useMcpServer` returning a\n   transport that has `env_keys`, the write-only banner renders and env rows show\n   the keys with empty values.\n\n---\n\n## 9. Definition of done\n\n- `cd apps/fabro-web && bun run typecheck` — clean.\n- `cd apps/fabro-web && bun test` — all new + existing tests pass.\n- `cd apps/fabro-web && bun run build` — production build succeeds and stays within\n  the SPA asset budgets (the workflow's `cargo dev build` re-checks these; keep the\n  pages lightweight, reuse existing components, add no new heavy dependencies).\n- `cd lib/packages/fabro-api-client && bun run typecheck` — clean (you only consume\n  it; don't change it).\n- No Rust files changed; `cargo` steps in the verify gate pass unchanged.\n- Create → list → edit → delete all work against a live server; the edit form never\n  displays a stored secret value; credential-looking values warn but still save.\n- The nav link appears and routes correctly.\n\n---\n\n## 10. Known rough edges (acknowledge; don't \"fix\" out of scope)\n\n- **Edit requires re-entering env/header values** — a direct, intended consequence\n  of the credential-omitting read model + full-PUT replace. Handle it per §5; do\n  not add a server-side partial-update endpoint here.\n- **Credential heuristic false positives/negatives** — it's a *nudge*, not a gate.\n  Keep it cheap and explainable; never block save on it.\n- **Workflow-fit note (for the human):** the implement-plan workflow's preflight is\n  Rust-centric, but its verify gate runs `bun run typecheck` and `bun run test` for\n  `fabro-web`, plus `cargo dev build` (which runs the SPA production build + asset\n  budget check). This frontend-only change passes the Rust preflight untouched and\n  is genuinely enforced by the TypeScript portions of verify.\n"
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {},
+        "model": {
+          "provider": "anthropic",
+          "name": "claude-sonnet-4-6",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "commands": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "fabro-dev",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        curl git ripgrep ca-certificates build-essential pkg-config libssl-dev unzip python3 \\\n        xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \\\n        libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6 \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install real Chromium (not the snap stub) via xtradeb PPA\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        software-properties-common curl gnupg \\\n    && add-apt-repository -y ppa:xtradeb/apps \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends chromium \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Wrapper: Chromium needs --no-sandbox when running as root in a container,\n# and --disable-dev-shm-usage avoids crashes from small /dev/shm\nRUN printf '#!/bin/bash\\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"$@\"\\n' \\\n        > /usr/local/bin/chromium-wrapper \\\n    && chmod +x /usr/local/bin/chromium-wrapper\n\n# Make the wrapper the default in the system .desktop file and via alternatives\nRUN sed -i 's|^Exec=.*|Exec=/usr/local/bin/chromium-wrapper %U|' \\\n        /usr/share/applications/chromium.desktop \\\n    && update-alternatives --install /usr/bin/x-www-browser x-www-browser \\\n        /usr/local/bin/chromium-wrapper 100\n\n# Tell XFCE's exo-open that Chromium is the WebBrowser helper (system-wide)\nRUN mkdir -p /etc/xdg/xfce4 /usr/share/xfce4/helpers \\\n    && printf 'WebBrowser=custom-WebBrowser\\n' > /etc/xdg/xfce4/helpers.rc \\\n    && printf '[Desktop Entry]\\n\\\nVersion=1.0\\n\\\nType=X-XFCE-Helper\\n\\\nName=Chromium\\n\\\nIcon=chromium\\n\\\nX-XFCE-Category=WebBrowser\\n\\\nX-XFCE-CommandsWithParameter=/usr/local/bin/chromium-wrapper \"%%s\"\\n\\\nX-XFCE-Commands=/usr/local/bin/chromium-wrapper\\n' \\\n        > /usr/share/xfce4/helpers/custom-WebBrowser.desktop\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" \\\n        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update && apt-get install -y --no-install-recommends gh \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": "20GB"
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": "30m"
+          },
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "env": {}
+        },
+        "notifications": {},
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": false,
+          "merge_strategy": "squash"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "ImplementPlan",
+      "nodes": {
+        "start": {
+          "id": "start",
+          "attrs": {
+            "label": {
+              "String": "Start"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "Mdiamond"
+            }
+          }
+        },
+        "toolchain": {
+          "id": "toolchain",
+          "attrs": {
+            "script": {
+              "String": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "label": {
+              "String": "Toolchain"
+            }
+          }
+        },
+        "fix_lints": {
+          "id": "fix_lints",
+          "attrs": {
+            "provider": {
+              "String": "anthropic"
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "prompt": {
+              "String": "The preflight lint step failed. Read the build output from context and fix all clippy lint warnings."
+            },
+            "label": {
+              "String": "Fix Lints"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        },
+        "preflight_lint": {
+          "id": "preflight_lint",
+          "attrs": {
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "script": {
+              "String": "cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Preflight Lint"
+            }
+          }
+        },
+        "verify": {
+          "id": "verify",
+          "attrs": {
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "label": {
+              "String": "Verify"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "retry_target": {
+              "String": "fixup"
+            },
+            "goal_gate": {
+              "Boolean": true
+            },
+            "script": {
+              "String": "git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1"
+            }
+          }
+        },
+        "simplify_opus": {
+          "id": "simplify_opus",
+          "attrs": {
+            "label": {
+              "String": "Simplify (Opus)"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changes for reuse, quality, and efficiency. Fix any issues found. Feel free to use any sub agents you need.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation. (You may already have the changes in context, if so, feel free to skip this part)\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "Msquare"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "label": {
+              "String": "Exit"
+            }
+          }
+        },
+        "fixup": {
+          "id": "fixup",
+          "attrs": {
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Fixup"
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "prompt": {
+              "String": "The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures."
+            }
+          }
+        },
+        "simplify_gpt": {
+          "id": "simplify_gpt",
+          "attrs": {
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changes for reuse, quality, and efficiency. Fix any issues found. Feel free to use any sub agents you need.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation. (You may already have the changes in context, if so, feel free to skip this part)\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "provider": {
+              "String": "openai"
+            },
+            "model": {
+              "String": "gpt-5.5"
+            },
+            "label": {
+              "String": "Simplify (GPT-55)"
+            }
+          }
+        },
+        "preflight_compile": {
+          "id": "preflight_compile",
+          "attrs": {
+            "shape": {
+              "String": "parallelogram"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "label": {
+              "String": "Preflight Compile"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "script": {
+              "String": "cargo check -q --workspace 2>&1"
+            }
+          }
+        },
+        "implement": {
+          "id": "implement",
+          "attrs": {
+            "provider": {
+              "String": "openai"
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "label": {
+              "String": "Implement"
+            },
+            "prompt": {
+              "String": "Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD."
+            },
+            "model": {
+              "String": "gpt-5.5"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "toolchain",
+          "attrs": {}
+        },
+        {
+          "from": "toolchain",
+          "to": "preflight_compile",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "toolchain",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_compile",
+          "to": "preflight_lint",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_compile",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_lint",
+          "to": "implement",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_lint",
+          "to": "fix_lints",
+          "attrs": {}
+        },
+        {
+          "from": "fix_lints",
+          "to": "preflight_lint",
+          "attrs": {}
+        },
+        {
+          "from": "implement",
+          "to": "simplify_opus",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_opus",
+          "to": "simplify_gpt",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_gpt",
+          "to": "verify",
+          "attrs": {}
+        },
+        {
+          "from": "verify",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "verify",
+          "to": "fixup",
+          "attrs": {}
+        },
+        {
+          "from": "fixup",
+          "to": "verify",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "goal": {
+          "String": "# Implementation plan: MCP servers settings UI (`/settings/mcps`)\n\n> **For the implement-plan workflow.** This is a self-contained spec for adding a\n> web management UI for server-managed MCP servers. Implement **every** step.\n> Use red/green TDD: write the failing `bun test` first, then the code.\n>\n> **Delivery note (for the human, not the agent):** the workflow's implement step\n> reads \"the plan file referenced in the goal,\" so this file must be visible to\n> the cloned workspace — commit it at e.g. `docs/plans/mcp-settings-ui.md` on the\n> branch the instance clones, or paste its contents into the run goal.\n\n---\n\n## 1. What this task is (and what is already done)\n\nThe **entire backend for server-managed MCP servers is already built, merged, and\nlive on `main`.** That includes the on-disk store, the OpenAPI spec, the HTTP CRUD\nhandlers with credential-omitting reads, and the workflow-side reference resolver\nthat lets a workflow enable a stored server by name. **None of that is in scope\nhere and none of it should be changed.**\n\nThis task is **frontend only**: a settings catalog page at `/settings/mcps` that\nlets a user create, list, edit, and delete MCP server definitions through the\nalready-shipped HTTP API, following the exact patterns used by the existing\n`/settings/environments` and `/settings/secrets` pages.\n\nEverything you build lives under `apps/fabro-web/app/`. You consume the\n**already-generated** TypeScript client `@qltysh/fabro-api-client` (the\n`MCPServersApi` class and its models already exist — do not regenerate it).\n\n---\n\n## 2. Scope\n\n**In scope (all under `apps/fabro-web/app/`):**\n\n- A list page, a \"new\" page, and an \"edit\" page for MCP servers.\n- A shared MCP form component with stdio / http / sandbox transport variants.\n- Key/value editors for environment variables and HTTP headers.\n- A credential-looking-value warning with a \"use a secret instead\" nudge\n  (warn-but-allow — never block save).\n- Query hooks + query keys + API client wiring.\n- Route registration and (last) the settings nav link.\n- `bun test` unit tests for every pure helper and a render smoke test per page.\n\n**Out of scope — do NOT touch any of these (they are done or are future work):**\n\n- ❌ Any Rust crate: `fabro-config`, `fabro-types`, `fabro-mcp-store`,\n  `fabro-server`, `fabro-workflow`, `fabro-api`, etc. The resolver, store, and\n  handlers are complete.\n- ❌ The OpenAPI spec (`docs/public/api-reference/fabro-api.yaml`) and the\n  generated clients. `MCPServersApi` is already generated and importable. Do not\n  run `bun run generate`, do not edit `lib/packages/fabro-api-client`.\n- ❌ Adding/altering API endpoints or request/response shapes. In particular, do\n  **not** invent a PATCH/partial-update endpoint to work around the read model\n  omitting env/header values (see §5) — that is deliberately future work.\n- ❌ The reference-resolution behavior, the run-only `fabro exec` rejection, the\n  reference TOML syntax, or anything about how runs consume the catalog.\n- ❌ The SQLite migration of the store.\n- ❌ Documentation (`mcp.mdx`) and end-to-end Rust tests — separate task.\n\nIf you find yourself editing a `.rs` file or `fabro-api.yaml`, stop — you have\nleft scope.\n\n---\n\n## 3. Locked decisions — do NOT relitigate\n\nThese are settled. Build to them; don't redesign them.\n\n1. **Credentials: warn, don't block.** When an env-var or header looks\n   credential-bearing, show a warning and offer a one-click path to store it as a\n   secret and reference it with the secrets name rather than the value. **Still allow the user to\n   save.** Do not hard-reject. Ordinary literals (`NODE_ENV=production`, ports,\n   feature flags, non-sensitive headers) save without friction.\n2. **Reads never expose secret values.** The API returns only env/header **names**\n   (`env_keys` / `header_keys`), never values. The UI must never attempt to\n   display a stored value and must not assume it can read one back.\n3. **Settings-nested, not top-level.** This lives under `/settings/mcps`, mirroring\n   `/settings/environments` and `/settings/secrets`. It is not a top-level nav\n   destination.\n4. **Optimistic concurrency via `revision` + `If-Match`.** Same as environments:\n   capture `revision` from the read, pass it to replace/delete, surface a 409 as a\n   \"changed since you opened it — reload\" message. No auto-retry.\n5. **No form library, no `useEffect`.** Plain `useState` controlled inputs, pure\n   validation functions, SWR for server state, `key={revision}` to reset the edit\n   form. This is the house style and the repo enforces an effects policy\n   (`docs/internal/react-effects-policy.md`).\n6. **Transport type is chosen at create time and locked on edit** — mirroring how\n   environments lock `provider` at creation. (You may revisit later; for v1, lock\n   it. The id is likewise locked on edit.)\n\n---\n\n## 4. The API contract you consume\n\nAlready generated in `@qltysh/fabro-api-client`. Methods on `MCPServersApi`:\n\n| Method | Signature | Returns |\n|---|---|---|\n| list | `listMcpServers()` | `McpServerListResponse` (`{ data: McpServer[], meta: { total } }`) |\n| get | `retrieveMcpServer(id)` | `McpServer` |\n| create | `createMcpServer(CreateMcpServerRequest)` | `McpServer` |\n| replace | `replaceMcpServer(id, ifMatch, ReplaceMcpServerRequest)` | `McpServer` |\n| delete | `deleteMcpServer(id, ifMatch)` | `void` |\n\nThe generated client automatically sets the `If-Match` header from the `ifMatch`\nargument.\n\n**Read model — `McpServer` (values omitted):**\n\n```ts\ninterface McpServer {\n  id: string;                  // stable id; also the runtime MCP server name\n  revision: string;            // pass as If-Match on replace/delete\n  display_name: string;\n  description: string | null;\n  transport: McpTransportView; // union by `type`; VALUES OMITTED\n  startup_timeout_secs: number;\n  tool_timeout_secs: number;\n}\n\n// McpTransportView = http | sandbox | stdio, each WITHOUT values:\n//   stdio:   { type: 'stdio',   command: string[], env_keys: string[] }\n//   http:    { type: 'http',    protocol?: McpHttpProtocol, url: string, header_keys: string[] }\n//   sandbox: { type: 'sandbox', protocol?: McpHttpProtocol, command: string[], port: number, env_keys: string[] }\n```\n\n**Write model — `CreateMcpServerRequest` / `ReplaceMcpServerRequest` (values required):**\n\n```ts\ninterface CreateMcpServerRequest {\n  id: string;                  // create only; on replace the path id is authoritative\n  display_name: string;\n  description?: string | null;\n  transport: McpTransport;     // union by `type`; VALUES INCLUDED\n  startup_timeout_secs: number;\n  tool_timeout_secs: number;\n}\n// ReplaceMcpServerRequest is the same minus `id`.\n\n// McpTransport = http | sandbox | stdio, each WITH values:\n//   stdio:   { type: 'stdio',   command: string[], env: Record<string,string> }\n//   http:    { type: 'http',    protocol?: McpHttpProtocol, url: string, headers: Record<string,string> }\n//   sandbox: { type: 'sandbox', protocol?: McpHttpProtocol, command: string[], port: number, env: Record<string,string> }\n\n// McpHttpProtocol = 'streamable_http' | 'sse'  (default streamable_http; only on http/sandbox)\n```\n\n`replace` is a **full PUT** (whole transport replaced). There is no merge/preserve.\n\n---\n\n## 5. The one genuinely tricky UX decision: editing when values are write-only\n\nBecause reads return only `env_keys`/`header_keys` and replace is a full PUT, **the\nedit form cannot read back env/header values, and saving overwrites the entire\ntransport.** Handle it explicitly — do not try to fix it server-side:\n\n- On the **edit** form, pre-populate env/header rows with the existing **keys** and\n  **empty values**.\n- Show a clear banner on the edit form whenever the transport has any\n  `env_keys`/`header_keys`:\n  > \"Existing environment variable and header values are write-only and are not\n  > shown. Saving replaces the full set — re-enter every value you want to keep.\"\n- On the edit form only, **block save** (with an inline row error) if any row has a\n  non-empty key but an empty value, so the user can't silently blank out values.\n  (On the create form, empty values are simply allowed/optional per the API.)\n\nThis keeps the destructive-overwrite behavior visible and intentional.\n\n---\n\n## 6. Reference implementation to copy from\n\nMirror these existing files closely (same structure, naming, classes, helpers):\n\n- Routes: `apps/fabro-web/app/router.tsx` (environments entries, ~lines 147–166)\n- Nav: `apps/fabro-web/app/routes/settings.tsx` (`navSections`, `NavItem`/`NavSection`)\n- List: `apps/fabro-web/app/routes/settings-environments.tsx`\n- New: `apps/fabro-web/app/routes/settings-environments-new.tsx`\n- Edit: `apps/fabro-web/app/routes/settings-environments-edit.tsx`\n- Form + key/value editor: `apps/fabro-web/app/components/environment-form.tsx`\n  (`EnvironmentFormFields`, `KeyValueEditor`, `entriesFromMap`/`mapFromEntries`)\n- Panels: `apps/fabro-web/app/components/settings-panel.tsx`\n  (`Panel`, `Row`, `SettingsPageIntro`, `PanelSkeleton`, `Badge`, `Muted`)\n- Query keys: `apps/fabro-web/app/lib/query-keys.ts` (`environments.{list,detail}`)\n- Query hooks: `apps/fabro-web/app/lib/queries.ts` (`useEnvironments`, `useEnvironment`)\n- API client: `apps/fabro-web/app/lib/api-client.ts` (`environmentsApi`, `apiData`, `apiNullableData`, `ApiError`)\n- Secrets create flow (for the nudge target): `apps/fabro-web/app/routes/settings-secrets-new.tsx` (reads `?name=`)\n- Test convention: `apps/fabro-web/app/routes/settings-integrations.test.tsx`\n  (`bun:test`, `react-test-renderer`, `setupReactTestEnv`, `mock.module(\"../lib/queries\", ...)`)\n\n---\n\n## 7. Implementation steps (TDD; do them in this order)\n\nEach step: write the failing test(s) first where a test is called for, then\nimplement until green. Run `cd apps/fabro-web && bun test` and `bun run typecheck`\nfrequently.\n\n### Step 1 — Extract the shared key/value editor\n\n`KeyValueEditor`, the `KeyValueEntry` type, and `entriesFromMap` / `mapFromEntries`\ncurrently live inside `components/environment-form.tsx`. Move them verbatim (no\nbehavior change) into a new `apps/fabro-web/app/components/key-value-editor.tsx`\nand re-import them in `environment-form.tsx`. Both the MCP form and the environment\nform then share one implementation.\n\n- Test: `components/key-value-editor.test.tsx` — `mapFromEntries` drops blank keys\n  and trims, `entriesFromMap` round-trips; a render test adds/removes a row.\n- Verify environments still typecheck and any existing environment tests pass.\n\n### Step 2 — Query keys\n\nIn `lib/query-keys.ts`, add alongside `environments`:\n\n```ts\nmcpServers: {\n  list: () => [\"mcp-servers\", \"list\"] as const,\n  detail: (id: string) => [\"mcp-servers\", \"detail\", id] as const,\n},\n```\n\n### Step 3 — API client wiring\n\nIn `lib/api-client.ts`, import `MCPServersApi` from `@qltysh/fabro-api-client` and\ninstantiate it exactly like `environmentsApi`:\n\n```ts\nexport const mcpServersApi = new MCPServersApi(\n  generatedApiConfiguration,\n  \"\",\n  generatedAxios,\n);\n```\n\n### Step 4 — Query hooks\n\nIn `lib/queries.ts`, mirror the environments hooks:\n\n```ts\nexport function useMcpServers() {\n  return useSWR<McpServerListResponse>(\n    queryKeys.mcpServers.list(),\n    () => apiData(() => mcpServersApi.listMcpServers()),\n  );\n}\n\nexport function useMcpServer(id: string | undefined) {\n  return useSWR<McpServer | null>(\n    id ? queryKeys.mcpServers.detail(id) : null,\n    id ? () => apiNullableData(() => mcpServersApi.retrieveMcpServer(id)) : null,\n  );\n}\n```\n\n### Step 5 — Credential detection helper (pure, TDD)\n\nNew `apps/fabro-web/app/lib/credential-heuristics.ts`. Pure functions, fully unit\ntested first.\n\n```ts\n// True when a key/value pair looks credential-bearing and should be nudged\n// toward a secret. Never flags an already-templated value.\nexport function looksLikeCredential(key: string, value: string): boolean;\n\n// Suggest a secret name derived from the key (UPPER_SNAKE_CASE, alnum + _).\nexport function secretNameForKey(key: string): string;\n\n// The interpolation reference to store in place of a literal secret value.\nexport function secretReference(name: string): string; // `\\{\\{ secrets.NAME \\}\\}`\n```\n\nRules for `looksLikeCredential`:\n- Return **false** if `value` is empty, or already a template\n  (`/\\{\\{\\s*(secrets|env|vars)\\./` matches) — references are fine as-is.\n- Return **true** if the key (case-insensitive) matches any of:\n  `authorization`, `password`, `passwd`, `secret`, `token`, `api[-_]?key`,\n  or ends in `_key` / `_token` / `_secret`.\n- Otherwise return **true** if the value looks high-entropy: length ≥ 20, contains\n  a mix of at least two of {lowercase, uppercase, digit}, and has no spaces.\n- Otherwise **false**.\n\n`secretNameForKey`: uppercase, replace non-`[A-Za-z0-9]` with `_`, collapse\nrepeats, trim leading/trailing `_`; if empty, fall back to `SECRET`.\n\nTests must cover: `Authorization`/`Bearer abc...` → flagged; `API_KEY` → flagged;\n`NODE_ENV`/`production` → not flagged; a `\\{\\{ secrets.X \\}\\}` value → not flagged;\nempty value → not flagged; a long random-looking value under a benign key →\nflagged; `secretNameForKey(\"x-api-key\") === \"X_API_KEY\"`.\n\n### Step 6 — Form model: types, mappers, validation (pure, TDD)\n\nNew `apps/fabro-web/app/components/mcp-server-form.tsx` (form component) plus a\nsmall co-located or `lib/`-level module of pure helpers (tested first):\n\nForm value shape (flat, transport-discriminated):\n\n```ts\nexport type McpTransportKind = \"stdio\" | \"http\" | \"sandbox\";\n\nexport interface McpServerFormValues {\n  id: string;\n  displayName: string;\n  description: string;\n  startupTimeoutSecs: number;\n  toolTimeoutSecs: number;\n  transport: McpTransportKind;\n  // stdio + sandbox\n  command: string;            // shell-style words; split on whitespace -> string[]\n  // http + sandbox\n  protocol: McpHttpProtocol;  // default 'streamable_http'\n  // http\n  url: string;\n  headers: KeyValueEntry[];\n  // sandbox\n  port: number;\n  // stdio + sandbox env\n  env: KeyValueEntry[];\n}\n```\n\nPure helpers + tests:\n\n- `defaultMcpServerFormValues(kind): McpServerFormValues` — sensible defaults\n  (timeouts mirror `McpServerSettings::default()`: startup 10, tool 60).\n- `mcpServerToFormValues(server: McpServer): McpServerFormValues` — for edit.\n  Maps `transport` **view** into the form. **Env/header values are not available**,\n  so populate `env`/`headers` entries from `env_keys`/`header_keys` with **empty\n  values** (see §5).\n- `createRequestFromForm(values): CreateMcpServerRequest` and\n  `replaceRequestFromForm(values): ReplaceMcpServerRequest` — build the\n  `McpTransport` (values included), splitting `command` on whitespace, converting\n  entry arrays via `mapFromEntries`, omitting `protocol` when default.\n- `isMcpServerFormValid(values, { isEdit }): boolean` — id matches\n  `/^[a-z0-9][a-z0-9-]{0,62}$/` (create only), `displayName` non-empty, and per\n  transport: stdio needs `command`; http needs `url`; sandbox needs `command` and a\n  valid `port` (1–65535). On edit, additionally require a value for every row with\n  a non-empty key (the §5 guard).\n- `credentialWarnings(values): { field: 'env'|'headers'; index: number }[]` —\n  derived during render from `looksLikeCredential`, used to render per-row warnings.\n\nRound-trip test: `mcpServerToFormValues` → `replaceRequestFromForm` preserves id,\ndisplay name, transport type, url/command/port; and (documented) drops values that\nweren't re-entered.\n\n### Step 7 — The form component\n\n`McpServerFormFields({ values, onChange, lockId, lockTransport })` in\n`components/mcp-server-form.tsx`, built from `Panel` / `Row` and a local `patch()`\nhelper (copy the environment-form idiom):\n\n- **General panel:** `id` (locked on edit), `display_name`, `description`,\n  transport `<select>` (locked on edit), startup/tool timeout numeric inputs.\n- **Transport panel** — render fields by `values.transport` using the discriminated\n  conditional idiom (see `image_source` switching in `environment-form.tsx`):\n  - `stdio`: `command` text input; env `KeyValueEditor`.\n  - `http`: `protocol` select (`streamable_http`/`sse`), `url` text input; headers\n    `KeyValueEditor` (key placeholder `Authorization`, value `Bearer token`).\n  - `sandbox`: `protocol` select, `command` text input, `port` numeric input; env\n    `KeyValueEditor`.\n- **Credential nudge:** for each `KeyValueEditor` row flagged by\n  `looksLikeCredential`, render an inline warning (`text-amber`/warning tone) with a\n  \"Store as secret\" action. The action: set that row's value to\n  `secretReference(secretNameForKey(key))` and open\n  `/settings/secrets/new?name=<secretNameForKey(key)>` in a new tab (the user\n  finishes creating the secret there). This is warn-but-allow: saving with the\n  literal still works.\n\nKeep markup, class names, and helper conventions identical to the environment form\nso it reads as the same codebase.\n\n### Step 8 — List page\n\n`apps/fabro-web/app/routes/settings-mcps.tsx`, mirroring\n`settings-environments.tsx`:\n\n- `meta()` title.\n- Default component calls `useMcpServers()`, renders `SettingsPageIntro`\n  (description + a \"New MCP server\" control), and a panel listing servers\n  (display name, id, transport type badge, a row menu with Edit / Delete).\n- A \"New MCP server\" dropdown offering stdio / http / sandbox →\n  `/settings/mcps/new?type=<kind>` (mirror the environments provider dropdown).\n- Loading → `PanelSkeleton`; error → error panel; empty → friendly empty state.\n- **Delete:** confirm, then `apiData(() => mcpServersApi.deleteMcpServer(id, revision))`,\n  then `mutate(queryKeys.mcpServers.list())`, then success toast. 409 → toast\n  telling the user it changed; refresh the list.\n\n### Step 9 — New page\n\n`apps/fabro-web/app/routes/settings-mcps-new.tsx`, mirroring\n`settings-environments-new.tsx`:\n\n- Breadcrumb + `McpServerFormFields` (no locks).\n- Initial transport from `?type=` (`useSearchParams`), default `stdio`.\n- Submit: `createRequestFromForm`, `apiData(() => mcpServersApi.createMcpServer(req))`,\n  `mutate(list)`, success toast, navigate to `/settings/mcps`.\n- Errors via `ErrorMessage`; submit disabled unless `isMcpServerFormValid(values,{isEdit:false})`.\n\n### Step 10 — Edit page\n\n`apps/fabro-web/app/routes/settings-mcps-edit.tsx`, mirroring\n`settings-environments-edit.tsx`:\n\n- Read `:id` via `useParams`, fetch with `useMcpServer(id)`.\n- Render `<McpServerFormFields lockId lockTransport ... key={server.revision} />`\n  (the `key` remounts on revision change — copy this exactly).\n- Initialize from `mcpServerToFormValues(server)`.\n- Render the §5 write-only-values banner when keys exist.\n- Submit: `replaceRequestFromForm`, `apiData(() => mcpServersApi.replaceMcpServer(id, server.revision, req))`,\n  `mutate(list)` + `mutate(detail(id))`, success toast, navigate back.\n- 409: copy the environments `staleAwareMessage` pattern — show \"this MCP server\n  changed since you opened it; reload and reapply,\" do not auto-retry.\n\n### Step 11 — Route registration\n\nIn `app/router.tsx`, import the three modules and add under the `settings` children\n(next to the environments entries):\n\n```ts\nroute(\"mcps\", SettingsMcps),\nroute(\"mcps/new\", SettingsMcpsNew),\nroute(\"mcps/:id/edit\", SettingsMcpsEdit),\n```\n\n### Step 12 — Nav link (LAST)\n\nOnly after steps 1–11 are green, add a `NavItem` to `navSections` in\n`routes/settings.tsx`, in the same section as Environments:\n\n```ts\n{\n  name: \"MCP servers\",\n  href: \"/settings/mcps\",\n  icon: PuzzlePieceIcon, // or another existing @heroicons/react/24/outline icon\n  description: \"Server-managed MCP servers you can enable by name in workflows.\",\n  match: (p) => p.startsWith(\"/settings/mcps\"),\n},\n```\n\n---\n\n## 8. Tests to write (`bun test`, from `apps/fabro-web`)\n\nFollow `settings-integrations.test.tsx` conventions (`bun:test`,\n`react-test-renderer` + `act`, `setupReactTestEnv`, `mock.module(\"../lib/queries\",\n...)` to feed fixture data).\n\nRequired:\n\n1. `lib/credential-heuristics.test.ts` — all rules in §5/Step 5 (this is the\n   highest-value, purely-logical test surface).\n2. `components/key-value-editor.test.tsx` — map round-trip + add/remove row.\n3. `components/mcp-server-form.test.tsx` (or a `lib` test) — `mcpServerToFormValues`\n   populates keys with empty values; `createRequestFromForm`/`replaceRequestFromForm`\n   build correct discriminated transports; `isMcpServerFormValid` accepts/rejects\n   per transport and enforces the edit value-required guard.\n4. `routes/settings-mcps.test.tsx` — list renders rows from mocked\n   `useMcpServers`; empty state renders.\n5. `routes/settings-mcps-edit.test.tsx` — with a mocked `useMcpServer` returning a\n   transport that has `env_keys`, the write-only banner renders and env rows show\n   the keys with empty values.\n\n---\n\n## 9. Definition of done\n\n- `cd apps/fabro-web && bun run typecheck` — clean.\n- `cd apps/fabro-web && bun test` — all new + existing tests pass.\n- `cd apps/fabro-web && bun run build` — production build succeeds and stays within\n  the SPA asset budgets (the workflow's `cargo dev build` re-checks these; keep the\n  pages lightweight, reuse existing components, add no new heavy dependencies).\n- `cd lib/packages/fabro-api-client && bun run typecheck` — clean (you only consume\n  it; don't change it).\n- No Rust files changed; `cargo` steps in the verify gate pass unchanged.\n- Create → list → edit → delete all work against a live server; the edit form never\n  displays a stored secret value; credential-looking values warn but still save.\n- The nav link appears and routes correctly.\n\n---\n\n## 10. Known rough edges (acknowledge; don't \"fix\" out of scope)\n\n- **Edit requires re-entering env/header values** — a direct, intended consequence\n  of the credential-omitting read model + full-PUT replace. Handle it per §5; do\n  not add a server-side partial-update endpoint here.\n- **Credential heuristic false positives/negatives** — it's a *nudge*, not a gate.\n  Keep it cheap and explainable; never block save on it.\n- **Workflow-fit note (for the human):** the implement-plan workflow's preflight is\n  Rust-centric, but its verify gate runs `bun run typecheck` and `bun run test` for\n  `fabro-web`, plus `cargo dev build` (which runs the SPA production build + asset\n  budget check). This frontend-only change passes the Rust preflight untouched and\n  is genuinely enforced by the TypeScript portions of verify.\n"
+        },
+        "model_stylesheet": {
+          "String": "\n            * { model: claude-opus-4-8; }\n        "
+        },
+        "rankdir": {
+          "String": "LR"
+        }
+      }
+    },
+    "graph_source": "digraph ImplementPlan {\n    graph [\n        goal=\"Implement and simplify\",\n        model_stylesheet=\"\n            * { model: claude-opus-4-8; }\n        \"\n    ]\n    rankdir=LR\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    toolchain         [label=\"Toolchain\", shape=parallelogram, script=\"command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1\", max_retries=0]\n    preflight_compile [label=\"Preflight Compile\", shape=parallelogram, script=\"cargo check -q --workspace 2>&1\", max_retries=0]\n    preflight_lint    [label=\"Preflight Lint\", shape=parallelogram, script=\"cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1\", max_retries=0]\n    fix_lints         [label=\"Fix Lints\", prompt=\"The preflight lint step failed. Read the build output from context and fix all clippy lint warnings.\", max_visits=3]\n    implement         [label=\"Implement\", prompt=\"Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD.\", model=\"gpt-55\", reasoning_effort=\"xhigh\"]\n    simplify_opus     [label=\"Simplify (Opus)\", prompt=\"@prompts/simplify.md\"]\n    simplify_gpt      [label=\"Simplify (GPT-55)\", prompt=\"@prompts/simplify.md\", model=\"gpt-55\"]\n    verify            [label=\"Verify\", shape=parallelogram, script=\"git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\\\"disabled\\\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1\", goal_gate=true, retry_target=\"fixup\"]\n    fixup             [label=\"Fixup\", prompt=\"The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures.\", max_visits=3]\n\n    start -> toolchain\n    toolchain -> preflight_compile [condition=\"outcome=succeeded\"]\n    toolchain -> exit\n    preflight_compile -> preflight_lint [condition=\"outcome=succeeded\"]\n    preflight_compile -> exit\n    preflight_lint -> implement [condition=\"outcome=succeeded\"]\n    preflight_lint -> fix_lints\n    fix_lints -> preflight_lint\n    implement -> simplify_opus -> simplify_gpt -> verify\n    verify -> exit  [condition=\"outcome=succeeded\"]\n    verify -> fixup\n    fixup -> verify\n}\n",
+    "workflow_slug": "implement-plan",
+    "source_directory": "/Users/swerner/Development/os/fabro-main/fabro",
+    "provenance": {
+      "server": {
+        "version": "0.278.0-nightly.0"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.267.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.267.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "138379"
+        },
+        "login": "swerner",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/138379?v=4"
+      }
+    },
+    "manifest_blob": "12a47b5becfa7fd0c32fd98144212d2624bd57cf7aab7bdcda5ab384dff5b936",
+    "definition_blob": "342ab9e9fbce802b7ca64d1f33c053fae8f697048bdb843b8fafe9c1c74ab408",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "173968a780047658c2939c87865b3dacdb8766cd",
+      "dirty": "dirty",
+      "push_outcome": {
+        "type": "succeeded",
+        "remote": "origin",
+        "branch": "main"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KWD1PBZDHNBM1MYZH168FVK0",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-06-30T19:56:57.280579574Z",
+  "last_event_at": "2026-06-30T19:57:13.957148264Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-fdb28dec-1233-892c-b9d7-9f88f8353e7a",
+      "runtime": {
+        "id": "fabro-01KWD1PBZDHNBM1MYZH168FVK0",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
