@@ -1,0 +1,6 @@
+{
+  "outcome": "succeeded",
+  "notes": "Script completed: cargo check -q --workspace 2>&1",
+  "failure_reason": null,
+  "timestamp": "2026-06-30T20:00:08.608104494Z"
+}
