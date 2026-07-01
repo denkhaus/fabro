@@ -1,0 +1,525 @@
+{
+  "title": "make `Sandbox::glob` semantics consistent across providers",
+  "spec": {
+    "run_id": "01KWFCYYD8AS2WK0Z61PHPXWSD",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "# Plan: make `Sandbox::glob` semantics consistent across providers\n\n## Summary\n\n`Sandbox::glob(pattern, path)` returns correct results on the **Local** provider\nbut silently wrong/empty results on the **Docker** and **Daytona** providers.\nThe remote providers translate the glob pattern into `find <base> -name\n<pattern>`, and `find -name` is not a glob matcher — it matches the basename\nonly and cannot match a pattern containing `/`. So any pattern with a slash or\n`**` returns nothing (or the wrong set) on remote sandboxes.\n\nFix it by separating the two things globbing actually does — **traversal**\n(enumerate files, requires filesystem access) and **matching** (pure path\nlogic) — so that only traversal happens inside the sandbox, and matching is done\nonce in shared Rust code using the `glob` crate's `Pattern` matcher. This makes\nLocal, Docker, and Daytona semantically identical by construction.\n\n## Root cause (verified)\n\n- Trait method: `async fn glob(&self, pattern: &str, path: Option<&str>) -> crate::Result<Vec<String>>`.\n- **Local** — `lib/crates/fabro-sandbox/src/local.rs:628`: uses `glob::glob(\"<base>/<pattern>\")` (the `glob` crate). Correct glob semantics.\n- **Docker** — `lib/crates/fabro-sandbox/src/docker.rs:1845`: `find <base> -name <pattern> -type f`. **Broken.**\n- **Daytona** — `lib/crates/fabro-sandbox/src/daytona/mod.rs:1853`: `find <base> -name <pattern> -type f`. **Broken (identical bug).**\n\n`find -name` matches only the file's basename and refuses a pattern containing\n`/`, so e.g. `find <base> -name \"*/SKILL.md\"` exits 0 with **empty** output.\nReproduced locally:\n\n```\nfind <base> -name \"*/SKILL.md\" -type f   → (empty), exit 0     # what remote runs\nfind <base> -name \"SKILL.md\"     -type f   → <base>/eng-patch-cves/SKILL.md\nfind <base> -path \"*/SKILL.md\"    -type f   → <base>/eng-patch-cves/SKILL.md\n```\n\n## Blast radius / why it matters\n\nThere are two real callers of `sandbox.glob`, and both are broken on every\nremote (clone-based) sandbox — which are the production providers:\n\n1. **Skill discovery** — `lib/crates/fabro-agent/src/skills.rs:247`:\n   `env.glob(\"*/SKILL.md\", Some(dir))`. Result: skills are **never discovered**\n   in Docker/Daytona runs. `/skill-name` prompt syntax silently no-ops and the\n   agent runs without the skill loaded.\n2. **The agent's `Glob` tool** — `lib/crates/fabro-agent/src/tools.rs:369`:\n   `env.glob(pattern, path)` with arbitrary LLM-supplied patterns\n   (`**/*.rs`, `src/**/*.ts`, etc.). Result: the agent's file-search returns\n   wrong/empty results for any pattern with `/` or `**` on remote sandboxes — a\n   quiet, general correctness hole, not just a skills problem.\n\nThis was discovered while trying to run a skill-based workflow on the Daytona\ntesting server: `agent.skills.discovered` reported `skills:[]` even though the\nbranch cloned correctly and the `SKILL.md` was present in the workspace.\n\n## Reasoning: why Local works and remote can't just call the crate\n\nGlobbing is two jobs fused together:\n\n- **Traversal** — walking directories (`readdir`/`stat`) to enumerate which\n  files exist. Requires real filesystem access.\n- **Matching** — deciding whether a path string matches the pattern. Pure\n  string/path computation; touches no filesystem.\n\n`glob::glob()` does both at once against the local filesystem.\n\n- On **Local**, the sandbox *is* the machine running the code, so `glob::glob`\n  walks the real files and works.\n- On **Docker/Daytona**, the files live **inside the container / remote VM**,\n  not on the host running the Rust code. `glob::glob()` would walk the *host's*\n  filesystem and never see the sandbox's files. Having the `glob` crate as a\n  dependency doesn't help: its traversal is hard-wired to `std::fs` on the local\n  machine, and those files aren't local. The only way to observe a remote\n  sandbox's filesystem is across its boundary (exec a command, or the provider's\n  file API) — which is why the remote impls shell out to `find` at all.\n\nThe bug is that the remote impls delegated **matching** to `find` too\n(`-name`), whose semantics differ from a glob matcher. Only traversal actually\nneeds to cross the sandbox boundary; matching does not. So the fix is to keep\ntraversal in the provider (list files) and move matching into shared host-side\ncode using the crate's `Pattern` matcher.\n\nAlternatives considered and rejected:\n- **Translate glob → a faithful `find` expression** (e.g. `-path`, `-regex`):\n  fragile — `-path`'s `*` crosses `/` (so `*/SKILL.md` would wrongly match any\n  depth), and `**`, `[!a-z]`, brace expansion, `?` don't map cleanly; also\n  varies GNU vs BSD `find`.\n- **Ship a real glob matcher binary into every sandbox image**: heavier —\n  image dependencies and version coupling — versus `find`, which is universal.\n\n## Proposed fix (design)\n\nIntroduce one shared matcher and have each provider supply only a file listing.\n\n1. **Shared matcher helper** in `fabro-sandbox` (new module, e.g.\n   `src/glob_match.rs`), reusing the already-present `glob` crate\n   (`fabro-sandbox/Cargo.toml:43`, `glob = \"0.3\"`):\n   - `pub(crate) fn match_glob(base: &str, pattern: &str, candidate_paths: &[String]) -> Vec<String>`\n   - Build the full pattern from `base` + `pattern` (mirror what Local passes to\n     `glob::glob`), compile with `glob::Pattern::new`, and match each candidate\n     absolute path with `glob::MatchOptions`.\n   - Use `require_literal_separator: true` so `*` matches within a single path\n     segment (i.e. `*/SKILL.md` = exactly one directory level), matching the\n     intent of the skill pattern. Confirm the chosen `MatchOptions` reproduce the\n     Local `glob::glob` result set via tests (see below).\n   - Sort results (keep existing ordering behavior; Local sorts by mtime, remote\n     sorted lexically — preserve per-provider ordering or standardize and update\n     any order-sensitive callers/tests).\n\n2. **Provider file listing** — each remote provider enumerates candidate files\n   under `base` *without* letting `find` do the matching:\n   - Docker: `find <base> -type f` via the existing exec path (keep\n     `shell_quote` on `base`), then `match_glob`.\n   - Daytona: prefer the **filesystem list API** over shelling `find` if one is\n     available (more robust — file reads work on Daytona even when the shell is\n     fail-closed on a GitHub-token mint failure, which is a real failure mode).\n     Otherwise `find <base> -type f`, then `match_glob`.\n   - Performance: to avoid listing an entire large tree, derive the longest\n     literal (non-wildcard) leading directory of `pattern` and append it to the\n     `find` root; only the remaining wildcard portion goes to `match_glob`. For\n     patterns with no literal prefix (like `*/SKILL.md`) this lists `base` as\n     today. This is an optimization, not required for correctness — implement it\n     if straightforward, otherwise note as a follow-up.\n\n3. **Route Local through the same matcher too** (recommended, one source of\n   truth): have Local enumerate files under `base` and filter through\n   `match_glob`, so all three providers share identical matching. This is the\n   one judgment call — if reproducing Local's exact current results proves\n   fiddly, the acceptable fallback is to leave Local on `glob::glob` and add a\n   test proving `match_glob` agrees with `glob::glob` on shared fixtures. Do not\n   change Local's observable behavior without a test locking it.\n\n4. Update the delegating wrappers if the trait shape changes\n   (`lib/crates/fabro-sandbox/src/sandbox.rs:141` delegation macro,\n   `worktree.rs:327`, `read_guard.rs`). If `glob` stays a trait method with the\n   same signature and only the impl bodies change, these need no changes.\n\n## Implementation steps (red/green TDD)\n\n1. Write failing unit tests for `match_glob` first:\n   - `*/SKILL.md` matches `<base>/a/SKILL.md`; does **not** match\n     `<base>/SKILL.md` (needs a directory) and does **not** match\n     `<base>/a/b/SKILL.md` (exactly one level under `require_literal_separator`).\n   - `*.rs` matches only top-level `.rs` files under `base`.\n   - `**/*.rs` matches `.rs` files at any depth (verify the crate's `**`\n     handling with the chosen `MatchOptions`).\n2. Implement `match_glob` (`src/glob_match.rs`), export `pub(crate)`.\n3. Rewrite `Docker::glob` (`docker.rs:1845`) to list (`find -type f`) + `match_glob`.\n4. Rewrite `Daytona::glob` (`daytona/mod.rs:1853`) to list (file API preferred,\n   else `find -type f`) + `match_glob`.\n5. (Recommended) route `Local::glob` (`local.rs:628`) through `match_glob`; keep\n   a test asserting parity with the previous behavior.\n6. Add a regression test for the original symptom: `glob(\"*/SKILL.md\", base)`\n   returns a nested `<base>/<name>/SKILL.md`. Where a live Docker/Daytona env\n   isn't available in unit tests, test the `list + match_glob` composition\n   directly against a temp fixture tree.\n7. Confirm the two real callers work end to end: skill discovery\n   (`skills.rs:247`) and the agent `Glob` tool (`tools.rs:369`).\n\n## Acceptance criteria\n\n- `sandbox.glob(\"*/SKILL.md\", Some(dir))` returns the nested `SKILL.md` on Local,\n  Docker, and Daytona.\n- `match_glob` semantics match Local's prior `glob::glob` results on shared\n  fixtures (locked by test).\n- No regression to the agent `Glob` tool for common patterns (`*.rs`,\n  `**/*.rs`, `src/*.ts`).\n- All `implement-plan` verify gates pass: `cargo check`, nightly `clippy -D\n  warnings`, `fmt --check`, `cargo nextest run --workspace`, docs check, web\n  `typecheck`/`test`, and release build.\n\n## Out of scope\n\n- The GitHub App / Dependabot-alerts permission issue that fail-closes the\n  agent shell on the testing server (separate, server-side; not a code change).\n- The `patch-cves` workflow and `eng-patch-cves` skill themselves.\n- Adding new glob features beyond parity with the Local provider.\n\n## Conventions to follow (repo)\n\n- Use the `shell_quote()` helper for any value interpolated into a shell string\n  (the `find` base). Never hand-roll quoting.\n- No wildcard imports in production code (`use foo::*`).\n- Errors via `crate::Error`; follow the error-handling strategy doc.\n- Keep any test-only helpers behind `#[cfg(test)]` / `test-support`; do not\n  expose fixture helpers from production modules.\n- Match surrounding code style in `fabro-sandbox`.\n"
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {},
+        "model": {
+          "provider": "anthropic",
+          "name": "claude-sonnet-4-6",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "commands": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "fabro-dev",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        curl git ripgrep ca-certificates build-essential pkg-config libssl-dev unzip python3 \\\n        xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \\\n        libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6 \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install real Chromium (not the snap stub) via xtradeb PPA\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        software-properties-common curl gnupg \\\n    && add-apt-repository -y ppa:xtradeb/apps \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends chromium \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Wrapper: Chromium needs --no-sandbox when running as root in a container,\n# and --disable-dev-shm-usage avoids crashes from small /dev/shm\nRUN printf '#!/bin/bash\\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"$@\"\\n' \\\n        > /usr/local/bin/chromium-wrapper \\\n    && chmod +x /usr/local/bin/chromium-wrapper\n\n# Make the wrapper the default in the system .desktop file and via alternatives\nRUN sed -i 's|^Exec=.*|Exec=/usr/local/bin/chromium-wrapper %U|' \\\n        /usr/share/applications/chromium.desktop \\\n    && update-alternatives --install /usr/bin/x-www-browser x-www-browser \\\n        /usr/local/bin/chromium-wrapper 100\n\n# Tell XFCE's exo-open that Chromium is the WebBrowser helper (system-wide)\nRUN mkdir -p /etc/xdg/xfce4 /usr/share/xfce4/helpers \\\n    && printf 'WebBrowser=custom-WebBrowser\\n' > /etc/xdg/xfce4/helpers.rc \\\n    && printf '[Desktop Entry]\\n\\\nVersion=1.0\\n\\\nType=X-XFCE-Helper\\n\\\nName=Chromium\\n\\\nIcon=chromium\\n\\\nX-XFCE-Category=WebBrowser\\n\\\nX-XFCE-CommandsWithParameter=/usr/local/bin/chromium-wrapper \"%%s\"\\n\\\nX-XFCE-Commands=/usr/local/bin/chromium-wrapper\\n' \\\n        > /usr/share/xfce4/helpers/custom-WebBrowser.desktop\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" \\\n        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update && apt-get install -y --no-install-recommends gh \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": "20GB"
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": "30m"
+          },
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "env": {}
+        },
+        "notifications": {},
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": false,
+          "merge_strategy": "squash"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "ImplementPlan",
+      "nodes": {
+        "implement": {
+          "id": "implement",
+          "attrs": {
+            "model": {
+              "String": "gpt-5.5"
+            },
+            "provider": {
+              "String": "openai"
+            },
+            "prompt": {
+              "String": "Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD."
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "label": {
+              "String": "Implement"
+            }
+          }
+        },
+        "preflight_compile": {
+          "id": "preflight_compile",
+          "attrs": {
+            "max_retries": {
+              "Integer": 0
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "script": {
+              "String": "cargo check -q --workspace 2>&1"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "label": {
+              "String": "Preflight Compile"
+            }
+          }
+        },
+        "fix_lints": {
+          "id": "fix_lints",
+          "attrs": {
+            "prompt": {
+              "String": "The preflight lint step failed. Read the build output from context and fix all clippy lint warnings."
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Fix Lints"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "max_visits": {
+              "Integer": 3
+            }
+          }
+        },
+        "simplify_gpt": {
+          "id": "simplify_gpt",
+          "attrs": {
+            "label": {
+              "String": "Simplify (GPT-55)"
+            },
+            "model": {
+              "String": "gpt-5.5"
+            },
+            "provider": {
+              "String": "openai"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changes for reuse, quality, and efficiency. Fix any issues found. Feel free to use any sub agents you need.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation. (You may already have the changes in context, if so, feel free to skip this part)\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            }
+          }
+        },
+        "verify": {
+          "id": "verify",
+          "attrs": {
+            "shape": {
+              "String": "parallelogram"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "timeout": {
+              "Duration": {
+                "secs": 1800,
+                "nanos": 0
+              }
+            },
+            "script": {
+              "String": "git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1"
+            },
+            "label": {
+              "String": "Verify"
+            },
+            "goal_gate": {
+              "Boolean": true
+            },
+            "retry_target": {
+              "String": "fixup"
+            }
+          }
+        },
+        "preflight_lint": {
+          "id": "preflight_lint",
+          "attrs": {
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "script": {
+              "String": "cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1"
+            },
+            "label": {
+              "String": "Preflight Lint"
+            }
+          }
+        },
+        "toolchain": {
+          "id": "toolchain",
+          "attrs": {
+            "max_retries": {
+              "Integer": 0
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "script": {
+              "String": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Toolchain"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        },
+        "simplify_opus": {
+          "id": "simplify_opus",
+          "attrs": {
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changes for reuse, quality, and efficiency. Fix any issues found. Feel free to use any sub agents you need.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation. (You may already have the changes in context, if so, feel free to skip this part)\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "label": {
+              "String": "Simplify (Opus)"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "label": {
+              "String": "Start"
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Exit"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "shape": {
+              "String": "Msquare"
+            }
+          }
+        },
+        "fixup": {
+          "id": "fixup",
+          "attrs": {
+            "label": {
+              "String": "Fixup"
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "prompt": {
+              "String": "The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures."
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "toolchain",
+          "attrs": {}
+        },
+        {
+          "from": "toolchain",
+          "to": "preflight_compile",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "toolchain",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_compile",
+          "to": "preflight_lint",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_compile",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_lint",
+          "to": "implement",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_lint",
+          "to": "fix_lints",
+          "attrs": {}
+        },
+        {
+          "from": "fix_lints",
+          "to": "preflight_lint",
+          "attrs": {}
+        },
+        {
+          "from": "implement",
+          "to": "simplify_opus",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_opus",
+          "to": "simplify_gpt",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_gpt",
+          "to": "verify",
+          "attrs": {}
+        },
+        {
+          "from": "verify",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "verify",
+          "to": "fixup",
+          "attrs": {}
+        },
+        {
+          "from": "fixup",
+          "to": "verify",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "goal": {
+          "String": "# Plan: make `Sandbox::glob` semantics consistent across providers\n\n## Summary\n\n`Sandbox::glob(pattern, path)` returns correct results on the **Local** provider\nbut silently wrong/empty results on the **Docker** and **Daytona** providers.\nThe remote providers translate the glob pattern into `find <base> -name\n<pattern>`, and `find -name` is not a glob matcher — it matches the basename\nonly and cannot match a pattern containing `/`. So any pattern with a slash or\n`**` returns nothing (or the wrong set) on remote sandboxes.\n\nFix it by separating the two things globbing actually does — **traversal**\n(enumerate files, requires filesystem access) and **matching** (pure path\nlogic) — so that only traversal happens inside the sandbox, and matching is done\nonce in shared Rust code using the `glob` crate's `Pattern` matcher. This makes\nLocal, Docker, and Daytona semantically identical by construction.\n\n## Root cause (verified)\n\n- Trait method: `async fn glob(&self, pattern: &str, path: Option<&str>) -> crate::Result<Vec<String>>`.\n- **Local** — `lib/crates/fabro-sandbox/src/local.rs:628`: uses `glob::glob(\"<base>/<pattern>\")` (the `glob` crate). Correct glob semantics.\n- **Docker** — `lib/crates/fabro-sandbox/src/docker.rs:1845`: `find <base> -name <pattern> -type f`. **Broken.**\n- **Daytona** — `lib/crates/fabro-sandbox/src/daytona/mod.rs:1853`: `find <base> -name <pattern> -type f`. **Broken (identical bug).**\n\n`find -name` matches only the file's basename and refuses a pattern containing\n`/`, so e.g. `find <base> -name \"*/SKILL.md\"` exits 0 with **empty** output.\nReproduced locally:\n\n```\nfind <base> -name \"*/SKILL.md\" -type f   → (empty), exit 0     # what remote runs\nfind <base> -name \"SKILL.md\"     -type f   → <base>/eng-patch-cves/SKILL.md\nfind <base> -path \"*/SKILL.md\"    -type f   → <base>/eng-patch-cves/SKILL.md\n```\n\n## Blast radius / why it matters\n\nThere are two real callers of `sandbox.glob`, and both are broken on every\nremote (clone-based) sandbox — which are the production providers:\n\n1. **Skill discovery** — `lib/crates/fabro-agent/src/skills.rs:247`:\n   `env.glob(\"*/SKILL.md\", Some(dir))`. Result: skills are **never discovered**\n   in Docker/Daytona runs. `/skill-name` prompt syntax silently no-ops and the\n   agent runs without the skill loaded.\n2. **The agent's `Glob` tool** — `lib/crates/fabro-agent/src/tools.rs:369`:\n   `env.glob(pattern, path)` with arbitrary LLM-supplied patterns\n   (`**/*.rs`, `src/**/*.ts`, etc.). Result: the agent's file-search returns\n   wrong/empty results for any pattern with `/` or `**` on remote sandboxes — a\n   quiet, general correctness hole, not just a skills problem.\n\nThis was discovered while trying to run a skill-based workflow on the Daytona\ntesting server: `agent.skills.discovered` reported `skills:[]` even though the\nbranch cloned correctly and the `SKILL.md` was present in the workspace.\n\n## Reasoning: why Local works and remote can't just call the crate\n\nGlobbing is two jobs fused together:\n\n- **Traversal** — walking directories (`readdir`/`stat`) to enumerate which\n  files exist. Requires real filesystem access.\n- **Matching** — deciding whether a path string matches the pattern. Pure\n  string/path computation; touches no filesystem.\n\n`glob::glob()` does both at once against the local filesystem.\n\n- On **Local**, the sandbox *is* the machine running the code, so `glob::glob`\n  walks the real files and works.\n- On **Docker/Daytona**, the files live **inside the container / remote VM**,\n  not on the host running the Rust code. `glob::glob()` would walk the *host's*\n  filesystem and never see the sandbox's files. Having the `glob` crate as a\n  dependency doesn't help: its traversal is hard-wired to `std::fs` on the local\n  machine, and those files aren't local. The only way to observe a remote\n  sandbox's filesystem is across its boundary (exec a command, or the provider's\n  file API) — which is why the remote impls shell out to `find` at all.\n\nThe bug is that the remote impls delegated **matching** to `find` too\n(`-name`), whose semantics differ from a glob matcher. Only traversal actually\nneeds to cross the sandbox boundary; matching does not. So the fix is to keep\ntraversal in the provider (list files) and move matching into shared host-side\ncode using the crate's `Pattern` matcher.\n\nAlternatives considered and rejected:\n- **Translate glob → a faithful `find` expression** (e.g. `-path`, `-regex`):\n  fragile — `-path`'s `*` crosses `/` (so `*/SKILL.md` would wrongly match any\n  depth), and `**`, `[!a-z]`, brace expansion, `?` don't map cleanly; also\n  varies GNU vs BSD `find`.\n- **Ship a real glob matcher binary into every sandbox image**: heavier —\n  image dependencies and version coupling — versus `find`, which is universal.\n\n## Proposed fix (design)\n\nIntroduce one shared matcher and have each provider supply only a file listing.\n\n1. **Shared matcher helper** in `fabro-sandbox` (new module, e.g.\n   `src/glob_match.rs`), reusing the already-present `glob` crate\n   (`fabro-sandbox/Cargo.toml:43`, `glob = \"0.3\"`):\n   - `pub(crate) fn match_glob(base: &str, pattern: &str, candidate_paths: &[String]) -> Vec<String>`\n   - Build the full pattern from `base` + `pattern` (mirror what Local passes to\n     `glob::glob`), compile with `glob::Pattern::new`, and match each candidate\n     absolute path with `glob::MatchOptions`.\n   - Use `require_literal_separator: true` so `*` matches within a single path\n     segment (i.e. `*/SKILL.md` = exactly one directory level), matching the\n     intent of the skill pattern. Confirm the chosen `MatchOptions` reproduce the\n     Local `glob::glob` result set via tests (see below).\n   - Sort results (keep existing ordering behavior; Local sorts by mtime, remote\n     sorted lexically — preserve per-provider ordering or standardize and update\n     any order-sensitive callers/tests).\n\n2. **Provider file listing** — each remote provider enumerates candidate files\n   under `base` *without* letting `find` do the matching:\n   - Docker: `find <base> -type f` via the existing exec path (keep\n     `shell_quote` on `base`), then `match_glob`.\n   - Daytona: prefer the **filesystem list API** over shelling `find` if one is\n     available (more robust — file reads work on Daytona even when the shell is\n     fail-closed on a GitHub-token mint failure, which is a real failure mode).\n     Otherwise `find <base> -type f`, then `match_glob`.\n   - Performance: to avoid listing an entire large tree, derive the longest\n     literal (non-wildcard) leading directory of `pattern` and append it to the\n     `find` root; only the remaining wildcard portion goes to `match_glob`. For\n     patterns with no literal prefix (like `*/SKILL.md`) this lists `base` as\n     today. This is an optimization, not required for correctness — implement it\n     if straightforward, otherwise note as a follow-up.\n\n3. **Route Local through the same matcher too** (recommended, one source of\n   truth): have Local enumerate files under `base` and filter through\n   `match_glob`, so all three providers share identical matching. This is the\n   one judgment call — if reproducing Local's exact current results proves\n   fiddly, the acceptable fallback is to leave Local on `glob::glob` and add a\n   test proving `match_glob` agrees with `glob::glob` on shared fixtures. Do not\n   change Local's observable behavior without a test locking it.\n\n4. Update the delegating wrappers if the trait shape changes\n   (`lib/crates/fabro-sandbox/src/sandbox.rs:141` delegation macro,\n   `worktree.rs:327`, `read_guard.rs`). If `glob` stays a trait method with the\n   same signature and only the impl bodies change, these need no changes.\n\n## Implementation steps (red/green TDD)\n\n1. Write failing unit tests for `match_glob` first:\n   - `*/SKILL.md` matches `<base>/a/SKILL.md`; does **not** match\n     `<base>/SKILL.md` (needs a directory) and does **not** match\n     `<base>/a/b/SKILL.md` (exactly one level under `require_literal_separator`).\n   - `*.rs` matches only top-level `.rs` files under `base`.\n   - `**/*.rs` matches `.rs` files at any depth (verify the crate's `**`\n     handling with the chosen `MatchOptions`).\n2. Implement `match_glob` (`src/glob_match.rs`), export `pub(crate)`.\n3. Rewrite `Docker::glob` (`docker.rs:1845`) to list (`find -type f`) + `match_glob`.\n4. Rewrite `Daytona::glob` (`daytona/mod.rs:1853`) to list (file API preferred,\n   else `find -type f`) + `match_glob`.\n5. (Recommended) route `Local::glob` (`local.rs:628`) through `match_glob`; keep\n   a test asserting parity with the previous behavior.\n6. Add a regression test for the original symptom: `glob(\"*/SKILL.md\", base)`\n   returns a nested `<base>/<name>/SKILL.md`. Where a live Docker/Daytona env\n   isn't available in unit tests, test the `list + match_glob` composition\n   directly against a temp fixture tree.\n7. Confirm the two real callers work end to end: skill discovery\n   (`skills.rs:247`) and the agent `Glob` tool (`tools.rs:369`).\n\n## Acceptance criteria\n\n- `sandbox.glob(\"*/SKILL.md\", Some(dir))` returns the nested `SKILL.md` on Local,\n  Docker, and Daytona.\n- `match_glob` semantics match Local's prior `glob::glob` results on shared\n  fixtures (locked by test).\n- No regression to the agent `Glob` tool for common patterns (`*.rs`,\n  `**/*.rs`, `src/*.ts`).\n- All `implement-plan` verify gates pass: `cargo check`, nightly `clippy -D\n  warnings`, `fmt --check`, `cargo nextest run --workspace`, docs check, web\n  `typecheck`/`test`, and release build.\n\n## Out of scope\n\n- The GitHub App / Dependabot-alerts permission issue that fail-closes the\n  agent shell on the testing server (separate, server-side; not a code change).\n- The `patch-cves` workflow and `eng-patch-cves` skill themselves.\n- Adding new glob features beyond parity with the Local provider.\n\n## Conventions to follow (repo)\n\n- Use the `shell_quote()` helper for any value interpolated into a shell string\n  (the `find` base). Never hand-roll quoting.\n- No wildcard imports in production code (`use foo::*`).\n- Errors via `crate::Error`; follow the error-handling strategy doc.\n- Keep any test-only helpers behind `#[cfg(test)]` / `test-support`; do not\n  expose fixture helpers from production modules.\n- Match surrounding code style in `fabro-sandbox`.\n"
+        },
+        "model_stylesheet": {
+          "String": "\n            * { model: claude-opus-4-8; }\n        "
+        },
+        "rankdir": {
+          "String": "LR"
+        }
+      }
+    },
+    "graph_source": "digraph ImplementPlan {\n    graph [\n        goal=\"Implement and simplify\",\n        model_stylesheet=\"\n            * { model: claude-opus-4-8; }\n        \"\n    ]\n    rankdir=LR\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    toolchain         [label=\"Toolchain\", shape=parallelogram, script=\"command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1\", max_retries=0]\n    preflight_compile [label=\"Preflight Compile\", shape=parallelogram, script=\"cargo check -q --workspace 2>&1\", max_retries=0]\n    preflight_lint    [label=\"Preflight Lint\", shape=parallelogram, script=\"cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1\", max_retries=0]\n    fix_lints         [label=\"Fix Lints\", prompt=\"The preflight lint step failed. Read the build output from context and fix all clippy lint warnings.\", max_visits=3]\n    implement         [label=\"Implement\", prompt=\"Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD.\", model=\"gpt-55\", reasoning_effort=\"xhigh\"]\n    simplify_opus     [label=\"Simplify (Opus)\", prompt=\"@prompts/simplify.md\"]\n    simplify_gpt      [label=\"Simplify (GPT-55)\", prompt=\"@prompts/simplify.md\", model=\"gpt-55\"]\n    verify            [label=\"Verify\", shape=parallelogram, timeout=\"1800s\", script=\"git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\\\"disabled\\\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1\", goal_gate=true, retry_target=\"fixup\"]\n    fixup             [label=\"Fixup\", prompt=\"The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures.\", max_visits=3]\n\n    start -> toolchain\n    toolchain -> preflight_compile [condition=\"outcome=succeeded\"]\n    toolchain -> exit\n    preflight_compile -> preflight_lint [condition=\"outcome=succeeded\"]\n    preflight_compile -> exit\n    preflight_lint -> implement [condition=\"outcome=succeeded\"]\n    preflight_lint -> fix_lints\n    fix_lints -> preflight_lint\n    implement -> simplify_opus -> simplify_gpt -> verify\n    verify -> exit  [condition=\"outcome=succeeded\"]\n    verify -> fixup\n    fixup -> verify\n}\n",
+    "workflow_slug": "implement-plan",
+    "source_directory": "/Users/swerner/Development/os/fabro-main/fabro",
+    "provenance": {
+      "server": {
+        "version": "0.278.0-nightly.0"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.267.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.267.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "138379"
+        },
+        "login": "swerner",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/138379?v=4"
+      }
+    },
+    "manifest_blob": "37d508b33178d96617608afe8ef7cf75e4e8e4339875c8e1e0179788231e80f6",
+    "definition_blob": "45122868bc87e784741ebcd58ff052823f2c9887fcb5c8c90fc94822e8ee9b4f",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "c945fb404badc8daf1972b974f370d9dec1e62d0",
+      "dirty": "dirty",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KWFCYYD8AS2WK0Z61PHPXWSD",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-01T17:52:21.510616215Z",
+  "last_event_at": "2026-07-01T17:52:35.523572603Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-fdb28dec-1233-892c-b9d7-9f88f8353e7a",
+      "runtime": {
+        "id": "fabro-01KWFCYYD8AS2WK0Z61PHPXWSD",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
