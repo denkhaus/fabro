@@ -1,0 +1,78 @@
+digraph MergeTrain {
+    graph [
+        goal="Merge the pull requests {{ inputs.prs }} into {{ inputs.base }} as a merge train: process them in the given order, rebasing each onto the latest {{ inputs.base }} (so each PR is validated against the cumulative result of the ones before it), resolving conflicts, pushing, and merging with the {{ inputs.merge_method }} method. Stop at the first PR that cannot be merged cleanly and report why.",
+        rankdir=LR,
+        max_node_visits=40
+    ]
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    // Deterministic setup: confirm gh + git are usable in the sandbox and sync
+    // remotes. No LLM. On failure the unconditional edge routes straight to exit.
+    preflight [
+        label="Preflight",
+        shape=parallelogram,
+        script="gh auth status 2>&1 && git fetch --prune origin 2>&1 && echo 'preflight ok'",
+        max_retries=0
+    ]
+
+    // Read the queued PRs, verify each is open, non-draft, targets the base, and
+    // lives in this repo (not a fork — we can't push conflict fixes to a fork).
+    // Decide the final order and write merge-train-plan.md. Purely analysis; makes
+    // no changes and merges nothing.
+    plan [
+        label="Plan Train",
+        prompt="@prompts/plan.md",
+        reasoning_effort="high"
+    ]
+
+    // The train itself: for each PR in order, rebase onto the latest base, resolve
+    // conflicts, RUN THE PROJECT'S TESTS LOCALLY and fix any failures, push only
+    // once local checks pass, wait for CI to go green (fixing and re-pushing if CI
+    // still fails), merge, then advance the local base before the next PR. It does
+    // everything in its power to get each PR green and merged, escalating to the
+    // human gate only when genuinely stuck. Resumes from merge-train-state.md when
+    // re-entered after a human decision. Emits a routing outcome:
+    //   outcome=succeeded          -> everything handled, go report
+    //   preferred_label=NeedsHuman -> stuck, needs a decision, go to human_gate
+    train [
+        label="Run Merge Train",
+        prompt="@prompts/train.md",
+        thread_id="merge-train",
+        fidelity="full",
+        output_schema="routing",
+        output_retries=2,
+        reasoning_effort="xhigh",
+        max_visits=12
+    ]
+
+    // Escalation gate. The train routes here ONLY when it cannot decide or fix
+    // something on its own: an ambiguous semantic conflict, exhausted fix attempts,
+    // a product/API judgement call, or a merge blocked by branch protection. The
+    // human reads merge-train-state.md for the specifics and answers freeform; the
+    // train then resumes with that guidance. Answer "stop" to end the run.
+    human_gate [
+        shape=hexagon,
+        label="The merge train needs a human decision — read merge-train-state.md for the specifics, then reply with how to proceed (or 'stop').",
+        question_type="freeform"
+    ]
+
+    // Summarize outcomes and post a single status comment. Merges nothing.
+    report [
+        label="Report",
+        shape=tab,
+        fidelity="summary:high",
+        prompt="Summarize this merge-train run from context and merge-train-plan.md / merge-train-state.md. For every queued PR, report exactly one of: MERGED (with method and resulting base SHA), SKIPPED (why — e.g. draft, fork, already merged, wrong base), or BLOCKED (the precise reason and what was tried). For a BLOCKED PR, distinguish the failure class: an unresolved rebase conflict, a test/CI failure the agent could not fix, a human decision that ended the run, or a merge GitHub rejected because branch-protection requirements were not met (required review/status checks missing, the app is not a ruleset bypass actor, or require_last_push_approval invalidated the approval after the rebase force-push). End with the single clearest next action for each PR that did not merge. Do not merge, push, or rebase anything in this stage."
+    ]
+
+    start -> preflight
+    preflight -> plan [label="OK", condition="outcome=succeeded"]
+    preflight -> exit
+    plan -> train
+    train -> report     [label="Done", condition="outcome=succeeded"]
+    train -> human_gate [label="NeedsHuman", condition="preferred_label=NeedsHuman || outcome=failed"]
+    train -> report
+    human_gate -> train [freeform=true]
+    report -> exit
+}

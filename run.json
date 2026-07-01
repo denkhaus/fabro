@@ -1,0 +1,404 @@
+{
+  "title": "Merge the pull requests 543,544 into main as a merge train: process them in the given order, reba...",
+  "spec": {
+    "run_id": "01KWFTMDQVT7SD0GRRWKXH776E",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "Merge the pull requests 543,544 into main as a merge train: process them in the given order, rebasing each onto the latest main (so each PR is validated against the cumulative result of the ones before it), resolving conflicts, pushing, and merging with the squash method. Stop at the first PR that cannot be merged cleanly and report why."
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {
+          "prs": "543,544",
+          "merge_method": "squash",
+          "base": "main",
+          "max_fix_attempts": "3",
+          "verify_cmd": ""
+        },
+        "model": {
+          "provider": "anthropic",
+          "name": "claude-opus-4-8",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "commands": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "fabro-dev",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        curl git ripgrep ca-certificates build-essential pkg-config libssl-dev unzip python3 \\\n        xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \\\n        libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6 \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install real Chromium (not the snap stub) via xtradeb PPA\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        software-properties-common curl gnupg \\\n    && add-apt-repository -y ppa:xtradeb/apps \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends chromium \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Wrapper: Chromium needs --no-sandbox when running as root in a container,\n# and --disable-dev-shm-usage avoids crashes from small /dev/shm\nRUN printf '#!/bin/bash\\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"$@\"\\n' \\\n        > /usr/local/bin/chromium-wrapper \\\n    && chmod +x /usr/local/bin/chromium-wrapper\n\n# Make the wrapper the default in the system .desktop file and via alternatives\nRUN sed -i 's|^Exec=.*|Exec=/usr/local/bin/chromium-wrapper %U|' \\\n        /usr/share/applications/chromium.desktop \\\n    && update-alternatives --install /usr/bin/x-www-browser x-www-browser \\\n        /usr/local/bin/chromium-wrapper 100\n\n# Tell XFCE's exo-open that Chromium is the WebBrowser helper (system-wide)\nRUN mkdir -p /etc/xdg/xfce4 /usr/share/xfce4/helpers \\\n    && printf 'WebBrowser=custom-WebBrowser\\n' > /etc/xdg/xfce4/helpers.rc \\\n    && printf '[Desktop Entry]\\n\\\nVersion=1.0\\n\\\nType=X-XFCE-Helper\\n\\\nName=Chromium\\n\\\nIcon=chromium\\n\\\nX-XFCE-Category=WebBrowser\\n\\\nX-XFCE-CommandsWithParameter=/usr/local/bin/chromium-wrapper \"%%s\"\\n\\\nX-XFCE-Commands=/usr/local/bin/chromium-wrapper\\n' \\\n        > /usr/share/xfce4/helpers/custom-WebBrowser.desktop\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" \\\n        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update && apt-get install -y --no-install-recommends gh \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": "20GB"
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": "30m"
+          },
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "env": {}
+        },
+        "notifications": {},
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": false,
+          "merge_strategy": "squash"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {
+              "checks": "read",
+              "issues": "write",
+              "contents": "write",
+              "pull_requests": "write"
+            }
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "MergeTrain",
+      "nodes": {
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "label": {
+              "String": "Exit"
+            },
+            "shape": {
+              "String": "Msquare"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "label": {
+              "String": "Start"
+            }
+          }
+        },
+        "preflight": {
+          "id": "preflight",
+          "attrs": {
+            "label": {
+              "String": "Preflight"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "script": {
+              "String": "gh auth status 2>&1 && git fetch --prune origin 2>&1 && echo 'preflight ok'"
+            },
+            "shape": {
+              "String": "parallelogram"
+            }
+          }
+        },
+        "train": {
+          "id": "train",
+          "attrs": {
+            "output_schema": {
+              "String": "routing"
+            },
+            "fidelity": {
+              "String": "full"
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "thread_id": {
+              "String": "merge-train"
+            },
+            "label": {
+              "String": "Run Merge Train"
+            },
+            "max_visits": {
+              "Integer": 12
+            },
+            "output_retries": {
+              "Integer": 2
+            },
+            "prompt": {
+              "String": "You are running a **merge train**. Read `merge-train-plan.md` for the ordered\nlist of READY PRs, the base branch (input `base`), and the merge method (input\n`merge_method`, `squash` or `merge`). Process the READY PRs **strictly in order**,\none at a time. Each PR is rebased onto the result of the previous merge, so the\ntrain validates every PR against the cumulative state of `base`.\n\n**Your job is to get every queued PR green and merged.** Do everything in your\npower to make each PR mergeable — rebase it, resolve conflicts, run the tests, and\nfix whatever is broken — and only escalate to a human when a decision genuinely\nrequires human judgement. If every PR can be made green, the end state is that\nthey are all merged.\n\n## Resuming\n\nYou may be re-entered after a human answered the escalation gate. On entry:\n1. Read `merge-train-state.md` to see which PRs are already `MERGED` / `SKIPPED`\n   and which one you were stuck on.\n2. If a human answer is present (context key `human.gate.human_gate.answer`), apply\n   that guidance to the PR you were stuck on. If the human said to **stop**, finalize:\n   write the state file, return outcome `succeeded`, and let the report stage run.\n3. Otherwise continue from the first PR that is not yet resolved.\n\nKeep `merge-train-state.md` current as you go (one line per PR: `MERGED` /\n`SKIPPED` / `BLOCKED` / `IN PROGRESS` + a short reason) so progress survives an\ninterruption or hand-off to a human.\n\n## Per-PR procedure\n\nFor each unresolved READY PR number `N`, in order:\n\n1. **Sync base:** `git fetch origin main`.\n2. **Check out the PR branch:** `gh pr checkout N`.\n3. **Rebase onto the latest base:** `git rebase origin/main`.\n   - Clean → continue.\n   - Conflicts → **resolve them**: read the conflicting hunks, make the correct\n     merged edits (preserve the intent of BOTH sides — never blindly take one),\n     `git add -A`, `git rebase --continue`; repeat until the rebase completes.\n   - If a conflict is a genuine **semantic** conflict where the right resolution is\n     ambiguous or is a product/API judgement call, `git rebase --abort` and\n     **escalate** (see \"When to escalate\").\n4. **Run the project's tests LOCALLY, before pushing.** Do not push-and-pray.\n   - If input `verify_cmd` is set, run exactly that. Otherwise discover what CI\n     runs (read `.github/workflows/*` and `CLAUDE.md`) and run the same checks\n     locally — e.g. for this repo: `cargo +nightly-2026-04-14 fmt --check --all`,\n     `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`,\n     `cargo nextest run --workspace`, and the web `typecheck`/`test`. Running what\n     CI runs makes a local pass predict a CI pass.\n   - **If local checks fail, FIX them** (up to `max_fix_attempts` attempts): read\n     the failure, make the code change, re-run the checks. Commit the fixes onto\n     the PR branch (`git commit`) so they become part of the PR.\n   - If you exhaust `max_fix_attempts` without going green, or the fix needs a\n     product decision, **escalate**.\n5. **Push the rebased, fixed branch:** `git push --force-with-lease origin HEAD`.\n   (The rebase rewrote history, so a force push is required; `--force-with-lease`\n   refuses to clobber unexpected upstream changes.)\n6. **Wait for CI on the pushed head, then require green.** The push starts a fresh\n   CI run, so do not trust pre-push results.\n   - Note the head SHA (`git rev-parse HEAD`), then poll `gh pr checks N` every ~15s\n     until it reports check runs for that head (wait up to ~2 min for them to\n     appear). Then block on `gh pr checks N --watch --interval 30` until they\n     finish. Do NOT pass `--required` (nothing is marked required here, so it would\n     ignore every check).\n   - **All green →** merge (step 7).\n   - **A check fails →** pull the failing logs (`gh run view --log-failed` / the\n     check's output), reproduce and **FIX locally** (this is why we test locally\n     first — CI should rarely surface something new), re-run local checks, re-push,\n     and wait again. Bounded by the same `max_fix_attempts`. If still red after\n     that, **escalate** with the failing check name and a short diagnosis.\n   - **No CI configured →** if, after the ~2 min window, the PR reports no check\n     runs at all, there is nothing to wait for; proceed to merge.\n7. **Merge:** `gh pr merge N --squash`.\n   - Success → mark **MERGED**.\n   - **If GitHub rejects the merge** (e.g. HTTP 405 / \"review required\" / \"required\n     status checks\" / \"at least 1 approving review\"), do **NOT** retry, force, or\n     alter branch protection. This is the branch-protection wall: the base requires\n     a review/check the Fabro app cannot satisfy because it is not a ruleset bypass\n     actor, or `require_last_push_approval` invalidated an approval after your\n     force-push. Record the exact GitHub message and **escalate**.\n8. **Advance the base:** `git checkout main && git pull --ff-only origin main`\n   so the next PR rebases onto the just-merged result. Then go to the next PR.\n\n## When to escalate (human gate)\n\nEscalate — do not guess — when you hit any of:\n- a semantic/ambiguous conflict whose correct resolution needs human intent;\n- test or CI failures you could not fix within `max_fix_attempts`;\n- a product, API-contract, or behaviour decision;\n- a merge GitHub rejects for branch-protection reasons.\n\nTo escalate: write the **specific question and the current situation** for the\nstuck PR into `merge-train-state.md` (mark it `BLOCKED — NEEDS HUMAN: <question>`),\nthen return the routing outcome with `preferred_label = \"NeedsHuman\"`. Do **not**\nskip past the stuck PR to later ones — the train is ordered. The human's answer\ncomes back on the next entry (see \"Resuming\").\n\n## Rules\n\n- **Merge everything you can; escalate the rest — never freeze silently and never\n  bypass protection.** Do not force-merge, disable checks, or edit rulesets/branch\n  protection, and never push directly to `main`.\n- Prefer `--force-with-lease` over `--force`. Never touch branches outside this train.\n- Pending/running checks are not failures — wait for them.\n\n## Output (routing)\n\nReturn a routing outcome:\n- **`outcome = succeeded`** when every queued PR is resolved (MERGED or SKIPPED) or\n  the human told you to stop. This routes to the report stage.\n- **`preferred_label = \"NeedsHuman\"`** when you are stuck and need a decision. This\n  routes to the human gate; you will be re-entered with the answer.\n\nInclude a concise per-PR summary (MERGED / SKIPPED / BLOCKED + reason) and the\nfinal `main` SHA in your response."
+            }
+          }
+        },
+        "human_gate": {
+          "id": "human_gate",
+          "attrs": {
+            "shape": {
+              "String": "hexagon"
+            },
+            "question_type": {
+              "String": "freeform"
+            },
+            "label": {
+              "String": "The merge train needs a human decision — read merge-train-state.md for the specifics, then reply with how to proceed (or 'stop')."
+            }
+          }
+        },
+        "plan": {
+          "id": "plan",
+          "attrs": {
+            "reasoning_effort": {
+              "String": "high"
+            },
+            "label": {
+              "String": "Plan Train"
+            },
+            "prompt": {
+              "String": "You are planning a **merge train**. The ordered, comma-separated list of PR\nnumbers to merge is in the goal (input `prs`), targeting the base branch (input\n`base`). You will NOT merge, push, rebase, or change any code in this stage —\nthis is analysis only. Produce a plan for the next stage to execute.\n\n## Steps\n\n1. Parse the PR list from the goal, preserving the given order.\n2. For each PR, gather facts with the `gh` CLI, e.g.:\n   `gh pr view <n> --json number,title,state,isDraft,mergeable,baseRefName,headRefName,headRepositoryOwner,author,url`\n3. Classify each PR into exactly one bucket:\n   - **READY** — open, not draft, targets the base branch, and its head branch is\n     in THIS repository (not a fork). Only READY PRs are eligible to be merged.\n   - **SKIP** — closed/already merged, draft, targets a different base, or its head\n     is on a **fork** (we cannot push conflict fixes to a fork's branch, so the\n     train can't rebase it). Record the specific reason.\n4. Decide the final merge order. Default to the given order. If you can tell from\n   the diffs that one PR logically depends on another, note it, but do not\n   silently reorder — call out any ordering concern for a human to confirm.\n5. Flag likely conflicts: if two READY PRs touch the same files/regions, note that\n   the later one will almost certainly need conflict resolution once the earlier\n   one merges (this is expected and the train will handle it).\n\n## Output\n\nWrite `merge-train-plan.md` containing:\n- The ordered list of READY PRs (number, title, head branch) to merge.\n- The SKIP list with a one-line reason each.\n- Any ordering or conflict warnings.\n\nThen respond with a short summary and the path to the plan file. If there are\nzero READY PRs, say so plainly — the train stage will simply report nothing to do.\n"
+            }
+          }
+        },
+        "report": {
+          "id": "report",
+          "attrs": {
+            "label": {
+              "String": "Report"
+            },
+            "fidelity": {
+              "String": "summary:high"
+            },
+            "shape": {
+              "String": "tab"
+            },
+            "prompt": {
+              "String": "Summarize this merge-train run from context and merge-train-plan.md / merge-train-state.md. For every queued PR, report exactly one of: MERGED (with method and resulting base SHA), SKIPPED (why — e.g. draft, fork, already merged, wrong base), or BLOCKED (the precise reason and what was tried). For a BLOCKED PR, distinguish the failure class: an unresolved rebase conflict, a test/CI failure the agent could not fix, a human decision that ended the run, or a merge GitHub rejected because branch-protection requirements were not met (required review/status checks missing, the app is not a ruleset bypass actor, or require_last_push_approval invalidated the approval after the rebase force-push). End with the single clearest next action for each PR that did not merge. Do not merge, push, or rebase anything in this stage."
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "preflight",
+          "attrs": {}
+        },
+        {
+          "from": "preflight",
+          "to": "plan",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            },
+            "label": {
+              "String": "OK"
+            }
+          }
+        },
+        {
+          "from": "preflight",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "plan",
+          "to": "train",
+          "attrs": {}
+        },
+        {
+          "from": "train",
+          "to": "report",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            },
+            "label": {
+              "String": "Done"
+            }
+          }
+        },
+        {
+          "from": "train",
+          "to": "human_gate",
+          "attrs": {
+            "label": {
+              "String": "NeedsHuman"
+            },
+            "condition": {
+              "String": "preferred_label=NeedsHuman || outcome=failed"
+            }
+          }
+        },
+        {
+          "from": "train",
+          "to": "report",
+          "attrs": {}
+        },
+        {
+          "from": "human_gate",
+          "to": "train",
+          "attrs": {
+            "freeform": {
+              "Boolean": true
+            }
+          }
+        },
+        {
+          "from": "report",
+          "to": "exit",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "rankdir": {
+          "String": "LR"
+        },
+        "max_node_visits": {
+          "Integer": 40
+        },
+        "goal": {
+          "String": "Merge the pull requests 543,544 into main as a merge train: process them in the given order, rebasing each onto the latest main (so each PR is validated against the cumulative result of the ones before it), resolving conflicts, pushing, and merging with the squash method. Stop at the first PR that cannot be merged cleanly and report why."
+        }
+      }
+    },
+    "graph_source": "digraph MergeTrain {\n    graph [\n        goal=\"Merge the pull requests {{ inputs.prs }} into {{ inputs.base }} as a merge train: process them in the given order, rebasing each onto the latest {{ inputs.base }} (so each PR is validated against the cumulative result of the ones before it), resolving conflicts, pushing, and merging with the {{ inputs.merge_method }} method. Stop at the first PR that cannot be merged cleanly and report why.\",\n        rankdir=LR,\n        max_node_visits=40\n    ]\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    // Deterministic setup: confirm gh + git are usable in the sandbox and sync\n    // remotes. No LLM. On failure the unconditional edge routes straight to exit.\n    preflight [\n        label=\"Preflight\",\n        shape=parallelogram,\n        script=\"gh auth status 2>&1 && git fetch --prune origin 2>&1 && echo 'preflight ok'\",\n        max_retries=0\n    ]\n\n    // Read the queued PRs, verify each is open, non-draft, targets the base, and\n    // lives in this repo (not a fork — we can't push conflict fixes to a fork).\n    // Decide the final order and write merge-train-plan.md. Purely analysis; makes\n    // no changes and merges nothing.\n    plan [\n        label=\"Plan Train\",\n        prompt=\"@prompts/plan.md\",\n        reasoning_effort=\"high\"\n    ]\n\n    // The train itself: for each PR in order, rebase onto the latest base, resolve\n    // conflicts, RUN THE PROJECT'S TESTS LOCALLY and fix any failures, push only\n    // once local checks pass, wait for CI to go green (fixing and re-pushing if CI\n    // still fails), merge, then advance the local base before the next PR. It does\n    // everything in its power to get each PR green and merged, escalating to the\n    // human gate only when genuinely stuck. Resumes from merge-train-state.md when\n    // re-entered after a human decision. Emits a routing outcome:\n    //   outcome=succeeded          -> everything handled, go report\n    //   preferred_label=NeedsHuman -> stuck, needs a decision, go to human_gate\n    train [\n        label=\"Run Merge Train\",\n        prompt=\"@prompts/train.md\",\n        thread_id=\"merge-train\",\n        fidelity=\"full\",\n        output_schema=\"routing\",\n        output_retries=2,\n        reasoning_effort=\"xhigh\",\n        max_visits=12\n    ]\n\n    // Escalation gate. The train routes here ONLY when it cannot decide or fix\n    // something on its own: an ambiguous semantic conflict, exhausted fix attempts,\n    // a product/API judgement call, or a merge blocked by branch protection. The\n    // human reads merge-train-state.md for the specifics and answers freeform; the\n    // train then resumes with that guidance. Answer \"stop\" to end the run.\n    human_gate [\n        shape=hexagon,\n        label=\"The merge train needs a human decision — read merge-train-state.md for the specifics, then reply with how to proceed (or 'stop').\",\n        question_type=\"freeform\"\n    ]\n\n    // Summarize outcomes and post a single status comment. Merges nothing.\n    report [\n        label=\"Report\",\n        shape=tab,\n        fidelity=\"summary:high\",\n        prompt=\"Summarize this merge-train run from context and merge-train-plan.md / merge-train-state.md. For every queued PR, report exactly one of: MERGED (with method and resulting base SHA), SKIPPED (why — e.g. draft, fork, already merged, wrong base), or BLOCKED (the precise reason and what was tried). For a BLOCKED PR, distinguish the failure class: an unresolved rebase conflict, a test/CI failure the agent could not fix, a human decision that ended the run, or a merge GitHub rejected because branch-protection requirements were not met (required review/status checks missing, the app is not a ruleset bypass actor, or require_last_push_approval invalidated the approval after the rebase force-push). End with the single clearest next action for each PR that did not merge. Do not merge, push, or rebase anything in this stage.\"\n    ]\n\n    start -> preflight\n    preflight -> plan [label=\"OK\", condition=\"outcome=succeeded\"]\n    preflight -> exit\n    plan -> train\n    train -> report     [label=\"Done\", condition=\"outcome=succeeded\"]\n    train -> human_gate [label=\"NeedsHuman\", condition=\"preferred_label=NeedsHuman || outcome=failed\"]\n    train -> report\n    human_gate -> train [freeform=true]\n    report -> exit\n}\n",
+    "workflow_slug": "merge-train",
+    "source_directory": "/Users/swerner/Development/os/fabro-main/fabro",
+    "provenance": {
+      "server": {
+        "version": "0.278.0-nightly.0"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.267.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.267.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "138379"
+        },
+        "login": "swerner",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/138379?v=4"
+      }
+    },
+    "manifest_blob": "26b01de76b4451fe1fe6c1613d5590028e273ac9e152138cd758e6cc5092398a",
+    "definition_blob": "f4e554f3229c194c94ed366362fc5bec4a213d9e90c7025e864bbc89a34bb0ef",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "bb369181b60ef723723a5ef169ffb23372e10192",
+      "dirty": "dirty",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KWFTMDQVT7SD0GRRWKXH776E",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-01T21:51:16.816421840Z",
+  "last_event_at": "2026-07-01T21:51:27.295458642Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-fdb28dec-1233-892c-b9d7-9f88f8353e7a",
+      "runtime": {
+        "id": "fabro-01KWFTMDQVT7SD0GRRWKXH776E",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
