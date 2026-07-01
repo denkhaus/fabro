@@ -367,14 +367,112 @@
     }
   },
   "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KWFTMDQVT7SD0GRRWKXH776E",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-07-01T21:51:27.582395354Z",
+    "run_branch": "fabro/run/01KWFTMDQVT7SD0GRRWKXH776E",
+    "base_sha": "bb369181b60ef723723a5ef169ffb23372e10192"
   },
-  "status_updated_at": "2026-07-01T21:51:16.816421840Z",
-  "last_event_at": "2026-07-01T21:51:27.295458642Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-07-01T21:51:27.582462398Z",
+  "last_event_at": "2026-07-01T21:51:29.167363953Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 21,
+      "checkpoint": {
+        "timestamp": "2026-07-01T21:51:29.167242693Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_signature": "",
+          "internal.retry_count.start": 0,
+          "internal.fidelity": "compact",
+          "failure_class": "",
+          "current_node": "start",
+          "graph.max_node_visits": "40",
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01KWFTMDQVT7SD0GRRWKXH776E",
+          "graph.goal": "Merge the pull requests 543,544 into main as a merge train: process them in the given order, rebasing each onto the latest main (so each PR is validated against the cumulative result of the ones before it), resolving conflicts, pushing, and merging with the squash method. Stop at the first PR that cannot be merged cleanly and report why.",
+          "graph.rankdir": "LR",
+          "internal.thread_id": null,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "outcome": "succeeded"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "preflight",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-01T21:51:31.182229855Z",
+        "current_node": "preflight",
+        "completed_nodes": [
+          "start",
+          "preflight"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.thread_id": "start",
+          "graph.goal": "Merge the pull requests 543,544 into main as a merge train: process them in the given order, rebasing each onto the latest main (so each PR is validated against the cumulative result of the ones before it), resolving conflicts, pushing, and merging with the squash method. Stop at the first PR that cannot be merged cleanly and report why.",
+          "internal.run_id": "01KWFTMDQVT7SD0GRRWKXH776E",
+          "thread.start.current_node": "preflight",
+          "internal.node_visit_count": 1,
+          "current_node": "preflight",
+          "internal.fidelity": "compact",
+          "command.output": "blob://sha256/ea19cd83eed4d9599888bd0cad534de695ad3b85b6ab2941a381ee0e88808c99",
+          "internal.retry_count.preflight": 0,
+          "failure_class": "",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "failure_signature": "",
+          "graph.rankdir": "LR",
+          "outcome": "succeeded",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.start": 0
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "preflight": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/ea19cd83eed4d9599888bd0cad534de695ad3b85b6ab2941a381ee0e88808c99"
+            },
+            "notes": "Script completed: gh auth status 2>&1 && git fetch --prune origin 2>&1 && echo 'preflight ok'",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1742,
+              "active_time_ms": 1742
+            }
+          }
+        },
+        "next_node_id": "plan",
+        "node_visits": {
+          "preflight": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -400,5 +498,67 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 18,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-01T21:51:29.167138263Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-01T21:51:29.167022416Z",
+      "handler": "start",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    },
+    "preflight@1": {
+      "first_event_seq": 22,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "gh auth status 2>&1 && git fetch --prune origin 2>&1 && echo 'preflight ok'",
+        "command": "exec 2>&1\ngh auth status 2>&1 && git fetch --prune origin 2>&1 && echo 'preflight ok'",
+        "language": "shell"
+      },
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-01T21:51:29.167336080Z",
+      "handler": "command",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
+    }
+  }
 }

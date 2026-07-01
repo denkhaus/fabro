@@ -1,0 +1,5 @@
+{
+  "script": "gh auth status 2>&1 && git fetch --prune origin 2>&1 && echo 'preflight ok'",
+  "command": "exec 2>&1\ngh auth status 2>&1 && git fetch --prune origin 2>&1 && echo 'preflight ok'",
+  "language": "shell"
+}
