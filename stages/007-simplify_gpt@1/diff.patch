@@ -1,0 +1,93 @@
+diff --git a/lib/crates/fabro-sandbox/src/glob_match.rs b/lib/crates/fabro-sandbox/src/glob_match.rs
+index bab086193..61249049d 100644
+--- a/lib/crates/fabro-sandbox/src/glob_match.rs
++++ b/lib/crates/fabro-sandbox/src/glob_match.rs
+@@ -4,6 +4,12 @@ pub(crate) struct GlobMatcher {
+     pattern: glob::Pattern,
+ }
+ 
++const MATCH_OPTIONS: glob::MatchOptions = glob::MatchOptions {
++    case_sensitive:              true,
++    require_literal_separator:   true,
++    require_literal_leading_dot: false,
++};
++
+ impl GlobMatcher {
+     pub(crate) fn new(base: &str, pattern: &str) -> crate::Result<Self> {
+         let full_pattern = full_pattern(base, pattern);
+@@ -13,7 +19,7 @@ impl GlobMatcher {
+     }
+ 
+     pub(crate) fn matches(&self, path: &str) -> bool {
+-        self.pattern.matches_with(path, match_options())
++        self.pattern.matches_with(path, MATCH_OPTIONS)
+     }
+ }
+ 
+@@ -50,14 +56,6 @@ fn is_absolute(path: &str) -> bool {
+     path.starts_with('/') || Path::new(path).is_absolute()
+ }
+ 
+-fn match_options() -> glob::MatchOptions {
+-    glob::MatchOptions {
+-        case_sensitive:              true,
+-        require_literal_separator:   true,
+-        require_literal_leading_dot: false,
+-    }
+-}
+-
+ fn literal_traversal_root(pattern: &str) -> String {
+     let absolute = pattern.starts_with('/');
+     let mut literal_segments = Vec::new();
+diff --git a/lib/crates/fabro-sandbox/src/local.rs b/lib/crates/fabro-sandbox/src/local.rs
+index b240d27db..ca21e5631 100644
+--- a/lib/crates/fabro-sandbox/src/local.rs
++++ b/lib/crates/fabro-sandbox/src/local.rs
+@@ -860,7 +860,7 @@ async fn collect_local_files(root: PathBuf) -> crate::Result<Vec<(String, System
+     let mut stack = vec![root];
+ 
+     while let Some(path) = stack.pop() {
+-        let metadata = match fs::metadata(&path).await {
++        let metadata = match fs::symlink_metadata(&path).await {
+             Ok(metadata) => metadata,
+             Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+             Err(err) => {
+@@ -871,12 +871,13 @@ async fn collect_local_files(root: PathBuf) -> crate::Result<Vec<(String, System
+             }
+         };
+ 
+-        if metadata.is_file() {
++        let file_type = metadata.file_type();
++        if file_type.is_file() {
+             files.push((
+                 path.to_string_lossy().into_owned(),
+                 metadata.modified().unwrap_or(UNIX_EPOCH),
+             ));
+-        } else if metadata.is_dir() {
++        } else if file_type.is_dir() {
+             let mut entries = match fs::read_dir(&path).await {
+                 Ok(entries) => entries,
+                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+@@ -1446,6 +1447,22 @@ mod tests {
+         std::fs::remove_dir_all(&dir).unwrap();
+     }
+ 
++    #[cfg(unix)]
++    #[tokio::test]
++    async fn glob_does_not_recurse_through_symlinked_directories() {
++        let dir = temp_dir();
++        let target = dir.join("target");
++        std::fs::create_dir_all(&target).unwrap();
++        std::fs::write(target.join("lib.rs"), "").unwrap();
++        std::os::unix::fs::symlink(&target, dir.join("linked")).unwrap();
++
++        let env = LocalSandbox::new(dir.clone());
++        let results = env.glob("linked/**/*.rs", None).await.unwrap();
++
++        assert!(results.is_empty());
++        std::fs::remove_dir_all(&dir).unwrap();
++    }
++
+     #[tokio::test]
+     async fn local_sandbox_download_file_to_local() {
+         let dir = temp_dir();
