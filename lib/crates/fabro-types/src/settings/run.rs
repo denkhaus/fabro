@@ -1063,7 +1063,8 @@ impl RunEnvironmentSettings {
 
     /// Resolve every environment value's `{{ env.* }}` and `{{ secrets.* }}`
     /// tokens via the supplied lookups. Missing env vars retain the historical
-    /// fallback to the original source string; missing secrets fail closed.
+    /// fallback to the original source string for env-only values; values that
+    /// reference secrets fail closed instead of preserving a secret token.
     pub fn resolve_env(
         &self,
         mut env_lookup: impl FnMut(&str) -> Option<String>,
@@ -1074,13 +1075,14 @@ impl RunEnvironmentSettings {
             .with_secrets(&mut secrets_lookup);
         let mut resolved = HashMap::with_capacity(self.env.len());
         for (name, value) in &self.env {
+            let references_secrets = value.references(Namespace::Secrets);
             let resolved_value = match value.resolve_with(&mut ctx) {
                 Ok(resolved) => resolved.value,
-                Err(err) if err.namespace == Namespace::Env => {
+                Err(err) if err.namespace == Namespace::Env && !references_secrets => {
                     #[expect(
                         clippy::disallowed_methods,
                         reason = "intentional raw-source fallback preserves existing \
-                                  environment variable behavior for run environment values"
+                                  environment variable behavior for env-only run environment values"
                     )]
                     let source = value.as_source();
                     source
@@ -1171,6 +1173,21 @@ mod run_environment_settings_tests {
 
         assert_eq!(err.namespace, super::Namespace::Secrets);
         assert_eq!(err.name, "MISSING_TOKEN");
+    }
+
+    #[test]
+    fn resolve_env_does_not_source_fallback_mixed_values_that_reference_secrets() {
+        let s = settings(&[(
+            "API_TOKEN",
+            "{{ env.MISSING_PREFIX }} {{ secrets.API_TOKEN }}",
+        )]);
+
+        let err = s
+            .resolve_env(lookup(&[]), lookup(&[("API_TOKEN", "vault-token")]))
+            .unwrap_err();
+
+        assert_eq!(err.namespace, super::Namespace::Env);
+        assert_eq!(err.name, "MISSING_PREFIX");
     }
 
     #[test]
