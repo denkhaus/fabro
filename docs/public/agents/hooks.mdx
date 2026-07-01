@@ -36,8 +36,8 @@ Authorization = "Bearer {{ env.API_KEY }}"
 
 | Field | Description |
 |---|---|
-| `url` | The endpoint to POST to. Must use `https://` unless `tls = "off"`. Supports `{{ env.NAME }}` interpolation. |
-| `headers` | Optional HTTP headers. Values support `{{ env.NAME }}` interpolation, scoped to the names in `allowed_env_vars`. A token for any other env var fails to resolve and the hook blocks (fail-closed). |
+| `url` | The endpoint to POST to. Must use `https://` unless `tls = "off"`. Supports `{{ env.NAME }}` and `{{ secrets.NAME }}` interpolation. |
+| `headers` | Optional HTTP headers. Values support `{{ env.NAME }}` interpolation, scoped to the names in `allowed_env_vars`. A token for any other env var fails to resolve and the hook blocks (fail-closed). `{{ secrets.NAME }}` is not allowed in headers. |
 | `allowed_env_vars` | Allowlist of environment variable names a header may read via `{{ env.NAME }}`. Empty (the default) means no env vars may be interpolated into headers. |
 | `tls` | TLS mode: `"verify"` (default), `"no_verify"`, or `"off"`. |
 
@@ -133,6 +133,33 @@ sandbox = false
 | `blocking` | Whether the hook must complete before execution continues. Defaults vary by event. |
 | `timeout_ms` | Hook timeout in milliseconds. Default: `60000` (60s) for most types, `30000` (30s) for prompt hooks. |
 | `sandbox` | Run inside the sandbox (`true`, default) or on the host (`false`). |
+
+## Interpolation and secrets
+
+Hook `command`, HTTP `url`, prompt `prompt`, and agent `prompt` fields can reference server-vault token secrets with `{{ secrets.NAME }}`. Add these values with `fabro secret set NAME ...`. Missing secrets, empty/non-token vault entries, and unsupported namespaces fail closed so the hook does not run with a partially resolved value.
+
+```toml
+[[hooks]]
+event = "sandbox_ready"
+command = "test \"{{ secrets.DEPLOY_ENV }}\" = staging"
+blocking = true
+
+[[hooks]]
+event = "run_failed"
+type = "http"
+url = "https://hooks.example.com/{{ secrets.WEBHOOK_PATH }}"
+tls = "verify"
+
+[[hooks]]
+event = "stage_start"
+type = "prompt"
+prompt = "Block deployments to {{ secrets.RESTRICTED_ENV }}?"
+blocking = true
+```
+
+HTTP hook headers intentionally support only allowlisted `{{ env.NAME }}` interpolation. A `{{ secrets.NAME }}` token in a header blocks the hook with guidance to use secret interpolation in a hook command, prompt, or URL instead; Fabro does not provide a separate outbound-header secret allowlist.
+
+Resolved hook secrets are registered with the run's secret redactor. Fabro redacts those exact values from worker-side structured run surfaces such as events, `progress.jsonl`, and setup-error messages. Command output still crosses the sandbox boundary as process output, so treat sandbox-reemitted plaintext as best-effort: content-based redaction always runs, and worker-side event surfaces apply exact-match redaction after the output is captured.
 
 ## Blocking vs. non-blocking
 

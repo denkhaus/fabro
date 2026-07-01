@@ -288,12 +288,14 @@ When `provider = "local"`, Fabro runs directly in the resolved working
 directory. If you want local isolation, create or enter a separate clone or Git
 worktree yourself.
 
-Environment variable values can be literal strings or host environment
-references using `{{ env.VARNAME }}` syntax:
+Environment variable values can be literal strings, host environment references
+using `{{ env.VARNAME }}` syntax, or server-vault token secrets using
+`{{ secrets.NAME }}` syntax:
 
 ```toml title="run.toml"
 [environments.ci.env]
 API_KEY = "{{ env.MY_API_KEY }}"
+DEPLOY_TOKEN = "{{ secrets.DEPLOY_TOKEN }}"
 NODE_ENV = "production"
 SERVICE_URL = "https://api.{{ env.REGION }}.example.com"
 ```
@@ -302,9 +304,14 @@ SERVICE_URL = "https://api.{{ env.REGION }}.example.com"
 |---|---|
 | `"literal"` | Static value passed as-is |
 | `"{{ env.VARNAME }}"` | Whole-value reference resolved from the host environment at consumption time |
-| `"prefix-{{ env.X }}-suffix"` | Substring interpolation; multiple tokens per string are supported |
+| `"{{ secrets.NAME }}"` | Reference resolved from the server vault as a token secret at the run boundary |
+| `"prefix-{{ env.X }}-{{ secrets.Y }}-suffix"` | Substring interpolation; multiple env and secret tokens per string are supported |
 
-Missing host variables produce a hard error pointing at the specific field and unresolved token.
+Missing host variables or missing/non-token secrets produce a hard error pointing at the specific field and unresolved token.
+
+Resolved declared secrets are registered with a per-run redactor. On worker-side structured surfaces — run events, `progress.jsonl`, the run store, SSE payloads derived from stored events, and setup-command errors — Fabro applies content-based redaction and then exact-match redaction for those declared secret values, even when the value is low entropy and does not look like a credential.
+
+The boundary is the worker/sandbox handoff. If you put a secret into sandbox process environment or a command line, software inside the sandbox can still print it as plain text. Fabro applies content-based redaction to command output and exact-match redaction when captured output is embedded back into worker-side structured events, but avoid intentionally echoing secrets from sandbox commands.
 
 ### `[run.integrations.github.permissions]`
 

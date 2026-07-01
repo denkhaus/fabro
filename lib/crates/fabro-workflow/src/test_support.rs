@@ -9,6 +9,7 @@ use fabro_auth::{CredentialSource, EnvCredentialSource};
 use fabro_graphviz::graph::Graph as GvGraph;
 use fabro_interview::AutoApproveInterviewer;
 use fabro_model::Catalog;
+use fabro_redact::SecretRedactor;
 use fabro_store::{ArtifactStore, Database, RunProjection};
 use object_store::local::LocalFileSystem;
 
@@ -235,6 +236,7 @@ async fn initialized(
                         .llm_source
                         .unwrap_or_else(|| Arc::new(EnvCredentialSource::new())),
                     Arc::new(Catalog::from_builtin().expect("default catalog should build")),
+                    SecretRedactor::default(),
                     Arc::new(SandboxGitRuntime::new()),
                     Arc::new(RunMetadataRuntime::new()),
                     None,

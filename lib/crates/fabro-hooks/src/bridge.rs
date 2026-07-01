@@ -102,6 +102,7 @@ mod tests {
             execution_context: &HookExecutionContext,
             _llm_source: &dyn fabro_auth::CredentialSource,
             _catalog: Arc<Catalog>,
+            _secrets: &crate::ResolvedHookSecrets,
         ) -> HookResult {
             self.captured_contexts.lock().unwrap().push(context.clone());
             self.captured_execution_contexts

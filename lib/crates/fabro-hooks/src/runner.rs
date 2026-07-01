@@ -6,10 +6,12 @@ use fabro_auth::CredentialSource;
 #[cfg(test)]
 use fabro_auth::EnvCredentialSource;
 use fabro_model::Catalog;
+use fabro_redact::SecretRedactor;
 
 use crate::config::{HookDefinition, HookSettings};
 use crate::executor::{HookExecutor, HookExecutorImpl};
-use crate::types::{HookContext, HookDecision, HookExecutionContext};
+use crate::secrets::HookSecretResolver;
+use crate::types::{HookContext, HookDecision, HookExecutionContext, HookResult};
 
 /// Central orchestrator: filters matching hooks, executes them, merges
 /// decisions.
@@ -18,8 +20,35 @@ pub struct HookRunner {
     executor:          Arc<dyn HookExecutor>,
     llm_source:        Arc<dyn CredentialSource>,
     catalog:           Arc<Catalog>,
+    secrets:           HookSecretResolver,
     /// Pre-compiled regexes keyed by matcher pattern string.
     compiled_matchers: HashMap<String, regex::Regex>,
+}
+
+fn decision_label(decision: &HookDecision) -> &'static str {
+    match decision {
+        HookDecision::Proceed => "proceed",
+        HookDecision::Skip { .. } => "skip",
+        HookDecision::Block { .. } => "block",
+        HookDecision::Override { .. } => "override",
+    }
+}
+
+fn redact_hook_result(mut result: HookResult, redactor: &SecretRedactor) -> HookResult {
+    result.decision = redact_hook_decision(result.decision, redactor);
+    result
+}
+
+fn redact_hook_decision(decision: HookDecision, redactor: &SecretRedactor) -> HookDecision {
+    match decision {
+        HookDecision::Skip { reason } => HookDecision::Skip {
+            reason: reason.map(|reason| redactor.redact_into(&reason)),
+        },
+        HookDecision::Block { reason } => HookDecision::Block {
+            reason: reason.map(|reason| redactor.redact_into(&reason)),
+        },
+        HookDecision::Proceed | HookDecision::Override { .. } => decision,
+    }
 }
 
 impl HookRunner {
@@ -29,12 +58,23 @@ impl HookRunner {
         llm_source: Arc<dyn CredentialSource>,
         catalog: Arc<Catalog>,
     ) -> Self {
+        Self::new_with_secrets(config, llm_source, catalog, HookSecretResolver::default())
+    }
+
+    #[must_use]
+    pub fn new_with_secrets(
+        config: HookSettings,
+        llm_source: Arc<dyn CredentialSource>,
+        catalog: Arc<Catalog>,
+        secrets: HookSecretResolver,
+    ) -> Self {
         let compiled_matchers = Self::compile_matchers(&config);
         Self {
             config,
             executor: Arc::new(HookExecutorImpl),
             llm_source,
             catalog,
+            secrets,
             compiled_matchers,
         }
     }
@@ -48,6 +88,7 @@ impl HookRunner {
             executor,
             llm_source: Arc::new(EnvCredentialSource::new()),
             catalog: Arc::new(Catalog::from_builtin().expect("default catalog should build")),
+            secrets: HookSecretResolver::default(),
             compiled_matchers,
         }
     }
@@ -100,7 +141,7 @@ impl HookRunner {
 
         tracing::info!(
             event = %context.event,
-            decision = ?decision,
+            decision = decision_label(&decision),
             "Hooks complete"
         );
 
@@ -151,6 +192,7 @@ impl HookRunner {
                 event = %context.event,
                 "Executing hook"
             );
+            let secrets = self.secrets.resolve_for_definition(hook).await;
             let result = self
                 .executor
                 .execute(
@@ -160,12 +202,14 @@ impl HookRunner {
                     execution_context,
                     self.llm_source.as_ref(),
                     Arc::clone(&self.catalog),
+                    &secrets,
                 )
                 .await;
+            let result = redact_hook_result(result, secrets.redactor());
             tracing::debug!(
                 hook = %hook.effective_name(),
                 duration_ms = result.duration_ms,
-                decision = ?result.decision,
+                decision = decision_label(&result.decision),
                 "Hook complete"
             );
 
@@ -176,7 +220,7 @@ impl HookRunner {
                     tracing::error!(
                         hook = %hook.effective_name(),
                         event = %context.event,
-                        decision = ?merged,
+                        decision = decision_label(&merged),
                         "Hook blocked execution"
                     );
                     return merged;
@@ -185,7 +229,7 @@ impl HookRunner {
                 tracing::warn!(
                     hook = %hook.effective_name(),
                     event = %context.event,
-                    decision = ?result.decision,
+                    decision = decision_label(&result.decision),
                     "Non-blocking hook returned non-proceed, ignoring"
                 );
             }
@@ -206,6 +250,7 @@ impl HookRunner {
                 event = %context.event,
                 "Executing hook"
             );
+            let secrets = self.secrets.resolve_for_definition(hook).await;
             let result = self
                 .executor
                 .execute(
@@ -215,19 +260,21 @@ impl HookRunner {
                     execution_context,
                     self.llm_source.as_ref(),
                     Arc::clone(&self.catalog),
+                    &secrets,
                 )
                 .await;
+            let result = redact_hook_result(result, secrets.redactor());
             tracing::debug!(
                 hook = %hook.effective_name(),
                 duration_ms = result.duration_ms,
-                decision = ?result.decision,
+                decision = decision_label(&result.decision),
                 "Hook complete"
             );
             if !result.decision.is_proceed() {
                 tracing::warn!(
                     hook = %hook.effective_name(),
                     event = %context.event,
-                    decision = ?result.decision,
+                    decision = decision_label(&result.decision),
                     "Non-blocking hook failed, continuing"
                 );
             }
@@ -259,6 +306,7 @@ mod tests {
             _execution_context: &HookExecutionContext,
             _llm_source: &dyn CredentialSource,
             _catalog: Arc<Catalog>,
+            _secrets: &crate::ResolvedHookSecrets,
         ) -> HookResult {
             HookResult {
                 hook_name:   definition.name.clone(),

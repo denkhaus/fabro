@@ -89,6 +89,7 @@ pub async fn execute(init: Initialized) -> Executed {
         Arc::clone(&engine.run.sandbox_git),
         Arc::clone(&engine.run.metadata_runtime),
         engine.run.metadata_writer.clone(),
+        engine.run.secret_redactor.clone(),
         checkpoint.is_some(),
         on_node,
         run_control,

@@ -286,10 +286,11 @@ pub async fn initialize(
     let hook_runner = if options.hooks.hooks.is_empty() {
         None
     } else {
-        Some(Arc::new(HookRunner::new(
+        Some(Arc::new(HookRunner::new_with_secrets(
             options.hooks.clone(),
             Arc::clone(&llm_source),
             Arc::clone(&catalog),
+            options.hook_secrets.clone(),
         )))
     };
 
@@ -551,7 +552,8 @@ pub async fn initialize(
             let duration_ms = crate::millis_u64(cmd_start.elapsed());
             if !result.is_success() {
                 let exit_code = result.display_exit_code();
-                let exec_output_tail = result.default_redacted_output_tail();
+                let exec_output_tail =
+                    result.default_redacted_output_tail_with_redactor(&options.secret_redactor);
                 options.emitter.emit(&Event::SetupFailed {
                     command: command.clone(),
                     index,
@@ -559,10 +561,11 @@ pub async fn initialize(
                     stderr: result.stderr.clone(),
                     exec_output_tail,
                 });
-                return Err(Error::engine(format!(
+                let message = format!(
                     "Setup command failed (exit code {}): {command}\n{}",
                     exit_code, result.stderr,
-                )));
+                );
+                return Err(Error::engine(options.secret_redactor.redact_into(&message)));
             }
             let exit_code = result.exit_code.unwrap_or(0);
             options.emitter.emit(&Event::SetupCommandCompleted {
@@ -603,6 +606,7 @@ pub async fn initialize(
         options.llm.model.clone(),
         Arc::clone(&llm_source),
         catalog,
+        options.secret_redactor.clone(),
         sandbox_git,
         metadata_runtime,
         metadata_writer,
@@ -842,12 +846,14 @@ mod tests {
             workflow_path:     None,
             workflow_bundle:   None,
             hooks:             fabro_hooks::HookSettings { hooks: vec![] },
+            hook_secrets:      fabro_hooks::HookSecretResolver::default(),
             sandbox_env:       SandboxEnvSpec {
                 toml_env:           HashMap::new(),
                 github_permissions: None,
                 origin_url:         None,
             },
             vault:             None,
+            secret_redactor:   fabro_redact::SecretRedactor::default(),
             git:               None,
             run_control:       None,
             registry_override: None,
@@ -924,12 +930,14 @@ mod tests {
             workflow_path:     None,
             workflow_bundle:   None,
             hooks:             fabro_hooks::HookSettings { hooks: vec![] },
+            hook_secrets:      fabro_hooks::HookSecretResolver::default(),
             sandbox_env:       SandboxEnvSpec {
                 toml_env:           HashMap::from([("TEST_KEY".to_string(), "value".to_string())]),
                 github_permissions: None,
                 origin_url:         None,
             },
             vault:             None,
+            secret_redactor:   fabro_redact::SecretRedactor::default(),
             git:               None,
             run_control:       None,
             registry_override: None,
@@ -1122,12 +1130,14 @@ mod tests {
             workflow_path:     None,
             workflow_bundle:   None,
             hooks:             fabro_hooks::HookSettings { hooks: vec![] },
+            hook_secrets:      fabro_hooks::HookSecretResolver::default(),
             sandbox_env:       SandboxEnvSpec {
                 toml_env:           HashMap::new(),
                 github_permissions: None,
                 origin_url:         None,
             },
             vault:             Some(vault),
+            secret_redactor:   fabro_redact::SecretRedactor::default(),
             git:               None,
             run_control:       None,
             registry_override: None,
@@ -1218,12 +1228,14 @@ mod tests {
             workflow_path:     None,
             workflow_bundle:   None,
             hooks:             fabro_hooks::HookSettings { hooks: vec![] },
+            hook_secrets:      fabro_hooks::HookSecretResolver::default(),
             sandbox_env:       SandboxEnvSpec {
                 toml_env:           HashMap::new(),
                 github_permissions: None,
                 origin_url:         None,
             },
             vault:             None,
+            secret_redactor:   fabro_redact::SecretRedactor::default(),
             git:               None,
             run_control:       None,
             registry_override: None,
@@ -1361,12 +1373,14 @@ mod tests {
             workflow_path: None,
             workflow_bundle: None,
             hooks: fabro_hooks::HookSettings { hooks: vec![] },
+            hook_secrets: fabro_hooks::HookSecretResolver::default(),
             sandbox_env: SandboxEnvSpec {
                 toml_env:           HashMap::new(),
                 github_permissions: None,
                 origin_url:         None,
             },
             vault: None,
+            secret_redactor: fabro_redact::SecretRedactor::default(),
             git: None,
             run_control: None,
             registry_override: None,

@@ -615,8 +615,17 @@ pub async fn finalize(executed: Executed, options: &FinalizeOptions) -> Result<C
     )
     .await
     {
-        tracing::warn!(error = %fabro_sandbox::display_for_log(&e), "Sandbox stop failed");
-        let exec_output_tail = fabro_sandbox::default_redacted_output_tail(&e);
+        tracing::warn!(
+            error = %fabro_sandbox::display_for_log_with_redactor(
+                &e,
+                &services.secret_redactor,
+            ),
+            "Sandbox stop failed"
+        );
+        let exec_output_tail = fabro_sandbox::default_redacted_output_tail_with_redactor(
+            &e,
+            &services.secret_redactor,
+        );
         services.emitter.notice_with_tail(
             RunNoticeLevel::Warn,
             RunNoticeCode::SandboxCleanupFailed,
@@ -1021,6 +1030,7 @@ mod tests {
             "claude-sonnet-4-6".to_string(),
             Arc::new(fabro_auth::EnvCredentialSource::new()),
             Arc::new(Catalog::from_builtin().expect("default catalog should build")),
+            fabro_redact::SecretRedactor::default(),
             Arc::new(SandboxGitRuntime::new()),
             metadata_runtime,
             metadata_writer,
@@ -1053,6 +1063,7 @@ mod tests {
             "claude-sonnet-4-6".to_string(),
             Arc::new(fabro_auth::EnvCredentialSource::new()),
             Arc::new(Catalog::from_builtin().expect("default catalog should build")),
+            fabro_redact::SecretRedactor::default(),
             Arc::new(SandboxGitRuntime::new()),
             Arc::new(RunMetadataRuntime::new()),
             None,

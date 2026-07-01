@@ -1,17 +1,32 @@
 use ::fabro_types::{RunEvent, RunId};
 use anyhow::{Context, Result};
-use fabro_redact::redact_json_value;
+use fabro_redact::{SecretRedactor, redact_json_value};
 use fabro_store::EventPayload;
 use fabro_util::json::normalize_json_value;
 use serde_json::Value;
 
 pub fn build_redacted_event_payload(event: &RunEvent, run_id: &RunId) -> Result<EventPayload> {
-    let value = redacted_event_value(event)?;
+    build_redacted_event_payload_with_redactor(event, run_id, None)
+}
+
+pub fn build_redacted_event_payload_with_redactor(
+    event: &RunEvent,
+    run_id: &RunId,
+    redactor: Option<&SecretRedactor>,
+) -> Result<EventPayload> {
+    let value = redacted_event_value(event, redactor)?;
     EventPayload::new(value, run_id).map_err(anyhow::Error::from)
 }
 
 pub fn redacted_event_json(event: &RunEvent) -> Result<String> {
-    serde_json::to_string(&redacted_event_value(event)?).map_err(anyhow::Error::from)
+    redacted_event_json_with_redactor(event, None)
+}
+
+pub fn redacted_event_json_with_redactor(
+    event: &RunEvent,
+    redactor: Option<&SecretRedactor>,
+) -> Result<String> {
+    serde_json::to_string(&redacted_event_value(event, redactor)?).map_err(anyhow::Error::from)
 }
 
 fn normalized_event_value(event: &RunEvent) -> Result<Value> {
@@ -19,8 +34,90 @@ fn normalized_event_value(event: &RunEvent) -> Result<Value> {
     Ok(normalize_json_value(value))
 }
 
-fn redacted_event_value(event: &RunEvent) -> Result<Value> {
-    Ok(redact_json_value(normalized_event_value(event)?))
+fn redacted_event_value(event: &RunEvent, redactor: Option<&SecretRedactor>) -> Result<Value> {
+    let mut value = redact_json_value(normalized_event_value(event)?);
+    if let Some(redactor) = redactor {
+        redact_event_payload_secrets(&mut value, redactor);
+    }
+    Ok(value)
+}
+
+fn redact_event_payload_secrets(value: &mut Value, redactor: &SecretRedactor) {
+    if let Some(properties) = value.get_mut("properties") {
+        redact_redactable_event_properties(properties, redactor);
+    }
+    if let Some(Value::String(label)) = value.get_mut("node_label") {
+        let redacted = redactor.redact_into(label);
+        if redacted != *label {
+            *label = redacted;
+        }
+    }
+}
+
+fn redact_redactable_event_properties(value: &mut Value, redactor: &SecretRedactor) {
+    match value {
+        Value::Object(obj) => {
+            for (key, child) in obj {
+                if is_secret_redactable_event_property(key) {
+                    *child = redactor.redact_json(std::mem::take(child));
+                } else {
+                    redact_redactable_event_properties(child, redactor);
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                redact_redactable_event_properties(item, redactor);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
+}
+
+// Exact-match secret values may be intentionally low entropy ("staging",
+// "pause", "running"). Redacting every string in an event can therefore corrupt
+// structural fields that are validated enum values or IDs. Keep this list to
+// free-form text/blob fields where replacing a matched substring preserves the
+// event schema and projection semantics.
+fn is_secret_redactable_event_property(key: &str) -> bool {
+    matches!(
+        key,
+        "active_form"
+            | "answer"
+            | "arguments"
+            | "causes"
+            | "command"
+            | "context_display"
+            | "delta"
+            | "description"
+            | "details"
+            | "diff"
+            | "error"
+            | "error_message"
+            | "exec_output_tail"
+            | "failure"
+            | "final_patch"
+            | "goal"
+            | "input"
+            | "message"
+            | "notes"
+            | "output"
+            | "preview"
+            | "prompt"
+            | "question"
+            | "reason"
+            | "response"
+            | "script"
+            | "stderr"
+            | "stdout"
+            | "subject"
+            | "text"
+            | "title"
+            | "tool_input"
+            | "tool_output"
+            | "workflow_config"
+            | "workflow_source"
+    )
 }
 
 pub fn event_payload_from_redacted_json(line: &str, run_id: &RunId) -> Result<EventPayload> {
@@ -30,7 +127,7 @@ pub fn event_payload_from_redacted_json(line: &str, run_id: &RunId) -> Result<Ev
 
 #[cfg(test)]
 mod tests {
-    use ::fabro_types::{fixtures, run_event as fabro_types};
+    use ::fabro_types::{RunEvent, fixtures, run_event as fabro_types};
 
     use super::*;
     use crate::event::{Event, to_run_event};
@@ -71,5 +168,90 @@ mod tests {
             payload.as_value()["properties"]["exec_output_tail"]["stderr"],
             "plain stderr"
         );
+    }
+
+    #[test]
+    fn build_redacted_event_payload_redacts_registered_low_entropy_secret() {
+        let redactor = fabro_redact::SecretRedactor::default();
+        redactor.register("staging");
+        let stored = to_run_event(&fixtures::RUN_8, &Event::SetupFailed {
+            command:          "deploy staging".to_string(),
+            index:            0,
+            exit_code:        1,
+            stderr:           "failed in staging".to_string(),
+            exec_output_tail: None,
+        });
+
+        let payload =
+            build_redacted_event_payload_with_redactor(&stored, &fixtures::RUN_8, Some(&redactor))
+                .unwrap();
+        let payload_text = serde_json::to_string(payload.as_value()).unwrap();
+
+        assert!(!payload_text.contains("staging"));
+        assert!(payload_text.contains("REDACTED"));
+    }
+
+    #[test]
+    fn build_redacted_event_payload_redactors_are_isolated_per_run() {
+        let first = fabro_redact::SecretRedactor::default();
+        first.register("alpha");
+        let second = fabro_redact::SecretRedactor::default();
+        second.register("bravo");
+        let stored = to_run_event(&fixtures::RUN_8, &Event::SetupCommandStarted {
+            command: "echo alpha bravo".to_string(),
+            index:   0,
+        });
+
+        let first_payload =
+            build_redacted_event_payload_with_redactor(&stored, &fixtures::RUN_8, Some(&first))
+                .unwrap();
+        let second_payload =
+            build_redacted_event_payload_with_redactor(&stored, &fixtures::RUN_8, Some(&second))
+                .unwrap();
+        let first_text = serde_json::to_string(first_payload.as_value()).unwrap();
+        let second_text = serde_json::to_string(second_payload.as_value()).unwrap();
+
+        assert!(!first_text.contains("alpha"));
+        assert!(first_text.contains("bravo"));
+        assert!(second_text.contains("alpha"));
+        assert!(!second_text.contains("bravo"));
+    }
+
+    #[test]
+    fn build_redacted_event_payload_preserves_structural_event_fields() {
+        let redactor = fabro_redact::SecretRedactor::default();
+        redactor.register("setup.failed");
+        let stored = to_run_event(&fixtures::RUN_8, &Event::SetupFailed {
+            command:          "echo setup.failed".to_string(),
+            index:            0,
+            exit_code:        1,
+            stderr:           "setup.failed".to_string(),
+            exec_output_tail: None,
+        });
+
+        let payload =
+            build_redacted_event_payload_with_redactor(&stored, &fixtures::RUN_8, Some(&redactor))
+                .unwrap();
+
+        assert_eq!(payload.as_value()["event"], "setup.failed");
+        assert_eq!(payload.as_value()["properties"]["command"], "echo REDACTED");
+        assert_eq!(payload.as_value()["properties"]["stderr"], "REDACTED");
+        let parsed = RunEvent::try_from(&payload).expect("redacted event remains parseable");
+        assert_eq!(parsed.event_name(), "setup.failed");
+    }
+
+    #[test]
+    fn build_redacted_event_payload_preserves_structural_property_values() {
+        let redactor = fabro_redact::SecretRedactor::default();
+        redactor.register("pause");
+        let stored = to_run_event(&fixtures::RUN_8, &Event::RunPauseRequested { actor: None });
+
+        let payload =
+            build_redacted_event_payload_with_redactor(&stored, &fixtures::RUN_8, Some(&redactor))
+                .unwrap();
+
+        assert_eq!(payload.as_value()["properties"]["action"], "pause");
+        let parsed = RunEvent::try_from(&payload).expect("redacted event remains parseable");
+        assert_eq!(parsed.event_name(), "run.pause.requested");
     }
 }

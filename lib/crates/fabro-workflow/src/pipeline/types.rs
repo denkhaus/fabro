@@ -6,6 +6,7 @@ use fabro_graphviz::graph::Graph;
 use fabro_interview::Interviewer;
 use fabro_mcp::config::McpServerSettings;
 use fabro_model::{Catalog, FallbackTarget, ProviderId};
+use fabro_redact::SecretRedactor;
 use fabro_sandbox::SandboxSpec;
 use fabro_template::TemplateContext;
 use fabro_types::settings::run::{PullRequestSettings, RunModelControls};
@@ -263,8 +264,10 @@ pub struct InitOptions {
     pub workflow_path:     Option<ManifestPath>,
     pub workflow_bundle:   Option<Arc<WorkflowBundle>>,
     pub hooks:             fabro_hooks::HookSettings,
+    pub hook_secrets:      fabro_hooks::HookSecretResolver,
     pub sandbox_env:       SandboxEnvSpec,
     pub vault:             Option<Arc<AsyncRwLock<Vault>>>,
+    pub secret_redactor:   SecretRedactor,
     pub git:               Option<GitCheckpointOptions>,
     pub registry_override: Option<Arc<HandlerRegistry>>,
     pub artifact_sink:     Option<ArtifactSink>,

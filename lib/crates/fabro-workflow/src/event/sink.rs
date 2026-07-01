@@ -4,12 +4,16 @@ use std::sync::Arc;
 
 use ::fabro_types::{RunEvent, RunId};
 use anyhow::Result;
+use fabro_redact::SecretRedactor;
 use fabro_store::RunDatabase;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot};
 
 use super::emitter::Emitter;
-use super::redaction::{build_redacted_event_payload, redacted_event_json};
+use super::redaction::{
+    build_redacted_event_payload, build_redacted_event_payload_with_redactor, redacted_event_json,
+    redacted_event_json_with_redactor,
+};
 use super::{Event, to_run_event};
 use crate::runtime_store::RunStoreHandle;
 
@@ -40,6 +44,10 @@ pub enum RunEventSink {
     Map {
         transform: Arc<RunEventTransform>,
         inner:     Box<Self>,
+    },
+    RedactSecrets {
+        redactor: SecretRedactor,
+        inner:    Box<Self>,
     },
     Composite(Vec<Self>),
 }
@@ -99,27 +107,60 @@ impl RunEventSink {
         }
     }
 
+    #[must_use]
+    pub fn with_secret_redactor(self, redactor: SecretRedactor) -> Self {
+        Self::RedactSecrets {
+            redactor,
+            inner: Box::new(self),
+        }
+    }
+
     pub async fn write_run_event(&self, event: &RunEvent) -> Result<()> {
-        let mut pending = vec![(self, event.clone())];
-        while let Some((sink, event)) = pending.pop() {
+        let mut pending = vec![(self, event.clone(), None::<SecretRedactor>)];
+        while let Some((sink, event, redactor)) = pending.pop() {
             match sink {
                 Self::Store(run_store) => {
-                    run_store.append_run_event(&event).await?;
+                    run_store
+                        .append_run_event_with_redactor(&event, redactor.as_ref())
+                        .await?;
                 }
                 Self::JsonLines(writer) => {
-                    let line = redacted_event_json(&event)?;
+                    let line = match redactor.as_ref() {
+                        Some(redactor) => {
+                            redacted_event_json_with_redactor(&event, Some(redactor))?
+                        }
+                        None => redacted_event_json(&event)?,
+                    };
                     let mut writer = writer.lock().await;
                     writer.write_all(line.as_bytes()).await?;
                     writer.write_all(b"\n").await?;
                     writer.flush().await?;
                 }
-                Self::Callback(callback) => callback(event).await?,
+                Self::Callback(callback) => {
+                    let event = if let Some(redactor) = redactor.as_ref() {
+                        let payload = build_redacted_event_payload_with_redactor(
+                            &event,
+                            &event.run_id,
+                            Some(redactor),
+                        )?;
+                        RunEvent::try_from(&payload)?
+                    } else {
+                        event
+                    };
+                    callback(event).await?;
+                }
                 Self::Map { transform, inner } => {
-                    pending.push((inner.as_ref(), transform(event)));
+                    pending.push((inner.as_ref(), transform(event), redactor));
+                }
+                Self::RedactSecrets {
+                    redactor: sink_redactor,
+                    inner,
+                } => {
+                    pending.push((inner.as_ref(), event, Some(sink_redactor.clone())));
                 }
                 Self::Composite(sinks) => {
                     for sink in sinks.iter().rev() {
-                        pending.push((sink, event.clone()));
+                        pending.push((sink, event.clone(), redactor.clone()));
                     }
                 }
             }
@@ -332,6 +373,34 @@ mod tests {
         assert_eq!(second.len(), 1);
         assert_eq!(first[0].actor, Some(user_principal("alice")));
         assert_eq!(second[0].actor, Some(user_principal("alice")));
+    }
+
+    #[tokio::test]
+    async fn run_event_sink_redacts_callback_events_with_run_secret_redactor() {
+        let captured = Arc::new(AsyncMutex::new(Vec::new()));
+        let captured_events = Arc::clone(&captured);
+        let redactor = fabro_redact::SecretRedactor::default();
+        redactor.register("staging");
+        let sink = RunEventSink::callback(move |event| {
+            let captured_events = Arc::clone(&captured_events);
+            async move {
+                captured_events.lock().await.push(event);
+                Ok(())
+            }
+        })
+        .with_secret_redactor(redactor);
+        let event = to_run_event(&fixtures::RUN_7, &Event::SetupCommandStarted {
+            command: "deploy staging".to_string(),
+            index:   0,
+        });
+
+        sink.write_run_event(&event).await.unwrap();
+
+        let captured = captured.lock().await;
+        assert_eq!(captured.len(), 1);
+        let captured_text = serde_json::to_string(&captured[0].to_value().unwrap()).unwrap();
+        assert!(!captured_text.contains("staging"));
+        assert!(captured_text.contains("REDACTED"));
     }
 
     #[tokio::test]

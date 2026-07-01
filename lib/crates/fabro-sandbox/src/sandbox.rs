@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use fabro_redact::SecretRedactor;
 use fabro_types::{CommandOutputStream, CommandTermination};
 use fabro_util::shell;
 use serde::{Deserialize, Serialize};
@@ -572,8 +573,28 @@ impl ExecResult {
         redacted_output_tail(&self.stdout, &self.stderr, max_bytes_per_stream)
     }
 
+    pub fn redacted_output_tail_with_redactor(
+        &self,
+        max_bytes_per_stream: usize,
+        redactor: &SecretRedactor,
+    ) -> Option<fabro_types::ExecOutputTail> {
+        redacted_output_tail_with_redactor(
+            &self.stdout,
+            &self.stderr,
+            max_bytes_per_stream,
+            redactor,
+        )
+    }
+
     pub fn default_redacted_output_tail(&self) -> Option<fabro_types::ExecOutputTail> {
         self.redacted_output_tail(DEFAULT_EXEC_OUTPUT_TAIL_BYTES)
+    }
+
+    pub fn default_redacted_output_tail_with_redactor(
+        &self,
+        redactor: &SecretRedactor,
+    ) -> Option<fabro_types::ExecOutputTail> {
+        self.redacted_output_tail_with_redactor(DEFAULT_EXEC_OUTPUT_TAIL_BYTES, redactor)
     }
 
     /// Converts host process output into the canonical full exec result.
@@ -607,8 +628,29 @@ pub fn redacted_output_tail(
     stderr: &str,
     max_bytes_per_stream: usize,
 ) -> Option<fabro_types::ExecOutputTail> {
-    let (stdout, stdout_truncated) = redacted_tail(stdout, max_bytes_per_stream);
-    let (stderr, stderr_truncated) = redacted_tail(stderr, max_bytes_per_stream);
+    redacted_output_tail_inner(stdout, stderr, max_bytes_per_stream, None)
+}
+
+/// Build a redacted `ExecOutputTail` with a run-scoped exact-match secret
+/// redactor applied after the content-based redaction baseline.
+#[must_use]
+pub fn redacted_output_tail_with_redactor(
+    stdout: &str,
+    stderr: &str,
+    max_bytes_per_stream: usize,
+    redactor: &SecretRedactor,
+) -> Option<fabro_types::ExecOutputTail> {
+    redacted_output_tail_inner(stdout, stderr, max_bytes_per_stream, Some(redactor))
+}
+
+fn redacted_output_tail_inner(
+    stdout: &str,
+    stderr: &str,
+    max_bytes_per_stream: usize,
+    redactor: Option<&SecretRedactor>,
+) -> Option<fabro_types::ExecOutputTail> {
+    let (stdout, stdout_truncated) = redacted_tail(stdout, max_bytes_per_stream, redactor);
+    let (stderr, stderr_truncated) = redacted_tail(stderr, max_bytes_per_stream, redactor);
     let tail = fabro_types::ExecOutputTail {
         stdout,
         stderr,
@@ -618,12 +660,19 @@ pub fn redacted_output_tail(
     (!tail.is_empty()).then_some(tail)
 }
 
-fn redacted_tail(text: &str, max_bytes: usize) -> (Option<String>, bool) {
+fn redacted_tail(
+    text: &str,
+    max_bytes: usize,
+    redactor: Option<&SecretRedactor>,
+) -> (Option<String>, bool) {
     if text.is_empty() || max_bytes == 0 {
         return (None, !text.is_empty());
     }
 
-    let redacted = fabro_redact::redact_string(text);
+    let mut redacted = fabro_redact::redact_string(text);
+    if let Some(redactor) = redactor {
+        redacted = redactor.redact_into(&redacted);
+    }
     let sanitized = sanitize_exec_output(&redacted);
     let truncated = sanitized.len() > max_bytes;
     let start = if truncated {
@@ -1279,6 +1328,27 @@ mod tests {
         let stdout = tail.stdout.expect("stdout tail");
         assert!(stdout.contains("REDACTED"), "{stdout}");
         assert!(!stdout.contains("F0gH3jE6pA"), "{stdout}");
+        assert!(tail.stdout_truncated);
+    }
+
+    #[test]
+    fn exec_result_redacts_registered_low_entropy_secret_before_taking_tail() {
+        let redactor = SecretRedactor::default();
+        redactor.register("staging");
+        let result = ExecResult {
+            stdout:      format!("{} staging done", "context ".repeat(20)),
+            stderr:      String::new(),
+            exit_code:   Some(1),
+            termination: CommandTermination::Exited,
+            duration_ms: 1,
+        };
+
+        let tail = result
+            .redacted_output_tail_with_redactor(32, &redactor)
+            .expect("redacted output tail");
+        let stdout = tail.stdout.expect("stdout tail");
+        assert!(stdout.contains("REDACTED"), "{stdout}");
+        assert!(!stdout.contains("staging"), "{stdout}");
         assert!(tail.stdout_truncated);
     }
 

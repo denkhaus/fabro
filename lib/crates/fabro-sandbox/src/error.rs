@@ -2,6 +2,7 @@ use std::fmt::Write as _;
 
 #[cfg(feature = "docker")]
 use bollard::errors::Error as BollardError;
+use fabro_redact::SecretRedactor;
 use fabro_util::error::{collect_causes, render_with_causes};
 
 use crate::ExecResult;
@@ -77,6 +78,13 @@ impl Error {
 
     pub fn default_redacted_output_tail(&self) -> Option<fabro_types::ExecOutputTail> {
         default_redacted_output_tail(self)
+    }
+
+    pub fn default_redacted_output_tail_with_redactor(
+        &self,
+        redactor: &SecretRedactor,
+    ) -> Option<fabro_types::ExecOutputTail> {
+        default_redacted_output_tail_with_redactor(self, redactor)
     }
 
     #[cfg(feature = "docker")]
@@ -164,10 +172,27 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub fn default_redacted_output_tail(
     err: &(dyn std::error::Error + 'static),
 ) -> Option<fabro_types::ExecOutputTail> {
+    default_redacted_output_tail_inner(err, None)
+}
+
+pub fn default_redacted_output_tail_with_redactor(
+    err: &(dyn std::error::Error + 'static),
+    redactor: &SecretRedactor,
+) -> Option<fabro_types::ExecOutputTail> {
+    default_redacted_output_tail_inner(err, Some(redactor))
+}
+
+fn default_redacted_output_tail_inner(
+    err: &(dyn std::error::Error + 'static),
+    redactor: Option<&SecretRedactor>,
+) -> Option<fabro_types::ExecOutputTail> {
     let mut current = Some(err);
     while let Some(err) = current {
         if let Some(Error::Exec { result, .. }) = err.downcast_ref::<Error>() {
-            return result.default_redacted_output_tail();
+            return match redactor {
+                Some(redactor) => result.default_redacted_output_tail_with_redactor(redactor),
+                None => result.default_redacted_output_tail(),
+            };
         }
         current = err.source();
     }
@@ -175,8 +200,26 @@ pub fn default_redacted_output_tail(
 }
 
 pub fn display_for_log(err: &(dyn std::error::Error + 'static)) -> String {
+    display_for_log_inner(err, None)
+}
+
+pub fn display_for_log_with_redactor(
+    err: &(dyn std::error::Error + 'static),
+    redactor: &SecretRedactor,
+) -> String {
+    display_for_log_inner(err, Some(redactor))
+}
+
+fn display_for_log_inner(
+    err: &(dyn std::error::Error + 'static),
+    redactor: Option<&SecretRedactor>,
+) -> String {
     let mut rendered = render_with_causes(&err.to_string(), &collect_causes(err));
-    if let Some(tail) = default_redacted_output_tail(err) {
+    let tail = match redactor {
+        Some(redactor) => default_redacted_output_tail_with_redactor(err, redactor),
+        None => default_redacted_output_tail(err),
+    };
+    if let Some(tail) = tail {
         append_tail_for_log(
             &mut rendered,
             "stderr",

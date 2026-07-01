@@ -16,6 +16,7 @@ use fabro_interview::{
     WorkerControlMessage,
 };
 use fabro_model::Catalog;
+use fabro_redact::SecretRedactor;
 use fabro_server::run_tool_manifest;
 use fabro_store::{EventEnvelope, RunProjection, RunProjectionReducer};
 use fabro_tool::fabro_client::ClientBackend;
@@ -26,7 +27,7 @@ use fabro_types::{
 };
 use fabro_vault::Vault;
 use fabro_workflow::artifact_upload::{ArtifactSink, StageArtifactUploader};
-use fabro_workflow::event::{Emitter, RunEventSink};
+use fabro_workflow::event::{Emitter, RunEventSink, build_redacted_event_payload_with_redactor};
 use fabro_workflow::operations::{self, StartServices};
 use fabro_workflow::run_control::RunControlState;
 use fabro_workflow::runtime_store::{RunStoreBackend, RunStoreHandle};
@@ -1006,6 +1007,22 @@ impl RunStoreBackend for HttpRunStore {
     }
 
     async fn append_run_event(&self, event: &RunEvent) -> Result<()> {
+        self.append_run_event_with_redactor(event, None).await
+    }
+
+    async fn append_run_event_with_redactor(
+        &self,
+        event: &RunEvent,
+        redactor: Option<&SecretRedactor>,
+    ) -> Result<()> {
+        let event = if let Some(redactor) = redactor {
+            let payload =
+                build_redacted_event_payload_with_redactor(event, &self.run_id, Some(redactor))
+                    .context("failed to build redacted run event payload")?;
+            RunEvent::try_from(&payload).context("redacted run event payload is invalid")?
+        } else {
+            event.clone()
+        };
         let seq = Box::pin(self.with_retries("append run event", || {
             let client = self.client.clone_for_reuse();
             let run_id = self.run_id;
@@ -1013,7 +1030,7 @@ impl RunStoreBackend for HttpRunStore {
             async move { client.append_run_event(&run_id, &event).await }
         }))
         .await?;
-        self.apply_acknowledged_event(seq, event).await
+        self.apply_acknowledged_event(seq, &event).await
     }
 
     async fn write_blob(&self, data: &[u8]) -> Result<RunBlobId> {

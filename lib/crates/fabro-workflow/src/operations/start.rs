@@ -8,6 +8,7 @@ use fabro_interview::{AutoApproveInterviewer, Interviewer};
 use fabro_llm::client::Client as LlmClient;
 use fabro_mcp::config::McpServerSettings;
 use fabro_model::{Catalog, FallbackTarget, ProviderId};
+use fabro_redact::SecretRedactor;
 use fabro_sandbox::daytona::DaytonaConfig;
 use fabro_sandbox::from_environment::{
     daytona_config_from_environment, docker_config_from_environment_with_secrets,
@@ -79,6 +80,8 @@ struct RunSession {
     workflow_bundle:   Option<Arc<WorkflowBundle>>,
     run_control:       Option<Arc<RunControlState>>,
     vault:             Option<Arc<AsyncRwLock<Vault>>>,
+    secret_redactor:   SecretRedactor,
+    hook_secrets:      fabro_hooks::HookSecretResolver,
     catalog:           Arc<Catalog>,
     fabro_run_tools:   Option<FabroRunToolServices>,
 }
@@ -252,10 +255,13 @@ pub(super) async fn execute_persisted_run(
     };
 
     bootstrap_guard.defuse();
+    let terminal_event_sink = event_sink
+        .clone()
+        .with_secret_redactor(session.secret_redactor.clone());
     let mut completion_guard = DetachedRunCompletionGuard::arm(
         run_id,
         run_store.clone(),
-        event_sink.clone(),
+        terminal_event_sink.clone(),
         cancel_token,
     );
     let run_start = Instant::now();
@@ -270,7 +276,7 @@ pub(super) async fn execute_persisted_run(
             persist_terminal_engine_failure(
                 run_id,
                 &run_store,
-                &event_sink,
+                &terminal_event_sink,
                 run_dir,
                 &err,
                 run_start.elapsed(),
@@ -377,17 +383,21 @@ impl RunSession {
             Some(vault) => Some(vault.read().await),
             None => None,
         };
+        let secret_redactor = SecretRedactor::default();
+        let hook_secrets = hook_secret_resolver(services.vault.clone(), secret_redactor.clone());
         // Token-only secrets lookup over the vault read guard, shared across
         // every run-boundary resolver. A missing or non-Token secret becomes
         // `None`, so resolution fails closed with a secret error.
-        let secret_lookup = |name: &str| vault_token_lookup(vault_guard.as_deref(), name);
+        let secret_lookup = |name: &str| {
+            registered_vault_token_lookup(vault_guard.as_deref(), &secret_redactor, name)
+        };
         let mcp_servers = resolved
             .agent
             .mcps
             .iter()
             .map(|(key, entry)| match entry {
                 ResolvedMcpEntry::Resolved(server) => {
-                    runtime_mcp_server(server, process_env_var, secret_lookup)
+                    runtime_mcp_server(server, process_env_var, |name| secret_lookup(name))
                 }
                 // References must be resolved to concrete servers before the run
                 // spec is persisted (server-side run-preparation pass). Reaching
@@ -419,7 +429,7 @@ impl RunSession {
                 SandboxSpec::Local { working_directory }
             }
             SandboxProviderKind::Docker => SandboxSpec::Docker {
-                config:           resolve_docker_config(resolved, secret_lookup)?,
+                config:           resolve_docker_config(resolved, |name| secret_lookup(name))?,
                 github_app:       services.github_app.clone(),
                 run_id:           Some(record.run_id),
                 clone_origin_url: record.repo_origin_url().map(str::to_string),
@@ -443,7 +453,7 @@ impl RunSession {
 
         let toml_env = resolved
             .environment
-            .resolve_env(process_env_var, secret_lookup)
+            .resolve_env(process_env_var, |name| secret_lookup(name))
             .map_err(|err| Error::engine_with_source("failed to resolve run environment", err))?;
         let github_permissions: Option<HashMap<String, String>> =
             (!services.github_permissions.is_empty()).then(|| services.github_permissions.clone());
@@ -461,8 +471,9 @@ impl RunSession {
         };
 
         let pr_config = resolved.pull_request.clone();
-        let setup_commands =
-            runtime_setup_commands(&resolved.prepare, process_env_var, secret_lookup)?;
+        let setup_commands = runtime_setup_commands(&resolved.prepare, process_env_var, |name| {
+            secret_lookup(name)
+        })?;
         drop(vault_guard);
 
         Ok(Self {
@@ -505,6 +516,8 @@ impl RunSession {
             workflow_path,
             workflow_bundle,
             vault: services.vault,
+            secret_redactor,
+            hook_secrets,
             catalog,
             fabro_run_tools: services.fabro_run_tools,
         })
@@ -564,6 +577,34 @@ fn process_env_var(name: &str) -> Option<String> {
 
 fn vault_token_lookup(vault: Option<&Vault>, name: &str) -> Option<String> {
     vault.and_then(|vault| fabro_auth::vault_get_token(vault, name).ok().flatten())
+}
+
+fn registered_vault_token_lookup(
+    vault: Option<&Vault>,
+    redactor: &SecretRedactor,
+    name: &str,
+) -> Option<String> {
+    let value = vault_token_lookup(vault, name);
+    if let Some(value) = value.as_deref() {
+        redactor.register(value);
+    }
+    value
+}
+
+fn hook_secret_resolver(
+    vault: Option<Arc<AsyncRwLock<Vault>>>,
+    redactor: SecretRedactor,
+) -> fabro_hooks::HookSecretResolver {
+    match vault {
+        Some(vault) => fabro_hooks::HookSecretResolver::with_lookup(redactor, move |name| {
+            let vault = Arc::clone(&vault);
+            async move {
+                let guard = vault.read().await;
+                vault_token_lookup(Some(&guard), &name)
+            }
+        }),
+        None => fabro_hooks::HookSecretResolver::new(redactor),
+    }
 }
 
 async fn load_accepted_run_definition(
@@ -827,7 +868,11 @@ impl RunSession {
             });
         }
 
-        let store_progress_logger = RunEventLogger::new(self.event_sink.clone());
+        let store_progress_logger = RunEventLogger::new(
+            self.event_sink
+                .clone()
+                .with_secret_redactor(self.secret_redactor.clone()),
+        );
         store_progress_logger.register(self.emitter.as_ref());
 
         let init_options = InitOptions {
@@ -845,8 +890,10 @@ impl RunSession {
             workflow_path: self.workflow_path,
             workflow_bundle: self.workflow_bundle,
             hooks: self.hooks,
+            hook_secrets: self.hook_secrets,
             sandbox_env: self.sandbox_env,
             vault: self.vault,
+            secret_redactor: self.secret_redactor,
             git: self.git,
             registry_override: self.registry_override,
             artifact_sink: self.artifact_sink,
@@ -855,7 +902,13 @@ impl RunSession {
             seed_context: self.seed_context,
             fabro_run_tools: self.fabro_run_tools,
         };
-        let mut initialized = Box::pin(pipeline::initialize(persisted, init_options)).await?;
+        let mut initialized = match Box::pin(pipeline::initialize(persisted, init_options)).await {
+            Ok(initialized) => initialized,
+            Err(err) => {
+                store_progress_logger.flush().await;
+                return Err(err);
+            }
+        };
         initialized.on_node = on_node;
 
         let sandbox_for_cleanup = Arc::clone(&initialized.engine.run.sandbox);
@@ -1125,8 +1178,8 @@ mod tests {
     };
     use fabro_store::Database;
     use fabro_types::settings::run::{
-        McpTransport as ResolvedMcpTransport, PreparedStep, PreparedStepRun, RunMode,
-        RunPrepareSettings,
+        HookDefinition, HookEvent, HookType, McpTransport as ResolvedMcpTransport, PreparedStep,
+        PreparedStepRun, RunMode, RunPrepareSettings, TlsMode,
     };
     use fabro_types::settings::{InterpString, ModelRef};
     use fabro_types::{
@@ -1569,6 +1622,49 @@ reasoning = false
     }
 
     #[tokio::test]
+    async fn run_session_secret_redactors_are_isolated_between_runs() {
+        async fn session_with_secret(secret_value: &str) -> RunSession {
+            let temp = tempfile::tempdir().unwrap();
+            let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
+            let mut settings = settings_from_run_layer(RunLayer {
+                execution: Some(RunExecutionLayer {
+                    mode: Some(RunMode::DryRun),
+                    ..RunExecutionLayer::default()
+                }),
+                ..RunLayer::default()
+            });
+            settings.run.environment.env.insert(
+                "DEPLOY_ENV".to_string(),
+                InterpString::parse("{{ secrets.DEPLOY_ENV }}"),
+            );
+            let (persisted, store) =
+                persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
+            let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+            let registry = Arc::new(test_registry());
+            let vault = Arc::new(AsyncRwLock::new(token_vault("DEPLOY_ENV", secret_value)));
+
+            RunSession::new(&persisted, StartServices {
+                vault: Some(vault),
+                ..test_start_services(&store, &storage_root, emitter, registry).await
+            })
+            .await
+            .unwrap()
+        }
+
+        let first = session_with_secret("alpha").await;
+        let second = session_with_secret("bravo").await;
+
+        assert_eq!(
+            first.secret_redactor.redact_into("alpha bravo"),
+            "REDACTED bravo"
+        );
+        assert_eq!(
+            second.secret_redactor.redact_into("alpha bravo"),
+            "alpha REDACTED"
+        );
+    }
+
+    #[tokio::test]
     async fn run_session_new_missing_secret_fails_startup() {
         let temp = tempfile::tempdir().unwrap();
         let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
@@ -1603,6 +1699,218 @@ reasoning = false
             "Engine error: failed to resolve prepare step"
         );
         assert!(err.causes()[0].contains("DEPLOY_TOKEN"));
+    }
+
+    #[tokio::test]
+    async fn setup_failure_redacts_low_entropy_secret_in_event_and_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
+        let mut settings = settings_from_run_layer(RunLayer {
+            execution: Some(RunExecutionLayer {
+                mode: Some(RunMode::DryRun),
+                ..RunExecutionLayer::default()
+            }),
+            ..RunLayer::default()
+        });
+        settings.run.prepare = prepare_with_step(script_step(
+            "echo {{ secrets.DEPLOY_ENV }} >&2; exit 7",
+            HashMap::new(),
+        ));
+        let (_persisted, store) =
+            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+        let vault = Arc::new(AsyncRwLock::new(token_vault("DEPLOY_ENV", "staging")));
+
+        let Err(err) = start(&run_dir, StartServices {
+            vault: Some(vault),
+            ..test_start_services(&store, &storage_root, emitter, registry).await
+        })
+        .await
+        else {
+            panic!("setup failure should fail the run");
+        };
+
+        let error_text = err.to_string();
+        assert!(!error_text.contains("staging"));
+        assert!(error_text.contains("REDACTED"));
+
+        let run_store = store.open_run(&fixtures::RUN_1).await.unwrap();
+        let events = run_store.list_events().await.unwrap();
+        let events_text = serde_json::to_string(&events).unwrap();
+        assert!(!events_text.contains("staging"));
+        assert!(events_text.contains("REDACTED"));
+        assert!(
+            events
+                .iter()
+                .any(|event| event.event.event_name() == "setup.failed")
+        );
+    }
+
+    #[tokio::test]
+    async fn hook_command_resolves_secret_from_vault() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
+        let mut settings = settings_from_run_layer(RunLayer {
+            execution: Some(RunExecutionLayer {
+                mode: Some(RunMode::DryRun),
+                ..RunExecutionLayer::default()
+            }),
+            ..RunLayer::default()
+        });
+        settings.run.hooks.push(sandbox_ready_command_hook(
+            "test \"{{ secrets.HOOK_TOKEN }}\" = staging",
+        ));
+        let (_persisted, store) =
+            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+        let vault = Arc::new(AsyncRwLock::new(token_vault("HOOK_TOKEN", "staging")));
+
+        start(&run_dir, StartServices {
+            vault: Some(vault),
+            ..test_start_services(&store, &storage_root, emitter, registry).await
+        })
+        .await
+        .expect("hook command should resolve secret and proceed");
+    }
+
+    #[tokio::test]
+    async fn hook_missing_secret_fails_closed() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
+        let mut settings = settings_from_run_layer(RunLayer {
+            execution: Some(RunExecutionLayer {
+                mode: Some(RunMode::DryRun),
+                ..RunExecutionLayer::default()
+            }),
+            ..RunLayer::default()
+        });
+        settings
+            .run
+            .hooks
+            .push(sandbox_ready_command_hook("echo {{ secrets.HOOK_TOKEN }}"));
+        let (_persisted, store) =
+            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+        let vault = Arc::new(AsyncRwLock::new(temp_vault(&[])));
+
+        let Err(err) = start(&run_dir, StartServices {
+            vault: Some(vault),
+            ..test_start_services(&store, &storage_root, emitter, registry).await
+        })
+        .await
+        else {
+            panic!("missing hook secret should fail the run");
+        };
+
+        assert!(err.to_string().contains("HOOK_TOKEN"));
+    }
+
+    #[tokio::test]
+    async fn hook_http_url_resolves_secret_from_vault() {
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method("POST").path("/hook");
+                then.status(200).body("");
+            })
+            .await;
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
+        let mut settings = settings_from_run_layer(RunLayer {
+            execution: Some(RunExecutionLayer {
+                mode: Some(RunMode::DryRun),
+                ..RunExecutionLayer::default()
+            }),
+            ..RunLayer::default()
+        });
+        settings
+            .run
+            .hooks
+            .push(sandbox_ready_http_hook("{{ secrets.HOOK_URL }}"));
+        let (_persisted, store) =
+            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+        let vault = Arc::new(AsyncRwLock::new(token_vault(
+            "HOOK_URL",
+            &server.url("/hook"),
+        )));
+
+        start(&run_dir, StartServices {
+            vault: Some(vault),
+            ..test_start_services(&store, &storage_root, emitter, registry).await
+        })
+        .await
+        .expect("HTTP hook URL should resolve secret and proceed");
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn hook_prompt_secret_resolver_resolves_from_vault_and_registers() {
+        let redactor = SecretRedactor::default();
+        let vault = Arc::new(AsyncRwLock::new(token_vault("PROMPT_TOKEN", "staging")));
+        let resolver = hook_secret_resolver(Some(vault), redactor.clone());
+        let hook = HookDefinition {
+            name:       Some("prompt-secret".to_string()),
+            event:      HookEvent::StageStart,
+            command:    None,
+            hook_type:  Some(HookType::Prompt {
+                prompt: InterpString::parse("check {{ secrets.PROMPT_TOKEN }}"),
+                model:  None,
+            }),
+            matcher:    None,
+            blocking:   Some(true),
+            timeout_ms: None,
+            sandbox:    None,
+        };
+
+        let secrets = resolver.resolve_for_definition(&hook).await;
+
+        assert_eq!(secrets.lookup("PROMPT_TOKEN").as_deref(), Some("staging"));
+        assert_eq!(redactor.redact_into("deploy staging"), "deploy REDACTED");
+    }
+
+    #[tokio::test]
+    async fn hook_block_reason_redacts_resolved_secret_in_error_and_events() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
+        let mut settings = settings_from_run_layer(RunLayer {
+            execution: Some(RunExecutionLayer {
+                mode: Some(RunMode::DryRun),
+                ..RunExecutionLayer::default()
+            }),
+            ..RunLayer::default()
+        });
+        settings.run.hooks.push(sandbox_ready_command_hook(
+            r#"printf '%s' '{"decision":"block","reason":"{{ secrets.HOOK_TOKEN }}"}'"#,
+        ));
+        let (_persisted, store) =
+            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+        let vault = Arc::new(AsyncRwLock::new(token_vault("HOOK_TOKEN", "staging")));
+
+        let Err(err) = start(&run_dir, StartServices {
+            vault: Some(vault),
+            ..test_start_services(&store, &storage_root, emitter, registry).await
+        })
+        .await
+        else {
+            panic!("blocking hook should fail the run");
+        };
+
+        let error_text = err.to_string();
+        assert!(!error_text.contains("staging"));
+        assert!(error_text.contains("REDACTED"));
+
+        let run_store = store.open_run(&fixtures::RUN_1).await.unwrap();
+        let events_text = serde_json::to_string(&run_store.list_events().await.unwrap()).unwrap();
+        assert!(!events_text.contains("staging"));
+        assert!(events_text.contains("REDACTED"));
     }
 
     #[test]
@@ -1803,6 +2111,37 @@ reasoning = false
                 command: command.iter().map(|value| (*value).to_string()).collect(),
             },
             env,
+        }
+    }
+
+    fn sandbox_ready_command_hook(command: &str) -> HookDefinition {
+        HookDefinition {
+            name:       Some("sandbox-ready".to_string()),
+            event:      HookEvent::SandboxReady,
+            command:    Some(InterpString::parse(command)),
+            hook_type:  None,
+            matcher:    None,
+            blocking:   Some(true),
+            timeout_ms: Some(5_000),
+            sandbox:    Some(false),
+        }
+    }
+
+    fn sandbox_ready_http_hook(url: &str) -> HookDefinition {
+        HookDefinition {
+            name:       Some("sandbox-ready-http".to_string()),
+            event:      HookEvent::SandboxReady,
+            command:    None,
+            hook_type:  Some(HookType::Http {
+                url:              InterpString::parse(url),
+                headers:          None,
+                allowed_env_vars: Vec::new(),
+                tls:              TlsMode::Off,
+            }),
+            matcher:    None,
+            blocking:   Some(true),
+            timeout_ms: Some(5_000),
+            sandbox:    Some(false),
         }
     }
 

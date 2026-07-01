@@ -14,7 +14,7 @@ Goal and prompt templates can reference:
 | `{{ goal }}` | The workflow goal |
 | `{{ inputs.name }}` | A value from `[run.inputs]`, optionally overridden by CLI input flags |
 
-Environment variables are **not** available in goal or prompt templates. Use `{{ env.NAME }}` only in config strings and HTTP hook headers.
+Environment variables and secrets are **not** available in workflow graph goal or prompt templates. Use `{{ env.NAME }}` and `{{ secrets.NAME }}` only in supported run configuration and hook fields.
 
 ## Run config inputs
 

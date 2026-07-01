@@ -2,6 +2,7 @@ pub mod bridge;
 pub mod config;
 pub mod executor;
 pub mod runner;
+mod secrets;
 pub mod types;
 
 pub use bridge::WorkflowToolHookCallback;
@@ -10,4 +11,5 @@ pub use config::{HookDefinition, HookSettings, HookType, TlsMode};
 // `InterpString`; constructing a hook definition requires it.
 pub use fabro_types::settings::InterpString;
 pub use runner::HookRunner;
+pub use secrets::{HookSecretResolver, ResolvedHookSecrets};
 pub use types::{HookContext, HookDecision, HookEvent, HookExecutionContext};

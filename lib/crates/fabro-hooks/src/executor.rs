@@ -13,7 +13,7 @@ use fabro_llm::generate::{GenerateParams, generate_object};
 use fabro_llm::types::{Message, Request, ToolResult};
 use fabro_model::Catalog;
 use fabro_redact::redacted_url_for_log;
-use fabro_types::settings::interp::Namespace;
+use fabro_types::settings::interp::{Namespace, ResolveCtx};
 use fabro_types::settings::{InterpString, ResolveError};
 use fabro_util::env::{Env, SystemEnv};
 use tokio::process::Command as TokioCommand;
@@ -21,6 +21,7 @@ use tokio::time::timeout as tokio_timeout;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::{HookDefinition, HookType, TlsMode};
+use crate::secrets::ResolvedHookSecrets;
 use crate::types::{
     HookContext, HookDecision, HookExecutionContext, HookResult, PromptHookResponse,
 };
@@ -54,16 +55,18 @@ pub trait HookExecutor: Send + Sync {
         execution_context: &HookExecutionContext,
         llm_source: &dyn CredentialSource,
         catalog: Arc<Catalog>,
+        secrets: &ResolvedHookSecrets,
     ) -> HookResult;
 }
 
 /// Resolve a typed [`InterpString`] hook segment at fire time, looking up
-/// `{{ env.* }}` tokens against `env`.
+/// `{{ env.* }}` tokens against `env` and `{{ secrets.* }}` tokens against the
+/// run-scoped secret resolver.
 ///
-/// Only the `env` namespace is wired here; `{{ secrets.* }}`, `{{ vars.* }}`,
-/// and `{{ inputs.* }}` tokens have no lookup in this context and resolve as
-/// `Unavailable`, which is a hard error — so a hook that references one fails
-/// closed rather than firing with a half-resolved value.
+/// Only `env` and `secrets` are wired here; `{{ vars.* }}` and `{{ inputs.* }}`
+/// tokens have no lookup in this context and resolve as `Unavailable`, which is
+/// a hard error — so a hook that references one fails closed rather than firing
+/// with a half-resolved value.
 ///
 /// The value stays typed end-to-end: it is carried as an `InterpString`
 /// through the config resolve layer and resolved here from its segments —
@@ -73,13 +76,18 @@ pub trait HookExecutor: Send + Sync {
 ///
 /// Returns the typed [`ResolveError`] so callers keep the source until the
 /// decision boundary renders it; do not flatten it to a `String` here.
-fn resolve_interp<E>(value: &InterpString, env: &E) -> Result<String, ResolveError>
+fn resolve_interp<E>(
+    value: &InterpString,
+    env: &E,
+    secrets: &ResolvedHookSecrets,
+) -> Result<String, ResolveError>
 where
     E: Env + ?Sized,
 {
-    value
-        .resolve(|name| env.var(name).ok())
-        .map(|resolved| resolved.value)
+    let mut ctx = ResolveCtx::new()
+        .with_env(|name| env.var(name).ok())
+        .with_secrets(|name| secrets.lookup(name));
+    value.resolve_with(&mut ctx).map(|resolved| resolved.value)
 }
 
 #[expect(
@@ -95,6 +103,7 @@ fn safe_url_source_for_log(url: &InterpString) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum HeaderResolveError {
     NotAllowed { name: String },
+    SecretNotAllowed { name: String },
     Resolve(ResolveError),
 }
 
@@ -106,6 +115,11 @@ impl fmt::Display for HeaderResolveError {
                 "environment variable {name:?} referenced by an HTTP hook header is not listed in \
                  allowed_env_vars"
             ),
+            Self::SecretNotAllowed { name } => write!(
+                f,
+                "secret {name:?} referenced by an HTTP hook header is not allowed; use secret \
+                 interpolation in a hook command, prompt, or url instead"
+            ),
             Self::Resolve(error) => error.fmt(f),
         }
     }
@@ -114,7 +128,7 @@ impl fmt::Display for HeaderResolveError {
 impl std::error::Error for HeaderResolveError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::NotAllowed { .. } => None,
+            Self::NotAllowed { .. } | Self::SecretNotAllowed { .. } => None,
             Self::Resolve(error) => Some(error),
         }
     }
@@ -135,10 +149,17 @@ fn resolve_header<E>(
     value: &InterpString,
     allowed_env_vars: &[String],
     env: &E,
+    secrets: &ResolvedHookSecrets,
 ) -> Result<String, HeaderResolveError>
 where
     E: Env + ?Sized,
 {
+    if let Some(name) = value.names(Namespace::Secrets).into_iter().next() {
+        return Err(HeaderResolveError::SecretNotAllowed {
+            name: name.to_string(),
+        });
+    }
+
     if let Some(name) = value.names(Namespace::Env).into_iter().find(|name| {
         !allowed_env_vars
             .iter()
@@ -149,7 +170,7 @@ where
         });
     }
 
-    resolve_interp(value, env).map_err(HeaderResolveError::Resolve)
+    resolve_interp(value, env, secrets).map_err(HeaderResolveError::Resolve)
 }
 
 /// Executes hooks via shell commands or HTTP POST.
@@ -181,20 +202,24 @@ impl HookExecutorImpl {
 
     /// Resolve the prompt and optional model segments at fire time.
     ///
-    /// Fail-closed: only `{{ env.* }}` is wired here; a missing env token (or a
-    /// token in any other, unavailable namespace) is a hard error so the hook
-    /// never fires with a half-resolved value. The caller turns the error into
-    /// a `Block` decision, matching the command-hook behavior.
+    /// Fail-closed: only `{{ env.* }}` and `{{ secrets.* }}` are wired here; a
+    /// missing token (or a token in any other, unavailable namespace) is a hard
+    /// error so the hook never fires with a half-resolved value. The caller
+    /// turns the error into a `Block` decision, matching the command-hook
+    /// behavior.
     fn resolve_prompt_and_model<E>(
         prompt: &InterpString,
         model: Option<&InterpString>,
         env: &E,
+        secrets: &ResolvedHookSecrets,
     ) -> Result<(String, Option<String>), ResolveError>
     where
         E: Env + ?Sized,
     {
-        let prompt = resolve_interp(prompt, env)?;
-        let model = model.map(|model| resolve_interp(model, env)).transpose()?;
+        let prompt = resolve_interp(prompt, env, secrets)?;
+        let model = model
+            .map(|model| resolve_interp(model, env, secrets))
+            .transpose()?;
         Ok((prompt, model))
     }
 
@@ -206,11 +231,12 @@ impl HookExecutorImpl {
         sandbox: &Arc<dyn Sandbox>,
         execution_context: &HookExecutionContext,
         env: &E,
+        secrets: &ResolvedHookSecrets,
     ) -> HookDecision
     where
         E: Env + ?Sized,
     {
-        let command = match resolve_interp(command, env) {
+        let command = match resolve_interp(command, env, secrets) {
             Ok(command) => command,
             Err(error) => {
                 return HookDecision::Block {
@@ -363,13 +389,14 @@ impl HookExecutorImpl {
         model: Option<&InterpString>,
         context: &HookContext,
         env: &E,
+        secrets: &ResolvedHookSecrets,
         llm_source: &dyn CredentialSource,
         catalog: Arc<Catalog>,
     ) -> HookDecision
     where
         E: Env + ?Sized,
     {
-        let (prompt, model) = match Self::resolve_prompt_and_model(prompt, model, env) {
+        let (prompt, model) = match Self::resolve_prompt_and_model(prompt, model, env, secrets) {
             Ok(resolved) => resolved,
             Err(error) => {
                 tracing::error!(error = %error, "prompt hook env resolution failed, not firing");
@@ -432,13 +459,14 @@ impl HookExecutorImpl {
         context: &HookContext,
         sandbox: Arc<dyn Sandbox>,
         env: &E,
+        secrets: &ResolvedHookSecrets,
         llm_source: &dyn CredentialSource,
         catalog: Arc<Catalog>,
     ) -> HookDecision
     where
         E: Env + ?Sized,
     {
-        let (prompt, model) = match Self::resolve_prompt_and_model(prompt, model, env) {
+        let (prompt, model) = match Self::resolve_prompt_and_model(prompt, model, env, secrets) {
             Ok(resolved) => resolved,
             Err(error) => {
                 tracing::error!(error = %error, "agent hook env resolution failed, not firing");
@@ -578,11 +606,12 @@ impl HookExecutorImpl {
         context: &HookContext,
         timeout: std::time::Duration,
         env: &E,
+        secrets: &ResolvedHookSecrets,
     ) -> HookDecision
     where
         E: Env + ?Sized,
     {
-        let resolved_url = match resolve_interp(url, env) {
+        let resolved_url = match resolve_interp(url, env, secrets) {
             Ok(url) => url,
             Err(error) => {
                 tracing::error!(
@@ -618,7 +647,7 @@ impl HookExecutorImpl {
                 // `{{ env.NAME }}` not in `allowed_env_vars` blocks before any
                 // lookup, while an allowlisted-but-unset name still fails as
                 // missing.
-                let interpolated = match resolve_header(value, allowed_env_vars, env) {
+                let interpolated = match resolve_header(value, allowed_env_vars, env, secrets) {
                     Ok(rendered) => rendered,
                     Err(error) => {
                         tracing::error!(
@@ -641,7 +670,11 @@ impl HookExecutorImpl {
             Err(e) => {
                 tracing::warn!(
                     url_source = %safe_url_source_for_log(url),
-                    error = %e,
+                    error_timeout = e.is_timeout(),
+                    error_connect = e.is_connect(),
+                    error_request = e.is_request(),
+                    error_body = e.is_body(),
+                    error_decode = e.is_decode(),
                     "HTTP hook request failed, proceeding"
                 );
                 return HookDecision::Proceed;
@@ -662,7 +695,11 @@ impl HookExecutorImpl {
             Err(e) => {
                 tracing::warn!(
                     url_source = %safe_url_source_for_log(url),
-                    error = %e,
+                    error_timeout = e.is_timeout(),
+                    error_connect = e.is_connect(),
+                    error_request = e.is_request(),
+                    error_body = e.is_body(),
+                    error_decode = e.is_decode(),
                     "HTTP hook body read failed, proceeding"
                 );
                 return HookDecision::Proceed;
@@ -728,6 +765,7 @@ impl HookExecutor for HookExecutorImpl {
         execution_context: &HookExecutionContext,
         llm_source: &dyn CredentialSource,
         catalog: Arc<Catalog>,
+        secrets: &ResolvedHookSecrets,
     ) -> HookResult {
         use std::sync::OnceLock;
         static HTTP_CLIENTS: OnceLock<HttpClientCache> = OnceLock::new();
@@ -747,6 +785,7 @@ impl HookExecutor for HookExecutorImpl {
                     &sandbox,
                     execution_context,
                     &env,
+                    secrets,
                 )
                 .await
             }
@@ -774,6 +813,7 @@ impl HookExecutor for HookExecutorImpl {
                     context,
                     definition.timeout(),
                     &env,
+                    secrets,
                 )
                 .await
             }
@@ -793,6 +833,7 @@ impl HookExecutor for HookExecutorImpl {
                     model.as_ref(),
                     context,
                     &env,
+                    secrets,
                     llm_source,
                     Arc::clone(&catalog),
                 )
@@ -818,6 +859,7 @@ impl HookExecutor for HookExecutorImpl {
                     context,
                     sandbox,
                     &env,
+                    secrets,
                     llm_source,
                     Arc::clone(&catalog),
                 )
@@ -867,6 +909,19 @@ mod tests {
 
     fn test_http_client() -> fabro_http::HttpClient {
         HookExecutorImpl::build_http_client(TlsMode::Off)
+    }
+
+    fn empty_secrets() -> ResolvedHookSecrets {
+        ResolvedHookSecrets::default()
+    }
+
+    fn test_secrets(vars: &[(&str, &str)]) -> ResolvedHookSecrets {
+        ResolvedHookSecrets::new(
+            vars.iter()
+                .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+                .collect(),
+            fabro_redact::SecretRedactor::default(),
+        )
     }
 
     fn make_definition(command: &str) -> HookDefinition {
@@ -946,6 +1001,7 @@ mod tests {
         let ctx = make_context();
         let sandbox = make_sandbox();
         let source = test_llm_source();
+        let secrets = empty_secrets();
         let result = executor
             .execute(
                 &def,
@@ -954,6 +1010,7 @@ mod tests {
                 &HookExecutionContext::default(),
                 source.as_ref(),
                 test_catalog(),
+                &secrets,
             )
             .await;
         assert_eq!(result.decision, HookDecision::Proceed);
@@ -967,6 +1024,7 @@ mod tests {
         let ctx = make_context();
         let sandbox = make_sandbox();
         let source = test_llm_source();
+        let secrets = empty_secrets();
         let result = executor
             .execute(
                 &def,
@@ -975,6 +1033,7 @@ mod tests {
                 &HookExecutionContext::default(),
                 source.as_ref(),
                 test_catalog(),
+                &secrets,
             )
             .await;
         assert!(matches!(result.decision, HookDecision::Block { .. }));
@@ -987,6 +1046,7 @@ mod tests {
         let ctx = make_context();
         let sandbox = make_sandbox();
         let source = test_llm_source();
+        let secrets = empty_secrets();
         let result = executor
             .execute(
                 &def,
@@ -995,6 +1055,7 @@ mod tests {
                 &HookExecutionContext::default(),
                 source.as_ref(),
                 test_catalog(),
+                &secrets,
             )
             .await;
         assert!(matches!(result.decision, HookDecision::Block { .. }));
@@ -1007,6 +1068,7 @@ mod tests {
         let ctx = make_context();
         let sandbox = make_sandbox();
         let source = test_llm_source();
+        let secrets = empty_secrets();
         let result = executor
             .execute(
                 &def,
@@ -1015,6 +1077,7 @@ mod tests {
                 &HookExecutionContext::default(),
                 source.as_ref(),
                 test_catalog(),
+                &secrets,
             )
             .await;
         assert_eq!(result.decision, HookDecision::Skip {
@@ -1031,6 +1094,7 @@ mod tests {
         ctx.node_id = Some("plan".into());
         let sandbox = make_sandbox();
         let source = test_llm_source();
+        let secrets = empty_secrets();
         let result = executor
             .execute(
                 &def,
@@ -1039,6 +1103,7 @@ mod tests {
                 &HookExecutionContext::default(),
                 source.as_ref(),
                 test_catalog(),
+                &secrets,
             )
             .await;
         assert_eq!(result.decision, HookDecision::Proceed);
@@ -1060,6 +1125,7 @@ mod tests {
         let ctx = make_context();
         let sandbox = make_sandbox();
         let source = test_llm_source();
+        let secrets = empty_secrets();
         let result = executor
             .execute(
                 &def,
@@ -1068,6 +1134,7 @@ mod tests {
                 &HookExecutionContext::default(),
                 source.as_ref(),
                 test_catalog(),
+                &secrets,
             )
             .await;
         assert!(matches!(result.decision, HookDecision::Block { .. }));
@@ -1188,6 +1255,7 @@ mod tests {
             &interp("Bearer {{ env.FABRO_TEST_KEY_1 }}"),
             &["FABRO_TEST_KEY_1".to_string()],
             &env,
+            &empty_secrets(),
         )
         .unwrap();
         assert_eq!(result, "Bearer secret123");
@@ -1203,6 +1271,7 @@ mod tests {
             &interp("prefix-{{ env.FABRO_TEST_KEY_3 }}-suffix"),
             &[],
             &env,
+            &empty_secrets(),
         )
         .unwrap_err();
         assert_eq!(err, HeaderResolveError::NotAllowed {
@@ -1217,11 +1286,12 @@ mod tests {
             &interp("prefix-{{ env.FABRO_TEST_KEY_3 }}-suffix"),
             &["FABRO_TEST_KEY_3".to_string()],
             &env,
+            &empty_secrets(),
         )
         .unwrap_err();
         match err {
             HeaderResolveError::Resolve(error) => assert_eq!(error.name, "FABRO_TEST_KEY_3"),
-            HeaderResolveError::NotAllowed { .. } => {
+            HeaderResolveError::NotAllowed { .. } | HeaderResolveError::SecretNotAllowed { .. } => {
                 panic!("expected missing token resolve error, got {err:?}")
             }
         }
@@ -1233,14 +1303,19 @@ mod tests {
     fn resolve_interp_resolves_embedded_token_from_typed_value() {
         let env = test_env(&[("FABRO_TEST_KEY_2", "val")]);
         let value = interp("x{{ env.FABRO_TEST_KEY_2 }}y");
-        let result = resolve_interp(&value, &env).unwrap();
+        let result = resolve_interp(&value, &env, &empty_secrets()).unwrap();
         assert_eq!(result, "xvaly");
     }
 
     #[test]
     fn resolve_interp_errors_on_missing_var() {
         let env = test_env(&[]);
-        let err = resolve_interp(&interp("a{{ env.FABRO_TEST_NOEXIST }}-b"), &env).unwrap_err();
+        let err = resolve_interp(
+            &interp("a{{ env.FABRO_TEST_NOEXIST }}-b"),
+            &env,
+            &empty_secrets(),
+        )
+        .unwrap_err();
         assert_eq!(err.name, "FABRO_TEST_NOEXIST");
     }
 
@@ -1248,9 +1323,61 @@ mod tests {
     fn resolve_interp_without_tokens_passes_through() {
         let env = test_env(&[]);
         assert_eq!(
-            resolve_interp(&interp("plain text"), &env).unwrap(),
+            resolve_interp(&interp("plain text"), &env, &empty_secrets()).unwrap(),
             "plain text"
         );
+    }
+
+    #[test]
+    fn resolve_interp_resolves_secret_and_registers_value() {
+        let env = test_env(&[]);
+        let redactor = fabro_redact::SecretRedactor::default();
+        let secrets = ResolvedHookSecrets::new(
+            HashMap::from([("HOOK_TOKEN".to_string(), "staging".to_string())]),
+            redactor.clone(),
+        );
+
+        let resolved =
+            resolve_interp(&interp("deploy {{ secrets.HOOK_TOKEN }}"), &env, &secrets).unwrap();
+
+        assert_eq!(resolved, "deploy staging");
+        assert_eq!(redactor.redact_into("deploy staging"), "deploy REDACTED");
+    }
+
+    #[test]
+    fn resolve_prompt_and_model_resolves_secret_tokens() {
+        let env = test_env(&[]);
+        let secrets = test_secrets(&[("PROMPT_TOKEN", "staging")]);
+
+        let (prompt, model) = HookExecutorImpl::resolve_prompt_and_model(
+            &interp("check {{ secrets.PROMPT_TOKEN }}"),
+            Some(&interp("haiku")),
+            &env,
+            &secrets,
+        )
+        .unwrap();
+
+        assert_eq!(prompt, "check staging");
+        assert_eq!(model.as_deref(), Some("haiku"));
+    }
+
+    #[test]
+    fn header_rejects_secret_token_with_guidance() {
+        let env = test_env(&[]);
+        let err = resolve_header(
+            &interp("Bearer {{ secrets.HOOK_TOKEN }}"),
+            &[],
+            &env,
+            &test_secrets(&[("HOOK_TOKEN", "staging")]),
+        )
+        .unwrap_err();
+
+        assert_eq!(err, HeaderResolveError::SecretNotAllowed {
+            name: "HOOK_TOKEN".to_string(),
+        });
+        let message = err.to_string();
+        assert!(message.contains("HTTP hook header"));
+        assert!(message.contains("command, prompt, or url"));
     }
 
     // --- HTTP hook execution tests ---
@@ -1278,6 +1405,7 @@ mod tests {
             &make_context(),
             std::time::Duration::from_secs(5),
             &test_env(&[]),
+            &empty_secrets(),
         )
         .await;
 
@@ -1307,6 +1435,7 @@ mod tests {
             &make_context(),
             std::time::Duration::from_secs(5),
             &test_env(&[]),
+            &empty_secrets(),
         )
         .await;
 
@@ -1334,6 +1463,7 @@ mod tests {
             &make_context(),
             std::time::Duration::from_secs(5),
             &test_env(&[]),
+            &empty_secrets(),
         )
         .await;
 
@@ -1353,6 +1483,7 @@ mod tests {
             &make_context(),
             std::time::Duration::from_secs(1),
             &test_env(&[]),
+            &empty_secrets(),
         )
         .await;
 
@@ -1388,6 +1519,7 @@ mod tests {
             &make_context(),
             std::time::Duration::from_secs(5),
             &env,
+            &empty_secrets(),
         )
         .await;
 
@@ -1425,6 +1557,7 @@ mod tests {
             &make_context(),
             std::time::Duration::from_secs(5),
             &env,
+            &empty_secrets(),
         )
         .await;
 
@@ -1439,6 +1572,46 @@ mod tests {
                 );
             }
             other => panic!("expected Block on unlisted header var, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn http_hook_secret_header_blocks_without_firing() {
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method("POST").path("/hook");
+                then.status(200).body("");
+            })
+            .await;
+
+        let headers = HashMap::from([(
+            "Authorization".to_string(),
+            interp("Bearer {{ secrets.FABRO_TEST_TOKEN }}"),
+        )]);
+
+        let client = test_http_client();
+        let decision = HookExecutorImpl::execute_http(
+            &client,
+            &interp(&server.url("/hook")),
+            Some(&headers),
+            &[],
+            &TlsMode::Off,
+            &make_context(),
+            std::time::Duration::from_secs(5),
+            &test_env(&[]),
+            &test_secrets(&[("FABRO_TEST_TOKEN", "staging")]),
+        )
+        .await;
+
+        assert_eq!(mock.calls_async().await, 0);
+        match decision {
+            HookDecision::Block { reason } => {
+                let reason = reason.unwrap_or_default();
+                assert!(reason.contains("HTTP hook header"));
+                assert!(reason.contains("command, prompt, or url"));
+            }
+            other => panic!("expected Block on secret header token, got {other:?}"),
         }
     }
 
@@ -1463,6 +1636,36 @@ mod tests {
             &make_context(),
             std::time::Duration::from_secs(5),
             &env,
+            &empty_secrets(),
+        )
+        .await;
+
+        mock.assert_async().await;
+        assert_eq!(decision, HookDecision::Proceed);
+    }
+
+    #[tokio::test]
+    async fn http_hook_resolves_secret_url_before_dispatch() {
+        let server = httpmock::MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method("POST").path("/hook");
+                then.status(200).body("");
+            })
+            .await;
+
+        let client = test_http_client();
+        let secrets = test_secrets(&[("FABRO_TEST_URL", &server.url("/hook"))]);
+        let decision = HookExecutorImpl::execute_http(
+            &client,
+            &interp("{{ secrets.FABRO_TEST_URL }}"),
+            None,
+            &[],
+            &TlsMode::Off,
+            &make_context(),
+            std::time::Duration::from_secs(5),
+            &test_env(&[]),
+            &secrets,
         )
         .await;
 
@@ -1490,6 +1693,7 @@ mod tests {
             &make_context(),
             std::time::Duration::from_secs(5),
             &test_env(&[]),
+            &empty_secrets(),
         )
         .await;
 
@@ -1534,6 +1738,7 @@ mod tests {
             &make_context(),
             std::time::Duration::from_secs(5),
             &test_env(&[]),
+            &empty_secrets(),
         )
         .await;
 
@@ -1557,6 +1762,7 @@ mod tests {
             &make_context(),
             std::time::Duration::from_secs(5),
             &test_env(&[]),
+            &empty_secrets(),
         )
         .await;
 
@@ -1575,6 +1781,7 @@ mod tests {
             &make_context(),
             std::time::Duration::from_secs(5),
             &test_env(&[]),
+            &empty_secrets(),
         )
         .await;
 
@@ -1601,6 +1808,7 @@ mod tests {
             &make_context(),
             std::time::Duration::from_secs(5),
             &test_env(&[]),
+            &empty_secrets(),
         )
         .await;
 
@@ -1637,6 +1845,7 @@ mod tests {
         let ctx = make_context();
         let sandbox = make_sandbox();
         let source = test_llm_source();
+        let secrets = empty_secrets();
         let result = executor
             .execute(
                 &def,
@@ -1645,6 +1854,7 @@ mod tests {
                 &HookExecutionContext::default(),
                 source.as_ref(),
                 test_catalog(),
+                &secrets,
             )
             .await;
 
@@ -1663,10 +1873,55 @@ mod tests {
             &sandbox,
             &HookExecutionContext::default(),
             &test_env(&[]),
+            &empty_secrets(),
         )
         .await;
 
         assert!(matches!(decision, HookDecision::Block { .. }));
+    }
+
+    #[tokio::test]
+    async fn command_hook_resolves_secret_token() {
+        let sandbox = make_sandbox();
+        let decision = HookExecutorImpl::execute_command(
+            &make_definition(r#"test "{{ secrets.HOOK_TOKEN }}" = "staging""#),
+            &interp(r#"test "{{ secrets.HOOK_TOKEN }}" = "staging""#),
+            &make_context(),
+            &sandbox,
+            &HookExecutionContext::default(),
+            &test_env(&[]),
+            &test_secrets(&[("HOOK_TOKEN", "staging")]),
+        )
+        .await;
+
+        assert_eq!(decision, HookDecision::Proceed);
+    }
+
+    #[tokio::test]
+    async fn command_hook_missing_secret_blocks() {
+        let sandbox = make_sandbox();
+        let decision = HookExecutorImpl::execute_command(
+            &make_definition("echo {{ secrets.MISSING_HOOK_SECRET }}"),
+            &interp("echo {{ secrets.MISSING_HOOK_SECRET }}"),
+            &make_context(),
+            &sandbox,
+            &HookExecutionContext::default(),
+            &test_env(&[]),
+            &empty_secrets(),
+        )
+        .await;
+
+        match decision {
+            HookDecision::Block { reason } => {
+                assert!(
+                    reason
+                        .as_deref()
+                        .is_some_and(|reason| reason.contains("MISSING_HOOK_SECRET")),
+                    "block reason should name the missing secret, got: {reason:?}"
+                );
+            }
+            other => panic!("expected Block on missing command secret, got {other:?}"),
+        }
     }
 
     // Fail-closed: a prompt hook with a missing token does not fire the LLM
@@ -1679,6 +1934,7 @@ mod tests {
             None,
             &make_context(),
             &test_env(&[]),
+            &empty_secrets(),
             test_llm_source().as_ref(),
             test_catalog(),
         )
@@ -1708,6 +1964,7 @@ mod tests {
             &make_context(),
             make_sandbox(),
             &test_env(&[]),
+            &empty_secrets(),
             test_llm_source().as_ref(),
             test_catalog(),
         )

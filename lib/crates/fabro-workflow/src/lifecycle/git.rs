@@ -8,6 +8,7 @@ use fabro_core::lifecycle::RunLifecycle;
 use fabro_core::outcome::NodeResult;
 use fabro_core::state::ExecutionState;
 use fabro_dump::RunDump;
+use fabro_redact::SecretRedactor;
 use fabro_types::run_event::{MetadataSnapshotFailureKind, MetadataSnapshotPhase};
 use fabro_types::{CheckpointRecord, DiffSummary, RunDiff, RunId};
 use fabro_util::error::collect_causes;
@@ -84,6 +85,7 @@ pub(crate) struct GitLifecycle {
     pub sandbox_git:           Arc<SandboxGitRuntime>,
     pub metadata_runtime:      Arc<RunMetadataRuntime>,
     pub metadata_writer:       Option<RunMetadataWriterHandle>,
+    pub secret_redactor:       SecretRedactor,
     pub start_node_id:         Option<String>,
     // Cross-lifecycle data (shared with EventLifecycle)
     pub checkpoint_git_result: Arc<Mutex<Option<GitCheckpointResult>>>,
@@ -311,10 +313,16 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
                                 Ok(()) => (true, None),
                                 Err(err) => {
                                     let exec_output_tail =
-                                        fabro_sandbox::default_redacted_output_tail(&err);
+                                        fabro_sandbox::default_redacted_output_tail_with_redactor(
+                                            &err,
+                                            &self.secret_redactor,
+                                        );
                                     tracing::warn!(
                                         refspec = %refspec,
-                                        error = %fabro_sandbox::display_for_log(&err),
+                                        error = %fabro_sandbox::display_for_log_with_redactor(
+                                            &err,
+                                            &self.secret_redactor,
+                                        ),
                                         "git push from run lifecycle failed"
                                     );
                                     self.emitter.notice_with_tail(
@@ -365,7 +373,10 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
                         Ok(_) => {}
                         Err(err) => {
                             let exec_output_tail =
-                                fabro_sandbox::default_redacted_output_tail(&err);
+                                fabro_sandbox::default_redacted_output_tail_with_redactor(
+                                    &err,
+                                    &self.secret_redactor,
+                                );
                             self.emitter.notice_with_tail(
                                 RunNoticeLevel::Warn,
                                 RunNoticeCode::GitDiffFailed,
@@ -380,7 +391,10 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
                         }
                         Some(Err(err)) => {
                             let exec_output_tail =
-                                fabro_sandbox::default_redacted_output_tail(&err);
+                                fabro_sandbox::default_redacted_output_tail_with_redactor(
+                                    &err,
+                                    &self.secret_redactor,
+                                );
                             self.emitter.notice_with_tail(
                                 RunNoticeLevel::Warn,
                                 RunNoticeCode::GitDiffFailed,
@@ -399,7 +413,10 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
                     .expect("git lifecycle mutex should not be poisoned: no code panics while holding this lock") = Some(git_result);
             }
             Err(e) => {
-                let exec_output_tail = fabro_sandbox::default_redacted_output_tail(&e);
+                let exec_output_tail = fabro_sandbox::default_redacted_output_tail_with_redactor(
+                    &e,
+                    &self.secret_redactor,
+                );
                 let error = e.to_string();
                 // Emit CheckpointFailed and return error
                 let scope = stage_scope_for(state, node_id);
@@ -797,6 +814,7 @@ mod tests {
             sandbox_git: Arc::new(SandboxGitRuntime::new()),
             metadata_runtime,
             metadata_writer,
+            secret_redactor: SecretRedactor::default(),
             start_node_id: Some("start".to_string()),
             checkpoint_git_result: Arc::new(Mutex::new(None)),
             last_git_sha: Arc::new(Mutex::new(None)),
@@ -1260,6 +1278,7 @@ mod tests {
             "claude-sonnet-4-6".to_string(),
             Arc::new(fabro_auth::EnvCredentialSource::new()),
             Arc::new(Catalog::from_builtin().expect("default catalog should build")),
+            fabro_redact::SecretRedactor::default(),
             Arc::new(SandboxGitRuntime::new()),
             Arc::clone(&lifecycle.metadata_runtime),
             lifecycle.metadata_writer.clone(),

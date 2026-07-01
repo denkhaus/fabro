@@ -3,16 +3,25 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
+use fabro_redact::SecretRedactor;
 use fabro_store::{EventEnvelope, RunDatabase, RunProjection};
 use fabro_types::{RunBlobId, RunEvent};
 
-use crate::event::build_redacted_event_payload;
+use crate::event::build_redacted_event_payload_with_redactor;
 
 #[async_trait]
 pub trait RunStoreBackend: Send + Sync {
     async fn load_state(&self) -> Result<RunProjection>;
     async fn list_events(&self) -> Result<Vec<EventEnvelope>>;
     async fn append_run_event(&self, event: &RunEvent) -> Result<()>;
+    async fn append_run_event_with_redactor(
+        &self,
+        event: &RunEvent,
+        redactor: Option<&SecretRedactor>,
+    ) -> Result<()> {
+        let _ = redactor;
+        self.append_run_event(event).await
+    }
     async fn write_blob(&self, data: &[u8]) -> Result<RunBlobId>;
     async fn read_blob(&self, id: &RunBlobId) -> Result<Option<Bytes>>;
     async fn read_run_log(&self) -> Result<Option<Vec<u8>>>;
@@ -44,6 +53,16 @@ impl RunStoreHandle {
 
     pub async fn append_run_event(&self, event: &RunEvent) -> Result<()> {
         self.backend.append_run_event(event).await
+    }
+
+    pub async fn append_run_event_with_redactor(
+        &self,
+        event: &RunEvent,
+        redactor: Option<&SecretRedactor>,
+    ) -> Result<()> {
+        self.backend
+            .append_run_event_with_redactor(event, redactor)
+            .await
     }
 
     pub async fn write_blob(&self, data: &[u8]) -> Result<RunBlobId> {
@@ -83,7 +102,15 @@ impl RunStoreBackend for LocalRunStoreBackend {
     }
 
     async fn append_run_event(&self, event: &RunEvent) -> Result<()> {
-        let payload = build_redacted_event_payload(event, &event.run_id)?;
+        self.append_run_event_with_redactor(event, None).await
+    }
+
+    async fn append_run_event_with_redactor(
+        &self,
+        event: &RunEvent,
+        redactor: Option<&SecretRedactor>,
+    ) -> Result<()> {
+        let payload = build_redacted_event_payload_with_redactor(event, &event.run_id, redactor)?;
         self.run_store
             .append_event(&payload)
             .await

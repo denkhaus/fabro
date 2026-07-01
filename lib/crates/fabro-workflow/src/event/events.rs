@@ -1330,7 +1330,7 @@ impl Event {
                 info!(command_count, "Setup started");
             }
             Self::SetupCommandStarted { command, index } => {
-                debug!(command, index, "Setup command started");
+                debug!(command_len = command.len(), index, "Setup command started");
             }
             Self::SetupCommandCompleted {
                 command,
@@ -1339,7 +1339,7 @@ impl Event {
                 duration_ms,
             } => {
                 debug!(
-                    command,
+                    command_len = command.len(),
                     index, exit_code, duration_ms, "Setup command completed"
                 );
             }
@@ -1355,7 +1355,7 @@ impl Event {
             } => {
                 let tail = fabro_types::ExecOutputTail::trace_summary(exec_output_tail.as_ref());
                 error!(
-                    command,
+                    command_len = command.len(),
                     index,
                     exit_code,
                     exec_output_tail_present = tail.present,
