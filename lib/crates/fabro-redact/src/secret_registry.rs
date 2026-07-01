@@ -1,4 +1,4 @@
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use serde_json::Value;
 
@@ -26,23 +26,23 @@ impl SecretRedactor {
             return;
         }
 
-        let mut values = self.values.write().unwrap_or_else(PoisonError::into_inner);
-        if !values.iter().any(|registered| registered == &value) {
+        let mut values = self.write();
+        if !values.contains(&value) {
             values.push(value);
         }
     }
 
     /// Return `true` when no secret values have been registered.
     pub fn is_empty(&self) -> bool {
-        self.values
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .is_empty()
+        self.read().is_empty()
     }
 
     /// Redact all registered secret values from `s`.
     pub fn redact_into(&self, s: &str) -> String {
-        let values = self.registered_values_longest_first();
+        let values = self.read();
+        if values.is_empty() {
+            return s.to_string();
+        }
         redact_string_values(s, &values)
     }
 
@@ -50,33 +50,34 @@ impl SecretRedactor {
     ///
     /// Object keys are left unchanged.
     pub fn redact_json(&self, mut value: Value) -> Value {
-        let values = self.registered_values_longest_first();
+        let values = self.read();
         if values.is_empty() {
             return value;
         }
 
-        redact_json_value(&mut value, &values);
+        redact_json_leaves(&mut value, &values);
         value
     }
 
-    fn registered_values_longest_first(&self) -> Vec<String> {
-        let values = self.values.read().unwrap_or_else(PoisonError::into_inner);
-        let mut values = values.clone();
-        values.sort_by(|left, right| right.len().cmp(&left.len()).then_with(|| left.cmp(right)));
-        values
+    fn read(&self) -> RwLockReadGuard<'_, Vec<String>> {
+        self.values.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn write(&self) -> RwLockWriteGuard<'_, Vec<String>> {
+        self.values.write().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
-fn redact_json_value(value: &mut Value, values: &[String]) {
+fn redact_json_leaves(value: &mut Value, values: &[String]) {
     match value {
         Value::Object(obj) => {
             for child in obj.values_mut() {
-                redact_json_value(child, values);
+                redact_json_leaves(child, values);
             }
         }
         Value::Array(arr) => {
             for child in arr {
-                redact_json_value(child, values);
+                redact_json_leaves(child, values);
             }
         }
         Value::String(text) => {
@@ -89,43 +90,24 @@ fn redact_json_value(value: &mut Value, values: &[String]) {
     }
 }
 
+/// Collect every match of each registered value and let
+/// [`crate::redact_regions`] sort and merge overlaps, so a secret that overlaps
+/// another is fully redacted.
+///
+/// Assumes a small number of registered values (bounded by the run's declared
+/// secrets), so the per-value scan is not optimized further.
 fn redact_string_values(s: &str, values: &[String]) -> String {
-    if values.is_empty() {
-        return s.to_string();
-    }
-
     let mut regions = Vec::new();
     for value in values {
         for (start, _) in s.match_indices(value) {
-            let end = start + value.len();
-            if !regions
-                .iter()
-                .any(|region: &Region| regions_overlap(start, end, region))
-            {
-                regions.push(Region { start, end });
-            }
+            regions.push(Region {
+                start,
+                end: start + value.len(),
+            });
         }
     }
 
-    if regions.is_empty() {
-        return s.to_string();
-    }
-
-    regions.sort_by_key(|region| region.start);
-
-    let mut result = String::with_capacity(s.len());
-    let mut previous = 0;
-    for region in &regions {
-        result.push_str(&s[previous..region.start]);
-        result.push_str(crate::REDACTION_MARKER);
-        previous = region.end;
-    }
-    result.push_str(&s[previous..]);
-    result
-}
-
-fn regions_overlap(start: usize, end: usize, region: &Region) -> bool {
-    start < region.end && region.start < end
+    crate::redact_regions(s, regions)
 }
 
 #[cfg(test)]

@@ -45,7 +45,14 @@ pub struct Region {
 pub fn redact_string(s: &str) -> String {
     let mut regions = entropy::find_entropy_regions(s);
     regions.extend(gitleaks::find_gitleaks_regions(s));
+    redact_regions(s, regions)
+}
 
+/// Replace each region of `s` with [`REDACTION_MARKER`].
+///
+/// Regions may be unsorted and overlapping; they are sorted by start and
+/// overlapping regions are merged so the union is redacted as a single marker.
+pub(crate) fn redact_regions(s: &str, mut regions: Vec<Region>) -> String {
     if regions.is_empty() {
         return s.to_string();
     }
