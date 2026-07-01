@@ -497,14 +497,112 @@
     }
   },
   "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KWFGXZ5P42QRWBYAPVEAXMX6",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-07-01T19:01:59.216466662Z",
+    "run_branch": "fabro/run/01KWFGXZ5P42QRWBYAPVEAXMX6",
+    "base_sha": "aed85ab8b7ba6184afa9ba2a767915f523862182"
   },
-  "status_updated_at": "2026-07-01T19:01:43.877395308Z",
-  "last_event_at": "2026-07-01T19:01:58.883451465Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-07-01T19:01:59.216497147Z",
+  "last_event_at": "2026-07-01T19:02:00.782825718Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 20,
+      "checkpoint": {
+        "timestamp": "2026-07-01T19:02:00.782704983Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.retry_count.start": 0,
+          "graph.goal": "# Plan C — Redaction wiring + secrets in hooks\n\n**This is Plan C of three** (split for parallel execution):\n\n- **Plan A** — `SecretRedactor` in `fabro-redact`.\n- **Plan B** — resolve `secrets.*` tokens at the run boundary.\n- **Plan C (this file)** — populate the redactor from the boundary lookup, apply\n  it at the structured leak surfaces, and resolve secrets in hooks.\n\n**Run this AFTER Plans A and B have merged into the branch.** It consumes the\n`SecretRedactor` type from Plan A and the boundary secrets lookup from Plan B, and\nit edits `operations/start.rs` (which Plan B also edits), so it cannot run in\nparallel with them. If A/B are not yet merged, this plan will not compile.\n\n> **Token notation.** Interpolation tokens are written in this file without their\n> enclosing double curly braces, so the file is safe to pass directly as a\n> workflow goal (the goal templater would otherwise try to expand them). Read\n> `secrets.NAME`, `env.NAME`, and `secrets.*` as the double-curly-brace-wrapped\n> token form used everywhere else in the codebase, and write the real\n> double-brace syntax in the code, tests, and docs you produce.\n\n---\n\n## Overall goal (shared context)\n\nMake secret tokens (`secrets.NAME`) resolve from the server vault at the run\nboundary, never persist or leak, and fail closed. Plan B made secrets resolve;\n**this plan closes the redaction gap and adds hooks.**\n\nThe redaction decision: content-based redaction (`fabro-redact`, already applied at\nthe event-serialization pass and exec-output tails) is the universal baseline, and\na **per-run registry of resolved secret values** (Plan A's `SecretRedactor`)\nadditionally redacts declared secrets by exact match, so a secret is redacted even\nwhen it does not look like a credential.\n\n### Architecture facts the implementer needs\n\n- Secrets resolve in the worker at `RunSession::new`\n  (`lib/crates/fabro-workflow/src/operations/start.rs`), via the Token-only\n  secrets lookup closure added by Plan B (built over `services.vault`).\n- The `SecretRedactor` from Plan A (`fabro-redact`) is a cheap, cloneable, per-run\n  registry: `register(value)`, `redact_into(&str) -> String`,\n  `redact_json(Value) -> Value`, empty = no-op. **Per-run, never a global** — a\n  test-only in-process path runs multiple runs in one process.\n- Content-based redaction already runs at:\n  - the event-serialization boundary — `redact_json_value` via\n    `build_redacted_event_payload` (`lib/crates/fabro-workflow/src/event/redaction.rs:8,22`)\n    and `redacted_event_json` (`:13`); the local run-store backend also redacts\n    (`lib/crates/fabro-workflow/src/runtime_store.rs:85`);\n  - exec-output tails — `redacted_tail` in\n    `lib/crates/fabro-sandbox/src/sandbox.rs:626`.\n- Events that carry resolved command/env text: `SetupCommandStarted`/`Completed`\n  (`lib/crates/fabro-workflow/src/event/events.rs:534,538`) and `SetupFailed`\n  (`:547`, carries `command`, `stderr`, exec tail). Emitted in\n  `lib/crates/fabro-workflow/src/pipeline/initialize.rs` (~`:530,555,568`); the\n  setup-failure path also builds an error string embedding the resolved command\n  and raw stderr (~`:562`).\n- Hooks resolve `InterpString` at fire time in the executor against process env\n  only, via `resolve_interp` (`lib/crates/fabro-hooks/src/executor.rs:76`),\n  `resolve_header` (`:134`), and `resolve_prompt_and_model` (`:188`). **There is\n  no vault handle anywhere in the hook path today** (the bridge at\n  `lib/crates/fabro-hooks/src/bridge.rs` carries none). Hook settings are wired in\n  `operations/start.rs` (~`:477`) into `HookSettings`.\n- Token-only guard: reuse `vault_get_token` (`lib/crates/fabro-auth/src/vault_ext.rs:23`).\n\n### Design decisions (fixed)\n\n- Per-run redactor; content-based baseline stays; provenance-by-registration for\n  declared secrets. Fail closed. Token-only. No wire/API changes.\n\n### Conventions\n\n- **TDD.** Failing test first. Hermetic tests (temp-dir vaults; no ambient\n  provider keys). Match codebase style. Plain-English commits/PR/comments — no\n  internal planning identifiers. Verify gate: nightly fmt/clippy, workspace\n  nextest, docs check, web/api-client typecheck, release build. Never print/log\n  resolved secrets.\n\n---\n\n## Implementation\n\n### C.1 — Populate the registry from the boundary lookup\n\nFile: `lib/crates/fabro-workflow/src/operations/start.rs`.\n\nCreate one `fabro_redact::SecretRedactor` per run in `RunSession::new`. Have the\nToken-only secrets lookup closure (added by Plan B) `register` each value it\nreturns before handing it back. Because every secret token value flows through\nthat one closure, the registry ends up holding exactly the secret values\ninterpolated into this run. Keep the redactor per-run and thread it (Arc-clone) to\nthe surfaces below — never a `static`/global.\n\n### C.2 — Apply the redactor at the structured leak surfaces\n\nCompose the redactor **after** the existing content-based pass at each surface:\n\n1. **Events → `progress.jsonl` / run store / SSE.** Give the emitter/sink the\n   run's `SecretRedactor` and apply `redactor.redact_json(...)` after\n   `redact_json_value` in `event/redaction.rs` (`build_redacted_event_payload`,\n   `redacted_event_json`). Confirm the local run-store path\n   (`runtime_store.rs:85`) also runs through the redacted payload. This covers\n   `SetupCommandStarted/Completed` and `SetupFailed`.\n2. **Setup-command failure message.** In `pipeline/initialize.rs` (~`:562`), run\n   the constructed error text through `redactor.redact_into(...)` before it becomes\n   an `Error`.\n3. **Exec-output tails.** `redacted_tail` in `fabro-sandbox/src/sandbox.rs:626`\n   runs `redact_string` on command output. Thread the run's redactor into this\n   path and apply it after `redact_string`. This is the most invasive thread (it\n   crosses the `Sandbox` exec path); if it cannot be threaded cleanly, it is\n   acceptable to **defer only this sub-item** to a follow-up and rely on the\n   content-based baseline there — but if you defer it, **say so explicitly in the\n   PR description** as a known gap. Do the event and setup-error surfaces\n   regardless.\n\n**Tests:**\n\n- A prepare step that fails while a **low-entropy** secret value (one\n  `redact_string` would miss) is present has that value replaced with `REDACTED`\n  in the emitted `SetupFailed` event and in the resulting error text.\n- A resolved secret value does not appear verbatim in a serialized event payload.\n- Content-based redaction still fires for a high-entropy non-secret string\n  (baseline intact).\n- Two runs in one process (the in-process path) do not see each other's registered\n  secret values (per-run isolation).\n\n### C.3 — Secrets in hooks\n\nFiles: `lib/crates/fabro-hooks/src/executor.rs`, `bridge.rs`, and the hook wiring\nin `operations/start.rs`.\n\n1. Thread a Token-only secrets lookup (or the vault handle wrapped in a Token-only\n   closure) from the worker (`RunSession` / the hook runner) down through\n   `HookExecutor::execute` into `resolve_interp` (`executor.rs:76`) and\n   `resolve_prompt_and_model` (`:188`); switch them from the env-only `.resolve()`\n   to `resolve_with(env + secrets)`. Keep fail-closed semantics (hooks already\n   fail closed for command; extend to the http/prompt paths for secret errors).\n   Secrets resolve in hook `command`, `prompt`, and `url`.\n2. **HTTP-hook headers: reject secret tokens (fail closed).** Header values gate\n   env tokens behind an `allowed_env_vars` allowlist; a dedicated allowlist for\n   secrets in outbound headers is deliberately out of scope. In `resolve_header`\n   (`executor.rs:134`), a `secrets.*` token in a header value must produce a clear\n   error pointing the user at hook command/prompt/url usage. Do **not** silently\n   allow secrets into outbound headers and do **not** add a new config field.\n3. Register hook-resolved secret values into the same per-run `SecretRedactor`\n   (the hook runs in the worker, which owns it).\n\n**Tests:** hook `command`/`url`/`prompt` resolve a `secrets.X` token from a temp\nvault; a missing secret fails closed; a secret token in an HTTP-hook header errors\nwith the guidance message; resolved hook secret values are redacted from hook\nlogs/events.\n\n### C.4 — Docs\n\nUpdate the relevant `docs/public/` config page: declared secrets are redacted\nregardless of shape on the run's structured surfaces (events, `progress.jsonl`,\nsetup errors) and via content-based redaction on command output; the guarantee is\nworker-side — once a secret is placed into sandbox process env, anything the\nsandbox re-emits as plain text is covered only by content-based redaction. State\nthis boundary; do not imply a total guarantee. Keep `cargo dev docs check` green.\n\n### C.5 — Verify\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace` (hermetic — no ambient provider keys)\n- `cargo dev docs check`\n- `apps/fabro-web` + `lib/packages/fabro-api-client` typecheck (should be\n  untouched — no wire changes)\n- release build (`cargo dev build -- -p fabro-cli --release`)\n\n## Dependencies\n\n**Requires Plans A and B merged first.** Not parallel-safe with Plan B (shares\n`operations/start.rs`).\n",
+          "internal.fidelity": "compact",
+          "failure_class": "",
+          "failure_signature": "",
+          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
+          "internal.run_id": "01KWFGXZ5P42QRWBYAPVEAXMX6",
+          "internal.thread_id": null,
+          "graph.rankdir": "LR",
+          "internal.node_visit_count": 1,
+          "outcome": "succeeded",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "current_node": "start"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "toolchain",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-01T19:02:02.008525168Z",
+        "current_node": "toolchain",
+        "completed_nodes": [
+          "start",
+          "toolchain"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_signature": "",
+          "internal.thread_id": "start",
+          "thread.start.current_node": "toolchain",
+          "internal.retry_count.start": 0,
+          "graph.goal": "# Plan C — Redaction wiring + secrets in hooks\n\n**This is Plan C of three** (split for parallel execution):\n\n- **Plan A** — `SecretRedactor` in `fabro-redact`.\n- **Plan B** — resolve `secrets.*` tokens at the run boundary.\n- **Plan C (this file)** — populate the redactor from the boundary lookup, apply\n  it at the structured leak surfaces, and resolve secrets in hooks.\n\n**Run this AFTER Plans A and B have merged into the branch.** It consumes the\n`SecretRedactor` type from Plan A and the boundary secrets lookup from Plan B, and\nit edits `operations/start.rs` (which Plan B also edits), so it cannot run in\nparallel with them. If A/B are not yet merged, this plan will not compile.\n\n> **Token notation.** Interpolation tokens are written in this file without their\n> enclosing double curly braces, so the file is safe to pass directly as a\n> workflow goal (the goal templater would otherwise try to expand them). Read\n> `secrets.NAME`, `env.NAME`, and `secrets.*` as the double-curly-brace-wrapped\n> token form used everywhere else in the codebase, and write the real\n> double-brace syntax in the code, tests, and docs you produce.\n\n---\n\n## Overall goal (shared context)\n\nMake secret tokens (`secrets.NAME`) resolve from the server vault at the run\nboundary, never persist or leak, and fail closed. Plan B made secrets resolve;\n**this plan closes the redaction gap and adds hooks.**\n\nThe redaction decision: content-based redaction (`fabro-redact`, already applied at\nthe event-serialization pass and exec-output tails) is the universal baseline, and\na **per-run registry of resolved secret values** (Plan A's `SecretRedactor`)\nadditionally redacts declared secrets by exact match, so a secret is redacted even\nwhen it does not look like a credential.\n\n### Architecture facts the implementer needs\n\n- Secrets resolve in the worker at `RunSession::new`\n  (`lib/crates/fabro-workflow/src/operations/start.rs`), via the Token-only\n  secrets lookup closure added by Plan B (built over `services.vault`).\n- The `SecretRedactor` from Plan A (`fabro-redact`) is a cheap, cloneable, per-run\n  registry: `register(value)`, `redact_into(&str) -> String`,\n  `redact_json(Value) -> Value`, empty = no-op. **Per-run, never a global** — a\n  test-only in-process path runs multiple runs in one process.\n- Content-based redaction already runs at:\n  - the event-serialization boundary — `redact_json_value` via\n    `build_redacted_event_payload` (`lib/crates/fabro-workflow/src/event/redaction.rs:8,22`)\n    and `redacted_event_json` (`:13`); the local run-store backend also redacts\n    (`lib/crates/fabro-workflow/src/runtime_store.rs:85`);\n  - exec-output tails — `redacted_tail` in\n    `lib/crates/fabro-sandbox/src/sandbox.rs:626`.\n- Events that carry resolved command/env text: `SetupCommandStarted`/`Completed`\n  (`lib/crates/fabro-workflow/src/event/events.rs:534,538`) and `SetupFailed`\n  (`:547`, carries `command`, `stderr`, exec tail). Emitted in\n  `lib/crates/fabro-workflow/src/pipeline/initialize.rs` (~`:530,555,568`); the\n  setup-failure path also builds an error string embedding the resolved command\n  and raw stderr (~`:562`).\n- Hooks resolve `InterpString` at fire time in the executor against process env\n  only, via `resolve_interp` (`lib/crates/fabro-hooks/src/executor.rs:76`),\n  `resolve_header` (`:134`), and `resolve_prompt_and_model` (`:188`). **There is\n  no vault handle anywhere in the hook path today** (the bridge at\n  `lib/crates/fabro-hooks/src/bridge.rs` carries none). Hook settings are wired in\n  `operations/start.rs` (~`:477`) into `HookSettings`.\n- Token-only guard: reuse `vault_get_token` (`lib/crates/fabro-auth/src/vault_ext.rs:23`).\n\n### Design decisions (fixed)\n\n- Per-run redactor; content-based baseline stays; provenance-by-registration for\n  declared secrets. Fail closed. Token-only. No wire/API changes.\n\n### Conventions\n\n- **TDD.** Failing test first. Hermetic tests (temp-dir vaults; no ambient\n  provider keys). Match codebase style. Plain-English commits/PR/comments — no\n  internal planning identifiers. Verify gate: nightly fmt/clippy, workspace\n  nextest, docs check, web/api-client typecheck, release build. Never print/log\n  resolved secrets.\n\n---\n\n## Implementation\n\n### C.1 — Populate the registry from the boundary lookup\n\nFile: `lib/crates/fabro-workflow/src/operations/start.rs`.\n\nCreate one `fabro_redact::SecretRedactor` per run in `RunSession::new`. Have the\nToken-only secrets lookup closure (added by Plan B) `register` each value it\nreturns before handing it back. Because every secret token value flows through\nthat one closure, the registry ends up holding exactly the secret values\ninterpolated into this run. Keep the redactor per-run and thread it (Arc-clone) to\nthe surfaces below — never a `static`/global.\n\n### C.2 — Apply the redactor at the structured leak surfaces\n\nCompose the redactor **after** the existing content-based pass at each surface:\n\n1. **Events → `progress.jsonl` / run store / SSE.** Give the emitter/sink the\n   run's `SecretRedactor` and apply `redactor.redact_json(...)` after\n   `redact_json_value` in `event/redaction.rs` (`build_redacted_event_payload`,\n   `redacted_event_json`). Confirm the local run-store path\n   (`runtime_store.rs:85`) also runs through the redacted payload. This covers\n   `SetupCommandStarted/Completed` and `SetupFailed`.\n2. **Setup-command failure message.** In `pipeline/initialize.rs` (~`:562`), run\n   the constructed error text through `redactor.redact_into(...)` before it becomes\n   an `Error`.\n3. **Exec-output tails.** `redacted_tail` in `fabro-sandbox/src/sandbox.rs:626`\n   runs `redact_string` on command output. Thread the run's redactor into this\n   path and apply it after `redact_string`. This is the most invasive thread (it\n   crosses the `Sandbox` exec path); if it cannot be threaded cleanly, it is\n   acceptable to **defer only this sub-item** to a follow-up and rely on the\n   content-based baseline there — but if you defer it, **say so explicitly in the\n   PR description** as a known gap. Do the event and setup-error surfaces\n   regardless.\n\n**Tests:**\n\n- A prepare step that fails while a **low-entropy** secret value (one\n  `redact_string` would miss) is present has that value replaced with `REDACTED`\n  in the emitted `SetupFailed` event and in the resulting error text.\n- A resolved secret value does not appear verbatim in a serialized event payload.\n- Content-based redaction still fires for a high-entropy non-secret string\n  (baseline intact).\n- Two runs in one process (the in-process path) do not see each other's registered\n  secret values (per-run isolation).\n\n### C.3 — Secrets in hooks\n\nFiles: `lib/crates/fabro-hooks/src/executor.rs`, `bridge.rs`, and the hook wiring\nin `operations/start.rs`.\n\n1. Thread a Token-only secrets lookup (or the vault handle wrapped in a Token-only\n   closure) from the worker (`RunSession` / the hook runner) down through\n   `HookExecutor::execute` into `resolve_interp` (`executor.rs:76`) and\n   `resolve_prompt_and_model` (`:188`); switch them from the env-only `.resolve()`\n   to `resolve_with(env + secrets)`. Keep fail-closed semantics (hooks already\n   fail closed for command; extend to the http/prompt paths for secret errors).\n   Secrets resolve in hook `command`, `prompt`, and `url`.\n2. **HTTP-hook headers: reject secret tokens (fail closed).** Header values gate\n   env tokens behind an `allowed_env_vars` allowlist; a dedicated allowlist for\n   secrets in outbound headers is deliberately out of scope. In `resolve_header`\n   (`executor.rs:134`), a `secrets.*` token in a header value must produce a clear\n   error pointing the user at hook command/prompt/url usage. Do **not** silently\n   allow secrets into outbound headers and do **not** add a new config field.\n3. Register hook-resolved secret values into the same per-run `SecretRedactor`\n   (the hook runs in the worker, which owns it).\n\n**Tests:** hook `command`/`url`/`prompt` resolve a `secrets.X` token from a temp\nvault; a missing secret fails closed; a secret token in an HTTP-hook header errors\nwith the guidance message; resolved hook secret values are redacted from hook\nlogs/events.\n\n### C.4 — Docs\n\nUpdate the relevant `docs/public/` config page: declared secrets are redacted\nregardless of shape on the run's structured surfaces (events, `progress.jsonl`,\nsetup errors) and via content-based redaction on command output; the guarantee is\nworker-side — once a secret is placed into sandbox process env, anything the\nsandbox re-emits as plain text is covered only by content-based redaction. State\nthis boundary; do not imply a total guarantee. Keep `cargo dev docs check` green.\n\n### C.5 — Verify\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace` (hermetic — no ambient provider keys)\n- `cargo dev docs check`\n- `apps/fabro-web` + `lib/packages/fabro-api-client` typecheck (should be\n  untouched — no wire changes)\n- release build (`cargo dev build -- -p fabro-cli --release`)\n\n## Dependencies\n\n**Requires Plans A and B merged first.** Not parallel-safe with Plan B (shares\n`operations/start.rs`).\n",
+          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
+          "outcome": "succeeded",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.run_id": "01KWFGXZ5P42QRWBYAPVEAXMX6",
+          "command.output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c",
+          "internal.fidelity": "compact",
+          "internal.node_visit_count": 1,
+          "current_node": "toolchain",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "internal.retry_count.toolchain": 0
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1221,
+              "active_time_ms": 1221
+            }
+          }
+        },
+        "next_node_id": "preflight_compile",
+        "node_visits": {
+          "toolchain": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -530,5 +628,67 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-01T19:02:00.782580182Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-01T19:02:00.782497216Z",
+      "handler": "start",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    },
+    "toolchain@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "command": "exec 2>&1\ncommand -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "language": "shell"
+      },
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-01T19:02:00.782802381Z",
+      "handler": "command",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
+    }
+  }
 }
