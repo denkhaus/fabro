@@ -1,0 +1,5 @@
+{
+  "mode": "prompt",
+  "provider": "anthropic",
+  "model": "claude-opus-4-8"
+}

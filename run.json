@@ -376,7 +376,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-01T21:51:27.582462398Z",
-  "last_event_at": "2026-07-01T22:13:55.446213774Z",
+  "last_event_at": "2026-07-01T22:14:01.602111003Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -592,15 +592,184 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 280,
       "checkpoint": {
-        "timestamp": "2026-07-01T22:13:59.293360618Z",
+        "timestamp": "2026-07-01T22:14:01.522644873Z",
         "current_node": "train",
         "completed_nodes": [
           "start",
           "preflight",
           "plan",
           "train"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.goal": "Merge the pull requests 543,544 into main as a merge train: process them in the given order, rebasing each onto the latest main (so each PR is validated against the cumulative result of the ones before it), resolving conflicts, pushing, and merging with the squash method. Stop at the first PR that cannot be merged cleanly and report why.",
+          "internal.fidelity": "full",
+          "thread.merge-train.current_node": "train",
+          "graph.rankdir": "LR",
+          "thread.preflight.current_node": "plan",
+          "last_response": "{\"outcome\": \"succeeded\", \"context_updates\": {\"final_main_sha\": \"ec0a08afb3325a20b1d9cbf5b5b75b987202e546\", \"pr_543\": \"MERGED\", \"pr_544\": \"MERGED\", \"summary\": \"Both queued PRs rebased, verified green l",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "command.output": "blob://sha256/ea19cd83eed4d9599888bd0cad534de695ad3b85b6ab2941a381ee0e88808c99",
+          "internal.retry_count.plan": 0,
+          "internal.retry_count.start": 0,
+          "pr_543": "MERGED",
+          "outcome": "succeeded",
+          "response.train": "{\"outcome\": \"succeeded\", \"context_updates\": {\"final_main_sha\": \"ec0a08afb3325a20b1d9cbf5b5b75b987202e546\", \"pr_543\": \"MERGED\", \"pr_544\": \"MERGED\", \"summary\": \"Both queued PRs rebased, verified green locally and in CI, squash-merged in order. PR 543 (vulnerability_alerts) merged clean (merge commit 3e0db1feb). PR 544 (organization_projects) rebased onto main after 543; resolved expected install.rs conflicts by keeping both permission keys and both test assertions (merge commit ec0a08afb). No escalations, no branch-protection rejections.\"}}",
+          "thread.start.current_node": "preflight",
+          "internal.node_visit_count": 1,
+          "current_node": "train",
+          "graph.max_node_visits": "40",
+          "internal.thread_id": "merge-train",
+          "last_stage": "train",
+          "final_main_sha": "ec0a08afb3325a20b1d9cbf5b5b75b987202e546",
+          "failure_class": "",
+          "internal.retry_count.preflight": 0,
+          "internal.retry_count.train": 0,
+          "pr_544": "MERGED",
+          "internal.run_id": "01KWFTMDQVT7SD0GRRWKXH776E",
+          "failure_signature": "",
+          "response.plan": "Plan written to `merge-train-plan.md`.\n\n**Summary:**\n\n- **READY (2):** Both PRs qualify — open, not draft, target `main`, head branches in `fabro-sh/fabro` (not forks), both `MERGEABLE`.\n  1. **#543** — `feat: grant Dependabot alerts read/write...` (branch `add-dependabot-alerts-app-scope`)\n  2. **#544** — `fix: grant organization_projects...` (branch `add-organization-projects-app-scope`)\n- **SKIP:** none.\n- **Order:** keep requested **543 → 544**. No dependency; independent permission additions.\n- **Conflict warning:** #544 **will conflict** after #543 merges. Both edit the identical `\"emails\": \"read\"` line and insert a test assertion at the same spot in `install.rs` (both cli + server crates). The conflict is additive/trivial — resolution is to **keep both permission keys** (`vulnerability_alerts` and `organization_projects`) and **both test assertions**, fix trailing commas, then verify with `cargo nextest run -p fabro-cli -p fabro-server`.\n\nPlan path: `/home/daytona/workspace/fabro/merge-train-plan.md`",
+          "summary": "Both queued PRs rebased, verified green locally and in CI, squash-merged in order. PR 543 (vulnerability_alerts) merged clean (merge commit 3e0db1feb). PR 544 (organization_projects) rebased onto main after 543; resolved expected install.rs conflicts by keeping both permission keys and both test assertions (merge commit ec0a08afb). No escalations, no branch-protection rejections."
+        },
+        "node_outcomes": {
+          "train": {
+            "status": "succeeded",
+            "context_updates": {
+              "final_main_sha": "ec0a08afb3325a20b1d9cbf5b5b75b987202e546",
+              "pr_544": "MERGED",
+              "last_response": "{\"outcome\": \"succeeded\", \"context_updates\": {\"final_main_sha\": \"ec0a08afb3325a20b1d9cbf5b5b75b987202e546\", \"pr_543\": \"MERGED\", \"pr_544\": \"MERGED\", \"summary\": \"Both queued PRs rebased, verified green l",
+              "last_stage": "train",
+              "response.train": "{\"outcome\": \"succeeded\", \"context_updates\": {\"final_main_sha\": \"ec0a08afb3325a20b1d9cbf5b5b75b987202e546\", \"pr_543\": \"MERGED\", \"pr_544\": \"MERGED\", \"summary\": \"Both queued PRs rebased, verified green locally and in CI, squash-merged in order. PR 543 (vulnerability_alerts) merged clean (merge commit 3e0db1feb). PR 544 (organization_projects) rebased onto main after 543; resolved expected install.rs conflicts by keeping both permission keys and both test assertions (merge commit ec0a08afb). No escalations, no branch-protection rejections.\"}}",
+              "pr_543": "MERGED",
+              "summary": "Both queued PRs rebased, verified green locally and in CI, squash-merged in order. PR 543 (vulnerability_alerts) merged clean (merge commit 3e0db1feb). PR 544 (organization_projects) rebased onto main after 543; resolved expected install.rs conflicts by keeping both permission keys and both test assertions (merge commit ec0a08afb). No escalations, no branch-protection rejections."
+            },
+            "notes": "Stage completed: train",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "anthropic",
+                    "model_id": "claude-opus-4-8"
+                  },
+                  "tokens": {
+                    "input_tokens": 47713,
+                    "output_tokens": 21714,
+                    "reasoning_tokens": 0,
+                    "cache_read_tokens": 2255223,
+                    "cache_write_tokens": 221563
+                  }
+                },
+                "facts": {
+                  "algorithm": "anthropic",
+                  "cache_write_5m_tokens": 221563,
+                  "cache_write_1h_tokens": 0
+                }
+              },
+              "total_usd_micros": 3293794
+            },
+            "files_touched": [
+              "/home/daytona/workspace/fabro/lib/crates/fabro-cli/src/commands/install.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-server/src/install.rs",
+              "/home/daytona/workspace/fabro/merge-train-state.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 318902,
+              "tool_time_ms": 987667,
+              "active_time_ms": 1306569
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "plan": {
+            "status": "succeeded",
+            "context_updates": {
+              "response.plan": "Plan written to `merge-train-plan.md`.\n\n**Summary:**\n\n- **READY (2):** Both PRs qualify — open, not draft, target `main`, head branches in `fabro-sh/fabro` (not forks), both `MERGEABLE`.\n  1. **#543** — `feat: grant Dependabot alerts read/write...` (branch `add-dependabot-alerts-app-scope`)\n  2. **#544** — `fix: grant organization_projects...` (branch `add-organization-projects-app-scope`)\n- **SKIP:** none.\n- **Order:** keep requested **543 → 544**. No dependency; independent permission additions.\n- **Conflict warning:** #544 **will conflict** after #543 merges. Both edit the identical `\"emails\": \"read\"` line and insert a test assertion at the same spot in `install.rs` (both cli + server crates). The conflict is additive/trivial — resolution is to **keep both permission keys** (`vulnerability_alerts` and `organization_projects`) and **both test assertions**, fix trailing commas, then verify with `cargo nextest run -p fabro-cli -p fabro-server`.\n\nPlan path: `/home/daytona/workspace/fabro/merge-train-plan.md`",
+              "last_response": "Plan written to `merge-train-plan.md`.\n\n**Summary:**\n\n- **READY (2):** Both PRs qualify — open, not draft, target `main`, head branches in `fabro-sh/fabro` (not forks), both `MERGEABLE`.\n  1. **#543",
+              "last_stage": "plan"
+            },
+            "notes": "Stage completed: plan",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "anthropic",
+                    "model_id": "claude-opus-4-8"
+                  },
+                  "tokens": {
+                    "input_tokens": 4755,
+                    "output_tokens": 2316,
+                    "reasoning_tokens": 0,
+                    "cache_read_tokens": 53006,
+                    "cache_write_tokens": 15608
+                  }
+                },
+                "facts": {
+                  "algorithm": "anthropic",
+                  "cache_write_5m_tokens": 15608,
+                  "cache_write_1h_tokens": 0
+                }
+              },
+              "total_usd_micros": 205728
+            },
+            "files_touched": [
+              "/home/daytona/workspace/fabro/merge-train-plan.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 31587,
+              "tool_time_ms": 2552,
+              "active_time_ms": 34139
+            }
+          },
+          "preflight": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/ea19cd83eed4d9599888bd0cad534de695ad3b85b6ab2941a381ee0e88808c99"
+            },
+            "notes": "Script completed: gh auth status 2>&1 && git fetch --prune origin 2>&1 && echo 'preflight ok'",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1742,
+              "active_time_ms": 1742
+            }
+          }
+        },
+        "next_node_id": "report",
+        "git_commit_sha": "6a798807df835f88f64e3a03ef02670cf92fd241",
+        "node_visits": {
+          "train": 1,
+          "plan": 1,
+          "start": 1,
+          "preflight": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/lib/crates/fabro-cli/src/commands/install.rs b/lib/crates/fabro-cli/src/commands/install.rs\nindex d5c2145e4..6c74b31a4 100644\n--- a/lib/crates/fabro-cli/src/commands/install.rs\n+++ b/lib/crates/fabro-cli/src/commands/install.rs\n@@ -948,7 +948,9 @@ fn build_github_app_manifest(app_name: &str, port: u16, web_url: &str) -> serde_\n             \"pull_requests\": \"write\",\n             \"checks\": \"write\",\n             \"issues\": \"write\",\n-            \"emails\": \"read\"\n+            \"emails\": \"read\",\n+            \"vulnerability_alerts\": \"write\",\n+            \"organization_projects\": \"write\"\n         },\n         \"default_events\": []\n     })\n@@ -2662,6 +2664,14 @@ client_id = \"client-id\"\n             manifest[\"setup_url\"],\n             serde_json::json!(\"https://app.example.com/setup\"),\n         );\n+        assert_eq!(\n+            manifest[\"default_permissions\"][\"vulnerability_alerts\"],\n+            serde_json::json!(\"write\"),\n+        );\n+        assert_eq!(\n+            manifest[\"default_permissions\"][\"organization_projects\"],\n+            serde_json::json!(\"write\"),\n+        );\n     }\n \n     #[tokio::test]\ndiff --git a/lib/crates/fabro-server/src/install.rs b/lib/crates/fabro-server/src/install.rs\nindex aae91785a..a24fd5b3b 100644\n--- a/lib/crates/fabro-server/src/install.rs\n+++ b/lib/crates/fabro-server/src/install.rs\n@@ -2053,7 +2053,9 @@ fn build_github_app_manifest(\n             \"pull_requests\": \"write\",\n             \"checks\": \"write\",\n             \"issues\": \"write\",\n-            \"emails\": \"read\"\n+            \"emails\": \"read\",\n+            \"vulnerability_alerts\": \"write\",\n+            \"organization_projects\": \"write\"\n         },\n         \"default_events\": []\n     })\ndiff --git a/merge-train-plan.md b/merge-train-plan.md\ndeleted file mode 100644\nindex e20c7423f..000000000\n--- a/merge-train-plan.md\n+++ /dev/null\n@@ -1,48 +0,0 @@\n-# Merge Train Plan\n-\n-Base branch: `main`\n-Requested order: **543, 544** (squash merge, rebase each onto latest main)\n-\n-## READY PRs (in merge order)\n-\n-| # | Title | Head branch | Author | Mergeable |\n-|---|-------|-------------|--------|-----------|\n-| 543 | feat: grant Dependabot alerts read/write to auto-created GitHub Apps | `add-dependabot-alerts-app-scope` | swerner | MERGEABLE |\n-| 544 | fix: grant organization_projects to auto-created GitHub Apps for Projects V2 | `add-organization-projects-app-scope` | swerner | MERGEABLE |\n-\n-Both are open, not draft, target `main`, and their head branches live in the\n-`fabro-sh/fabro` repo (not forks). Both are eligible.\n-\n-## SKIP list\n-\n-None.\n-\n-## Ordering notes\n-\n-Keep the requested order **543 → 544**. No logical dependency was detected; the\n-two PRs add independent GitHub App permissions. Order does not matter\n-functionally, so the given order stands — no human confirmation needed.\n-\n-## Conflict warnings\n-\n-**PR 544 will conflict after 543 merges** (expected — the train resolves it).\n-\n-Both PRs touch the exact same two files and the exact same regions:\n-\n-- `lib/crates/fabro-cli/src/commands/install.rs`\n-  - `build_github_app_manifest`: both change the `\"emails\": \"read\"` line\n-    (add trailing comma + a new permission key).\n-    - 543 adds `\"vulnerability_alerts\": \"write\"`\n-    - 544 adds `\"organization_projects\": \"write\"`\n-  - Test block: both insert an `assert_eq!` on\n-    `manifest[\"default_permissions\"][...]` at the same line.\n-- `lib/crates/fabro-server/src/install.rs`\n-  - `build_github_app_manifest`: same `\"emails\": \"read\"` line edit.\n-\n-**Resolution guidance for the train stage:** these are additive and\n-non-contradictory. When rebasing 544 onto main (after 543 is in), keep BOTH\n-permission keys in the manifest map and BOTH test assertions. The final\n-`default_permissions` block should contain `\"emails\": \"read\"`,\n-`\"vulnerability_alerts\": \"write\"`, and `\"organization_projects\": \"write\"`\n-(with correct trailing commas). Verify with\n-`cargo nextest run -p fabro-cli -p fabro-server` before pushing.\ndiff --git a/merge-train-state.md b/merge-train-state.md\nnew file mode 100644\nindex 000000000..00dffc92e\n--- /dev/null\n+++ b/merge-train-state.md\n@@ -0,0 +1,13 @@\n+# Merge Train State\n+\n+Base branch: `main`\n+Order: 543 → 544 (squash)\n+\n+| # | Status | Reason |\n+|---|--------|--------|\n+| 543 | MERGED | Rebased onto main, all local + CI checks green, squash-merged. Merge commit 3e0db1feb. |\n+| 544 | MERGED | Rebased onto main (after 543); resolved expected install.rs conflicts by keeping BOTH permission keys (`vulnerability_alerts` + `organization_projects`) and BOTH test assertions. All local + CI checks green, squash-merged. Merge commit ec0a08afb. |\n+\n+Final main SHA: ec0a08afb3325a20b1d9cbf5b5b75b987202e546\n+\n+All queued PRs resolved (MERGED). No escalations. Train complete.\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 27,
+          "deletions": 2
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-01T22:14:09.042952554Z",
+        "current_node": "report",
+        "completed_nodes": [
+          "start",
+          "preflight",
+          "plan",
+          "train",
+          "report"
         ],
         "node_retries": {},
         "context_values": {
@@ -611,32 +780,73 @@
           "thread.start.current_node": "preflight",
           "internal.retry_count.plan": 0,
           "pr_543": "MERGED",
-          "current_node": "train",
+          "current_node": "report",
           "command.output": "blob://sha256/ea19cd83eed4d9599888bd0cad534de695ad3b85b6ab2941a381ee0e88808c99",
           "summary": "Both queued PRs rebased, verified green locally and in CI, squash-merged in order. PR 543 (vulnerability_alerts) merged clean (merge commit 3e0db1feb). PR 544 (organization_projects) rebased onto main after 543; resolved expected install.rs conflicts by keeping both permission keys and both test assertions (merge commit ec0a08afb). No escalations, no branch-protection rejections.",
           "failure_signature": "",
           "graph.rankdir": "LR",
           "outcome": "succeeded",
           "internal.retry_count.start": 0,
-          "last_stage": "train",
+          "last_stage": "report",
           "response.plan": "Plan written to `merge-train-plan.md`.\n\n**Summary:**\n\n- **READY (2):** Both PRs qualify — open, not draft, target `main`, head branches in `fabro-sh/fabro` (not forks), both `MERGEABLE`.\n  1. **#543** — `feat: grant Dependabot alerts read/write...` (branch `add-dependabot-alerts-app-scope`)\n  2. **#544** — `fix: grant organization_projects...` (branch `add-organization-projects-app-scope`)\n- **SKIP:** none.\n- **Order:** keep requested **543 → 544**. No dependency; independent permission additions.\n- **Conflict warning:** #544 **will conflict** after #543 merges. Both edit the identical `\"emails\": \"read\"` line and insert a test assertion at the same spot in `install.rs` (both cli + server crates). The conflict is additive/trivial — resolution is to **keep both permission keys** (`vulnerability_alerts` and `organization_projects`) and **both test assertions**, fix trailing commas, then verify with `cargo nextest run -p fabro-cli -p fabro-server`.\n\nPlan path: `/home/daytona/workspace/fabro/merge-train-plan.md`",
-          "internal.thread_id": "merge-train",
+          "internal.thread_id": "train",
           "response.train": "{\"outcome\": \"succeeded\", \"context_updates\": {\"final_main_sha\": \"ec0a08afb3325a20b1d9cbf5b5b75b987202e546\", \"pr_543\": \"MERGED\", \"pr_544\": \"MERGED\", \"summary\": \"Both queued PRs rebased, verified green locally and in CI, squash-merged in order. PR 543 (vulnerability_alerts) merged clean (merge commit 3e0db1feb). PR 544 (organization_projects) rebased onto main after 543; resolved expected install.rs conflicts by keeping both permission keys and both test assertions (merge commit ec0a08afb). No escalations, no branch-protection rejections.\"}}",
+          "response.report": "# Merge-Train Run Summary\n\n**Run ID:** 01KWFTMDQVT7SD0GRRWKXH776E\n**Order processed:** 543 → 544 (as requested)\n**Method:** squash merge, each rebased onto cumulative `main`\n**Final base SHA:** `ec0a08afb3325a20b1d9cbf5b5b75b987202e546`\n\n## Per-PR Results\n\n### PR #543 — `feat: grant Dependabot alerts read/write` (branch `add-dependabot-alerts-app-scope`)\n- **Status: MERGED**\n- **Method:** squash\n- **Resulting base SHA:** `3e0db1feb...` (merge commit)\n- Rebased onto latest `main`, verified green locally and in CI, merged clean with no conflicts.\n\n### PR #544 — `fix: grant organization_projects app scope` (branch `add-organization-projects-app-scope`)\n- **Status: MERGED**\n- **Method:** squash\n- **Resulting base SHA:** `ec0a08afb3325a20b1d9cbf5b5b75b987202e546` (final main)\n- Rebased onto `main` after #543 landed. Encountered the **anticipated additive conflict** in `install.rs` (both cli and server crates) — resolved by keeping **both** permission keys (`vulnerability_alerts` + `organization_projects`) and **both** test assertions, then verified with tests. Merged cleanly; no branch-protection rejections.\n\n## Blocked / Skipped\nNone. Both queued PRs merged successfully.\n\n## Next Actions\n- **#543:** None — merged.\n- **#544:** None — merged.\n\n**Train outcome:** Complete. All 2 queued PRs squash-merged in order; no PR was skipped or blocked; final `main` is at `ec0a08afb3325a20b1d9cbf5b5b75b987202e546`.",
+          "thread.train.current_node": "report",
           "internal.node_visit_count": 1,
           "thread.merge-train.current_node": "train",
           "internal.retry_count.train": 0,
-          "internal.fidelity": "full",
+          "internal.fidelity": "summary:high",
           "internal.retry_count.preflight": 0,
           "failure_class": "",
           "internal.work_dir": "/home/daytona/workspace/fabro",
           "graph.max_node_visits": "40",
           "pr_544": "MERGED",
-          "last_response": "{\"outcome\": \"succeeded\", \"context_updates\": {\"final_main_sha\": \"ec0a08afb3325a20b1d9cbf5b5b75b987202e546\", \"pr_543\": \"MERGED\", \"pr_544\": \"MERGED\", \"summary\": \"Both queued PRs rebased, verified green l"
+          "last_response": "# Merge-Train Run Summary\n\n**Run ID:** 01KWFTMDQVT7SD0GRRWKXH776E\n**Order processed:** 543 → 544 (as requested)\n**Method:** squash merge, each rebased onto cumulative `main`\n**Final base SHA:** `ec0",
+          "internal.retry_count.report": 0
         },
         "node_outcomes": {
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "report": {
+            "status": "succeeded",
+            "context_updates": {
+              "last_stage": "report",
+              "last_response": "# Merge-Train Run Summary\n\n**Run ID:** 01KWFTMDQVT7SD0GRRWKXH776E\n**Order processed:** 543 → 544 (as requested)\n**Method:** squash merge, each rebased onto cumulative `main`\n**Final base SHA:** `ec0",
+              "response.report": "# Merge-Train Run Summary\n\n**Run ID:** 01KWFTMDQVT7SD0GRRWKXH776E\n**Order processed:** 543 → 544 (as requested)\n**Method:** squash merge, each rebased onto cumulative `main`\n**Final base SHA:** `ec0a08afb3325a20b1d9cbf5b5b75b987202e546`\n\n## Per-PR Results\n\n### PR #543 — `feat: grant Dependabot alerts read/write` (branch `add-dependabot-alerts-app-scope`)\n- **Status: MERGED**\n- **Method:** squash\n- **Resulting base SHA:** `3e0db1feb...` (merge commit)\n- Rebased onto latest `main`, verified green locally and in CI, merged clean with no conflicts.\n\n### PR #544 — `fix: grant organization_projects app scope` (branch `add-organization-projects-app-scope`)\n- **Status: MERGED**\n- **Method:** squash\n- **Resulting base SHA:** `ec0a08afb3325a20b1d9cbf5b5b75b987202e546` (final main)\n- Rebased onto `main` after #543 landed. Encountered the **anticipated additive conflict** in `install.rs` (both cli and server crates) — resolved by keeping **both** permission keys (`vulnerability_alerts` + `organization_projects`) and **both** test assertions, then verified with tests. Merged cleanly; no branch-protection rejections.\n\n## Blocked / Skipped\nNone. Both queued PRs merged successfully.\n\n## Next Actions\n- **#543:** None — merged.\n- **#544:** None — merged.\n\n**Train outcome:** Complete. All 2 queued PRs squash-merged in order; no PR was skipped or blocked; final `main` is at `ec0a08afb3325a20b1d9cbf5b5b75b987202e546`."
+            },
+            "notes": "Stage completed: report",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "anthropic",
+                    "model_id": "claude-opus-4-8"
+                  },
+                  "tokens": {
+                    "input_tokens": 1780,
+                    "output_tokens": 635,
+                    "reasoning_tokens": 0,
+                    "cache_read_tokens": 0,
+                    "cache_write_tokens": 6505
+                  }
+                },
+                "facts": {
+                  "algorithm": "anthropic",
+                  "cache_write_5m_tokens": 6505,
+                  "cache_write_1h_tokens": 0
+                }
+              },
+              "total_usd_micros": 65431
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 7422,
+              "tool_time_ms": 0,
+              "active_time_ms": 7422
+            }
           },
           "plan": {
             "status": "succeeded",
@@ -741,12 +951,13 @@
             }
           }
         },
-        "next_node_id": "report",
+        "next_node_id": "exit",
         "node_visits": {
           "preflight": 1,
           "train": 1,
           "plan": 1,
-          "start": 1
+          "start": 1,
+          "report": 1
         }
       },
       "diff": {}
@@ -1103,7 +1314,12 @@
       "first_event_seq": 63,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: train",
+        "failure_reason": null,
+        "timestamp": "2026-07-01T22:13:59.292488117Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "anthropic",
@@ -1117,13 +1333,20 @@
       "output": null,
       "started_at": "2026-07-01T21:52:12.186495686Z",
       "handler": "agent",
+      "timing": {
+        "wall_time_ms": 1307105,
+        "inference_time_ms": 318902,
+        "tool_time_ms": 987667,
+        "active_time_ms": 1306569
+      },
       "usage": {
-        "input_tokens": 46925,
-        "output_tokens": 21483,
-        "total_tokens": 2485974,
+        "input_tokens": 48501,
+        "output_tokens": 21945,
+        "total_tokens": 2606452,
         "reasoning_tokens": 0,
-        "cache_read_tokens": 2196090,
-        "cache_write_tokens": 221476
+        "cache_read_tokens": 2314356,
+        "cache_write_tokens": 221650,
+        "total_usd_micros": 3293794
       },
       "model": {
         "provider": "anthropic",
@@ -1311,32 +1534,32 @@
         "provider": "anthropic",
         "model": "claude-opus-4-8",
         "context_window_tokens": 1000000,
-        "input_tokens": 59222,
-        "usage_percent": 5.9222,
+        "input_tokens": 60008,
+        "usage_percent": 6.0008,
         "count_method": "response_usage_scaled_breakdown",
         "staleness": "live",
-        "generated_at": "2026-07-01T22:13:55.371751710Z",
-        "event_seq": 272,
+        "generated_at": "2026-07-01T22:13:59.291934420Z",
+        "event_seq": 276,
         "breakdown": [
           {
             "category": "system_prompt",
-            "tokens": 2254,
-            "usage_percent": 0.2254
+            "tokens": 2259,
+            "usage_percent": 0.2259
           },
           {
             "category": "tools",
-            "tokens": 2565,
-            "usage_percent": 0.2565
+            "tokens": 2571,
+            "usage_percent": 0.2571
           },
           {
             "category": "memory",
-            "tokens": 5452,
-            "usage_percent": 0.5452
+            "tokens": 5464,
+            "usage_percent": 0.5464
           },
           {
             "category": "conversation",
-            "tokens": 48941,
-            "usage_percent": 4.8941
+            "tokens": 49704,
+            "usage_percent": 4.9704
           },
           {
             "category": "other",
@@ -1345,6 +1568,33 @@
           }
         ],
         "warnings": []
+      },
+      "state": "succeeded"
+    },
+    "report@1": {
+      "first_event_seq": 283,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "prompt",
+        "provider": "anthropic",
+        "model": "claude-opus-4-8"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-01T22:14:01.524285935Z",
+      "handler": "prompt",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "state": "running"
     }

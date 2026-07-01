@@ -1,0 +1,118 @@
+diff --git a/lib/crates/fabro-cli/src/commands/install.rs b/lib/crates/fabro-cli/src/commands/install.rs
+index d5c2145e4..6c74b31a4 100644
+--- a/lib/crates/fabro-cli/src/commands/install.rs
++++ b/lib/crates/fabro-cli/src/commands/install.rs
+@@ -948,7 +948,9 @@ fn build_github_app_manifest(app_name: &str, port: u16, web_url: &str) -> serde_
+             "pull_requests": "write",
+             "checks": "write",
+             "issues": "write",
+-            "emails": "read"
++            "emails": "read",
++            "vulnerability_alerts": "write",
++            "organization_projects": "write"
+         },
+         "default_events": []
+     })
+@@ -2662,6 +2664,14 @@ client_id = "client-id"
+             manifest["setup_url"],
+             serde_json::json!("https://app.example.com/setup"),
+         );
++        assert_eq!(
++            manifest["default_permissions"]["vulnerability_alerts"],
++            serde_json::json!("write"),
++        );
++        assert_eq!(
++            manifest["default_permissions"]["organization_projects"],
++            serde_json::json!("write"),
++        );
+     }
+ 
+     #[tokio::test]
+diff --git a/lib/crates/fabro-server/src/install.rs b/lib/crates/fabro-server/src/install.rs
+index aae91785a..a24fd5b3b 100644
+--- a/lib/crates/fabro-server/src/install.rs
++++ b/lib/crates/fabro-server/src/install.rs
+@@ -2053,7 +2053,9 @@ fn build_github_app_manifest(
+             "pull_requests": "write",
+             "checks": "write",
+             "issues": "write",
+-            "emails": "read"
++            "emails": "read",
++            "vulnerability_alerts": "write",
++            "organization_projects": "write"
+         },
+         "default_events": []
+     })
+diff --git a/merge-train-plan.md b/merge-train-plan.md
+deleted file mode 100644
+index e20c7423f..000000000
+--- a/merge-train-plan.md
++++ /dev/null
+@@ -1,48 +0,0 @@
+-# Merge Train Plan
+-
+-Base branch: `main`
+-Requested order: **543, 544** (squash merge, rebase each onto latest main)
+-
+-## READY PRs (in merge order)
+-
+-| # | Title | Head branch | Author | Mergeable |
+-|---|-------|-------------|--------|-----------|
+-| 543 | feat: grant Dependabot alerts read/write to auto-created GitHub Apps | `add-dependabot-alerts-app-scope` | swerner | MERGEABLE |
+-| 544 | fix: grant organization_projects to auto-created GitHub Apps for Projects V2 | `add-organization-projects-app-scope` | swerner | MERGEABLE |
+-
+-Both are open, not draft, target `main`, and their head branches live in the
+-`fabro-sh/fabro` repo (not forks). Both are eligible.
+-
+-## SKIP list
+-
+-None.
+-
+-## Ordering notes
+-
+-Keep the requested order **543 → 544**. No logical dependency was detected; the
+-two PRs add independent GitHub App permissions. Order does not matter
+-functionally, so the given order stands — no human confirmation needed.
+-
+-## Conflict warnings
+-
+-**PR 544 will conflict after 543 merges** (expected — the train resolves it).
+-
+-Both PRs touch the exact same two files and the exact same regions:
+-
+-- `lib/crates/fabro-cli/src/commands/install.rs`
+-  - `build_github_app_manifest`: both change the `"emails": "read"` line
+-    (add trailing comma + a new permission key).
+-    - 543 adds `"vulnerability_alerts": "write"`
+-    - 544 adds `"organization_projects": "write"`
+-  - Test block: both insert an `assert_eq!` on
+-    `manifest["default_permissions"][...]` at the same line.
+-- `lib/crates/fabro-server/src/install.rs`
+-  - `build_github_app_manifest`: same `"emails": "read"` line edit.
+-
+-**Resolution guidance for the train stage:** these are additive and
+-non-contradictory. When rebasing 544 onto main (after 543 is in), keep BOTH
+-permission keys in the manifest map and BOTH test assertions. The final
+-`default_permissions` block should contain `"emails": "read"`,
+-`"vulnerability_alerts": "write"`, and `"organization_projects": "write"`
+-(with correct trailing commas). Verify with
+-`cargo nextest run -p fabro-cli -p fabro-server` before pushing.
+diff --git a/merge-train-state.md b/merge-train-state.md
+new file mode 100644
+index 000000000..00dffc92e
+--- /dev/null
++++ b/merge-train-state.md
+@@ -0,0 +1,13 @@
++# Merge Train State
++
++Base branch: `main`
++Order: 543 → 544 (squash)
++
++| # | Status | Reason |
++|---|--------|--------|
++| 543 | MERGED | Rebased onto main, all local + CI checks green, squash-merged. Merge commit 3e0db1feb. |
++| 544 | MERGED | Rebased onto main (after 543); resolved expected install.rs conflicts by keeping BOTH permission keys (`vulnerability_alerts` + `organization_projects`) and BOTH test assertions. All local + CI checks green, squash-merged. Merge commit ec0a08afb. |
++
++Final main SHA: ec0a08afb3325a20b1d9cbf5b5b75b987202e546
++
++All queued PRs resolved (MERGED). No escalations. Train complete.
