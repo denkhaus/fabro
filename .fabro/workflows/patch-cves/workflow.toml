@@ -1,0 +1,11 @@
+_version = 1
+
+# GitHub App installation-token permissions requested for this run. These are a
+# pass-through to the token mint and are further bounded by what the Fabro
+# GitHub App is actually granted at the App level. The eng-patch-cves skill
+# needs to read Dependabot alerts, push branches, and open PRs.
+[run.integrations.github.permissions]
+vulnerability_alerts = "read"   # Dependabot alerts (gh api .../dependabot/alerts)
+contents = "write"              # branch + commit dependency/lockfile edits
+pull_requests = "write"         # open the patch PRs
+checks = "read"                 # gh pr checks --watch

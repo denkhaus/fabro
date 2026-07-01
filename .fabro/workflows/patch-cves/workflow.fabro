@@ -1,0 +1,22 @@
+digraph PatchCves {
+    graph [
+        goal="Triage GitHub Dependabot alerts and open verified dependency-patch PRs",
+        model_stylesheet="
+            * { model: claude-opus-4-8; }
+        "
+    ]
+    rankdir=LR
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    // Single agent stage. The `/eng-patch-cves` prompt-syntax activates the
+    // skill of the same name (discovered from .fabro/skills/), which expands to
+    // the full CVE-patching instructions. The skill self-discovers the target
+    // repo from the cloned workspace via `gh repo view`, so no extra prompt
+    // text is needed (and any extra text would be dropped: the skill body has
+    // no {{user_input}} placeholder).
+    patch [label="Patch CVEs", prompt="/eng-patch-cves"]
+
+    start -> patch -> exit
+}
