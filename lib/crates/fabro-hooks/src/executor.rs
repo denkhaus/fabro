@@ -21,7 +21,7 @@ use tokio::time::timeout as tokio_timeout;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::{HookDefinition, HookType, TlsMode};
-use crate::secrets::ResolvedHookSecrets;
+use crate::secrets::{ResolvedHookSecrets, first_secret_name};
 use crate::types::{
     HookContext, HookDecision, HookExecutionContext, HookResult, PromptHookResponse,
 };
@@ -154,7 +154,7 @@ fn resolve_header<E>(
 where
     E: Env + ?Sized,
 {
-    if let Some(name) = value.names(Namespace::Secrets).into_iter().next() {
+    if let Some(name) = first_secret_name(value) {
         return Err(HeaderResolveError::SecretNotAllowed {
             name: name.to_string(),
         });

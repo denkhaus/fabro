@@ -429,7 +429,9 @@ impl RunSession {
                 SandboxSpec::Local { working_directory }
             }
             SandboxProviderKind::Docker => SandboxSpec::Docker {
-                config:           resolve_docker_config(resolved, |name| secret_lookup(name))?,
+                config:           Box::new(resolve_docker_config(resolved, |name| {
+                    secret_lookup(name)
+                })?),
                 github_app:       services.github_app.clone(),
                 run_id:           Some(record.run_id),
                 clone_origin_url: record.repo_origin_url().map(str::to_string),

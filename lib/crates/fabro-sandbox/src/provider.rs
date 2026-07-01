@@ -26,7 +26,7 @@ pub enum SandboxCreateSpec {
     Local,
     #[cfg(feature = "docker")]
     Docker {
-        config:           DockerSandboxOptions,
+        config:           Box<DockerSandboxOptions>,
         github_app:       Option<GitHubCredentials>,
         run_id:           Option<RunId>,
         clone_origin_url: Option<String>,

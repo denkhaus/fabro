@@ -27,7 +27,7 @@ pub enum SandboxSpec {
     },
     #[cfg(feature = "docker")]
     Docker {
-        config:           DockerSandboxOptions,
+        config:           Box<DockerSandboxOptions>,
         github_app:       Option<GitHubCredentials>,
         run_id:           Option<RunId>,
         clone_origin_url: Option<String>,
@@ -204,7 +204,7 @@ impl SandboxSpec {
                 clone_branch,
             } => {
                 let mut sandbox = DockerSandbox::new(
-                    config.clone(),
+                    config.as_ref().clone(),
                     github_app.clone(),
                     *run_id,
                     clone_origin_url.clone(),
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn docker_run_sandbox_persists_layout_metadata_for_cloned_repo() {
         let spec = SandboxSpec::Docker {
-            config:           DockerSandboxOptions::default(),
+            config:           Box::new(DockerSandboxOptions::default()),
             github_app:       None,
             run_id:           None,
             clone_origin_url: Some("git@github.com:brynary/rack-test.git".to_string()),
@@ -306,10 +306,10 @@ mod tests {
     #[test]
     fn docker_run_sandbox_omits_primary_repo_metadata_for_empty_workspace() {
         let spec = SandboxSpec::Docker {
-            config:           DockerSandboxOptions {
+            config:           Box::new(DockerSandboxOptions {
                 skip_clone: true,
                 ..DockerSandboxOptions::default()
-            },
+            }),
             github_app:       None,
             run_id:           None,
             clone_origin_url: Some("https://gitlab.com/acme/widgets".to_string()),

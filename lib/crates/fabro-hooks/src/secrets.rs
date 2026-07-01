@@ -4,6 +4,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use fabro_redact::SecretRedactor;
+use fabro_types::settings::InterpString;
 use fabro_types::settings::interp::Namespace;
 
 use crate::config::{HookDefinition, HookType};
@@ -108,34 +109,31 @@ impl ResolvedHookSecrets {
     }
 }
 
+pub(crate) fn secret_names(value: &InterpString) -> Vec<&str> {
+    value.names(Namespace::Secrets)
+}
+
+pub(crate) fn first_secret_name(value: &InterpString) -> Option<&str> {
+    secret_names(value).into_iter().next()
+}
+
 fn secret_names_for_definition(definition: &HookDefinition) -> Vec<String> {
     let Some(hook_type) = definition.resolved_hook_type() else {
         return Vec::new();
     };
     match hook_type.as_ref() {
-        HookType::Command { command } => command
-            .names(Namespace::Secrets)
+        HookType::Command { command } => secret_names(command)
             .into_iter()
             .map(str::to_string)
             .collect(),
-        HookType::Http { url, .. } => url
-            .names(Namespace::Secrets)
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+        HookType::Http { url, .. } => secret_names(url).into_iter().map(str::to_string).collect(),
         HookType::Prompt { prompt, model } | HookType::Agent { prompt, model, .. } => {
-            let mut names: Vec<String> = prompt
-                .names(Namespace::Secrets)
+            let mut names: Vec<String> = secret_names(prompt)
                 .into_iter()
                 .map(str::to_string)
                 .collect();
             if let Some(model) = model {
-                names.extend(
-                    model
-                        .names(Namespace::Secrets)
-                        .into_iter()
-                        .map(str::to_string),
-                );
+                names.extend(secret_names(model).into_iter().map(str::to_string));
             }
             names
         }
