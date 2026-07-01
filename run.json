@@ -1,0 +1,534 @@
+{
+  "title": "Plan C — Redaction wiring + secrets in hooks",
+  "spec": {
+    "run_id": "01KWFGXZ5P42QRWBYAPVEAXMX6",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "# Plan C — Redaction wiring + secrets in hooks\n\n**This is Plan C of three** (split for parallel execution):\n\n- **Plan A** — `SecretRedactor` in `fabro-redact`.\n- **Plan B** — resolve `secrets.*` tokens at the run boundary.\n- **Plan C (this file)** — populate the redactor from the boundary lookup, apply\n  it at the structured leak surfaces, and resolve secrets in hooks.\n\n**Run this AFTER Plans A and B have merged into the branch.** It consumes the\n`SecretRedactor` type from Plan A and the boundary secrets lookup from Plan B, and\nit edits `operations/start.rs` (which Plan B also edits), so it cannot run in\nparallel with them. If A/B are not yet merged, this plan will not compile.\n\n> **Token notation.** Interpolation tokens are written in this file without their\n> enclosing double curly braces, so the file is safe to pass directly as a\n> workflow goal (the goal templater would otherwise try to expand them). Read\n> `secrets.NAME`, `env.NAME`, and `secrets.*` as the double-curly-brace-wrapped\n> token form used everywhere else in the codebase, and write the real\n> double-brace syntax in the code, tests, and docs you produce.\n\n---\n\n## Overall goal (shared context)\n\nMake secret tokens (`secrets.NAME`) resolve from the server vault at the run\nboundary, never persist or leak, and fail closed. Plan B made secrets resolve;\n**this plan closes the redaction gap and adds hooks.**\n\nThe redaction decision: content-based redaction (`fabro-redact`, already applied at\nthe event-serialization pass and exec-output tails) is the universal baseline, and\na **per-run registry of resolved secret values** (Plan A's `SecretRedactor`)\nadditionally redacts declared secrets by exact match, so a secret is redacted even\nwhen it does not look like a credential.\n\n### Architecture facts the implementer needs\n\n- Secrets resolve in the worker at `RunSession::new`\n  (`lib/crates/fabro-workflow/src/operations/start.rs`), via the Token-only\n  secrets lookup closure added by Plan B (built over `services.vault`).\n- The `SecretRedactor` from Plan A (`fabro-redact`) is a cheap, cloneable, per-run\n  registry: `register(value)`, `redact_into(&str) -> String`,\n  `redact_json(Value) -> Value`, empty = no-op. **Per-run, never a global** — a\n  test-only in-process path runs multiple runs in one process.\n- Content-based redaction already runs at:\n  - the event-serialization boundary — `redact_json_value` via\n    `build_redacted_event_payload` (`lib/crates/fabro-workflow/src/event/redaction.rs:8,22`)\n    and `redacted_event_json` (`:13`); the local run-store backend also redacts\n    (`lib/crates/fabro-workflow/src/runtime_store.rs:85`);\n  - exec-output tails — `redacted_tail` in\n    `lib/crates/fabro-sandbox/src/sandbox.rs:626`.\n- Events that carry resolved command/env text: `SetupCommandStarted`/`Completed`\n  (`lib/crates/fabro-workflow/src/event/events.rs:534,538`) and `SetupFailed`\n  (`:547`, carries `command`, `stderr`, exec tail). Emitted in\n  `lib/crates/fabro-workflow/src/pipeline/initialize.rs` (~`:530,555,568`); the\n  setup-failure path also builds an error string embedding the resolved command\n  and raw stderr (~`:562`).\n- Hooks resolve `InterpString` at fire time in the executor against process env\n  only, via `resolve_interp` (`lib/crates/fabro-hooks/src/executor.rs:76`),\n  `resolve_header` (`:134`), and `resolve_prompt_and_model` (`:188`). **There is\n  no vault handle anywhere in the hook path today** (the bridge at\n  `lib/crates/fabro-hooks/src/bridge.rs` carries none). Hook settings are wired in\n  `operations/start.rs` (~`:477`) into `HookSettings`.\n- Token-only guard: reuse `vault_get_token` (`lib/crates/fabro-auth/src/vault_ext.rs:23`).\n\n### Design decisions (fixed)\n\n- Per-run redactor; content-based baseline stays; provenance-by-registration for\n  declared secrets. Fail closed. Token-only. No wire/API changes.\n\n### Conventions\n\n- **TDD.** Failing test first. Hermetic tests (temp-dir vaults; no ambient\n  provider keys). Match codebase style. Plain-English commits/PR/comments — no\n  internal planning identifiers. Verify gate: nightly fmt/clippy, workspace\n  nextest, docs check, web/api-client typecheck, release build. Never print/log\n  resolved secrets.\n\n---\n\n## Implementation\n\n### C.1 — Populate the registry from the boundary lookup\n\nFile: `lib/crates/fabro-workflow/src/operations/start.rs`.\n\nCreate one `fabro_redact::SecretRedactor` per run in `RunSession::new`. Have the\nToken-only secrets lookup closure (added by Plan B) `register` each value it\nreturns before handing it back. Because every secret token value flows through\nthat one closure, the registry ends up holding exactly the secret values\ninterpolated into this run. Keep the redactor per-run and thread it (Arc-clone) to\nthe surfaces below — never a `static`/global.\n\n### C.2 — Apply the redactor at the structured leak surfaces\n\nCompose the redactor **after** the existing content-based pass at each surface:\n\n1. **Events → `progress.jsonl` / run store / SSE.** Give the emitter/sink the\n   run's `SecretRedactor` and apply `redactor.redact_json(...)` after\n   `redact_json_value` in `event/redaction.rs` (`build_redacted_event_payload`,\n   `redacted_event_json`). Confirm the local run-store path\n   (`runtime_store.rs:85`) also runs through the redacted payload. This covers\n   `SetupCommandStarted/Completed` and `SetupFailed`.\n2. **Setup-command failure message.** In `pipeline/initialize.rs` (~`:562`), run\n   the constructed error text through `redactor.redact_into(...)` before it becomes\n   an `Error`.\n3. **Exec-output tails.** `redacted_tail` in `fabro-sandbox/src/sandbox.rs:626`\n   runs `redact_string` on command output. Thread the run's redactor into this\n   path and apply it after `redact_string`. This is the most invasive thread (it\n   crosses the `Sandbox` exec path); if it cannot be threaded cleanly, it is\n   acceptable to **defer only this sub-item** to a follow-up and rely on the\n   content-based baseline there — but if you defer it, **say so explicitly in the\n   PR description** as a known gap. Do the event and setup-error surfaces\n   regardless.\n\n**Tests:**\n\n- A prepare step that fails while a **low-entropy** secret value (one\n  `redact_string` would miss) is present has that value replaced with `REDACTED`\n  in the emitted `SetupFailed` event and in the resulting error text.\n- A resolved secret value does not appear verbatim in a serialized event payload.\n- Content-based redaction still fires for a high-entropy non-secret string\n  (baseline intact).\n- Two runs in one process (the in-process path) do not see each other's registered\n  secret values (per-run isolation).\n\n### C.3 — Secrets in hooks\n\nFiles: `lib/crates/fabro-hooks/src/executor.rs`, `bridge.rs`, and the hook wiring\nin `operations/start.rs`.\n\n1. Thread a Token-only secrets lookup (or the vault handle wrapped in a Token-only\n   closure) from the worker (`RunSession` / the hook runner) down through\n   `HookExecutor::execute` into `resolve_interp` (`executor.rs:76`) and\n   `resolve_prompt_and_model` (`:188`); switch them from the env-only `.resolve()`\n   to `resolve_with(env + secrets)`. Keep fail-closed semantics (hooks already\n   fail closed for command; extend to the http/prompt paths for secret errors).\n   Secrets resolve in hook `command`, `prompt`, and `url`.\n2. **HTTP-hook headers: reject secret tokens (fail closed).** Header values gate\n   env tokens behind an `allowed_env_vars` allowlist; a dedicated allowlist for\n   secrets in outbound headers is deliberately out of scope. In `resolve_header`\n   (`executor.rs:134`), a `secrets.*` token in a header value must produce a clear\n   error pointing the user at hook command/prompt/url usage. Do **not** silently\n   allow secrets into outbound headers and do **not** add a new config field.\n3. Register hook-resolved secret values into the same per-run `SecretRedactor`\n   (the hook runs in the worker, which owns it).\n\n**Tests:** hook `command`/`url`/`prompt` resolve a `secrets.X` token from a temp\nvault; a missing secret fails closed; a secret token in an HTTP-hook header errors\nwith the guidance message; resolved hook secret values are redacted from hook\nlogs/events.\n\n### C.4 — Docs\n\nUpdate the relevant `docs/public/` config page: declared secrets are redacted\nregardless of shape on the run's structured surfaces (events, `progress.jsonl`,\nsetup errors) and via content-based redaction on command output; the guarantee is\nworker-side — once a secret is placed into sandbox process env, anything the\nsandbox re-emits as plain text is covered only by content-based redaction. State\nthis boundary; do not imply a total guarantee. Keep `cargo dev docs check` green.\n\n### C.5 — Verify\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace` (hermetic — no ambient provider keys)\n- `cargo dev docs check`\n- `apps/fabro-web` + `lib/packages/fabro-api-client` typecheck (should be\n  untouched — no wire changes)\n- release build (`cargo dev build -- -p fabro-cli --release`)\n\n## Dependencies\n\n**Requires Plans A and B merged first.** Not parallel-safe with Plan B (shares\n`operations/start.rs`).\n"
+        },
+        "working_dir": null,
+        "metadata": {
+          "batch": "secrets",
+          "slice": "redaction-hooks"
+        },
+        "inputs": {},
+        "model": {
+          "provider": "anthropic",
+          "name": "claude-sonnet-4-6",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "commands": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "fabro-dev",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        curl git ripgrep ca-certificates build-essential pkg-config libssl-dev unzip python3 \\\n        xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \\\n        libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6 \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install real Chromium (not the snap stub) via xtradeb PPA\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        software-properties-common curl gnupg \\\n    && add-apt-repository -y ppa:xtradeb/apps \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends chromium \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Wrapper: Chromium needs --no-sandbox when running as root in a container,\n# and --disable-dev-shm-usage avoids crashes from small /dev/shm\nRUN printf '#!/bin/bash\\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"$@\"\\n' \\\n        > /usr/local/bin/chromium-wrapper \\\n    && chmod +x /usr/local/bin/chromium-wrapper\n\n# Make the wrapper the default in the system .desktop file and via alternatives\nRUN sed -i 's|^Exec=.*|Exec=/usr/local/bin/chromium-wrapper %U|' \\\n        /usr/share/applications/chromium.desktop \\\n    && update-alternatives --install /usr/bin/x-www-browser x-www-browser \\\n        /usr/local/bin/chromium-wrapper 100\n\n# Tell XFCE's exo-open that Chromium is the WebBrowser helper (system-wide)\nRUN mkdir -p /etc/xdg/xfce4 /usr/share/xfce4/helpers \\\n    && printf 'WebBrowser=custom-WebBrowser\\n' > /etc/xdg/xfce4/helpers.rc \\\n    && printf '[Desktop Entry]\\n\\\nVersion=1.0\\n\\\nType=X-XFCE-Helper\\n\\\nName=Chromium\\n\\\nIcon=chromium\\n\\\nX-XFCE-Category=WebBrowser\\n\\\nX-XFCE-CommandsWithParameter=/usr/local/bin/chromium-wrapper \"%%s\"\\n\\\nX-XFCE-Commands=/usr/local/bin/chromium-wrapper\\n' \\\n        > /usr/share/xfce4/helpers/custom-WebBrowser.desktop\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" \\\n        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update && apt-get install -y --no-install-recommends gh \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": "20GB"
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": "30m"
+          },
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "env": {}
+        },
+        "notifications": {},
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": false,
+          "merge_strategy": "squash"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "ImplementPlan",
+      "nodes": {
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "label": {
+              "String": "Exit"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "Msquare"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        },
+        "simplify_gpt": {
+          "id": "simplify_gpt",
+          "attrs": {
+            "model": {
+              "String": "gpt-5.5"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changes for reuse, quality, and efficiency. Fix any issues found. Feel free to use any sub agents you need.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation. (You may already have the changes in context, if so, feel free to skip this part)\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "label": {
+              "String": "Simplify (GPT-55)"
+            },
+            "provider": {
+              "String": "openai"
+            }
+          }
+        },
+        "simplify_opus": {
+          "id": "simplify_opus",
+          "attrs": {
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changes for reuse, quality, and efficiency. Fix any issues found. Feel free to use any sub agents you need.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation. (You may already have the changes in context, if so, feel free to skip this part)\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Simplify (Opus)"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        },
+        "preflight_lint": {
+          "id": "preflight_lint",
+          "attrs": {
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "label": {
+              "String": "Preflight Lint"
+            },
+            "script": {
+              "String": "cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "max_retries": {
+              "Integer": 0
+            }
+          }
+        },
+        "implement": {
+          "id": "implement",
+          "attrs": {
+            "label": {
+              "String": "Implement"
+            },
+            "model": {
+              "String": "gpt-5.5"
+            },
+            "prompt": {
+              "String": "Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD."
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "provider": {
+              "String": "openai"
+            }
+          }
+        },
+        "toolchain": {
+          "id": "toolchain",
+          "attrs": {
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Toolchain"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "script": {
+              "String": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1"
+            }
+          }
+        },
+        "fix_lints": {
+          "id": "fix_lints",
+          "attrs": {
+            "max_visits": {
+              "Integer": 3
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "prompt": {
+              "String": "The preflight lint step failed. Read the build output from context and fix all clippy lint warnings."
+            },
+            "label": {
+              "String": "Fix Lints"
+            }
+          }
+        },
+        "preflight_compile": {
+          "id": "preflight_compile",
+          "attrs": {
+            "provider": {
+              "String": "anthropic"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "label": {
+              "String": "Preflight Compile"
+            },
+            "script": {
+              "String": "cargo check -q --workspace 2>&1"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "max_retries": {
+              "Integer": 0
+            }
+          }
+        },
+        "fixup": {
+          "id": "fixup",
+          "attrs": {
+            "provider": {
+              "String": "anthropic"
+            },
+            "prompt": {
+              "String": "The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures."
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "label": {
+              "String": "Fixup"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "label": {
+              "String": "Start"
+            },
+            "provider": {
+              "String": "anthropic"
+            }
+          }
+        },
+        "verify": {
+          "id": "verify",
+          "attrs": {
+            "goal_gate": {
+              "Boolean": true
+            },
+            "label": {
+              "String": "Verify"
+            },
+            "timeout": {
+              "Duration": {
+                "secs": 1800,
+                "nanos": 0
+              }
+            },
+            "script": {
+              "String": "git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "retry_target": {
+              "String": "fixup"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "toolchain",
+          "attrs": {}
+        },
+        {
+          "from": "toolchain",
+          "to": "preflight_compile",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "toolchain",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_compile",
+          "to": "preflight_lint",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_compile",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_lint",
+          "to": "implement",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_lint",
+          "to": "fix_lints",
+          "attrs": {}
+        },
+        {
+          "from": "fix_lints",
+          "to": "preflight_lint",
+          "attrs": {}
+        },
+        {
+          "from": "implement",
+          "to": "simplify_opus",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_opus",
+          "to": "simplify_gpt",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_gpt",
+          "to": "verify",
+          "attrs": {}
+        },
+        {
+          "from": "verify",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "verify",
+          "to": "fixup",
+          "attrs": {}
+        },
+        {
+          "from": "fixup",
+          "to": "verify",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "model_stylesheet": {
+          "String": "\n            * { model: claude-opus-4-8; }\n        "
+        },
+        "rankdir": {
+          "String": "LR"
+        },
+        "goal": {
+          "String": "# Plan C — Redaction wiring + secrets in hooks\n\n**This is Plan C of three** (split for parallel execution):\n\n- **Plan A** — `SecretRedactor` in `fabro-redact`.\n- **Plan B** — resolve `secrets.*` tokens at the run boundary.\n- **Plan C (this file)** — populate the redactor from the boundary lookup, apply\n  it at the structured leak surfaces, and resolve secrets in hooks.\n\n**Run this AFTER Plans A and B have merged into the branch.** It consumes the\n`SecretRedactor` type from Plan A and the boundary secrets lookup from Plan B, and\nit edits `operations/start.rs` (which Plan B also edits), so it cannot run in\nparallel with them. If A/B are not yet merged, this plan will not compile.\n\n> **Token notation.** Interpolation tokens are written in this file without their\n> enclosing double curly braces, so the file is safe to pass directly as a\n> workflow goal (the goal templater would otherwise try to expand them). Read\n> `secrets.NAME`, `env.NAME`, and `secrets.*` as the double-curly-brace-wrapped\n> token form used everywhere else in the codebase, and write the real\n> double-brace syntax in the code, tests, and docs you produce.\n\n---\n\n## Overall goal (shared context)\n\nMake secret tokens (`secrets.NAME`) resolve from the server vault at the run\nboundary, never persist or leak, and fail closed. Plan B made secrets resolve;\n**this plan closes the redaction gap and adds hooks.**\n\nThe redaction decision: content-based redaction (`fabro-redact`, already applied at\nthe event-serialization pass and exec-output tails) is the universal baseline, and\na **per-run registry of resolved secret values** (Plan A's `SecretRedactor`)\nadditionally redacts declared secrets by exact match, so a secret is redacted even\nwhen it does not look like a credential.\n\n### Architecture facts the implementer needs\n\n- Secrets resolve in the worker at `RunSession::new`\n  (`lib/crates/fabro-workflow/src/operations/start.rs`), via the Token-only\n  secrets lookup closure added by Plan B (built over `services.vault`).\n- The `SecretRedactor` from Plan A (`fabro-redact`) is a cheap, cloneable, per-run\n  registry: `register(value)`, `redact_into(&str) -> String`,\n  `redact_json(Value) -> Value`, empty = no-op. **Per-run, never a global** — a\n  test-only in-process path runs multiple runs in one process.\n- Content-based redaction already runs at:\n  - the event-serialization boundary — `redact_json_value` via\n    `build_redacted_event_payload` (`lib/crates/fabro-workflow/src/event/redaction.rs:8,22`)\n    and `redacted_event_json` (`:13`); the local run-store backend also redacts\n    (`lib/crates/fabro-workflow/src/runtime_store.rs:85`);\n  - exec-output tails — `redacted_tail` in\n    `lib/crates/fabro-sandbox/src/sandbox.rs:626`.\n- Events that carry resolved command/env text: `SetupCommandStarted`/`Completed`\n  (`lib/crates/fabro-workflow/src/event/events.rs:534,538`) and `SetupFailed`\n  (`:547`, carries `command`, `stderr`, exec tail). Emitted in\n  `lib/crates/fabro-workflow/src/pipeline/initialize.rs` (~`:530,555,568`); the\n  setup-failure path also builds an error string embedding the resolved command\n  and raw stderr (~`:562`).\n- Hooks resolve `InterpString` at fire time in the executor against process env\n  only, via `resolve_interp` (`lib/crates/fabro-hooks/src/executor.rs:76`),\n  `resolve_header` (`:134`), and `resolve_prompt_and_model` (`:188`). **There is\n  no vault handle anywhere in the hook path today** (the bridge at\n  `lib/crates/fabro-hooks/src/bridge.rs` carries none). Hook settings are wired in\n  `operations/start.rs` (~`:477`) into `HookSettings`.\n- Token-only guard: reuse `vault_get_token` (`lib/crates/fabro-auth/src/vault_ext.rs:23`).\n\n### Design decisions (fixed)\n\n- Per-run redactor; content-based baseline stays; provenance-by-registration for\n  declared secrets. Fail closed. Token-only. No wire/API changes.\n\n### Conventions\n\n- **TDD.** Failing test first. Hermetic tests (temp-dir vaults; no ambient\n  provider keys). Match codebase style. Plain-English commits/PR/comments — no\n  internal planning identifiers. Verify gate: nightly fmt/clippy, workspace\n  nextest, docs check, web/api-client typecheck, release build. Never print/log\n  resolved secrets.\n\n---\n\n## Implementation\n\n### C.1 — Populate the registry from the boundary lookup\n\nFile: `lib/crates/fabro-workflow/src/operations/start.rs`.\n\nCreate one `fabro_redact::SecretRedactor` per run in `RunSession::new`. Have the\nToken-only secrets lookup closure (added by Plan B) `register` each value it\nreturns before handing it back. Because every secret token value flows through\nthat one closure, the registry ends up holding exactly the secret values\ninterpolated into this run. Keep the redactor per-run and thread it (Arc-clone) to\nthe surfaces below — never a `static`/global.\n\n### C.2 — Apply the redactor at the structured leak surfaces\n\nCompose the redactor **after** the existing content-based pass at each surface:\n\n1. **Events → `progress.jsonl` / run store / SSE.** Give the emitter/sink the\n   run's `SecretRedactor` and apply `redactor.redact_json(...)` after\n   `redact_json_value` in `event/redaction.rs` (`build_redacted_event_payload`,\n   `redacted_event_json`). Confirm the local run-store path\n   (`runtime_store.rs:85`) also runs through the redacted payload. This covers\n   `SetupCommandStarted/Completed` and `SetupFailed`.\n2. **Setup-command failure message.** In `pipeline/initialize.rs` (~`:562`), run\n   the constructed error text through `redactor.redact_into(...)` before it becomes\n   an `Error`.\n3. **Exec-output tails.** `redacted_tail` in `fabro-sandbox/src/sandbox.rs:626`\n   runs `redact_string` on command output. Thread the run's redactor into this\n   path and apply it after `redact_string`. This is the most invasive thread (it\n   crosses the `Sandbox` exec path); if it cannot be threaded cleanly, it is\n   acceptable to **defer only this sub-item** to a follow-up and rely on the\n   content-based baseline there — but if you defer it, **say so explicitly in the\n   PR description** as a known gap. Do the event and setup-error surfaces\n   regardless.\n\n**Tests:**\n\n- A prepare step that fails while a **low-entropy** secret value (one\n  `redact_string` would miss) is present has that value replaced with `REDACTED`\n  in the emitted `SetupFailed` event and in the resulting error text.\n- A resolved secret value does not appear verbatim in a serialized event payload.\n- Content-based redaction still fires for a high-entropy non-secret string\n  (baseline intact).\n- Two runs in one process (the in-process path) do not see each other's registered\n  secret values (per-run isolation).\n\n### C.3 — Secrets in hooks\n\nFiles: `lib/crates/fabro-hooks/src/executor.rs`, `bridge.rs`, and the hook wiring\nin `operations/start.rs`.\n\n1. Thread a Token-only secrets lookup (or the vault handle wrapped in a Token-only\n   closure) from the worker (`RunSession` / the hook runner) down through\n   `HookExecutor::execute` into `resolve_interp` (`executor.rs:76`) and\n   `resolve_prompt_and_model` (`:188`); switch them from the env-only `.resolve()`\n   to `resolve_with(env + secrets)`. Keep fail-closed semantics (hooks already\n   fail closed for command; extend to the http/prompt paths for secret errors).\n   Secrets resolve in hook `command`, `prompt`, and `url`.\n2. **HTTP-hook headers: reject secret tokens (fail closed).** Header values gate\n   env tokens behind an `allowed_env_vars` allowlist; a dedicated allowlist for\n   secrets in outbound headers is deliberately out of scope. In `resolve_header`\n   (`executor.rs:134`), a `secrets.*` token in a header value must produce a clear\n   error pointing the user at hook command/prompt/url usage. Do **not** silently\n   allow secrets into outbound headers and do **not** add a new config field.\n3. Register hook-resolved secret values into the same per-run `SecretRedactor`\n   (the hook runs in the worker, which owns it).\n\n**Tests:** hook `command`/`url`/`prompt` resolve a `secrets.X` token from a temp\nvault; a missing secret fails closed; a secret token in an HTTP-hook header errors\nwith the guidance message; resolved hook secret values are redacted from hook\nlogs/events.\n\n### C.4 — Docs\n\nUpdate the relevant `docs/public/` config page: declared secrets are redacted\nregardless of shape on the run's structured surfaces (events, `progress.jsonl`,\nsetup errors) and via content-based redaction on command output; the guarantee is\nworker-side — once a secret is placed into sandbox process env, anything the\nsandbox re-emits as plain text is covered only by content-based redaction. State\nthis boundary; do not imply a total guarantee. Keep `cargo dev docs check` green.\n\n### C.5 — Verify\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace` (hermetic — no ambient provider keys)\n- `cargo dev docs check`\n- `apps/fabro-web` + `lib/packages/fabro-api-client` typecheck (should be\n  untouched — no wire changes)\n- release build (`cargo dev build -- -p fabro-cli --release`)\n\n## Dependencies\n\n**Requires Plans A and B merged first.** Not parallel-safe with Plan B (shares\n`operations/start.rs`).\n"
+        }
+      }
+    },
+    "graph_source": "digraph ImplementPlan {\n    graph [\n        goal=\"Implement and simplify\",\n        model_stylesheet=\"\n            * { model: claude-opus-4-8; }\n        \"\n    ]\n    rankdir=LR\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    toolchain         [label=\"Toolchain\", shape=parallelogram, script=\"command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1\", max_retries=0]\n    preflight_compile [label=\"Preflight Compile\", shape=parallelogram, script=\"cargo check -q --workspace 2>&1\", max_retries=0]\n    preflight_lint    [label=\"Preflight Lint\", shape=parallelogram, script=\"cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1\", max_retries=0]\n    fix_lints         [label=\"Fix Lints\", prompt=\"The preflight lint step failed. Read the build output from context and fix all clippy lint warnings.\", max_visits=3]\n    implement         [label=\"Implement\", prompt=\"Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD.\", model=\"gpt-55\", reasoning_effort=\"xhigh\"]\n    simplify_opus     [label=\"Simplify (Opus)\", prompt=\"@prompts/simplify.md\"]\n    simplify_gpt      [label=\"Simplify (GPT-55)\", prompt=\"@prompts/simplify.md\", model=\"gpt-55\"]\n    verify            [label=\"Verify\", shape=parallelogram, timeout=\"1800s\", script=\"git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\\\"disabled\\\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1\", goal_gate=true, retry_target=\"fixup\"]\n    fixup             [label=\"Fixup\", prompt=\"The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures.\", max_visits=3]\n\n    start -> toolchain\n    toolchain -> preflight_compile [condition=\"outcome=succeeded\"]\n    toolchain -> exit\n    preflight_compile -> preflight_lint [condition=\"outcome=succeeded\"]\n    preflight_compile -> exit\n    preflight_lint -> implement [condition=\"outcome=succeeded\"]\n    preflight_lint -> fix_lints\n    fix_lints -> preflight_lint\n    implement -> simplify_opus -> simplify_gpt -> verify\n    verify -> exit  [condition=\"outcome=succeeded\"]\n    verify -> fixup\n    fixup -> verify\n}\n",
+    "workflow_slug": "implement-plan",
+    "source_directory": "/Users/swerner/Development/os/fabro-main/fabro",
+    "labels": {
+      "slice": "redaction-hooks",
+      "batch": "secrets"
+    },
+    "provenance": {
+      "server": {
+        "version": "0.278.0-nightly.0"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.267.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.267.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "138379"
+        },
+        "login": "swerner",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/138379?v=4"
+      }
+    },
+    "manifest_blob": "ad112e9dbee3686d4a5c361a6c805ba06d9865505781eac84ca6f42428c7c2a0",
+    "definition_blob": "bc4452f2c0738b70d7b44765eb2b17ecc8c7c8dbc30a42299652e2dd13953bfb",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "fabro/run/01KWFBQKBAK5S9EWRSF0TMWM2V",
+      "sha": "aed85ab8b7ba6184afa9ba2a767915f523862182",
+      "dirty": "dirty",
+      "push_outcome": {
+        "type": "succeeded",
+        "remote": "origin",
+        "branch": "fabro/run/01KWFBQKBAK5S9EWRSF0TMWM2V"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KWFGXZ5P42QRWBYAPVEAXMX6",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-01T19:01:43.877395308Z",
+  "last_event_at": "2026-07-01T19:01:58.883451465Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-fdb28dec-1233-892c-b9d7-9f88f8353e7a",
+      "runtime": {
+        "id": "fabro-01KWFGXZ5P42QRWBYAPVEAXMX6",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "fabro/run/01KWFBQKBAK5S9EWRSF0TMWM2V",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
