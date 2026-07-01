@@ -71,9 +71,14 @@ pub fn docker_config_from_environment(
     settings: &RunEnvironmentSettings,
     skip_clone: bool,
 ) -> DockerSandboxOptions {
+    // No vault is available on this path (server preflight / manifest), so
+    // resolve `{{ env.* }}` against the process environment and let every other
+    // token (including `{{ secrets.* }}`) fall back to its source form.
     let env = settings
-        .resolve_env(process_env_var, |_| None)
-        .unwrap_or_else(|_| source_env(settings));
+        .env
+        .iter()
+        .map(|(key, value)| (key.clone(), value.resolve_or_source(process_env_var)))
+        .collect();
     docker_config_from_environment_env(settings, skip_clone, env)
 }
 
@@ -126,23 +131,6 @@ fn docker_config_from_environment_env(
         skip_clone,
         ..DockerSandboxOptions::default()
     }
-}
-
-#[cfg(feature = "docker")]
-fn source_env(settings: &RunEnvironmentSettings) -> std::collections::HashMap<String, String> {
-    settings
-        .env
-        .iter()
-        .map(|(key, value)| {
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Docker manifest/preflight fallback preserves unresolved run environment \
-                          source when no secret lookup is available"
-            )]
-            let source = value.as_source();
-            (key.clone(), source)
-        })
-        .collect()
 }
 
 pub fn local_working_directory_from_environment(

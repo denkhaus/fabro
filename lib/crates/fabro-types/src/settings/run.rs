@@ -1069,11 +1069,11 @@ impl RunEnvironmentSettings {
         mut env_lookup: impl FnMut(&str) -> Option<String>,
         mut secrets_lookup: impl FnMut(&str) -> Option<String>,
     ) -> Result<HashMap<String, String>, ResolveError> {
+        let mut ctx = ResolveCtx::new()
+            .with_env(&mut env_lookup)
+            .with_secrets(&mut secrets_lookup);
         let mut resolved = HashMap::with_capacity(self.env.len());
         for (name, value) in &self.env {
-            let mut ctx = ResolveCtx::new()
-                .with_env(&mut env_lookup)
-                .with_secrets(&mut secrets_lookup);
             let resolved_value = match value.resolve_with(&mut ctx) {
                 Ok(resolved) => resolved.value,
                 Err(err) if err.namespace == Namespace::Env => {
@@ -1099,9 +1099,23 @@ impl Default for RunEnvironmentSettings {
     }
 }
 
+/// Build a lookup closure over a fixed list of name/value pairs for the
+/// run-boundary resolver tests. Shared by the env, secret, prepare-step, and
+/// MCP transport test modules.
+#[cfg(test)]
+fn pair_lookup(
+    pairs: &'static [(&'static str, &'static str)],
+) -> impl Fn(&str) -> Option<String> + Copy {
+    move |name| {
+        pairs
+            .iter()
+            .find_map(|(key, value)| (*key == name).then(|| (*value).to_string()))
+    }
+}
+
 #[cfg(test)]
 mod run_environment_settings_tests {
-    use super::{HashMap, InterpString, RunEnvironmentSettings};
+    use super::{HashMap, InterpString, RunEnvironmentSettings, pair_lookup as lookup};
 
     fn settings(env: &[(&str, &str)]) -> RunEnvironmentSettings {
         RunEnvironmentSettings {
@@ -1110,16 +1124,6 @@ mod run_environment_settings_tests {
                 .map(|(k, v)| ((*k).to_string(), InterpString::parse(v)))
                 .collect(),
             ..RunEnvironmentSettings::default()
-        }
-    }
-
-    fn lookup(
-        pairs: &'static [(&'static str, &'static str)],
-    ) -> impl Fn(&str) -> Option<String> + Copy {
-        move |name| {
-            pairs
-                .iter()
-                .find_map(|(key, value)| (*key == name).then(|| (*value).to_string()))
         }
     }
 
@@ -1609,27 +1613,10 @@ mod resolve_transport_env_tests {
     use std::collections::HashMap;
 
     use super::super::interp::ResolveErrorKind;
-    use super::{McpHttpProtocol, McpServerSettings, McpTransport, Namespace};
-
-    fn env_lookup(
-        pairs: &'static [(&'static str, &'static str)],
-    ) -> impl Fn(&str) -> Option<String> + Copy {
-        move |name| {
-            pairs
-                .iter()
-                .find_map(|(key, value)| (*key == name).then(|| (*value).to_string()))
-        }
-    }
-
-    fn secret_lookup(
-        pairs: &'static [(&'static str, &'static str)],
-    ) -> impl Fn(&str) -> Option<String> + Copy {
-        move |name| {
-            pairs
-                .iter()
-                .find_map(|(key, value)| (*key == name).then(|| (*value).to_string()))
-        }
-    }
+    use super::{
+        McpHttpProtocol, McpServerSettings, McpTransport, Namespace, pair_lookup as env_lookup,
+        pair_lookup as secret_lookup,
+    };
 
     #[test]
     fn literal_transport_passes_through() {
@@ -1845,27 +1832,10 @@ mod resolve_step_env_tests {
     use std::collections::HashMap;
 
     use super::super::interp::ResolveErrorKind;
-    use super::{Namespace, PreparedStep, PreparedStepRun, RunPrepareSettings};
-
-    fn env_lookup(
-        pairs: &'static [(&'static str, &'static str)],
-    ) -> impl Fn(&str) -> Option<String> + Copy {
-        move |name| {
-            pairs
-                .iter()
-                .find_map(|(key, value)| (*key == name).then(|| (*value).to_string()))
-        }
-    }
-
-    fn secret_lookup(
-        pairs: &'static [(&'static str, &'static str)],
-    ) -> impl Fn(&str) -> Option<String> + Copy {
-        move |name| {
-            pairs
-                .iter()
-                .find_map(|(key, value)| (*key == name).then(|| (*value).to_string()))
-        }
-    }
+    use super::{
+        Namespace, PreparedStep, PreparedStepRun, RunPrepareSettings, pair_lookup as env_lookup,
+        pair_lookup as secret_lookup,
+    };
 
     fn script_step(script: &str, env: HashMap<String, String>) -> PreparedStep {
         PreparedStep {

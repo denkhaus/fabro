@@ -377,15 +377,17 @@ impl RunSession {
             Some(vault) => Some(vault.read().await),
             None => None,
         };
+        // Token-only secrets lookup over the vault read guard, shared across
+        // every run-boundary resolver. A missing or non-Token secret becomes
+        // `None`, so resolution fails closed with a secret error.
+        let secret_lookup = |name: &str| vault_token_lookup(vault_guard.as_deref(), name);
         let mcp_servers = resolved
             .agent
             .mcps
             .iter()
             .map(|(key, entry)| match entry {
                 ResolvedMcpEntry::Resolved(server) => {
-                    runtime_mcp_server(server, process_env_var, |name| {
-                        vault_token_lookup(vault_guard.as_deref(), name)
-                    })
+                    runtime_mcp_server(server, process_env_var, secret_lookup)
                 }
                 // References must be resolved to concrete servers before the run
                 // spec is persisted (server-side run-preparation pass). Reaching
@@ -417,9 +419,7 @@ impl RunSession {
                 SandboxSpec::Local { working_directory }
             }
             SandboxProviderKind::Docker => SandboxSpec::Docker {
-                config:           resolve_docker_config(resolved, |name| {
-                    vault_token_lookup(vault_guard.as_deref(), name)
-                })?,
+                config:           resolve_docker_config(resolved, secret_lookup)?,
                 github_app:       services.github_app.clone(),
                 run_id:           Some(record.run_id),
                 clone_origin_url: record.repo_origin_url().map(str::to_string),
@@ -443,9 +443,7 @@ impl RunSession {
 
         let toml_env = resolved
             .environment
-            .resolve_env(process_env_var, |name| {
-                vault_token_lookup(vault_guard.as_deref(), name)
-            })
+            .resolve_env(process_env_var, secret_lookup)
             .map_err(|err| Error::engine_with_source("failed to resolve run environment", err))?;
         let github_permissions: Option<HashMap<String, String>> =
             (!services.github_permissions.is_empty()).then(|| services.github_permissions.clone());
@@ -463,9 +461,8 @@ impl RunSession {
         };
 
         let pr_config = resolved.pull_request.clone();
-        let setup_commands = runtime_setup_commands(&resolved.prepare, process_env_var, |name| {
-            vault_token_lookup(vault_guard.as_deref(), name)
-        })?;
+        let setup_commands =
+            runtime_setup_commands(&resolved.prepare, process_env_var, secret_lookup)?;
         drop(vault_guard);
 
         Ok(Self {
