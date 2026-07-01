@@ -495,14 +495,112 @@
     }
   },
   "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KWF7MM3VPXZZA8BTHJXE9VT1",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-07-01T16:19:34.283984427Z",
+    "run_branch": "fabro/run/01KWF7MM3VPXZZA8BTHJXE9VT1",
+    "base_sha": "c945fb404badc8daf1972b974f370d9dec1e62d0"
   },
-  "status_updated_at": "2026-07-01T16:19:20.397218906Z",
-  "last_event_at": "2026-07-01T16:19:34.141417024Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-07-01T16:19:34.284021538Z",
+  "last_event_at": "2026-07-01T16:19:37.161348287Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 21,
+      "checkpoint": {
+        "timestamp": "2026-07-01T16:19:36.002013164Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "graph.goal": "# Plan A — `SecretRedactor` in `fabro-redact`\n\n**This is Plan A of three** (split for parallel execution):\n\n- **Plan A (this file)** — add a per-run secret-value redactor to `fabro-redact`.\n  Self-contained; touches only `fabro-redact/`. **Run in parallel with Plan B.**\n- **Plan B** — resolve `secrets.*` tokens at the run boundary. **Run in parallel\n  with Plan A.**\n- **Plan C** — wire redaction across leak surfaces + hooks. **Run after A and B\n  merge** (it consumes this crate's type and Plan B's lookup).\n\nThis plan is inert on its own: it adds a tested library primitive that Plan C\nwires up. Shipping it alone changes no behavior.\n\n> **Token notation.** Interpolation tokens are written in this file without their\n> enclosing double curly braces, so the file is safe to pass directly as a\n> workflow goal (the goal templater would otherwise try to expand them). Read\n> `secrets.NAME`, `env.NAME`, and `secrets.*` as the double-curly-brace-wrapped\n> token form used everywhere else in the codebase, and write the real\n> double-brace syntax in the code, tests, and docs you produce.\n\n---\n\n## Overall goal (shared context)\n\nMake secret tokens (`secrets.NAME`) in workflow config resolve from the server\nvault, at the run boundary, with values that never get persisted, never leak, and\nfail closed when a secret is missing or the wrong type. The redaction guarantee\nfor declared secrets is: content-based redaction (already present) is the\nuniversal baseline, plus a per-run registry of resolved secret **values** so a\ndeclared secret is redacted even when it does not look like a credential. **This\nplan builds that registry primitive.**\n\nWhy per-run and not a process global: a test-only in-process run path executes\nmultiple runs in the same process, so redaction state must be per-run, never a\n`static`/global.\n\n## Conventions\n\n- **TDD.** Write the failing test first, then the code.\n- Match the codebase: Rust import style (types by name, functions via parent\n  module, no glob imports in production), `strum` for enum string maps, keep\n  test-only helpers behind `#[cfg(test)]`.\n- Plain-English commit messages, PR text, and comments — no internal planning\n  identifiers.\n- The verify gate runs nightly `fmt --check`, nightly\n  `clippy --all-targets -D warnings`, `cargo nextest run --workspace`, docs check,\n  web/api-client typecheck, and a release build. Implement so all pass.\n- Never print or log a secret value.\n\n---\n\n## Implementation\n\n### A.1 — Add the `SecretRedactor` type\n\nFile: new `lib/crates/fabro-redact/src/secret_registry.rs`, exported from\n`lib/crates/fabro-redact/src/lib.rs`.\n\nAdd a cheap, cloneable, per-run registry of secret values that redacts exact\nmatches regardless of shape. It composes *after* the existing content-based\nredaction (`redact_string`, `redact_json_value`) — this type does not replace\nthem.\n\nShape:\n\n- `SecretRedactor` backed by shared, interior-mutable state (e.g.\n  `Arc<Mutex<Vec<String>>>` or `Arc<RwLock<...>>`) so a clone handed to a\n  different subsystem observes registrations. Derive `Clone` and `Default`; an\n  empty redactor is a pure no-op.\n- `fn register(&self, value: impl Into<String>)` — store a secret value to be\n  redacted. **Ignore empty or whitespace-only values** (registering an empty\n  string would turn all output into `REDACTED`). De-duplicate.\n- `fn redact_into(&self, s: &str) -> String` — replace every registered value\n  substring with the same `\"REDACTED\"` marker used by `redact_string`. Replace\n  **longest values first** so a secret that is a substring of another is handled\n  correctly. If the registry is empty, return the input unchanged (fast path).\n- `fn redact_json(&self, value: serde_json::Value) -> serde_json::Value` — walk\n  the JSON tree and apply `redact_into` to every string leaf (both object values\n  and array elements; object keys are left as-is). Exact-value matching is\n  unambiguous, so unlike `redact_json_value` this pass does not skip any keys.\n- Optional `fn is_empty(&self) -> bool` for callers that want to skip work.\n\nReuse the crate's existing `\"REDACTED\"` replacement marker (see `redact_string`\nin `lib.rs`) rather than introducing a new literal.\n\n### A.2 — Tests (unit, in the new module)\n\n- A **low-entropy** value (e.g. `\"staging\"`) that `redact_string` would *not*\n  catch is replaced with `REDACTED` by `redact_into` after `register(\"staging\")`.\n- Registering `\"\"` or `\"   \"` is a no-op: `redact_into` leaves unrelated text\n  intact (guard against the empty-value footgun).\n- Overlapping values: register both `\"abc\"` and `\"abcdef\"`; `redact_into` on a\n  string containing `\"abcdef\"` redacts the whole token (longest-first), not just\n  the `\"abc\"` prefix.\n- Empty registry: `redact_into` and `redact_json` are the identity.\n- `redact_json` redacts a registered value nested inside an object value and\n  inside an array element.\n- A clone of the redactor observes values registered through the original (shared\n  state), proving it can be handed to another subsystem.\n\n### A.3 — Verify\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run -p fabro-redact`\n- release build (`cargo dev build -- -p fabro-cli --release`)\n\n## Dependencies\n\nNone. Parallel-safe with Plan B. This type is consumed by Plan C.\n",
+          "internal.fidelity": "compact",
+          "internal.node_visit_count": 1,
+          "internal.thread_id": null,
+          "outcome": "succeeded",
+          "current_node": "start",
+          "failure_signature": "",
+          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
+          "internal.retry_count.start": 0,
+          "internal.run_id": "01KWF7MM3VPXZZA8BTHJXE9VT1",
+          "internal.work_dir": "/home/daytona/workspace/fabro"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "toolchain",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-01T16:19:37.162821915Z",
+        "current_node": "toolchain",
+        "completed_nodes": [
+          "start",
+          "toolchain"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.node_visit_count": 1,
+          "internal.retry_count.toolchain": 0,
+          "internal.retry_count.start": 0,
+          "graph.goal": "# Plan A — `SecretRedactor` in `fabro-redact`\n\n**This is Plan A of three** (split for parallel execution):\n\n- **Plan A (this file)** — add a per-run secret-value redactor to `fabro-redact`.\n  Self-contained; touches only `fabro-redact/`. **Run in parallel with Plan B.**\n- **Plan B** — resolve `secrets.*` tokens at the run boundary. **Run in parallel\n  with Plan A.**\n- **Plan C** — wire redaction across leak surfaces + hooks. **Run after A and B\n  merge** (it consumes this crate's type and Plan B's lookup).\n\nThis plan is inert on its own: it adds a tested library primitive that Plan C\nwires up. Shipping it alone changes no behavior.\n\n> **Token notation.** Interpolation tokens are written in this file without their\n> enclosing double curly braces, so the file is safe to pass directly as a\n> workflow goal (the goal templater would otherwise try to expand them). Read\n> `secrets.NAME`, `env.NAME`, and `secrets.*` as the double-curly-brace-wrapped\n> token form used everywhere else in the codebase, and write the real\n> double-brace syntax in the code, tests, and docs you produce.\n\n---\n\n## Overall goal (shared context)\n\nMake secret tokens (`secrets.NAME`) in workflow config resolve from the server\nvault, at the run boundary, with values that never get persisted, never leak, and\nfail closed when a secret is missing or the wrong type. The redaction guarantee\nfor declared secrets is: content-based redaction (already present) is the\nuniversal baseline, plus a per-run registry of resolved secret **values** so a\ndeclared secret is redacted even when it does not look like a credential. **This\nplan builds that registry primitive.**\n\nWhy per-run and not a process global: a test-only in-process run path executes\nmultiple runs in the same process, so redaction state must be per-run, never a\n`static`/global.\n\n## Conventions\n\n- **TDD.** Write the failing test first, then the code.\n- Match the codebase: Rust import style (types by name, functions via parent\n  module, no glob imports in production), `strum` for enum string maps, keep\n  test-only helpers behind `#[cfg(test)]`.\n- Plain-English commit messages, PR text, and comments — no internal planning\n  identifiers.\n- The verify gate runs nightly `fmt --check`, nightly\n  `clippy --all-targets -D warnings`, `cargo nextest run --workspace`, docs check,\n  web/api-client typecheck, and a release build. Implement so all pass.\n- Never print or log a secret value.\n\n---\n\n## Implementation\n\n### A.1 — Add the `SecretRedactor` type\n\nFile: new `lib/crates/fabro-redact/src/secret_registry.rs`, exported from\n`lib/crates/fabro-redact/src/lib.rs`.\n\nAdd a cheap, cloneable, per-run registry of secret values that redacts exact\nmatches regardless of shape. It composes *after* the existing content-based\nredaction (`redact_string`, `redact_json_value`) — this type does not replace\nthem.\n\nShape:\n\n- `SecretRedactor` backed by shared, interior-mutable state (e.g.\n  `Arc<Mutex<Vec<String>>>` or `Arc<RwLock<...>>`) so a clone handed to a\n  different subsystem observes registrations. Derive `Clone` and `Default`; an\n  empty redactor is a pure no-op.\n- `fn register(&self, value: impl Into<String>)` — store a secret value to be\n  redacted. **Ignore empty or whitespace-only values** (registering an empty\n  string would turn all output into `REDACTED`). De-duplicate.\n- `fn redact_into(&self, s: &str) -> String` — replace every registered value\n  substring with the same `\"REDACTED\"` marker used by `redact_string`. Replace\n  **longest values first** so a secret that is a substring of another is handled\n  correctly. If the registry is empty, return the input unchanged (fast path).\n- `fn redact_json(&self, value: serde_json::Value) -> serde_json::Value` — walk\n  the JSON tree and apply `redact_into` to every string leaf (both object values\n  and array elements; object keys are left as-is). Exact-value matching is\n  unambiguous, so unlike `redact_json_value` this pass does not skip any keys.\n- Optional `fn is_empty(&self) -> bool` for callers that want to skip work.\n\nReuse the crate's existing `\"REDACTED\"` replacement marker (see `redact_string`\nin `lib.rs`) rather than introducing a new literal.\n\n### A.2 — Tests (unit, in the new module)\n\n- A **low-entropy** value (e.g. `\"staging\"`) that `redact_string` would *not*\n  catch is replaced with `REDACTED` by `redact_into` after `register(\"staging\")`.\n- Registering `\"\"` or `\"   \"` is a no-op: `redact_into` leaves unrelated text\n  intact (guard against the empty-value footgun).\n- Overlapping values: register both `\"abc\"` and `\"abcdef\"`; `redact_into` on a\n  string containing `\"abcdef\"` redacts the whole token (longest-first), not just\n  the `\"abc\"` prefix.\n- Empty registry: `redact_into` and `redact_json` are the identity.\n- `redact_json` redacts a registered value nested inside an object value and\n  inside an array element.\n- A clone of the redactor observes values registered through the original (shared\n  state), proving it can be handed to another subsystem.\n\n### A.3 — Verify\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run -p fabro-redact`\n- release build (`cargo dev build -- -p fabro-cli --release`)\n\n## Dependencies\n\nNone. Parallel-safe with Plan B. This type is consumed by Plan C.\n",
+          "failure_class": "",
+          "outcome": "succeeded",
+          "command.output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c",
+          "graph.rankdir": "LR",
+          "internal.run_id": "01KWF7MM3VPXZZA8BTHJXE9VT1",
+          "internal.thread_id": "start",
+          "failure_signature": "",
+          "thread.start.current_node": "toolchain",
+          "current_node": "toolchain",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.fidelity": "compact",
+          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        "
+        },
+        "node_outcomes": {
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1155,
+              "active_time_ms": 1155
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "preflight_compile",
+        "node_visits": {
+          "start": 1,
+          "toolchain": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -528,5 +626,77 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 18,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-01T16:19:36.001903357Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-01T16:19:36.001798618Z",
+      "handler": "start",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    },
+    "toolchain@1": {
+      "first_event_seq": 22,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "command": "exec 2>&1\ncommand -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "language": "shell"
+      },
+      "script_timing": {
+        "output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c",
+        "exit_code": 0,
+        "duration_ms": 1155,
+        "termination": "exited",
+        "output_bytes": 36,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 36,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-07-01T16:19:36.002173534Z",
+      "handler": "command",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
+    }
+  }
 }
