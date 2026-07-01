@@ -1,0 +1,152 @@
+diff --git a/lib/crates/fabro-sandbox/src/daytona/mod.rs b/lib/crates/fabro-sandbox/src/daytona/mod.rs
+index 7c2170aca..3c1568fc0 100644
+--- a/lib/crates/fabro-sandbox/src/daytona/mod.rs
++++ b/lib/crates/fabro-sandbox/src/daytona/mod.rs
+@@ -1900,9 +1900,15 @@ impl Sandbox for DaytonaSandbox {
+         );
+ 
+         let traversal_root = glob_match::traversal_root(&base, pattern);
+-        let mut candidates = self.list_files_recursive(&traversal_root).await?;
+-        candidates.sort();
+-        glob_match::match_glob(&base, pattern, &candidates)
++        let matcher = glob_match::GlobMatcher::new(&base, pattern)?;
++        let mut matches = self
++            .list_files_recursive(&traversal_root)
++            .await?
++            .into_iter()
++            .filter(|path| matcher.matches(path))
++            .collect::<Vec<_>>();
++        matches.sort();
++        Ok(matches)
+     }
+ }
+ 
+diff --git a/lib/crates/fabro-sandbox/src/docker.rs b/lib/crates/fabro-sandbox/src/docker.rs
+index 5c2df9302..43da3970b 100644
+--- a/lib/crates/fabro-sandbox/src/docker.rs
++++ b/lib/crates/fabro-sandbox/src/docker.rs
+@@ -1862,14 +1862,15 @@ impl Sandbox for DockerSandbox {
+             )));
+         }
+ 
+-        let mut candidates = result
++        let matcher = glob_match::GlobMatcher::new(&base_dir, pattern)?;
++        let mut matches = result
+             .stdout
+             .lines()
++            .filter(|line| !line.is_empty() && matcher.matches(line))
+             .map(String::from)
+-            .filter(|line| !line.is_empty())
+             .collect::<Vec<_>>();
+-        candidates.sort();
+-        glob_match::match_glob(&base_dir, pattern, &candidates)
++        matches.sort();
++        Ok(matches)
+     }
+ 
+     fn working_directory(&self) -> &str {
+diff --git a/lib/crates/fabro-sandbox/src/glob_match.rs b/lib/crates/fabro-sandbox/src/glob_match.rs
+index 056253f7c..bab086193 100644
+--- a/lib/crates/fabro-sandbox/src/glob_match.rs
++++ b/lib/crates/fabro-sandbox/src/glob_match.rs
+@@ -1,34 +1,22 @@
+ use std::path::Path;
+ 
+-struct GlobMatcher {
++pub(crate) struct GlobMatcher {
+     pattern: glob::Pattern,
+ }
+ 
+ impl GlobMatcher {
+-    fn new(base: &str, pattern: &str) -> crate::Result<Self> {
++    pub(crate) fn new(base: &str, pattern: &str) -> crate::Result<Self> {
+         let full_pattern = full_pattern(base, pattern);
+         let pattern = glob::Pattern::new(&full_pattern)
+             .map_err(|err| crate::Error::context("Invalid glob pattern", err))?;
+         Ok(Self { pattern })
+     }
+ 
+-    fn match_paths(&self, candidate_paths: &[String]) -> Vec<String> {
+-        candidate_paths
+-            .iter()
+-            .filter(|path| self.pattern.matches_with(path, match_options()))
+-            .cloned()
+-            .collect()
++    pub(crate) fn matches(&self, path: &str) -> bool {
++        self.pattern.matches_with(path, match_options())
+     }
+ }
+ 
+-pub(crate) fn match_glob(
+-    base: &str,
+-    pattern: &str,
+-    candidate_paths: &[String],
+-) -> crate::Result<Vec<String>> {
+-    Ok(GlobMatcher::new(base, pattern)?.match_paths(candidate_paths))
+-}
+-
+ pub(crate) fn traversal_root(base: &str, pattern: &str) -> String {
+     let full_pattern = full_pattern(base, pattern);
+     literal_traversal_root(&full_pattern)
+@@ -138,12 +126,25 @@ fn parent_path(path: &str) -> String {
+ mod tests {
+     use std::path::Path;
+ 
+-    use super::match_glob;
++    use super::GlobMatcher;
+ 
+     fn path_string(path: &Path) -> String {
+         path.to_string_lossy().into_owned()
+     }
+ 
++    fn match_glob(
++        base: &str,
++        pattern: &str,
++        candidate_paths: &[String],
++    ) -> crate::Result<Vec<String>> {
++        let matcher = GlobMatcher::new(base, pattern)?;
++        Ok(candidate_paths
++            .iter()
++            .filter(|path| matcher.matches(path))
++            .cloned()
++            .collect())
++    }
++
+     #[test]
+     fn skill_pattern_matches_exactly_one_directory_level() {
+         let candidates = vec![
+diff --git a/lib/crates/fabro-sandbox/src/local.rs b/lib/crates/fabro-sandbox/src/local.rs
+index 6656c14a6..b240d27db 100644
+--- a/lib/crates/fabro-sandbox/src/local.rs
++++ b/lib/crates/fabro-sandbox/src/local.rs
+@@ -630,22 +630,17 @@ impl Sandbox for LocalSandbox {
+             path.map_or_else(|| self.working_directory.clone(), |p| self.resolve_path(p));
+         let base = base_dir.to_string_lossy().into_owned();
+         let traversal_root = PathBuf::from(glob_match::traversal_root(&base, pattern));
+-        let local_files = collect_local_files(traversal_root).await?;
+-        let candidate_paths = local_files
+-            .iter()
+-            .map(|(path, _)| path.clone())
+-            .collect::<Vec<_>>();
+-        let modified_by_path = local_files
++        let matcher = glob_match::GlobMatcher::new(&base, pattern)?;
++        let mut matches = collect_local_files(traversal_root)
++            .await?
+             .into_iter()
+-            .collect::<std::collections::HashMap<_, _>>();
+-        let mut results = glob_match::match_glob(&base, pattern, &candidate_paths)?;
++            .filter(|(path, _)| matcher.matches(path))
++            .collect::<Vec<_>>();
+ 
+-        // Sort by mtime (newest first), caching metadata to avoid O(n log n) syscalls
+-        results.sort_by_cached_key(|path| {
+-            std::cmp::Reverse(modified_by_path.get(path).copied().unwrap_or(UNIX_EPOCH))
+-        });
++        // Sort by mtime (newest first) using the metadata collected during traversal.
++        matches.sort_by_key(|(_, modified)| std::cmp::Reverse(*modified));
+ 
+-        Ok(results)
++        Ok(matches.into_iter().map(|(path, _)| path).collect())
+     }
+ 
+     async fn download_file_to_local(
