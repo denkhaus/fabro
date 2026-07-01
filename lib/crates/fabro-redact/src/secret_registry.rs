@@ -9,7 +9,8 @@ use crate::Region;
 /// This complements the crate's content-based redaction by redacting registered
 /// values even when they do not look like credentials. Clones share the same
 /// registry so callers can hand a redactor to another subsystem and continue to
-/// register values through the original.
+/// register values through the original. Registered values are exact substring
+/// matches and may be low-entropy strings such as environment names.
 #[derive(Clone, Default)]
 pub struct SecretRedactor {
     values: Arc<RwLock<Vec<String>>>,
@@ -39,21 +40,19 @@ impl SecretRedactor {
 
     /// Redact all registered secret values from `s`.
     pub fn redact_into(&self, s: &str) -> String {
-        let values = self.read();
-        if values.is_empty() {
+        let Some(values) = self.values_snapshot() else {
             return s.to_string();
-        }
+        };
         redact_string_values(s, &values)
     }
 
-    /// Redact registered secret values from every JSON string leaf.
+    /// Redact registered secret values from every JSON string value.
     ///
-    /// Object keys are left unchanged.
+    /// Object keys and non-string values are left unchanged.
     pub fn redact_json(&self, mut value: Value) -> Value {
-        let values = self.read();
-        if values.is_empty() {
+        let Some(values) = self.values_snapshot() else {
             return value;
-        }
+        };
 
         redact_json_leaves(&mut value, &values);
         value
@@ -65,6 +64,14 @@ impl SecretRedactor {
 
     fn write(&self) -> RwLockWriteGuard<'_, Vec<String>> {
         self.values.write().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn values_snapshot(&self) -> Option<Vec<String>> {
+        let values = self.read();
+        if values.is_empty() {
+            return None;
+        }
+        Some(values.clone())
     }
 }
 
@@ -105,6 +112,10 @@ fn redact_string_values(s: &str, values: &[String]) -> String {
                 end: start + value.len(),
             });
         }
+    }
+
+    if regions.is_empty() {
+        return s.to_string();
     }
 
     crate::redact_regions(s, regions)
