@@ -5,6 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
+use fabro_types::settings::ResolveError;
 #[cfg(feature = "daytona")]
 use fabro_types::settings::run::DockerfileSource as ResolvedDockerfileSource;
 use fabro_types::settings::run::{EnvironmentNetworkMode, RunEnvironmentSettings};
@@ -70,8 +71,31 @@ pub fn docker_config_from_environment(
     settings: &RunEnvironmentSettings,
     skip_clone: bool,
 ) -> DockerSandboxOptions {
-    let mut env_vars = settings
-        .resolve_env(process_env_var)
+    let env = settings
+        .resolve_env(process_env_var, |_| None)
+        .unwrap_or_else(|_| source_env(settings));
+    docker_config_from_environment_env(settings, skip_clone, env)
+}
+
+#[cfg(feature = "docker")]
+pub fn docker_config_from_environment_with_secrets(
+    settings: &RunEnvironmentSettings,
+    skip_clone: bool,
+    secrets_lookup: impl FnMut(&str) -> Option<String>,
+) -> Result<DockerSandboxOptions, ResolveError> {
+    let env = settings.resolve_env(process_env_var, secrets_lookup)?;
+    Ok(docker_config_from_environment_env(
+        settings, skip_clone, env,
+    ))
+}
+
+#[cfg(feature = "docker")]
+fn docker_config_from_environment_env(
+    settings: &RunEnvironmentSettings,
+    skip_clone: bool,
+    env: std::collections::HashMap<String, String>,
+) -> DockerSandboxOptions {
+    let mut env_vars = env
         .into_iter()
         .map(|(key, value)| format!("{key}={value}"))
         .collect::<Vec<_>>();
@@ -102,6 +126,23 @@ pub fn docker_config_from_environment(
         skip_clone,
         ..DockerSandboxOptions::default()
     }
+}
+
+#[cfg(feature = "docker")]
+fn source_env(settings: &RunEnvironmentSettings) -> std::collections::HashMap<String, String> {
+    settings
+        .env
+        .iter()
+        .map(|(key, value)| {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Docker manifest/preflight fallback preserves unresolved run environment \
+                          source when no secret lookup is available"
+            )]
+            let source = value.as_source();
+            (key.clone(), source)
+        })
+        .collect()
 }
 
 pub fn local_working_directory_from_environment(
