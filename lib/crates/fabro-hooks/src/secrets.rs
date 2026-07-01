@@ -44,11 +44,6 @@ impl HookSecretResolver {
         }
     }
 
-    #[must_use]
-    pub fn redactor(&self) -> &SecretRedactor {
-        &self.redactor
-    }
-
     pub async fn resolve_for_definition(&self, definition: &HookDefinition) -> ResolvedHookSecrets {
         self.resolve_names(secret_names_for_definition(definition))
             .await
@@ -101,17 +96,10 @@ impl ResolvedHookSecrets {
     }
 
     #[must_use]
-    pub fn empty_with_redactor(redactor: SecretRedactor) -> Self {
-        Self::new(HashMap::new(), redactor)
-    }
-
-    #[must_use]
     pub fn lookup(&self, name: &str) -> Option<String> {
-        let value = self.values.get(name).cloned();
-        if let Some(value) = value.as_deref() {
-            self.redactor.register(value);
-        }
-        value
+        // Values were registered with the redactor at construction time in
+        // `new`, so this is a pure read.
+        self.values.get(name).cloned()
     }
 
     #[must_use]

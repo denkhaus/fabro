@@ -47,6 +47,8 @@ fn redact_hook_decision(decision: HookDecision, redactor: &SecretRedactor) -> Ho
         HookDecision::Block { reason } => HookDecision::Block {
             reason: reason.map(|reason| redactor.redact_into(&reason)),
         },
+        // `Override.edge_to` is a structural graph edge id, not free-form text,
+        // so it is intentionally left unredacted.
         HookDecision::Proceed | HookDecision::Override { .. } => decision,
     }
 }
@@ -178,6 +180,43 @@ impl HookRunner {
         .any(|field| field.is_some_and(|v| re.is_match(v)))
     }
 
+    /// Resolve secrets, run a single hook through the executor, and redact its
+    /// result. Shared by the blocking and non-blocking loops.
+    async fn execute_one(
+        &self,
+        hook: &HookDefinition,
+        context: &HookContext,
+        sandbox: Arc<dyn Sandbox>,
+        execution_context: &HookExecutionContext,
+    ) -> HookResult {
+        tracing::debug!(
+            hook = %hook.effective_name(),
+            event = %context.event,
+            "Executing hook"
+        );
+        let secrets = self.secrets.resolve_for_definition(hook).await;
+        let result = self
+            .executor
+            .execute(
+                hook,
+                context,
+                sandbox,
+                execution_context,
+                self.llm_source.as_ref(),
+                Arc::clone(&self.catalog),
+                &secrets,
+            )
+            .await;
+        let result = redact_hook_result(result, secrets.redactor());
+        tracing::debug!(
+            hook = %hook.effective_name(),
+            duration_ms = result.duration_ms,
+            decision = decision_label(&result.decision),
+            "Hook complete"
+        );
+        result
+    }
+
     async fn run_sequential(
         &self,
         hooks: &[&HookDefinition],
@@ -187,31 +226,9 @@ impl HookRunner {
     ) -> HookDecision {
         let mut merged = HookDecision::Proceed;
         for hook in hooks {
-            tracing::debug!(
-                hook = %hook.effective_name(),
-                event = %context.event,
-                "Executing hook"
-            );
-            let secrets = self.secrets.resolve_for_definition(hook).await;
             let result = self
-                .executor
-                .execute(
-                    hook,
-                    context,
-                    sandbox.clone(),
-                    execution_context,
-                    self.llm_source.as_ref(),
-                    Arc::clone(&self.catalog),
-                    &secrets,
-                )
+                .execute_one(hook, context, sandbox.clone(), execution_context)
                 .await;
-            let result = redact_hook_result(result, secrets.redactor());
-            tracing::debug!(
-                hook = %hook.effective_name(),
-                duration_ms = result.duration_ms,
-                decision = decision_label(&result.decision),
-                "Hook complete"
-            );
 
             if hook.is_blocking() {
                 merged = merged.merge(result.decision);
@@ -245,31 +262,9 @@ impl HookRunner {
         execution_context: &HookExecutionContext,
     ) -> HookDecision {
         for hook in hooks {
-            tracing::debug!(
-                hook = %hook.effective_name(),
-                event = %context.event,
-                "Executing hook"
-            );
-            let secrets = self.secrets.resolve_for_definition(hook).await;
             let result = self
-                .executor
-                .execute(
-                    hook,
-                    context,
-                    sandbox.clone(),
-                    execution_context,
-                    self.llm_source.as_ref(),
-                    Arc::clone(&self.catalog),
-                    &secrets,
-                )
+                .execute_one(hook, context, sandbox.clone(), execution_context)
                 .await;
-            let result = redact_hook_result(result, secrets.redactor());
-            tracing::debug!(
-                hook = %hook.effective_name(),
-                duration_ms = result.duration_ms,
-                decision = decision_label(&result.decision),
-                "Hook complete"
-            );
             if !result.decision.is_proceed() {
                 tracing::warn!(
                     hook = %hook.effective_name(),

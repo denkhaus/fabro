@@ -17,6 +17,7 @@ pub use self::names::event_name;
 pub use self::redaction::{
     build_redacted_event_payload, build_redacted_event_payload_with_redactor,
     event_payload_from_redacted_json, redacted_event_json, redacted_event_json_with_redactor,
+    redacted_run_event,
 };
 pub use self::sink::{
     RunEventLogger, RunEventSink, StoreProgressLogger, append_event, append_event_to_sink,

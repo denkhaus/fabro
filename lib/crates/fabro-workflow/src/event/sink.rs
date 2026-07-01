@@ -11,8 +11,8 @@ use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot};
 
 use super::emitter::Emitter;
 use super::redaction::{
-    build_redacted_event_payload, build_redacted_event_payload_with_redactor, redacted_event_json,
-    redacted_event_json_with_redactor,
+    build_redacted_event_payload, redacted_event_json, redacted_event_json_with_redactor,
+    redacted_run_event,
 };
 use super::{Event, to_run_event};
 use crate::runtime_store::RunStoreHandle;
@@ -137,15 +137,11 @@ impl RunEventSink {
                     writer.flush().await?;
                 }
                 Self::Callback(callback) => {
-                    let event = if let Some(redactor) = redactor.as_ref() {
-                        let payload = build_redacted_event_payload_with_redactor(
-                            &event,
-                            &event.run_id,
-                            Some(redactor),
-                        )?;
-                        RunEvent::try_from(&payload)?
-                    } else {
-                        event
+                    let event = match redactor.as_ref() {
+                        Some(redactor) => {
+                            redacted_run_event(&event, &event.run_id, Some(redactor))?
+                        }
+                        None => event,
                     };
                     callback(event).await?;
                 }

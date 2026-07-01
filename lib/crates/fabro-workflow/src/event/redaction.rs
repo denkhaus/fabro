@@ -18,6 +18,21 @@ pub fn build_redacted_event_payload_with_redactor(
     EventPayload::new(value, run_id).map_err(anyhow::Error::from)
 }
 
+/// Redact an event and reconstruct it as a `RunEvent`.
+///
+/// This runs the event through the content-based pass plus the optional
+/// per-run [`SecretRedactor`], then reparses the redacted payload back into a
+/// `RunEvent` so downstream sinks that require a typed event never see the raw
+/// value.
+pub fn redacted_run_event(
+    event: &RunEvent,
+    run_id: &RunId,
+    redactor: Option<&SecretRedactor>,
+) -> Result<RunEvent> {
+    let payload = build_redacted_event_payload_with_redactor(event, run_id, redactor)?;
+    RunEvent::try_from(&payload).map_err(anyhow::Error::from)
+}
+
 pub fn redacted_event_json(event: &RunEvent) -> Result<String> {
     redacted_event_json_with_redactor(event, None)
 }
@@ -43,6 +58,11 @@ fn redacted_event_value(event: &RunEvent, redactor: Option<&SecretRedactor>) -> 
 }
 
 fn redact_event_payload_secrets(value: &mut Value, redactor: &SecretRedactor) {
+    // No declared secrets (the common case): skip the recursive property walk
+    // entirely. Content-based redaction already ran in `redacted_event_value`.
+    if redactor.is_empty() {
+        return;
+    }
     if let Some(properties) = value.get_mut("properties") {
         redact_redactable_event_properties(properties, redactor);
     }

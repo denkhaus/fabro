@@ -27,7 +27,7 @@ use fabro_types::{
 };
 use fabro_vault::Vault;
 use fabro_workflow::artifact_upload::{ArtifactSink, StageArtifactUploader};
-use fabro_workflow::event::{Emitter, RunEventSink, build_redacted_event_payload_with_redactor};
+use fabro_workflow::event::{Emitter, RunEventSink, redacted_run_event};
 use fabro_workflow::operations::{self, StartServices};
 use fabro_workflow::run_control::RunControlState;
 use fabro_workflow::runtime_store::{RunStoreBackend, RunStoreHandle};
@@ -1016,10 +1016,8 @@ impl RunStoreBackend for HttpRunStore {
         redactor: Option<&SecretRedactor>,
     ) -> Result<()> {
         let event = if let Some(redactor) = redactor {
-            let payload =
-                build_redacted_event_payload_with_redactor(event, &self.run_id, Some(redactor))
-                    .context("failed to build redacted run event payload")?;
-            RunEvent::try_from(&payload).context("redacted run event payload is invalid")?
+            redacted_run_event(event, &self.run_id, Some(redactor))
+                .context("failed to build redacted run event payload")?
         } else {
             event.clone()
         };
