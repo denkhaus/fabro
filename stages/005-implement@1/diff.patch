@@ -1,0 +1,589 @@
+diff --git a/lib/crates/fabro-sandbox/src/daytona/mod.rs b/lib/crates/fabro-sandbox/src/daytona/mod.rs
+index 2ce40b8b5..7c2170aca 100644
+--- a/lib/crates/fabro-sandbox/src/daytona/mod.rs
++++ b/lib/crates/fabro-sandbox/src/daytona/mod.rs
+@@ -1,4 +1,4 @@
+-use std::collections::HashMap;
++use std::collections::{HashMap, HashSet};
+ use std::fmt::Write;
+ use std::path::Path;
+ use std::sync::Arc;
+@@ -29,7 +29,7 @@ use crate::redact::redact_auth_url;
+ use crate::sandbox::{optional_timeout, resolve_path};
+ use crate::{
+     CommandOutputCallback, DirEntry, ExecResult, ExecStreamingResult, GrepOptions, Sandbox,
+-    SandboxEvent, SandboxEventCallback, StdioProcess, managed_labels, shell_quote,
++    SandboxEvent, SandboxEventCallback, StdioProcess, glob_match, managed_labels, shell_quote,
+ };
+ 
+ pub(crate) const WORKING_DIRECTORY: &str = "/home/daytona/workspace";
+@@ -493,6 +493,49 @@ impl DaytonaSandbox {
+         })
+     }
+ 
++    async fn list_files_recursive(&self, root: &str) -> crate::Result<Vec<String>> {
++        let sandbox = self.sandbox()?;
++        let fs_svc = sandbox
++            .fs()
++            .await
++            .map_err(|e| crate::Error::context("Failed to get Daytona fs service", e))?;
++        let mut candidates = Vec::new();
++        let mut stack = vec![root.to_string()];
++        let mut visited_dirs = HashSet::new();
++
++        while let Some(dir) = stack.pop() {
++            if !visited_dirs.insert(dir.clone()) {
++                continue;
++            }
++
++            let entries = match fs_svc.list_files(&dir).await {
++                Ok(entries) => entries,
++                Err(daytona_sdk::DaytonaError::NotFound { .. }) => continue,
++                Err(err) => {
++                    return Err(crate::Error::context(
++                        format!("Failed to list Daytona directory {dir}"),
++                        err,
++                    ));
++                }
++            };
++
++            for entry in entries {
++                if entry.name.is_empty() || entry.name == "." || entry.name == ".." {
++                    continue;
++                }
++
++                let child_path = glob_match::join_path(&dir, &entry.name);
++                if entry.is_dir {
++                    stack.push(child_path);
++                } else {
++                    candidates.push(child_path);
++                }
++            }
++        }
++
++        Ok(candidates)
++    }
++
+     /// Read-only access to the SDK sandbox once initialized. Returns `None`
+     /// before `initialize()` or `reconnect()` has populated the cell.
+     pub fn sandbox_handle(&self) -> Option<&daytona_sdk::Sandbox> {
+@@ -1856,28 +1899,10 @@ impl Sandbox for DaytonaSandbox {
+             |p| self.resolve_path(p),
+         );
+ 
+-        let cmd = format!(
+-            "find {} -name {} -type f | sort",
+-            shell_quote(&base),
+-            shell_quote(pattern),
+-        );
+-
+-        let result = self.exec_command(&cmd, 30_000, None, None, None).await?;
+-
+-        if !result.is_success() {
+-            return Err(crate::Error::message(format!(
+-                "glob failed (exit {}): {}",
+-                result.display_exit_code(),
+-                result.stderr
+-            )));
+-        }
+-
+-        Ok(result
+-            .stdout
+-            .lines()
+-            .filter(|l| !l.is_empty())
+-            .map(String::from)
+-            .collect())
++        let traversal_root = glob_match::traversal_root(&base, pattern);
++        let mut candidates = self.list_files_recursive(&traversal_root).await?;
++        candidates.sort();
++        glob_match::match_glob(&base, pattern, &candidates)
+     }
+ }
+ 
+diff --git a/lib/crates/fabro-sandbox/src/docker.rs b/lib/crates/fabro-sandbox/src/docker.rs
+index 60ed3c19b..5c2df9302 100644
+--- a/lib/crates/fabro-sandbox/src/docker.rs
++++ b/lib/crates/fabro-sandbox/src/docker.rs
+@@ -32,7 +32,8 @@ use crate::sandbox::{StdioProcessControl, optional_timeout, resolve_path};
+ use crate::{
+     CommandOutputCallback, DEFAULT_EXEC_OUTPUT_TAIL_BYTES, DirEntry, ExecResult,
+     ExecStreamingResult, GrepOptions, Sandbox, SandboxEvent, SandboxEventCallback, StderrCollector,
+-    StdioProcess, StdioProcessHandle, StdioProcessTermination, format_lines_numbered, shell_quote,
++    StdioProcess, StdioProcessHandle, StdioProcessTermination, format_lines_numbered, glob_match,
++    shell_quote,
+ };
+ 
+ pub(crate) const WORKING_DIRECTORY: &str = "/workspace";
+@@ -1847,11 +1848,9 @@ impl Sandbox for DockerSandbox {
+             || self.working_directory().to_string(),
+             |path| self.resolve_container_path(path),
+         );
+-        let command = format!(
+-            "find {} -name {} -type f | sort",
+-            shell_quote(&base_dir),
+-            shell_quote(pattern)
+-        );
++        let traversal_root = glob_match::traversal_root(&base_dir, pattern);
++        let quoted_root = shell_quote(&traversal_root);
++        let command = format!("if [ -e {quoted_root} ]; then find {quoted_root} -type f; fi");
+         let result = self
+             .docker_exec_shell(&command, 30_000, None, None, None)
+             .await?;
+@@ -1863,12 +1862,14 @@ impl Sandbox for DockerSandbox {
+             )));
+         }
+ 
+-        Ok(result
++        let mut candidates = result
+             .stdout
+             .lines()
+             .map(String::from)
+             .filter(|line| !line.is_empty())
+-            .collect())
++            .collect::<Vec<_>>();
++        candidates.sort();
++        glob_match::match_glob(&base_dir, pattern, &candidates)
+     }
+ 
+     fn working_directory(&self) -> &str {
+diff --git a/lib/crates/fabro-sandbox/src/glob_match.rs b/lib/crates/fabro-sandbox/src/glob_match.rs
+new file mode 100644
+index 000000000..056253f7c
+--- /dev/null
++++ b/lib/crates/fabro-sandbox/src/glob_match.rs
+@@ -0,0 +1,244 @@
++use std::path::Path;
++
++struct GlobMatcher {
++    pattern: glob::Pattern,
++}
++
++impl GlobMatcher {
++    fn new(base: &str, pattern: &str) -> crate::Result<Self> {
++        let full_pattern = full_pattern(base, pattern);
++        let pattern = glob::Pattern::new(&full_pattern)
++            .map_err(|err| crate::Error::context("Invalid glob pattern", err))?;
++        Ok(Self { pattern })
++    }
++
++    fn match_paths(&self, candidate_paths: &[String]) -> Vec<String> {
++        candidate_paths
++            .iter()
++            .filter(|path| self.pattern.matches_with(path, match_options()))
++            .cloned()
++            .collect()
++    }
++}
++
++pub(crate) fn match_glob(
++    base: &str,
++    pattern: &str,
++    candidate_paths: &[String],
++) -> crate::Result<Vec<String>> {
++    Ok(GlobMatcher::new(base, pattern)?.match_paths(candidate_paths))
++}
++
++pub(crate) fn traversal_root(base: &str, pattern: &str) -> String {
++    let full_pattern = full_pattern(base, pattern);
++    literal_traversal_root(&full_pattern)
++}
++
++pub(crate) fn join_path(base: &str, path: &str) -> String {
++    if path.is_empty() {
++        return base.to_string();
++    }
++    if is_absolute(path) {
++        return path.to_string();
++    }
++    if base.is_empty() {
++        return path.to_string();
++    }
++    if base == "/" {
++        return format!("/{path}");
++    }
++    format!("{}/{}", base.trim_end_matches('/'), path)
++}
++
++fn full_pattern(base: &str, pattern: &str) -> String {
++    if is_absolute(pattern) {
++        pattern.to_string()
++    } else {
++        join_path(base, pattern)
++    }
++}
++
++fn is_absolute(path: &str) -> bool {
++    path.starts_with('/') || Path::new(path).is_absolute()
++}
++
++fn match_options() -> glob::MatchOptions {
++    glob::MatchOptions {
++        case_sensitive:              true,
++        require_literal_separator:   true,
++        require_literal_leading_dot: false,
++    }
++}
++
++fn literal_traversal_root(pattern: &str) -> String {
++    let absolute = pattern.starts_with('/');
++    let mut literal_segments = Vec::new();
++    let mut saw_meta = false;
++
++    for segment in pattern.split('/').filter(|segment| !segment.is_empty()) {
++        if has_glob_meta(segment) {
++            saw_meta = true;
++            break;
++        }
++        literal_segments.push(segment);
++    }
++
++    if saw_meta {
++        return build_path(absolute, &literal_segments);
++    }
++
++    parent_path(&build_path(absolute, &literal_segments))
++}
++
++fn has_glob_meta(segment: &str) -> bool {
++    segment
++        .chars()
++        .any(|character| matches!(character, '*' | '?' | '['))
++}
++
++fn build_path(absolute: bool, segments: &[&str]) -> String {
++    if segments.is_empty() {
++        return if absolute {
++            "/".to_string()
++        } else {
++            ".".to_string()
++        };
++    }
++
++    let joined = segments.join("/");
++    if absolute {
++        format!("/{joined}")
++    } else {
++        joined
++    }
++}
++
++fn parent_path(path: &str) -> String {
++    if path == "/" {
++        return "/".to_string();
++    }
++
++    let trimmed = path.trim_end_matches('/');
++    if trimmed.is_empty() {
++        return ".".to_string();
++    }
++
++    match trimmed.rfind('/') {
++        Some(0) => "/".to_string(),
++        Some(index) => trimmed[..index].to_string(),
++        None => ".".to_string(),
++    }
++}
++
++#[cfg(test)]
++#[expect(
++    clippy::disallowed_methods,
++    reason = "glob matcher tests stage filesystem fixtures with sync std::fs writes"
++)]
++mod tests {
++    use std::path::Path;
++
++    use super::match_glob;
++
++    fn path_string(path: &Path) -> String {
++        path.to_string_lossy().into_owned()
++    }
++
++    #[test]
++    fn skill_pattern_matches_exactly_one_directory_level() {
++        let candidates = vec![
++            "/workspace/SKILL.md".to_string(),
++            "/workspace/a/SKILL.md".to_string(),
++            "/workspace/a/b/SKILL.md".to_string(),
++            "/workspace/a/README.md".to_string(),
++        ];
++
++        let results = match_glob("/workspace", "*/SKILL.md", &candidates).unwrap();
++
++        assert_eq!(results, vec!["/workspace/a/SKILL.md"]);
++    }
++
++    #[test]
++    fn star_matches_only_top_level_files_under_base() {
++        let candidates = vec![
++            "/workspace/a.rs".to_string(),
++            "/workspace/src/lib.rs".to_string(),
++            "/workspace/b.txt".to_string(),
++        ];
++
++        let results = match_glob("/workspace", "*.rs", &candidates).unwrap();
++
++        assert_eq!(results, vec!["/workspace/a.rs"]);
++    }
++
++    #[test]
++    fn recursive_glob_matches_files_at_any_depth() {
++        let candidates = vec![
++            "/workspace/a.rs".to_string(),
++            "/workspace/src/lib.rs".to_string(),
++            "/workspace/src/nested/main.rs".to_string(),
++            "/workspace/src/nested/readme.md".to_string(),
++        ];
++
++        let results = match_glob("/workspace", "**/*.rs", &candidates).unwrap();
++
++        assert_eq!(results, vec![
++            "/workspace/a.rs",
++            "/workspace/src/lib.rs",
++            "/workspace/src/nested/main.rs",
++        ]);
++    }
++
++    #[test]
++    fn matcher_matches_glob_crate_on_fixture_patterns() {
++        let dir = tempfile::tempdir().unwrap();
++        let root = dir.path();
++        let src = root.join("src");
++        let nested = src.join("nested");
++        let skills = root.join("skills");
++        let skill_a = skills.join("a");
++        let skill_b = skill_a.join("b");
++        std::fs::create_dir_all(&nested).unwrap();
++        std::fs::create_dir_all(&skill_b).unwrap();
++        std::fs::write(root.join("a.rs"), "").unwrap();
++        std::fs::write(root.join("b.txt"), "").unwrap();
++        std::fs::write(src.join("lib.rs"), "").unwrap();
++        std::fs::write(nested.join("main.rs"), "").unwrap();
++        std::fs::write(skills.join("SKILL.md"), "").unwrap();
++        std::fs::write(skill_a.join("SKILL.md"), "").unwrap();
++        std::fs::write(skill_b.join("SKILL.md"), "").unwrap();
++
++        let candidates = [
++            root.join("a.rs"),
++            root.join("b.txt"),
++            src.join("lib.rs"),
++            nested.join("main.rs"),
++            skills.join("SKILL.md"),
++            skill_a.join("SKILL.md"),
++            skill_b.join("SKILL.md"),
++        ]
++        .into_iter()
++        .map(|path| path_string(&path))
++        .collect::<Vec<_>>();
++
++        for (base, pattern) in [
++            (root, "*.rs"),
++            (root, "**/*.rs"),
++            (root, "src/*.rs"),
++            (skills.as_path(), "*/SKILL.md"),
++        ] {
++            let full_pattern = format!("{}/{pattern}", base.display());
++            let mut expected = glob::glob(&full_pattern)
++                .unwrap()
++                .filter_map(Result::ok)
++                .map(|path| path_string(&path))
++                .collect::<Vec<_>>();
++            expected.sort();
++
++            let mut actual = match_glob(&path_string(base), pattern, &candidates).unwrap();
++            actual.sort();
++
++            assert_eq!(actual, expected, "pattern {full_pattern}");
++        }
++    }
++}
+diff --git a/lib/crates/fabro-sandbox/src/lib.rs b/lib/crates/fabro-sandbox/src/lib.rs
+index e53b25756..b7e4751e6 100644
+--- a/lib/crates/fabro-sandbox/src/lib.rs
++++ b/lib/crates/fabro-sandbox/src/lib.rs
+@@ -2,6 +2,7 @@ pub mod config;
+ pub mod error;
+ #[cfg(any(feature = "docker", feature = "daytona"))]
+ pub mod from_environment;
++mod glob_match;
+ pub mod provider;
+ pub mod sandbox;
+ pub mod sandbox_spec;
+diff --git a/lib/crates/fabro-sandbox/src/local.rs b/lib/crates/fabro-sandbox/src/local.rs
+index aae5ef9f4..6656c14a6 100644
+--- a/lib/crates/fabro-sandbox/src/local.rs
++++ b/lib/crates/fabro-sandbox/src/local.rs
+@@ -1,5 +1,5 @@
+ use std::path::{Path, PathBuf};
+-use std::time::Instant;
++use std::time::{Instant, SystemTime, UNIX_EPOCH};
+ 
+ use async_trait::async_trait;
+ use fabro_static::EnvVars;
+@@ -16,7 +16,7 @@ use crate::sandbox::{StdioProcessControl, optional_timeout};
+ use crate::{
+     CommandOutputCallback, DEFAULT_EXEC_OUTPUT_TAIL_BYTES, DirEntry, ExecResult,
+     ExecStreamingResult, GrepOptions, Sandbox, SandboxEvent, SandboxEventCallback, StderrCollector,
+-    StdioProcess, StdioProcessHandle, StdioProcessTermination,
++    StdioProcess, StdioProcessHandle, StdioProcessTermination, glob_match,
+ };
+ 
+ pub struct LocalSandbox {
+@@ -627,27 +627,22 @@ impl Sandbox for LocalSandbox {
+ 
+     async fn glob(&self, pattern: &str, path: Option<&str>) -> crate::Result<Vec<String>> {
+         let base_dir =
+-            path.map_or_else(|| self.working_directory.clone(), std::path::PathBuf::from);
+-
+-        let full_pattern = if Path::new(pattern).is_absolute() {
+-            pattern.to_string()
+-        } else {
+-            format!("{}/{pattern}", base_dir.display())
+-        };
+-
+-        let mut results: Vec<String> = glob::glob(&full_pattern)
+-            .map_err(|e| crate::Error::context("Invalid glob pattern", e))?
+-            .filter_map(Result::ok)
+-            .map(|p| p.to_string_lossy().into_owned())
+-            .collect();
++            path.map_or_else(|| self.working_directory.clone(), |p| self.resolve_path(p));
++        let base = base_dir.to_string_lossy().into_owned();
++        let traversal_root = PathBuf::from(glob_match::traversal_root(&base, pattern));
++        let local_files = collect_local_files(traversal_root).await?;
++        let candidate_paths = local_files
++            .iter()
++            .map(|(path, _)| path.clone())
++            .collect::<Vec<_>>();
++        let modified_by_path = local_files
++            .into_iter()
++            .collect::<std::collections::HashMap<_, _>>();
++        let mut results = glob_match::match_glob(&base, pattern, &candidate_paths)?;
+ 
+         // Sort by mtime (newest first), caching metadata to avoid O(n log n) syscalls
+         results.sort_by_cached_key(|path| {
+-            std::cmp::Reverse(
+-                std::fs::metadata(path)
+-                    .and_then(|m| m.modified())
+-                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+-            )
++            std::cmp::Reverse(modified_by_path.get(path).copied().unwrap_or(UNIX_EPOCH))
+         });
+ 
+         Ok(results)
+@@ -865,6 +860,52 @@ where
+     }
+ }
+ 
++async fn collect_local_files(root: PathBuf) -> crate::Result<Vec<(String, SystemTime)>> {
++    let mut files = Vec::new();
++    let mut stack = vec![root];
++
++    while let Some(path) = stack.pop() {
++        let metadata = match fs::metadata(&path).await {
++            Ok(metadata) => metadata,
++            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
++            Err(err) => {
++                return Err(crate::Error::context(
++                    format!("Failed to stat {}", path.display()),
++                    err,
++                ));
++            }
++        };
++
++        if metadata.is_file() {
++            files.push((
++                path.to_string_lossy().into_owned(),
++                metadata.modified().unwrap_or(UNIX_EPOCH),
++            ));
++        } else if metadata.is_dir() {
++            let mut entries = match fs::read_dir(&path).await {
++                Ok(entries) => entries,
++                Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
++                Err(err) => {
++                    return Err(crate::Error::context(
++                        format!("Failed to read directory {}", path.display()),
++                        err,
++                    ));
++                }
++            };
++            while let Some(entry) = entries.next_entry().await.map_err(|err| {
++                crate::Error::context(
++                    format!("Failed to read directory entry in {}", path.display()),
++                    err,
++                )
++            })? {
++                stack.push(entry.path());
++            }
++        }
++    }
++
++    Ok(files)
++}
++
+ #[cfg(test)]
+ #[expect(
+     clippy::disallowed_methods,
+@@ -1352,6 +1393,64 @@ mod tests {
+         std::fs::remove_dir_all(&dir).unwrap();
+     }
+ 
++    #[tokio::test]
++    async fn glob_resolves_relative_search_path_against_working_directory() {
++        let dir = temp_dir();
++        std::fs::create_dir_all(dir.join("src")).unwrap();
++        std::fs::write(dir.join("src/lib.rs"), "").unwrap();
++
++        let env = LocalSandbox::new(dir.clone());
++        let results = env.glob("*.rs", Some("src")).await.unwrap();
++
++        assert_eq!(results, vec![
++            dir.join("src/lib.rs").to_string_lossy().into_owned()
++        ]);
++        std::fs::remove_dir_all(&dir).unwrap();
++    }
++
++    #[tokio::test]
++    async fn glob_recursive_pattern_finds_files_at_any_depth() {
++        let dir = temp_dir();
++        std::fs::create_dir_all(dir.join("src/nested")).unwrap();
++        std::fs::write(dir.join("a.rs"), "").unwrap();
++        std::fs::write(dir.join("src/lib.rs"), "").unwrap();
++        std::fs::write(dir.join("src/nested/main.rs"), "").unwrap();
++        std::fs::write(dir.join("src/nested/readme.md"), "").unwrap();
++
++        let env = LocalSandbox::new(dir.clone());
++        let mut results = env.glob("**/*.rs", None).await.unwrap();
++        results.sort();
++
++        assert_eq!(results, vec![
++            dir.join("a.rs").to_string_lossy().into_owned(),
++            dir.join("src/lib.rs").to_string_lossy().into_owned(),
++            dir.join("src/nested/main.rs")
++                .to_string_lossy()
++                .into_owned(),
++        ]);
++        std::fs::remove_dir_all(&dir).unwrap();
++    }
++
++    #[tokio::test]
++    async fn glob_finds_skill_files_one_level_below_search_dir() {
++        let dir = temp_dir();
++        let skills = dir.join(".fabro/skills");
++        std::fs::create_dir_all(skills.join("patch")).unwrap();
++        std::fs::create_dir_all(skills.join("nested/deeper")).unwrap();
++        std::fs::write(skills.join("SKILL.md"), "").unwrap();
++        std::fs::write(skills.join("patch/SKILL.md"), "").unwrap();
++        std::fs::write(skills.join("nested/deeper/SKILL.md"), "").unwrap();
++
++        let env = LocalSandbox::new(dir.clone());
++        let skills_path = skills.to_string_lossy().into_owned();
++        let results = env.glob("*/SKILL.md", Some(&skills_path)).await.unwrap();
++
++        assert_eq!(results, vec![
++            skills.join("patch/SKILL.md").to_string_lossy().into_owned()
++        ]);
++        std::fs::remove_dir_all(&dir).unwrap();
++    }
++
+     #[tokio::test]
+     async fn local_sandbox_download_file_to_local() {
+         let dir = temp_dir();
