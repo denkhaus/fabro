@@ -1,0 +1,48 @@
+# Merge Train Plan
+
+Base branch: `main`
+Requested order: **543, 544** (squash merge, rebase each onto latest main)
+
+## READY PRs (in merge order)
+
+| # | Title | Head branch | Author | Mergeable |
+|---|-------|-------------|--------|-----------|
+| 543 | feat: grant Dependabot alerts read/write to auto-created GitHub Apps | `add-dependabot-alerts-app-scope` | swerner | MERGEABLE |
+| 544 | fix: grant organization_projects to auto-created GitHub Apps for Projects V2 | `add-organization-projects-app-scope` | swerner | MERGEABLE |
+
+Both are open, not draft, target `main`, and their head branches live in the
+`fabro-sh/fabro` repo (not forks). Both are eligible.
+
+## SKIP list
+
+None.
+
+## Ordering notes
+
+Keep the requested order **543 → 544**. No logical dependency was detected; the
+two PRs add independent GitHub App permissions. Order does not matter
+functionally, so the given order stands — no human confirmation needed.
+
+## Conflict warnings
+
+**PR 544 will conflict after 543 merges** (expected — the train resolves it).
+
+Both PRs touch the exact same two files and the exact same regions:
+
+- `lib/crates/fabro-cli/src/commands/install.rs`
+  - `build_github_app_manifest`: both change the `"emails": "read"` line
+    (add trailing comma + a new permission key).
+    - 543 adds `"vulnerability_alerts": "write"`
+    - 544 adds `"organization_projects": "write"`
+  - Test block: both insert an `assert_eq!` on
+    `manifest["default_permissions"][...]` at the same line.
+- `lib/crates/fabro-server/src/install.rs`
+  - `build_github_app_manifest`: same `"emails": "read"` line edit.
+
+**Resolution guidance for the train stage:** these are additive and
+non-contradictory. When rebasing 544 onto main (after 543 is in), keep BOTH
+permission keys in the manifest map and BOTH test assertions. The final
+`default_permissions` block should contain `"emails": "read"`,
+`"vulnerability_alerts": "write"`, and `"organization_projects": "write"`
+(with correct trailing commas). Verify with
+`cargo nextest run -p fabro-cli -p fabro-server` before pushing.
