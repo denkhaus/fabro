@@ -1,5 +1,11 @@
 _version = 1
 
+# The eng-patch-cves prompt has the agent open one PR per alert group directly
+# via `gh` (see prompts/patch-cves.md). Disable fabro's run-branch finalization
+# PR so the two mechanisms don't race — the agent owns PR creation here.
+[run.pull_request]
+enabled = false
+
 # GitHub App installation-token permissions requested for this run. These are a
 # pass-through to the token mint and are further bounded by what the Fabro
 # GitHub App is actually granted at the App level. The eng-patch-cves skill

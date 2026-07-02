@@ -10,13 +10,12 @@ digraph PatchCves {
     start [shape=Mdiamond, label="Start"]
     exit  [shape=Msquare, label="Exit"]
 
-    // Single agent stage. The `/eng-patch-cves` prompt-syntax activates the
-    // skill of the same name (discovered from .fabro/skills/), which expands to
-    // the full CVE-patching instructions. The skill self-discovers the target
-    // repo from the cloned workspace via `gh repo view`, so no extra prompt
-    // text is needed (and any extra text would be dropped: the skill body has
-    // no {{user_input}} placeholder).
-    patch [label="Patch CVEs", prompt="/eng-patch-cves"]
+    // Single agent stage. The prompt is the CVE-patching instructions inlined
+    // as a bundled prompt file (@prompts/patch-cves.md), which travels in the
+    // run manifest — so it works without runtime skill discovery. This mirrors
+    // the eng-patch-cves skill; once server-side skill discovery is fixed we can
+    // switch back to prompt="/eng-patch-cves" and drop the duplicated prompt.
+    patch [label="Patch CVEs", prompt="@prompts/patch-cves.md"]
 
     start -> patch -> exit
 }
