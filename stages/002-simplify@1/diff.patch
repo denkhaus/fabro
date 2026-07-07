@@ -1,0 +1,3173 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 30f0bd0e2..53ce08b42 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2673,6 +2673,7 @@ dependencies = [
+  "regex",
+  "serde",
+  "serde_json",
++ "strum 0.28.0",
+  "tokio",
+  "tokio-util",
+  "toml 0.8.23",
+diff --git a/docs/public/agents/hooks.mdx b/docs/public/agents/hooks.mdx
+index aafdd356f..77874ce27 100644
+--- a/docs/public/agents/hooks.mdx
++++ b/docs/public/agents/hooks.mdx
+@@ -36,8 +36,8 @@ Authorization = "Bearer {{ env.API_KEY }}"
+ 
+ | Field | Description |
+ |---|---|
+-| `url` | The endpoint to POST to. Must use `https://` unless `tls = "off"`. Supports `{{ env.NAME }}` interpolation. |
+-| `headers` | Optional HTTP headers. Values support `{{ env.NAME }}` interpolation, scoped to the names in `allowed_env_vars`. A token for any other env var fails to resolve and the hook blocks (fail-closed). |
++| `url` | The endpoint to POST to. Must use `https://` unless `tls = "off"`. Supports `{{ env.NAME }}` and `{{ secrets.NAME }}` interpolation. |
++| `headers` | Optional HTTP headers. Values support `{{ env.NAME }}` interpolation, scoped to the names in `allowed_env_vars`. A token for any other env var fails to resolve and the hook blocks (fail-closed). `{{ secrets.NAME }}` is not allowed in headers. |
+ | `allowed_env_vars` | Allowlist of environment variable names a header may read via `{{ env.NAME }}`. Empty (the default) means no env vars may be interpolated into headers. |
+ | `tls` | TLS mode: `"verify"` (default), `"no_verify"`, or `"off"`. |
+ 
+@@ -134,6 +134,33 @@ sandbox = false
+ | `timeout_ms` | Hook timeout in milliseconds. Default: `60000` (60s) for most types, `30000` (30s) for prompt hooks. |
+ | `sandbox` | Run inside the sandbox (`true`, default) or on the host (`false`). |
+ 
++## Interpolation and secrets
++
++Hook `command`, HTTP `url`, prompt `prompt`, and agent `prompt` fields can reference server-vault token secrets with `{{ secrets.NAME }}`. Add these values with `fabro secret set NAME ...`. Missing secrets, empty/non-token vault entries, and unsupported namespaces fail closed so the hook does not run with a partially resolved value.
++
++```toml
++[[hooks]]
++event = "sandbox_ready"
++command = "test \"{{ secrets.DEPLOY_ENV }}\" = staging"
++blocking = true
++
++[[hooks]]
++event = "run_failed"
++type = "http"
++url = "https://hooks.example.com/{{ secrets.WEBHOOK_PATH }}"
++tls = "verify"
++
++[[hooks]]
++event = "stage_start"
++type = "prompt"
++prompt = "Block deployments to {{ secrets.RESTRICTED_ENV }}?"
++blocking = true
++```
++
++HTTP hook headers intentionally support only allowlisted `{{ env.NAME }}` interpolation. A `{{ secrets.NAME }}` token in a header blocks the hook with guidance to use secret interpolation in a hook command, prompt, or URL instead; Fabro does not provide a separate outbound-header secret allowlist.
++
++Resolved hook secrets are registered with the run's secret redactor. Fabro redacts those exact values from worker-side structured run surfaces such as events, `progress.jsonl`, and setup-error messages. Command output still crosses the sandbox boundary as process output, so treat sandbox-reemitted plaintext as best-effort: content-based redaction always runs, and worker-side event surfaces apply exact-match redaction after the output is captured.
++
+ ## Blocking vs. non-blocking
+ 
+ Blocking hooks can affect workflow execution. Non-blocking hooks run for side effects only — their decisions are ignored.
+diff --git a/docs/public/execution/run-configuration.mdx b/docs/public/execution/run-configuration.mdx
+index 9c3cd8487..5e6c8b97a 100644
+--- a/docs/public/execution/run-configuration.mdx
++++ b/docs/public/execution/run-configuration.mdx
+@@ -288,12 +288,14 @@ When `provider = "local"`, Fabro runs directly in the resolved working
+ directory. If you want local isolation, create or enter a separate clone or Git
+ worktree yourself.
+ 
+-Environment variable values can be literal strings or host environment
+-references using `{{ env.VARNAME }}` syntax:
++Environment variable values can be literal strings, host environment references
++using `{{ env.VARNAME }}` syntax, or server-vault token secrets using
++`{{ secrets.NAME }}` syntax:
+ 
+ ```toml title="run.toml"
+ [environments.ci.env]
+ API_KEY = "{{ env.MY_API_KEY }}"
++DEPLOY_TOKEN = "{{ secrets.DEPLOY_TOKEN }}"
+ NODE_ENV = "production"
+ SERVICE_URL = "https://api.{{ env.REGION }}.example.com"
+ ```
+@@ -302,9 +304,14 @@ SERVICE_URL = "https://api.{{ env.REGION }}.example.com"
+ |---|---|
+ | `"literal"` | Static value passed as-is |
+ | `"{{ env.VARNAME }}"` | Whole-value reference resolved from the host environment at consumption time |
+-| `"prefix-{{ env.X }}-suffix"` | Substring interpolation; multiple tokens per string are supported |
++| `"{{ secrets.NAME }}"` | Reference resolved from the server vault as a token secret at the run boundary |
++| `"prefix-{{ env.X }}-{{ secrets.Y }}-suffix"` | Substring interpolation; multiple env and secret tokens per string are supported |
+ 
+-Missing host variables produce a hard error pointing at the specific field and unresolved token.
++Missing host variables or missing/non-token secrets produce a hard error pointing at the specific field and unresolved token.
++
++Resolved declared secrets are registered with a per-run redactor. On worker-side structured surfaces — run events, `progress.jsonl`, the run store, SSE payloads derived from stored events, and setup-command errors — Fabro applies content-based redaction and then exact-match redaction for those declared secret values, even when the value is low entropy and does not look like a credential.
++
++The boundary is the worker/sandbox handoff. If you put a secret into sandbox process environment or a command line, software inside the sandbox can still print it as plain text. Fabro applies content-based redaction to command output and exact-match redaction when captured output is embedded back into worker-side structured events, but avoid intentionally echoing secrets from sandbox commands.
+ 
+ ### `[run.integrations.github.permissions]`
+ 
+diff --git a/docs/public/workflows/variables.mdx b/docs/public/workflows/variables.mdx
+index 18b0c00b1..3344e1ab0 100644
+--- a/docs/public/workflows/variables.mdx
++++ b/docs/public/workflows/variables.mdx
+@@ -14,7 +14,7 @@ Goal and prompt templates can reference:
+ | `{{ goal }}` | The workflow goal |
+ | `{{ inputs.name }}` | A value from `[run.inputs]`, optionally overridden by CLI input flags |
+ 
+-Environment variables are **not** available in goal or prompt templates. Use `{{ env.NAME }}` only in config strings and HTTP hook headers.
++Environment variables and secrets are **not** available in workflow graph goal or prompt templates. Use `{{ env.NAME }}` and `{{ secrets.NAME }}` only in supported run configuration and hook fields.
+ 
+ ## Run config inputs
+ 
+diff --git a/lib/crates/fabro-acp/src/error.rs b/lib/crates/fabro-acp/src/error.rs
+index 9e84978a2..6af43cd69 100644
+--- a/lib/crates/fabro-acp/src/error.rs
++++ b/lib/crates/fabro-acp/src/error.rs
+@@ -57,7 +57,9 @@ impl AcpError {
+         match self {
+             Self::TimedOut { exec_output_tail } => exec_output_tail.clone(),
+             Self::ProcessExited(exit) => exit.exec_output_tail.clone(),
+-            Self::Sandbox(source) => source.default_redacted_output_tail(),
++            Self::Sandbox(source) => {
++                source.default_redacted_output_tail(&fabro_sandbox::SecretRedactor::default())
++            }
+             _ => None,
+         }
+     }
+diff --git a/lib/crates/fabro-acp/src/transport.rs b/lib/crates/fabro-acp/src/transport.rs
+index f599c5a27..79ec20db4 100644
+--- a/lib/crates/fabro-acp/src/transport.rs
++++ b/lib/crates/fabro-acp/src/transport.rs
+@@ -184,7 +184,12 @@ impl ConnectTo<Client> for SandboxAcpTransport {
+ }
+ 
+ fn redacted_stderr_tail(stderr: &str) -> Option<ExecOutputTail> {
+-    fabro_sandbox::redacted_output_tail("", stderr, DEFAULT_EXEC_OUTPUT_TAIL_BYTES)
++    fabro_sandbox::redacted_output_tail(
++        "",
++        stderr,
++        DEFAULT_EXEC_OUTPUT_TAIL_BYTES,
++        &fabro_sandbox::SecretRedactor::default(),
++    )
+ }
+ 
+ fn process_exited_before_protocol_completed() -> ProtocolError {
+diff --git a/lib/crates/fabro-hooks/Cargo.toml b/lib/crates/fabro-hooks/Cargo.toml
+index 559a7499a..84bb443c7 100644
+--- a/lib/crates/fabro-hooks/Cargo.toml
++++ b/lib/crates/fabro-hooks/Cargo.toml
+@@ -23,6 +23,7 @@ fabro-util = { path = "../fabro-util" }
+ fabro-http.workspace = true
+ serde.workspace = true
+ serde_json.workspace = true
++strum.workspace = true
+ tokio.workspace = true
+ async-trait.workspace = true
+ regex.workspace = true
+diff --git a/lib/crates/fabro-hooks/src/bridge.rs b/lib/crates/fabro-hooks/src/bridge.rs
+index 6aa7e60f6..a7bfa05ed 100644
+--- a/lib/crates/fabro-hooks/src/bridge.rs
++++ b/lib/crates/fabro-hooks/src/bridge.rs
+@@ -102,6 +102,7 @@ mod tests {
+             execution_context: &HookExecutionContext,
+             _llm_source: &dyn fabro_auth::CredentialSource,
+             _catalog: Arc<Catalog>,
++            _secrets: &crate::ResolvedHookSecrets,
+         ) -> HookResult {
+             self.captured_contexts.lock().unwrap().push(context.clone());
+             self.captured_execution_contexts
+diff --git a/lib/crates/fabro-hooks/src/executor.rs b/lib/crates/fabro-hooks/src/executor.rs
+index 9fda710d5..c2e6d2ab0 100644
+--- a/lib/crates/fabro-hooks/src/executor.rs
++++ b/lib/crates/fabro-hooks/src/executor.rs
+@@ -13,7 +13,7 @@ use fabro_llm::generate::{GenerateParams, generate_object};
+ use fabro_llm::types::{Message, Request, ToolResult};
+ use fabro_model::Catalog;
+ use fabro_redact::redacted_url_for_log;
+-use fabro_types::settings::interp::Namespace;
++use fabro_types::settings::interp::{Namespace, ResolveCtx};
+ use fabro_types::settings::{InterpString, ResolveError};
+ use fabro_util::env::{Env, SystemEnv};
+ use tokio::process::Command as TokioCommand;
+@@ -21,6 +21,7 @@ use tokio::time::timeout as tokio_timeout;
+ use tokio_util::sync::CancellationToken;
+ 
+ use crate::config::{HookDefinition, HookType, TlsMode};
++use crate::secrets::{ResolvedHookSecrets, first_secret_name};
+ use crate::types::{
+     HookContext, HookDecision, HookExecutionContext, HookResult, PromptHookResponse,
+ };
+@@ -54,16 +55,18 @@ pub trait HookExecutor: Send + Sync {
+         execution_context: &HookExecutionContext,
+         llm_source: &dyn CredentialSource,
+         catalog: Arc<Catalog>,
++        secrets: &ResolvedHookSecrets,
+     ) -> HookResult;
+ }
+ 
+ /// Resolve a typed [`InterpString`] hook segment at fire time, looking up
+-/// `{{ env.* }}` tokens against `env`.
++/// `{{ env.* }}` tokens against `env` and `{{ secrets.* }}` tokens against the
++/// run-scoped secret resolver.
+ ///
+-/// Only the `env` namespace is wired here; `{{ secrets.* }}`, `{{ vars.* }}`,
+-/// and `{{ inputs.* }}` tokens have no lookup in this context and resolve as
+-/// `Unavailable`, which is a hard error — so a hook that references one fails
+-/// closed rather than firing with a half-resolved value.
++/// Only `env` and `secrets` are wired here; `{{ vars.* }}` and `{{ inputs.* }}`
++/// tokens have no lookup in this context and resolve as `Unavailable`, which is
++/// a hard error — so a hook that references one fails closed rather than firing
++/// with a half-resolved value.
+ ///
+ /// The value stays typed end-to-end: it is carried as an `InterpString`
+ /// through the config resolve layer and resolved here from its segments —
+@@ -73,13 +76,18 @@ pub trait HookExecutor: Send + Sync {
+ ///
+ /// Returns the typed [`ResolveError`] so callers keep the source until the
+ /// decision boundary renders it; do not flatten it to a `String` here.
+-fn resolve_interp<E>(value: &InterpString, env: &E) -> Result<String, ResolveError>
++fn resolve_interp<E>(
++    value: &InterpString,
++    env: &E,
++    secrets: &ResolvedHookSecrets,
++) -> Result<String, ResolveError>
+ where
+     E: Env + ?Sized,
+ {
+-    value
+-        .resolve(|name| env.var(name).ok())
+-        .map(|resolved| resolved.value)
++    let mut ctx = ResolveCtx::new()
++        .with_env(|name| env.var(name).ok())
++        .with_secrets(|name| secrets.lookup(name));
++    value.resolve_with(&mut ctx).map(|resolved| resolved.value)
+ }
+ 
+ #[expect(
+@@ -95,6 +103,7 @@ fn safe_url_source_for_log(url: &InterpString) -> String {
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ enum HeaderResolveError {
+     NotAllowed { name: String },
++    SecretNotAllowed { name: String },
+     Resolve(ResolveError),
+ }
+ 
+@@ -106,6 +115,11 @@ impl fmt::Display for HeaderResolveError {
+                 "environment variable {name:?} referenced by an HTTP hook header is not listed in \
+                  allowed_env_vars"
+             ),
++            Self::SecretNotAllowed { name } => write!(
++                f,
++                "secret {name:?} referenced by an HTTP hook header is not allowed; use secret \
++                 interpolation in a hook command, prompt, or url instead"
++            ),
+             Self::Resolve(error) => error.fmt(f),
+         }
+     }
+@@ -114,7 +128,7 @@ impl fmt::Display for HeaderResolveError {
+ impl std::error::Error for HeaderResolveError {
+     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+         match self {
+-            Self::NotAllowed { .. } => None,
++            Self::NotAllowed { .. } | Self::SecretNotAllowed { .. } => None,
+             Self::Resolve(error) => Some(error),
+         }
+     }
+@@ -135,10 +149,17 @@ fn resolve_header<E>(
+     value: &InterpString,
+     allowed_env_vars: &[String],
+     env: &E,
++    secrets: &ResolvedHookSecrets,
+ ) -> Result<String, HeaderResolveError>
+ where
+     E: Env + ?Sized,
+ {
++    if let Some(name) = first_secret_name(value) {
++        return Err(HeaderResolveError::SecretNotAllowed {
++            name: name.to_string(),
++        });
++    }
++
+     if let Some(name) = value.names(Namespace::Env).into_iter().find(|name| {
+         !allowed_env_vars
+             .iter()
+@@ -149,7 +170,7 @@ where
+         });
+     }
+ 
+-    resolve_interp(value, env).map_err(HeaderResolveError::Resolve)
++    resolve_interp(value, env, secrets).map_err(HeaderResolveError::Resolve)
+ }
+ 
+ /// Executes hooks via shell commands or HTTP POST.
+@@ -181,20 +202,24 @@ impl HookExecutorImpl {
+ 
+     /// Resolve the prompt and optional model segments at fire time.
+     ///
+-    /// Fail-closed: only `{{ env.* }}` is wired here; a missing env token (or a
+-    /// token in any other, unavailable namespace) is a hard error so the hook
+-    /// never fires with a half-resolved value. The caller turns the error into
+-    /// a `Block` decision, matching the command-hook behavior.
++    /// Fail-closed: only `{{ env.* }}` and `{{ secrets.* }}` are wired here; a
++    /// missing token (or a token in any other, unavailable namespace) is a hard
++    /// error so the hook never fires with a half-resolved value. The caller
++    /// turns the error into a `Block` decision, matching the command-hook
++    /// behavior.
+     fn resolve_prompt_and_model<E>(
+         prompt: &InterpString,
+         model: Option<&InterpString>,
+         env: &E,
++        secrets: &ResolvedHookSecrets,
+     ) -> Result<(String, Option<String>), ResolveError>
+     where
+         E: Env + ?Sized,
+     {
+-        let prompt = resolve_interp(prompt, env)?;
+-        let model = model.map(|model| resolve_interp(model, env)).transpose()?;
++        let prompt = resolve_interp(prompt, env, secrets)?;
++        let model = model
++            .map(|model| resolve_interp(model, env, secrets))
++            .transpose()?;
+         Ok((prompt, model))
+     }
+ 
+@@ -206,11 +231,12 @@ impl HookExecutorImpl {
+         sandbox: &Arc<dyn Sandbox>,
+         execution_context: &HookExecutionContext,
+         env: &E,
++        secrets: &ResolvedHookSecrets,
+     ) -> HookDecision
+     where
+         E: Env + ?Sized,
+     {
+-        let command = match resolve_interp(command, env) {
++        let command = match resolve_interp(command, env, secrets) {
+             Ok(command) => command,
+             Err(error) => {
+                 return HookDecision::Block {
+@@ -363,13 +389,14 @@ impl HookExecutorImpl {
+         model: Option<&InterpString>,
+         context: &HookContext,
+         env: &E,
++        secrets: &ResolvedHookSecrets,
+         llm_source: &dyn CredentialSource,
+         catalog: Arc<Catalog>,
+     ) -> HookDecision
+     where
+         E: Env + ?Sized,
+     {
+-        let (prompt, model) = match Self::resolve_prompt_and_model(prompt, model, env) {
++        let (prompt, model) = match Self::resolve_prompt_and_model(prompt, model, env, secrets) {
+             Ok(resolved) => resolved,
+             Err(error) => {
+                 tracing::error!(error = %error, "prompt hook env resolution failed, not firing");
+@@ -432,13 +459,14 @@ impl HookExecutorImpl {
+         context: &HookContext,
+         sandbox: Arc<dyn Sandbox>,
+         env: &E,
++        secrets: &ResolvedHookSecrets,
+         llm_source: &dyn CredentialSource,
+         catalog: Arc<Catalog>,
+     ) -> HookDecision
+     where
+         E: Env + ?Sized,
+     {
+-        let (prompt, model) = match Self::resolve_prompt_and_model(prompt, model, env) {
++        let (prompt, model) = match Self::resolve_prompt_and_model(prompt, model, env, secrets) {
+             Ok(resolved) => resolved,
+             Err(error) => {
+                 tracing::error!(error = %error, "agent hook env resolution failed, not firing");
+@@ -578,11 +606,12 @@ impl HookExecutorImpl {
+         context: &HookContext,
+         timeout: std::time::Duration,
+         env: &E,
++        secrets: &ResolvedHookSecrets,
+     ) -> HookDecision
+     where
+         E: Env + ?Sized,
+     {
+-        let resolved_url = match resolve_interp(url, env) {
++        let resolved_url = match resolve_interp(url, env, secrets) {
+             Ok(url) => url,
+             Err(error) => {
+                 tracing::error!(
+@@ -618,7 +647,7 @@ impl HookExecutorImpl {
+                 // `{{ env.NAME }}` not in `allowed_env_vars` blocks before any
+                 // lookup, while an allowlisted-but-unset name still fails as
+                 // missing.
+-                let interpolated = match resolve_header(value, allowed_env_vars, env) {
++                let interpolated = match resolve_header(value, allowed_env_vars, env, secrets) {
+                     Ok(rendered) => rendered,
+                     Err(error) => {
+                         tracing::error!(
+@@ -639,9 +668,11 @@ impl HookExecutorImpl {
+         let response = match request.send().await {
+             Ok(resp) => resp,
+             Err(e) => {
++                // `without_url` drops the resolved URL, which may embed a
++                // secret; the redacted source form is logged separately.
+                 tracing::warn!(
+                     url_source = %safe_url_source_for_log(url),
+-                    error = %e,
++                    error = %e.without_url(),
+                     "HTTP hook request failed, proceeding"
+                 );
+                 return HookDecision::Proceed;
+@@ -662,7 +693,7 @@ impl HookExecutorImpl {
+             Err(e) => {
+                 tracing::warn!(
+                     url_source = %safe_url_source_for_log(url),
+-                    error = %e,
++                    error = %e.without_url(),
+                     "HTTP hook body read failed, proceeding"
+                 );
+                 return HookDecision::Proceed;
+@@ -728,6 +759,7 @@ impl HookExecutor for HookExecutorImpl {
+         execution_context: &HookExecutionContext,
+         llm_source: &dyn CredentialSource,
+         catalog: Arc<Catalog>,
++        secrets: &ResolvedHookSecrets,
+     ) -> HookResult {
+         use std::sync::OnceLock;
+         static HTTP_CLIENTS: OnceLock<HttpClientCache> = OnceLock::new();
+@@ -747,6 +779,7 @@ impl HookExecutor for HookExecutorImpl {
+                     &sandbox,
+                     execution_context,
+                     &env,
++                    secrets,
+                 )
+                 .await
+             }
+@@ -774,6 +807,7 @@ impl HookExecutor for HookExecutorImpl {
+                     context,
+                     definition.timeout(),
+                     &env,
++                    secrets,
+                 )
+                 .await
+             }
+@@ -793,6 +827,7 @@ impl HookExecutor for HookExecutorImpl {
+                     model.as_ref(),
+                     context,
+                     &env,
++                    secrets,
+                     llm_source,
+                     Arc::clone(&catalog),
+                 )
+@@ -818,6 +853,7 @@ impl HookExecutor for HookExecutorImpl {
+                     context,
+                     sandbox,
+                     &env,
++                    secrets,
+                     llm_source,
+                     Arc::clone(&catalog),
+                 )
+@@ -869,6 +905,19 @@ mod tests {
+         HookExecutorImpl::build_http_client(TlsMode::Off)
+     }
+ 
++    fn empty_secrets() -> ResolvedHookSecrets {
++        ResolvedHookSecrets::default()
++    }
++
++    fn test_secrets(vars: &[(&str, &str)]) -> ResolvedHookSecrets {
++        ResolvedHookSecrets::new(
++            vars.iter()
++                .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
++                .collect(),
++            fabro_redact::SecretRedactor::default(),
++        )
++    }
++
+     fn make_definition(command: &str) -> HookDefinition {
+         HookDefinition {
+             name:       Some("test-hook".into()),
+@@ -946,6 +995,7 @@ mod tests {
+         let ctx = make_context();
+         let sandbox = make_sandbox();
+         let source = test_llm_source();
++        let secrets = empty_secrets();
+         let result = executor
+             .execute(
+                 &def,
+@@ -954,6 +1004,7 @@ mod tests {
+                 &HookExecutionContext::default(),
+                 source.as_ref(),
+                 test_catalog(),
++                &secrets,
+             )
+             .await;
+         assert_eq!(result.decision, HookDecision::Proceed);
+@@ -967,6 +1018,7 @@ mod tests {
+         let ctx = make_context();
+         let sandbox = make_sandbox();
+         let source = test_llm_source();
++        let secrets = empty_secrets();
+         let result = executor
+             .execute(
+                 &def,
+@@ -975,6 +1027,7 @@ mod tests {
+                 &HookExecutionContext::default(),
+                 source.as_ref(),
+                 test_catalog(),
++                &secrets,
+             )
+             .await;
+         assert!(matches!(result.decision, HookDecision::Block { .. }));
+@@ -987,6 +1040,7 @@ mod tests {
+         let ctx = make_context();
+         let sandbox = make_sandbox();
+         let source = test_llm_source();
++        let secrets = empty_secrets();
+         let result = executor
+             .execute(
+                 &def,
+@@ -995,6 +1049,7 @@ mod tests {
+                 &HookExecutionContext::default(),
+                 source.as_ref(),
+                 test_catalog(),
++                &secrets,
+             )
+             .await;
+         assert!(matches!(result.decision, HookDecision::Block { .. }));
+@@ -1007,6 +1062,7 @@ mod tests {
+         let ctx = make_context();
+         let sandbox = make_sandbox();
+         let source = test_llm_source();
++        let secrets = empty_secrets();
+         let result = executor
+             .execute(
+                 &def,
+@@ -1015,6 +1071,7 @@ mod tests {
+                 &HookExecutionContext::default(),
+                 source.as_ref(),
+                 test_catalog(),
++                &secrets,
+             )
+             .await;
+         assert_eq!(result.decision, HookDecision::Skip {
+@@ -1031,6 +1088,7 @@ mod tests {
+         ctx.node_id = Some("plan".into());
+         let sandbox = make_sandbox();
+         let source = test_llm_source();
++        let secrets = empty_secrets();
+         let result = executor
+             .execute(
+                 &def,
+@@ -1039,6 +1097,7 @@ mod tests {
+                 &HookExecutionContext::default(),
+                 source.as_ref(),
+                 test_catalog(),
++                &secrets,
+             )
+             .await;
+         assert_eq!(result.decision, HookDecision::Proceed);
+@@ -1060,6 +1119,7 @@ mod tests {
+         let ctx = make_context();
+         let sandbox = make_sandbox();
+         let source = test_llm_source();
++        let secrets = empty_secrets();
+         let result = executor
+             .execute(
+                 &def,
+@@ -1068,6 +1128,7 @@ mod tests {
+                 &HookExecutionContext::default(),
+                 source.as_ref(),
+                 test_catalog(),
++                &secrets,
+             )
+             .await;
+         assert!(matches!(result.decision, HookDecision::Block { .. }));
+@@ -1188,6 +1249,7 @@ mod tests {
+             &interp("Bearer {{ env.FABRO_TEST_KEY_1 }}"),
+             &["FABRO_TEST_KEY_1".to_string()],
+             &env,
++            &empty_secrets(),
+         )
+         .unwrap();
+         assert_eq!(result, "Bearer secret123");
+@@ -1203,6 +1265,7 @@ mod tests {
+             &interp("prefix-{{ env.FABRO_TEST_KEY_3 }}-suffix"),
+             &[],
+             &env,
++            &empty_secrets(),
+         )
+         .unwrap_err();
+         assert_eq!(err, HeaderResolveError::NotAllowed {
+@@ -1217,11 +1280,12 @@ mod tests {
+             &interp("prefix-{{ env.FABRO_TEST_KEY_3 }}-suffix"),
+             &["FABRO_TEST_KEY_3".to_string()],
+             &env,
++            &empty_secrets(),
+         )
+         .unwrap_err();
+         match err {
+             HeaderResolveError::Resolve(error) => assert_eq!(error.name, "FABRO_TEST_KEY_3"),
+-            HeaderResolveError::NotAllowed { .. } => {
++            HeaderResolveError::NotAllowed { .. } | HeaderResolveError::SecretNotAllowed { .. } => {
+                 panic!("expected missing token resolve error, got {err:?}")
+             }
+         }
+@@ -1233,14 +1297,19 @@ mod tests {
+     fn resolve_interp_resolves_embedded_token_from_typed_value() {
+         let env = test_env(&[("FABRO_TEST_KEY_2", "val")]);
+         let value = interp("x{{ env.FABRO_TEST_KEY_2 }}y");
+-        let result = resolve_interp(&value, &env).unwrap();
++        let result = resolve_interp(&value, &env, &empty_secrets()).unwrap();
+         assert_eq!(result, "xvaly");
+     }
+ 
+     #[test]
+     fn resolve_interp_errors_on_missing_var() {
+         let env = test_env(&[]);
+-        let err = resolve_interp(&interp("a{{ env.FABRO_TEST_NOEXIST }}-b"), &env).unwrap_err();
++        let err = resolve_interp(
++            &interp("a{{ env.FABRO_TEST_NOEXIST }}-b"),
++            &env,
++            &empty_secrets(),
++        )
++        .unwrap_err();
+         assert_eq!(err.name, "FABRO_TEST_NOEXIST");
+     }
+ 
+@@ -1248,11 +1317,63 @@ mod tests {
+     fn resolve_interp_without_tokens_passes_through() {
+         let env = test_env(&[]);
+         assert_eq!(
+-            resolve_interp(&interp("plain text"), &env).unwrap(),
++            resolve_interp(&interp("plain text"), &env, &empty_secrets()).unwrap(),
+             "plain text"
+         );
+     }
+ 
++    #[test]
++    fn resolve_interp_resolves_secret_and_registers_value() {
++        let env = test_env(&[]);
++        let redactor = fabro_redact::SecretRedactor::default();
++        let secrets = ResolvedHookSecrets::new(
++            HashMap::from([("HOOK_TOKEN".to_string(), "staging".to_string())]),
++            redactor.clone(),
++        );
++
++        let resolved =
++            resolve_interp(&interp("deploy {{ secrets.HOOK_TOKEN }}"), &env, &secrets).unwrap();
++
++        assert_eq!(resolved, "deploy staging");
++        assert_eq!(redactor.redact_into("deploy staging"), "deploy REDACTED");
++    }
++
++    #[test]
++    fn resolve_prompt_and_model_resolves_secret_tokens() {
++        let env = test_env(&[]);
++        let secrets = test_secrets(&[("PROMPT_TOKEN", "staging")]);
++
++        let (prompt, model) = HookExecutorImpl::resolve_prompt_and_model(
++            &interp("check {{ secrets.PROMPT_TOKEN }}"),
++            Some(&interp("haiku")),
++            &env,
++            &secrets,
++        )
++        .unwrap();
++
++        assert_eq!(prompt, "check staging");
++        assert_eq!(model.as_deref(), Some("haiku"));
++    }
++
++    #[test]
++    fn header_rejects_secret_token_with_guidance() {
++        let env = test_env(&[]);
++        let err = resolve_header(
++            &interp("Bearer {{ secrets.HOOK_TOKEN }}"),
++            &[],
++            &env,
++            &test_secrets(&[("HOOK_TOKEN", "staging")]),
++        )
++        .unwrap_err();
++
++        assert_eq!(err, HeaderResolveError::SecretNotAllowed {
++            name: "HOOK_TOKEN".to_string(),
++        });
++        let message = err.to_string();
++        assert!(message.contains("HTTP hook header"));
++        assert!(message.contains("command, prompt, or url"));
++    }
++
+     // --- HTTP hook execution tests ---
+ 
+     #[tokio::test]
+@@ -1278,6 +1399,7 @@ mod tests {
+             &make_context(),
+             std::time::Duration::from_secs(5),
+             &test_env(&[]),
++            &empty_secrets(),
+         )
+         .await;
+ 
+@@ -1307,6 +1429,7 @@ mod tests {
+             &make_context(),
+             std::time::Duration::from_secs(5),
+             &test_env(&[]),
++            &empty_secrets(),
+         )
+         .await;
+ 
+@@ -1334,6 +1457,7 @@ mod tests {
+             &make_context(),
+             std::time::Duration::from_secs(5),
+             &test_env(&[]),
++            &empty_secrets(),
+         )
+         .await;
+ 
+@@ -1353,6 +1477,7 @@ mod tests {
+             &make_context(),
+             std::time::Duration::from_secs(1),
+             &test_env(&[]),
++            &empty_secrets(),
+         )
+         .await;
+ 
+@@ -1388,6 +1513,7 @@ mod tests {
+             &make_context(),
+             std::time::Duration::from_secs(5),
+             &env,
++            &empty_secrets(),
+         )
+         .await;
+ 
+@@ -1425,6 +1551,7 @@ mod tests {
+             &make_context(),
+             std::time::Duration::from_secs(5),
+             &env,
++            &empty_secrets(),
+         )
+         .await;
+ 
+@@ -1442,6 +1569,46 @@ mod tests {
+         }
+     }
+ 
++    #[tokio::test]
++    async fn http_hook_secret_header_blocks_without_firing() {
++        let server = httpmock::MockServer::start_async().await;
++        let mock = server
++            .mock_async(|when, then| {
++                when.method("POST").path("/hook");
++                then.status(200).body("");
++            })
++            .await;
++
++        let headers = HashMap::from([(
++            "Authorization".to_string(),
++            interp("Bearer {{ secrets.FABRO_TEST_TOKEN }}"),
++        )]);
++
++        let client = test_http_client();
++        let decision = HookExecutorImpl::execute_http(
++            &client,
++            &interp(&server.url("/hook")),
++            Some(&headers),
++            &[],
++            &TlsMode::Off,
++            &make_context(),
++            std::time::Duration::from_secs(5),
++            &test_env(&[]),
++            &test_secrets(&[("FABRO_TEST_TOKEN", "staging")]),
++        )
++        .await;
++
++        assert_eq!(mock.calls_async().await, 0);
++        match decision {
++            HookDecision::Block { reason } => {
++                let reason = reason.unwrap_or_default();
++                assert!(reason.contains("HTTP hook header"));
++                assert!(reason.contains("command, prompt, or url"));
++            }
++            other => panic!("expected Block on secret header token, got {other:?}"),
++        }
++    }
++
+     #[tokio::test]
+     async fn http_hook_resolves_url_before_dispatch() {
+         let server = httpmock::MockServer::start_async().await;
+@@ -1463,6 +1630,36 @@ mod tests {
+             &make_context(),
+             std::time::Duration::from_secs(5),
+             &env,
++            &empty_secrets(),
++        )
++        .await;
++
++        mock.assert_async().await;
++        assert_eq!(decision, HookDecision::Proceed);
++    }
++
++    #[tokio::test]
++    async fn http_hook_resolves_secret_url_before_dispatch() {
++        let server = httpmock::MockServer::start_async().await;
++        let mock = server
++            .mock_async(|when, then| {
++                when.method("POST").path("/hook");
++                then.status(200).body("");
++            })
++            .await;
++
++        let client = test_http_client();
++        let secrets = test_secrets(&[("FABRO_TEST_URL", &server.url("/hook"))]);
++        let decision = HookExecutorImpl::execute_http(
++            &client,
++            &interp("{{ secrets.FABRO_TEST_URL }}"),
++            None,
++            &[],
++            &TlsMode::Off,
++            &make_context(),
++            std::time::Duration::from_secs(5),
++            &test_env(&[]),
++            &secrets,
+         )
+         .await;
+ 
+@@ -1490,6 +1687,7 @@ mod tests {
+             &make_context(),
+             std::time::Duration::from_secs(5),
+             &test_env(&[]),
++            &empty_secrets(),
+         )
+         .await;
+ 
+@@ -1534,6 +1732,7 @@ mod tests {
+             &make_context(),
+             std::time::Duration::from_secs(5),
+             &test_env(&[]),
++            &empty_secrets(),
+         )
+         .await;
+ 
+@@ -1557,6 +1756,7 @@ mod tests {
+             &make_context(),
+             std::time::Duration::from_secs(5),
+             &test_env(&[]),
++            &empty_secrets(),
+         )
+         .await;
+ 
+@@ -1575,6 +1775,7 @@ mod tests {
+             &make_context(),
+             std::time::Duration::from_secs(5),
+             &test_env(&[]),
++            &empty_secrets(),
+         )
+         .await;
+ 
+@@ -1601,6 +1802,7 @@ mod tests {
+             &make_context(),
+             std::time::Duration::from_secs(5),
+             &test_env(&[]),
++            &empty_secrets(),
+         )
+         .await;
+ 
+@@ -1637,6 +1839,7 @@ mod tests {
+         let ctx = make_context();
+         let sandbox = make_sandbox();
+         let source = test_llm_source();
++        let secrets = empty_secrets();
+         let result = executor
+             .execute(
+                 &def,
+@@ -1645,6 +1848,7 @@ mod tests {
+                 &HookExecutionContext::default(),
+                 source.as_ref(),
+                 test_catalog(),
++                &secrets,
+             )
+             .await;
+ 
+@@ -1663,12 +1867,57 @@ mod tests {
+             &sandbox,
+             &HookExecutionContext::default(),
+             &test_env(&[]),
++            &empty_secrets(),
+         )
+         .await;
+ 
+         assert!(matches!(decision, HookDecision::Block { .. }));
+     }
+ 
++    #[tokio::test]
++    async fn command_hook_resolves_secret_token() {
++        let sandbox = make_sandbox();
++        let decision = HookExecutorImpl::execute_command(
++            &make_definition(r#"test "{{ secrets.HOOK_TOKEN }}" = "staging""#),
++            &interp(r#"test "{{ secrets.HOOK_TOKEN }}" = "staging""#),
++            &make_context(),
++            &sandbox,
++            &HookExecutionContext::default(),
++            &test_env(&[]),
++            &test_secrets(&[("HOOK_TOKEN", "staging")]),
++        )
++        .await;
++
++        assert_eq!(decision, HookDecision::Proceed);
++    }
++
++    #[tokio::test]
++    async fn command_hook_missing_secret_blocks() {
++        let sandbox = make_sandbox();
++        let decision = HookExecutorImpl::execute_command(
++            &make_definition("echo {{ secrets.MISSING_HOOK_SECRET }}"),
++            &interp("echo {{ secrets.MISSING_HOOK_SECRET }}"),
++            &make_context(),
++            &sandbox,
++            &HookExecutionContext::default(),
++            &test_env(&[]),
++            &empty_secrets(),
++        )
++        .await;
++
++        match decision {
++            HookDecision::Block { reason } => {
++                assert!(
++                    reason
++                        .as_deref()
++                        .is_some_and(|reason| reason.contains("MISSING_HOOK_SECRET")),
++                    "block reason should name the missing secret, got: {reason:?}"
++                );
++            }
++            other => panic!("expected Block on missing command secret, got {other:?}"),
++        }
++    }
++
+     // Fail-closed: a prompt hook with a missing token does not fire the LLM
+     // call; it blocks with the resolution error, matching command hooks.
+     #[tokio::test]
+@@ -1679,6 +1928,7 @@ mod tests {
+             None,
+             &make_context(),
+             &test_env(&[]),
++            &empty_secrets(),
+             test_llm_source().as_ref(),
+             test_catalog(),
+         )
+@@ -1708,6 +1958,7 @@ mod tests {
+             &make_context(),
+             make_sandbox(),
+             &test_env(&[]),
++            &empty_secrets(),
+             test_llm_source().as_ref(),
+             test_catalog(),
+         )
+diff --git a/lib/crates/fabro-hooks/src/lib.rs b/lib/crates/fabro-hooks/src/lib.rs
+index 79a77bb98..d0d800f73 100644
+--- a/lib/crates/fabro-hooks/src/lib.rs
++++ b/lib/crates/fabro-hooks/src/lib.rs
+@@ -2,6 +2,7 @@ pub mod bridge;
+ pub mod config;
+ pub mod executor;
+ pub mod runner;
++mod secrets;
+ pub mod types;
+ 
+ pub use bridge::WorkflowToolHookCallback;
+@@ -10,4 +11,5 @@ pub use config::{HookDefinition, HookSettings, HookType, TlsMode};
+ // `InterpString`; constructing a hook definition requires it.
+ pub use fabro_types::settings::InterpString;
+ pub use runner::HookRunner;
++pub use secrets::{HookSecretResolver, ResolvedHookSecrets};
+ pub use types::{HookContext, HookDecision, HookEvent, HookExecutionContext};
+diff --git a/lib/crates/fabro-hooks/src/runner.rs b/lib/crates/fabro-hooks/src/runner.rs
+index 9435dba9a..006570730 100644
+--- a/lib/crates/fabro-hooks/src/runner.rs
++++ b/lib/crates/fabro-hooks/src/runner.rs
+@@ -6,10 +6,12 @@ use fabro_auth::CredentialSource;
+ #[cfg(test)]
+ use fabro_auth::EnvCredentialSource;
+ use fabro_model::Catalog;
++use fabro_redact::SecretRedactor;
+ 
+ use crate::config::{HookDefinition, HookSettings};
+ use crate::executor::{HookExecutor, HookExecutorImpl};
+-use crate::types::{HookContext, HookDecision, HookExecutionContext};
++use crate::secrets::HookSecretResolver;
++use crate::types::{HookContext, HookDecision, HookExecutionContext, HookResult};
+ 
+ /// Central orchestrator: filters matching hooks, executes them, merges
+ /// decisions.
+@@ -18,16 +20,37 @@ pub struct HookRunner {
+     executor:          Arc<dyn HookExecutor>,
+     llm_source:        Arc<dyn CredentialSource>,
+     catalog:           Arc<Catalog>,
++    secrets:           HookSecretResolver,
+     /// Pre-compiled regexes keyed by matcher pattern string.
+     compiled_matchers: HashMap<String, regex::Regex>,
+ }
+ 
++fn redact_hook_result(mut result: HookResult, redactor: &SecretRedactor) -> HookResult {
++    result.decision = redact_hook_decision(result.decision, redactor);
++    result
++}
++
++fn redact_hook_decision(decision: HookDecision, redactor: &SecretRedactor) -> HookDecision {
++    match decision {
++        HookDecision::Skip { reason } => HookDecision::Skip {
++            reason: reason.map(|reason| redactor.redact_into(&reason)),
++        },
++        HookDecision::Block { reason } => HookDecision::Block {
++            reason: reason.map(|reason| redactor.redact_into(&reason)),
++        },
++        // `Override.edge_to` is a structural graph edge id, not free-form text,
++        // so it is intentionally left unredacted.
++        HookDecision::Proceed | HookDecision::Override { .. } => decision,
++    }
++}
++
+ impl HookRunner {
+     #[must_use]
+     pub fn new(
+         config: HookSettings,
+         llm_source: Arc<dyn CredentialSource>,
+         catalog: Arc<Catalog>,
++        secrets: HookSecretResolver,
+     ) -> Self {
+         let compiled_matchers = Self::compile_matchers(&config);
+         Self {
+@@ -35,6 +58,7 @@ impl HookRunner {
+             executor: Arc::new(HookExecutorImpl),
+             llm_source,
+             catalog,
++            secrets,
+             compiled_matchers,
+         }
+     }
+@@ -48,6 +72,7 @@ impl HookRunner {
+             executor,
+             llm_source: Arc::new(EnvCredentialSource::new()),
+             catalog: Arc::new(Catalog::from_builtin().expect("default catalog should build")),
++            secrets: HookSecretResolver::default(),
+             compiled_matchers,
+         }
+     }
+@@ -100,7 +125,7 @@ impl HookRunner {
+ 
+         tracing::info!(
+             event = %context.event,
+-            decision = ?decision,
++            decision = decision.as_str(),
+             "Hooks complete"
+         );
+ 
+@@ -137,6 +162,43 @@ impl HookRunner {
+         .any(|field| field.is_some_and(|v| re.is_match(v)))
+     }
+ 
++    /// Resolve secrets, run a single hook through the executor, and redact its
++    /// result. Shared by the blocking and non-blocking loops.
++    async fn execute_one(
++        &self,
++        hook: &HookDefinition,
++        context: &HookContext,
++        sandbox: Arc<dyn Sandbox>,
++        execution_context: &HookExecutionContext,
++    ) -> HookResult {
++        tracing::debug!(
++            hook = %hook.effective_name(),
++            event = %context.event,
++            "Executing hook"
++        );
++        let secrets = self.secrets.resolve_for_definition(hook).await;
++        let result = self
++            .executor
++            .execute(
++                hook,
++                context,
++                sandbox,
++                execution_context,
++                self.llm_source.as_ref(),
++                Arc::clone(&self.catalog),
++                &secrets,
++            )
++            .await;
++        let result = redact_hook_result(result, secrets.redactor());
++        tracing::debug!(
++            hook = %hook.effective_name(),
++            duration_ms = result.duration_ms,
++            decision = result.decision.as_str(),
++            "Hook complete"
++        );
++        result
++    }
++
+     async fn run_sequential(
+         &self,
+         hooks: &[&HookDefinition],
+@@ -146,28 +208,9 @@ impl HookRunner {
+     ) -> HookDecision {
+         let mut merged = HookDecision::Proceed;
+         for hook in hooks {
+-            tracing::debug!(
+-                hook = %hook.effective_name(),
+-                event = %context.event,
+-                "Executing hook"
+-            );
+             let result = self
+-                .executor
+-                .execute(
+-                    hook,
+-                    context,
+-                    sandbox.clone(),
+-                    execution_context,
+-                    self.llm_source.as_ref(),
+-                    Arc::clone(&self.catalog),
+-                )
++                .execute_one(hook, context, sandbox.clone(), execution_context)
+                 .await;
+-            tracing::debug!(
+-                hook = %hook.effective_name(),
+-                duration_ms = result.duration_ms,
+-                decision = ?result.decision,
+-                "Hook complete"
+-            );
+ 
+             if hook.is_blocking() {
+                 merged = merged.merge(result.decision);
+@@ -176,7 +219,7 @@ impl HookRunner {
+                     tracing::error!(
+                         hook = %hook.effective_name(),
+                         event = %context.event,
+-                        decision = ?merged,
++                        decision = merged.as_str(),
+                         "Hook blocked execution"
+                     );
+                     return merged;
+@@ -185,7 +228,7 @@ impl HookRunner {
+                 tracing::warn!(
+                     hook = %hook.effective_name(),
+                     event = %context.event,
+-                    decision = ?result.decision,
++                    decision = result.decision.as_str(),
+                     "Non-blocking hook returned non-proceed, ignoring"
+                 );
+             }
+@@ -201,33 +244,14 @@ impl HookRunner {
+         execution_context: &HookExecutionContext,
+     ) -> HookDecision {
+         for hook in hooks {
+-            tracing::debug!(
+-                hook = %hook.effective_name(),
+-                event = %context.event,
+-                "Executing hook"
+-            );
+             let result = self
+-                .executor
+-                .execute(
+-                    hook,
+-                    context,
+-                    sandbox.clone(),
+-                    execution_context,
+-                    self.llm_source.as_ref(),
+-                    Arc::clone(&self.catalog),
+-                )
++                .execute_one(hook, context, sandbox.clone(), execution_context)
+                 .await;
+-            tracing::debug!(
+-                hook = %hook.effective_name(),
+-                duration_ms = result.duration_ms,
+-                decision = ?result.decision,
+-                "Hook complete"
+-            );
+             if !result.decision.is_proceed() {
+                 tracing::warn!(
+                     hook = %hook.effective_name(),
+                     event = %context.event,
+-                    decision = ?result.decision,
++                    decision = result.decision.as_str(),
+                     "Non-blocking hook failed, continuing"
+                 );
+             }
+@@ -259,6 +283,7 @@ mod tests {
+             _execution_context: &HookExecutionContext,
+             _llm_source: &dyn CredentialSource,
+             _catalog: Arc<Catalog>,
++            _secrets: &crate::ResolvedHookSecrets,
+         ) -> HookResult {
+             HookResult {
+                 hook_name:   definition.name.clone(),
+@@ -301,7 +326,12 @@ mod tests {
+ 
+     #[tokio::test]
+     async fn no_hooks_returns_proceed() {
+-        let runner = HookRunner::new(HookSettings::default(), test_llm_source(), test_catalog());
++        let runner = HookRunner::new(
++            HookSettings::default(),
++            test_llm_source(),
++            test_catalog(),
++            HookSecretResolver::default(),
++        );
+         let ctx = make_context(HookEvent::RunStart);
+         let sandbox = make_sandbox();
+         let decision = runner
+@@ -474,7 +504,12 @@ mod tests {
+                 h
+             }],
+         };
+-        let runner = HookRunner::new(config, test_llm_source(), test_catalog());
++        let runner = HookRunner::new(
++            config,
++            test_llm_source(),
++            test_catalog(),
++            HookSecretResolver::default(),
++        );
+         let ctx = make_context(HookEvent::RunStart);
+         let sandbox = make_sandbox();
+         let decision = runner
+@@ -492,7 +527,12 @@ mod tests {
+                 h
+             }],
+         };
+-        let runner = HookRunner::new(config, test_llm_source(), test_catalog());
++        let runner = HookRunner::new(
++            config,
++            test_llm_source(),
++            test_catalog(),
++            HookSecretResolver::default(),
++        );
+         let ctx = make_context(HookEvent::RunStart);
+         let sandbox = make_sandbox();
+         let decision = runner
+diff --git a/lib/crates/fabro-hooks/src/secrets.rs b/lib/crates/fabro-hooks/src/secrets.rs
+new file mode 100644
+index 000000000..f78ccc518
+--- /dev/null
++++ b/lib/crates/fabro-hooks/src/secrets.rs
+@@ -0,0 +1,134 @@
++use std::collections::HashMap;
++use std::future::Future;
++use std::pin::Pin;
++use std::sync::Arc;
++
++use fabro_redact::SecretRedactor;
++use fabro_types::settings::InterpString;
++use fabro_types::settings::interp::Namespace;
++
++use crate::config::HookDefinition;
++
++type SecretLookupFuture = Pin<Box<dyn Future<Output = Option<String>> + Send + 'static>>;
++type SecretLookup = dyn Fn(String) -> SecretLookupFuture + Send + Sync + 'static;
++
++/// Per-run hook secret resolver.
++///
++/// The resolver is cheap to clone and must be constructed per run. It returns
++/// only token-shaped vault secrets supplied by the worker and shares the run's
++/// [`SecretRedactor`] so values resolved by hooks join the same redaction
++/// registry as run-boundary environment and prepare-step secrets.
++#[derive(Clone)]
++pub struct HookSecretResolver {
++    lookup:   Option<Arc<SecretLookup>>,
++    redactor: SecretRedactor,
++}
++
++impl HookSecretResolver {
++    #[must_use]
++    pub fn new(redactor: SecretRedactor) -> Self {
++        Self {
++            lookup: None,
++            redactor,
++        }
++    }
++
++    #[must_use]
++    pub fn with_lookup<F, Fut>(redactor: SecretRedactor, lookup: F) -> Self
++    where
++        F: Fn(String) -> Fut + Send + Sync + 'static,
++        Fut: Future<Output = Option<String>> + Send + 'static,
++    {
++        Self {
++            lookup: Some(Arc::new(move |name| Box::pin(lookup(name)))),
++            redactor,
++        }
++    }
++
++    pub async fn resolve_for_definition(&self, definition: &HookDefinition) -> ResolvedHookSecrets {
++        self.resolve_names(secret_names_for_definition(definition))
++            .await
++    }
++
++    async fn resolve_names<I, S>(&self, names: I) -> ResolvedHookSecrets
++    where
++        I: IntoIterator<Item = S>,
++        S: AsRef<str>,
++    {
++        let mut values = HashMap::new();
++        let Some(lookup) = self.lookup.as_ref() else {
++            return ResolvedHookSecrets::new(values, self.redactor.clone());
++        };
++
++        for name in names {
++            let name = name.as_ref();
++            if values.contains_key(name) {
++                continue;
++            }
++            if let Some(value) = lookup(name.to_string()).await {
++                values.insert(name.to_string(), value);
++            }
++        }
++
++        ResolvedHookSecrets::new(values, self.redactor.clone())
++    }
++}
++
++impl Default for HookSecretResolver {
++    fn default() -> Self {
++        Self::new(SecretRedactor::default())
++    }
++}
++
++/// Secrets resolved for one hook firing.
++#[derive(Clone, Default)]
++pub struct ResolvedHookSecrets {
++    values:   HashMap<String, String>,
++    redactor: SecretRedactor,
++}
++
++impl ResolvedHookSecrets {
++    #[must_use]
++    pub fn new(values: HashMap<String, String>, redactor: SecretRedactor) -> Self {
++        for value in values.values() {
++            redactor.register(value);
++        }
++        Self { values, redactor }
++    }
++
++    #[must_use]
++    pub fn lookup(&self, name: &str) -> Option<String> {
++        // Values were registered with the redactor at construction time in
++        // `new`, so this is a pure read.
++        self.values.get(name).cloned()
++    }
++
++    #[must_use]
++    pub fn redactor(&self) -> &SecretRedactor {
++        &self.redactor
++    }
++}
++
++pub(crate) fn secret_names(value: &InterpString) -> Vec<&str> {
++    value.names(Namespace::Secrets)
++}
++
++pub(crate) fn first_secret_name(value: &InterpString) -> Option<&str> {
++    // Cheap containment check first: the common no-secret case avoids
++    // collecting the name list.
++    value
++        .references(Namespace::Secrets)
++        .then(|| secret_names(value).into_iter().next())
++        .flatten()
++}
++
++fn secret_names_for_definition(definition: &HookDefinition) -> Vec<String> {
++    let Some(hook_type) = definition.resolved_hook_type() else {
++        return Vec::new();
++    };
++    hook_type
++        .interp_strings()
++        .flat_map(secret_names)
++        .map(str::to_string)
++        .collect()
++}
+diff --git a/lib/crates/fabro-hooks/src/types.rs b/lib/crates/fabro-hooks/src/types.rs
+index 8a1cba192..da45268a8 100644
+--- a/lib/crates/fabro-hooks/src/types.rs
++++ b/lib/crates/fabro-hooks/src/types.rs
+@@ -82,8 +82,9 @@ pub struct PromptHookResponse {
+ }
+ 
+ /// Decision returned by blocking hooks.
+-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
++#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, strum::IntoStaticStr)]
+ #[serde(tag = "decision", rename_all = "snake_case")]
++#[strum(serialize_all = "snake_case")]
+ pub enum HookDecision {
+     #[default]
+     Proceed,
+@@ -117,6 +118,12 @@ impl HookDecision {
+     pub fn is_proceed(&self) -> bool {
+         matches!(self, Self::Proceed)
+     }
++
++    /// Variant label matching the serde `decision` tag, for logging.
++    #[must_use]
++    pub fn as_str(&self) -> &'static str {
++        self.into()
++    }
+ }
+ 
+ /// Realm-specific locations available to hook execution.
+diff --git a/lib/crates/fabro-hooks/tests/host_command_hooks.rs b/lib/crates/fabro-hooks/tests/host_command_hooks.rs
+index 4bbe0c5a3..2ff53ff54 100644
+--- a/lib/crates/fabro-hooks/tests/host_command_hooks.rs
++++ b/lib/crates/fabro-hooks/tests/host_command_hooks.rs
+@@ -5,7 +5,7 @@ use fabro_agent::{LocalSandbox, Sandbox};
+ use fabro_auth::{CredentialSource, EnvCredentialSource};
+ use fabro_hooks::{
+     HookContext, HookDecision, HookDefinition, HookEvent, HookExecutionContext, HookRunner,
+-    HookSettings, InterpString,
++    HookSecretResolver, HookSettings, InterpString,
+ };
+ use fabro_model::Catalog;
+ use fabro_types::RunId;
+@@ -54,6 +54,7 @@ async fn host_command_hook_uses_host_workdir_not_sandbox_workdir() {
+         },
+         test_llm_source(),
+         test_catalog(),
++        HookSecretResolver::default(),
+     );
+     let context = HookContext::new(
+         HookEvent::RunStart,
+diff --git a/lib/crates/fabro-sandbox/src/daytona/mod.rs b/lib/crates/fabro-sandbox/src/daytona/mod.rs
+index 3c1568fc0..bc402e0ae 100644
+--- a/lib/crates/fabro-sandbox/src/daytona/mod.rs
++++ b/lib/crates/fabro-sandbox/src/daytona/mod.rs
+@@ -1106,7 +1106,10 @@ impl Sandbox for DaytonaSandbox {
+                                                 },
+                                             );
+                                             tracing::warn!(
+-                                                error = %crate::display_for_log(&err),
++                                                error = %crate::display_for_log(
++                                                    &err,
++                                                    &fabro_redact::SecretRedactor::default(),
++                                                ),
+                                                 "Failed to set Daytona sandbox push credentials \
+                                                  on origin — subsequent git push from this \
+                                                  sandbox will fail"
+diff --git a/lib/crates/fabro-sandbox/src/error.rs b/lib/crates/fabro-sandbox/src/error.rs
+index 7b2377660..47164e21f 100644
+--- a/lib/crates/fabro-sandbox/src/error.rs
++++ b/lib/crates/fabro-sandbox/src/error.rs
+@@ -2,6 +2,7 @@ use std::fmt::Write as _;
+ 
+ #[cfg(feature = "docker")]
+ use bollard::errors::Error as BollardError;
++use fabro_redact::SecretRedactor;
+ use fabro_util::error::{collect_causes, render_with_causes};
+ 
+ use crate::ExecResult;
+@@ -75,8 +76,11 @@ impl Error {
+         }
+     }
+ 
+-    pub fn default_redacted_output_tail(&self) -> Option<fabro_types::ExecOutputTail> {
+-        default_redacted_output_tail(self)
++    pub fn default_redacted_output_tail(
++        &self,
++        redactor: &SecretRedactor,
++    ) -> Option<fabro_types::ExecOutputTail> {
++        default_redacted_output_tail(self, redactor)
+     }
+ 
+     #[cfg(feature = "docker")]
+@@ -161,22 +165,29 @@ fn format_exit_code(exit_code: Option<i32>) -> String {
+ 
+ pub type Result<T> = std::result::Result<T, Error>;
+ 
++/// Walk the error chain and build the redacted output tail of the first
++/// sandbox exec failure. The run-scoped exact-match `redactor` is applied
++/// after content-based redaction; an empty redactor is an identity.
+ pub fn default_redacted_output_tail(
+     err: &(dyn std::error::Error + 'static),
++    redactor: &SecretRedactor,
+ ) -> Option<fabro_types::ExecOutputTail> {
+     let mut current = Some(err);
+     while let Some(err) = current {
+         if let Some(Error::Exec { result, .. }) = err.downcast_ref::<Error>() {
+-            return result.default_redacted_output_tail();
++            return result.default_redacted_output_tail(redactor);
+         }
+         current = err.source();
+     }
+     None
+ }
+ 
+-pub fn display_for_log(err: &(dyn std::error::Error + 'static)) -> String {
++pub fn display_for_log(
++    err: &(dyn std::error::Error + 'static),
++    redactor: &SecretRedactor,
++) -> String {
+     let mut rendered = render_with_causes(&err.to_string(), &collect_causes(err));
+-    if let Some(tail) = default_redacted_output_tail(err) {
++    if let Some(tail) = default_redacted_output_tail(err, redactor) {
+         append_tail_for_log(
+             &mut rendered,
+             "stderr",
+@@ -264,7 +275,7 @@ mod tests {
+         });
+         let error = Error::context("metadata push failed", exec_error);
+ 
+-        let rendered = display_for_log(&error);
++        let rendered = display_for_log(&error, &SecretRedactor::default());
+ 
+         assert!(rendered.contains("metadata push failed"));
+         assert!(rendered.contains("git push origin refs/heads/run"));
+@@ -284,7 +295,7 @@ mod tests {
+             duration_ms: 210,
+         });
+ 
+-        let rendered = display_for_log(&error);
++        let rendered = display_for_log(&error, &SecretRedactor::default());
+ 
+         assert!(
+             !rendered.contains("ghs_xK9mZ2vL8nQ5rT1wY4bC7dF0gH3jE6pA"),
+@@ -297,7 +308,7 @@ mod tests {
+     fn display_for_log_for_non_exec_error_returns_chain_only() {
+         let error = Error::context("outer failure", std::io::Error::other("leaf failure"));
+ 
+-        let rendered = display_for_log(&error);
++        let rendered = display_for_log(&error, &SecretRedactor::default());
+ 
+         assert_eq!(rendered, "outer failure\n  caused by: leaf failure");
+         assert!(!rendered.contains("--- stderr"));
+@@ -331,7 +342,9 @@ mod tests {
+             duration_ms: 210,
+         });
+ 
+-        let tail = error.default_redacted_output_tail().expect("tail present");
++        let tail = error
++            .default_redacted_output_tail(&SecretRedactor::default())
++            .expect("tail present");
+         assert_eq!(tail.stdout.as_deref(), Some("last stdout line"));
+         assert!(
+             tail.stderr
+@@ -352,7 +365,8 @@ mod tests {
+         });
+         let error = Error::context("metadata push failed", exec_error);
+ 
+-        let tail = default_redacted_output_tail(&error).expect("tail present");
++        let tail =
++            default_redacted_output_tail(&error, &SecretRedactor::default()).expect("tail present");
+ 
+         assert_eq!(tail.stdout.as_deref(), Some("last stdout line"));
+         assert_eq!(tail.stderr.as_deref(), Some("last stderr line"));
+diff --git a/lib/crates/fabro-sandbox/src/lib.rs b/lib/crates/fabro-sandbox/src/lib.rs
+index b7e4751e6..9ffec14ec 100644
+--- a/lib/crates/fabro-sandbox/src/lib.rs
++++ b/lib/crates/fabro-sandbox/src/lib.rs
+@@ -41,6 +41,7 @@ pub use details::sandbox_details;
+ #[cfg(feature = "docker")]
+ pub use docker::{DockerSandbox, DockerSandboxOptions};
+ pub use error::{Error, Result, default_redacted_output_tail, display_for_log};
++pub use fabro_redact::SecretRedactor;
+ pub use fabro_types::{RunSandboxInstance, SandboxProviderKind};
+ pub use local::LocalSandbox;
+ #[cfg(feature = "daytona")]
+diff --git a/lib/crates/fabro-sandbox/src/provider.rs b/lib/crates/fabro-sandbox/src/provider.rs
+index b72d64efc..360e8d8a6 100644
+--- a/lib/crates/fabro-sandbox/src/provider.rs
++++ b/lib/crates/fabro-sandbox/src/provider.rs
+@@ -26,7 +26,7 @@ pub enum SandboxCreateSpec {
+     Local,
+     #[cfg(feature = "docker")]
+     Docker {
+-        config:           DockerSandboxOptions,
++        config:           Box<DockerSandboxOptions>,
+         github_app:       Option<GitHubCredentials>,
+         run_id:           Option<RunId>,
+         clone_origin_url: Option<String>,
+diff --git a/lib/crates/fabro-sandbox/src/provider/docker.rs b/lib/crates/fabro-sandbox/src/provider/docker.rs
+index f1f8bb725..3e81e5f28 100644
+--- a/lib/crates/fabro-sandbox/src/provider/docker.rs
++++ b/lib/crates/fabro-sandbox/src/provider/docker.rs
+@@ -99,7 +99,7 @@ impl SandboxProvider for DockerSandboxProvider {
+         };
+ 
+         let sandbox =
+-            DockerSandbox::new(config, github_app, run_id, clone_origin_url, clone_branch)?;
++            DockerSandbox::new(*config, github_app, run_id, clone_origin_url, clone_branch)?;
+         sandbox.initialize().await?;
+         let container_id = sandbox.container_identifier()?.to_string();
+         self.get(&container_id).await?.ok_or_else(|| {
+diff --git a/lib/crates/fabro-sandbox/src/sandbox.rs b/lib/crates/fabro-sandbox/src/sandbox.rs
+index 68801f8bb..f9ac2f1a9 100644
+--- a/lib/crates/fabro-sandbox/src/sandbox.rs
++++ b/lib/crates/fabro-sandbox/src/sandbox.rs
+@@ -7,6 +7,7 @@ use std::sync::Arc;
+ use std::time::Duration;
+ 
+ use async_trait::async_trait;
++use fabro_redact::SecretRedactor;
+ use fabro_types::{CommandOutputStream, CommandTermination};
+ use fabro_util::shell;
+ use serde::{Deserialize, Serialize};
+@@ -568,12 +569,16 @@ impl ExecResult {
+     pub fn redacted_output_tail(
+         &self,
+         max_bytes_per_stream: usize,
++        redactor: &SecretRedactor,
+     ) -> Option<fabro_types::ExecOutputTail> {
+-        redacted_output_tail(&self.stdout, &self.stderr, max_bytes_per_stream)
++        redacted_output_tail(&self.stdout, &self.stderr, max_bytes_per_stream, redactor)
+     }
+ 
+-    pub fn default_redacted_output_tail(&self) -> Option<fabro_types::ExecOutputTail> {
+-        self.redacted_output_tail(DEFAULT_EXEC_OUTPUT_TAIL_BYTES)
++    pub fn default_redacted_output_tail(
++        &self,
++        redactor: &SecretRedactor,
++    ) -> Option<fabro_types::ExecOutputTail> {
++        self.redacted_output_tail(DEFAULT_EXEC_OUTPUT_TAIL_BYTES, redactor)
+     }
+ 
+     /// Converts host process output into the canonical full exec result.
+@@ -600,15 +605,18 @@ impl ExecResult {
+ 
+ /// Build a redacted `ExecOutputTail` from raw stdout/stderr without
+ /// fabricating a synthetic `ExecResult`. Pass `""` for either stream that
+-/// isn't relevant. Returns `None` when both streams are empty.
++/// isn't relevant. Returns `None` when both streams are empty. The run-scoped
++/// exact-match `redactor` is applied after the content-based redaction
++/// baseline; an empty redactor is an identity.
+ #[must_use]
+ pub fn redacted_output_tail(
+     stdout: &str,
+     stderr: &str,
+     max_bytes_per_stream: usize,
++    redactor: &SecretRedactor,
+ ) -> Option<fabro_types::ExecOutputTail> {
+-    let (stdout, stdout_truncated) = redacted_tail(stdout, max_bytes_per_stream);
+-    let (stderr, stderr_truncated) = redacted_tail(stderr, max_bytes_per_stream);
++    let (stdout, stdout_truncated) = redacted_tail(stdout, max_bytes_per_stream, redactor);
++    let (stderr, stderr_truncated) = redacted_tail(stderr, max_bytes_per_stream, redactor);
+     let tail = fabro_types::ExecOutputTail {
+         stdout,
+         stderr,
+@@ -618,12 +626,19 @@ pub fn redacted_output_tail(
+     (!tail.is_empty()).then_some(tail)
+ }
+ 
+-fn redacted_tail(text: &str, max_bytes: usize) -> (Option<String>, bool) {
++fn redacted_tail(
++    text: &str,
++    max_bytes: usize,
++    redactor: &SecretRedactor,
++) -> (Option<String>, bool) {
+     if text.is_empty() || max_bytes == 0 {
+         return (None, !text.is_empty());
+     }
+ 
+-    let redacted = fabro_redact::redact_string(text);
++    let mut redacted = fabro_redact::redact_string(text);
++    if !redactor.is_empty() {
++        redacted = redactor.redact_into(&redacted);
++    }
+     let sanitized = sanitize_exec_output(&redacted);
+     let truncated = sanitized.len() > max_bytes;
+     let start = if truncated {
+@@ -1172,7 +1187,7 @@ pub async fn git_push_via_exec(sandbox: &dyn Sandbox, refspec: &str) -> crate::R
+     if let Err(e) = sandbox.refresh_push_credentials().await {
+         tracing::warn!(
+             refspec = %refspec,
+-            error = %crate::display_for_log(&e),
++            error = %crate::display_for_log(&e, &SecretRedactor::default()),
+             "Failed to refresh push credentials before git push"
+         );
+     }
+@@ -1274,7 +1289,7 @@ mod tests {
+         };
+ 
+         let tail = result
+-            .redacted_output_tail(32)
++            .redacted_output_tail(32, &SecretRedactor::default())
+             .expect("redacted output tail");
+         let stdout = tail.stdout.expect("stdout tail");
+         assert!(stdout.contains("REDACTED"), "{stdout}");
+@@ -1282,6 +1297,27 @@ mod tests {
+         assert!(tail.stdout_truncated);
+     }
+ 
++    #[test]
++    fn exec_result_redacts_registered_low_entropy_secret_before_taking_tail() {
++        let redactor = SecretRedactor::default();
++        redactor.register("staging");
++        let result = ExecResult {
++            stdout:      format!("{} staging done", "context ".repeat(20)),
++            stderr:      String::new(),
++            exit_code:   Some(1),
++            termination: CommandTermination::Exited,
++            duration_ms: 1,
++        };
++
++        let tail = result
++            .redacted_output_tail(32, &redactor)
++            .expect("redacted output tail");
++        let stdout = tail.stdout.expect("stdout tail");
++        assert!(stdout.contains("REDACTED"), "{stdout}");
++        assert!(!stdout.contains("staging"), "{stdout}");
++        assert!(tail.stdout_truncated);
++    }
++
+     #[test]
+     fn exec_result_tail_sanitizes_terminal_control_sequences() {
+         let result = ExecResult {
+@@ -1295,7 +1331,7 @@ mod tests {
+         };
+ 
+         let tail = result
+-            .redacted_output_tail(1024)
++            .redacted_output_tail(1024, &SecretRedactor::default())
+             .expect("redacted output tail");
+         let stdout = tail.stdout.expect("stdout tail");
+         assert_eq!(stdout, "red shown set two-byte backspace");
+@@ -1338,7 +1374,7 @@ mod tests {
+ 
+         let result = ExecResult::from_process_output(output, 3);
+         let tail = result
+-            .redacted_output_tail(16)
++            .redacted_output_tail(16, &SecretRedactor::default())
+             .expect("redacted output tail");
+ 
+         assert!(tail.stdout.expect("stdout tail").len() <= 16);
+@@ -1355,7 +1391,9 @@ mod tests {
+             duration_ms: 1,
+         };
+ 
+-        let tail = result.default_redacted_output_tail().expect("tail present");
++        let tail = result
++            .default_redacted_output_tail(&SecretRedactor::default())
++            .expect("tail present");
+         assert_eq!(
+             tail.stdout.as_deref().map(str::len),
+             Some(DEFAULT_EXEC_OUTPUT_TAIL_BYTES)
+diff --git a/lib/crates/fabro-sandbox/src/sandbox_spec.rs b/lib/crates/fabro-sandbox/src/sandbox_spec.rs
+index b6a56bd40..5b8ead6d0 100644
+--- a/lib/crates/fabro-sandbox/src/sandbox_spec.rs
++++ b/lib/crates/fabro-sandbox/src/sandbox_spec.rs
+@@ -27,7 +27,7 @@ pub enum SandboxSpec {
+     },
+     #[cfg(feature = "docker")]
+     Docker {
+-        config:           DockerSandboxOptions,
++        config:           Box<DockerSandboxOptions>,
+         github_app:       Option<GitHubCredentials>,
+         run_id:           Option<RunId>,
+         clone_origin_url: Option<String>,
+@@ -204,7 +204,7 @@ impl SandboxSpec {
+                 clone_branch,
+             } => {
+                 let mut sandbox = DockerSandbox::new(
+-                    config.clone(),
++                    config.as_ref().clone(),
+                     github_app.clone(),
+                     *run_id,
+                     clone_origin_url.clone(),
+@@ -271,7 +271,7 @@ mod tests {
+     #[test]
+     fn docker_run_sandbox_persists_layout_metadata_for_cloned_repo() {
+         let spec = SandboxSpec::Docker {
+-            config:           DockerSandboxOptions::default(),
++            config:           Box::new(DockerSandboxOptions::default()),
+             github_app:       None,
+             run_id:           None,
+             clone_origin_url: Some("git@github.com:brynary/rack-test.git".to_string()),
+@@ -306,10 +306,10 @@ mod tests {
+     #[test]
+     fn docker_run_sandbox_omits_primary_repo_metadata_for_empty_workspace() {
+         let spec = SandboxSpec::Docker {
+-            config:           DockerSandboxOptions {
++            config:           Box::new(DockerSandboxOptions {
+                 skip_clone: true,
+                 ..DockerSandboxOptions::default()
+-            },
++            }),
+             github_app:       None,
+             run_id:           None,
+             clone_origin_url: Some("https://gitlab.com/acme/widgets".to_string()),
+diff --git a/lib/crates/fabro-server/src/run_manifest.rs b/lib/crates/fabro-server/src/run_manifest.rs
+index d7794be48..fe328c7d3 100644
+--- a/lib/crates/fabro-server/src/run_manifest.rs
++++ b/lib/crates/fabro-server/src/run_manifest.rs
+@@ -890,7 +890,7 @@ fn preflight_sandbox_spec(
+             let mut config = resolve_docker_config(resolved_run);
+             config.skip_clone = true;
+             SandboxSpec::Docker {
+-                config,
++                config: Box::new(config),
+                 github_app,
+                 run_id: None,
+                 clone_origin_url,
+diff --git a/lib/crates/fabro-types/src/settings/run.rs b/lib/crates/fabro-types/src/settings/run.rs
+index 95b3a2282..97fd950b0 100644
+--- a/lib/crates/fabro-types/src/settings/run.rs
++++ b/lib/crates/fabro-types/src/settings/run.rs
+@@ -2169,6 +2169,24 @@ pub enum HookType {
+     },
+ }
+ 
++impl HookType {
++    /// The fields of this hook type that support `{{ env.* }}` /
++    /// `{{ secrets.* }}` interpolation at fire time.
++    ///
++    /// HTTP `headers` are intentionally excluded: headers only accept
++    /// allowlisted `{{ env.* }}` tokens and reject secret tokens outright.
++    pub fn interp_strings(&self) -> impl Iterator<Item = &InterpString> {
++        let (first, second) = match self {
++            Self::Command { command } => (command, None),
++            Self::Http { url, .. } => (url, None),
++            Self::Prompt { prompt, model } | Self::Agent { prompt, model, .. } => {
++                (prompt, model.as_ref())
++            }
++        };
++        std::iter::once(first).chain(second)
++    }
++}
++
+ #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
+ pub struct HookDefinition {
+     pub name:       Option<String>,
+diff --git a/lib/crates/fabro-workflow/src/error.rs b/lib/crates/fabro-workflow/src/error.rs
+index 241787868..5a70e85a7 100644
+--- a/lib/crates/fabro-workflow/src/error.rs
++++ b/lib/crates/fabro-workflow/src/error.rs
+@@ -509,8 +509,12 @@ impl Error {
+             category: self.failure_category(),
+             system_actor: None,
+             signature: self.failure_signature_hint(),
+-            exec_output_tail: explicit_exec_output_tail
+-                .or_else(|| fabro_sandbox::default_redacted_output_tail(self)),
++            exec_output_tail: explicit_exec_output_tail.or_else(|| {
++                fabro_sandbox::default_redacted_output_tail(
++                    self,
++                    &fabro_redact::SecretRedactor::default(),
++                )
++            }),
+         }
+     }
+ 
+diff --git a/lib/crates/fabro-workflow/src/event.rs b/lib/crates/fabro-workflow/src/event.rs
+index e64b2ae30..84f01f752 100644
+--- a/lib/crates/fabro-workflow/src/event.rs
++++ b/lib/crates/fabro-workflow/src/event.rs
+@@ -16,6 +16,7 @@ pub use self::events::Event;
+ pub use self::names::event_name;
+ pub use self::redaction::{
+     build_redacted_event_payload, event_payload_from_redacted_json, redacted_event_json,
++    redacted_run_event,
+ };
+ pub use self::sink::{
+     RunEventLogger, RunEventSink, StoreProgressLogger, append_event, append_event_to_sink,
+diff --git a/lib/crates/fabro-workflow/src/event/events.rs b/lib/crates/fabro-workflow/src/event/events.rs
+index 0b5afb1c7..85707d0a2 100644
+--- a/lib/crates/fabro-workflow/src/event/events.rs
++++ b/lib/crates/fabro-workflow/src/event/events.rs
+@@ -1330,7 +1330,7 @@ impl Event {
+                 info!(command_count, "Setup started");
+             }
+             Self::SetupCommandStarted { command, index } => {
+-                debug!(command, index, "Setup command started");
++                debug!(command_len = command.len(), index, "Setup command started");
+             }
+             Self::SetupCommandCompleted {
+                 command,
+@@ -1339,7 +1339,7 @@ impl Event {
+                 duration_ms,
+             } => {
+                 debug!(
+-                    command,
++                    command_len = command.len(),
+                     index, exit_code, duration_ms, "Setup command completed"
+                 );
+             }
+@@ -1355,7 +1355,7 @@ impl Event {
+             } => {
+                 let tail = fabro_types::ExecOutputTail::trace_summary(exec_output_tail.as_ref());
+                 error!(
+-                    command,
++                    command_len = command.len(),
+                     index,
+                     exit_code,
+                     exec_output_tail_present = tail.present,
+diff --git a/lib/crates/fabro-workflow/src/event/redaction.rs b/lib/crates/fabro-workflow/src/event/redaction.rs
+index 5ae44d111..7565e64c8 100644
+--- a/lib/crates/fabro-workflow/src/event/redaction.rs
++++ b/lib/crates/fabro-workflow/src/event/redaction.rs
+@@ -1,26 +1,118 @@
+ use ::fabro_types::{RunEvent, RunId};
+ use anyhow::{Context, Result};
+-use fabro_redact::redact_json_value;
++use fabro_redact::{SecretRedactor, redact_json_value};
+ use fabro_store::EventPayload;
+ use fabro_util::json::normalize_json_value;
+ use serde_json::Value;
+ 
+ pub fn build_redacted_event_payload(event: &RunEvent, run_id: &RunId) -> Result<EventPayload> {
+-    let value = redacted_event_value(event)?;
+-    EventPayload::new(value, run_id).map_err(anyhow::Error::from)
++    EventPayload::new(redacted_event_value(event)?, run_id).map_err(anyhow::Error::from)
++}
++
++/// Redact an event and reconstruct it as a `RunEvent`.
++///
++/// This runs the event through the content-based pass plus the per-run
++/// exact-match [`SecretRedactor`], then reparses the redacted payload back
++/// into a `RunEvent` so downstream sinks that require a typed event never see
++/// the raw value. An empty redactor is an identity for the exact-match pass.
++pub fn redacted_run_event(event: &RunEvent, redactor: &SecretRedactor) -> Result<RunEvent> {
++    let mut value = redacted_event_value(event)?;
++    redact_event_payload_secrets(&mut value, redactor);
++    let payload = EventPayload::new(value, &event.run_id)?;
++    RunEvent::try_from(&payload).map_err(anyhow::Error::from)
+ }
+ 
+ pub fn redacted_event_json(event: &RunEvent) -> Result<String> {
+     serde_json::to_string(&redacted_event_value(event)?).map_err(anyhow::Error::from)
+ }
+ 
+-fn normalized_event_value(event: &RunEvent) -> Result<Value> {
+-    let value = event.to_value()?;
+-    Ok(normalize_json_value(value))
++/// Content-based redaction over the normalized event payload. Exact-match
++/// per-run secret redaction is layered on top by [`redacted_run_event`].
++fn redacted_event_value(event: &RunEvent) -> Result<Value> {
++    Ok(redact_json_value(normalize_json_value(event.to_value()?)))
+ }
+ 
+-fn redacted_event_value(event: &RunEvent) -> Result<Value> {
+-    Ok(redact_json_value(normalized_event_value(event)?))
++fn redact_event_payload_secrets(value: &mut Value, redactor: &SecretRedactor) {
++    // No declared secrets (the common case): skip the recursive property walk
++    // entirely. Content-based redaction already ran in `redacted_event_value`.
++    if redactor.is_empty() {
++        return;
++    }
++    if let Some(properties) = value.get_mut("properties") {
++        redact_redactable_event_properties(properties, redactor);
++    }
++    if let Some(Value::String(label)) = value.get_mut("node_label") {
++        let redacted = redactor.redact_into(label);
++        if redacted != *label {
++            *label = redacted;
++        }
++    }
++}
++
++fn redact_redactable_event_properties(value: &mut Value, redactor: &SecretRedactor) {
++    match value {
++        Value::Object(obj) => {
++            for (key, child) in obj {
++                if is_secret_redactable_event_property(key) {
++                    *child = redactor.redact_json(std::mem::take(child));
++                } else {
++                    redact_redactable_event_properties(child, redactor);
++                }
++            }
++        }
++        Value::Array(items) => {
++            for item in items {
++                redact_redactable_event_properties(item, redactor);
++            }
++        }
++        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
++    }
++}
++
++// Exact-match secret values may be intentionally low entropy ("staging",
++// "pause", "running"). Redacting every string in an event can therefore corrupt
++// structural fields that are validated enum values or IDs. Keep this list to
++// free-form text/blob fields where replacing a matched substring preserves the
++// event schema and projection semantics.
++fn is_secret_redactable_event_property(key: &str) -> bool {
++    matches!(
++        key,
++        "active_form"
++            | "answer"
++            | "arguments"
++            | "causes"
++            | "command"
++            | "context_display"
++            | "delta"
++            | "description"
++            | "details"
++            | "diff"
++            | "error"
++            | "error_message"
++            | "exec_output_tail"
++            | "failure"
++            | "final_patch"
++            | "goal"
++            | "input"
++            | "message"
++            | "notes"
++            | "output"
++            | "preview"
++            | "prompt"
++            | "question"
++            | "reason"
++            | "response"
++            | "script"
++            | "stderr"
++            | "stdout"
++            | "subject"
++            | "text"
++            | "title"
++            | "tool_input"
++            | "tool_output"
++            | "workflow_config"
++            | "workflow_source"
++    )
+ }
+ 
+ pub fn event_payload_from_redacted_json(line: &str, run_id: &RunId) -> Result<EventPayload> {
+@@ -72,4 +164,90 @@ mod tests {
+             "plain stderr"
+         );
+     }
++
++    #[test]
++    fn redacted_run_event_redacts_registered_low_entropy_secret() {
++        let redactor = fabro_redact::SecretRedactor::default();
++        redactor.register("staging");
++        let stored = to_run_event(&fixtures::RUN_8, &Event::SetupFailed {
++            command:          "deploy staging".to_string(),
++            index:            0,
++            exit_code:        1,
++            stderr:           "failed in staging".to_string(),
++            exec_output_tail: None,
++        });
++
++        let redacted = redacted_run_event(&stored, &redactor).unwrap();
++        let redacted_text = serde_json::to_string(&redacted.to_value().unwrap()).unwrap();
++
++        assert!(!redacted_text.contains("staging"));
++        assert!(redacted_text.contains("REDACTED"));
++    }
++
++    #[test]
++    fn redacted_run_event_redactors_are_isolated_per_run() {
++        let first = fabro_redact::SecretRedactor::default();
++        first.register("alpha");
++        let second = fabro_redact::SecretRedactor::default();
++        second.register("bravo");
++        let stored = to_run_event(&fixtures::RUN_8, &Event::SetupCommandStarted {
++            command: "echo alpha bravo".to_string(),
++            index:   0,
++        });
++
++        let first_text = serde_json::to_string(
++            &redacted_run_event(&stored, &first)
++                .unwrap()
++                .to_value()
++                .unwrap(),
++        )
++        .unwrap();
++        let second_text = serde_json::to_string(
++            &redacted_run_event(&stored, &second)
++                .unwrap()
++                .to_value()
++                .unwrap(),
++        )
++        .unwrap();
++
++        assert!(!first_text.contains("alpha"));
++        assert!(first_text.contains("bravo"));
++        assert!(second_text.contains("alpha"));
++        assert!(!second_text.contains("bravo"));
++    }
++
++    #[test]
++    fn redacted_run_event_preserves_structural_event_fields() {
++        let redactor = fabro_redact::SecretRedactor::default();
++        redactor.register("setup.failed");
++        let stored = to_run_event(&fixtures::RUN_8, &Event::SetupFailed {
++            command:          "echo setup.failed".to_string(),
++            index:            0,
++            exit_code:        1,
++            stderr:           "setup.failed".to_string(),
++            exec_output_tail: None,
++        });
++
++        let redacted = redacted_run_event(&stored, &redactor).unwrap();
++
++        assert_eq!(redacted.event_name(), "setup.failed");
++        let value = redacted.to_value().unwrap();
++        assert_eq!(value["properties"]["command"], "echo REDACTED");
++        assert_eq!(value["properties"]["stderr"], "REDACTED");
++    }
++
++    #[test]
++    fn redacted_run_event_preserves_structural_property_values() {
++        let redactor = fabro_redact::SecretRedactor::default();
++        redactor.register("pause");
++        let stored = to_run_event(&fixtures::RUN_8, &Event::RunPauseRequested { actor: None });
++
++        let redacted = redacted_run_event(&stored, &redactor).unwrap();
++
++        assert_eq!(redacted.event_name(), "run.pause.requested");
++        assert_eq!(
++            redacted.to_value().unwrap()["properties"]["action"],
++            "pause"
++        );
++    }
+ }
+diff --git a/lib/crates/fabro-workflow/src/event/sink.rs b/lib/crates/fabro-workflow/src/event/sink.rs
+index 1017b2b29..0281a4165 100644
+--- a/lib/crates/fabro-workflow/src/event/sink.rs
++++ b/lib/crates/fabro-workflow/src/event/sink.rs
+@@ -4,12 +4,13 @@ use std::sync::Arc;
+ 
+ use ::fabro_types::{RunEvent, RunId};
+ use anyhow::Result;
++use fabro_redact::SecretRedactor;
+ use fabro_store::RunDatabase;
+ use tokio::io::{AsyncWrite, AsyncWriteExt};
+ use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot};
+ 
+ use super::emitter::Emitter;
+-use super::redaction::{build_redacted_event_payload, redacted_event_json};
++use super::redaction::{build_redacted_event_payload, redacted_event_json, redacted_run_event};
+ use super::{Event, to_run_event};
+ use crate::runtime_store::RunStoreHandle;
+ 
+@@ -41,6 +42,10 @@ pub enum RunEventSink {
+         transform: Arc<RunEventTransform>,
+         inner:     Box<Self>,
+     },
++    RedactSecrets {
++        redactor: SecretRedactor,
++        inner:    Box<Self>,
++    },
+     Composite(Vec<Self>),
+ }
+ 
+@@ -99,6 +104,14 @@ impl RunEventSink {
+         }
+     }
+ 
++    #[must_use]
++    pub fn with_secret_redactor(self, redactor: SecretRedactor) -> Self {
++        Self::RedactSecrets {
++            redactor,
++            inner: Box::new(self),
++        }
++    }
++
+     pub async fn write_run_event(&self, event: &RunEvent) -> Result<()> {
+         let mut pending = vec![(self, event.clone())];
+         while let Some((sink, event)) = pending.pop() {
+@@ -113,10 +126,24 @@ impl RunEventSink {
+                     writer.write_all(b"\n").await?;
+                     writer.flush().await?;
+                 }
+-                Self::Callback(callback) => callback(event).await?,
++                Self::Callback(callback) => {
++                    callback(event).await?;
++                }
+                 Self::Map { transform, inner } => {
+                     pending.push((inner.as_ref(), transform(event)));
+                 }
++                Self::RedactSecrets { redactor, inner } => {
++                    // Redact once at the wrapper so every inner sink sees the
++                    // same already-redacted event. With no declared secrets
++                    // (the common case) the event passes through untouched and
++                    // leaves apply their own content-based redaction as usual.
++                    let event = if redactor.is_empty() {
++                        event
++                    } else {
++                        redacted_run_event(&event, redactor)?
++                    };
++                    pending.push((inner.as_ref(), event));
++                }
+                 Self::Composite(sinks) => {
+                     for sink in sinks.iter().rev() {
+                         pending.push((sink, event.clone()));
+@@ -334,6 +361,34 @@ mod tests {
+         assert_eq!(second[0].actor, Some(user_principal("alice")));
+     }
+ 
++    #[tokio::test]
++    async fn run_event_sink_redacts_callback_events_with_run_secret_redactor() {
++        let captured = Arc::new(AsyncMutex::new(Vec::new()));
++        let captured_events = Arc::clone(&captured);
++        let redactor = fabro_redact::SecretRedactor::default();
++        redactor.register("staging");
++        let sink = RunEventSink::callback(move |event| {
++            let captured_events = Arc::clone(&captured_events);
++            async move {
++                captured_events.lock().await.push(event);
++                Ok(())
++            }
++        })
++        .with_secret_redactor(redactor);
++        let event = to_run_event(&fixtures::RUN_7, &Event::SetupCommandStarted {
++            command: "deploy staging".to_string(),
++            index:   0,
++        });
++
++        sink.write_run_event(&event).await.unwrap();
++
++        let captured = captured.lock().await;
++        assert_eq!(captured.len(), 1);
++        let captured_text = serde_json::to_string(&captured[0].to_value().unwrap()).unwrap();
++        assert!(!captured_text.contains("staging"));
++        assert!(captured_text.contains("REDACTED"));
++    }
++
+     #[tokio::test]
+     async fn run_event_logger_registers_emitter_events_to_json_lines() {
+         use tokio::io::{AsyncBufReadExt, BufReader};
+diff --git a/lib/crates/fabro-workflow/src/handler/parallel.rs b/lib/crates/fabro-workflow/src/handler/parallel.rs
+index 108a72369..ff80de2c0 100644
+--- a/lib/crates/fabro-workflow/src/handler/parallel.rs
++++ b/lib/crates/fabro-workflow/src/handler/parallel.rs
+@@ -205,14 +205,20 @@ impl Handler for ParallelHandler {
+                 }
+                 Err(e) => {
+                     tracing::warn!(
+-                        error = %fabro_sandbox::display_for_log(&e),
++                        error = %fabro_sandbox::display_for_log(
++                            &e,
++                            &services.run.secret_redactor,
++                        ),
+                         "parallel base checkpoint failed"
+                     );
+                     services.run.emitter.notice_with_tail(
+                         RunNoticeLevel::Warn,
+                         RunNoticeCode::ParallelBaseCheckpointFailed,
+                         format!("Could not checkpoint base state before parallel branches: {e}"),
+-                        fabro_sandbox::default_redacted_output_tail(&e),
++                        fabro_sandbox::default_redacted_output_tail(
++                            &e,
++                            &services.run.secret_redactor,
++                        ),
+                     );
+                     None
+                 }
+diff --git a/lib/crates/fabro-workflow/src/lifecycle/git.rs b/lib/crates/fabro-workflow/src/lifecycle/git.rs
+index 5133fa602..82825e5d3 100644
+--- a/lib/crates/fabro-workflow/src/lifecycle/git.rs
++++ b/lib/crates/fabro-workflow/src/lifecycle/git.rs
+@@ -8,6 +8,7 @@ use fabro_core::lifecycle::RunLifecycle;
+ use fabro_core::outcome::NodeResult;
+ use fabro_core::state::ExecutionState;
+ use fabro_dump::RunDump;
++use fabro_redact::SecretRedactor;
+ use fabro_types::run_event::{MetadataSnapshotFailureKind, MetadataSnapshotPhase};
+ use fabro_types::{CheckpointRecord, DiffSummary, RunDiff, RunId};
+ use fabro_util::error::collect_causes;
+@@ -84,6 +85,7 @@ pub(crate) struct GitLifecycle {
+     pub sandbox_git:           Arc<SandboxGitRuntime>,
+     pub metadata_runtime:      Arc<RunMetadataRuntime>,
+     pub metadata_writer:       Option<RunMetadataWriterHandle>,
++    pub secret_redactor:       SecretRedactor,
+     pub start_node_id:         Option<String>,
+     // Cross-lifecycle data (shared with EventLifecycle)
+     pub checkpoint_git_result: Arc<Mutex<Option<GitCheckpointResult>>>,
+@@ -311,10 +313,16 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
+                                 Ok(()) => (true, None),
+                                 Err(err) => {
+                                     let exec_output_tail =
+-                                        fabro_sandbox::default_redacted_output_tail(&err);
++                                        fabro_sandbox::default_redacted_output_tail(
++                                            &err,
++                                            &self.secret_redactor,
++                                        );
+                                     tracing::warn!(
+                                         refspec = %refspec,
+-                                        error = %fabro_sandbox::display_for_log(&err),
++                                        error = %fabro_sandbox::display_for_log(
++                                            &err,
++                                            &self.secret_redactor,
++                                        ),
+                                         "git push from run lifecycle failed"
+                                     );
+                                     self.emitter.notice_with_tail(
+@@ -364,8 +372,10 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
+                         }
+                         Ok(_) => {}
+                         Err(err) => {
+-                            let exec_output_tail =
+-                                fabro_sandbox::default_redacted_output_tail(&err);
++                            let exec_output_tail = fabro_sandbox::default_redacted_output_tail(
++                                &err,
++                                &self.secret_redactor,
++                            );
+                             self.emitter.notice_with_tail(
+                                 RunNoticeLevel::Warn,
+                                 RunNoticeCode::GitDiffFailed,
+@@ -379,8 +389,10 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
+                             git_result.diff_summary = Some(summarize_diff_numstat(&numstat));
+                         }
+                         Some(Err(err)) => {
+-                            let exec_output_tail =
+-                                fabro_sandbox::default_redacted_output_tail(&err);
++                            let exec_output_tail = fabro_sandbox::default_redacted_output_tail(
++                                &err,
++                                &self.secret_redactor,
++                            );
+                             self.emitter.notice_with_tail(
+                                 RunNoticeLevel::Warn,
+                                 RunNoticeCode::GitDiffFailed,
+@@ -399,7 +411,8 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
+                     .expect("git lifecycle mutex should not be poisoned: no code panics while holding this lock") = Some(git_result);
+             }
+             Err(e) => {
+-                let exec_output_tail = fabro_sandbox::default_redacted_output_tail(&e);
++                let exec_output_tail =
++                    fabro_sandbox::default_redacted_output_tail(&e, &self.secret_redactor);
+                 let error = e.to_string();
+                 // Emit CheckpointFailed and return error
+                 let scope = stage_scope_for(state, node_id);
+@@ -797,6 +810,7 @@ mod tests {
+             sandbox_git: Arc::new(SandboxGitRuntime::new()),
+             metadata_runtime,
+             metadata_writer,
++            secret_redactor: SecretRedactor::default(),
+             start_node_id: Some("start".to_string()),
+             checkpoint_git_result: Arc::new(Mutex::new(None)),
+             last_git_sha: Arc::new(Mutex::new(None)),
+@@ -1260,6 +1274,7 @@ mod tests {
+             "claude-sonnet-4-6".to_string(),
+             Arc::new(fabro_auth::EnvCredentialSource::new()),
+             Arc::new(Catalog::from_builtin().expect("default catalog should build")),
++            fabro_redact::SecretRedactor::default(),
+             Arc::new(SandboxGitRuntime::new()),
+             Arc::clone(&lifecycle.metadata_runtime),
+             lifecycle.metadata_writer.clone(),
+diff --git a/lib/crates/fabro-workflow/src/lifecycle/mod.rs b/lib/crates/fabro-workflow/src/lifecycle/mod.rs
+index 2db1e8d75..97b46a5a8 100644
+--- a/lib/crates/fabro-workflow/src/lifecycle/mod.rs
++++ b/lib/crates/fabro-workflow/src/lifecycle/mod.rs
+@@ -94,6 +94,7 @@ impl WorkflowLifecycle {
+         sandbox_git: Arc<SandboxGitRuntime>,
+         metadata_runtime: Arc<RunMetadataRuntime>,
+         metadata_writer: Option<RunMetadataWriterHandle>,
++        secret_redactor: fabro_redact::SecretRedactor,
+         is_resume: bool,
+         on_node: crate::OnNodeCallback,
+         run_control: Option<Arc<RunControlState>>,
+@@ -161,6 +162,7 @@ impl WorkflowLifecycle {
+             sandbox_git,
+             metadata_runtime,
+             metadata_writer,
++            secret_redactor,
+             start_node_id,
+             checkpoint_git_result: Arc::clone(&checkpoint_git_result),
+             last_git_sha,
+diff --git a/lib/crates/fabro-workflow/src/operations/start.rs b/lib/crates/fabro-workflow/src/operations/start.rs
+index 7fa47e938..463a55609 100644
+--- a/lib/crates/fabro-workflow/src/operations/start.rs
++++ b/lib/crates/fabro-workflow/src/operations/start.rs
+@@ -8,6 +8,7 @@ use fabro_interview::{AutoApproveInterviewer, Interviewer};
+ use fabro_llm::client::Client as LlmClient;
+ use fabro_mcp::config::McpServerSettings;
+ use fabro_model::{Catalog, FallbackTarget, ProviderId};
++use fabro_redact::SecretRedactor;
+ use fabro_sandbox::daytona::DaytonaConfig;
+ use fabro_sandbox::from_environment::{
+     daytona_config_from_environment, docker_config_from_environment_with_secrets,
+@@ -79,6 +80,8 @@ struct RunSession {
+     workflow_bundle:   Option<Arc<WorkflowBundle>>,
+     run_control:       Option<Arc<RunControlState>>,
+     vault:             Option<Arc<AsyncRwLock<Vault>>>,
++    secret_redactor:   SecretRedactor,
++    hook_secrets:      fabro_hooks::HookSecretResolver,
+     catalog:           Arc<Catalog>,
+     fabro_run_tools:   Option<FabroRunToolServices>,
+ }
+@@ -252,10 +255,13 @@ pub(super) async fn execute_persisted_run(
+     };
+ 
+     bootstrap_guard.defuse();
++    let terminal_event_sink = event_sink
++        .clone()
++        .with_secret_redactor(session.secret_redactor.clone());
+     let mut completion_guard = DetachedRunCompletionGuard::arm(
+         run_id,
+         run_store.clone(),
+-        event_sink.clone(),
++        terminal_event_sink.clone(),
+         cancel_token,
+     );
+     let run_start = Instant::now();
+@@ -270,7 +276,7 @@ pub(super) async fn execute_persisted_run(
+             persist_terminal_engine_failure(
+                 run_id,
+                 &run_store,
+-                &event_sink,
++                &terminal_event_sink,
+                 run_dir,
+                 &err,
+                 run_start.elapsed(),
+@@ -377,10 +383,14 @@ impl RunSession {
+             Some(vault) => Some(vault.read().await),
+             None => None,
+         };
++        let secret_redactor = SecretRedactor::default();
++        let hook_secrets = hook_secret_resolver(services.vault.clone(), secret_redactor.clone());
+         // Token-only secrets lookup over the vault read guard, shared across
+         // every run-boundary resolver. A missing or non-Token secret becomes
+         // `None`, so resolution fails closed with a secret error.
+-        let secret_lookup = |name: &str| vault_token_lookup(vault_guard.as_deref(), name);
++        let secret_lookup = |name: &str| {
++            registered_vault_token_lookup(vault_guard.as_deref(), &secret_redactor, name)
++        };
+         let mcp_servers = resolved
+             .agent
+             .mcps
+@@ -419,7 +429,7 @@ impl RunSession {
+                 SandboxSpec::Local { working_directory }
+             }
+             SandboxProviderKind::Docker => SandboxSpec::Docker {
+-                config:           resolve_docker_config(resolved, secret_lookup)?,
++                config:           Box::new(resolve_docker_config(resolved, secret_lookup)?),
+                 github_app:       services.github_app.clone(),
+                 run_id:           Some(record.run_id),
+                 clone_origin_url: record.repo_origin_url().map(str::to_string),
+@@ -505,6 +515,8 @@ impl RunSession {
+             workflow_path,
+             workflow_bundle,
+             vault: services.vault,
++            secret_redactor,
++            hook_secrets,
+             catalog,
+             fabro_run_tools: services.fabro_run_tools,
+         })
+@@ -566,6 +578,34 @@ fn vault_token_lookup(vault: Option<&Vault>, name: &str) -> Option<String> {
+     vault.and_then(|vault| fabro_auth::vault_get_token(vault, name).ok().flatten())
+ }
+ 
++fn registered_vault_token_lookup(
++    vault: Option<&Vault>,
++    redactor: &SecretRedactor,
++    name: &str,
++) -> Option<String> {
++    let value = vault_token_lookup(vault, name);
++    if let Some(value) = value.as_deref() {
++        redactor.register(value);
++    }
++    value
++}
++
++fn hook_secret_resolver(
++    vault: Option<Arc<AsyncRwLock<Vault>>>,
++    redactor: SecretRedactor,
++) -> fabro_hooks::HookSecretResolver {
++    match vault {
++        Some(vault) => fabro_hooks::HookSecretResolver::with_lookup(redactor, move |name| {
++            let vault = Arc::clone(&vault);
++            async move {
++                let guard = vault.read().await;
++                vault_token_lookup(Some(&guard), &name)
++            }
++        }),
++        None => fabro_hooks::HookSecretResolver::new(redactor),
++    }
++}
++
+ async fn load_accepted_run_definition(
+     run_store: &RunStoreHandle,
+     blob_id: fabro_types::RunBlobId,
+@@ -827,7 +867,11 @@ impl RunSession {
+             });
+         }
+ 
+-        let store_progress_logger = RunEventLogger::new(self.event_sink.clone());
++        let store_progress_logger = RunEventLogger::new(
++            self.event_sink
++                .clone()
++                .with_secret_redactor(self.secret_redactor.clone()),
++        );
+         store_progress_logger.register(self.emitter.as_ref());
+ 
+         let init_options = InitOptions {
+@@ -845,8 +889,10 @@ impl RunSession {
+             workflow_path: self.workflow_path,
+             workflow_bundle: self.workflow_bundle,
+             hooks: self.hooks,
++            hook_secrets: self.hook_secrets,
+             sandbox_env: self.sandbox_env,
+             vault: self.vault,
++            secret_redactor: self.secret_redactor,
+             git: self.git,
+             registry_override: self.registry_override,
+             artifact_sink: self.artifact_sink,
+@@ -855,7 +901,13 @@ impl RunSession {
+             seed_context: self.seed_context,
+             fabro_run_tools: self.fabro_run_tools,
+         };
+-        let mut initialized = Box::pin(pipeline::initialize(persisted, init_options)).await?;
++        let mut initialized = match Box::pin(pipeline::initialize(persisted, init_options)).await {
++            Ok(initialized) => initialized,
++            Err(err) => {
++                store_progress_logger.flush().await;
++                return Err(err);
++            }
++        };
+         initialized.on_node = on_node;
+ 
+         let sandbox_for_cleanup = Arc::clone(&initialized.engine.run.sandbox);
+@@ -1125,8 +1177,8 @@ mod tests {
+     };
+     use fabro_store::Database;
+     use fabro_types::settings::run::{
+-        McpTransport as ResolvedMcpTransport, PreparedStep, PreparedStepRun, RunMode,
+-        RunPrepareSettings,
++        HookDefinition, HookEvent, HookType, McpTransport as ResolvedMcpTransport, PreparedStep,
++        PreparedStepRun, RunMode, RunPrepareSettings, TlsMode,
+     };
+     use fabro_types::settings::{InterpString, ModelRef};
+     use fabro_types::{
+@@ -1568,6 +1620,49 @@ reasoning = false
+         );
+     }
+ 
++    #[tokio::test]
++    async fn run_session_secret_redactors_are_isolated_between_runs() {
++        async fn session_with_secret(secret_value: &str) -> RunSession {
++            let temp = tempfile::tempdir().unwrap();
++            let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
++            let mut settings = settings_from_run_layer(RunLayer {
++                execution: Some(RunExecutionLayer {
++                    mode: Some(RunMode::DryRun),
++                    ..RunExecutionLayer::default()
++                }),
++                ..RunLayer::default()
++            });
++            settings.run.environment.env.insert(
++                "DEPLOY_ENV".to_string(),
++                InterpString::parse("{{ secrets.DEPLOY_ENV }}"),
++            );
++            let (persisted, store) =
++                persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
++            let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
++            let registry = Arc::new(test_registry());
++            let vault = Arc::new(AsyncRwLock::new(token_vault("DEPLOY_ENV", secret_value)));
++
++            RunSession::new(&persisted, StartServices {
++                vault: Some(vault),
++                ..test_start_services(&store, &storage_root, emitter, registry).await
++            })
++            .await
++            .unwrap()
++        }
++
++        let first = session_with_secret("alpha").await;
++        let second = session_with_secret("bravo").await;
++
++        assert_eq!(
++            first.secret_redactor.redact_into("alpha bravo"),
++            "REDACTED bravo"
++        );
++        assert_eq!(
++            second.secret_redactor.redact_into("alpha bravo"),
++            "alpha REDACTED"
++        );
++    }
++
+     #[tokio::test]
+     async fn run_session_new_missing_secret_fails_startup() {
+         let temp = tempfile::tempdir().unwrap();
+@@ -1605,6 +1700,218 @@ reasoning = false
+         assert!(err.causes()[0].contains("DEPLOY_TOKEN"));
+     }
+ 
++    #[tokio::test]
++    async fn setup_failure_redacts_low_entropy_secret_in_event_and_error() {
++        let temp = tempfile::tempdir().unwrap();
++        let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
++        let mut settings = settings_from_run_layer(RunLayer {
++            execution: Some(RunExecutionLayer {
++                mode: Some(RunMode::DryRun),
++                ..RunExecutionLayer::default()
++            }),
++            ..RunLayer::default()
++        });
++        settings.run.prepare = prepare_with_step(script_step(
++            "echo {{ secrets.DEPLOY_ENV }} >&2; exit 7",
++            HashMap::new(),
++        ));
++        let (_persisted, store) =
++            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
++        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
++        let registry = Arc::new(test_registry());
++        let vault = Arc::new(AsyncRwLock::new(token_vault("DEPLOY_ENV", "staging")));
++
++        let Err(err) = start(&run_dir, StartServices {
++            vault: Some(vault),
++            ..test_start_services(&store, &storage_root, emitter, registry).await
++        })
++        .await
++        else {
++            panic!("setup failure should fail the run");
++        };
++
++        let error_text = err.to_string();
++        assert!(!error_text.contains("staging"));
++        assert!(error_text.contains("REDACTED"));
++
++        let run_store = store.open_run(&fixtures::RUN_1).await.unwrap();
++        let events = run_store.list_events().await.unwrap();
++        let events_text = serde_json::to_string(&events).unwrap();
++        assert!(!events_text.contains("staging"));
++        assert!(events_text.contains("REDACTED"));
++        assert!(
++            events
++                .iter()
++                .any(|event| event.event.event_name() == "setup.failed")
++        );
++    }
++
++    #[tokio::test]
++    async fn hook_command_resolves_secret_from_vault() {
++        let temp = tempfile::tempdir().unwrap();
++        let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
++        let mut settings = settings_from_run_layer(RunLayer {
++            execution: Some(RunExecutionLayer {
++                mode: Some(RunMode::DryRun),
++                ..RunExecutionLayer::default()
++            }),
++            ..RunLayer::default()
++        });
++        settings.run.hooks.push(sandbox_ready_command_hook(
++            "test \"{{ secrets.HOOK_TOKEN }}\" = staging",
++        ));
++        let (_persisted, store) =
++            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
++        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
++        let registry = Arc::new(test_registry());
++        let vault = Arc::new(AsyncRwLock::new(token_vault("HOOK_TOKEN", "staging")));
++
++        start(&run_dir, StartServices {
++            vault: Some(vault),
++            ..test_start_services(&store, &storage_root, emitter, registry).await
++        })
++        .await
++        .expect("hook command should resolve secret and proceed");
++    }
++
++    #[tokio::test]
++    async fn hook_missing_secret_fails_closed() {
++        let temp = tempfile::tempdir().unwrap();
++        let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
++        let mut settings = settings_from_run_layer(RunLayer {
++            execution: Some(RunExecutionLayer {
++                mode: Some(RunMode::DryRun),
++                ..RunExecutionLayer::default()
++            }),
++            ..RunLayer::default()
++        });
++        settings
++            .run
++            .hooks
++            .push(sandbox_ready_command_hook("echo {{ secrets.HOOK_TOKEN }}"));
++        let (_persisted, store) =
++            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
++        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
++        let registry = Arc::new(test_registry());
++        let vault = Arc::new(AsyncRwLock::new(temp_vault(&[])));
++
++        let Err(err) = start(&run_dir, StartServices {
++            vault: Some(vault),
++            ..test_start_services(&store, &storage_root, emitter, registry).await
++        })
++        .await
++        else {
++            panic!("missing hook secret should fail the run");
++        };
++
++        assert!(err.to_string().contains("HOOK_TOKEN"));
++    }
++
++    #[tokio::test]
++    async fn hook_http_url_resolves_secret_from_vault() {
++        let server = httpmock::MockServer::start_async().await;
++        let mock = server
++            .mock_async(|when, then| {
++                when.method("POST").path("/hook");
++                then.status(200).body("");
++            })
++            .await;
++        let temp = tempfile::tempdir().unwrap();
++        let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
++        let mut settings = settings_from_run_layer(RunLayer {
++            execution: Some(RunExecutionLayer {
++                mode: Some(RunMode::DryRun),
++                ..RunExecutionLayer::default()
++            }),
++            ..RunLayer::default()
++        });
++        settings
++            .run
++            .hooks
++            .push(sandbox_ready_http_hook("{{ secrets.HOOK_URL }}"));
++        let (_persisted, store) =
++            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
++        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
++        let registry = Arc::new(test_registry());
++        let vault = Arc::new(AsyncRwLock::new(token_vault(
++            "HOOK_URL",
++            &server.url("/hook"),
++        )));
++
++        start(&run_dir, StartServices {
++            vault: Some(vault),
++            ..test_start_services(&store, &storage_root, emitter, registry).await
++        })
++        .await
++        .expect("HTTP hook URL should resolve secret and proceed");
++
++        mock.assert_async().await;
++    }
++
++    #[tokio::test]
++    async fn hook_prompt_secret_resolver_resolves_from_vault_and_registers() {
++        let redactor = SecretRedactor::default();
++        let vault = Arc::new(AsyncRwLock::new(token_vault("PROMPT_TOKEN", "staging")));
++        let resolver = hook_secret_resolver(Some(vault), redactor.clone());
++        let hook = HookDefinition {
++            name:       Some("prompt-secret".to_string()),
++            event:      HookEvent::StageStart,
++            command:    None,
++            hook_type:  Some(HookType::Prompt {
++                prompt: InterpString::parse("check {{ secrets.PROMPT_TOKEN }}"),
++                model:  None,
++            }),
++            matcher:    None,
++            blocking:   Some(true),
++            timeout_ms: None,
++            sandbox:    None,
++        };
++
++        let secrets = resolver.resolve_for_definition(&hook).await;
++
++        assert_eq!(secrets.lookup("PROMPT_TOKEN").as_deref(), Some("staging"));
++        assert_eq!(redactor.redact_into("deploy staging"), "deploy REDACTED");
++    }
++
++    #[tokio::test]
++    async fn hook_block_reason_redacts_resolved_secret_in_error_and_events() {
++        let temp = tempfile::tempdir().unwrap();
++        let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
++        let mut settings = settings_from_run_layer(RunLayer {
++            execution: Some(RunExecutionLayer {
++                mode: Some(RunMode::DryRun),
++                ..RunExecutionLayer::default()
++            }),
++            ..RunLayer::default()
++        });
++        settings.run.hooks.push(sandbox_ready_command_hook(
++            r#"printf '%s' '{"decision":"block","reason":"{{ secrets.HOOK_TOKEN }}"}'"#,
++        ));
++        let (_persisted, store) =
++            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
++        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
++        let registry = Arc::new(test_registry());
++        let vault = Arc::new(AsyncRwLock::new(token_vault("HOOK_TOKEN", "staging")));
++
++        let Err(err) = start(&run_dir, StartServices {
++            vault: Some(vault),
++            ..test_start_services(&store, &storage_root, emitter, registry).await
++        })
++        .await
++        else {
++            panic!("blocking hook should fail the run");
++        };
++
++        let error_text = err.to_string();
++        assert!(!error_text.contains("staging"));
++        assert!(error_text.contains("REDACTED"));
++
++        let run_store = store.open_run(&fixtures::RUN_1).await.unwrap();
++        let events_text = serde_json::to_string(&run_store.list_events().await.unwrap()).unwrap();
++        assert!(!events_text.contains("staging"));
++        assert!(events_text.contains("REDACTED"));
++    }
++
+     #[test]
+     fn runtime_docker_config_maps_environment_hints() {
+         let settings = settings_from_run_layer(RunLayer {
+@@ -1806,6 +2113,37 @@ reasoning = false
+         }
+     }
+ 
++    fn sandbox_ready_command_hook(command: &str) -> HookDefinition {
++        HookDefinition {
++            name:       Some("sandbox-ready".to_string()),
++            event:      HookEvent::SandboxReady,
++            command:    Some(InterpString::parse(command)),
++            hook_type:  None,
++            matcher:    None,
++            blocking:   Some(true),
++            timeout_ms: Some(5_000),
++            sandbox:    Some(false),
++        }
++    }
++
++    fn sandbox_ready_http_hook(url: &str) -> HookDefinition {
++        HookDefinition {
++            name:       Some("sandbox-ready-http".to_string()),
++            event:      HookEvent::SandboxReady,
++            command:    None,
++            hook_type:  Some(HookType::Http {
++                url:              InterpString::parse(url),
++                headers:          None,
++                allowed_env_vars: Vec::new(),
++                tls:              TlsMode::Off,
++            }),
++            matcher:    None,
++            blocking:   Some(true),
++            timeout_ms: Some(5_000),
++            sandbox:    Some(false),
++        }
++    }
++
+     use crate::test_support::{mark_run_running, test_usage};
+ 
+     async fn append_completed_stage(
+diff --git a/lib/crates/fabro-workflow/src/pipeline/execute.rs b/lib/crates/fabro-workflow/src/pipeline/execute.rs
+index 4a82a509c..f84b03e7c 100644
+--- a/lib/crates/fabro-workflow/src/pipeline/execute.rs
++++ b/lib/crates/fabro-workflow/src/pipeline/execute.rs
+@@ -89,6 +89,7 @@ pub async fn execute(init: Initialized) -> Executed {
+         Arc::clone(&engine.run.sandbox_git),
+         Arc::clone(&engine.run.metadata_runtime),
+         engine.run.metadata_writer.clone(),
++        engine.run.secret_redactor.clone(),
+         checkpoint.is_some(),
+         on_node,
+         run_control,
+diff --git a/lib/crates/fabro-workflow/src/pipeline/execute/tests.rs b/lib/crates/fabro-workflow/src/pipeline/execute/tests.rs
+index e2b96ed37..09b9a4f6d 100644
+--- a/lib/crates/fabro-workflow/src/pipeline/execute/tests.rs
++++ b/lib/crates/fabro-workflow/src/pipeline/execute/tests.rs
+@@ -282,12 +282,14 @@ async fn execute_test_run_with_options(
+             workflow_path: None,
+             workflow_bundle: None,
+             hooks: HookSettings { hooks: vec![] },
++            hook_secrets: fabro_hooks::HookSecretResolver::default(),
+             sandbox_env: SandboxEnvSpec {
+                 toml_env:           HashMap::new(),
+                 github_permissions: None,
+                 origin_url:         None,
+             },
+             vault: None,
++            secret_redactor: fabro_redact::SecretRedactor::default(),
+             git: git_options,
+             run_control: None,
+             registry_override,
+@@ -345,12 +347,14 @@ async fn execute_runs_start_to_exit_and_returns_final_context() {
+             workflow_path: None,
+             workflow_bundle: None,
+             hooks: HookSettings { hooks: vec![] },
++            hook_secrets: fabro_hooks::HookSecretResolver::default(),
+             sandbox_env: SandboxEnvSpec {
+                 toml_env:           HashMap::new(),
+                 github_permissions: None,
+                 origin_url:         None,
+             },
+             vault: None,
++            secret_redactor: fabro_redact::SecretRedactor::default(),
+             git: None,
+             run_control: None,
+             registry_override: None,
+@@ -416,12 +420,14 @@ async fn run_with_lifecycle(
+             workflow_path: None,
+             workflow_bundle: None,
+             hooks: HookSettings { hooks: vec![] },
++            hook_secrets: fabro_hooks::HookSecretResolver::default(),
+             sandbox_env: SandboxEnvSpec {
+                 toml_env:           HashMap::new(),
+                 github_permissions: None,
+                 origin_url:         None,
+             },
+             vault: None,
++            secret_redactor: fabro_redact::SecretRedactor::default(),
+             git: None,
+             run_control: None,
+             registry_override: Some(Arc::new(registry)),
+diff --git a/lib/crates/fabro-workflow/src/pipeline/finalize.rs b/lib/crates/fabro-workflow/src/pipeline/finalize.rs
+index 6e90991dc..805e8e0e4 100644
+--- a/lib/crates/fabro-workflow/src/pipeline/finalize.rs
++++ b/lib/crates/fabro-workflow/src/pipeline/finalize.rs
+@@ -615,8 +615,15 @@ pub async fn finalize(executed: Executed, options: &FinalizeOptions) -> Result<C
+     )
+     .await
+     {
+-        tracing::warn!(error = %fabro_sandbox::display_for_log(&e), "Sandbox stop failed");
+-        let exec_output_tail = fabro_sandbox::default_redacted_output_tail(&e);
++        tracing::warn!(
++            error = %fabro_sandbox::display_for_log(
++                &e,
++                &services.secret_redactor,
++            ),
++            "Sandbox stop failed"
++        );
++        let exec_output_tail =
++            fabro_sandbox::default_redacted_output_tail(&e, &services.secret_redactor);
+         services.emitter.notice_with_tail(
+             RunNoticeLevel::Warn,
+             RunNoticeCode::SandboxCleanupFailed,
+@@ -1021,6 +1028,7 @@ mod tests {
+             "claude-sonnet-4-6".to_string(),
+             Arc::new(fabro_auth::EnvCredentialSource::new()),
+             Arc::new(Catalog::from_builtin().expect("default catalog should build")),
++            fabro_redact::SecretRedactor::default(),
+             Arc::new(SandboxGitRuntime::new()),
+             metadata_runtime,
+             metadata_writer,
+@@ -1053,6 +1061,7 @@ mod tests {
+             "claude-sonnet-4-6".to_string(),
+             Arc::new(fabro_auth::EnvCredentialSource::new()),
+             Arc::new(Catalog::from_builtin().expect("default catalog should build")),
++            fabro_redact::SecretRedactor::default(),
+             Arc::new(SandboxGitRuntime::new()),
+             Arc::new(RunMetadataRuntime::new()),
+             None,
+diff --git a/lib/crates/fabro-workflow/src/pipeline/initialize.rs b/lib/crates/fabro-workflow/src/pipeline/initialize.rs
+index 54a6f1f45..8608f9a51 100644
+--- a/lib/crates/fabro-workflow/src/pipeline/initialize.rs
++++ b/lib/crates/fabro-workflow/src/pipeline/initialize.rs
+@@ -290,6 +290,7 @@ pub async fn initialize(
+             options.hooks.clone(),
+             Arc::clone(&llm_source),
+             Arc::clone(&catalog),
++            options.hook_secrets.clone(),
+         )))
+     };
+ 
+@@ -551,7 +552,8 @@ pub async fn initialize(
+             let duration_ms = crate::millis_u64(cmd_start.elapsed());
+             if !result.is_success() {
+                 let exit_code = result.display_exit_code();
+-                let exec_output_tail = result.default_redacted_output_tail();
++                let exec_output_tail =
++                    result.default_redacted_output_tail(&options.secret_redactor);
+                 options.emitter.emit(&Event::SetupFailed {
+                     command: command.clone(),
+                     index,
+@@ -559,10 +561,11 @@ pub async fn initialize(
+                     stderr: result.stderr.clone(),
+                     exec_output_tail,
+                 });
+-                return Err(Error::engine(format!(
++                let message = format!(
+                     "Setup command failed (exit code {}): {command}\n{}",
+                     exit_code, result.stderr,
+-                )));
++                );
++                return Err(Error::engine(options.secret_redactor.redact_into(&message)));
+             }
+             let exit_code = result.exit_code.unwrap_or(0);
+             options.emitter.emit(&Event::SetupCommandCompleted {
+@@ -603,6 +606,7 @@ pub async fn initialize(
+         options.llm.model.clone(),
+         Arc::clone(&llm_source),
+         catalog,
++        options.secret_redactor.clone(),
+         sandbox_git,
+         metadata_runtime,
+         metadata_writer,
+@@ -842,12 +846,14 @@ mod tests {
+             workflow_path:     None,
+             workflow_bundle:   None,
+             hooks:             fabro_hooks::HookSettings { hooks: vec![] },
++            hook_secrets:      fabro_hooks::HookSecretResolver::default(),
+             sandbox_env:       SandboxEnvSpec {
+                 toml_env:           HashMap::new(),
+                 github_permissions: None,
+                 origin_url:         None,
+             },
+             vault:             None,
++            secret_redactor:   fabro_redact::SecretRedactor::default(),
+             git:               None,
+             run_control:       None,
+             registry_override: None,
+@@ -924,12 +930,14 @@ mod tests {
+             workflow_path:     None,
+             workflow_bundle:   None,
+             hooks:             fabro_hooks::HookSettings { hooks: vec![] },
++            hook_secrets:      fabro_hooks::HookSecretResolver::default(),
+             sandbox_env:       SandboxEnvSpec {
+                 toml_env:           HashMap::from([("TEST_KEY".to_string(), "value".to_string())]),
+                 github_permissions: None,
+                 origin_url:         None,
+             },
+             vault:             None,
++            secret_redactor:   fabro_redact::SecretRedactor::default(),
+             git:               None,
+             run_control:       None,
+             registry_override: None,
+@@ -1122,12 +1130,14 @@ mod tests {
+             workflow_path:     None,
+             workflow_bundle:   None,
+             hooks:             fabro_hooks::HookSettings { hooks: vec![] },
++            hook_secrets:      fabro_hooks::HookSecretResolver::default(),
+             sandbox_env:       SandboxEnvSpec {
+                 toml_env:           HashMap::new(),
+                 github_permissions: None,
+                 origin_url:         None,
+             },
+             vault:             Some(vault),
++            secret_redactor:   fabro_redact::SecretRedactor::default(),
+             git:               None,
+             run_control:       None,
+             registry_override: None,
+@@ -1218,12 +1228,14 @@ mod tests {
+             workflow_path:     None,
+             workflow_bundle:   None,
+             hooks:             fabro_hooks::HookSettings { hooks: vec![] },
++            hook_secrets:      fabro_hooks::HookSecretResolver::default(),
+             sandbox_env:       SandboxEnvSpec {
+                 toml_env:           HashMap::new(),
+                 github_permissions: None,
+                 origin_url:         None,
+             },
+             vault:             None,
++            secret_redactor:   fabro_redact::SecretRedactor::default(),
+             git:               None,
+             run_control:       None,
+             registry_override: None,
+@@ -1361,12 +1373,14 @@ mod tests {
+             workflow_path: None,
+             workflow_bundle: None,
+             hooks: fabro_hooks::HookSettings { hooks: vec![] },
++            hook_secrets: fabro_hooks::HookSecretResolver::default(),
+             sandbox_env: SandboxEnvSpec {
+                 toml_env:           HashMap::new(),
+                 github_permissions: None,
+                 origin_url:         None,
+             },
+             vault: None,
++            secret_redactor: fabro_redact::SecretRedactor::default(),
+             git: None,
+             run_control: None,
+             registry_override: None,
+diff --git a/lib/crates/fabro-workflow/src/pipeline/types.rs b/lib/crates/fabro-workflow/src/pipeline/types.rs
+index 8449453a8..112897c75 100644
+--- a/lib/crates/fabro-workflow/src/pipeline/types.rs
++++ b/lib/crates/fabro-workflow/src/pipeline/types.rs
+@@ -6,6 +6,7 @@ use fabro_graphviz::graph::Graph;
+ use fabro_interview::Interviewer;
+ use fabro_mcp::config::McpServerSettings;
+ use fabro_model::{Catalog, FallbackTarget, ProviderId};
++use fabro_redact::SecretRedactor;
+ use fabro_sandbox::SandboxSpec;
+ use fabro_template::TemplateContext;
+ use fabro_types::settings::run::{PullRequestSettings, RunModelControls};
+@@ -263,8 +264,10 @@ pub struct InitOptions {
+     pub workflow_path:     Option<ManifestPath>,
+     pub workflow_bundle:   Option<Arc<WorkflowBundle>>,
+     pub hooks:             fabro_hooks::HookSettings,
++    pub hook_secrets:      fabro_hooks::HookSecretResolver,
+     pub sandbox_env:       SandboxEnvSpec,
+     pub vault:             Option<Arc<AsyncRwLock<Vault>>>,
++    pub secret_redactor:   SecretRedactor,
+     pub git:               Option<GitCheckpointOptions>,
+     pub registry_override: Option<Arc<HandlerRegistry>>,
+     pub artifact_sink:     Option<ArtifactSink>,
+diff --git a/lib/crates/fabro-workflow/src/sandbox_git.rs b/lib/crates/fabro-workflow/src/sandbox_git.rs
+index b746e2f89..f50142132 100644
+--- a/lib/crates/fabro-workflow/src/sandbox_git.rs
++++ b/lib/crates/fabro-workflow/src/sandbox_git.rs
+@@ -1075,7 +1075,11 @@ mod tests {
+ 
+         assert_eq!(err.to_string(), "git add timed out after 77ms");
+         assert!(
+-            fabro_sandbox::default_redacted_output_tail(&err).is_none(),
++            fabro_sandbox::default_redacted_output_tail(
++                &err,
++                &fabro_redact::SecretRedactor::default()
++            )
++            .is_none(),
+             "empty exec streams should not produce a tail"
+         );
+     }
+@@ -1109,7 +1113,11 @@ mod tests {
+             "expected sandbox git context, got {chain:#?}"
+         );
+         assert!(
+-            fabro_sandbox::default_redacted_output_tail(&err).is_some(),
++            fabro_sandbox::default_redacted_output_tail(
++                &err,
++                &fabro_redact::SecretRedactor::default()
++            )
++            .is_some(),
+             "expected probe exec output tail to survive SharedError wrapping"
+         );
+     }
+@@ -1245,7 +1253,11 @@ mod tests {
+         assert_eq!(err.to_string(), "git diff failed (exit 128)");
+         assert!(!err.to_string().contains("fatal: bad revision"));
+ 
+-        let tail = fabro_sandbox::default_redacted_output_tail(&err).expect("tail present");
++        let tail = fabro_sandbox::default_redacted_output_tail(
++            &err,
++            &fabro_redact::SecretRedactor::default(),
++        )
++        .expect("tail present");
+         assert_eq!(tail.stderr.as_deref(), Some("fatal: bad revision\n"));
+     }
+ 
+diff --git a/lib/crates/fabro-workflow/src/services.rs b/lib/crates/fabro-workflow/src/services.rs
+index 44e0eca21..c4dbd6735 100644
+--- a/lib/crates/fabro-workflow/src/services.rs
++++ b/lib/crates/fabro-workflow/src/services.rs
+@@ -11,6 +11,7 @@ use fabro_auth::ResolvedCredentials;
+ use fabro_hooks::{HookContext, HookDecision, HookExecutionContext, HookRunner};
+ use fabro_interview::Interviewer;
+ use fabro_model::{Catalog, ProviderId};
++use fabro_redact::SecretRedactor;
+ use fabro_types::{ManifestPath, RunId};
+ use tokio_util::sync::CancellationToken;
+ 
+@@ -103,6 +104,7 @@ pub struct RunServices {
+     pub model:                    String,
+     pub llm_source:               Arc<dyn CredentialSource>,
+     pub catalog:                  Arc<Catalog>,
++    pub secret_redactor:          SecretRedactor,
+     pub(crate) sandbox_git:       Arc<SandboxGitRuntime>,
+     pub(crate) metadata_runtime:  Arc<RunMetadataRuntime>,
+     pub(crate) metadata_writer:   Option<RunMetadataWriterHandle>,
+@@ -122,6 +124,7 @@ impl RunServices {
+         model: String,
+         llm_source: Arc<dyn CredentialSource>,
+         catalog: Arc<Catalog>,
++        secret_redactor: SecretRedactor,
+         sandbox_git: Arc<SandboxGitRuntime>,
+         metadata_runtime: Arc<RunMetadataRuntime>,
+         metadata_writer: Option<RunMetadataWriterHandle>,
+@@ -137,6 +140,7 @@ impl RunServices {
+             model,
+             llm_source,
+             catalog,
++            secret_redactor,
+             sandbox_git,
+             metadata_runtime,
+             metadata_writer,
+@@ -337,6 +341,7 @@ impl EngineServices {
+                 "claude-sonnet-4-6".to_string(),
+                 Arc::new(StubCredentialSource),
+                 Arc::new(Catalog::from_builtin().expect("default catalog should build")),
++                SecretRedactor::default(),
+                 Arc::new(SandboxGitRuntime::new()),
+                 Arc::new(RunMetadataRuntime::new()),
+                 None,
+diff --git a/lib/crates/fabro-workflow/src/test_support.rs b/lib/crates/fabro-workflow/src/test_support.rs
+index 1acf410a4..c890667e6 100644
+--- a/lib/crates/fabro-workflow/src/test_support.rs
++++ b/lib/crates/fabro-workflow/src/test_support.rs
+@@ -9,6 +9,7 @@ use fabro_auth::{CredentialSource, EnvCredentialSource};
+ use fabro_graphviz::graph::Graph as GvGraph;
+ use fabro_interview::AutoApproveInterviewer;
+ use fabro_model::Catalog;
++use fabro_redact::SecretRedactor;
+ use fabro_store::{ArtifactStore, Database, RunProjection};
+ use object_store::local::LocalFileSystem;
+ 
+@@ -235,6 +236,7 @@ async fn initialized(
+                         .llm_source
+                         .unwrap_or_else(|| Arc::new(EnvCredentialSource::new())),
+                     Arc::new(Catalog::from_builtin().expect("default catalog should build")),
++                    SecretRedactor::default(),
+                     Arc::new(SandboxGitRuntime::new()),
+                     Arc::new(RunMetadataRuntime::new()),
+                     None,
+diff --git a/lib/crates/fabro-workflow/tests/it/integration.rs b/lib/crates/fabro-workflow/tests/it/integration.rs
+index 3ceeced5d..ab7354ba5 100644
+--- a/lib/crates/fabro-workflow/tests/it/integration.rs
++++ b/lib/crates/fabro-workflow/tests/it/integration.rs
+@@ -8179,6 +8179,7 @@ fn hook_runner_from_defs(hooks: Vec<fabro_hooks::HookDefinition>) -> Arc<fabro_h
+         fabro_hooks::HookSettings { hooks },
+         Arc::new(fabro_auth::EnvCredentialSource::new()),
+         default_catalog(),
++        fabro_hooks::HookSecretResolver::default(),
+     ))
+ }
+ 
