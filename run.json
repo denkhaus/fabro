@@ -217,14 +217,160 @@
     }
   },
   "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KWYQ40STEB2KNREK7EVNJEEK",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-07-07T16:39:11.209454471Z",
+    "run_branch": "fabro/run/01KWYQ40STEB2KNREK7EVNJEEK",
+    "base_sha": "8c7d5dc7d0375fb8e7d1d3f47e7e6639979d8517"
   },
-  "status_updated_at": "2026-07-07T16:38:30.075510564Z",
-  "last_event_at": "2026-07-07T16:39:10.608222752Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-07-07T16:39:11.209488148Z",
+  "last_event_at": "2026-07-07T17:46:11.333387605Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 21,
+      "checkpoint": {
+        "timestamp": "2026-07-07T16:39:13.209743381Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "current_node": "start",
+          "internal.fidelity": "compact",
+          "graph.default_model": "claude-fable-5",
+          "graph.goal": "Run the simplify code-review pass on PR #547: review the changes for reuse, quality, and efficiency, apply the fixes, and update the existing PR in place.",
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01KWYQ40STEB2KNREK7EVNJEEK",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "internal.thread_id": null,
+          "failure_signature": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "simplify",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-07T17:46:11.358211435Z",
+        "current_node": "simplify",
+        "completed_nodes": [
+          "start",
+          "simplify"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.node_visit_count": 1,
+          "graph.default_model": "claude-fable-5",
+          "failure_signature": "",
+          "response.simplify": "Done. Simplify pass on PR #547 is complete — reviewed by three parallel sub-agents, fixes applied, and the existing PR updated in place (no new branch/PR).\n\n## What was fixed\n\n**High-impact (flagged by all three reviewers):**\n- **Redact once at the sink boundary** — `RunEventSink` now redacts at the `RedactSecrets` node (skipped entirely when no secrets are registered) instead of threading `Option<SecretRedactor>` into every leaf. This removes a full serialize→content-scan→reparse pass that ran **per event per fanout leaf** on the streaming hot path, even for runs with no secrets, and deletes the fail-open `append_run_event_with_redactor` trait method whose default silently dropped the redactor.\n- **Collapsed ~13 `foo`/`foo_with_redactor`/`foo_inner` twin functions** across fabro-sandbox, fabro-workflow, and fabro-cli into single signatures taking `&SecretRedactor` (an empty redactor is an identity).\n\n**Smaller cleanups:** dropped the redundant `run_id` param from `redacted_run_event`; folded `HookRunner::new_with_secrets` into `new`; replaced the hand-written `decision_label` map with `strum::IntoStaticStr` per repo policy; replaced two copy-pasted 5-boolean reqwest log blocks with `e.without_url()`; added `HookType::interp_strings()` as the single source of truth for interpolatable hook fields; avoided a per-header `Vec` allocation in `first_secret_name`.\n\n**Also:** merged `origin/main` into the branch (resolving the `start.rs` overlap with #545), so the PR diff now shows only its real delta. Net: **−107 lines** on top of that merge.\n\n**Skipped** (noted in the PR comment): the event-property allowlist colocation, the env+secrets resolver-context bundle, the `RunSecrets` ownership bundle, the fabro-redact snapshot micro-opt (main-side code), `BoxFuture` (new dep for a type alias), and per-definition secret-name precompute.\n\n**Verified:** workspace build, nextest on all touched crates (1200+ workflow tests, 1300+ cli/acp/types tests — all pass; one unrelated flaky socket test passes standalone), nightly fmt and clippy `-D warnings` clean.\n\n**PR updated:** pushed `c5cf4b7f9` (merge) + `6d6a1d56a` (simplify) to the existing branch, [commented](https://github.com/fabro-sh/fabro/pull/547#issuecomment-4906844207), and labeled `simplify:claude-fable-5`.",
+          "internal.thread_id": "start",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "outcome": "succeeded",
+          "last_stage": "simplify",
+          "internal.retry_count.simplify": 0,
+          "graph.rankdir": "LR",
+          "internal.run_id": "01KWYQ40STEB2KNREK7EVNJEEK",
+          "internal.retry_count.start": 0,
+          "failure_class": "",
+          "current_node": "simplify",
+          "internal.fidelity": "compact",
+          "thread.start.current_node": "simplify",
+          "last_response": "Done. Simplify pass on PR #547 is complete — reviewed by three parallel sub-agents, fixes applied, and the existing PR updated in place (no new branch/PR).\n\n## What was fixed\n\n**High-impact (flagged",
+          "graph.goal": "Run the simplify code-review pass on PR #547: review the changes for reuse, quality, and efficiency, apply the fixes, and update the existing PR in place."
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "simplify": {
+            "status": "succeeded",
+            "context_updates": {
+              "last_stage": "simplify",
+              "last_response": "Done. Simplify pass on PR #547 is complete — reviewed by three parallel sub-agents, fixes applied, and the existing PR updated in place (no new branch/PR).\n\n## What was fixed\n\n**High-impact (flagged",
+              "response.simplify": "Done. Simplify pass on PR #547 is complete — reviewed by three parallel sub-agents, fixes applied, and the existing PR updated in place (no new branch/PR).\n\n## What was fixed\n\n**High-impact (flagged by all three reviewers):**\n- **Redact once at the sink boundary** — `RunEventSink` now redacts at the `RedactSecrets` node (skipped entirely when no secrets are registered) instead of threading `Option<SecretRedactor>` into every leaf. This removes a full serialize→content-scan→reparse pass that ran **per event per fanout leaf** on the streaming hot path, even for runs with no secrets, and deletes the fail-open `append_run_event_with_redactor` trait method whose default silently dropped the redactor.\n- **Collapsed ~13 `foo`/`foo_with_redactor`/`foo_inner` twin functions** across fabro-sandbox, fabro-workflow, and fabro-cli into single signatures taking `&SecretRedactor` (an empty redactor is an identity).\n\n**Smaller cleanups:** dropped the redundant `run_id` param from `redacted_run_event`; folded `HookRunner::new_with_secrets` into `new`; replaced the hand-written `decision_label` map with `strum::IntoStaticStr` per repo policy; replaced two copy-pasted 5-boolean reqwest log blocks with `e.without_url()`; added `HookType::interp_strings()` as the single source of truth for interpolatable hook fields; avoided a per-header `Vec` allocation in `first_secret_name`.\n\n**Also:** merged `origin/main` into the branch (resolving the `start.rs` overlap with #545), so the PR diff now shows only its real delta. Net: **−107 lines** on top of that merge.\n\n**Skipped** (noted in the PR comment): the event-property allowlist colocation, the env+secrets resolver-context bundle, the `RunSecrets` ownership bundle, the fabro-redact snapshot micro-opt (main-side code), `BoxFuture` (new dep for a type alias), and per-definition secret-name precompute.\n\n**Verified:** workspace build, nextest on all touched crates (1200+ workflow tests, 1300+ cli/acp/types tests — all pass; one unrelated flaky socket test passes standalone), nightly fmt and clippy `-D warnings` clean.\n\n**PR updated:** pushed `c5cf4b7f9` (merge) + `6d6a1d56a` (simplify) to the existing branch, [commented](https://github.com/fabro-sh/fabro/pull/547#issuecomment-4906844207), and labeled `simplify:claude-fable-5`."
+            },
+            "notes": "Stage completed: simplify",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "anthropic",
+                    "model_id": "claude-fable-5"
+                  },
+                  "tokens": {
+                    "input_tokens": 191037,
+                    "output_tokens": 70152,
+                    "reasoning_tokens": 0,
+                    "cache_read_tokens": 19621920,
+                    "cache_write_tokens": 2092068
+                  }
+                },
+                "facts": {
+                  "algorithm": "anthropic",
+                  "cache_write_5m_tokens": 2092068,
+                  "cache_write_1h_tokens": 0
+                }
+              },
+              "total_usd_micros": 51190740
+            },
+            "files_touched": [
+              "/home/daytona/workspace/fabro/lib/crates/fabro-acp/src/error.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-acp/src/transport.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-cli/src/commands/run/runner.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-hooks/Cargo.toml",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-hooks/src/executor.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-hooks/src/runner.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-hooks/src/secrets.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-hooks/src/types.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-hooks/tests/host_command_hooks.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-sandbox/src/daytona/mod.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-sandbox/src/error.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-sandbox/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-sandbox/src/sandbox.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/settings/run.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event/redaction.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event/sink.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/operations/start.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/pipeline/initialize.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/runtime_store.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 1421827,
+              "tool_time_ms": 2595211,
+              "active_time_ms": 4017038
+            }
+          }
+        },
+        "next_node_id": "exit",
+        "node_visits": {
+          "start": 1,
+          "simplify": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -250,5 +396,345 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "simplify@1": {
+      "first_event_seq": 22,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "agent",
+        "provider": "anthropic",
+        "model": "claude-fable-5"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-07T16:39:13.209853506Z",
+      "handler": "agent",
+      "usage": {
+        "input_tokens": 191037,
+        "output_tokens": 70152,
+        "total_tokens": 21975177,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 19621920,
+        "cache_write_tokens": 2092068,
+        "total_usd_micros": 51190740
+      },
+      "model": {
+        "provider": "anthropic",
+        "model_id": "claude-fable-5"
+      },
+      "todos": {
+        "kind": "anthropic_tasks",
+        "list_id": "anthropic_tasks:cdf4ed3a-dd0d-4c75-a243-466329545774",
+        "items": [
+          {
+            "id": "1",
+            "status": "completed",
+            "order": 0,
+            "subject": "Checkout PR #547 branch and establish real delta vs main",
+            "description": "gh pr checkout 547; verify merge-base diff since gh pr diff used an older base.",
+            "active_form": "Checking out PR branch"
+          },
+          {
+            "id": "2",
+            "status": "completed",
+            "order": 1,
+            "subject": "Restructure sink redaction: redact once at RedactSecrets node, delete append_run_event_with_redactor",
+            "description": "In event/sink.rs redact once at the RedactSecrets arm (skip when redactor.is_empty()), push redacted event down with no redactor; revert leaf arms; delete append_run_event_with_redactor from RunStoreBackend trait, RunStoreHandle, LocalRunStoreBackend, HttpRunStore.",
+            "active_form": "Restructuring sink redaction"
+          },
+          {
+            "id": "3",
+            "status": "completed",
+            "order": 2,
+            "subject": "Collapse *_with_redactor twins in fabro-sandbox and event/redaction.rs",
+            "description": "Single signatures taking &SecretRedactor (empty = identity); delete _inner helpers and twins; migrate call sites.",
+            "active_form": "Collapsing redactor twin functions"
+          },
+          {
+            "id": "4",
+            "status": "completed",
+            "order": 3,
+            "subject": "Hook crate cleanups: decision_label→strum, reqwest error logs, new_with_secrets fold, first_secret_name",
+            "description": "Derive strum IntoStaticStr on HookDecision; replace 5-boolean reqwest log blocks with e.without_url(); fold HookRunner::new_with_secrets into new; use references(Namespace::Secrets) guard in first_secret_name.",
+            "active_form": "Applying hook crate cleanups"
+          },
+          {
+            "id": "5",
+            "status": "completed",
+            "order": 4,
+            "subject": "Build, test, push, comment, label PR #547",
+            "description": "cargo build/nextest on touched crates, fmt, clippy; commit and push to existing branch; gh pr comment; add simplify:<model> label via issues API.",
+            "active_form": "Verifying and updating PR"
+          }
+        ]
+      },
+      "subagents": [
+        {
+          "agent_id": "665278d2",
+          "depth": 1,
+          "task": "You are a code-review sub-agent (Reviewer 1 — Code Reuse) for the repository at /home/daytona/workspace/fabro (a Rust workspace + TypeScript apps; see CLAUDE.md for conventions). You ONLY report findings — do NOT edit any code.\n\nContext: PR #547 \"Wire secret redaction and vault secrets into hooks\" adds `{{ secrets.NAME }}` interpolation for hook commands/URLs/prompts and run env, resolves them from a server vault at the run boundary, and registers resolved values with a per-run SecretRedactor. Touched files include lib/crates/fabro-hooks/ (bridge.rs, executor.rs, runner.rs, secrets.rs, lib.rs), lib/crates/fabro-redact/, lib/crates/fabro-sandbox/, lib/crates/fabro-workflow/ (event/, pipeline/, operations/, lifecycle/, services.rs, runtime_store.rs, test_support.rs), lib/crates/fabro-server/src/run_manifest.rs, lib/crates/fabro-types/src/settings/run.rs, fabro-cli, and docs.\n\nFirst run `gh pr diff 547` to see the full diff (it's ~4700 lines; page through it all). Then review each change for CODE REUSE issues:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use grep to find similar patterns elsewhere — utility directories, shared modules (e.g. fabro-util, fabro-redact, fabro-types interp/token parsing), and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality; name the existing function to use instead.\n3. Flag inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar. Pay attention to token/interpolation parsing (is there an existing InterpString/Namespace machinery being bypassed anywhere?), shell quoting (the repo mandates shell_quote()/shlex), redaction helpers, and error formatting.\n\nThis is a greenfield app — focus on maximizing simplicity; don't worry about backward compatibility.\n\nRead the actual current files (not just the diff) when needed to confirm a finding. For each finding, report: file path + line, what the issue is, the existing utility/function to use instead, and severity (high/medium/low). If something looks fine, don't pad the report. End with a concise numbered list of actionable findings.",
+          "status": {
+            "kind": "completed",
+            "success": true,
+            "turns_used": 50
+          }
+        },
+        {
+          "agent_id": "7db02d5d",
+          "depth": 1,
+          "task": "You are a code-review sub-agent (Reviewer 2 — Code Quality) for the repository at /home/daytona/workspace/fabro (a Rust workspace + TypeScript apps; see CLAUDE.md for conventions). You ONLY report findings — do NOT edit any code.\n\nContext: PR #547 \"Wire secret redaction and vault secrets into hooks\" adds `{{ secrets.NAME }}` interpolation for hook commands/URLs/prompts and run env, resolves them from a server vault at the run boundary, and registers resolved values with a per-run SecretRedactor. Touched files include lib/crates/fabro-hooks/ (bridge.rs, executor.rs, runner.rs, secrets.rs, lib.rs), lib/crates/fabro-redact/, lib/crates/fabro-sandbox/, lib/crates/fabro-workflow/ (event/, pipeline/, operations/, lifecycle/, services.rs, runtime_store.rs, test_support.rs), lib/crates/fabro-server/src/run_manifest.rs, lib/crates/fabro-types/src/settings/run.rs, fabro-cli, and docs.\n\nFirst run `gh pr diff 547` to see the full diff (it's ~4700 lines; page through it all). Then review the changes for QUALITY / hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls. (E.g. is the same secrets map/redactor threaded or stored in multiple places when one canonical owner would do?)\n2. Parameter sprawl: new parameters bolted onto functions instead of generalizing or restructuring existing ones (e.g. `env: &E, secrets: &ResolvedHookSecrets` threaded through many function signatures — could these be bundled into a resolver context struct?). Only flag this if consolidation genuinely simplifies; note the tradeoff.\n3. Copy-paste with slight variation: near-duplicate blocks that should be unified with a shared abstraction (e.g. repeated resolve-then-Block error handling, repeated redaction wiring in multiple pipeline stages).\n4. Leaky abstractions: exposing internals that should be encapsulated, or breaking existing boundaries (e.g. test-only helpers exposed from production modules — the repo has a strict test_support policy in CLAUDE.md).\n5. Stringly-typed code: raw strings where constants, enums, or branded types already exist (e.g. namespace names like \"secrets\"/\"env\" as raw strings when a Namespace enum exists).\n\nThis is a greenfield app — be aggressive in optimizing quality.\n\nRead the actual current files (not just the diff) when needed to confirm a finding. For each finding, report: file path + line, what the issue is, the concrete suggested fix, and severity (high/medium/low). Don't pad the report with non-issues. End with a concise numbered list of actionable findings.",
+          "status": {
+            "kind": "completed",
+            "success": true,
+            "turns_used": 50
+          }
+        },
+        {
+          "agent_id": "a5d57b5f",
+          "depth": 1,
+          "task": "You are a code-review sub-agent (Reviewer 3 — Efficiency) for the repository at /home/daytona/workspace/fabro (a Rust workspace + TypeScript apps; see CLAUDE.md for conventions). You ONLY report findings — do NOT edit any code.\n\nContext: PR #547 \"Wire secret redaction and vault secrets into hooks\" adds `{{ secrets.NAME }}` interpolation for hook commands/URLs/prompts and run env, resolves them from a server vault at the run boundary, and registers resolved values with a per-run SecretRedactor. Touched files include lib/crates/fabro-hooks/ (bridge.rs, executor.rs, runner.rs, secrets.rs, lib.rs), lib/crates/fabro-redact/, lib/crates/fabro-sandbox/, lib/crates/fabro-workflow/ (event/, pipeline/, operations/, lifecycle/, services.rs, runtime_store.rs, test_support.rs), lib/crates/fabro-server/src/run_manifest.rs, lib/crates/fabro-types/src/settings/run.rs, fabro-cli, and docs.\n\nFirst run `gh pr diff 547` to see the full diff (it's ~4700 lines; page through it all). Then review the changes for EFFICIENCY issues:\n\n1. Unnecessary work: redundant computations, repeated vault reads, duplicate network/API calls, N+1 patterns (e.g. resolving the same secret once per hook fire instead of once per run; rebuilding regex/redactor state per event).\n2. Missed concurrency: independent operations run sequentially when they could run in parallel.\n3. Hot-path bloat: new blocking work added to startup or per-request/per-event/per-hook hot paths (e.g. locking, cloning large maps per event in the redaction path, per-event allocation that could be avoided).\n4. Unnecessary existence checks: pre-checking a file/resource before operating (TOCTOU) — operate directly and handle the error.\n5. Memory: unbounded data structures, missing cleanup, listener leaks, secrets kept alive longer than needed.\n6. Overly broad operations: reading whole files when a portion suffices, loading all items when filtering for one, redacting surfaces that can't contain secrets.\n\nRead the actual current files (not just the diff) when needed to confirm a finding — pay attention to how SecretRedactor is invoked per event in lib/crates/fabro-workflow/src/event/redaction.rs and sink.rs, and how hook secrets are resolved in fabro-hooks/src/secrets.rs and runner.rs. For each finding, report: file path + line, what the issue is, the concrete suggested fix, and severity (high/medium/low). Don't pad the report with non-issues. End with a concise numbered list of actionable findings.",
+          "status": {
+            "kind": "completed",
+            "success": true,
+            "turns_used": 54
+          }
+        }
+      ],
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "AskUserQuestion",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "TaskCreate",
+          "description": "Create pending tasks in the current session. Use concise subjects, descriptions, optional activeForm text, and metadata. Check TaskList first to avoid duplicate tasks.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "TaskGet",
+          "description": "Get one task by taskId, including subject, status, description, owner, blockedBy, and blocks.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "TaskList",
+          "description": "List tasks for the current session, including status, owner, and blocking dependencies. Use TaskGet with a taskId for full description and dependency details.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "TaskUpdate",
+          "description": "Update an existing task's status, text, owner, metadata, or dependencies. Valid statuses are pending, in_progress, completed, and deleted. After completing a task, call TaskList to find newly unblocked work.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "close_agent",
+          "description": "Close a running subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by file names using a glob pattern. Use path to choose the search root. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a running subagent when new information or corrected instructions are needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute shell commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": true
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": true
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "web_search",
+          "description": "Search the web using Brave Search when current external information is needed. Returns result titles, URLs, and descriptions; use web_fetch for a specific URL.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "anthropic",
+        "model": "claude-fable-5",
+        "context_window_tokens": 1000000,
+        "input_tokens": 203966,
+        "usage_percent": 20.3966,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-07-07T17:46:11.332171929Z",
+        "event_seq": 830,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 2239,
+            "usage_percent": 0.2239
+          },
+          {
+            "category": "tools",
+            "tokens": 2524,
+            "usage_percent": 0.2524
+          },
+          {
+            "category": "memory",
+            "tokens": 5367,
+            "usage_percent": 0.5367
+          },
+          {
+            "category": "conversation",
+            "tokens": 193829,
+            "usage_percent": 19.3829
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.0007
+          }
+        ],
+        "warnings": []
+      },
+      "state": "running"
+    },
+    "start@1": {
+      "first_event_seq": 18,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-07T16:39:13.209638043Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-07T16:39:13.209563224Z",
+      "handler": "start",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    }
+  }
 }
