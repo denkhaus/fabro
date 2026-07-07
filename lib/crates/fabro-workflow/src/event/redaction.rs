@@ -5,6 +5,11 @@ use fabro_store::EventPayload;
 use fabro_util::json::normalize_json_value;
 use serde_json::Value;
 
+/// Build a stored event payload with **content-based** redaction only.
+///
+/// This does not apply the per-run exact-match [`SecretRedactor`]; on any
+/// surface that has the run's redactor, use [`redacted_run_event`] instead so
+/// declared low-entropy secrets are removed as well.
 pub fn build_redacted_event_payload(event: &RunEvent, run_id: &RunId) -> Result<EventPayload> {
     EventPayload::new(redacted_event_value(event)?, run_id).map_err(anyhow::Error::from)
 }
@@ -22,6 +27,11 @@ pub fn redacted_run_event(event: &RunEvent, redactor: &SecretRedactor) -> Result
     RunEvent::try_from(&payload).map_err(anyhow::Error::from)
 }
 
+/// Serialize an event to JSON with **content-based** redaction only.
+///
+/// Like [`build_redacted_event_payload`], this applies the content pass but not
+/// the per-run exact-match [`SecretRedactor`]. Prefer [`redacted_run_event`]
+/// wherever the run redactor is available.
 pub fn redacted_event_json(event: &RunEvent) -> Result<String> {
     serde_json::to_string(&redacted_event_value(event)?).map_err(anyhow::Error::from)
 }
@@ -42,10 +52,7 @@ fn redact_event_payload_secrets(value: &mut Value, redactor: &SecretRedactor) {
         redact_redactable_event_properties(properties, redactor);
     }
     if let Some(Value::String(label)) = value.get_mut("node_label") {
-        let redacted = redactor.redact_into(label);
-        if redacted != *label {
-            *label = redacted;
-        }
+        *label = redactor.redact_into(label);
     }
 }
 
