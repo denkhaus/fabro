@@ -1,0 +1,6 @@
+{
+  "mode": "agent",
+  "provider": "anthropic",
+  "model": "claude-fable-5",
+  "reasoning_effort": "xhigh"
+}
