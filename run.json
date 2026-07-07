@@ -500,7 +500,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-07T13:16:51.613539030Z",
-  "last_event_at": "2026-07-07T13:16:53.226685840Z",
+  "last_event_at": "2026-07-07T13:16:58.041664774Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -541,9 +541,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 29,
       "checkpoint": {
-        "timestamp": "2026-07-07T13:16:54.514975325Z",
+        "timestamp": "2026-07-07T13:16:58.039920629Z",
         "current_node": "toolchain",
         "completed_nodes": [
           "start",
@@ -551,14 +551,80 @@
         ],
         "node_retries": {},
         "context_values": {
+          "command.output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c",
+          "failure_signature": "",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.toolchain": 0,
+          "internal.node_visit_count": 1,
+          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.fidelity": "compact",
+          "failure_class": "",
+          "graph.goal": "# Plan: automation \"Workflow slug\" field must use kebab-case (dashes), not snake_case\n\n## Summary\n\nThe web UI's New/Edit Automation form silently rewrites the **Workflow slug**\nfield to snake_case on every keystroke (`patch-cves` → `patch_cves`). The rest\nof the system uses kebab-case (dashes) for workflow slugs, and workflow\ndirectories on disk are dash-separated (`.fabro/workflows/patch-cves/`). So a\nsnake_cased selector points at a non-existent directory, and scheduled\nautomations targeting any multi-word workflow **silently never fire**.\n\nFix: change the Workflow slug field (and the \"create from run\" fallback) to use\nthe form's existing `kebabify()` helper instead of `snakeify()`, update the\nfield copy, remove the now-unused `snakeify()`, and update the test. This is a\n**frontend-only** change; the backend already accepts dashes and needs no edit.\n\n## Root cause (verified, with file:line)\n\nAll in `apps/fabro-web/app/components/automation-form.tsx`:\n\n- `snakeify()` (lines 127-133) — `.toLowerCase().replace(/[^a-z0-9_]+/g, \"_\")…`\n  converts any dash to an underscore.\n- The Workflow slug input (lines 302-311) applies it on every keystroke:\n  ```tsx\n  // line 303 help text:\n  help=\"Snake-case identifier used in the workflow file name (e.g. fix_build.fabro).\"\n  // line 310:\n  onChange={(e) => patch({ workflow: snakeify(e.target.value) })}\n  // line 311:\n  placeholder=\"fix_build\"\n  ```\n- The \"create automation from run\" prefill (line 89) also snake-cases the\n  fallback name:\n  ```tsx\n  workflow: run.workflow.slug?.trim() || snakeify(workflowName),\n  ```\n- `kebabify()` (lines 119-126) already exists and is used for the automation's\n  own id field (lines 85, 214, 220). It is the correct normalizer to reuse.\n\n`snakeify` is referenced in exactly two places (lines 89 and 310); once both\nmove to `kebabify`, the `snakeify` definition (lines 127-133) is dead code.\n\n## Why kebab-case is correct (justification)\n\nThe snake_case rule is a UI-only outlier. Every other layer treats workflow\nslugs as kebab-case:\n\n- Backend `validate_workflow_selector` (`lib/crates/fabro-automation/src/model.rs:366`)\n  allows both `-` and `_`, so it will accept a dashed value with no change.\n- Real workflow directories are dash-separated: `patch-cves`, `gh-triage`,\n  `implement-plan`, `card-game`, `implement-issue`, etc. Only single-word ones\n  (`smoke`, `hello`) survive `snakeify` unchanged.\n- `workflow_slug_from_path` (`lib/crates/fabro-config/src/project.rs:111`)\n  preserves dashes, and `lib/crates/fabro-workflow/src/run_options.rs:31`\n  documents the slug as the **literal workflow directory name**.\n- `AutomationId` (`lib/crates/fabro-automation/src/id.rs`) actually **forbids\n  underscores** — dashes only.\n\nSo kebab is the established convention; the form is simply wrong. No backend\nchange is needed or wanted.\n\n### Two distinct names — do not conflate (important)\n\nA workflow has two separate identifiers, and only one is relevant here:\n\n- **Workflow slug** — derived from the *directory* name, kebab-case\n  (e.g. `patch-cves` from `.fabro/workflows/patch-cves/`). This is what the\n  automation `workflow` selector resolves against, and what this fix must\n  produce. (Seen as `workflow_slug: \"patch-cves\"` on runs.)\n- **Graph name** — the identifier in the DOT source, `digraph PatchCves { … }`,\n  typically CamelCase. This is internal graph identity (`name: \"PatchCves\"` on\n  runs); it is **not** used to resolve the automation target.\n\nThe Workflow slug field must be the kebab directory slug. Do **not** change it\ntoward the CamelCase graph name, and do not touch graph names anywhere. This\nalso explains the original mistake: the author treated the file/dir name as\nsnake_case when it is actually kebab-case.\n\n## Failure mode this fixes (for context)\n\n1. User types `patch-cves` → form stores `patch_cves`.\n2. Server stores it verbatim (no normalization; validator accepts underscores).\n3. On each cron tick, `automation_materializer` resolves the selector literally\n   → looks for `.fabro/workflows/patch_cves/` → `WorkflowNotFound`\n   (`lib/crates/fabro-server/src/automation_materializer.rs` ~219-229).\n4. `lib/crates/fabro-server/src/server/automation_scheduler.rs:221-239` logs\n   `\"Failed to materialize scheduled automation run\"` and returns — no run\n   created, waits for the next tick. The automation appears to do nothing.\n\n## Where it was introduced (provenance, informational)\n\n- `snakeify` + the Workflow slug field + \"Snake-case identifier…\" help text:\n  commit `2e85a1ec4` \"Add New Automation form and refresh Secrets form layout\"\n  (2026-05-24). Present from the form's first draft; no commit message explains\n  why the workflow field is snake-cased.\n- Carried into the shared component: `87516c25c` (2026-05-28).\n- Prefill fallback snake-cases the name: `a65473f21` / PR #454 (2026-05-29).\n- Backend validator that (correctly) allows dashes: `e13de9faa` / PR #428.\n\n## Implementation steps\n\nFrontend only. Use red/green TDD.\n\n1. **Update the test first** — `apps/fabro-web/app/routes/automations-new.test.tsx`:\n   - The assertion at ~line 278 currently expects the snake output\n     `expect(fieldValue(renderer, \"Workflow slug\")).toBe(\"fix_ci\")`. Change the\n     expected value to the kebab form (`\"fix-ci\"`) to match the new behavior.\n   - Add a regression assertion: typing `patch-cves` into the \"Workflow slug\"\n     field leaves it as `patch-cves` (dashes preserved, NOT converted to\n     underscores). Also confirm `Patch CVEs` → `patch-cves`.\n   - Run the test and confirm it fails against current code (red).\n\n2. **Fix the field** — `apps/fabro-web/app/components/automation-form.tsx`:\n   - Line 310: `onChange={(e) => patch({ workflow: snakeify(e.target.value) })}`\n     → use `kebabify(e.target.value)`.\n   - Line 89: `run.workflow.slug?.trim() || snakeify(workflowName)`\n     → `run.workflow.slug?.trim() || kebabify(workflowName)`.\n   - Line 303 help text → describe dash-separated, e.g.\n     `\"Dash-separated identifier matching the workflow directory name (e.g. patch-cves).\"`\n   - Line 311 placeholder `\"fix_build\"` → `\"patch-cves\"` (or `\"fix-build\"`).\n   - Remove the now-unused `snakeify()` function (lines 127-133). Keep\n     `kebabify()` (still used for the id field and now the workflow field).\n   - Verify no references remain: `grep -rn \"snakeify\" apps/fabro-web/app`\n     should return nothing.\n\n3. **Verify** in `apps/fabro-web`:\n   - `bun run typecheck` passes.\n   - `bun test` passes (the updated + new assertions go green).\n\n## Files to touch\n\n- `apps/fabro-web/app/components/automation-form.tsx` — the fix (lines 89, 303,\n  310, 311; remove 127-133).\n- `apps/fabro-web/app/routes/automations-new.test.tsx` — update the snake\n  assertion (~278) and add the dash-preservation regression test.\n- No other files. `automations-new.tsx` / `automations-edit.tsx` submit\n  `values.workflow.trim()` unchanged and need no edit.\n\n## Acceptance criteria\n\n- Typing `patch-cves` in \"Workflow slug\" yields `patch-cves` (not `patch_cves`).\n- Typing `Patch CVEs` yields `patch-cves`.\n- The \"create from run\" prefill uses the run's dashed slug when present and\n  kebab-cases the fallback name.\n- Help text and placeholder reflect dash-separated slugs.\n- No `snakeify` references remain (dead code removed).\n- `bun run typecheck` and `bun test` pass in `apps/fabro-web`.\n- No backend/Rust changes.\n\n## Out of scope\n\n- **Backend changes.** `validate_workflow_selector` already accepts dashes;\n  leave it. Do not add snake↔dash conversion on the server.\n- **`kebabify()` itself** — it is correct for the id field; do not modify it.\n- **Migrating already-created automations** whose stored `workflow` is already\n  snake_cased. That is an operational fix (edit the automation via\n  `PUT /api/v1/automations/{id}` with the corrected dashed `workflow`), not part\n  of this code change.\n- The unrelated sandbox `glob` consistency fix (tracked in a separate plan).\n\n## Design decision (stated so it isn't re-litigated)\n\nKeep normalizing the field — do not make it freeform. Normalize to **kebab-case**\n(reusing the existing `kebabify`) so it matches the id field's behavior, the\nbackend, and the on-disk workflow directory convention.\n\n## Conventions to follow\n\n- Match the surrounding TypeScript/React style in `apps/fabro-web`.\n- This is an `onChange`/string-helper change only — no new React effects (the\n  repo avoids direct `useEffect`; none is needed here).\n- Keep the change minimal and focused; do not refactor unrelated form code.\n",
+          "internal.thread_id": "start",
+          "outcome": "succeeded",
+          "graph.rankdir": "LR",
+          "internal.run_id": "01KWYBJBY8F2W85RSH0ZH0F090",
+          "thread.start.current_node": "toolchain",
+          "current_node": "toolchain"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1283,
+              "active_time_ms": 1283
+            }
+          }
+        },
+        "next_node_id": "preflight_compile",
+        "git_commit_sha": "f851da8dff6321b2f23817f97a3495e8ad306183",
+        "node_visits": {
+          "start": 1,
+          "toolchain": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-07T13:19:19.007412132Z",
+        "current_node": "preflight_compile",
+        "completed_nodes": [
+          "start",
+          "toolchain",
+          "preflight_compile"
+        ],
+        "node_retries": {},
+        "context_values": {
           "graph.rankdir": "LR",
           "failure_class": "",
-          "current_node": "toolchain",
+          "internal.retry_count.preflight_compile": 0,
+          "current_node": "preflight_compile",
           "graph.goal": "# Plan: automation \"Workflow slug\" field must use kebab-case (dashes), not snake_case\n\n## Summary\n\nThe web UI's New/Edit Automation form silently rewrites the **Workflow slug**\nfield to snake_case on every keystroke (`patch-cves` → `patch_cves`). The rest\nof the system uses kebab-case (dashes) for workflow slugs, and workflow\ndirectories on disk are dash-separated (`.fabro/workflows/patch-cves/`). So a\nsnake_cased selector points at a non-existent directory, and scheduled\nautomations targeting any multi-word workflow **silently never fire**.\n\nFix: change the Workflow slug field (and the \"create from run\" fallback) to use\nthe form's existing `kebabify()` helper instead of `snakeify()`, update the\nfield copy, remove the now-unused `snakeify()`, and update the test. This is a\n**frontend-only** change; the backend already accepts dashes and needs no edit.\n\n## Root cause (verified, with file:line)\n\nAll in `apps/fabro-web/app/components/automation-form.tsx`:\n\n- `snakeify()` (lines 127-133) — `.toLowerCase().replace(/[^a-z0-9_]+/g, \"_\")…`\n  converts any dash to an underscore.\n- The Workflow slug input (lines 302-311) applies it on every keystroke:\n  ```tsx\n  // line 303 help text:\n  help=\"Snake-case identifier used in the workflow file name (e.g. fix_build.fabro).\"\n  // line 310:\n  onChange={(e) => patch({ workflow: snakeify(e.target.value) })}\n  // line 311:\n  placeholder=\"fix_build\"\n  ```\n- The \"create automation from run\" prefill (line 89) also snake-cases the\n  fallback name:\n  ```tsx\n  workflow: run.workflow.slug?.trim() || snakeify(workflowName),\n  ```\n- `kebabify()` (lines 119-126) already exists and is used for the automation's\n  own id field (lines 85, 214, 220). It is the correct normalizer to reuse.\n\n`snakeify` is referenced in exactly two places (lines 89 and 310); once both\nmove to `kebabify`, the `snakeify` definition (lines 127-133) is dead code.\n\n## Why kebab-case is correct (justification)\n\nThe snake_case rule is a UI-only outlier. Every other layer treats workflow\nslugs as kebab-case:\n\n- Backend `validate_workflow_selector` (`lib/crates/fabro-automation/src/model.rs:366`)\n  allows both `-` and `_`, so it will accept a dashed value with no change.\n- Real workflow directories are dash-separated: `patch-cves`, `gh-triage`,\n  `implement-plan`, `card-game`, `implement-issue`, etc. Only single-word ones\n  (`smoke`, `hello`) survive `snakeify` unchanged.\n- `workflow_slug_from_path` (`lib/crates/fabro-config/src/project.rs:111`)\n  preserves dashes, and `lib/crates/fabro-workflow/src/run_options.rs:31`\n  documents the slug as the **literal workflow directory name**.\n- `AutomationId` (`lib/crates/fabro-automation/src/id.rs`) actually **forbids\n  underscores** — dashes only.\n\nSo kebab is the established convention; the form is simply wrong. No backend\nchange is needed or wanted.\n\n### Two distinct names — do not conflate (important)\n\nA workflow has two separate identifiers, and only one is relevant here:\n\n- **Workflow slug** — derived from the *directory* name, kebab-case\n  (e.g. `patch-cves` from `.fabro/workflows/patch-cves/`). This is what the\n  automation `workflow` selector resolves against, and what this fix must\n  produce. (Seen as `workflow_slug: \"patch-cves\"` on runs.)\n- **Graph name** — the identifier in the DOT source, `digraph PatchCves { … }`,\n  typically CamelCase. This is internal graph identity (`name: \"PatchCves\"` on\n  runs); it is **not** used to resolve the automation target.\n\nThe Workflow slug field must be the kebab directory slug. Do **not** change it\ntoward the CamelCase graph name, and do not touch graph names anywhere. This\nalso explains the original mistake: the author treated the file/dir name as\nsnake_case when it is actually kebab-case.\n\n## Failure mode this fixes (for context)\n\n1. User types `patch-cves` → form stores `patch_cves`.\n2. Server stores it verbatim (no normalization; validator accepts underscores).\n3. On each cron tick, `automation_materializer` resolves the selector literally\n   → looks for `.fabro/workflows/patch_cves/` → `WorkflowNotFound`\n   (`lib/crates/fabro-server/src/automation_materializer.rs` ~219-229).\n4. `lib/crates/fabro-server/src/server/automation_scheduler.rs:221-239` logs\n   `\"Failed to materialize scheduled automation run\"` and returns — no run\n   created, waits for the next tick. The automation appears to do nothing.\n\n## Where it was introduced (provenance, informational)\n\n- `snakeify` + the Workflow slug field + \"Snake-case identifier…\" help text:\n  commit `2e85a1ec4` \"Add New Automation form and refresh Secrets form layout\"\n  (2026-05-24). Present from the form's first draft; no commit message explains\n  why the workflow field is snake-cased.\n- Carried into the shared component: `87516c25c` (2026-05-28).\n- Prefill fallback snake-cases the name: `a65473f21` / PR #454 (2026-05-29).\n- Backend validator that (correctly) allows dashes: `e13de9faa` / PR #428.\n\n## Implementation steps\n\nFrontend only. Use red/green TDD.\n\n1. **Update the test first** — `apps/fabro-web/app/routes/automations-new.test.tsx`:\n   - The assertion at ~line 278 currently expects the snake output\n     `expect(fieldValue(renderer, \"Workflow slug\")).toBe(\"fix_ci\")`. Change the\n     expected value to the kebab form (`\"fix-ci\"`) to match the new behavior.\n   - Add a regression assertion: typing `patch-cves` into the \"Workflow slug\"\n     field leaves it as `patch-cves` (dashes preserved, NOT converted to\n     underscores). Also confirm `Patch CVEs` → `patch-cves`.\n   - Run the test and confirm it fails against current code (red).\n\n2. **Fix the field** — `apps/fabro-web/app/components/automation-form.tsx`:\n   - Line 310: `onChange={(e) => patch({ workflow: snakeify(e.target.value) })}`\n     → use `kebabify(e.target.value)`.\n   - Line 89: `run.workflow.slug?.trim() || snakeify(workflowName)`\n     → `run.workflow.slug?.trim() || kebabify(workflowName)`.\n   - Line 303 help text → describe dash-separated, e.g.\n     `\"Dash-separated identifier matching the workflow directory name (e.g. patch-cves).\"`\n   - Line 311 placeholder `\"fix_build\"` → `\"patch-cves\"` (or `\"fix-build\"`).\n   - Remove the now-unused `snakeify()` function (lines 127-133). Keep\n     `kebabify()` (still used for the id field and now the workflow field).\n   - Verify no references remain: `grep -rn \"snakeify\" apps/fabro-web/app`\n     should return nothing.\n\n3. **Verify** in `apps/fabro-web`:\n   - `bun run typecheck` passes.\n   - `bun test` passes (the updated + new assertions go green).\n\n## Files to touch\n\n- `apps/fabro-web/app/components/automation-form.tsx` — the fix (lines 89, 303,\n  310, 311; remove 127-133).\n- `apps/fabro-web/app/routes/automations-new.test.tsx` — update the snake\n  assertion (~278) and add the dash-preservation regression test.\n- No other files. `automations-new.tsx` / `automations-edit.tsx` submit\n  `values.workflow.trim()` unchanged and need no edit.\n\n## Acceptance criteria\n\n- Typing `patch-cves` in \"Workflow slug\" yields `patch-cves` (not `patch_cves`).\n- Typing `Patch CVEs` yields `patch-cves`.\n- The \"create from run\" prefill uses the run's dashed slug when present and\n  kebab-cases the fallback name.\n- Help text and placeholder reflect dash-separated slugs.\n- No `snakeify` references remain (dead code removed).\n- `bun run typecheck` and `bun test` pass in `apps/fabro-web`.\n- No backend/Rust changes.\n\n## Out of scope\n\n- **Backend changes.** `validate_workflow_selector` already accepts dashes;\n  leave it. Do not add snake↔dash conversion on the server.\n- **`kebabify()` itself** — it is correct for the id field; do not modify it.\n- **Migrating already-created automations** whose stored `workflow` is already\n  snake_cased. That is an operational fix (edit the automation via\n  `PUT /api/v1/automations/{id}` with the corrected dashed `workflow`), not part\n  of this code change.\n- The unrelated sandbox `glob` consistency fix (tracked in a separate plan).\n\n## Design decision (stated so it isn't re-litigated)\n\nKeep normalizing the field — do not make it freeform. Normalize to **kebab-case**\n(reusing the existing `kebabify`) so it matches the id field's behavior, the\nbackend, and the on-disk workflow directory convention.\n\n## Conventions to follow\n\n- Match the surrounding TypeScript/React style in `apps/fabro-web`.\n- This is an `onChange`/string-helper change only — no new React effects (the\n  repo avoids direct `useEffect`; none is needed here).\n- Keep the change minimal and focused; do not refactor unrelated form code.\n",
           "internal.run_id": "01KWYBJBY8F2W85RSH0ZH0F090",
           "internal.fidelity": "compact",
-          "internal.thread_id": "start",
-          "command.output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c",
+          "internal.thread_id": "toolchain",
+          "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+          "thread.toolchain.current_node": "preflight_compile",
           "outcome": "succeeded",
           "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
           "internal.work_dir": "/home/daytona/workspace/fabro",
@@ -586,10 +652,25 @@
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "preflight_compile": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo check -q --workspace 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 140960,
+              "active_time_ms": 140960
+            }
           }
         },
-        "next_node_id": "preflight_compile",
+        "next_node_id": "preflight_lint",
         "node_visits": {
+          "preflight_compile": 1,
           "start": 1,
           "toolchain": 1
         }
@@ -623,22 +704,22 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "toolchain@1": {
-      "first_event_seq": 22,
+    "preflight_compile@1": {
+      "first_event_seq": 32,
       "prompt": null,
       "response": null,
       "completion": null,
       "provider_used": null,
       "diff": null,
       "script_invocation": {
-        "script": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
-        "command": "exec 2>&1\ncommand -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "script": "cargo check -q --workspace 2>&1",
+        "command": "exec 2>&1\ncargo check -q --workspace 2>&1",
         "language": "shell"
       },
       "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-07-07T13:16:53.226654292Z",
+      "started_at": "2026-07-07T13:16:58.041239868Z",
       "handler": "command",
       "usage": {
         "input_tokens": 0,
@@ -649,6 +730,54 @@
         "cache_write_tokens": 0
       },
       "state": "running"
+    },
+    "toolchain@1": {
+      "first_event_seq": 22,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "failure_reason": null,
+        "timestamp": "2026-07-07T13:16:54.514099056Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "command": "exec 2>&1\ncommand -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "language": "shell"
+      },
+      "script_timing": {
+        "output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c",
+        "exit_code": 0,
+        "duration_ms": 1283,
+        "termination": "exited",
+        "output_bytes": 36,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 36,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-07-07T13:16:53.226654292Z",
+      "handler": "command",
+      "timing": {
+        "wall_time_ms": 1287,
+        "inference_time_ms": 0,
+        "tool_time_ms": 1283,
+        "active_time_ms": 1283
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
     },
     "start@1": {
       "first_event_seq": 18,
