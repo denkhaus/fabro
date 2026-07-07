@@ -397,7 +397,7 @@ impl RunSession {
             .iter()
             .map(|(key, entry)| match entry {
                 ResolvedMcpEntry::Resolved(server) => {
-                    runtime_mcp_server(server, process_env_var, |name| secret_lookup(name))
+                    runtime_mcp_server(server, process_env_var, secret_lookup)
                 }
                 // References must be resolved to concrete servers before the run
                 // spec is persisted (server-side run-preparation pass). Reaching
@@ -429,9 +429,7 @@ impl RunSession {
                 SandboxSpec::Local { working_directory }
             }
             SandboxProviderKind::Docker => SandboxSpec::Docker {
-                config:           Box::new(resolve_docker_config(resolved, |name| {
-                    secret_lookup(name)
-                })?),
+                config:           Box::new(resolve_docker_config(resolved, secret_lookup)?),
                 github_app:       services.github_app.clone(),
                 run_id:           Some(record.run_id),
                 clone_origin_url: record.repo_origin_url().map(str::to_string),
@@ -455,7 +453,7 @@ impl RunSession {
 
         let toml_env = resolved
             .environment
-            .resolve_env(process_env_var, |name| secret_lookup(name))
+            .resolve_env(process_env_var, secret_lookup)
             .map_err(|err| Error::engine_with_source("failed to resolve run environment", err))?;
         let github_permissions: Option<HashMap<String, String>> =
             (!services.github_permissions.is_empty()).then(|| services.github_permissions.clone());
@@ -473,9 +471,8 @@ impl RunSession {
         };
 
         let pr_config = resolved.pull_request.clone();
-        let setup_commands = runtime_setup_commands(&resolved.prepare, process_env_var, |name| {
-            secret_lookup(name)
-        })?;
+        let setup_commands =
+            runtime_setup_commands(&resolved.prepare, process_env_var, secret_lookup)?;
         drop(vault_guard);
 
         Ok(Self {

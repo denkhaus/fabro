@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { ApiError } from "../lib/api-client";
-import { useRun, useRunGraph, useRunStages } from "../lib/queries";
+import { useRun, useRunGraph, useRunGraphSource, useRunStages } from "../lib/queries";
 import { FloatingTooltip } from "../components/floating-tooltip";
 import { RunSummaryPanel } from "../components/run-summary-panel";
 import { StagePopover } from "../components/stage-popover";
@@ -20,13 +20,24 @@ import {
   type RunGraphNodeHover,
 } from "../hooks/use-annotated-run-graph-svg";
 
-export const handle = { wide: true };
+export const handle = { wide: true, fullHeight: true };
 
 type Direction = "LR" | "TB";
 
+// Mirrors fabro-graphviz's RANKDIR_RE (lib/crates/fabro-graphviz/src/render.rs) —
+// keep the accepted `rankdir=` syntax in sync with that regex.
+const RANKDIR_RE = /rankdir\s*=\s*(\w+)/;
+
+function parseSourceDirection(source: string | undefined): Direction | undefined {
+  const value = source?.match(RANKDIR_RE)?.[1];
+  return value === "LR" || value === "TB" ? value : undefined;
+}
+
 export default function RunOverview() {
   const { id } = useParams();
-  const [direction, setDirection] = useState<Direction>("LR");
+  const [direction, setDirection] = useState<Direction | undefined>(undefined);
+  const sourceQuery = useRunGraphSource(id, direction === undefined);
+  const activeDirection = direction ?? parseSourceDirection(sourceQuery.data ?? undefined) ?? "TB";
   const stagesQuery = useRunStages(id);
   const graphQuery = useRunGraph(id, direction);
   const runQuery = useRun(id);
@@ -113,17 +124,21 @@ export default function RunOverview() {
   }, []);
 
   return (
-    <div className="flex gap-6">
-      <StageSidebar stages={stages} runId={id!} />
+    <div className="flex min-h-0 flex-1 gap-6">
+      <div className="min-h-0 shrink-0 overflow-y-auto overflow-x-hidden pb-[var(--fabro-interview-dock-clearance,0px)]">
+        <StageSidebar stages={stages} runId={id!} />
+      </div>
 
-      <div className="min-w-0 flex-1 space-y-4">
-        <RunSummaryPanel runId={id!} />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 pb-[var(--fabro-interview-dock-clearance,0px)]">
+        <div className="shrink-0">
+          <RunSummaryPanel runId={id!} />
+        </div>
         {graphSvg === undefined && graphQuery.isLoading ? (
-          <div className="py-12" />
+          <div className="flex-1" />
         ) : graphSvg ? (
-          <div className="graph-svg relative rounded-md border border-line bg-panel-alt">
+          <div className="graph-svg relative flex min-h-0 flex-1 flex-col rounded-md border border-line bg-panel-alt">
             <GraphToolbar
-              direction={direction}
+              direction={activeDirection}
               setDirection={setDirection}
               fitToWindow={fitToWindow}
               zoomIndex={zoomIndex}
@@ -132,7 +147,7 @@ export default function RunOverview() {
 
             <div
               ref={containerRef}
-              className="overflow-hidden p-6"
+              className="min-h-0 flex-1 overflow-hidden p-6"
               style={{ cursor: dragState.current ? "grabbing" : "grab" }}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
@@ -141,7 +156,7 @@ export default function RunOverview() {
             >
               <div
                 ref={innerRef}
-                className="flex items-center justify-center [&_svg]:mx-auto [&_svg]:block"
+                className="flex h-full items-center justify-center [&_svg]:mx-auto [&_svg]:block"
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})`, transformOrigin: "center center" }}
               />
             </div>
