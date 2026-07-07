@@ -1106,7 +1106,10 @@ impl Sandbox for DaytonaSandbox {
                                                 },
                                             );
                                             tracing::warn!(
-                                                error = %crate::display_for_log(&err),
+                                                error = %crate::display_for_log(
+                                                    &err,
+                                                    &fabro_redact::SecretRedactor::default(),
+                                                ),
                                                 "Failed to set Daytona sandbox push credentials \
                                                  on origin — subsequent git push from this \
                                                  sandbox will fail"

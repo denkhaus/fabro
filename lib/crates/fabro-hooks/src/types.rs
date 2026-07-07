@@ -82,8 +82,9 @@ pub struct PromptHookResponse {
 }
 
 /// Decision returned by blocking hooks.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, strum::IntoStaticStr)]
 #[serde(tag = "decision", rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum HookDecision {
     #[default]
     Proceed,
@@ -116,6 +117,12 @@ impl HookDecision {
     #[must_use]
     pub fn is_proceed(&self) -> bool {
         matches!(self, Self::Proceed)
+    }
+
+    /// Variant label matching the serde `decision` tag, for logging.
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        self.into()
     }
 }
 

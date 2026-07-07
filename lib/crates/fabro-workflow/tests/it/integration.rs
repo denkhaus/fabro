@@ -8179,6 +8179,7 @@ fn hook_runner_from_defs(hooks: Vec<fabro_hooks::HookDefinition>) -> Arc<fabro_h
         fabro_hooks::HookSettings { hooks },
         Arc::new(fabro_auth::EnvCredentialSource::new()),
         default_catalog(),
+        fabro_hooks::HookSecretResolver::default(),
     ))
 }
 

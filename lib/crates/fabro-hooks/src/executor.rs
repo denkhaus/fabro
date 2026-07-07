@@ -668,13 +668,11 @@ impl HookExecutorImpl {
         let response = match request.send().await {
             Ok(resp) => resp,
             Err(e) => {
+                // `without_url` drops the resolved URL, which may embed a
+                // secret; the redacted source form is logged separately.
                 tracing::warn!(
                     url_source = %safe_url_source_for_log(url),
-                    error_timeout = e.is_timeout(),
-                    error_connect = e.is_connect(),
-                    error_request = e.is_request(),
-                    error_body = e.is_body(),
-                    error_decode = e.is_decode(),
+                    error = %e.without_url(),
                     "HTTP hook request failed, proceeding"
                 );
                 return HookDecision::Proceed;
@@ -695,11 +693,7 @@ impl HookExecutorImpl {
             Err(e) => {
                 tracing::warn!(
                     url_source = %safe_url_source_for_log(url),
-                    error_timeout = e.is_timeout(),
-                    error_connect = e.is_connect(),
-                    error_request = e.is_request(),
-                    error_body = e.is_body(),
-                    error_decode = e.is_decode(),
+                    error = %e.without_url(),
                     "HTTP hook body read failed, proceeding"
                 );
                 return HookDecision::Proceed;

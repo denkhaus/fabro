@@ -15,8 +15,7 @@ pub use self::emitter::Emitter;
 pub use self::events::Event;
 pub use self::names::event_name;
 pub use self::redaction::{
-    build_redacted_event_payload, build_redacted_event_payload_with_redactor,
-    event_payload_from_redacted_json, redacted_event_json, redacted_event_json_with_redactor,
+    build_redacted_event_payload, event_payload_from_redacted_json, redacted_event_json,
     redacted_run_event,
 };
 pub use self::sink::{

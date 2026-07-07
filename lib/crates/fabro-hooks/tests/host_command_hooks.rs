@@ -5,7 +5,7 @@ use fabro_agent::{LocalSandbox, Sandbox};
 use fabro_auth::{CredentialSource, EnvCredentialSource};
 use fabro_hooks::{
     HookContext, HookDecision, HookDefinition, HookEvent, HookExecutionContext, HookRunner,
-    HookSettings, InterpString,
+    HookSecretResolver, HookSettings, InterpString,
 };
 use fabro_model::Catalog;
 use fabro_types::RunId;
@@ -54,6 +54,7 @@ async fn host_command_hook_uses_host_workdir_not_sandbox_workdir() {
         },
         test_llm_source(),
         test_catalog(),
+        HookSecretResolver::default(),
     );
     let context = HookContext::new(
         HookEvent::RunStart,

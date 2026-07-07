@@ -10,10 +10,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot};
 
 use super::emitter::Emitter;
-use super::redaction::{
-    build_redacted_event_payload, redacted_event_json, redacted_event_json_with_redactor,
-    redacted_run_event,
-};
+use super::redaction::{build_redacted_event_payload, redacted_event_json, redacted_run_event};
 use super::{Event, to_run_event};
 use crate::runtime_store::RunStoreHandle;
 
@@ -116,47 +113,40 @@ impl RunEventSink {
     }
 
     pub async fn write_run_event(&self, event: &RunEvent) -> Result<()> {
-        let mut pending = vec![(self, event.clone(), None::<SecretRedactor>)];
-        while let Some((sink, event, redactor)) = pending.pop() {
+        let mut pending = vec![(self, event.clone())];
+        while let Some((sink, event)) = pending.pop() {
             match sink {
                 Self::Store(run_store) => {
-                    run_store
-                        .append_run_event_with_redactor(&event, redactor.as_ref())
-                        .await?;
+                    run_store.append_run_event(&event).await?;
                 }
                 Self::JsonLines(writer) => {
-                    let line = match redactor.as_ref() {
-                        Some(redactor) => {
-                            redacted_event_json_with_redactor(&event, Some(redactor))?
-                        }
-                        None => redacted_event_json(&event)?,
-                    };
+                    let line = redacted_event_json(&event)?;
                     let mut writer = writer.lock().await;
                     writer.write_all(line.as_bytes()).await?;
                     writer.write_all(b"\n").await?;
                     writer.flush().await?;
                 }
                 Self::Callback(callback) => {
-                    let event = match redactor.as_ref() {
-                        Some(redactor) => {
-                            redacted_run_event(&event, &event.run_id, Some(redactor))?
-                        }
-                        None => event,
-                    };
                     callback(event).await?;
                 }
                 Self::Map { transform, inner } => {
-                    pending.push((inner.as_ref(), transform(event), redactor));
+                    pending.push((inner.as_ref(), transform(event)));
                 }
-                Self::RedactSecrets {
-                    redactor: sink_redactor,
-                    inner,
-                } => {
-                    pending.push((inner.as_ref(), event, Some(sink_redactor.clone())));
+                Self::RedactSecrets { redactor, inner } => {
+                    // Redact once at the wrapper so every inner sink sees the
+                    // same already-redacted event. With no declared secrets
+                    // (the common case) the event passes through untouched and
+                    // leaves apply their own content-based redaction as usual.
+                    let event = if redactor.is_empty() {
+                        event
+                    } else {
+                        redacted_run_event(&event, redactor)?
+                    };
+                    pending.push((inner.as_ref(), event));
                 }
                 Self::Composite(sinks) => {
                     for sink in sinks.iter().rev() {
-                        pending.push((sink, event.clone(), redactor.clone()));
+                        pending.push((sink, event.clone()));
                     }
                 }
             }

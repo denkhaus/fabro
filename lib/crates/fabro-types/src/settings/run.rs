@@ -2169,6 +2169,24 @@ pub enum HookType {
     },
 }
 
+impl HookType {
+    /// The fields of this hook type that support `{{ env.* }}` /
+    /// `{{ secrets.* }}` interpolation at fire time.
+    ///
+    /// HTTP `headers` are intentionally excluded: headers only accept
+    /// allowlisted `{{ env.* }}` tokens and reject secret tokens outright.
+    pub fn interp_strings(&self) -> impl Iterator<Item = &InterpString> {
+        let (first, second) = match self {
+            Self::Command { command } => (command, None),
+            Self::Http { url, .. } => (url, None),
+            Self::Prompt { prompt, model } | Self::Agent { prompt, model, .. } => {
+                (prompt, model.as_ref())
+            }
+        };
+        std::iter::once(first).chain(second)
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 pub struct HookDefinition {
     pub name:       Option<String>,

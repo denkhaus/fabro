@@ -57,7 +57,9 @@ impl AcpError {
         match self {
             Self::TimedOut { exec_output_tail } => exec_output_tail.clone(),
             Self::ProcessExited(exit) => exit.exec_output_tail.clone(),
-            Self::Sandbox(source) => source.default_redacted_output_tail(),
+            Self::Sandbox(source) => {
+                source.default_redacted_output_tail(&fabro_sandbox::SecretRedactor::default())
+            }
             _ => None,
         }
     }

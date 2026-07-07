@@ -7,7 +7,7 @@ use fabro_redact::SecretRedactor;
 use fabro_types::settings::InterpString;
 use fabro_types::settings::interp::Namespace;
 
-use crate::config::{HookDefinition, HookType};
+use crate::config::HookDefinition;
 
 type SecretLookupFuture = Pin<Box<dyn Future<Output = Option<String>> + Send + 'static>>;
 type SecretLookup = dyn Fn(String) -> SecretLookupFuture + Send + Sync + 'static;
@@ -114,28 +114,21 @@ pub(crate) fn secret_names(value: &InterpString) -> Vec<&str> {
 }
 
 pub(crate) fn first_secret_name(value: &InterpString) -> Option<&str> {
-    secret_names(value).into_iter().next()
+    // Cheap containment check first: the common no-secret case avoids
+    // collecting the name list.
+    value
+        .references(Namespace::Secrets)
+        .then(|| secret_names(value).into_iter().next())
+        .flatten()
 }
 
 fn secret_names_for_definition(definition: &HookDefinition) -> Vec<String> {
     let Some(hook_type) = definition.resolved_hook_type() else {
         return Vec::new();
     };
-    match hook_type.as_ref() {
-        HookType::Command { command } => secret_names(command)
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
-        HookType::Http { url, .. } => secret_names(url).into_iter().map(str::to_string).collect(),
-        HookType::Prompt { prompt, model } | HookType::Agent { prompt, model, .. } => {
-            let mut names: Vec<String> = secret_names(prompt)
-                .into_iter()
-                .map(str::to_string)
-                .collect();
-            if let Some(model) = model {
-                names.extend(secret_names(model).into_iter().map(str::to_string));
-            }
-            names
-        }
-    }
+    hook_type
+        .interp_strings()
+        .flat_map(secret_names)
+        .map(str::to_string)
+        .collect()
 }

@@ -25,15 +25,6 @@ pub struct HookRunner {
     compiled_matchers: HashMap<String, regex::Regex>,
 }
 
-fn decision_label(decision: &HookDecision) -> &'static str {
-    match decision {
-        HookDecision::Proceed => "proceed",
-        HookDecision::Skip { .. } => "skip",
-        HookDecision::Block { .. } => "block",
-        HookDecision::Override { .. } => "override",
-    }
-}
-
 fn redact_hook_result(mut result: HookResult, redactor: &SecretRedactor) -> HookResult {
     result.decision = redact_hook_decision(result.decision, redactor);
     result
@@ -56,15 +47,6 @@ fn redact_hook_decision(decision: HookDecision, redactor: &SecretRedactor) -> Ho
 impl HookRunner {
     #[must_use]
     pub fn new(
-        config: HookSettings,
-        llm_source: Arc<dyn CredentialSource>,
-        catalog: Arc<Catalog>,
-    ) -> Self {
-        Self::new_with_secrets(config, llm_source, catalog, HookSecretResolver::default())
-    }
-
-    #[must_use]
-    pub fn new_with_secrets(
         config: HookSettings,
         llm_source: Arc<dyn CredentialSource>,
         catalog: Arc<Catalog>,
@@ -143,7 +125,7 @@ impl HookRunner {
 
         tracing::info!(
             event = %context.event,
-            decision = decision_label(&decision),
+            decision = decision.as_str(),
             "Hooks complete"
         );
 
@@ -211,7 +193,7 @@ impl HookRunner {
         tracing::debug!(
             hook = %hook.effective_name(),
             duration_ms = result.duration_ms,
-            decision = decision_label(&result.decision),
+            decision = result.decision.as_str(),
             "Hook complete"
         );
         result
@@ -237,7 +219,7 @@ impl HookRunner {
                     tracing::error!(
                         hook = %hook.effective_name(),
                         event = %context.event,
-                        decision = decision_label(&merged),
+                        decision = merged.as_str(),
                         "Hook blocked execution"
                     );
                     return merged;
@@ -246,7 +228,7 @@ impl HookRunner {
                 tracing::warn!(
                     hook = %hook.effective_name(),
                     event = %context.event,
-                    decision = decision_label(&result.decision),
+                    decision = result.decision.as_str(),
                     "Non-blocking hook returned non-proceed, ignoring"
                 );
             }
@@ -269,7 +251,7 @@ impl HookRunner {
                 tracing::warn!(
                     hook = %hook.effective_name(),
                     event = %context.event,
-                    decision = decision_label(&result.decision),
+                    decision = result.decision.as_str(),
                     "Non-blocking hook failed, continuing"
                 );
             }
@@ -344,7 +326,12 @@ mod tests {
 
     #[tokio::test]
     async fn no_hooks_returns_proceed() {
-        let runner = HookRunner::new(HookSettings::default(), test_llm_source(), test_catalog());
+        let runner = HookRunner::new(
+            HookSettings::default(),
+            test_llm_source(),
+            test_catalog(),
+            HookSecretResolver::default(),
+        );
         let ctx = make_context(HookEvent::RunStart);
         let sandbox = make_sandbox();
         let decision = runner
@@ -517,7 +504,12 @@ mod tests {
                 h
             }],
         };
-        let runner = HookRunner::new(config, test_llm_source(), test_catalog());
+        let runner = HookRunner::new(
+            config,
+            test_llm_source(),
+            test_catalog(),
+            HookSecretResolver::default(),
+        );
         let ctx = make_context(HookEvent::RunStart);
         let sandbox = make_sandbox();
         let decision = runner
@@ -535,7 +527,12 @@ mod tests {
                 h
             }],
         };
-        let runner = HookRunner::new(config, test_llm_source(), test_catalog());
+        let runner = HookRunner::new(
+            config,
+            test_llm_source(),
+            test_catalog(),
+            HookSecretResolver::default(),
+        );
         let ctx = make_context(HookEvent::RunStart);
         let sandbox = make_sandbox();
         let decision = runner

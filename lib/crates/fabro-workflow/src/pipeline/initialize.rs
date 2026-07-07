@@ -286,7 +286,7 @@ pub async fn initialize(
     let hook_runner = if options.hooks.hooks.is_empty() {
         None
     } else {
-        Some(Arc::new(HookRunner::new_with_secrets(
+        Some(Arc::new(HookRunner::new(
             options.hooks.clone(),
             Arc::clone(&llm_source),
             Arc::clone(&catalog),
@@ -553,7 +553,7 @@ pub async fn initialize(
             if !result.is_success() {
                 let exit_code = result.display_exit_code();
                 let exec_output_tail =
-                    result.default_redacted_output_tail_with_redactor(&options.secret_redactor);
+                    result.default_redacted_output_tail(&options.secret_redactor);
                 options.emitter.emit(&Event::SetupFailed {
                     command: command.clone(),
                     index,

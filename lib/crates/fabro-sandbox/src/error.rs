@@ -76,15 +76,11 @@ impl Error {
         }
     }
 
-    pub fn default_redacted_output_tail(&self) -> Option<fabro_types::ExecOutputTail> {
-        default_redacted_output_tail(self)
-    }
-
-    pub fn default_redacted_output_tail_with_redactor(
+    pub fn default_redacted_output_tail(
         &self,
         redactor: &SecretRedactor,
     ) -> Option<fabro_types::ExecOutputTail> {
-        default_redacted_output_tail_with_redactor(self, redactor)
+        default_redacted_output_tail(self, redactor)
     }
 
     #[cfg(feature = "docker")]
@@ -169,57 +165,29 @@ fn format_exit_code(exit_code: Option<i32>) -> String {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Walk the error chain and build the redacted output tail of the first
+/// sandbox exec failure. The run-scoped exact-match `redactor` is applied
+/// after content-based redaction; an empty redactor is an identity.
 pub fn default_redacted_output_tail(
     err: &(dyn std::error::Error + 'static),
-) -> Option<fabro_types::ExecOutputTail> {
-    default_redacted_output_tail_inner(err, None)
-}
-
-pub fn default_redacted_output_tail_with_redactor(
-    err: &(dyn std::error::Error + 'static),
     redactor: &SecretRedactor,
-) -> Option<fabro_types::ExecOutputTail> {
-    default_redacted_output_tail_inner(err, Some(redactor))
-}
-
-fn default_redacted_output_tail_inner(
-    err: &(dyn std::error::Error + 'static),
-    redactor: Option<&SecretRedactor>,
 ) -> Option<fabro_types::ExecOutputTail> {
     let mut current = Some(err);
     while let Some(err) = current {
         if let Some(Error::Exec { result, .. }) = err.downcast_ref::<Error>() {
-            return match redactor {
-                Some(redactor) => result.default_redacted_output_tail_with_redactor(redactor),
-                None => result.default_redacted_output_tail(),
-            };
+            return result.default_redacted_output_tail(redactor);
         }
         current = err.source();
     }
     None
 }
 
-pub fn display_for_log(err: &(dyn std::error::Error + 'static)) -> String {
-    display_for_log_inner(err, None)
-}
-
-pub fn display_for_log_with_redactor(
+pub fn display_for_log(
     err: &(dyn std::error::Error + 'static),
     redactor: &SecretRedactor,
 ) -> String {
-    display_for_log_inner(err, Some(redactor))
-}
-
-fn display_for_log_inner(
-    err: &(dyn std::error::Error + 'static),
-    redactor: Option<&SecretRedactor>,
-) -> String {
     let mut rendered = render_with_causes(&err.to_string(), &collect_causes(err));
-    let tail = match redactor {
-        Some(redactor) => default_redacted_output_tail_with_redactor(err, redactor),
-        None => default_redacted_output_tail(err),
-    };
-    if let Some(tail) = tail {
+    if let Some(tail) = default_redacted_output_tail(err, redactor) {
         append_tail_for_log(
             &mut rendered,
             "stderr",
@@ -307,7 +275,7 @@ mod tests {
         });
         let error = Error::context("metadata push failed", exec_error);
 
-        let rendered = display_for_log(&error);
+        let rendered = display_for_log(&error, &SecretRedactor::default());
 
         assert!(rendered.contains("metadata push failed"));
         assert!(rendered.contains("git push origin refs/heads/run"));
@@ -327,7 +295,7 @@ mod tests {
             duration_ms: 210,
         });
 
-        let rendered = display_for_log(&error);
+        let rendered = display_for_log(&error, &SecretRedactor::default());
 
         assert!(
             !rendered.contains("ghs_xK9mZ2vL8nQ5rT1wY4bC7dF0gH3jE6pA"),
@@ -340,7 +308,7 @@ mod tests {
     fn display_for_log_for_non_exec_error_returns_chain_only() {
         let error = Error::context("outer failure", std::io::Error::other("leaf failure"));
 
-        let rendered = display_for_log(&error);
+        let rendered = display_for_log(&error, &SecretRedactor::default());
 
         assert_eq!(rendered, "outer failure\n  caused by: leaf failure");
         assert!(!rendered.contains("--- stderr"));
@@ -374,7 +342,9 @@ mod tests {
             duration_ms: 210,
         });
 
-        let tail = error.default_redacted_output_tail().expect("tail present");
+        let tail = error
+            .default_redacted_output_tail(&SecretRedactor::default())
+            .expect("tail present");
         assert_eq!(tail.stdout.as_deref(), Some("last stdout line"));
         assert!(
             tail.stderr
@@ -395,7 +365,8 @@ mod tests {
         });
         let error = Error::context("metadata push failed", exec_error);
 
-        let tail = default_redacted_output_tail(&error).expect("tail present");
+        let tail =
+            default_redacted_output_tail(&error, &SecretRedactor::default()).expect("tail present");
 
         assert_eq!(tail.stdout.as_deref(), Some("last stdout line"));
         assert_eq!(tail.stderr.as_deref(), Some("last stderr line"));

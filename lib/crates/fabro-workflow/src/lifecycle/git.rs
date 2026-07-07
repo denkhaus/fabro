@@ -313,13 +313,13 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
                                 Ok(()) => (true, None),
                                 Err(err) => {
                                     let exec_output_tail =
-                                        fabro_sandbox::default_redacted_output_tail_with_redactor(
+                                        fabro_sandbox::default_redacted_output_tail(
                                             &err,
                                             &self.secret_redactor,
                                         );
                                     tracing::warn!(
                                         refspec = %refspec,
-                                        error = %fabro_sandbox::display_for_log_with_redactor(
+                                        error = %fabro_sandbox::display_for_log(
                                             &err,
                                             &self.secret_redactor,
                                         ),
@@ -372,11 +372,10 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
                         }
                         Ok(_) => {}
                         Err(err) => {
-                            let exec_output_tail =
-                                fabro_sandbox::default_redacted_output_tail_with_redactor(
-                                    &err,
-                                    &self.secret_redactor,
-                                );
+                            let exec_output_tail = fabro_sandbox::default_redacted_output_tail(
+                                &err,
+                                &self.secret_redactor,
+                            );
                             self.emitter.notice_with_tail(
                                 RunNoticeLevel::Warn,
                                 RunNoticeCode::GitDiffFailed,
@@ -390,11 +389,10 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
                             git_result.diff_summary = Some(summarize_diff_numstat(&numstat));
                         }
                         Some(Err(err)) => {
-                            let exec_output_tail =
-                                fabro_sandbox::default_redacted_output_tail_with_redactor(
-                                    &err,
-                                    &self.secret_redactor,
-                                );
+                            let exec_output_tail = fabro_sandbox::default_redacted_output_tail(
+                                &err,
+                                &self.secret_redactor,
+                            );
                             self.emitter.notice_with_tail(
                                 RunNoticeLevel::Warn,
                                 RunNoticeCode::GitDiffFailed,
@@ -413,10 +411,8 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
                     .expect("git lifecycle mutex should not be poisoned: no code panics while holding this lock") = Some(git_result);
             }
             Err(e) => {
-                let exec_output_tail = fabro_sandbox::default_redacted_output_tail_with_redactor(
-                    &e,
-                    &self.secret_redactor,
-                );
+                let exec_output_tail =
+                    fabro_sandbox::default_redacted_output_tail(&e, &self.secret_redactor);
                 let error = e.to_string();
                 // Emit CheckpointFailed and return error
                 let scope = stage_scope_for(state, node_id);

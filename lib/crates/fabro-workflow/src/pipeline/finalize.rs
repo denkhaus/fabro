@@ -616,16 +616,14 @@ pub async fn finalize(executed: Executed, options: &FinalizeOptions) -> Result<C
     .await
     {
         tracing::warn!(
-            error = %fabro_sandbox::display_for_log_with_redactor(
+            error = %fabro_sandbox::display_for_log(
                 &e,
                 &services.secret_redactor,
             ),
             "Sandbox stop failed"
         );
-        let exec_output_tail = fabro_sandbox::default_redacted_output_tail_with_redactor(
-            &e,
-            &services.secret_redactor,
-        );
+        let exec_output_tail =
+            fabro_sandbox::default_redacted_output_tail(&e, &services.secret_redactor);
         services.emitter.notice_with_tail(
             RunNoticeLevel::Warn,
             RunNoticeCode::SandboxCleanupFailed,

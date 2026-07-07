@@ -509,8 +509,12 @@ impl Error {
             category: self.failure_category(),
             system_actor: None,
             signature: self.failure_signature_hint(),
-            exec_output_tail: explicit_exec_output_tail
-                .or_else(|| fabro_sandbox::default_redacted_output_tail(self)),
+            exec_output_tail: explicit_exec_output_tail.or_else(|| {
+                fabro_sandbox::default_redacted_output_tail(
+                    self,
+                    &fabro_redact::SecretRedactor::default(),
+                )
+            }),
         }
     }
 

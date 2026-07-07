@@ -1075,7 +1075,11 @@ mod tests {
 
         assert_eq!(err.to_string(), "git add timed out after 77ms");
         assert!(
-            fabro_sandbox::default_redacted_output_tail(&err).is_none(),
+            fabro_sandbox::default_redacted_output_tail(
+                &err,
+                &fabro_redact::SecretRedactor::default()
+            )
+            .is_none(),
             "empty exec streams should not produce a tail"
         );
     }
@@ -1109,7 +1113,11 @@ mod tests {
             "expected sandbox git context, got {chain:#?}"
         );
         assert!(
-            fabro_sandbox::default_redacted_output_tail(&err).is_some(),
+            fabro_sandbox::default_redacted_output_tail(
+                &err,
+                &fabro_redact::SecretRedactor::default()
+            )
+            .is_some(),
             "expected probe exec output tail to survive SharedError wrapping"
         );
     }
@@ -1245,7 +1253,11 @@ mod tests {
         assert_eq!(err.to_string(), "git diff failed (exit 128)");
         assert!(!err.to_string().contains("fatal: bad revision"));
 
-        let tail = fabro_sandbox::default_redacted_output_tail(&err).expect("tail present");
+        let tail = fabro_sandbox::default_redacted_output_tail(
+            &err,
+            &fabro_redact::SecretRedactor::default(),
+        )
+        .expect("tail present");
         assert_eq!(tail.stderr.as_deref(), Some("fatal: bad revision\n"));
     }
 

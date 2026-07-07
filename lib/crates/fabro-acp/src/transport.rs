@@ -184,7 +184,12 @@ impl ConnectTo<Client> for SandboxAcpTransport {
 }
 
 fn redacted_stderr_tail(stderr: &str) -> Option<ExecOutputTail> {
-    fabro_sandbox::redacted_output_tail("", stderr, DEFAULT_EXEC_OUTPUT_TAIL_BYTES)
+    fabro_sandbox::redacted_output_tail(
+        "",
+        stderr,
+        DEFAULT_EXEC_OUTPUT_TAIL_BYTES,
+        &fabro_sandbox::SecretRedactor::default(),
+    )
 }
 
 fn process_exited_before_protocol_completed() -> ProtocolError {

@@ -569,32 +569,16 @@ impl ExecResult {
     pub fn redacted_output_tail(
         &self,
         max_bytes_per_stream: usize,
-    ) -> Option<fabro_types::ExecOutputTail> {
-        redacted_output_tail(&self.stdout, &self.stderr, max_bytes_per_stream)
-    }
-
-    pub fn redacted_output_tail_with_redactor(
-        &self,
-        max_bytes_per_stream: usize,
         redactor: &SecretRedactor,
     ) -> Option<fabro_types::ExecOutputTail> {
-        redacted_output_tail_with_redactor(
-            &self.stdout,
-            &self.stderr,
-            max_bytes_per_stream,
-            redactor,
-        )
+        redacted_output_tail(&self.stdout, &self.stderr, max_bytes_per_stream, redactor)
     }
 
-    pub fn default_redacted_output_tail(&self) -> Option<fabro_types::ExecOutputTail> {
-        self.redacted_output_tail(DEFAULT_EXEC_OUTPUT_TAIL_BYTES)
-    }
-
-    pub fn default_redacted_output_tail_with_redactor(
+    pub fn default_redacted_output_tail(
         &self,
         redactor: &SecretRedactor,
     ) -> Option<fabro_types::ExecOutputTail> {
-        self.redacted_output_tail_with_redactor(DEFAULT_EXEC_OUTPUT_TAIL_BYTES, redactor)
+        self.redacted_output_tail(DEFAULT_EXEC_OUTPUT_TAIL_BYTES, redactor)
     }
 
     /// Converts host process output into the canonical full exec result.
@@ -621,33 +605,15 @@ impl ExecResult {
 
 /// Build a redacted `ExecOutputTail` from raw stdout/stderr without
 /// fabricating a synthetic `ExecResult`. Pass `""` for either stream that
-/// isn't relevant. Returns `None` when both streams are empty.
+/// isn't relevant. Returns `None` when both streams are empty. The run-scoped
+/// exact-match `redactor` is applied after the content-based redaction
+/// baseline; an empty redactor is an identity.
 #[must_use]
 pub fn redacted_output_tail(
     stdout: &str,
     stderr: &str,
     max_bytes_per_stream: usize,
-) -> Option<fabro_types::ExecOutputTail> {
-    redacted_output_tail_inner(stdout, stderr, max_bytes_per_stream, None)
-}
-
-/// Build a redacted `ExecOutputTail` with a run-scoped exact-match secret
-/// redactor applied after the content-based redaction baseline.
-#[must_use]
-pub fn redacted_output_tail_with_redactor(
-    stdout: &str,
-    stderr: &str,
-    max_bytes_per_stream: usize,
     redactor: &SecretRedactor,
-) -> Option<fabro_types::ExecOutputTail> {
-    redacted_output_tail_inner(stdout, stderr, max_bytes_per_stream, Some(redactor))
-}
-
-fn redacted_output_tail_inner(
-    stdout: &str,
-    stderr: &str,
-    max_bytes_per_stream: usize,
-    redactor: Option<&SecretRedactor>,
 ) -> Option<fabro_types::ExecOutputTail> {
     let (stdout, stdout_truncated) = redacted_tail(stdout, max_bytes_per_stream, redactor);
     let (stderr, stderr_truncated) = redacted_tail(stderr, max_bytes_per_stream, redactor);
@@ -663,14 +629,14 @@ fn redacted_output_tail_inner(
 fn redacted_tail(
     text: &str,
     max_bytes: usize,
-    redactor: Option<&SecretRedactor>,
+    redactor: &SecretRedactor,
 ) -> (Option<String>, bool) {
     if text.is_empty() || max_bytes == 0 {
         return (None, !text.is_empty());
     }
 
     let mut redacted = fabro_redact::redact_string(text);
-    if let Some(redactor) = redactor {
+    if !redactor.is_empty() {
         redacted = redactor.redact_into(&redacted);
     }
     let sanitized = sanitize_exec_output(&redacted);
@@ -1221,7 +1187,7 @@ pub async fn git_push_via_exec(sandbox: &dyn Sandbox, refspec: &str) -> crate::R
     if let Err(e) = sandbox.refresh_push_credentials().await {
         tracing::warn!(
             refspec = %refspec,
-            error = %crate::display_for_log(&e),
+            error = %crate::display_for_log(&e, &SecretRedactor::default()),
             "Failed to refresh push credentials before git push"
         );
     }
@@ -1323,7 +1289,7 @@ mod tests {
         };
 
         let tail = result
-            .redacted_output_tail(32)
+            .redacted_output_tail(32, &SecretRedactor::default())
             .expect("redacted output tail");
         let stdout = tail.stdout.expect("stdout tail");
         assert!(stdout.contains("REDACTED"), "{stdout}");
@@ -1344,7 +1310,7 @@ mod tests {
         };
 
         let tail = result
-            .redacted_output_tail_with_redactor(32, &redactor)
+            .redacted_output_tail(32, &redactor)
             .expect("redacted output tail");
         let stdout = tail.stdout.expect("stdout tail");
         assert!(stdout.contains("REDACTED"), "{stdout}");
@@ -1365,7 +1331,7 @@ mod tests {
         };
 
         let tail = result
-            .redacted_output_tail(1024)
+            .redacted_output_tail(1024, &SecretRedactor::default())
             .expect("redacted output tail");
         let stdout = tail.stdout.expect("stdout tail");
         assert_eq!(stdout, "red shown set two-byte backspace");
@@ -1408,7 +1374,7 @@ mod tests {
 
         let result = ExecResult::from_process_output(output, 3);
         let tail = result
-            .redacted_output_tail(16)
+            .redacted_output_tail(16, &SecretRedactor::default())
             .expect("redacted output tail");
 
         assert!(tail.stdout.expect("stdout tail").len() <= 16);
@@ -1425,7 +1391,9 @@ mod tests {
             duration_ms: 1,
         };
 
-        let tail = result.default_redacted_output_tail().expect("tail present");
+        let tail = result
+            .default_redacted_output_tail(&SecretRedactor::default())
+            .expect("tail present");
         assert_eq!(
             tail.stdout.as_deref().map(str::len),
             Some(DEFAULT_EXEC_OUTPUT_TAIL_BYTES)

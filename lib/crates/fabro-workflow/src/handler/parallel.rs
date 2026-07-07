@@ -205,7 +205,7 @@ impl Handler for ParallelHandler {
                 }
                 Err(e) => {
                     tracing::warn!(
-                        error = %fabro_sandbox::display_for_log_with_redactor(
+                        error = %fabro_sandbox::display_for_log(
                             &e,
                             &services.run.secret_redactor,
                         ),
@@ -215,7 +215,7 @@ impl Handler for ParallelHandler {
                         RunNoticeLevel::Warn,
                         RunNoticeCode::ParallelBaseCheckpointFailed,
                         format!("Could not checkpoint base state before parallel branches: {e}"),
-                        fabro_sandbox::default_redacted_output_tail_with_redactor(
+                        fabro_sandbox::default_redacted_output_tail(
                             &e,
                             &services.run.secret_redactor,
                         ),

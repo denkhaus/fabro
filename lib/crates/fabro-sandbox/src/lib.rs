@@ -40,10 +40,8 @@ pub mod test_support;
 pub use details::sandbox_details;
 #[cfg(feature = "docker")]
 pub use docker::{DockerSandbox, DockerSandboxOptions};
-pub use error::{
-    Error, Result, default_redacted_output_tail, default_redacted_output_tail_with_redactor,
-    display_for_log, display_for_log_with_redactor,
-};
+pub use error::{Error, Result, default_redacted_output_tail, display_for_log};
+pub use fabro_redact::SecretRedactor;
 pub use fabro_types::{RunSandboxInstance, SandboxProviderKind};
 pub use local::LocalSandbox;
 #[cfg(feature = "daytona")]
@@ -61,7 +59,7 @@ pub use sandbox::{
     ExecStreamingResult, GitRunInfo, GitSetupIntent, GrepOptions, Sandbox, SandboxEvent,
     SandboxEventCallback, StderrCollector, StdioProcess, StdioProcessHandle,
     StdioProcessTermination, format_lines_numbered, git_push_via_exec, redacted_output_tail,
-    redacted_output_tail_with_redactor, setup_git_via_exec, shell_quote,
+    setup_git_via_exec, shell_quote,
 };
 pub use sandbox_spec::SandboxSpec;
 pub use terminal::{TerminalSession, TerminalSize, open_terminal_for_run};
