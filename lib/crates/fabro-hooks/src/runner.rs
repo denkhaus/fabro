@@ -80,11 +80,22 @@ impl HookRunner {
     fn compile_matchers(config: &HookSettings) -> HashMap<String, regex::Regex> {
         let mut map = HashMap::new();
         for hook in &config.hooks {
-            if let Some(ref pattern) = hook.matcher {
-                if !map.contains_key(pattern) {
-                    if let Ok(re) = regex::Regex::new(pattern) {
-                        map.insert(pattern.clone(), re);
-                    }
+            let Some(pattern) = hook.matcher.as_ref() else {
+                continue;
+            };
+            if map.contains_key(pattern) {
+                continue;
+            }
+            match regex::Regex::new(pattern) {
+                Ok(re) => {
+                    map.insert(pattern.clone(), re);
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        pattern = %pattern,
+                        error = %error,
+                        "hook matcher pattern failed to compile; hooks using it will never match"
+                    );
                 }
             }
         }
@@ -148,7 +159,8 @@ impl HookRunner {
             return true;
         };
         let Some(re) = self.compiled_matchers.get(pattern) else {
-            // Pattern failed to compile during construction — already warned
+            // Pattern failed to compile at construction (warned there); treat as
+            // no match so a broken matcher never silently matches everything.
             return false;
         };
         [
@@ -428,6 +440,26 @@ mod tests {
         // Does not match tool_name "read_file"
         let mut ctx = make_context(HookEvent::PreToolUse);
         ctx.tool_name = Some("read_file".into());
+        assert!(runner.filter_hooks(&ctx).is_empty());
+    }
+
+    #[tokio::test]
+    async fn invalid_matcher_pattern_never_matches() {
+        // A matcher that fails to compile is dropped at construction (with a
+        // warning); the hook must then never match rather than silently match
+        // everything.
+        let mut hook = make_hook(HookEvent::StageStart, "bad-matcher");
+        hook.matcher = Some("[unterminated(".into());
+        let config = HookSettings { hooks: vec![hook] };
+        let runner = HookRunner::with_executor(
+            config,
+            Arc::new(MockExecutor {
+                decision: HookDecision::Proceed,
+            }),
+        );
+
+        let mut ctx = make_context(HookEvent::StageStart);
+        ctx.node_id = Some("agent".into());
         assert!(runner.filter_hooks(&ctx).is_empty());
     }
 
