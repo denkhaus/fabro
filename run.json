@@ -1,0 +1,254 @@
+{
+  "title": "Run the simplify code-review pass on PR #547: review the changes for reuse, quality, and efficien...",
+  "spec": {
+    "run_id": "01KWYQ40STEB2KNREK7EVNJEEK",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "Run the simplify code-review pass on PR #547: review the changes for reuse, quality, and efficiency, apply the fixes, and update the existing PR in place."
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {
+          "pr": 547
+        },
+        "model": {
+          "provider": "anthropic",
+          "name": "claude-fable-5",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "commands": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "fabro-dev",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        curl git ripgrep ca-certificates build-essential pkg-config libssl-dev unzip python3 \\\n        xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \\\n        libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6 \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install real Chromium (not the snap stub) via xtradeb PPA\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        software-properties-common curl gnupg \\\n    && add-apt-repository -y ppa:xtradeb/apps \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends chromium \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Wrapper: Chromium needs --no-sandbox when running as root in a container,\n# and --disable-dev-shm-usage avoids crashes from small /dev/shm\nRUN printf '#!/bin/bash\\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"$@\"\\n' \\\n        > /usr/local/bin/chromium-wrapper \\\n    && chmod +x /usr/local/bin/chromium-wrapper\n\n# Make the wrapper the default in the system .desktop file and via alternatives\nRUN sed -i 's|^Exec=.*|Exec=/usr/local/bin/chromium-wrapper %U|' \\\n        /usr/share/applications/chromium.desktop \\\n    && update-alternatives --install /usr/bin/x-www-browser x-www-browser \\\n        /usr/local/bin/chromium-wrapper 100\n\n# Tell XFCE's exo-open that Chromium is the WebBrowser helper (system-wide)\nRUN mkdir -p /etc/xdg/xfce4 /usr/share/xfce4/helpers \\\n    && printf 'WebBrowser=custom-WebBrowser\\n' > /etc/xdg/xfce4/helpers.rc \\\n    && printf '[Desktop Entry]\\n\\\nVersion=1.0\\n\\\nType=X-XFCE-Helper\\n\\\nName=Chromium\\n\\\nIcon=chromium\\n\\\nX-XFCE-Category=WebBrowser\\n\\\nX-XFCE-CommandsWithParameter=/usr/local/bin/chromium-wrapper \"%%s\"\\n\\\nX-XFCE-Commands=/usr/local/bin/chromium-wrapper\\n' \\\n        > /usr/share/xfce4/helpers/custom-WebBrowser.desktop\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" \\\n        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update && apt-get install -y --no-install-recommends gh \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": "20GB"
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": "30m"
+          },
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "env": {}
+        },
+        "notifications": {},
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": null,
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {
+              "pull_requests": "write",
+              "issues": "write",
+              "contents": "write"
+            }
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "PrSimplify",
+      "nodes": {
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "shape": {
+              "String": "Msquare"
+            },
+            "label": {
+              "String": "Exit"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "label": {
+              "String": "Start"
+            },
+            "shape": {
+              "String": "Mdiamond"
+            }
+          }
+        },
+        "simplify": {
+          "id": "simplify",
+          "attrs": {
+            "label": {
+              "String": "Simplify Pass"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nRun the simplify code-review pass on **PR #547**: review the changes for reuse, quality, and efficiency, fix what's worth fixing, and update the existing PR in place.\n\n## Phase 1: Identify the changes\n\nRun `gh pr diff 547` to see what changed. (Fall back to `git diff origin/main...HEAD` if that returns nothing.) This diff is the shared context for the reviews below.\n\n## Phase 2: Launch three review sub-agents in parallel\n\nUse the `spawn_agent` tool to launch all three reviewers below. Spawn all three first so they run concurrently, then `wait` for their results and aggregate them. Give each sub-agent its full brief, and tell it to run `gh pr diff 547` itself to see the changes. Each reviewer **only reports findings — it does not edit code.**\n\n### Reviewer 1 — Code Reuse\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use grep to find similar patterns elsewhere — utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality; name the existing function to use instead.\n3. Flag inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar.\n\nThis is a greenfield app — focus on maximizing simplicity; don't worry about backward compatibility.\n\n### Reviewer 2 — Code Quality\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls.\n2. Parameter sprawl: new parameters bolted onto a function instead of generalizing or restructuring existing ones.\n3. Copy-paste with slight variation: near-duplicate blocks that should be unified with a shared abstraction.\n4. Leaky abstractions: exposing internals that should be encapsulated, or breaking existing boundaries.\n5. Stringly-typed code: raw strings where constants, enums, or branded types already exist.\n\nThis is a greenfield app — be aggressive in optimizing quality.\n\n### Reviewer 3 — Efficiency\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns.\n2. Missed concurrency: independent operations run sequentially when they could run in parallel.\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths.\n4. Unnecessary existence checks: pre-checking a file/resource before operating (TOCTOU) — operate directly and handle the error.\n5. Memory: unbounded data structures, missing cleanup, listener leaks.\n6. Overly broad operations: reading whole files when a portion suffices, loading all items when filtering for one.\n\n## Phase 3: Apply fixes\n\nWait for all three reviewers, aggregate their findings, and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — don't argue with it, just skip it.\n\n## Phase 4: Update the existing PR\n\n1. **Check out the PR branch:** run `gh pr checkout 547` so your edits land on the PR's own branch. Do not create a new branch or a new PR.\n2. **Commit and push:** commit with a clear message describing the simplify pass, then push to update PR #547. Push to the **existing** branch — do **not** open a new pull request. If you made no changes (the code was already clean), skip the commit and say so in the comment below.\n3. **Comment:** post a summary on PR #547 noting this was an automated simplify run, what was fixed, and anything you skipped and why:\n\n       gh pr comment 547 --body \"<your summary>\"\n\n4. **Label:** record which model ran this pass. Read the model you are running as from your environment block (the `Model:` line) and build the label `simplify:<model-id>` — e.g. if your model is `claude-opus-4-8`, the label is `simplify:claude-opus-4-8`. Apply it via the GitHub **issues** API; do **not** use `gh pr edit --add-label` (it walks a deprecated Projects-classic GraphQL path and fails here). Ensure the label exists, then add it (gh fills `{owner}/{repo}` from the current repo):\n\n       gh label create \"simplify:<model-id>\" --color BFD4F2 --description \"Simplify pass by <model-id>\" 2>/dev/null || true\n       gh api repos/{owner}/{repo}/issues/547/labels -X POST -f \"labels[]=simplify:<model-id>\"\n\n## Done\n\nBriefly summarize what was fixed (or confirm the code was already clean), and confirm the PR was updated, commented, and labeled."
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "simplify",
+          "attrs": {}
+        },
+        {
+          "from": "simplify",
+          "to": "exit",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "rankdir": {
+          "String": "LR"
+        },
+        "default_model": {
+          "String": "claude-fable-5"
+        },
+        "goal": {
+          "String": "Run the simplify code-review pass on PR #547: review the changes for reuse, quality, and efficiency, apply the fixes, and update the existing PR in place."
+        }
+      }
+    },
+    "graph_source": "digraph PrSimplify {\n    graph [\n        goal=\"Run the simplify code-review pass on PR #{{ inputs.pr }}: review the changes for reuse, quality, and efficiency, apply the fixes, and update the existing PR in place.\",\n        // Default the whole pass (orchestrator + review subagents) to Fable.\n        // `default_model` is beaten by a run-config model / `--model`, so it is\n        // a floor, not a pin — override per run with `--model <id>`.\n        default_model=\"claude-fable-5\",\n        rankdir=LR\n    ]\n\n    start    [shape=Mdiamond, label=\"Start\"]\n    exit     [shape=Msquare, label=\"Exit\"]\n\n    // One agent node runs the whole simplify pass. It uses the spawn_agent tool\n    // to fan out the three reviews in parallel and wait for their results —\n    // sub-agent results return directly to the orchestrator, which is the clean\n    // way to AGGREGATE several perspectives. (A fork + tripleoctagon fan-in is\n    // the wrong tool here: fan-in selects one \"best\" branch and merges only its\n    // worktree; it does not merge several distinct review outputs.)\n    simplify [label=\"Simplify Pass\", prompt=\"@prompts/simplify.md\"]\n\n    start -> simplify -> exit\n}\n",
+    "workflow_slug": "pr-simplify",
+    "source_directory": "/Users/swerner/Development/os/fabro-main/fabro",
+    "provenance": {
+      "server": {
+        "version": "0.278.0-nightly.0"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.267.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.267.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "138379"
+        },
+        "login": "swerner",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/138379?v=4"
+      }
+    },
+    "manifest_blob": "696bc65e4e9b74f739803e91f065cfa40666bd43c30f1301da182ff516fe6c05",
+    "definition_blob": "c905f6412800e5aa489dbc9bab1dbe2fa36a89ee57e6a410d3ab03b1bf60a2e5",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "8c7d5dc7d0375fb8e7d1d3f47e7e6639979d8517",
+      "dirty": "dirty",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KWYQ40STEB2KNREK7EVNJEEK",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-07T16:38:30.075510564Z",
+  "last_event_at": "2026-07-07T16:39:10.608222752Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-fdb28dec-1233-892c-b9d7-9f88f8353e7a",
+      "runtime": {
+        "id": "fabro-01KWYQ40STEB2KNREK7EVNJEEK",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
