@@ -1,0 +1,533 @@
+{
+  "title": "PR 1 — Delete unused provenance tracking from config interpolation",
+  "spec": {
+    "run_id": "01KX1ND1A17YANW0E3FHSXKFRW",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "# PR 1 — Delete unused provenance tracking from config interpolation\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. It is one of a series of independent secrets/\nredaction PRs, but this one depends on none of the others and none of them\ndepend on its internals — it can land first, last, or in parallel.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME`, `vars.NAME` as the double-curly-brace token\n> form used in the codebase, and write the real double-brace syntax in any\n> code, tests, and docs you produce.\n\n## Context and goal\n\nFabro config strings (`InterpString`, `lib/crates/fabro-types/src/settings/interp.rs`)\nresolve `env.NAME` / `secrets.NAME` / `vars.NAME` tokens. Resolution currently\nreturns a `Resolved { value, provenance }` struct, where `Provenance` is\n`Literal` or `Sourced { env_names, secret_names }` — metadata recording which\nenv vars / secrets contributed to a resolved value.\n\nThat provenance metadata was scaffolding for a \"provenance-based redaction\"\ndesign that was **never implemented and has since been rejected**: the project\nredacts secrets by (a) content-based pattern/entropy matching (`fabro-redact`)\nand (b) registering resolved secret *values* into a per-run exact-match\nregistry (`fabro_redact::SecretRedactor`). Analysis conclusion (for the module\ndoc, in plain English): origin-tagging on resolved values cannot reach the\nsurfaces where secrets actually leak — subprocess stdout/stderr, diffs, tool\noutput — because by then the value is plain text emitted by another process;\nexact-value matching reaches all of them. Provenance adds no coverage on top,\nso tracking it is dead weight, and keeping the enum invites a future\ncontributor to wire it up against the design decision. The team's accepted\ntype-level approach is different and complementary: wrap secret *values* in\ntypes whose `Display`/`Debug`/`Serialize` emit a redacted form (a separate\nchange) — value-typing at the source, not origin-tracking on resolved strings.\n\n**Goal: remove the provenance tracking entirely. Zero behavior change.**\n\n## Verified current state (as of main `8c3f035ea`, 2026-07-08 — re-verify before starting)\n\n- `lib/crates/fabro-types/src/settings/interp.rs` contains:\n  - `pub struct Resolved { pub value: String, pub provenance: Provenance }`\n  - `pub enum Provenance { Literal, Sourced { env_names: Vec<String>, secret_names: Vec<String> } }`\n  - `Provenance::from_names(...)`\n  - name-accumulation code inside `resolve_with` (collects `env_names` /\n    `secret_names` while resolving segments, ~lines 289–312)\n  - a module-doc sentence: \"Provenance tracking lets outward-facing renderers\n    redact env- and secret-sourced values uniformly.\"\n  - unit tests asserting `resolved.provenance == ...`\n- **Zero production consumers**: every caller of `resolve` / `resolve_with`\n  does `.map(|resolved| resolved.value)` or reads `.value` only. Verify with:\n  `rg -n '\\.provenance' lib/crates --glob '!**/interp.rs'` — expect no hits\n  (matches on `RunClientProvenance` / `RunServerProvenance` / run-spec\n  `provenance` fields are an **unrelated** run-metadata concept; do not touch\n  those).\n\n## Implementation\n\n1. **Collapse the return type.** Change `resolve` and `resolve_with` to return\n   `Result<String, ResolveError>` directly. Delete `Resolved` (a one-field\n   wrapper earns nothing). If a caller genuinely needs a named type, fall back\n   to keeping `Resolved { value }` only — not expected.\n2. **Sweep the callers mechanically.** Each `.map(|resolved| resolved.value)`\n   becomes the identity / disappears. Known caller areas: the hooks executor\n   (`lib/crates/fabro-hooks/src/executor.rs`, `resolve_interp`), fabro-auth\n   resolvers, fabro-server interp helpers, and the run-boundary resolvers in\n   `lib/crates/fabro-workflow/src/operations/start.rs`. Let the compiler find\n   the rest.\n3. **Delete** `Provenance`, `from_names`, and the name-accumulation code in\n   `resolve_with`.\n4. **Migrate the tests**: keep every value/error assertion in the provenance\n   tests; drop only the provenance assertions themselves.\n5. **Fix the module doc**: delete the provenance sentence; replace with one\n   line stating the actual model — declared-secret values are registered into\n   a per-run redactor where secrets resolve; sensitivity is not tracked on\n   resolved values. (If the registration wiring has not merged yet, phrase as\n   design intent, not shipped fact.)\n6. **Final sweep**: `rg -n 'Provenance' lib/crates` must return only the\n   unrelated run-metadata types (`RunClientProvenance`, `RunServerProvenance`,\n   run-spec `provenance` fields, and their API/test mirrors).\n\n## Tests\n\nNo new behavior, so no new tests: the deliverable is that the existing resolve\nand substitute test suites pass with value-only assertions and the workspace\ncompiles with the collapsed return type.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- No OpenAPI/wire change: `docs/public/api-reference/fabro-api.yaml` untouched;\n  TypeScript client unaffected.\n\n## Conventions\n\n- Plain-English commit message and PR text describing what the change does\n  (e.g. \"remove unused provenance tracking from config interpolation\") — no\n  internal planning identifiers or plan-file names in anything that ships.\n- PR description should state: the metadata was never consumed; the redaction\n  design it anticipated was superseded by per-run exact-value registration;\n  zero behavior change.\n"
+        },
+        "working_dir": null,
+        "metadata": {
+          "series": "redaction-v2"
+        },
+        "inputs": {},
+        "model": {
+          "provider": "anthropic",
+          "name": "claude-sonnet-4-6",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "fabro-dev",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        curl git ripgrep ca-certificates build-essential pkg-config libssl-dev unzip python3 \\\n        xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \\\n        libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6 \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install real Chromium (not the snap stub) via xtradeb PPA\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        software-properties-common curl gnupg \\\n    && add-apt-repository -y ppa:xtradeb/apps \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends chromium \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Wrapper: Chromium needs --no-sandbox when running as root in a container,\n# and --disable-dev-shm-usage avoids crashes from small /dev/shm\nRUN printf '#!/bin/bash\\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"$@\"\\n' \\\n        > /usr/local/bin/chromium-wrapper \\\n    && chmod +x /usr/local/bin/chromium-wrapper\n\n# Make the wrapper the default in the system .desktop file and via alternatives\nRUN sed -i 's|^Exec=.*|Exec=/usr/local/bin/chromium-wrapper %U|' \\\n        /usr/share/applications/chromium.desktop \\\n    && update-alternatives --install /usr/bin/x-www-browser x-www-browser \\\n        /usr/local/bin/chromium-wrapper 100\n\n# Tell XFCE's exo-open that Chromium is the WebBrowser helper (system-wide)\nRUN mkdir -p /etc/xdg/xfce4 /usr/share/xfce4/helpers \\\n    && printf 'WebBrowser=custom-WebBrowser\\n' > /etc/xdg/xfce4/helpers.rc \\\n    && printf '[Desktop Entry]\\n\\\nVersion=1.0\\n\\\nType=X-XFCE-Helper\\n\\\nName=Chromium\\n\\\nIcon=chromium\\n\\\nX-XFCE-Category=WebBrowser\\n\\\nX-XFCE-CommandsWithParameter=/usr/local/bin/chromium-wrapper \"%%s\"\\n\\\nX-XFCE-Commands=/usr/local/bin/chromium-wrapper\\n' \\\n        > /usr/share/xfce4/helpers/custom-WebBrowser.desktop\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" \\\n        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update && apt-get install -y --no-install-recommends gh \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": "20GB"
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": "30m"
+          },
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "env": {}
+        },
+        "notifications": {},
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": false,
+          "merge_strategy": "squash"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "ImplementPlan",
+      "nodes": {
+        "preflight_lint": {
+          "id": "preflight_lint",
+          "attrs": {
+            "shape": {
+              "String": "parallelogram"
+            },
+            "script": {
+              "String": "cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Preflight Lint"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "label": {
+              "String": "Exit"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "Msquare"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        },
+        "preflight_compile": {
+          "id": "preflight_compile",
+          "attrs": {
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "script": {
+              "String": "cargo check -q --workspace 2>&1"
+            },
+            "label": {
+              "String": "Preflight Compile"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        },
+        "toolchain": {
+          "id": "toolchain",
+          "attrs": {
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "script": {
+              "String": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1"
+            },
+            "label": {
+              "String": "Toolchain"
+            },
+            "provider": {
+              "String": "anthropic"
+            }
+          }
+        },
+        "fix_lints": {
+          "id": "fix_lints",
+          "attrs": {
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Fix Lints"
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "prompt": {
+              "String": "The preflight lint step failed. Read the build output from context and fix all clippy lint warnings."
+            }
+          }
+        },
+        "simplify_fable": {
+          "id": "simplify_fable",
+          "attrs": {
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "model": {
+              "String": "claude-fable-5"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changes for reuse, quality, and efficiency. Fix any issues found. Feel free to use any sub agents you need.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation. (You may already have the changes in context, if so, feel free to skip this part)\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "label": {
+              "String": "Simplify (Fable)"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Start"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        },
+        "simplify_gpt": {
+          "id": "simplify_gpt",
+          "attrs": {
+            "provider": {
+              "String": "openai"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changes for reuse, quality, and efficiency. Fix any issues found. Feel free to use any sub agents you need.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation. (You may already have the changes in context, if so, feel free to skip this part)\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "model": {
+              "String": "gpt-5.5"
+            },
+            "label": {
+              "String": "Simplify (GPT-55)"
+            }
+          }
+        },
+        "verify": {
+          "id": "verify",
+          "attrs": {
+            "goal_gate": {
+              "Boolean": true
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Verify"
+            },
+            "retry_target": {
+              "String": "fixup"
+            },
+            "timeout": {
+              "Duration": {
+                "secs": 1800,
+                "nanos": 0
+              }
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "script": {
+              "String": "git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        },
+        "implement": {
+          "id": "implement",
+          "attrs": {
+            "label": {
+              "String": "Implement"
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "provider": {
+              "String": "openai"
+            },
+            "prompt": {
+              "String": "Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD. Be sure to use the rust-style-guide skill to help you follow this repo's Rust style conventions."
+            },
+            "model": {
+              "String": "gpt-5.5"
+            }
+          }
+        },
+        "fixup": {
+          "id": "fixup",
+          "attrs": {
+            "max_visits": {
+              "Integer": 3
+            },
+            "label": {
+              "String": "Fixup"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "prompt": {
+              "String": "The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures."
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "toolchain",
+          "attrs": {}
+        },
+        {
+          "from": "toolchain",
+          "to": "preflight_compile",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "toolchain",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_compile",
+          "to": "preflight_lint",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_compile",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_lint",
+          "to": "implement",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_lint",
+          "to": "fix_lints",
+          "attrs": {}
+        },
+        {
+          "from": "fix_lints",
+          "to": "preflight_lint",
+          "attrs": {}
+        },
+        {
+          "from": "implement",
+          "to": "simplify_fable",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_fable",
+          "to": "simplify_gpt",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_gpt",
+          "to": "verify",
+          "attrs": {}
+        },
+        {
+          "from": "verify",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "verify",
+          "to": "fixup",
+          "attrs": {}
+        },
+        {
+          "from": "fixup",
+          "to": "verify",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "model_stylesheet": {
+          "String": "\n            * { model: claude-opus-4-8; }\n        "
+        },
+        "goal": {
+          "String": "# PR 1 — Delete unused provenance tracking from config interpolation\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. It is one of a series of independent secrets/\nredaction PRs, but this one depends on none of the others and none of them\ndepend on its internals — it can land first, last, or in parallel.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME`, `vars.NAME` as the double-curly-brace token\n> form used in the codebase, and write the real double-brace syntax in any\n> code, tests, and docs you produce.\n\n## Context and goal\n\nFabro config strings (`InterpString`, `lib/crates/fabro-types/src/settings/interp.rs`)\nresolve `env.NAME` / `secrets.NAME` / `vars.NAME` tokens. Resolution currently\nreturns a `Resolved { value, provenance }` struct, where `Provenance` is\n`Literal` or `Sourced { env_names, secret_names }` — metadata recording which\nenv vars / secrets contributed to a resolved value.\n\nThat provenance metadata was scaffolding for a \"provenance-based redaction\"\ndesign that was **never implemented and has since been rejected**: the project\nredacts secrets by (a) content-based pattern/entropy matching (`fabro-redact`)\nand (b) registering resolved secret *values* into a per-run exact-match\nregistry (`fabro_redact::SecretRedactor`). Analysis conclusion (for the module\ndoc, in plain English): origin-tagging on resolved values cannot reach the\nsurfaces where secrets actually leak — subprocess stdout/stderr, diffs, tool\noutput — because by then the value is plain text emitted by another process;\nexact-value matching reaches all of them. Provenance adds no coverage on top,\nso tracking it is dead weight, and keeping the enum invites a future\ncontributor to wire it up against the design decision. The team's accepted\ntype-level approach is different and complementary: wrap secret *values* in\ntypes whose `Display`/`Debug`/`Serialize` emit a redacted form (a separate\nchange) — value-typing at the source, not origin-tracking on resolved strings.\n\n**Goal: remove the provenance tracking entirely. Zero behavior change.**\n\n## Verified current state (as of main `8c3f035ea`, 2026-07-08 — re-verify before starting)\n\n- `lib/crates/fabro-types/src/settings/interp.rs` contains:\n  - `pub struct Resolved { pub value: String, pub provenance: Provenance }`\n  - `pub enum Provenance { Literal, Sourced { env_names: Vec<String>, secret_names: Vec<String> } }`\n  - `Provenance::from_names(...)`\n  - name-accumulation code inside `resolve_with` (collects `env_names` /\n    `secret_names` while resolving segments, ~lines 289–312)\n  - a module-doc sentence: \"Provenance tracking lets outward-facing renderers\n    redact env- and secret-sourced values uniformly.\"\n  - unit tests asserting `resolved.provenance == ...`\n- **Zero production consumers**: every caller of `resolve` / `resolve_with`\n  does `.map(|resolved| resolved.value)` or reads `.value` only. Verify with:\n  `rg -n '\\.provenance' lib/crates --glob '!**/interp.rs'` — expect no hits\n  (matches on `RunClientProvenance` / `RunServerProvenance` / run-spec\n  `provenance` fields are an **unrelated** run-metadata concept; do not touch\n  those).\n\n## Implementation\n\n1. **Collapse the return type.** Change `resolve` and `resolve_with` to return\n   `Result<String, ResolveError>` directly. Delete `Resolved` (a one-field\n   wrapper earns nothing). If a caller genuinely needs a named type, fall back\n   to keeping `Resolved { value }` only — not expected.\n2. **Sweep the callers mechanically.** Each `.map(|resolved| resolved.value)`\n   becomes the identity / disappears. Known caller areas: the hooks executor\n   (`lib/crates/fabro-hooks/src/executor.rs`, `resolve_interp`), fabro-auth\n   resolvers, fabro-server interp helpers, and the run-boundary resolvers in\n   `lib/crates/fabro-workflow/src/operations/start.rs`. Let the compiler find\n   the rest.\n3. **Delete** `Provenance`, `from_names`, and the name-accumulation code in\n   `resolve_with`.\n4. **Migrate the tests**: keep every value/error assertion in the provenance\n   tests; drop only the provenance assertions themselves.\n5. **Fix the module doc**: delete the provenance sentence; replace with one\n   line stating the actual model — declared-secret values are registered into\n   a per-run redactor where secrets resolve; sensitivity is not tracked on\n   resolved values. (If the registration wiring has not merged yet, phrase as\n   design intent, not shipped fact.)\n6. **Final sweep**: `rg -n 'Provenance' lib/crates` must return only the\n   unrelated run-metadata types (`RunClientProvenance`, `RunServerProvenance`,\n   run-spec `provenance` fields, and their API/test mirrors).\n\n## Tests\n\nNo new behavior, so no new tests: the deliverable is that the existing resolve\nand substitute test suites pass with value-only assertions and the workspace\ncompiles with the collapsed return type.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- No OpenAPI/wire change: `docs/public/api-reference/fabro-api.yaml` untouched;\n  TypeScript client unaffected.\n\n## Conventions\n\n- Plain-English commit message and PR text describing what the change does\n  (e.g. \"remove unused provenance tracking from config interpolation\") — no\n  internal planning identifiers or plan-file names in anything that ships.\n- PR description should state: the metadata was never consumed; the redaction\n  design it anticipated was superseded by per-run exact-value registration;\n  zero behavior change.\n"
+        },
+        "rankdir": {
+          "String": "LR"
+        }
+      }
+    },
+    "graph_source": "digraph ImplementPlan {\n    graph [\n        goal=\"Implement and simplify\",\n        model_stylesheet=\"\n            * { model: claude-opus-4-8; }\n        \"\n    ]\n    rankdir=LR\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    toolchain         [label=\"Toolchain\", shape=parallelogram, script=\"command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1\", max_retries=0]\n    preflight_compile [label=\"Preflight Compile\", shape=parallelogram, script=\"cargo check -q --workspace 2>&1\", max_retries=0]\n    preflight_lint    [label=\"Preflight Lint\", shape=parallelogram, script=\"cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1\", max_retries=0]\n    fix_lints         [label=\"Fix Lints\", prompt=\"The preflight lint step failed. Read the build output from context and fix all clippy lint warnings.\", max_visits=3]\n    implement         [label=\"Implement\", prompt=\"Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD. Be sure to use the rust-style-guide skill to help you follow this repo's Rust style conventions.\", model=\"gpt-55\", reasoning_effort=\"xhigh\"]\n    simplify_fable    [label=\"Simplify (Fable)\", prompt=\"@prompts/simplify.md\", model=\"claude-fable-5\", reasoning_effort=\"xhigh\"]\n    simplify_gpt      [label=\"Simplify (GPT-55)\", prompt=\"@prompts/simplify.md\", model=\"gpt-55\"]\n    verify            [label=\"Verify\", shape=parallelogram, timeout=\"1800s\", script=\"git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\\\"disabled\\\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1\", goal_gate=true, retry_target=\"fixup\"]\n    fixup             [label=\"Fixup\", prompt=\"The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures.\", max_visits=3]\n\n    start -> toolchain\n    toolchain -> preflight_compile [condition=\"outcome=succeeded\"]\n    toolchain -> exit\n    preflight_compile -> preflight_lint [condition=\"outcome=succeeded\"]\n    preflight_compile -> exit\n    preflight_lint -> implement [condition=\"outcome=succeeded\"]\n    preflight_lint -> fix_lints\n    fix_lints -> preflight_lint\n    implement -> simplify_fable -> simplify_gpt -> verify\n    verify -> exit  [condition=\"outcome=succeeded\"]\n    verify -> fixup\n    fixup -> verify\n}\n",
+    "workflow_slug": "implement-plan",
+    "source_directory": "/Users/swerner/Development/os/fabro-main/fabro",
+    "labels": {
+      "series": "redaction-v2"
+    },
+    "provenance": {
+      "server": {
+        "version": "0.287.0-nightly.0"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.267.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.267.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "138379"
+        },
+        "login": "swerner",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/138379?v=4"
+      }
+    },
+    "manifest_blob": "fa35e404d08794d3359be8fbe12eb98b7d19bfa123684bcf398761d779bb607c",
+    "definition_blob": "bcd770ef7aa52cfb357cb3fd428c3cd4f347571ccb88096deaed3150a40cfbbf",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "790762fb8ddb7c517e66adfaa8da02311280f2ac",
+      "dirty": "dirty",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KX1ND1A17YANW0E3FHSXKFRW",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-08T20:06:11.589154748Z",
+  "last_event_at": "2026-07-08T20:06:26.058716697Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-fdb28dec-1233-892c-b9d7-9f88f8353e7a",
+      "runtime": {
+        "id": "fabro-01KX1ND1A17YANW0E3FHSXKFRW",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
