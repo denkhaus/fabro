@@ -40,9 +40,10 @@ impl SecretRedactor {
 
     /// Redact all registered secret values from `s`.
     pub fn redact_into(&self, s: &str) -> String {
-        let Some(values) = self.values_snapshot() else {
+        let values = self.read();
+        if values.is_empty() {
             return s.to_string();
-        };
+        }
         redact_string_values(s, &values)
     }
 
@@ -50,11 +51,10 @@ impl SecretRedactor {
     ///
     /// Object keys and non-string values are left unchanged.
     pub fn redact_json(&self, mut value: Value) -> Value {
-        let Some(values) = self.values_snapshot() else {
-            return value;
-        };
-
-        redact_json_leaves(&mut value, &values);
+        let values = self.read();
+        if !values.is_empty() {
+            redact_json_leaves(&mut value, &values);
+        }
         value
     }
 
@@ -64,14 +64,6 @@ impl SecretRedactor {
 
     fn write(&self) -> RwLockWriteGuard<'_, Vec<String>> {
         self.values.write().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    fn values_snapshot(&self) -> Option<Vec<String>> {
-        let values = self.read();
-        if values.is_empty() {
-            return None;
-        }
-        Some(values.clone())
     }
 }
 

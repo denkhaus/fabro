@@ -160,33 +160,26 @@ async fn append_run_event(
     if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
         return response;
     }
-    let event = match RunEvent::from_value(value.clone()) {
-        Ok(event) => event,
-        Err(err) => {
-            return ApiError::bad_request(format!("Invalid run event: {err}")).into_response();
-        }
-    };
-    if event.run_id != id {
-        return ApiError::bad_request("Event run_id does not match path run ID.").into_response();
-    }
-    if let Some(denied) = denied_lifecycle_event_name(&event.body) {
-        return ApiError::bad_request(format!(
-            "{denied} is a lifecycle event; clients must call the corresponding operation endpoint instead of injecting it via append_run_event"
-        ))
-        .into_response();
-    }
-    let redacted_value = redact_json_value(value);
-    let payload = match EventPayload::new(redacted_value, &id) {
+    // Ingest trust boundary: content-redact before validation and storage so
+    // credential-shaped values from arbitrary clients never reach the store.
+    // `EventPayload::new` validates required fields and the run_id match, and
+    // the single parse below feeds both storage checks and the live-run update.
+    let payload = match EventPayload::new(redact_json_value(value), &id) {
         Ok(payload) => payload,
         Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
     };
     let event = match RunEvent::from_ref(payload.as_value()) {
         Ok(event) => event,
         Err(err) => {
-            return ApiError::bad_request(format!("Invalid redacted run event: {err}"))
-                .into_response();
+            return ApiError::bad_request(format!("Invalid run event: {err}")).into_response();
         }
     };
+    if let Some(denied) = denied_lifecycle_event_name(&event.body) {
+        return ApiError::bad_request(format!(
+            "{denied} is a lifecycle event; clients must call the corresponding operation endpoint instead of injecting it via append_run_event"
+        ))
+        .into_response();
+    }
 
     match state.stores.runs.open_run(&id).await {
         Ok(run_store) => match run_store.append_event(&payload).await {

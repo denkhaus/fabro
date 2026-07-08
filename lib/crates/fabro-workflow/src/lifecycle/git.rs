@@ -1305,7 +1305,7 @@ mod tests {
             Ok(Vec::new())
         }
 
-        async fn append_run_event(&self, _event: &RunEvent) -> Result<()> {
+        async fn append_run_event(&self, _event: &crate::event::RedactedRunEvent) -> Result<()> {
             Ok(())
         }
 

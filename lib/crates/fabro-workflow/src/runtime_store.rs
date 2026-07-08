@@ -3,17 +3,19 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
-use fabro_redact::SecretRedactor;
 use fabro_store::{EventEnvelope, RunDatabase, RunProjection};
-use fabro_types::{RunBlobId, RunEvent};
+use fabro_types::RunBlobId;
 
-use crate::event::build_redacted_event_payload;
+use crate::event::RedactedRunEvent;
 
 #[async_trait]
 pub trait RunStoreBackend: Send + Sync {
     async fn load_state(&self) -> Result<RunProjection>;
     async fn list_events(&self) -> Result<Vec<EventEnvelope>>;
-    async fn append_run_event(&self, event: &RunEvent) -> Result<()>;
+    /// Append an event that already passed the redaction pipeline. Taking
+    /// [`RedactedRunEvent`] keeps unredacted events out of every backend and
+    /// lets backends reuse the single redaction pass instead of re-running it.
+    async fn append_run_event(&self, event: &RedactedRunEvent) -> Result<()>;
     async fn write_blob(&self, data: &[u8]) -> Result<RunBlobId>;
     async fn read_blob(&self, id: &RunBlobId) -> Result<Option<Bytes>>;
     async fn read_run_log(&self) -> Result<Option<Vec<u8>>>;
@@ -43,7 +45,7 @@ impl RunStoreHandle {
         self.backend.list_events().await
     }
 
-    pub async fn append_run_event(&self, event: &RunEvent) -> Result<()> {
+    pub async fn append_run_event(&self, event: &RedactedRunEvent) -> Result<()> {
         self.backend.append_run_event(event).await
     }
 
@@ -83,14 +85,9 @@ impl RunStoreBackend for LocalRunStoreBackend {
             .map_err(anyhow::Error::from)
     }
 
-    async fn append_run_event(&self, event: &RunEvent) -> Result<()> {
-        // Local backends can be called from server/test paths that do not have a
-        // worker run registry. RunEventSink applies the per-run redactor before
-        // calling this backend during workflow execution.
-        let payload =
-            build_redacted_event_payload(event, &event.run_id, &SecretRedactor::default())?;
+    async fn append_run_event(&self, event: &RedactedRunEvent) -> Result<()> {
         self.run_store
-            .append_event(&payload)
+            .append_event(&event.payload()?)
             .await
             .map(|_| ())
             .map_err(anyhow::Error::from)
@@ -129,7 +126,7 @@ mod tests {
     use object_store::memory::InMemory;
 
     use super::RunStoreHandle;
-    use crate::event::{Event, append_event};
+    use crate::event::{Event, RedactedRunEvent, append_event};
     use crate::records::RunSpec;
 
     async fn test_run_store() -> fabro_store::RunDatabase {
@@ -223,7 +220,9 @@ mod tests {
                 definition_blob: None,
             }),
         };
-        handle.append_run_event(&event).await.unwrap();
+        let redacted =
+            RedactedRunEvent::new(&event, &fabro_redact::SecretRedactor::default()).unwrap();
+        handle.append_run_event(&redacted).await.unwrap();
 
         let blob_id = handle.write_blob(br#"{"ok":true}"#).await.unwrap();
         let blob = handle.read_blob(&blob_id).await.unwrap().unwrap();

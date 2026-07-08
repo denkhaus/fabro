@@ -10,7 +10,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot};
 
 use super::emitter::Emitter;
-use super::redaction::{build_redacted_event_payload, redacted_event_json, redacted_run_event};
+use super::redaction::{RedactedRunEvent, build_redacted_event_payload};
 use super::{Event, to_run_event};
 use crate::runtime_store::RunStoreHandle;
 
@@ -105,35 +105,68 @@ impl RunEventSink {
     }
 
     pub async fn write_run_event(&self, event: &RunEvent, redactor: &SecretRedactor) -> Result<()> {
-        let mut pending = vec![(self, event.clone())];
+        let mut pending = vec![(self, PendingEvent::Raw(event.clone()))];
         while let Some((sink, event)) = pending.pop() {
             match sink {
                 Self::Store(run_store) => {
-                    let event = redacted_run_event(&event, redactor)?;
-                    run_store.append_run_event(&event).await?;
+                    let redacted = event.into_redacted(redactor)?;
+                    run_store.append_run_event(&redacted).await?;
                 }
                 Self::JsonLines(writer) => {
-                    let line = redacted_event_json(&event, redactor)?;
+                    let line = event.into_redacted(redactor)?.json_line()?;
                     let mut writer = writer.lock().await;
                     writer.write_all(line.as_bytes()).await?;
                     writer.write_all(b"\n").await?;
                     writer.flush().await?;
                 }
                 Self::Callback(callback) => {
-                    let event = redacted_run_event(&event, redactor)?;
-                    callback(event).await?;
+                    callback(event.into_redacted(redactor)?.event().clone()).await?;
                 }
                 Self::Map { transform, inner } => {
-                    pending.push((inner.as_ref(), transform(event)));
+                    // A transform can add new fields, so its output re-enters
+                    // the pipeline as a raw event and is redacted downstream.
+                    pending.push((
+                        inner.as_ref(),
+                        PendingEvent::Raw(transform(event.into_run_event())),
+                    ));
                 }
                 Self::Composite(sinks) => {
+                    // Redact once and share the result with every branch.
+                    let redacted = event.into_redacted(redactor)?;
                     for sink in sinks.iter().rev() {
-                        pending.push((sink, event.clone()));
+                        pending.push((sink, PendingEvent::Redacted(Arc::clone(&redacted))));
                     }
                 }
             }
         }
         Ok(())
+    }
+}
+
+/// Worklist entry for [`RunEventSink::write_run_event`]: events are redacted at
+/// most once per fan-out and the shared result reused by every consumer.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Worklist entries stay inline to avoid boxing hot-path payloads."
+)]
+enum PendingEvent {
+    Raw(RunEvent),
+    Redacted(Arc<RedactedRunEvent>),
+}
+
+impl PendingEvent {
+    fn into_redacted(self, redactor: &SecretRedactor) -> Result<Arc<RedactedRunEvent>> {
+        match self {
+            Self::Raw(event) => Ok(Arc::new(RedactedRunEvent::new(&event, redactor)?)),
+            Self::Redacted(redacted) => Ok(redacted),
+        }
+    }
+
+    fn into_run_event(self) -> RunEvent {
+        match self {
+            Self::Raw(event) => event,
+            Self::Redacted(redacted) => redacted.event().clone(),
+        }
     }
 }
 
@@ -155,13 +188,12 @@ impl RunEventLogger {
     #[must_use]
     pub fn new(sink: RunEventSink, redactor: SecretRedactor) -> Self {
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let logger_redactor = redactor;
 
         tokio::spawn(async move {
             while let Some(command) = rx.recv().await {
                 match command {
                     RunEventCommand::Event(event) => {
-                        if let Err(err) = sink.write_run_event(&event, &logger_redactor).await {
+                        if let Err(err) = sink.write_run_event(&event, &redactor).await {
                             tracing::warn!(error = %err, "Failed to write run event");
                         }
                     }

@@ -263,7 +263,10 @@ mod tests {
             Ok(Vec::new())
         }
 
-        async fn append_run_event(&self, _event: &fabro_types::RunEvent) -> anyhow::Result<()> {
+        async fn append_run_event(
+            &self,
+            _event: &crate::event::RedactedRunEvent,
+        ) -> anyhow::Result<()> {
             Ok(())
         }
 

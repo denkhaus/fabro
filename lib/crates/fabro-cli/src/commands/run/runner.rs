@@ -26,7 +26,7 @@ use fabro_types::{
 };
 use fabro_vault::Vault;
 use fabro_workflow::artifact_upload::{ArtifactSink, StageArtifactUploader};
-use fabro_workflow::event::{Emitter, RunEventSink};
+use fabro_workflow::event::{Emitter, RedactedRunEvent, RunEventSink};
 use fabro_workflow::operations::{self, StartServices};
 use fabro_workflow::run_control::RunControlState;
 use fabro_workflow::runtime_store::{RunStoreBackend, RunStoreHandle};
@@ -178,12 +178,12 @@ pub(crate) async fn execute(
         fabro_run_tools,
     };
 
-    let execution = Box::pin(async {
+    let execution = async {
         match mode {
             RunWorkerMode::Start => operations::start(&run_dir, services).await,
             RunWorkerMode::Resume => operations::resume(&run_dir, services).await,
         }
-    });
+    };
 
     if let Some(mut control_manager) = control_manager {
         tokio::select! {
@@ -1005,7 +1005,8 @@ impl RunStoreBackend for HttpRunStore {
         Ok(events)
     }
 
-    async fn append_run_event(&self, event: &RunEvent) -> Result<()> {
+    async fn append_run_event(&self, event: &RedactedRunEvent) -> Result<()> {
+        let event = event.event();
         let seq = Box::pin(self.with_retries("append run event", || {
             let client = self.client.clone_for_reuse();
             let run_id = self.run_id;

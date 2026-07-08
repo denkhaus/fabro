@@ -14,13 +14,36 @@ pub fn build_redacted_event_payload(
     EventPayload::new(value, run_id).map_err(anyhow::Error::from)
 }
 
-pub fn redacted_event_json(event: &RunEvent, redactor: &SecretRedactor) -> Result<String> {
-    serde_json::to_string(&redacted_event_value(event, redactor)?).map_err(anyhow::Error::from)
+/// A run event passed through the full redaction pipeline exactly once.
+///
+/// The redacted JSON value feeds payload and JSON-line surfaces, and the typed
+/// event is reparsed from that same value, so every downstream consumer
+/// observes identical redacted data without re-running the redaction passes.
+pub struct RedactedRunEvent {
+    event: RunEvent,
+    value: Value,
 }
 
-pub(super) fn redacted_run_event(event: &RunEvent, redactor: &SecretRedactor) -> Result<RunEvent> {
-    let value = redacted_event_value(event, redactor)?;
-    RunEvent::from_ref(&value).context("Failed to reparse redacted event payload")
+impl RedactedRunEvent {
+    pub fn new(event: &RunEvent, redactor: &SecretRedactor) -> Result<Self> {
+        let value = redacted_event_value(event, redactor)?;
+        let event =
+            RunEvent::from_ref(&value).context("Failed to reparse redacted event payload")?;
+        Ok(Self { event, value })
+    }
+
+    #[must_use]
+    pub fn event(&self) -> &RunEvent {
+        &self.event
+    }
+
+    pub fn payload(&self) -> Result<EventPayload> {
+        EventPayload::new(self.value.clone(), &self.event.run_id).map_err(anyhow::Error::from)
+    }
+
+    pub fn json_line(&self) -> Result<String> {
+        serde_json::to_string(&self.value).map_err(anyhow::Error::from)
+    }
 }
 
 fn normalized_event_value(event: &RunEvent) -> Result<Value> {
@@ -40,10 +63,7 @@ fn redact_registered_secrets_in_event_value(value: &mut Value, redactor: &Secret
     }
 
     if let Some(Value::String(node_label)) = value.get_mut("node_label") {
-        let redacted = redactor.redact_into(node_label);
-        if redacted != *node_label {
-            *node_label = redacted;
-        }
+        *node_label = redactor.redact_into(node_label);
     }
 
     if let Some(properties) = value.get_mut("properties") {
@@ -271,7 +291,10 @@ mod tests {
             fabro_redact::redact_json_value(normalized_event_value(&stored).unwrap());
         let content_only_json = serde_json::to_string(&content_only).unwrap();
 
-        let with_empty_registry = redacted_event_json(&stored, &SecretRedactor::default()).unwrap();
+        let with_empty_registry = RedactedRunEvent::new(&stored, &SecretRedactor::default())
+            .unwrap()
+            .json_line()
+            .unwrap();
 
         assert_eq!(with_empty_registry, content_only_json);
     }
