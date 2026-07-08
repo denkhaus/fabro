@@ -6,12 +6,7 @@ import { FloatingTooltip } from "../components/floating-tooltip";
 import { RunSummaryPanel } from "../components/run-summary-panel";
 import { StagePopover } from "../components/stage-popover";
 import { StageSidebar } from "../components/stage-sidebar";
-import {
-  GRAPH_MAX_ZOOM,
-  GRAPH_MIN_ZOOM,
-  clampZoom,
-  zoomAtPoint,
-} from "../lib/graph-viewport";
+import { clampZoom, wheelZoomFactor, zoomAtPoint } from "../lib/graph-viewport";
 import { useElementEvent } from "../hooks/effects";
 import { useRememberedGraphView } from "../hooks/use-remembered-graph-view";
 import { GraphToolbar } from "../components/graph-toolbar";
@@ -37,12 +32,6 @@ function parseSourceDirection(source: string | undefined): Direction | undefined
   return value === "LR" || value === "TB" ? value : undefined;
 }
 
-// Toolbar +/- step. Using 1/1.25 for zoom-out keeps it symmetric with zoom-in.
-const GRAPH_ZOOM_BUTTON_FACTOR = 1.25;
-// How fast ⌘-scroll zooms; tune to taste. exp() keeps it symmetric and always above 0.
-const GRAPH_ZOOM_WHEEL_SENSITIVITY = 0.002;
-// Zoom toward the container center. The toolbar +/- buttons anchor here, not the cursor.
-const CENTER = { x: 0, y: 0 };
 // Non-passive so the wheel handler can call preventDefault on the browser's own ⌘-zoom.
 // Kept at module scope for a stable identity, since the effect resubscribes when its
 // options object changes.
@@ -97,8 +86,7 @@ export default function RunOverview() {
   });
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest("button")) return;
-    if ((e.target as HTMLElement).closest(".node")) return;
+    if (e.target instanceof Element && e.target.closest("button, .node")) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     dragState.current = { startX: e.clientX, startY: e.clientY, startPanX: view.pan.x, startPanY: view.pan.y };
   }, [view.pan]);
@@ -124,12 +112,11 @@ export default function RunOverview() {
   const onWheel = useCallback((e: WheelEvent) => {
     const el = containerRef.current;
     if (!el) return;
-    if ((e.target as HTMLElement).closest('[role="toolbar"]')) return;
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
       const r = el.getBoundingClientRect();
       const cursor = { x: e.clientX - (r.left + r.width / 2), y: e.clientY - (r.top + r.height / 2) };
-      setView((v) => zoomAtPoint(v, Math.exp(-e.deltaY * GRAPH_ZOOM_WHEEL_SENSITIVITY), cursor));
+      setView((v) => zoomAtPoint(v, wheelZoomFactor(e.deltaY), cursor));
     } else {
       setView((v) => ({ ...v, pan: { x: v.pan.x - e.deltaX, y: v.pan.y - e.deltaY } }));
     }
@@ -171,10 +158,8 @@ export default function RunOverview() {
               direction={activeDirection}
               setDirection={setDirection}
               fitToWindow={fitToWindow}
-              onZoomIn={() => setView((v) => zoomAtPoint(v, GRAPH_ZOOM_BUTTON_FACTOR, CENTER))}
-              onZoomOut={() => setView((v) => zoomAtPoint(v, 1 / GRAPH_ZOOM_BUTTON_FACTOR, CENTER))}
-              canZoomIn={view.zoom < GRAPH_MAX_ZOOM}
-              canZoomOut={view.zoom > GRAPH_MIN_ZOOM}
+              zoom={view.zoom}
+              onZoomBy={(factor) => setView((v) => zoomAtPoint(v, factor))}
             />
 
             <div

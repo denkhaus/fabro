@@ -4,6 +4,7 @@ import {
   GRAPH_MAX_ZOOM,
   GRAPH_MIN_ZOOM,
   clampZoom,
+  wheelZoomFactor,
   zoomAtPoint,
   type GraphView,
 } from "./graph-viewport";
@@ -54,4 +55,11 @@ test("clampZoom respects bounds", () => {
   expect(clampZoom(10)).toBe(GRAPH_MIN_ZOOM);
   expect(clampZoom(500)).toBe(GRAPH_MAX_ZOOM);
   expect(clampZoom(75)).toBe(75);
+});
+
+test("wheelZoomFactor is positive and symmetric: equal scrolls up and down cancel", () => {
+  expect(wheelZoomFactor(120)).toBeGreaterThan(0);
+  expect(wheelZoomFactor(120)).toBeLessThan(1); // scroll down zooms out
+  expect(wheelZoomFactor(-120)).toBeGreaterThan(1); // scroll up zooms in
+  expect(wheelZoomFactor(120) * wheelZoomFactor(-120)).toBeCloseTo(1);
 });

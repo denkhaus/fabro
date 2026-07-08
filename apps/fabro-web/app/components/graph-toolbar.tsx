@@ -1,23 +1,24 @@
 import { ArrowDownIcon, ArrowRightIcon, MinusIcon, PlusIcon } from "@heroicons/react/20/solid";
 
+import { GRAPH_MAX_ZOOM, GRAPH_MIN_ZOOM } from "../lib/graph-viewport";
+
 type Direction = "LR" | "TB";
+
+// +/- button step. Zoom-out uses the reciprocal, keeping it symmetric with zoom-in.
+const ZOOM_STEP_FACTOR = 1.25;
 
 export function GraphToolbar({
   direction,
   setDirection,
   fitToWindow,
-  onZoomIn,
-  onZoomOut,
-  canZoomIn,
-  canZoomOut,
+  zoom,
+  onZoomBy,
 }: {
   direction: Direction;
   setDirection: (d: Direction) => void;
   fitToWindow: () => void;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
-  canZoomIn: boolean;
-  canZoomOut: boolean;
+  zoom: number;
+  onZoomBy: (factor: number) => void;
 }) {
   const group =
     "flex items-center gap-0.5 px-0.5 [&:not(:first-child)]:border-l [&:not(:first-child)]:border-line-strong [&:not(:first-child)]:pl-1 [&:not(:first-child)]:ml-1";
@@ -70,8 +71,8 @@ export function GraphToolbar({
         <button
           type="button"
           title="Zoom out"
-          onClick={onZoomOut}
-          disabled={!canZoomOut}
+          onClick={() => onZoomBy(1 / ZOOM_STEP_FACTOR)}
+          disabled={zoom <= GRAPH_MIN_ZOOM}
           className={`${btn} ${btnDisabled}`}
         >
           <MinusIcon className="size-4" aria-hidden="true" />
@@ -79,8 +80,8 @@ export function GraphToolbar({
         <button
           type="button"
           title="Zoom in"
-          onClick={onZoomIn}
-          disabled={!canZoomIn}
+          onClick={() => onZoomBy(ZOOM_STEP_FACTOR)}
+          disabled={zoom >= GRAPH_MAX_ZOOM}
           className={`${btn} ${btnDisabled}`}
         >
           <PlusIcon className="size-4" aria-hidden="true" />

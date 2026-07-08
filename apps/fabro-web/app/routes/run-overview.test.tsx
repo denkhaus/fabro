@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import TestRenderer, { act } from "react-test-renderer";
 import { MemoryRouter, Route, Routes } from "react-router";
 
 import { ApiError } from "../lib/api-client";
+import { setupReactTestEnv } from "../lib/test-utils";
 
 let currentGraphData: string | null | undefined;
 let currentGraphError: Error | undefined;
@@ -44,8 +45,9 @@ function textFromNode(
   return (node.children ?? []).map(textFromNode).join(" ");
 }
 
+// Zooming writes to useRememberedGraphView's module-scoped store, so tests that
+// change the viewport must each use a run id no other test zooms.
 function renderAt(entry: string): TestRenderer.ReactTestRenderer {
-  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   let renderer!: TestRenderer.ReactTestRenderer;
   act(() => {
     renderer = TestRenderer.create(
@@ -78,6 +80,12 @@ function clickTitle(renderer: TestRenderer.ReactTestRenderer, title: string): vo
   });
 }
 
+let teardownReactTestEnv: () => void;
+
+beforeEach(() => {
+  teardownReactTestEnv = setupReactTestEnv();
+});
+
 afterEach(() => {
   for (const renderer of mountedRenderers.splice(0)) {
     act(() => renderer.unmount());
@@ -86,7 +94,7 @@ afterEach(() => {
   currentGraphError = undefined;
   currentGraphLoading = false;
   graphMutateMock.mockClear();
-  delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+  teardownReactTestEnv();
 });
 
 describe("RunOverview", () => {

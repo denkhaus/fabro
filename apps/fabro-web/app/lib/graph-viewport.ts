@@ -8,21 +8,30 @@
 
 export const GRAPH_MIN_ZOOM = 25; // percent; the clamp bounds. Widen if you want more range.
 export const GRAPH_MAX_ZOOM = 200;
-// Initial zoom shown when a graph first loads, in percent.
-export const GRAPH_DEFAULT_ZOOM = 75;
 
 export type GraphView = { zoom: number; pan: { x: number; y: number } };
 
-export const DEFAULT_GRAPH_VIEW: GraphView = { zoom: GRAPH_DEFAULT_ZOOM, pan: { x: 0, y: 0 } };
+// Initial viewport shown when a graph first loads: 75% zoom, centered.
+export const DEFAULT_GRAPH_VIEW: GraphView = { zoom: 75, pan: { x: 0, y: 0 } };
 
 export const clampZoom = (zoom: number): number =>
   Math.min(GRAPH_MAX_ZOOM, Math.max(GRAPH_MIN_ZOOM, zoom));
 
+// How fast wheel/pinch input zooms; tune to taste.
+const WHEEL_SENSITIVITY = 0.002;
+
+/**
+ * Zoom factor for a wheel event's `deltaY`, for feeding into `zoomAtPoint`.
+ * exp() keeps equal scrolls up and down exact inverses and the factor above 0.
+ */
+export const wheelZoomFactor = (deltaY: number): number =>
+  Math.exp(-deltaY * WHEEL_SENSITIVITY);
+
 /**
  * Scale `view.zoom` by `factor`, keeping the content point under `cursor` fixed on
  * screen. `cursor` is measured from the container CENTER (matching the graph's
- * `transform-origin: center center`); pass {x:0,y:0} to zoom toward the center, which
- * is what the toolbar +/- buttons want.
+ * `transform-origin: center center`) and defaults to it, which is what the toolbar
+ * +/- buttons want.
  *
  * Derivation: with `translate(pan) scale(s)` about the center, a content point at
  * pre-transform offset q sits at screen offset `pan + s*q`. Holding the point under
@@ -31,7 +40,7 @@ export const clampZoom = (zoom: number): number =>
 export function zoomAtPoint(
   view: GraphView,
   factor: number,
-  cursor: { x: number; y: number },
+  cursor: { x: number; y: number } = { x: 0, y: 0 },
 ): GraphView {
   const zoom = clampZoom(view.zoom * factor);
   const k = zoom / view.zoom; // applied ratio after clamping

@@ -11,7 +11,7 @@ import { DEFAULT_GRAPH_VIEW, type GraphView } from "../lib/graph-viewport";
 const graphViewByRun = new Map<string, GraphView>();
 
 const loadGraphView = (runId: string | undefined): GraphView =>
-  graphViewByRun.get(runId ?? "") ?? DEFAULT_GRAPH_VIEW;
+  (runId ? graphViewByRun.get(runId) : undefined) ?? DEFAULT_GRAPH_VIEW;
 
 /**
  * Synchronizes a run's graph viewport with the session-scoped store above, so the
