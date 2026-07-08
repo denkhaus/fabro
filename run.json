@@ -496,14 +496,112 @@
     }
   },
   "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KX1ND1A17YANW0E3FHSXKFRW",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-07-08T20:06:26.423911909Z",
+    "run_branch": "fabro/run/01KX1ND1A17YANW0E3FHSXKFRW",
+    "base_sha": "790762fb8ddb7c517e66adfaa8da02311280f2ac"
   },
-  "status_updated_at": "2026-07-08T20:06:11.589154748Z",
-  "last_event_at": "2026-07-08T20:06:26.058716697Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-07-08T20:06:26.423953056Z",
+  "last_event_at": "2026-07-08T20:06:28.147384915Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 20,
+      "checkpoint": {
+        "timestamp": "2026-07-08T20:06:28.147265568Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "outcome": "succeeded",
+          "internal.thread_id": null,
+          "graph.rankdir": "LR",
+          "graph.goal": "# PR 1 — Delete unused provenance tracking from config interpolation\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. It is one of a series of independent secrets/\nredaction PRs, but this one depends on none of the others and none of them\ndepend on its internals — it can land first, last, or in parallel.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME`, `vars.NAME` as the double-curly-brace token\n> form used in the codebase, and write the real double-brace syntax in any\n> code, tests, and docs you produce.\n\n## Context and goal\n\nFabro config strings (`InterpString`, `lib/crates/fabro-types/src/settings/interp.rs`)\nresolve `env.NAME` / `secrets.NAME` / `vars.NAME` tokens. Resolution currently\nreturns a `Resolved { value, provenance }` struct, where `Provenance` is\n`Literal` or `Sourced { env_names, secret_names }` — metadata recording which\nenv vars / secrets contributed to a resolved value.\n\nThat provenance metadata was scaffolding for a \"provenance-based redaction\"\ndesign that was **never implemented and has since been rejected**: the project\nredacts secrets by (a) content-based pattern/entropy matching (`fabro-redact`)\nand (b) registering resolved secret *values* into a per-run exact-match\nregistry (`fabro_redact::SecretRedactor`). Analysis conclusion (for the module\ndoc, in plain English): origin-tagging on resolved values cannot reach the\nsurfaces where secrets actually leak — subprocess stdout/stderr, diffs, tool\noutput — because by then the value is plain text emitted by another process;\nexact-value matching reaches all of them. Provenance adds no coverage on top,\nso tracking it is dead weight, and keeping the enum invites a future\ncontributor to wire it up against the design decision. The team's accepted\ntype-level approach is different and complementary: wrap secret *values* in\ntypes whose `Display`/`Debug`/`Serialize` emit a redacted form (a separate\nchange) — value-typing at the source, not origin-tracking on resolved strings.\n\n**Goal: remove the provenance tracking entirely. Zero behavior change.**\n\n## Verified current state (as of main `8c3f035ea`, 2026-07-08 — re-verify before starting)\n\n- `lib/crates/fabro-types/src/settings/interp.rs` contains:\n  - `pub struct Resolved { pub value: String, pub provenance: Provenance }`\n  - `pub enum Provenance { Literal, Sourced { env_names: Vec<String>, secret_names: Vec<String> } }`\n  - `Provenance::from_names(...)`\n  - name-accumulation code inside `resolve_with` (collects `env_names` /\n    `secret_names` while resolving segments, ~lines 289–312)\n  - a module-doc sentence: \"Provenance tracking lets outward-facing renderers\n    redact env- and secret-sourced values uniformly.\"\n  - unit tests asserting `resolved.provenance == ...`\n- **Zero production consumers**: every caller of `resolve` / `resolve_with`\n  does `.map(|resolved| resolved.value)` or reads `.value` only. Verify with:\n  `rg -n '\\.provenance' lib/crates --glob '!**/interp.rs'` — expect no hits\n  (matches on `RunClientProvenance` / `RunServerProvenance` / run-spec\n  `provenance` fields are an **unrelated** run-metadata concept; do not touch\n  those).\n\n## Implementation\n\n1. **Collapse the return type.** Change `resolve` and `resolve_with` to return\n   `Result<String, ResolveError>` directly. Delete `Resolved` (a one-field\n   wrapper earns nothing). If a caller genuinely needs a named type, fall back\n   to keeping `Resolved { value }` only — not expected.\n2. **Sweep the callers mechanically.** Each `.map(|resolved| resolved.value)`\n   becomes the identity / disappears. Known caller areas: the hooks executor\n   (`lib/crates/fabro-hooks/src/executor.rs`, `resolve_interp`), fabro-auth\n   resolvers, fabro-server interp helpers, and the run-boundary resolvers in\n   `lib/crates/fabro-workflow/src/operations/start.rs`. Let the compiler find\n   the rest.\n3. **Delete** `Provenance`, `from_names`, and the name-accumulation code in\n   `resolve_with`.\n4. **Migrate the tests**: keep every value/error assertion in the provenance\n   tests; drop only the provenance assertions themselves.\n5. **Fix the module doc**: delete the provenance sentence; replace with one\n   line stating the actual model — declared-secret values are registered into\n   a per-run redactor where secrets resolve; sensitivity is not tracked on\n   resolved values. (If the registration wiring has not merged yet, phrase as\n   design intent, not shipped fact.)\n6. **Final sweep**: `rg -n 'Provenance' lib/crates` must return only the\n   unrelated run-metadata types (`RunClientProvenance`, `RunServerProvenance`,\n   run-spec `provenance` fields, and their API/test mirrors).\n\n## Tests\n\nNo new behavior, so no new tests: the deliverable is that the existing resolve\nand substitute test suites pass with value-only assertions and the workspace\ncompiles with the collapsed return type.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- No OpenAPI/wire change: `docs/public/api-reference/fabro-api.yaml` untouched;\n  TypeScript client unaffected.\n\n## Conventions\n\n- Plain-English commit message and PR text describing what the change does\n  (e.g. \"remove unused provenance tracking from config interpolation\") — no\n  internal planning identifiers or plan-file names in anything that ships.\n- PR description should state: the metadata was never consumed; the redaction\n  design it anticipated was superseded by per-run exact-value registration;\n  zero behavior change.\n",
+          "internal.run_id": "01KX1ND1A17YANW0E3FHSXKFRW",
+          "failure_signature": "",
+          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
+          "internal.fidelity": "compact",
+          "current_node": "start",
+          "failure_class": "",
+          "internal.node_visit_count": 1
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "toolchain",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-08T20:06:29.457388846Z",
+        "current_node": "toolchain",
+        "completed_nodes": [
+          "start",
+          "toolchain"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1",
+          "graph.goal": "# PR 1 — Delete unused provenance tracking from config interpolation\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. It is one of a series of independent secrets/\nredaction PRs, but this one depends on none of the others and none of them\ndepend on its internals — it can land first, last, or in parallel.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME`, `vars.NAME` as the double-curly-brace token\n> form used in the codebase, and write the real double-brace syntax in any\n> code, tests, and docs you produce.\n\n## Context and goal\n\nFabro config strings (`InterpString`, `lib/crates/fabro-types/src/settings/interp.rs`)\nresolve `env.NAME` / `secrets.NAME` / `vars.NAME` tokens. Resolution currently\nreturns a `Resolved { value, provenance }` struct, where `Provenance` is\n`Literal` or `Sourced { env_names, secret_names }` — metadata recording which\nenv vars / secrets contributed to a resolved value.\n\nThat provenance metadata was scaffolding for a \"provenance-based redaction\"\ndesign that was **never implemented and has since been rejected**: the project\nredacts secrets by (a) content-based pattern/entropy matching (`fabro-redact`)\nand (b) registering resolved secret *values* into a per-run exact-match\nregistry (`fabro_redact::SecretRedactor`). Analysis conclusion (for the module\ndoc, in plain English): origin-tagging on resolved values cannot reach the\nsurfaces where secrets actually leak — subprocess stdout/stderr, diffs, tool\noutput — because by then the value is plain text emitted by another process;\nexact-value matching reaches all of them. Provenance adds no coverage on top,\nso tracking it is dead weight, and keeping the enum invites a future\ncontributor to wire it up against the design decision. The team's accepted\ntype-level approach is different and complementary: wrap secret *values* in\ntypes whose `Display`/`Debug`/`Serialize` emit a redacted form (a separate\nchange) — value-typing at the source, not origin-tracking on resolved strings.\n\n**Goal: remove the provenance tracking entirely. Zero behavior change.**\n\n## Verified current state (as of main `8c3f035ea`, 2026-07-08 — re-verify before starting)\n\n- `lib/crates/fabro-types/src/settings/interp.rs` contains:\n  - `pub struct Resolved { pub value: String, pub provenance: Provenance }`\n  - `pub enum Provenance { Literal, Sourced { env_names: Vec<String>, secret_names: Vec<String> } }`\n  - `Provenance::from_names(...)`\n  - name-accumulation code inside `resolve_with` (collects `env_names` /\n    `secret_names` while resolving segments, ~lines 289–312)\n  - a module-doc sentence: \"Provenance tracking lets outward-facing renderers\n    redact env- and secret-sourced values uniformly.\"\n  - unit tests asserting `resolved.provenance == ...`\n- **Zero production consumers**: every caller of `resolve` / `resolve_with`\n  does `.map(|resolved| resolved.value)` or reads `.value` only. Verify with:\n  `rg -n '\\.provenance' lib/crates --glob '!**/interp.rs'` — expect no hits\n  (matches on `RunClientProvenance` / `RunServerProvenance` / run-spec\n  `provenance` fields are an **unrelated** run-metadata concept; do not touch\n  those).\n\n## Implementation\n\n1. **Collapse the return type.** Change `resolve` and `resolve_with` to return\n   `Result<String, ResolveError>` directly. Delete `Resolved` (a one-field\n   wrapper earns nothing). If a caller genuinely needs a named type, fall back\n   to keeping `Resolved { value }` only — not expected.\n2. **Sweep the callers mechanically.** Each `.map(|resolved| resolved.value)`\n   becomes the identity / disappears. Known caller areas: the hooks executor\n   (`lib/crates/fabro-hooks/src/executor.rs`, `resolve_interp`), fabro-auth\n   resolvers, fabro-server interp helpers, and the run-boundary resolvers in\n   `lib/crates/fabro-workflow/src/operations/start.rs`. Let the compiler find\n   the rest.\n3. **Delete** `Provenance`, `from_names`, and the name-accumulation code in\n   `resolve_with`.\n4. **Migrate the tests**: keep every value/error assertion in the provenance\n   tests; drop only the provenance assertions themselves.\n5. **Fix the module doc**: delete the provenance sentence; replace with one\n   line stating the actual model — declared-secret values are registered into\n   a per-run redactor where secrets resolve; sensitivity is not tracked on\n   resolved values. (If the registration wiring has not merged yet, phrase as\n   design intent, not shipped fact.)\n6. **Final sweep**: `rg -n 'Provenance' lib/crates` must return only the\n   unrelated run-metadata types (`RunClientProvenance`, `RunServerProvenance`,\n   run-spec `provenance` fields, and their API/test mirrors).\n\n## Tests\n\nNo new behavior, so no new tests: the deliverable is that the existing resolve\nand substitute test suites pass with value-only assertions and the workspace\ncompiles with the collapsed return type.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- No OpenAPI/wire change: `docs/public/api-reference/fabro-api.yaml` untouched;\n  TypeScript client unaffected.\n\n## Conventions\n\n- Plain-English commit message and PR text describing what the change does\n  (e.g. \"remove unused provenance tracking from config interpolation\") — no\n  internal planning identifiers or plan-file names in anything that ships.\n- PR description should state: the metadata was never consumed; the redaction\n  design it anticipated was superseded by per-run exact-value registration;\n  zero behavior change.\n",
+          "internal.fidelity": "compact",
+          "internal.retry_count.start": 0,
+          "thread.start.current_node": "toolchain",
+          "graph.rankdir": "LR",
+          "failure_class": "",
+          "internal.node_visit_count": 1,
+          "internal.thread_id": "start",
+          "internal.run_id": "01KX1ND1A17YANW0E3FHSXKFRW",
+          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
+          "current_node": "toolchain",
+          "internal.retry_count.toolchain": 0,
+          "failure_signature": "",
+          "outcome": "succeeded"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1305,
+              "active_time_ms": 1305
+            }
+          }
+        },
+        "next_node_id": "preflight_compile",
+        "node_visits": {
+          "start": 1,
+          "toolchain": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -529,5 +627,67 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-08T20:06:28.147159868Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-08T20:06:28.147024162Z",
+      "handler": "start",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    },
+    "toolchain@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "command": "exec 2>&1\ncommand -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "language": "shell"
+      },
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-08T20:06:28.147359371Z",
+      "handler": "command",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
+    }
+  }
 }
