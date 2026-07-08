@@ -1,0 +1,533 @@
+{
+  "title": "PR 2 — Register declared secrets at the run boundary; redact them from events and errors",
+  "spec": {
+    "run_id": "01KX1P0VV0DAQTT0N2NADX8J8J",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "# PR 2 — Register declared secrets at the run boundary; redact them from events and errors\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. It is the spine of a series of secrets/\nredaction PRs; it has **no prerequisites** beyond what is already merged on\nmain. (Two merged foundations it builds on: `fabro_redact::SecretRedactor`\nexists, and `secrets.NAME` tokens already resolve from the vault at the run\nboundary.)\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME` as the double-curly-brace token form used in\n> the codebase, and write the real double-brace syntax in the code, tests, and\n> docs you produce.\n\n## Context and goal\n\nFabro workflows can declare vault secrets in run config via `secrets.NAME`\ntokens (MCP transport env, run-environment env, prepare-step commands/env,\ndocker config). Those tokens resolve server-side at the run boundary in\n`RunSession::new`. Redaction of run output (events, `progress.jsonl`, error\ntext) is currently **content-based only**: pattern + entropy matching in\n`fabro-redact`. Content-based matching is structurally blind to a *declared*\nsecret whose value looks ordinary — e.g. a secret whose value is `staging`,\n`db-prod-3`, or `hunter2` trips neither entropy nor any pattern rule, and\ntoday leaks **verbatim** into emitted events and error messages. That is a\nlive gap: the user explicitly declared the value secret, and the system does\nnot honor it.\n\n**Goal:** register every resolved declared-secret value into a per-run\nexact-match registry at the single place secrets resolve, and apply that\nregistry (composed after the content-based pass) to the run's structured\noutput surfaces: emitted events and setup-failure error text.\n\nDesign rules (fixed — the \"why\" for each is inline):\n\n1. **One registration point.** Every secret value flows through the one\n   boundary lookup closure, so registering there yields a registry that is\n   complete before the run emits anything. No other code path may register\n   values (no per-subsystem or fire-time registration — that was the\n   architectural flaw of a previous, abandoned attempt).\n2. **Per-run, never global.** A test-only in-process path executes multiple\n   runs in one process; redaction state must be per-run (`SecretRedactor` is\n   already built for this: cheap-clone shared state).\n3. **Compose after the content pass.** Content-based redaction stays the\n   universal baseline (it also catches credential-shaped values nobody\n   declared, e.g. from `env.NAME`); the exact-match pass layers on top.\n4. **Single entry point per surface.** Do NOT ship parallel \"content-only\" and\n   \"content+exact-match\" variants of the same redaction API — a caller holding\n   the run redactor could silently pick the weaker one. Every event-redaction\n   call takes a `&SecretRedactor`; an empty redactor is the identity. A call\n   site with genuinely no run scope passes `SecretRedactor::default()` **with\n   a comment stating why no run secret can reach that surface**.\n5. **Scope exact-match substitution to free-form-text fields.** Registered\n   values can be low-entropy words; blind substitution across every event\n   field would corrupt structural values (status enums, ids, event names) that\n   legitimately contain the same word, breaking the typed event reparse.\n   Restrict the exact-match walk to an explicit list of free-form-text\n   property keys (see step 3). Keep the list minimal and comment it as an\n   interim mechanism: a follow-up will derive it from field types. Do not\n   build guard machinery around it.\n6. **Ingest enforces; reads trust (team decision).** The architecture is:\n   redact at the source (worker — this plan's registry + the existing content\n   pass), enforce once more with a pattern-based pass where data enters shared\n   storage (the server can only do pattern-based; it has no registry), and\n   trust everywhere downstream. Do NOT add or extend any redaction on read\n   paths (SSE, event detail, CLI rendering) in this PR — a separate change\n   removes the existing read-side passes. If you find a read path missing\n   data cleanliness, the fix belongs at source or ingest, never at output.\n\n## Verified current state (as of main `8c3f035ea`, 2026-07-08 — re-verify before starting)\n\n- `lib/crates/fabro-redact/src/secret_registry.rs`: `SecretRedactor` —\n  `register(value)` (ignores empty/whitespace, dedups), `redact_into(&str)`\n  (longest-first, replaces with the crate's `REDACTED` marker),\n  `redact_json(Value)`, `is_empty()`; `Clone` + `Default`; shared interior\n  state so clones observe registrations. **Currently has zero consumers.**\n- `lib/crates/fabro-workflow/src/operations/start.rs:383`:\n  `let secret_lookup = |name: &str| vault_token_lookup(vault_guard.as_deref(), name);`\n  — consumed at `:390` (MCP servers), `:422` (docker config), `:446`\n  (run-environment env), `:465` (prepare steps). Resolves; registers nothing.\n- `lib/crates/fabro-workflow/src/event/redaction.rs`:\n  `build_redacted_event_payload` / `redacted_event_json` apply\n  `redact_json_value(normalize_json_value(...))` — content-based only.\n- `lib/crates/fabro-workflow/src/pipeline/initialize.rs`: on prepare-step\n  failure, constructs an error string embedding the resolved command and\n  captured stderr, and emits `SetupCommandStarted` / `SetupCompleted` /\n  `SetupFailed` events carrying resolved command text and exec-output tails.\n- Event flow: emitter → run-event logger/sink (`event/sink.rs`,\n  `runtime_store.rs` local run-store path) → stored payloads / SSE.\n\n## Implementation\n\n1. **Registry creation + registration** (`operations/start.rs`):\n   - Create one `SecretRedactor` per run in `RunSession::new`; store it on\n     `RunSession`.\n   - Add `registered_vault_token_lookup(vault, &redactor, name)`: call\n     `vault_token_lookup`, `register()` any returned value, return it. Swap\n     the closure at `:383` to use it. All four consumers now feed the registry\n     with no further changes.\n2. **Thread the redactor to the event path.** Give the event sink / run-event\n   logger the run's redactor (cheap clone) so every emitted event passes\n   through the exact-match pass. Follow the existing wiring of the sink in\n   `RunSession` (the logger is constructed there); make sure the local\n   run-store backend receives redacted payloads too, and that anything\n   reparsing to a typed event does so from the redacted payload so downstream\n   sinks never see the raw value.\n3. **Exact-match pass in `event/redaction.rs`**, composed after the content\n   pass, skipped entirely when `redactor.is_empty()`:\n   - Walk the event's `properties` object. For keys in the free-form-text\n     list, apply `redactor.redact_json` to the whole subtree; for other keys,\n     recurse (to reach nested listed keys such as `exec_output_tail.stderr`).\n     Also apply `redact_into` to the top-level `node_label` string.\n   - Free-form-text keys (grouped; keep as one `matches!`): command/script\n     I/O: `command`, `script`, `stdout`, `stderr`, `output`, `input`,\n     `arguments`, `exec_output_tail`, `tool_input`, `tool_output`; agent/LLM\n     text: `prompt`, `response`, `answer`, `question`, `delta`, `text`,\n     `message`, `reason`, `notes`, `preview`; errors: `error`,\n     `error_message`, `failure`, `causes`, `details`, `description`;\n     diffs/config: `diff`, `final_patch`, `workflow_config`,\n     `workflow_source`; metadata text: `goal`, `subject`, `title`. Comment the\n     list with: why it exists (low-entropy values vs structural fields) and\n     that new free-form event fields must be added here until the\n     type-derived replacement lands.\n4. **Setup-failure error text** (`pipeline/initialize.rs`): pass the\n   constructed failure message through `redactor.redact_into` before it\n   becomes an `Error`. Thread the redactor into the initialize options along\n   whatever path the session already passes options.\n5. **Ingest-boundary pattern pass (server).** Locate where worker-shipped\n   events and persisted run logs enter shared storage on the server (the\n   HTTP event-append path the worker's run-store client posts to, plus any\n   server-side log persistence). Verify whether a content-based pass runs\n   there today; where it does not, apply `redact_json_value` /\n   `redact_jsonl_line` at that ingest point, before the write. This is\n   defense in depth for storage cleanliness — the server has no per-run\n   registry, so pattern-based is the only pass it can perform. Content-based\n   redaction is idempotent, so double application with the worker-side pass\n   is harmless.\n6. **Docs** (`docs/public/` run-configuration page): declared secrets are\n   redacted regardless of shape on the run's structured surfaces (events,\n   `progress.jsonl`, setup errors); command output is covered by content-based\n   redaction plus exact-match where captured into those surfaces. State the\n   boundary honestly — once a secret enters sandbox process env, text the\n   sandbox re-emits is covered only where it is captured back into structured\n   surfaces; do not claim a total guarantee.\n\n## Tests (write failing-first; hermetic — temp-dir vaults, no ambient provider keys)\n\n- A prepare step that fails while echoing a **low-entropy** declared secret\n  (value `staging`) produces a `setup.failed` event and a run error in which\n  the value is replaced by `REDACTED` — and a structural field legitimately\n  containing the same word is untouched.\n- After a run with declared secrets, no resolved secret value appears anywhere\n  in the serialized stored events (scan the full `list_events` output).\n- Content-based baseline unchanged: a high-entropy credential-shaped string in\n  output is still redacted with an **empty** registry.\n- Per-run isolation: two `RunSession`s in one process — each redacts its own\n  registered value and not the other's.\n- Empty registry fast path: event serialization is byte-identical to the\n  current content-only output.\n- Registration is boundary-time: a declared secret consumed only by MCP/prepare\n  config is redacted from an event emitted before any stage runs.\n- Ingest enforcement: an event posted to the server's append path containing a\n  credential-shaped string is stored with that string redacted (pattern pass at\n  ingest), independent of what the producer did.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- `cargo dev docs check` (docs page touched)\n- No OpenAPI/wire change; TypeScript client untouched.\n\n## Conventions\n\n- Never print or log a resolved secret value, including from tests.\n- Plain-English commit messages, PR text, and code comments — describe what\n  the change does; no internal planning identifiers or plan-file names in\n  anything that ships.\n- PR description must state: the user-visible guarantee added (declared\n  secrets redacted regardless of shape on structured surfaces), the known\n  boundary (sandbox-crossing text covered where captured; live stream is a\n  separate effort), and that exec-output tails are a follow-up surface.\n"
+        },
+        "working_dir": null,
+        "metadata": {
+          "series": "redaction-v2"
+        },
+        "inputs": {},
+        "model": {
+          "provider": "anthropic",
+          "name": "claude-sonnet-4-6",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "fabro-dev",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        curl git ripgrep ca-certificates build-essential pkg-config libssl-dev unzip python3 \\\n        xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \\\n        libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6 \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install real Chromium (not the snap stub) via xtradeb PPA\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        software-properties-common curl gnupg \\\n    && add-apt-repository -y ppa:xtradeb/apps \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends chromium \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Wrapper: Chromium needs --no-sandbox when running as root in a container,\n# and --disable-dev-shm-usage avoids crashes from small /dev/shm\nRUN printf '#!/bin/bash\\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"$@\"\\n' \\\n        > /usr/local/bin/chromium-wrapper \\\n    && chmod +x /usr/local/bin/chromium-wrapper\n\n# Make the wrapper the default in the system .desktop file and via alternatives\nRUN sed -i 's|^Exec=.*|Exec=/usr/local/bin/chromium-wrapper %U|' \\\n        /usr/share/applications/chromium.desktop \\\n    && update-alternatives --install /usr/bin/x-www-browser x-www-browser \\\n        /usr/local/bin/chromium-wrapper 100\n\n# Tell XFCE's exo-open that Chromium is the WebBrowser helper (system-wide)\nRUN mkdir -p /etc/xdg/xfce4 /usr/share/xfce4/helpers \\\n    && printf 'WebBrowser=custom-WebBrowser\\n' > /etc/xdg/xfce4/helpers.rc \\\n    && printf '[Desktop Entry]\\n\\\nVersion=1.0\\n\\\nType=X-XFCE-Helper\\n\\\nName=Chromium\\n\\\nIcon=chromium\\n\\\nX-XFCE-Category=WebBrowser\\n\\\nX-XFCE-CommandsWithParameter=/usr/local/bin/chromium-wrapper \"%%s\"\\n\\\nX-XFCE-Commands=/usr/local/bin/chromium-wrapper\\n' \\\n        > /usr/share/xfce4/helpers/custom-WebBrowser.desktop\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" \\\n        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update && apt-get install -y --no-install-recommends gh \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": "20GB"
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": "30m"
+          },
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "env": {}
+        },
+        "notifications": {},
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": false,
+          "merge_strategy": "squash"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "ImplementPlan",
+      "nodes": {
+        "toolchain": {
+          "id": "toolchain",
+          "attrs": {
+            "label": {
+              "String": "Toolchain"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "script": {
+              "String": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        },
+        "fixup": {
+          "id": "fixup",
+          "attrs": {
+            "prompt": {
+              "String": "The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures."
+            },
+            "label": {
+              "String": "Fixup"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "provider": {
+              "String": "anthropic"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "label": {
+              "String": "Start"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "provider": {
+              "String": "anthropic"
+            }
+          }
+        },
+        "simplify_gpt": {
+          "id": "simplify_gpt",
+          "attrs": {
+            "label": {
+              "String": "Simplify (GPT-55)"
+            },
+            "provider": {
+              "String": "openai"
+            },
+            "model": {
+              "String": "gpt-5.5"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changes for reuse, quality, and efficiency. Fix any issues found. Feel free to use any sub agents you need.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation. (You may already have the changes in context, if so, feel free to skip this part)\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            }
+          }
+        },
+        "fix_lints": {
+          "id": "fix_lints",
+          "attrs": {
+            "max_visits": {
+              "Integer": 3
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "prompt": {
+              "String": "The preflight lint step failed. Read the build output from context and fix all clippy lint warnings."
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Fix Lints"
+            }
+          }
+        },
+        "preflight_compile": {
+          "id": "preflight_compile",
+          "attrs": {
+            "max_retries": {
+              "Integer": 0
+            },
+            "label": {
+              "String": "Preflight Compile"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "script": {
+              "String": "cargo check -q --workspace 2>&1"
+            }
+          }
+        },
+        "preflight_lint": {
+          "id": "preflight_lint",
+          "attrs": {
+            "script": {
+              "String": "cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "label": {
+              "String": "Preflight Lint"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            }
+          }
+        },
+        "verify": {
+          "id": "verify",
+          "attrs": {
+            "retry_target": {
+              "String": "fixup"
+            },
+            "label": {
+              "String": "Verify"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "goal_gate": {
+              "Boolean": true
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "script": {
+              "String": "git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1"
+            },
+            "timeout": {
+              "Duration": {
+                "secs": 1800,
+                "nanos": 0
+              }
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "shape": {
+              "String": "Msquare"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Exit"
+            }
+          }
+        },
+        "implement": {
+          "id": "implement",
+          "attrs": {
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "model": {
+              "String": "gpt-5.5"
+            },
+            "label": {
+              "String": "Implement"
+            },
+            "provider": {
+              "String": "openai"
+            },
+            "prompt": {
+              "String": "Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD. Be sure to use the rust-style-guide skill to help you follow this repo's Rust style conventions."
+            }
+          }
+        },
+        "simplify_fable": {
+          "id": "simplify_fable",
+          "attrs": {
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changes for reuse, quality, and efficiency. Fix any issues found. Feel free to use any sub agents you need.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation. (You may already have the changes in context, if so, feel free to skip this part)\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "model": {
+              "String": "claude-fable-5"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Simplify (Fable)"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "toolchain",
+          "attrs": {}
+        },
+        {
+          "from": "toolchain",
+          "to": "preflight_compile",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "toolchain",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_compile",
+          "to": "preflight_lint",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_compile",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_lint",
+          "to": "implement",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_lint",
+          "to": "fix_lints",
+          "attrs": {}
+        },
+        {
+          "from": "fix_lints",
+          "to": "preflight_lint",
+          "attrs": {}
+        },
+        {
+          "from": "implement",
+          "to": "simplify_fable",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_fable",
+          "to": "simplify_gpt",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_gpt",
+          "to": "verify",
+          "attrs": {}
+        },
+        {
+          "from": "verify",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "verify",
+          "to": "fixup",
+          "attrs": {}
+        },
+        {
+          "from": "fixup",
+          "to": "verify",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "rankdir": {
+          "String": "LR"
+        },
+        "goal": {
+          "String": "# PR 2 — Register declared secrets at the run boundary; redact them from events and errors\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. It is the spine of a series of secrets/\nredaction PRs; it has **no prerequisites** beyond what is already merged on\nmain. (Two merged foundations it builds on: `fabro_redact::SecretRedactor`\nexists, and `secrets.NAME` tokens already resolve from the vault at the run\nboundary.)\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME` as the double-curly-brace token form used in\n> the codebase, and write the real double-brace syntax in the code, tests, and\n> docs you produce.\n\n## Context and goal\n\nFabro workflows can declare vault secrets in run config via `secrets.NAME`\ntokens (MCP transport env, run-environment env, prepare-step commands/env,\ndocker config). Those tokens resolve server-side at the run boundary in\n`RunSession::new`. Redaction of run output (events, `progress.jsonl`, error\ntext) is currently **content-based only**: pattern + entropy matching in\n`fabro-redact`. Content-based matching is structurally blind to a *declared*\nsecret whose value looks ordinary — e.g. a secret whose value is `staging`,\n`db-prod-3`, or `hunter2` trips neither entropy nor any pattern rule, and\ntoday leaks **verbatim** into emitted events and error messages. That is a\nlive gap: the user explicitly declared the value secret, and the system does\nnot honor it.\n\n**Goal:** register every resolved declared-secret value into a per-run\nexact-match registry at the single place secrets resolve, and apply that\nregistry (composed after the content-based pass) to the run's structured\noutput surfaces: emitted events and setup-failure error text.\n\nDesign rules (fixed — the \"why\" for each is inline):\n\n1. **One registration point.** Every secret value flows through the one\n   boundary lookup closure, so registering there yields a registry that is\n   complete before the run emits anything. No other code path may register\n   values (no per-subsystem or fire-time registration — that was the\n   architectural flaw of a previous, abandoned attempt).\n2. **Per-run, never global.** A test-only in-process path executes multiple\n   runs in one process; redaction state must be per-run (`SecretRedactor` is\n   already built for this: cheap-clone shared state).\n3. **Compose after the content pass.** Content-based redaction stays the\n   universal baseline (it also catches credential-shaped values nobody\n   declared, e.g. from `env.NAME`); the exact-match pass layers on top.\n4. **Single entry point per surface.** Do NOT ship parallel \"content-only\" and\n   \"content+exact-match\" variants of the same redaction API — a caller holding\n   the run redactor could silently pick the weaker one. Every event-redaction\n   call takes a `&SecretRedactor`; an empty redactor is the identity. A call\n   site with genuinely no run scope passes `SecretRedactor::default()` **with\n   a comment stating why no run secret can reach that surface**.\n5. **Scope exact-match substitution to free-form-text fields.** Registered\n   values can be low-entropy words; blind substitution across every event\n   field would corrupt structural values (status enums, ids, event names) that\n   legitimately contain the same word, breaking the typed event reparse.\n   Restrict the exact-match walk to an explicit list of free-form-text\n   property keys (see step 3). Keep the list minimal and comment it as an\n   interim mechanism: a follow-up will derive it from field types. Do not\n   build guard machinery around it.\n6. **Ingest enforces; reads trust (team decision).** The architecture is:\n   redact at the source (worker — this plan's registry + the existing content\n   pass), enforce once more with a pattern-based pass where data enters shared\n   storage (the server can only do pattern-based; it has no registry), and\n   trust everywhere downstream. Do NOT add or extend any redaction on read\n   paths (SSE, event detail, CLI rendering) in this PR — a separate change\n   removes the existing read-side passes. If you find a read path missing\n   data cleanliness, the fix belongs at source or ingest, never at output.\n\n## Verified current state (as of main `8c3f035ea`, 2026-07-08 — re-verify before starting)\n\n- `lib/crates/fabro-redact/src/secret_registry.rs`: `SecretRedactor` —\n  `register(value)` (ignores empty/whitespace, dedups), `redact_into(&str)`\n  (longest-first, replaces with the crate's `REDACTED` marker),\n  `redact_json(Value)`, `is_empty()`; `Clone` + `Default`; shared interior\n  state so clones observe registrations. **Currently has zero consumers.**\n- `lib/crates/fabro-workflow/src/operations/start.rs:383`:\n  `let secret_lookup = |name: &str| vault_token_lookup(vault_guard.as_deref(), name);`\n  — consumed at `:390` (MCP servers), `:422` (docker config), `:446`\n  (run-environment env), `:465` (prepare steps). Resolves; registers nothing.\n- `lib/crates/fabro-workflow/src/event/redaction.rs`:\n  `build_redacted_event_payload` / `redacted_event_json` apply\n  `redact_json_value(normalize_json_value(...))` — content-based only.\n- `lib/crates/fabro-workflow/src/pipeline/initialize.rs`: on prepare-step\n  failure, constructs an error string embedding the resolved command and\n  captured stderr, and emits `SetupCommandStarted` / `SetupCompleted` /\n  `SetupFailed` events carrying resolved command text and exec-output tails.\n- Event flow: emitter → run-event logger/sink (`event/sink.rs`,\n  `runtime_store.rs` local run-store path) → stored payloads / SSE.\n\n## Implementation\n\n1. **Registry creation + registration** (`operations/start.rs`):\n   - Create one `SecretRedactor` per run in `RunSession::new`; store it on\n     `RunSession`.\n   - Add `registered_vault_token_lookup(vault, &redactor, name)`: call\n     `vault_token_lookup`, `register()` any returned value, return it. Swap\n     the closure at `:383` to use it. All four consumers now feed the registry\n     with no further changes.\n2. **Thread the redactor to the event path.** Give the event sink / run-event\n   logger the run's redactor (cheap clone) so every emitted event passes\n   through the exact-match pass. Follow the existing wiring of the sink in\n   `RunSession` (the logger is constructed there); make sure the local\n   run-store backend receives redacted payloads too, and that anything\n   reparsing to a typed event does so from the redacted payload so downstream\n   sinks never see the raw value.\n3. **Exact-match pass in `event/redaction.rs`**, composed after the content\n   pass, skipped entirely when `redactor.is_empty()`:\n   - Walk the event's `properties` object. For keys in the free-form-text\n     list, apply `redactor.redact_json` to the whole subtree; for other keys,\n     recurse (to reach nested listed keys such as `exec_output_tail.stderr`).\n     Also apply `redact_into` to the top-level `node_label` string.\n   - Free-form-text keys (grouped; keep as one `matches!`): command/script\n     I/O: `command`, `script`, `stdout`, `stderr`, `output`, `input`,\n     `arguments`, `exec_output_tail`, `tool_input`, `tool_output`; agent/LLM\n     text: `prompt`, `response`, `answer`, `question`, `delta`, `text`,\n     `message`, `reason`, `notes`, `preview`; errors: `error`,\n     `error_message`, `failure`, `causes`, `details`, `description`;\n     diffs/config: `diff`, `final_patch`, `workflow_config`,\n     `workflow_source`; metadata text: `goal`, `subject`, `title`. Comment the\n     list with: why it exists (low-entropy values vs structural fields) and\n     that new free-form event fields must be added here until the\n     type-derived replacement lands.\n4. **Setup-failure error text** (`pipeline/initialize.rs`): pass the\n   constructed failure message through `redactor.redact_into` before it\n   becomes an `Error`. Thread the redactor into the initialize options along\n   whatever path the session already passes options.\n5. **Ingest-boundary pattern pass (server).** Locate where worker-shipped\n   events and persisted run logs enter shared storage on the server (the\n   HTTP event-append path the worker's run-store client posts to, plus any\n   server-side log persistence). Verify whether a content-based pass runs\n   there today; where it does not, apply `redact_json_value` /\n   `redact_jsonl_line` at that ingest point, before the write. This is\n   defense in depth for storage cleanliness — the server has no per-run\n   registry, so pattern-based is the only pass it can perform. Content-based\n   redaction is idempotent, so double application with the worker-side pass\n   is harmless.\n6. **Docs** (`docs/public/` run-configuration page): declared secrets are\n   redacted regardless of shape on the run's structured surfaces (events,\n   `progress.jsonl`, setup errors); command output is covered by content-based\n   redaction plus exact-match where captured into those surfaces. State the\n   boundary honestly — once a secret enters sandbox process env, text the\n   sandbox re-emits is covered only where it is captured back into structured\n   surfaces; do not claim a total guarantee.\n\n## Tests (write failing-first; hermetic — temp-dir vaults, no ambient provider keys)\n\n- A prepare step that fails while echoing a **low-entropy** declared secret\n  (value `staging`) produces a `setup.failed` event and a run error in which\n  the value is replaced by `REDACTED` — and a structural field legitimately\n  containing the same word is untouched.\n- After a run with declared secrets, no resolved secret value appears anywhere\n  in the serialized stored events (scan the full `list_events` output).\n- Content-based baseline unchanged: a high-entropy credential-shaped string in\n  output is still redacted with an **empty** registry.\n- Per-run isolation: two `RunSession`s in one process — each redacts its own\n  registered value and not the other's.\n- Empty registry fast path: event serialization is byte-identical to the\n  current content-only output.\n- Registration is boundary-time: a declared secret consumed only by MCP/prepare\n  config is redacted from an event emitted before any stage runs.\n- Ingest enforcement: an event posted to the server's append path containing a\n  credential-shaped string is stored with that string redacted (pattern pass at\n  ingest), independent of what the producer did.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- `cargo dev docs check` (docs page touched)\n- No OpenAPI/wire change; TypeScript client untouched.\n\n## Conventions\n\n- Never print or log a resolved secret value, including from tests.\n- Plain-English commit messages, PR text, and code comments — describe what\n  the change does; no internal planning identifiers or plan-file names in\n  anything that ships.\n- PR description must state: the user-visible guarantee added (declared\n  secrets redacted regardless of shape on structured surfaces), the known\n  boundary (sandbox-crossing text covered where captured; live stream is a\n  separate effort), and that exec-output tails are a follow-up surface.\n"
+        },
+        "model_stylesheet": {
+          "String": "\n            * { model: claude-opus-4-8; }\n        "
+        }
+      }
+    },
+    "graph_source": "digraph ImplementPlan {\n    graph [\n        goal=\"Implement and simplify\",\n        model_stylesheet=\"\n            * { model: claude-opus-4-8; }\n        \"\n    ]\n    rankdir=LR\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    toolchain         [label=\"Toolchain\", shape=parallelogram, script=\"command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1\", max_retries=0]\n    preflight_compile [label=\"Preflight Compile\", shape=parallelogram, script=\"cargo check -q --workspace 2>&1\", max_retries=0]\n    preflight_lint    [label=\"Preflight Lint\", shape=parallelogram, script=\"cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1\", max_retries=0]\n    fix_lints         [label=\"Fix Lints\", prompt=\"The preflight lint step failed. Read the build output from context and fix all clippy lint warnings.\", max_visits=3]\n    implement         [label=\"Implement\", prompt=\"Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD. Be sure to use the rust-style-guide skill to help you follow this repo's Rust style conventions.\", model=\"gpt-55\", reasoning_effort=\"xhigh\"]\n    simplify_fable    [label=\"Simplify (Fable)\", prompt=\"@prompts/simplify.md\", model=\"claude-fable-5\", reasoning_effort=\"xhigh\"]\n    simplify_gpt      [label=\"Simplify (GPT-55)\", prompt=\"@prompts/simplify.md\", model=\"gpt-55\"]\n    verify            [label=\"Verify\", shape=parallelogram, timeout=\"1800s\", script=\"git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\\\"disabled\\\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1\", goal_gate=true, retry_target=\"fixup\"]\n    fixup             [label=\"Fixup\", prompt=\"The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures.\", max_visits=3]\n\n    start -> toolchain\n    toolchain -> preflight_compile [condition=\"outcome=succeeded\"]\n    toolchain -> exit\n    preflight_compile -> preflight_lint [condition=\"outcome=succeeded\"]\n    preflight_compile -> exit\n    preflight_lint -> implement [condition=\"outcome=succeeded\"]\n    preflight_lint -> fix_lints\n    fix_lints -> preflight_lint\n    implement -> simplify_fable -> simplify_gpt -> verify\n    verify -> exit  [condition=\"outcome=succeeded\"]\n    verify -> fixup\n    fixup -> verify\n}\n",
+    "workflow_slug": "implement-plan",
+    "source_directory": "/Users/swerner/Development/os/fabro-main/fabro",
+    "labels": {
+      "series": "redaction-v2"
+    },
+    "provenance": {
+      "server": {
+        "version": "0.287.0-nightly.0"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.267.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.267.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "138379"
+        },
+        "login": "swerner",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/138379?v=4"
+      }
+    },
+    "manifest_blob": "d8a74a7d6e46aa0b7d999aa5c66978bf0364eaf4368232f099a265c0f7cc15b9",
+    "definition_blob": "210e7b4f61ae68212431bf516dbfc8081799145ff09b4c6615cd587c9a30769d",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "790762fb8ddb7c517e66adfaa8da02311280f2ac",
+      "dirty": "dirty",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KX1P0VV0DAQTT0N2NADX8J8J",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-08T20:17:01.353684522Z",
+  "last_event_at": "2026-07-08T20:17:14.922717100Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-fdb28dec-1233-892c-b9d7-9f88f8353e7a",
+      "runtime": {
+        "id": "fabro-01KX1P0VV0DAQTT0N2NADX8J8J",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
