@@ -1,0 +1,18 @@
+digraph EnsembleBug {
+    graph [ goal="Repro: does the synth/merge node see branch outputs?",
+            rankdir=LR,
+            model_stylesheet="* { model: claude-sonnet-4-5; }" ]
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+    fork  [shape=component, label="Fan Out", join_policy="wait_all"]
+    a [shape=tab, label="A", prompt="Output EXACTLY this and nothing else: BRANCH_A_MARKER_7f3a: apples are red."]
+    b [shape=tab, label="B", prompt="Output EXACTLY this and nothing else: BRANCH_B_MARKER_91c2: oranges are orange."]
+    merge [shape=tripleoctagon, label="Merge"]
+    synth [shape=tab, label="Synthesize", prompt="You are the synthesis node after a parallel fan-in. Report VERBATIM every prior branch analysis you can see in your context/preamble. The branches emitted markers BRANCH_A_MARKER_7f3a and BRANCH_B_MARKER_91c2. If you can see those marker texts, quote them exactly. If you canNOT see any branch output text, respond with EXACTLY: NO_BRANCH_OUTPUT_IN_CONTEXT . Then list which context keys you were given."]
+    start -> fork
+    fork -> a
+    fork -> b
+    a -> merge
+    b -> merge
+    merge -> synth -> exit
+}

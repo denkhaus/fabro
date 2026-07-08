@@ -1,0 +1,387 @@
+{
+  "title": "Repro: does the synth/merge node see branch outputs?",
+  "spec": {
+    "run_id": "01KX148ZAMMJRAADHK1HBF7PC3",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "Repro: does the synth/merge node see branch outputs?"
+        },
+        "working_dir": null,
+        "metadata": {
+          "repro": "issue-490"
+        },
+        "inputs": {},
+        "model": {
+          "provider": "anthropic",
+          "name": "claude-sonnet-4-6",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "default",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM buildpack-deps:noble\n"
+            }
+          },
+          "resources": {
+            "cpu": 2,
+            "memory": "4GB",
+            "disk": null
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": null
+          },
+          "labels": {},
+          "env": {}
+        },
+        "notifications": {
+          "feed": {
+            "enabled": true,
+            "provider": "slack",
+            "events": [
+              "run.started",
+              "run.completed",
+              "run.failed"
+            ],
+            "slack": {
+              "channel": "#feed-fabro"
+            }
+          }
+        },
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": null,
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "EnsembleBug",
+      "nodes": {
+        "merge": {
+          "id": "merge",
+          "attrs": {
+            "shape": {
+              "String": "tripleoctagon"
+            },
+            "model": {
+              "String": "claude-sonnet-4-5"
+            },
+            "label": {
+              "String": "Merge"
+            },
+            "provider": {
+              "String": "anthropic"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "label": {
+              "String": "Start"
+            },
+            "model": {
+              "String": "claude-sonnet-4-5"
+            }
+          }
+        },
+        "b": {
+          "id": "b",
+          "attrs": {
+            "shape": {
+              "String": "tab"
+            },
+            "model": {
+              "String": "claude-sonnet-4-5"
+            },
+            "prompt": {
+              "String": "Output EXACTLY this and nothing else: BRANCH_B_MARKER_91c2: oranges are orange."
+            },
+            "label": {
+              "String": "B"
+            },
+            "provider": {
+              "String": "anthropic"
+            }
+          }
+        },
+        "fork": {
+          "id": "fork",
+          "attrs": {
+            "join_policy": {
+              "String": "wait_all"
+            },
+            "label": {
+              "String": "Fan Out"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "model": {
+              "String": "claude-sonnet-4-5"
+            },
+            "shape": {
+              "String": "component"
+            }
+          }
+        },
+        "a": {
+          "id": "a",
+          "attrs": {
+            "model": {
+              "String": "claude-sonnet-4-5"
+            },
+            "label": {
+              "String": "A"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "prompt": {
+              "String": "Output EXACTLY this and nothing else: BRANCH_A_MARKER_7f3a: apples are red."
+            },
+            "shape": {
+              "String": "tab"
+            }
+          }
+        },
+        "synth": {
+          "id": "synth",
+          "attrs": {
+            "provider": {
+              "String": "anthropic"
+            },
+            "model": {
+              "String": "claude-sonnet-4-5"
+            },
+            "prompt": {
+              "String": "You are the synthesis node after a parallel fan-in. Report VERBATIM every prior branch analysis you can see in your context/preamble. The branches emitted markers BRANCH_A_MARKER_7f3a and BRANCH_B_MARKER_91c2. If you can see those marker texts, quote them exactly. If you canNOT see any branch output text, respond with EXACTLY: NO_BRANCH_OUTPUT_IN_CONTEXT . Then list which context keys you were given."
+            },
+            "label": {
+              "String": "Synthesize"
+            },
+            "shape": {
+              "String": "tab"
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "shape": {
+              "String": "Msquare"
+            },
+            "label": {
+              "String": "Exit"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "model": {
+              "String": "claude-sonnet-4-5"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "fork",
+          "attrs": {}
+        },
+        {
+          "from": "fork",
+          "to": "a",
+          "attrs": {}
+        },
+        {
+          "from": "fork",
+          "to": "b",
+          "attrs": {}
+        },
+        {
+          "from": "a",
+          "to": "merge",
+          "attrs": {}
+        },
+        {
+          "from": "b",
+          "to": "merge",
+          "attrs": {}
+        },
+        {
+          "from": "merge",
+          "to": "synth",
+          "attrs": {}
+        },
+        {
+          "from": "synth",
+          "to": "exit",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "model_stylesheet": {
+          "String": "* { model: claude-sonnet-4-5; }"
+        },
+        "rankdir": {
+          "String": "LR"
+        },
+        "goal": {
+          "String": "Repro: does the synth/merge node see branch outputs?"
+        }
+      }
+    },
+    "graph_source": "digraph EnsembleBug {\n    graph [ goal=\"Repro: does the synth/merge node see branch outputs?\",\n            rankdir=LR,\n            model_stylesheet=\"* { model: claude-sonnet-4-5; }\" ]\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n    fork  [shape=component, label=\"Fan Out\", join_policy=\"wait_all\"]\n    a [shape=tab, label=\"A\", prompt=\"Output EXACTLY this and nothing else: BRANCH_A_MARKER_7f3a: apples are red.\"]\n    b [shape=tab, label=\"B\", prompt=\"Output EXACTLY this and nothing else: BRANCH_B_MARKER_91c2: oranges are orange.\"]\n    merge [shape=tripleoctagon, label=\"Merge\"]\n    synth [shape=tab, label=\"Synthesize\", prompt=\"You are the synthesis node after a parallel fan-in. Report VERBATIM every prior branch analysis you can see in your context/preamble. The branches emitted markers BRANCH_A_MARKER_7f3a and BRANCH_B_MARKER_91c2. If you can see those marker texts, quote them exactly. If you canNOT see any branch output text, respond with EXACTLY: NO_BRANCH_OUTPUT_IN_CONTEXT . Then list which context keys you were given.\"]\n    start -> fork\n    fork -> a\n    fork -> b\n    a -> merge\n    b -> merge\n    merge -> synth -> exit\n}\n",
+    "workflow_slug": "ensemblebug",
+    "source_directory": "/Users/bhelmkamp/p/fabro-sh/fabro-3",
+    "labels": {
+      "repro": "issue-490"
+    },
+    "provenance": {
+      "server": {
+        "version": "0.287.0-nightly.0"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.253.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.253.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "19"
+        },
+        "login": "brynary",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/19?v=4"
+      }
+    },
+    "manifest_blob": "24faa13d477403721b33add725c652c4cced6211030b53b8d79f9106dec510ae",
+    "definition_blob": "f17945757eea113a617da5cf749fc0a9943b967a1d74ddd211919563d0ca7969",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "c5dd5772d0ca124187dfdd38d72c8ff1a49efd5f",
+      "dirty": "clean",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KX148ZAMMJRAADHK1HBF7PC3",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-08T15:06:52.689699687Z",
+  "last_event_at": "2026-07-08T15:07:06.261583676Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-a63a9b12-e5b2-8a28-a6bb-e490731cd4b5",
+      "runtime": {
+        "id": "fabro-01KX148ZAMMJRAADHK1HBF7PC3",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
