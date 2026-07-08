@@ -359,7 +359,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-08T15:07:06.493388133Z",
-  "last_event_at": "2026-07-08T15:07:46.323790616Z",
+  "last_event_at": "2026-07-08T15:07:50.090844618Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -467,9 +467,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 52,
       "checkpoint": {
-        "timestamp": "2026-07-08T15:07:46.363877667Z",
+        "timestamp": "2026-07-08T15:07:50.004839936Z",
         "current_node": "merge",
         "completed_nodes": [
           "start",
@@ -478,12 +478,26 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.run_id": "01KX148ZAMMJRAADHK1HBF7PC3",
           "failure_signature": "",
           "internal.thread_id": "fork",
           "thread.fork.current_node": "merge",
           "internal.retry_count.merge": 0,
+          "parallel.fan_in.best_id": "a",
+          "internal.run_id": "01KX148ZAMMJRAADHK1HBF7PC3",
+          "graph.rankdir": "LR",
+          "outcome": "succeeded",
+          "parallel.fan_in.best_outcome": "succeeded",
+          "internal.retry_count.start": 0,
+          "failure_class": "",
+          "internal.fidelity": "compact",
+          "internal.retry_count.fork": 0,
+          "parallel.branch_count": 2,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
           "graph.model_stylesheet": "* { model: claude-sonnet-4-5; }",
+          "current_node": "merge",
+          "parallel.fan_in.best_head_sha": "379d13d4f7218e30c9ec925d730f40194c63616b",
+          "internal.node_visit_count": 1,
+          "graph.goal": "Repro: does the synth/merge node see branch outputs?",
           "parallel.results": [
             {
               "id": "a",
@@ -496,21 +510,103 @@
               "head_sha": "8ee19a3b6be176881b7063c1340d26477c997742"
             }
           ],
-          "internal.retry_count.start": 0,
-          "internal.fidelity": "compact",
+          "thread.start.current_node": "fork"
+        },
+        "node_outcomes": {
+          "fork": {
+            "status": "succeeded",
+            "jump_to_node": "merge",
+            "notes": "Parallel node dispatched 2 branches (2 succeeded, 0 failed)",
+            "usage": null
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "merge": {
+            "status": "succeeded",
+            "context_updates": {
+              "parallel.fan_in.best_id": "a",
+              "parallel.fan_in.best_outcome": "succeeded",
+              "parallel.fan_in.best_head_sha": "379d13d4f7218e30c9ec925d730f40194c63616b"
+            },
+            "notes": "Selected best candidate: a",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 0,
+              "active_time_ms": 0
+            }
+          }
+        },
+        "next_node_id": "synth",
+        "git_commit_sha": "befd178e84ea276fd587bc434ee32da8630e278c",
+        "node_visits": {
+          "merge": 1,
+          "fork": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-08T15:07:55.783270320Z",
+        "current_node": "synth",
+        "completed_nodes": [
+          "start",
+          "fork",
+          "merge",
+          "synth"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "last_stage": "synth",
+          "internal.retry_count.merge": 0,
+          "parallel.results": [
+            {
+              "id": "a",
+              "status": "succeeded",
+              "head_sha": "379d13d4f7218e30c9ec925d730f40194c63616b"
+            },
+            {
+              "id": "b",
+              "status": "succeeded",
+              "head_sha": "8ee19a3b6be176881b7063c1340d26477c997742"
+            }
+          ],
+          "internal.retry_count.synth": 0,
           "internal.node_visit_count": 1,
-          "internal.work_dir": "/home/daytona/workspace/fabro",
-          "failure_class": "",
           "thread.start.current_node": "fork",
-          "graph.goal": "Repro: does the synth/merge node see branch outputs?",
-          "internal.retry_count.fork": 0,
-          "graph.rankdir": "LR",
           "parallel.fan_in.best_id": "a",
+          "graph.goal": "Repro: does the synth/merge node see branch outputs?",
+          "thread.merge.current_node": "synth",
+          "graph.rankdir": "LR",
+          "last_response": "I can see the following context about the parallel branches:\n\n**Context keys provided:**\n- parallel.branch_count: 2\n- parallel.fan_in.best_head_sha: 379d13d4f7218e30c9ec925d730f40194c63616b\n- parallel",
           "parallel.branch_count": 2,
           "parallel.fan_in.best_outcome": "succeeded",
           "parallel.fan_in.best_head_sha": "379d13d4f7218e30c9ec925d730f40194c63616b",
+          "internal.run_id": "01KX148ZAMMJRAADHK1HBF7PC3",
+          "failure_signature": "",
+          "internal.thread_id": "merge",
+          "thread.fork.current_node": "merge",
+          "graph.model_stylesheet": "* { model: claude-sonnet-4-5; }",
+          "internal.retry_count.start": 0,
+          "internal.fidelity": "compact",
+          "response.synth": "I can see the following context about the parallel branches:\n\n**Context keys provided:**\n- parallel.branch_count: 2\n- parallel.fan_in.best_head_sha: 379d13d4f7218e30c9ec925d730f40194c63616b\n- parallel.fan_in.best_id: a\n- parallel.fan_in.best_outcome: succeeded\n- parallel.results: [{\"id\":\"a\",\"status\":\"succeeded\",\"head_sha\":\"379d13d4f7218e30c9ec925d730f40194c63616b\"},{\"id\":\"b\",\"status\":\"succeeded\",\"head_sha\":\"8ee19a3b6be176881b7063c1340d26477c997742\"}]\n\n**Branch output visibility:**\n\nNO_BRANCH_OUTPUT_IN_CONTEXT\n\nI can see metadata about the branches (their IDs, status, and head SHAs), but I cannot see the actual content or output text from the branch executions. The markers BRANCH_A_MARKER_7f3a and BRANCH_B_MARKER_91c2 are not present in the context provided to me.\n\nThe synthesis node receives structural information about which branches completed and their success/failure status, but not the actual output content or analysis that those branches produced.",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "failure_class": "",
+          "internal.retry_count.fork": 0,
           "outcome": "succeeded",
-          "current_node": "merge"
+          "current_node": "synth"
         },
         "node_outcomes": {
           "merge": {
@@ -535,16 +631,55 @@
             "notes": "Parallel node dispatched 2 branches (2 succeeded, 0 failed)",
             "usage": null
           },
+          "synth": {
+            "status": "succeeded",
+            "context_updates": {
+              "last_stage": "synth",
+              "last_response": "I can see the following context about the parallel branches:\n\n**Context keys provided:**\n- parallel.branch_count: 2\n- parallel.fan_in.best_head_sha: 379d13d4f7218e30c9ec925d730f40194c63616b\n- parallel",
+              "response.synth": "I can see the following context about the parallel branches:\n\n**Context keys provided:**\n- parallel.branch_count: 2\n- parallel.fan_in.best_head_sha: 379d13d4f7218e30c9ec925d730f40194c63616b\n- parallel.fan_in.best_id: a\n- parallel.fan_in.best_outcome: succeeded\n- parallel.results: [{\"id\":\"a\",\"status\":\"succeeded\",\"head_sha\":\"379d13d4f7218e30c9ec925d730f40194c63616b\"},{\"id\":\"b\",\"status\":\"succeeded\",\"head_sha\":\"8ee19a3b6be176881b7063c1340d26477c997742\"}]\n\n**Branch output visibility:**\n\nNO_BRANCH_OUTPUT_IN_CONTEXT\n\nI can see metadata about the branches (their IDs, status, and head SHAs), but I cannot see the actual content or output text from the branch executions. The markers BRANCH_A_MARKER_7f3a and BRANCH_B_MARKER_91c2 are not present in the context provided to me.\n\nThe synthesis node receives structural information about which branches completed and their success/failure status, but not the actual output content or analysis that those branches produced."
+            },
+            "notes": "Stage completed: synth",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "anthropic",
+                    "model_id": "claude-sonnet-4-5"
+                  },
+                  "tokens": {
+                    "input_tokens": 310,
+                    "output_tokens": 298,
+                    "reasoning_tokens": 0,
+                    "cache_read_tokens": 4652,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "anthropic",
+                  "cache_write_5m_tokens": 0,
+                  "cache_write_1h_tokens": 0
+                }
+              },
+              "total_usd_micros": 6795
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 5672,
+              "tool_time_ms": 0,
+              "active_time_ms": 5672
+            }
+          },
           "start": {
             "status": "succeeded",
             "usage": null
           }
         },
-        "next_node_id": "synth",
+        "next_node_id": "exit",
         "node_visits": {
-          "merge": 1,
           "start": 1,
-          "fork": 1
+          "fork": 1,
+          "merge": 1,
+          "synth": 1
         }
       },
       "diff": {}
@@ -610,29 +745,6 @@
       },
       "state": "succeeded"
     },
-    "merge@1": {
-      "first_event_seq": 47,
-      "prompt": null,
-      "response": null,
-      "completion": null,
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-07-08T15:07:46.323790616Z",
-      "handler": "parallel.fan_in",
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "state": "running"
-    },
     "fork@1": {
       "first_event_seq": 21,
       "prompt": null,
@@ -684,6 +796,67 @@
       "model": {
         "provider": "anthropic",
         "model_id": "claude-sonnet-4-5"
+      },
+      "state": "succeeded"
+    },
+    "synth@1": {
+      "first_event_seq": 55,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "prompt",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-5"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-08T15:07:50.005244398Z",
+      "handler": "prompt",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
+    },
+    "merge@1": {
+      "first_event_seq": 47,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Selected best candidate: a",
+        "failure_reason": null,
+        "timestamp": "2026-07-08T15:07:46.363689390Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-08T15:07:46.323790616Z",
+      "handler": "parallel.fan_in",
+      "timing": {
+        "wall_time_ms": 39,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "state": "succeeded"
     }
