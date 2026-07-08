@@ -178,12 +178,12 @@ pub(crate) async fn execute(
         fabro_run_tools,
     };
 
-    let execution = async {
+    let execution = Box::pin(async {
         match mode {
             RunWorkerMode::Start => operations::start(&run_dir, services).await,
             RunWorkerMode::Resume => operations::resume(&run_dir, services).await,
         }
-    };
+    });
 
     if let Some(mut control_manager) = control_manager {
         tokio::select! {
@@ -1457,7 +1457,10 @@ mod tests {
         );
         let event = running_event(None);
 
-        sink.write_run_event(&event).await.unwrap();
+        // This worker-stamp unit test emits no run-declared secret values.
+        sink.write_run_event(&event, &fabro_redact::SecretRedactor::default())
+            .await
+            .unwrap();
 
         let first = first.lock().await;
         let second = second.lock().await;

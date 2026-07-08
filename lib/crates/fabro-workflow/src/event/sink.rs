@@ -4,18 +4,22 @@ use std::sync::Arc;
 
 use ::fabro_types::{RunEvent, RunId};
 use anyhow::Result;
+use fabro_redact::SecretRedactor;
 use fabro_store::RunDatabase;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot};
 
 use super::emitter::Emitter;
-use super::redaction::{build_redacted_event_payload, redacted_event_json};
+use super::redaction::{build_redacted_event_payload, redacted_event_json, redacted_run_event};
 use super::{Event, to_run_event};
 use crate::runtime_store::RunStoreHandle;
 
 pub async fn append_event(run_store: &RunDatabase, run_id: &RunId, event: &Event) -> Result<()> {
     let stored = to_run_event(run_id, event);
-    let payload = build_redacted_event_payload(&stored, run_id)?;
+    // Direct RunDatabase appends are server/test lifecycle paths with no
+    // per-run declared-secret registry. Worker run output goes through
+    // RunEventSink/RunEventLogger with the run redactor.
+    let payload = build_redacted_event_payload(&stored, run_id, &SecretRedactor::default())?;
     run_store
         .append_event(&payload)
         .await
@@ -27,9 +31,10 @@ pub async fn append_event_to_sink(
     sink: &RunEventSink,
     run_id: &RunId,
     event: &Event,
+    redactor: &SecretRedactor,
 ) -> Result<()> {
     let stored = to_run_event(run_id, event);
-    sink.write_run_event(&stored).await
+    sink.write_run_event(&stored, redactor).await
 }
 
 #[derive(Clone)]
@@ -99,21 +104,25 @@ impl RunEventSink {
         }
     }
 
-    pub async fn write_run_event(&self, event: &RunEvent) -> Result<()> {
+    pub async fn write_run_event(&self, event: &RunEvent, redactor: &SecretRedactor) -> Result<()> {
         let mut pending = vec![(self, event.clone())];
         while let Some((sink, event)) = pending.pop() {
             match sink {
                 Self::Store(run_store) => {
+                    let event = redacted_run_event(&event, redactor)?;
                     run_store.append_run_event(&event).await?;
                 }
                 Self::JsonLines(writer) => {
-                    let line = redacted_event_json(&event)?;
+                    let line = redacted_event_json(&event, redactor)?;
                     let mut writer = writer.lock().await;
                     writer.write_all(line.as_bytes()).await?;
                     writer.write_all(b"\n").await?;
                     writer.flush().await?;
                 }
-                Self::Callback(callback) => callback(event).await?,
+                Self::Callback(callback) => {
+                    let event = redacted_run_event(&event, redactor)?;
+                    callback(event).await?;
+                }
                 Self::Map { transform, inner } => {
                     pending.push((inner.as_ref(), transform(event)));
                 }
@@ -144,14 +153,15 @@ pub struct RunEventLogger {
 
 impl RunEventLogger {
     #[must_use]
-    pub fn new(sink: RunEventSink) -> Self {
+    pub fn new(sink: RunEventSink, redactor: SecretRedactor) -> Self {
         let (tx, mut rx) = mpsc::unbounded_channel();
+        let logger_redactor = redactor;
 
         tokio::spawn(async move {
             while let Some(command) = rx.recv().await {
                 match command {
                     RunEventCommand::Event(event) => {
-                        if let Err(err) = sink.write_run_event(&event).await {
+                        if let Err(err) = sink.write_run_event(&event, &logger_redactor).await {
                             tracing::warn!(error = %err, "Failed to write run event");
                         }
                     }
@@ -193,9 +203,9 @@ pub struct StoreProgressLogger {
 
 impl StoreProgressLogger {
     #[must_use]
-    pub fn new(run_store: impl Into<RunStoreHandle>) -> Self {
+    pub fn new(run_store: impl Into<RunStoreHandle>, redactor: SecretRedactor) -> Self {
         Self {
-            inner: RunEventLogger::new(RunEventSink::backend(run_store.into())),
+            inner: RunEventLogger::new(RunEventSink::backend(run_store.into()), redactor),
         }
     }
 
@@ -261,7 +271,9 @@ mod tests {
             message:          "notice".to_string(),
             exec_output_tail: None,
         });
-        let payload = build_redacted_event_payload(&stored, &fixtures::RUN_7).unwrap();
+        let payload =
+            build_redacted_event_payload(&stored, &fixtures::RUN_7, &SecretRedactor::default())
+                .unwrap();
         run_store.append_event(&payload).await.unwrap();
 
         let events = run_store.list_events().await.unwrap();
@@ -282,8 +294,9 @@ mod tests {
         let (writer, reader) = tokio::io::duplex(4096);
         let sink = RunEventSink::json_lines(writer);
         let event = to_run_event(&fixtures::RUN_7, &Event::RunPauseRequested { actor: None });
+        let redactor = SecretRedactor::default();
 
-        sink.write_run_event(&event).await.unwrap();
+        sink.write_run_event(&event, &redactor).await.unwrap();
 
         let mut reader = BufReader::new(reader);
         let mut line = String::new();
@@ -323,8 +336,9 @@ mod tests {
             ]),
         );
         let event = to_run_event(&fixtures::RUN_7, &Event::RunPauseRequested { actor: None });
+        let redactor = SecretRedactor::default();
 
-        sink.write_run_event(&event).await.unwrap();
+        sink.write_run_event(&event, &redactor).await.unwrap();
 
         let first = first.lock().await;
         let second = second.lock().await;
@@ -340,7 +354,7 @@ mod tests {
 
         let (writer, reader) = tokio::io::duplex(4096);
         let sink = RunEventSink::json_lines(writer);
-        let logger = RunEventLogger::new(sink);
+        let logger = RunEventLogger::new(sink, SecretRedactor::default());
         let emitter = Emitter::new(fixtures::RUN_8);
         logger.register(&emitter);
 
@@ -353,5 +367,33 @@ mod tests {
 
         let payload = event_payload_from_redacted_json(line.trim_end(), &fixtures::RUN_8).unwrap();
         assert_eq!(payload.as_value()["event"], "run.paused");
+    }
+
+    #[tokio::test]
+    async fn run_event_sink_callback_receives_redacted_event() {
+        let received = Arc::new(AsyncMutex::new(Vec::new()));
+        let received_events = Arc::clone(&received);
+        let sink = RunEventSink::callback(move |event| {
+            let received_events = Arc::clone(&received_events);
+            async move {
+                received_events.lock().await.push(event);
+                Ok(())
+            }
+        });
+        let event = to_run_event(&fixtures::RUN_7, &Event::RunNotice {
+            level:            RunNoticeLevel::Warn,
+            code:             "example".to_string(),
+            message:          "deploy to staging".to_string(),
+            exec_output_tail: None,
+        });
+        let redactor = SecretRedactor::default();
+        redactor.register("staging");
+
+        sink.write_run_event(&event, &redactor).await.unwrap();
+
+        let events = received.lock().await;
+        let text = serde_json::to_string(&events[0].to_value().unwrap()).unwrap();
+        assert!(!text.contains("staging"));
+        assert!(text.contains("REDACTED"));
     }
 }

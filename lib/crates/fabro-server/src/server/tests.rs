@@ -4824,7 +4824,12 @@ async fn append_scoped_stage_event(
         parallel_branch_id: None,
     };
     let stored = fabro_workflow::event::to_run_event_at(&run_id, event, Utc::now(), Some(&scope));
-    let payload = fabro_workflow::event::build_redacted_event_payload(&stored, &run_id).unwrap();
+    let payload = fabro_workflow::event::build_redacted_event_payload(
+        &stored,
+        &run_id,
+        &fabro_redact::SecretRedactor::default(),
+    )
+    .unwrap();
     let run_store = state.stores.runs.open_run(&run_id).await.unwrap();
     run_store.append_event(&payload).await.unwrap();
 }
@@ -9614,6 +9619,45 @@ async fn append_run_event_rejects_reserved_archive_event() {
             .is_some_and(|message| message.contains("run.archived is a lifecycle event")),
         "expected lifecycle rejection, got: {body}"
     );
+}
+
+#[tokio::test]
+async fn append_run_event_redacts_credential_shaped_values_before_storage() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_run(&app, MINIMAL_DOT)
+        .await
+        .parse::<RunId>()
+        .unwrap();
+    let secret = "sk-ant-api03-xK9mZ2vL8nQ5rT1wY4bC7dF0gH3jE6pA";
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/runs/{run_id}/events")))
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({
+                "id": "evt-run-notice-redaction",
+                "ts": "2026-04-19T12:00:00Z",
+                "run_id": run_id,
+                "event": "run.notice",
+                "properties": {
+                    "level": "warn",
+                    "code": "credential_detected",
+                    "message": format!("token={secret}")
+                }
+            })
+            .to_string(),
+        ))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    response_json!(response, StatusCode::OK).await;
+
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    let serialized = serde_json::to_string(&run_store.list_events().await.unwrap()).unwrap();
+    assert!(!serialized.contains(secret));
+    assert!(serialized.contains("REDACTED"));
 }
 
 #[tokio::test]

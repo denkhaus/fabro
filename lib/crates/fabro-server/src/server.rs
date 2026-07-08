@@ -67,7 +67,7 @@ use fabro_llm::types::{
 use fabro_mcp_store::McpServerStore;
 use fabro_model::catalog::LlmCatalogSettings;
 use fabro_model::{BilledTokenCounts, Catalog, ModelRef, ModelTestMode, ProviderId};
-use fabro_redact::redact_jsonl_line;
+use fabro_redact::{redact_json_value, redact_jsonl_line};
 use fabro_sandbox::daytona::{self, DaytonaSandbox};
 use fabro_sandbox::details::sandbox_details;
 use fabro_sandbox::reconnect::reconnect_for_run;

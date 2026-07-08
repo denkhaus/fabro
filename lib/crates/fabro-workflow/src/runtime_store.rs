@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
+use fabro_redact::SecretRedactor;
 use fabro_store::{EventEnvelope, RunDatabase, RunProjection};
 use fabro_types::{RunBlobId, RunEvent};
 
@@ -83,7 +84,11 @@ impl RunStoreBackend for LocalRunStoreBackend {
     }
 
     async fn append_run_event(&self, event: &RunEvent) -> Result<()> {
-        let payload = build_redacted_event_payload(event, &event.run_id)?;
+        // Local backends can be called from server/test paths that do not have a
+        // worker run registry. RunEventSink applies the per-run redactor before
+        // calling this backend during workflow execution.
+        let payload =
+            build_redacted_event_payload(event, &event.run_id, &SecretRedactor::default())?;
         self.run_store
             .append_event(&payload)
             .await

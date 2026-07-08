@@ -15,6 +15,7 @@ use fabro_agent::Sandbox;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_hooks::HookSettings;
 use fabro_interview::AutoApproveInterviewer;
+use fabro_redact::SecretRedactor;
 use fabro_sandbox::SandboxSpec;
 use fabro_store::Database;
 use fabro_types::settings::run::RunModelControls;
@@ -251,7 +252,7 @@ async fn execute_test_run_with_options(
     let run_store = test_run_store(&run_id_value).await;
     seed_created_and_starting(&run_store, &run_options, &graph).await;
     let emitter = test_emitter_arc("test-run");
-    let store_logger = StoreProgressLogger::new(run_store.clone());
+    let store_logger = StoreProgressLogger::new(run_store.clone(), SecretRedactor::default());
     store_logger.register(&emitter);
     let initialized = initialize(
         persisted_workflow(graph, String::new(), &run_options.run_dir, run_id_value),
@@ -295,6 +296,7 @@ async fn execute_test_run_with_options(
             checkpoint: None,
             seed_context: None,
             fabro_run_tools: None,
+            secret_redactor: SecretRedactor::default(),
         },
     )
     .await
@@ -358,6 +360,7 @@ async fn execute_runs_start_to_exit_and_returns_final_context() {
             checkpoint: None,
             seed_context: None,
             fabro_run_tools: None,
+            secret_redactor: SecretRedactor::default(),
         },
     )
     .await
@@ -429,6 +432,7 @@ async fn run_with_lifecycle(
             checkpoint: None,
             seed_context: None,
             fabro_run_tools: None,
+            secret_redactor: SecretRedactor::default(),
         },
     )
     .await?;

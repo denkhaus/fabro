@@ -1346,7 +1346,7 @@ async fn append_run_session_event(
         actor: None,
         body,
     };
-    let payload = EventPayload::new(event.to_value()?, &run_id)?;
+    let payload = EventPayload::new(fabro_redact::redact_json_value(event.to_value()?), &run_id)?;
     run_store.append_event_envelope(&payload).await
 }
 

@@ -11,8 +11,8 @@ use super::super::{
     EventPayload, HashSet, IntoResponse, Json, KeepAlive, PaginatedEventList, PaginationMeta, Path,
     Query, RequireRunManagementTarget, RequireRunScoped, RequireRunStageScoped, RequiredUser,
     Response, Router, RunEvent, RunId, Sse, State, StatusCode, StreamExt, UnboundedReceiverStream,
-    broadcast, get, mpsc, parse_run_id_path, parse_stage_id_path, redact_jsonl_line,
-    reject_if_archived, update_live_run_from_event,
+    broadcast, get, mpsc, parse_run_id_path, parse_stage_id_path, redact_json_value,
+    redact_jsonl_line, reject_if_archived, update_live_run_from_event,
 };
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
@@ -175,9 +175,17 @@ async fn append_run_event(
         ))
         .into_response();
     }
-    let payload = match EventPayload::new(value, &id) {
+    let redacted_value = redact_json_value(value);
+    let payload = match EventPayload::new(redacted_value, &id) {
         Ok(payload) => payload,
         Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
+    };
+    let event = match RunEvent::from_ref(payload.as_value()) {
+        Ok(event) => event,
+        Err(err) => {
+            return ApiError::bad_request(format!("Invalid redacted run event: {err}"))
+                .into_response();
+        }
     };
 
     match state.stores.runs.open_run(&id).await {
@@ -352,16 +360,23 @@ fn event_properties(event: &RunEvent) -> serde_json::Map<String, serde_json::Val
 }
 
 fn redacted_event_properties(event: &RunEvent) -> serde_json::Map<String, serde_json::Value> {
-    build_redacted_event_payload(event, &event.run_id)
-        .ok()
-        .and_then(|payload| {
-            payload
-                .as_value()
-                .get("properties")
-                .and_then(serde_json::Value::as_object)
-                .cloned()
-        })
-        .unwrap_or_else(|| event_properties(event))
+    // Event detail is a read path. Stored events are trusted to have been
+    // redacted at worker/source and server ingest; no per-run registry is
+    // available here, so preserve the existing pattern-only projection.
+    build_redacted_event_payload(
+        event,
+        &event.run_id,
+        &fabro_redact::SecretRedactor::default(),
+    )
+    .ok()
+    .and_then(|payload| {
+        payload
+            .as_value()
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+            .cloned()
+    })
+    .unwrap_or_else(|| event_properties(event))
 }
 
 fn truncate_content(value: String, max_content_length: usize) -> (String, bool) {

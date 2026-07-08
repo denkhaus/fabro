@@ -6,6 +6,7 @@ use fabro_graphviz::graph::Graph;
 use fabro_interview::Interviewer;
 use fabro_mcp::config::McpServerSettings;
 use fabro_model::{Catalog, FallbackTarget, ProviderId};
+use fabro_redact::SecretRedactor;
 use fabro_sandbox::SandboxSpec;
 use fabro_template::TemplateContext;
 use fabro_types::settings::run::{PullRequestSettings, RunModelControls};
@@ -272,6 +273,7 @@ pub struct InitOptions {
     pub checkpoint:        Option<Checkpoint>,
     pub seed_context:      Option<Context>,
     pub fabro_run_tools:   Option<FabroRunToolServices>,
+    pub secret_redactor:   SecretRedactor,
 }
 
 /// Output of the INITIALIZE phase.

@@ -208,8 +208,15 @@ async fn replay_historical_projection_events(
         let mut event = envelope.event.clone();
         event.id = format!("{new_run_id}-fork-{}", envelope.seq);
         event.run_id = new_run_id;
-        let payload = event::build_redacted_event_payload(&event, &new_run_id)
-            .map_err(|err| Error::engine(err.to_string()))?;
+        // Fork replay copies events that were already persisted through the
+        // source run's redaction boundary; no live run secret registry exists
+        // for the historical projection replay.
+        let payload = event::build_redacted_event_payload(
+            &event,
+            &new_run_id,
+            &fabro_redact::SecretRedactor::default(),
+        )
+        .map_err(|err| Error::engine(err.to_string()))?;
         run_store
             .append_event(&payload)
             .await

@@ -306,6 +306,30 @@ SERVICE_URL = "https://api.{{ env.REGION }}.example.com"
 
 Missing host variables produce a hard error pointing at the specific field and unresolved token.
 
+Vault secrets use the same interpolation form with `{{ secrets.NAME }}`. Use
+secret tokens for values that should be treated as sensitive even when they do
+not look like credentials, such as environment names or deployment labels:
+
+```toml title="run.toml"
+[environments.ci.env]
+DEPLOY_ENV = "{{ secrets.DEPLOY_ENV }}"
+
+[[run.prepare.steps]]
+command = ["./deploy", "--environment", "{{ secrets.DEPLOY_ENV }}"]
+```
+
+Declared secret values are registered when the run starts and are redacted by
+exact match on structured run surfaces: events, `progress.jsonl`, and setup
+failure errors. This redaction applies regardless of the value's shape, so a
+low-entropy value such as `staging` is still replaced with `REDACTED` in those
+surfaces. Fabro also keeps its content-based redaction pass for credential-shaped
+values that were not declared with `{{ secrets.NAME }}`.
+
+The boundary is the structured data Fabro captures. Once a secret is passed into
+a sandbox process environment, text the sandbox prints is covered where Fabro
+captures it back into structured events or setup errors; this is not a blanket
+guarantee for every live process stream or file the sandbox writes.
+
 ### `[run.integrations.github.permissions]`
 
 Request a scoped GitHub App token for workflow stages that need `GITHUB_TOKEN` inside the sandbox. Values map directly to GitHub App permission names and access levels.

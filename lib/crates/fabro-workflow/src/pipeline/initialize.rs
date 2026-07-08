@@ -559,10 +559,12 @@ pub async fn initialize(
                     stderr: result.stderr.clone(),
                     exec_output_tail,
                 });
-                return Err(Error::engine(format!(
+                let message = format!(
                     "Setup command failed (exit code {}): {command}\n{}",
                     exit_code, result.stderr,
-                )));
+                );
+                let message = fabro_redact::redact_string(&message);
+                return Err(Error::engine(options.secret_redactor.redact_into(&message)));
             }
             let exit_code = result.exit_code.unwrap_or(0);
             options.emitter.emit(&Event::SetupCommandCompleted {
@@ -647,6 +649,7 @@ mod tests {
     use fabro_acp::test_support::fake_acp_agent_script;
     use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
     use fabro_interview::AutoApproveInterviewer;
+    use fabro_redact::SecretRedactor;
     use fabro_sandbox::SandboxSpec;
     use fabro_store::Database;
     use fabro_types::settings::run::RunModelControls;
@@ -799,6 +802,13 @@ mod tests {
     async fn initialize_with_setup_step(
         setup: crate::run_options::SetupCommand,
     ) -> (crate::error::Result<Initialized>, Vec<RunEvent>) {
+        initialize_with_setup_step_and_redactor(setup, SecretRedactor::default()).await
+    }
+
+    async fn initialize_with_setup_step_and_redactor(
+        setup: crate::run_options::SetupCommand,
+        secret_redactor: SecretRedactor,
+    ) -> (crate::error::Result<Initialized>, Vec<RunEvent>) {
         let temp = tempfile::tempdir().unwrap();
         let run_dir = temp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
@@ -812,18 +822,18 @@ mod tests {
         });
 
         let result = initialize(persisted, InitOptions {
-            run_id:            test_run_id(),
-            run_store:         {
+            run_id: test_run_id(),
+            run_store: {
                 let store = memory_store();
                 let inner = store.create_run(&test_run_id()).await.unwrap();
                 inner.into()
             },
-            dry_run:           false,
-            emitter:           emitter.clone(),
-            sandbox:           SandboxSpec::Local {
+            dry_run: false,
+            emitter: emitter.clone(),
+            sandbox: SandboxSpec::Local {
                 working_directory: std::env::current_dir().unwrap(),
             },
-            llm:               LlmSpec {
+            llm: LlmSpec {
                 model:          "test-model".to_string(),
                 provider_id:    fabro_model::ProviderId::anthropic(),
                 fallback_chain: Vec::new(),
@@ -831,30 +841,31 @@ mod tests {
                 model_controls: RunModelControls::default(),
                 dry_run:        true,
             },
-            interviewer:       Arc::new(AutoApproveInterviewer::engine()),
-            steering_hub:      Arc::new(crate::steering_hub::SteeringHub::new(emitter.clone())),
-            catalog:           test_catalog(),
-            lifecycle:         crate::run_options::LifecycleOptions {
+            interviewer: Arc::new(AutoApproveInterviewer::engine()),
+            steering_hub: Arc::new(crate::steering_hub::SteeringHub::new(emitter.clone())),
+            catalog: test_catalog(),
+            lifecycle: crate::run_options::LifecycleOptions {
                 setup_commands:           vec![setup],
                 setup_command_timeout_ms: 1_000,
             },
-            run_options:       test_settings(&run_dir),
-            workflow_path:     None,
-            workflow_bundle:   None,
-            hooks:             fabro_hooks::HookSettings { hooks: vec![] },
-            sandbox_env:       SandboxEnvSpec {
+            run_options: test_settings(&run_dir),
+            workflow_path: None,
+            workflow_bundle: None,
+            hooks: fabro_hooks::HookSettings { hooks: vec![] },
+            sandbox_env: SandboxEnvSpec {
                 toml_env:           HashMap::new(),
                 github_permissions: None,
                 origin_url:         None,
             },
-            vault:             None,
-            git:               None,
-            run_control:       None,
+            vault: None,
+            git: None,
+            run_control: None,
             registry_override: None,
-            artifact_sink:     None,
-            checkpoint:        None,
-            seed_context:      None,
-            fabro_run_tools:   None,
+            artifact_sink: None,
+            checkpoint: None,
+            seed_context: None,
+            fabro_run_tools: None,
+            secret_redactor,
         })
         .await;
         let events = seen.lock().unwrap().clone();
@@ -937,6 +948,7 @@ mod tests {
             checkpoint:        None,
             seed_context:      None,
             fabro_run_tools:   None,
+            secret_redactor:   SecretRedactor::default(),
         })
         .await
         .unwrap();
@@ -1135,6 +1147,7 @@ mod tests {
             checkpoint:        None,
             seed_context:      None,
             fabro_run_tools:   None,
+            secret_redactor:   SecretRedactor::default(),
         })
         .await
         .unwrap();
@@ -1183,7 +1196,7 @@ mod tests {
         let emitter = Arc::new(crate::event::Emitter::new(test_run_id()));
         let store = memory_store();
         let run_store = store.create_run(&test_run_id()).await.unwrap();
-        let store_logger = StoreProgressLogger::new(run_store.clone());
+        let store_logger = StoreProgressLogger::new(run_store.clone(), SecretRedactor::default());
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
         emitter.on_event({
             let seen = Arc::clone(&seen);
@@ -1231,6 +1244,7 @@ mod tests {
             checkpoint:        None,
             seed_context:      None,
             fabro_run_tools:   None,
+            secret_redactor:   SecretRedactor::default(),
         })
         .await
         .unwrap();
@@ -1318,6 +1332,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn initialize_setup_failure_redacts_registered_secret_in_error_text() {
+        let redactor = SecretRedactor::default();
+        redactor.register("staging");
+        let setup = crate::run_options::SetupCommand {
+            command: "printf %s \"$DEPLOY_ENV\" >&2; exit 7".to_string(),
+            env:     HashMap::from([("DEPLOY_ENV".to_string(), "staging".to_string())]),
+        };
+
+        let (result, _events) = initialize_with_setup_step_and_redactor(setup, redactor).await;
+
+        let Err(err) = result else {
+            panic!("setup should fail");
+        };
+        let text = err.to_string();
+        assert!(!text.contains("staging"));
+        assert!(text.contains("REDACTED"));
+    }
+
+    #[tokio::test]
+    async fn initialize_setup_failure_keeps_content_redaction_with_empty_registry() {
+        let secret = "sk-ant-api03-xK9mZ2vL8nQ5rT1wY4bC7dF0gH3jE6pA";
+        let command = format!("printf %s {secret} >&2; exit 7");
+
+        let (result, _events) = initialize_with_setup_command(&command).await;
+
+        let Err(err) = result else {
+            panic!("setup should fail");
+        };
+        let text = err.to_string();
+        assert!(!text.contains(secret));
+        assert!(text.contains("REDACTED"));
+    }
+
+    #[tokio::test]
     async fn initialize_cancelled_setup_command_returns_cancelled() {
         let temp = tempfile::tempdir().unwrap();
         let run_dir = temp.path().join("run");
@@ -1374,6 +1422,7 @@ mod tests {
             checkpoint: None,
             seed_context: None,
             fabro_run_tools: None,
+            secret_redactor: SecretRedactor::default(),
         })
         .await;
 
