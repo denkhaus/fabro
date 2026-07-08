@@ -8,8 +8,12 @@
 
 export const GRAPH_MIN_ZOOM = 25; // percent; the clamp bounds. Widen if you want more range.
 export const GRAPH_MAX_ZOOM = 200;
+// Initial zoom shown when a graph first loads, in percent.
+export const GRAPH_DEFAULT_ZOOM = 75;
 
 export type GraphView = { zoom: number; pan: { x: number; y: number } };
+
+export const DEFAULT_GRAPH_VIEW: GraphView = { zoom: GRAPH_DEFAULT_ZOOM, pan: { x: 0, y: 0 } };
 
 export const clampZoom = (zoom: number): number =>
   Math.min(GRAPH_MAX_ZOOM, Math.max(GRAPH_MIN_ZOOM, zoom));
