@@ -359,7 +359,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-08T15:07:06.493388133Z",
-  "last_event_at": "2026-07-08T15:07:50.090844618Z",
+  "last_event_at": "2026-07-08T15:07:59.452682965Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -557,9 +557,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 62,
       "checkpoint": {
-        "timestamp": "2026-07-08T15:07:55.783270320Z",
+        "timestamp": "2026-07-08T15:07:59.452503484Z",
         "current_node": "synth",
         "completed_nodes": [
           "start",
@@ -569,8 +569,12 @@
         ],
         "node_retries": {},
         "context_values": {
-          "last_stage": "synth",
-          "internal.retry_count.merge": 0,
+          "thread.merge.current_node": "synth",
+          "thread.start.current_node": "fork",
+          "last_response": "I can see the following context about the parallel branches:\n\n**Context keys provided:**\n- parallel.branch_count: 2\n- parallel.fan_in.best_head_sha: 379d13d4f7218e30c9ec925d730f40194c63616b\n- parallel",
+          "failure_signature": "",
+          "parallel.fan_in.best_id": "a",
+          "parallel.fan_in.best_outcome": "succeeded",
           "parallel.results": [
             {
               "id": "a",
@@ -583,32 +587,38 @@
               "head_sha": "8ee19a3b6be176881b7063c1340d26477c997742"
             }
           ],
-          "internal.retry_count.synth": 0,
-          "internal.node_visit_count": 1,
-          "thread.start.current_node": "fork",
-          "parallel.fan_in.best_id": "a",
-          "graph.goal": "Repro: does the synth/merge node see branch outputs?",
-          "thread.merge.current_node": "synth",
-          "graph.rankdir": "LR",
-          "last_response": "I can see the following context about the parallel branches:\n\n**Context keys provided:**\n- parallel.branch_count: 2\n- parallel.fan_in.best_head_sha: 379d13d4f7218e30c9ec925d730f40194c63616b\n- parallel",
-          "parallel.branch_count": 2,
-          "parallel.fan_in.best_outcome": "succeeded",
-          "parallel.fan_in.best_head_sha": "379d13d4f7218e30c9ec925d730f40194c63616b",
-          "internal.run_id": "01KX148ZAMMJRAADHK1HBF7PC3",
-          "failure_signature": "",
-          "internal.thread_id": "merge",
-          "thread.fork.current_node": "merge",
-          "graph.model_stylesheet": "* { model: claude-sonnet-4-5; }",
-          "internal.retry_count.start": 0,
-          "internal.fidelity": "compact",
-          "response.synth": "I can see the following context about the parallel branches:\n\n**Context keys provided:**\n- parallel.branch_count: 2\n- parallel.fan_in.best_head_sha: 379d13d4f7218e30c9ec925d730f40194c63616b\n- parallel.fan_in.best_id: a\n- parallel.fan_in.best_outcome: succeeded\n- parallel.results: [{\"id\":\"a\",\"status\":\"succeeded\",\"head_sha\":\"379d13d4f7218e30c9ec925d730f40194c63616b\"},{\"id\":\"b\",\"status\":\"succeeded\",\"head_sha\":\"8ee19a3b6be176881b7063c1340d26477c997742\"}]\n\n**Branch output visibility:**\n\nNO_BRANCH_OUTPUT_IN_CONTEXT\n\nI can see metadata about the branches (their IDs, status, and head SHAs), but I cannot see the actual content or output text from the branch executions. The markers BRANCH_A_MARKER_7f3a and BRANCH_B_MARKER_91c2 are not present in the context provided to me.\n\nThe synthesis node receives structural information about which branches completed and their success/failure status, but not the actual output content or analysis that those branches produced.",
-          "internal.work_dir": "/home/daytona/workspace/fabro",
-          "failure_class": "",
-          "internal.retry_count.fork": 0,
           "outcome": "succeeded",
-          "current_node": "synth"
+          "internal.retry_count.merge": 0,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "parallel.branch_count": 2,
+          "parallel.fan_in.best_head_sha": "379d13d4f7218e30c9ec925d730f40194c63616b",
+          "response.synth": "I can see the following context about the parallel branches:\n\n**Context keys provided:**\n- parallel.branch_count: 2\n- parallel.fan_in.best_head_sha: 379d13d4f7218e30c9ec925d730f40194c63616b\n- parallel.fan_in.best_id: a\n- parallel.fan_in.best_outcome: succeeded\n- parallel.results: [{\"id\":\"a\",\"status\":\"succeeded\",\"head_sha\":\"379d13d4f7218e30c9ec925d730f40194c63616b\"},{\"id\":\"b\",\"status\":\"succeeded\",\"head_sha\":\"8ee19a3b6be176881b7063c1340d26477c997742\"}]\n\n**Branch output visibility:**\n\nNO_BRANCH_OUTPUT_IN_CONTEXT\n\nI can see metadata about the branches (their IDs, status, and head SHAs), but I cannot see the actual content or output text from the branch executions. The markers BRANCH_A_MARKER_7f3a and BRANCH_B_MARKER_91c2 are not present in the context provided to me.\n\nThe synthesis node receives structural information about which branches completed and their success/failure status, but not the actual output content or analysis that those branches produced.",
+          "internal.fidelity": "compact",
+          "internal.retry_count.synth": 0,
+          "internal.retry_count.fork": 0,
+          "internal.run_id": "01KX148ZAMMJRAADHK1HBF7PC3",
+          "internal.thread_id": "merge",
+          "failure_class": "",
+          "graph.model_stylesheet": "* { model: claude-sonnet-4-5; }",
+          "internal.node_visit_count": 1,
+          "last_stage": "synth",
+          "graph.goal": "Repro: does the synth/merge node see branch outputs?",
+          "thread.fork.current_node": "merge",
+          "current_node": "synth",
+          "internal.retry_count.start": 0,
+          "graph.rankdir": "LR"
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "fork": {
+            "status": "succeeded",
+            "jump_to_node": "merge",
+            "notes": "Parallel node dispatched 2 branches (2 succeeded, 0 failed)",
+            "usage": null
+          },
           "merge": {
             "status": "succeeded",
             "context_updates": {
@@ -624,12 +634,6 @@
               "tool_time_ms": 0,
               "active_time_ms": 0
             }
-          },
-          "fork": {
-            "status": "succeeded",
-            "jump_to_node": "merge",
-            "notes": "Parallel node dispatched 2 branches (2 succeeded, 0 failed)",
-            "usage": null
           },
           "synth": {
             "status": "succeeded",
@@ -668,24 +672,96 @@
               "tool_time_ms": 0,
               "active_time_ms": 5672
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "de7fce0671f891b7fd2e7c6885ba5d0f86c2637d",
         "node_visits": {
-          "start": 1,
-          "fork": 1,
           "merge": 1,
+          "fork": 1,
+          "start": 1,
           "synth": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-07-08T15:07:59.470832919Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 52961,
+      "inference_time_ms": 5672,
+      "tool_time_ms": 0,
+      "active_time_ms": 5672
+    },
+    "final_git_commit_sha": "de7fce0671f891b7fd2e7c6885ba5d0f86c2637d",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "fork",
+        "stage_label": "fork",
+        "timing": {
+          "wall_time_ms": 34029,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "billing_usd_micros": 47907,
+        "retries": 0
+      },
+      {
+        "stage_id": "merge",
+        "stage_label": "merge",
+        "timing": {
+          "wall_time_ms": 39,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "synth",
+        "stage_label": "synth",
+        "timing": {
+          "wall_time_ms": 5777,
+          "inference_time_ms": 5672,
+          "tool_time_ms": 0,
+          "active_time_ms": 5672
+        },
+        "billing_usd_micros": 6795,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 359,
+      "output_tokens": 2319,
+      "total_tokens": 11982,
+      "reasoning_tokens": 0,
+      "cache_read_tokens": 4652,
+      "cache_write_tokens": 4652,
+      "total_usd_micros": 54702
+    },
+    "total_retries": 0,
+    "diff": {}
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -803,7 +879,12 @@
       "first_event_seq": 55,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: synth",
+        "failure_reason": null,
+        "timestamp": "2026-07-08T15:07:55.783100433Z"
+      },
       "provider_used": {
         "mode": "prompt",
         "provider": "anthropic",
@@ -816,6 +897,51 @@
       "output": null,
       "started_at": "2026-07-08T15:07:50.005244398Z",
       "handler": "prompt",
+      "timing": {
+        "wall_time_ms": 5777,
+        "inference_time_ms": 5672,
+        "tool_time_ms": 0,
+        "active_time_ms": 5672
+      },
+      "usage": {
+        "input_tokens": 310,
+        "output_tokens": 298,
+        "total_tokens": 5260,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 4652,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 6795
+      },
+      "model": {
+        "provider": "anthropic",
+        "model_id": "claude-sonnet-4-5"
+      },
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 65,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-08T15:07:59.452682965Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-08T15:07:59.452655741Z",
+      "handler": "exit",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -824,7 +950,7 @@
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
       },
-      "state": "running"
+      "state": "succeeded"
     },
     "merge@1": {
       "first_event_seq": 47,
