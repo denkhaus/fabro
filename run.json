@@ -350,14 +350,116 @@
     }
   },
   "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KX148ZAMMJRAADHK1HBF7PC3",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-07-08T15:07:06.493357143Z",
+    "run_branch": "fabro/run/01KX148ZAMMJRAADHK1HBF7PC3",
+    "base_sha": "c5dd5772d0ca124187dfdd38d72c8ff1a49efd5f"
   },
-  "status_updated_at": "2026-07-08T15:06:52.689699687Z",
-  "last_event_at": "2026-07-08T15:07:06.261583676Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-07-08T15:07:06.493388133Z",
+  "last_event_at": "2026-07-08T15:07:42.318808758Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 20,
+      "checkpoint": {
+        "timestamp": "2026-07-08T15:07:08.314302119Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.rankdir": "LR",
+          "failure_class": "",
+          "graph.model_stylesheet": "* { model: claude-sonnet-4-5; }",
+          "internal.retry_count.start": 0,
+          "internal.node_visit_count": 1,
+          "internal.fidelity": "compact",
+          "graph.goal": "Repro: does the synth/merge node see branch outputs?",
+          "failure_signature": "",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.run_id": "01KX148ZAMMJRAADHK1HBF7PC3",
+          "outcome": "succeeded",
+          "current_node": "start",
+          "internal.thread_id": null
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "fork",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-08T15:07:42.343955440Z",
+        "current_node": "fork",
+        "completed_nodes": [
+          "start",
+          "fork"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.run_id": "01KX148ZAMMJRAADHK1HBF7PC3",
+          "failure_signature": "",
+          "internal.thread_id": "start",
+          "graph.model_stylesheet": "* { model: claude-sonnet-4-5; }",
+          "parallel.results": [
+            {
+              "id": "a",
+              "status": "succeeded",
+              "head_sha": "379d13d4f7218e30c9ec925d730f40194c63616b"
+            },
+            {
+              "id": "b",
+              "status": "succeeded",
+              "head_sha": "8ee19a3b6be176881b7063c1340d26477c997742"
+            }
+          ],
+          "internal.retry_count.start": 0,
+          "internal.fidelity": "compact",
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "failure_class": "",
+          "thread.start.current_node": "fork",
+          "graph.goal": "Repro: does the synth/merge node see branch outputs?",
+          "internal.retry_count.fork": 0,
+          "graph.rankdir": "LR",
+          "parallel.branch_count": 2,
+          "outcome": "succeeded",
+          "current_node": "fork"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "fork": {
+            "status": "succeeded",
+            "jump_to_node": "merge",
+            "notes": "Parallel node dispatched 2 branches (2 succeeded, 0 failed)",
+            "usage": null
+          }
+        },
+        "next_node_id": "merge",
+        "node_visits": {
+          "start": 1,
+          "fork": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -383,5 +485,72 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-08T15:07:08.314186481Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-08T15:07:08.314021958Z",
+      "handler": "start",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    },
+    "fork@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "prompt",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-5"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-08T15:07:08.314410727Z",
+      "handler": "parallel",
+      "usage": {
+        "input_tokens": 49,
+        "output_tokens": 2021,
+        "total_tokens": 6722,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 4652,
+        "total_usd_micros": 47907
+      },
+      "model": {
+        "provider": "anthropic",
+        "model_id": "claude-sonnet-4-5"
+      },
+      "state": "running"
+    }
+  }
 }
