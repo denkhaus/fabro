@@ -505,7 +505,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-08T20:17:15.312014669Z",
-  "last_event_at": "2026-07-08T20:17:21.904870454Z",
+  "last_event_at": "2026-07-08T20:19:51.569985019Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -609,14 +609,96 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 39,
       "checkpoint": {
-        "timestamp": "2026-07-08T20:19:48.092128887Z",
+        "timestamp": "2026-07-08T20:19:51.567602525Z",
         "current_node": "preflight_compile",
         "completed_nodes": [
           "start",
           "toolchain",
           "preflight_compile"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.retry_count.start": 0,
+          "thread.toolchain.current_node": "preflight_compile",
+          "internal.run_id": "01KX1P0VV0DAQTT0N2NADX8J8J",
+          "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.node_visit_count": 1,
+          "thread.start.current_node": "toolchain",
+          "failure_signature": "",
+          "internal.retry_count.toolchain": 0,
+          "outcome": "succeeded",
+          "internal.thread_id": "toolchain",
+          "failure_class": "",
+          "graph.goal": "# PR 2 — Register declared secrets at the run boundary; redact them from events and errors\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. It is the spine of a series of secrets/\nredaction PRs; it has **no prerequisites** beyond what is already merged on\nmain. (Two merged foundations it builds on: `fabro_redact::SecretRedactor`\nexists, and `secrets.NAME` tokens already resolve from the vault at the run\nboundary.)\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME` as the double-curly-brace token form used in\n> the codebase, and write the real double-brace syntax in the code, tests, and\n> docs you produce.\n\n## Context and goal\n\nFabro workflows can declare vault secrets in run config via `secrets.NAME`\ntokens (MCP transport env, run-environment env, prepare-step commands/env,\ndocker config). Those tokens resolve server-side at the run boundary in\n`RunSession::new`. Redaction of run output (events, `progress.jsonl`, error\ntext) is currently **content-based only**: pattern + entropy matching in\n`fabro-redact`. Content-based matching is structurally blind to a *declared*\nsecret whose value looks ordinary — e.g. a secret whose value is `staging`,\n`db-prod-3`, or `hunter2` trips neither entropy nor any pattern rule, and\ntoday leaks **verbatim** into emitted events and error messages. That is a\nlive gap: the user explicitly declared the value secret, and the system does\nnot honor it.\n\n**Goal:** register every resolved declared-secret value into a per-run\nexact-match registry at the single place secrets resolve, and apply that\nregistry (composed after the content-based pass) to the run's structured\noutput surfaces: emitted events and setup-failure error text.\n\nDesign rules (fixed — the \"why\" for each is inline):\n\n1. **One registration point.** Every secret value flows through the one\n   boundary lookup closure, so registering there yields a registry that is\n   complete before the run emits anything. No other code path may register\n   values (no per-subsystem or fire-time registration — that was the\n   architectural flaw of a previous, abandoned attempt).\n2. **Per-run, never global.** A test-only in-process path executes multiple\n   runs in one process; redaction state must be per-run (`SecretRedactor` is\n   already built for this: cheap-clone shared state).\n3. **Compose after the content pass.** Content-based redaction stays the\n   universal baseline (it also catches credential-shaped values nobody\n   declared, e.g. from `env.NAME`); the exact-match pass layers on top.\n4. **Single entry point per surface.** Do NOT ship parallel \"content-only\" and\n   \"content+exact-match\" variants of the same redaction API — a caller holding\n   the run redactor could silently pick the weaker one. Every event-redaction\n   call takes a `&SecretRedactor`; an empty redactor is the identity. A call\n   site with genuinely no run scope passes `SecretRedactor::default()` **with\n   a comment stating why no run secret can reach that surface**.\n5. **Scope exact-match substitution to free-form-text fields.** Registered\n   values can be low-entropy words; blind substitution across every event\n   field would corrupt structural values (status enums, ids, event names) that\n   legitimately contain the same word, breaking the typed event reparse.\n   Restrict the exact-match walk to an explicit list of free-form-text\n   property keys (see step 3). Keep the list minimal and comment it as an\n   interim mechanism: a follow-up will derive it from field types. Do not\n   build guard machinery around it.\n6. **Ingest enforces; reads trust (team decision).** The architecture is:\n   redact at the source (worker — this plan's registry + the existing content\n   pass), enforce once more with a pattern-based pass where data enters shared\n   storage (the server can only do pattern-based; it has no registry), and\n   trust everywhere downstream. Do NOT add or extend any redaction on read\n   paths (SSE, event detail, CLI rendering) in this PR — a separate change\n   removes the existing read-side passes. If you find a read path missing\n   data cleanliness, the fix belongs at source or ingest, never at output.\n\n## Verified current state (as of main `8c3f035ea`, 2026-07-08 — re-verify before starting)\n\n- `lib/crates/fabro-redact/src/secret_registry.rs`: `SecretRedactor` —\n  `register(value)` (ignores empty/whitespace, dedups), `redact_into(&str)`\n  (longest-first, replaces with the crate's `REDACTED` marker),\n  `redact_json(Value)`, `is_empty()`; `Clone` + `Default`; shared interior\n  state so clones observe registrations. **Currently has zero consumers.**\n- `lib/crates/fabro-workflow/src/operations/start.rs:383`:\n  `let secret_lookup = |name: &str| vault_token_lookup(vault_guard.as_deref(), name);`\n  — consumed at `:390` (MCP servers), `:422` (docker config), `:446`\n  (run-environment env), `:465` (prepare steps). Resolves; registers nothing.\n- `lib/crates/fabro-workflow/src/event/redaction.rs`:\n  `build_redacted_event_payload` / `redacted_event_json` apply\n  `redact_json_value(normalize_json_value(...))` — content-based only.\n- `lib/crates/fabro-workflow/src/pipeline/initialize.rs`: on prepare-step\n  failure, constructs an error string embedding the resolved command and\n  captured stderr, and emits `SetupCommandStarted` / `SetupCompleted` /\n  `SetupFailed` events carrying resolved command text and exec-output tails.\n- Event flow: emitter → run-event logger/sink (`event/sink.rs`,\n  `runtime_store.rs` local run-store path) → stored payloads / SSE.\n\n## Implementation\n\n1. **Registry creation + registration** (`operations/start.rs`):\n   - Create one `SecretRedactor` per run in `RunSession::new`; store it on\n     `RunSession`.\n   - Add `registered_vault_token_lookup(vault, &redactor, name)`: call\n     `vault_token_lookup`, `register()` any returned value, return it. Swap\n     the closure at `:383` to use it. All four consumers now feed the registry\n     with no further changes.\n2. **Thread the redactor to the event path.** Give the event sink / run-event\n   logger the run's redactor (cheap clone) so every emitted event passes\n   through the exact-match pass. Follow the existing wiring of the sink in\n   `RunSession` (the logger is constructed there); make sure the local\n   run-store backend receives redacted payloads too, and that anything\n   reparsing to a typed event does so from the redacted payload so downstream\n   sinks never see the raw value.\n3. **Exact-match pass in `event/redaction.rs`**, composed after the content\n   pass, skipped entirely when `redactor.is_empty()`:\n   - Walk the event's `properties` object. For keys in the free-form-text\n     list, apply `redactor.redact_json` to the whole subtree; for other keys,\n     recurse (to reach nested listed keys such as `exec_output_tail.stderr`).\n     Also apply `redact_into` to the top-level `node_label` string.\n   - Free-form-text keys (grouped; keep as one `matches!`): command/script\n     I/O: `command`, `script`, `stdout`, `stderr`, `output`, `input`,\n     `arguments`, `exec_output_tail`, `tool_input`, `tool_output`; agent/LLM\n     text: `prompt`, `response`, `answer`, `question`, `delta`, `text`,\n     `message`, `reason`, `notes`, `preview`; errors: `error`,\n     `error_message`, `failure`, `causes`, `details`, `description`;\n     diffs/config: `diff`, `final_patch`, `workflow_config`,\n     `workflow_source`; metadata text: `goal`, `subject`, `title`. Comment the\n     list with: why it exists (low-entropy values vs structural fields) and\n     that new free-form event fields must be added here until the\n     type-derived replacement lands.\n4. **Setup-failure error text** (`pipeline/initialize.rs`): pass the\n   constructed failure message through `redactor.redact_into` before it\n   becomes an `Error`. Thread the redactor into the initialize options along\n   whatever path the session already passes options.\n5. **Ingest-boundary pattern pass (server).** Locate where worker-shipped\n   events and persisted run logs enter shared storage on the server (the\n   HTTP event-append path the worker's run-store client posts to, plus any\n   server-side log persistence). Verify whether a content-based pass runs\n   there today; where it does not, apply `redact_json_value` /\n   `redact_jsonl_line` at that ingest point, before the write. This is\n   defense in depth for storage cleanliness — the server has no per-run\n   registry, so pattern-based is the only pass it can perform. Content-based\n   redaction is idempotent, so double application with the worker-side pass\n   is harmless.\n6. **Docs** (`docs/public/` run-configuration page): declared secrets are\n   redacted regardless of shape on the run's structured surfaces (events,\n   `progress.jsonl`, setup errors); command output is covered by content-based\n   redaction plus exact-match where captured into those surfaces. State the\n   boundary honestly — once a secret enters sandbox process env, text the\n   sandbox re-emits is covered only where it is captured back into structured\n   surfaces; do not claim a total guarantee.\n\n## Tests (write failing-first; hermetic — temp-dir vaults, no ambient provider keys)\n\n- A prepare step that fails while echoing a **low-entropy** declared secret\n  (value `staging`) produces a `setup.failed` event and a run error in which\n  the value is replaced by `REDACTED` — and a structural field legitimately\n  containing the same word is untouched.\n- After a run with declared secrets, no resolved secret value appears anywhere\n  in the serialized stored events (scan the full `list_events` output).\n- Content-based baseline unchanged: a high-entropy credential-shaped string in\n  output is still redacted with an **empty** registry.\n- Per-run isolation: two `RunSession`s in one process — each redacts its own\n  registered value and not the other's.\n- Empty registry fast path: event serialization is byte-identical to the\n  current content-only output.\n- Registration is boundary-time: a declared secret consumed only by MCP/prepare\n  config is redacted from an event emitted before any stage runs.\n- Ingest enforcement: an event posted to the server's append path containing a\n  credential-shaped string is stored with that string redacted (pattern pass at\n  ingest), independent of what the producer did.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- `cargo dev docs check` (docs page touched)\n- No OpenAPI/wire change; TypeScript client untouched.\n\n## Conventions\n\n- Never print or log a resolved secret value, including from tests.\n- Plain-English commit messages, PR text, and code comments — describe what\n  the change does; no internal planning identifiers or plan-file names in\n  anything that ships.\n- PR description must state: the user-visible guarantee added (declared\n  secrets redacted regardless of shape on structured surfaces), the known\n  boundary (sandbox-crossing text covered where captured; live stream is a\n  separate effort), and that exec-output tails are a follow-up surface.\n",
+          "graph.rankdir": "LR",
+          "internal.fidelity": "compact",
+          "current_node": "preflight_compile",
+          "internal.retry_count.preflight_compile": 0
+        },
+        "node_outcomes": {
+          "preflight_compile": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo check -q --workspace 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 146182,
+              "active_time_ms": 146182
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1293,
+              "active_time_ms": 1293
+            }
+          }
+        },
+        "next_node_id": "preflight_lint",
+        "git_commit_sha": "20ef1cc3df1c86a1512cb6eeb8367be0ecc9b367",
+        "node_visits": {
+          "toolchain": 1,
+          "preflight_compile": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-08T20:22:30.748807403Z",
+        "current_node": "preflight_lint",
+        "completed_nodes": [
+          "start",
+          "toolchain",
+          "preflight_compile",
+          "preflight_lint"
         ],
         "node_retries": {},
         "context_values": {
@@ -628,16 +710,18 @@
           "internal.node_visit_count": 1,
           "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
           "internal.retry_count.toolchain": 0,
-          "current_node": "preflight_compile",
+          "current_node": "preflight_lint",
           "internal.work_dir": "/home/daytona/workspace/fabro",
-          "internal.thread_id": "toolchain",
+          "internal.thread_id": "preflight_compile",
           "internal.run_id": "01KX1P0VV0DAQTT0N2NADX8J8J",
           "graph.goal": "# PR 2 — Register declared secrets at the run boundary; redact them from events and errors\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. It is the spine of a series of secrets/\nredaction PRs; it has **no prerequisites** beyond what is already merged on\nmain. (Two merged foundations it builds on: `fabro_redact::SecretRedactor`\nexists, and `secrets.NAME` tokens already resolve from the vault at the run\nboundary.)\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME` as the double-curly-brace token form used in\n> the codebase, and write the real double-brace syntax in the code, tests, and\n> docs you produce.\n\n## Context and goal\n\nFabro workflows can declare vault secrets in run config via `secrets.NAME`\ntokens (MCP transport env, run-environment env, prepare-step commands/env,\ndocker config). Those tokens resolve server-side at the run boundary in\n`RunSession::new`. Redaction of run output (events, `progress.jsonl`, error\ntext) is currently **content-based only**: pattern + entropy matching in\n`fabro-redact`. Content-based matching is structurally blind to a *declared*\nsecret whose value looks ordinary — e.g. a secret whose value is `staging`,\n`db-prod-3`, or `hunter2` trips neither entropy nor any pattern rule, and\ntoday leaks **verbatim** into emitted events and error messages. That is a\nlive gap: the user explicitly declared the value secret, and the system does\nnot honor it.\n\n**Goal:** register every resolved declared-secret value into a per-run\nexact-match registry at the single place secrets resolve, and apply that\nregistry (composed after the content-based pass) to the run's structured\noutput surfaces: emitted events and setup-failure error text.\n\nDesign rules (fixed — the \"why\" for each is inline):\n\n1. **One registration point.** Every secret value flows through the one\n   boundary lookup closure, so registering there yields a registry that is\n   complete before the run emits anything. No other code path may register\n   values (no per-subsystem or fire-time registration — that was the\n   architectural flaw of a previous, abandoned attempt).\n2. **Per-run, never global.** A test-only in-process path executes multiple\n   runs in one process; redaction state must be per-run (`SecretRedactor` is\n   already built for this: cheap-clone shared state).\n3. **Compose after the content pass.** Content-based redaction stays the\n   universal baseline (it also catches credential-shaped values nobody\n   declared, e.g. from `env.NAME`); the exact-match pass layers on top.\n4. **Single entry point per surface.** Do NOT ship parallel \"content-only\" and\n   \"content+exact-match\" variants of the same redaction API — a caller holding\n   the run redactor could silently pick the weaker one. Every event-redaction\n   call takes a `&SecretRedactor`; an empty redactor is the identity. A call\n   site with genuinely no run scope passes `SecretRedactor::default()` **with\n   a comment stating why no run secret can reach that surface**.\n5. **Scope exact-match substitution to free-form-text fields.** Registered\n   values can be low-entropy words; blind substitution across every event\n   field would corrupt structural values (status enums, ids, event names) that\n   legitimately contain the same word, breaking the typed event reparse.\n   Restrict the exact-match walk to an explicit list of free-form-text\n   property keys (see step 3). Keep the list minimal and comment it as an\n   interim mechanism: a follow-up will derive it from field types. Do not\n   build guard machinery around it.\n6. **Ingest enforces; reads trust (team decision).** The architecture is:\n   redact at the source (worker — this plan's registry + the existing content\n   pass), enforce once more with a pattern-based pass where data enters shared\n   storage (the server can only do pattern-based; it has no registry), and\n   trust everywhere downstream. Do NOT add or extend any redaction on read\n   paths (SSE, event detail, CLI rendering) in this PR — a separate change\n   removes the existing read-side passes. If you find a read path missing\n   data cleanliness, the fix belongs at source or ingest, never at output.\n\n## Verified current state (as of main `8c3f035ea`, 2026-07-08 — re-verify before starting)\n\n- `lib/crates/fabro-redact/src/secret_registry.rs`: `SecretRedactor` —\n  `register(value)` (ignores empty/whitespace, dedups), `redact_into(&str)`\n  (longest-first, replaces with the crate's `REDACTED` marker),\n  `redact_json(Value)`, `is_empty()`; `Clone` + `Default`; shared interior\n  state so clones observe registrations. **Currently has zero consumers.**\n- `lib/crates/fabro-workflow/src/operations/start.rs:383`:\n  `let secret_lookup = |name: &str| vault_token_lookup(vault_guard.as_deref(), name);`\n  — consumed at `:390` (MCP servers), `:422` (docker config), `:446`\n  (run-environment env), `:465` (prepare steps). Resolves; registers nothing.\n- `lib/crates/fabro-workflow/src/event/redaction.rs`:\n  `build_redacted_event_payload` / `redacted_event_json` apply\n  `redact_json_value(normalize_json_value(...))` — content-based only.\n- `lib/crates/fabro-workflow/src/pipeline/initialize.rs`: on prepare-step\n  failure, constructs an error string embedding the resolved command and\n  captured stderr, and emits `SetupCommandStarted` / `SetupCompleted` /\n  `SetupFailed` events carrying resolved command text and exec-output tails.\n- Event flow: emitter → run-event logger/sink (`event/sink.rs`,\n  `runtime_store.rs` local run-store path) → stored payloads / SSE.\n\n## Implementation\n\n1. **Registry creation + registration** (`operations/start.rs`):\n   - Create one `SecretRedactor` per run in `RunSession::new`; store it on\n     `RunSession`.\n   - Add `registered_vault_token_lookup(vault, &redactor, name)`: call\n     `vault_token_lookup`, `register()` any returned value, return it. Swap\n     the closure at `:383` to use it. All four consumers now feed the registry\n     with no further changes.\n2. **Thread the redactor to the event path.** Give the event sink / run-event\n   logger the run's redactor (cheap clone) so every emitted event passes\n   through the exact-match pass. Follow the existing wiring of the sink in\n   `RunSession` (the logger is constructed there); make sure the local\n   run-store backend receives redacted payloads too, and that anything\n   reparsing to a typed event does so from the redacted payload so downstream\n   sinks never see the raw value.\n3. **Exact-match pass in `event/redaction.rs`**, composed after the content\n   pass, skipped entirely when `redactor.is_empty()`:\n   - Walk the event's `properties` object. For keys in the free-form-text\n     list, apply `redactor.redact_json` to the whole subtree; for other keys,\n     recurse (to reach nested listed keys such as `exec_output_tail.stderr`).\n     Also apply `redact_into` to the top-level `node_label` string.\n   - Free-form-text keys (grouped; keep as one `matches!`): command/script\n     I/O: `command`, `script`, `stdout`, `stderr`, `output`, `input`,\n     `arguments`, `exec_output_tail`, `tool_input`, `tool_output`; agent/LLM\n     text: `prompt`, `response`, `answer`, `question`, `delta`, `text`,\n     `message`, `reason`, `notes`, `preview`; errors: `error`,\n     `error_message`, `failure`, `causes`, `details`, `description`;\n     diffs/config: `diff`, `final_patch`, `workflow_config`,\n     `workflow_source`; metadata text: `goal`, `subject`, `title`. Comment the\n     list with: why it exists (low-entropy values vs structural fields) and\n     that new free-form event fields must be added here until the\n     type-derived replacement lands.\n4. **Setup-failure error text** (`pipeline/initialize.rs`): pass the\n   constructed failure message through `redactor.redact_into` before it\n   becomes an `Error`. Thread the redactor into the initialize options along\n   whatever path the session already passes options.\n5. **Ingest-boundary pattern pass (server).** Locate where worker-shipped\n   events and persisted run logs enter shared storage on the server (the\n   HTTP event-append path the worker's run-store client posts to, plus any\n   server-side log persistence). Verify whether a content-based pass runs\n   there today; where it does not, apply `redact_json_value` /\n   `redact_jsonl_line` at that ingest point, before the write. This is\n   defense in depth for storage cleanliness — the server has no per-run\n   registry, so pattern-based is the only pass it can perform. Content-based\n   redaction is idempotent, so double application with the worker-side pass\n   is harmless.\n6. **Docs** (`docs/public/` run-configuration page): declared secrets are\n   redacted regardless of shape on the run's structured surfaces (events,\n   `progress.jsonl`, setup errors); command output is covered by content-based\n   redaction plus exact-match where captured into those surfaces. State the\n   boundary honestly — once a secret enters sandbox process env, text the\n   sandbox re-emits is covered only where it is captured back into structured\n   surfaces; do not claim a total guarantee.\n\n## Tests (write failing-first; hermetic — temp-dir vaults, no ambient provider keys)\n\n- A prepare step that fails while echoing a **low-entropy** declared secret\n  (value `staging`) produces a `setup.failed` event and a run error in which\n  the value is replaced by `REDACTED` — and a structural field legitimately\n  containing the same word is untouched.\n- After a run with declared secrets, no resolved secret value appears anywhere\n  in the serialized stored events (scan the full `list_events` output).\n- Content-based baseline unchanged: a high-entropy credential-shaped string in\n  output is still redacted with an **empty** registry.\n- Per-run isolation: two `RunSession`s in one process — each redacts its own\n  registered value and not the other's.\n- Empty registry fast path: event serialization is byte-identical to the\n  current content-only output.\n- Registration is boundary-time: a declared secret consumed only by MCP/prepare\n  config is redacted from an event emitted before any stage runs.\n- Ingest enforcement: an event posted to the server's append path containing a\n  credential-shaped string is stored with that string redacted (pattern pass at\n  ingest), independent of what the producer did.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- `cargo dev docs check` (docs page touched)\n- No OpenAPI/wire change; TypeScript client untouched.\n\n## Conventions\n\n- Never print or log a resolved secret value, including from tests.\n- Plain-English commit messages, PR text, and code comments — describe what\n  the change does; no internal planning identifiers or plan-file names in\n  anything that ships.\n- PR description must state: the user-visible guarantee added (declared\n  secrets redacted regardless of shape on structured surfaces), the known\n  boundary (sandbox-crossing text covered where captured; live stream is a\n  separate effort), and that exec-output tails are a follow-up surface.\n",
           "internal.retry_count.preflight_compile": 0,
           "internal.fidelity": "compact",
           "internal.retry_count.start": 0,
           "thread.start.current_node": "toolchain",
-          "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+          "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+          "internal.retry_count.preflight_lint": 0,
+          "thread.preflight_compile.current_node": "preflight_lint"
         },
         "node_outcomes": {
           "toolchain": {
@@ -671,11 +755,26 @@
               "tool_time_ms": 146182,
               "active_time_ms": 146182
             }
+          },
+          "preflight_lint": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 159175,
+              "active_time_ms": 159175
+            }
           }
         },
-        "next_node_id": "preflight_lint",
+        "next_node_id": "implement",
         "node_visits": {
           "start": 1,
+          "preflight_lint": 1,
           "preflight_compile": 1,
           "toolchain": 1
         }
@@ -709,33 +808,6 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "preflight_compile@1": {
-      "first_event_seq": 32,
-      "prompt": null,
-      "response": null,
-      "completion": null,
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "cargo check -q --workspace 2>&1",
-        "command": "exec 2>&1\ncargo check -q --workspace 2>&1",
-        "language": "shell"
-      },
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-07-08T20:17:21.904456570Z",
-      "handler": "command",
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "state": "running"
-    },
     "start@1": {
       "first_event_seq": 18,
       "prompt": null,
@@ -807,6 +879,81 @@
         "inference_time_ms": 0,
         "tool_time_ms": 1293,
         "active_time_ms": 1293
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    },
+    "preflight_lint@1": {
+      "first_event_seq": 42,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
+        "command": "exec 2>&1\ncargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
+        "language": "shell"
+      },
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-08T20:19:51.569590018Z",
+      "handler": "command",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
+    },
+    "preflight_compile@1": {
+      "first_event_seq": 32,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: cargo check -q --workspace 2>&1",
+        "failure_reason": null,
+        "timestamp": "2026-07-08T20:19:48.091274540Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "cargo check -q --workspace 2>&1",
+        "command": "exec 2>&1\ncargo check -q --workspace 2>&1",
+        "language": "shell"
+      },
+      "script_timing": {
+        "output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+        "exit_code": 0,
+        "duration_ms": 146182,
+        "termination": "exited",
+        "output_bytes": 0,
+        "live_streaming": false
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 0,
+      "live_streaming": false,
+      "termination": "exited",
+      "started_at": "2026-07-08T20:17:21.904456570Z",
+      "handler": "command",
+      "timing": {
+        "wall_time_ms": 146186,
+        "inference_time_ms": 0,
+        "tool_time_ms": 146182,
+        "active_time_ms": 146182
       },
       "usage": {
         "input_tokens": 0,
