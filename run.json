@@ -359,7 +359,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-08T15:07:06.493388133Z",
-  "last_event_at": "2026-07-08T15:07:42.318808758Z",
+  "last_event_at": "2026-07-08T15:07:46.323790616Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -400,9 +400,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 44,
       "checkpoint": {
-        "timestamp": "2026-07-08T15:07:42.343955440Z",
+        "timestamp": "2026-07-08T15:07:46.323516967Z",
         "current_node": "fork",
         "completed_nodes": [
           "start",
@@ -410,9 +410,79 @@
         ],
         "node_retries": {},
         "context_values": {
+          "outcome": "succeeded",
+          "internal.thread_id": "start",
+          "thread.start.current_node": "fork",
+          "internal.retry_count.fork": 0,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "current_node": "fork",
+          "failure_class": "",
+          "failure_signature": "",
+          "graph.model_stylesheet": "* { model: claude-sonnet-4-5; }",
+          "graph.rankdir": "LR",
+          "parallel.results": [
+            {
+              "id": "a",
+              "status": "succeeded",
+              "head_sha": "379d13d4f7218e30c9ec925d730f40194c63616b"
+            },
+            {
+              "id": "b",
+              "status": "succeeded",
+              "head_sha": "8ee19a3b6be176881b7063c1340d26477c997742"
+            }
+          ],
+          "internal.run_id": "01KX148ZAMMJRAADHK1HBF7PC3",
+          "internal.retry_count.start": 0,
+          "parallel.branch_count": 2,
+          "internal.node_visit_count": 1,
+          "graph.goal": "Repro: does the synth/merge node see branch outputs?",
+          "internal.fidelity": "compact"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "fork": {
+            "status": "succeeded",
+            "jump_to_node": "merge",
+            "notes": "Parallel node dispatched 2 branches (2 succeeded, 0 failed)",
+            "usage": null
+          }
+        },
+        "next_node_id": "merge",
+        "git_commit_sha": "9b85837e7249b74aaedc28a45a1ecbf402d4d63f",
+        "node_visits": {
+          "start": 1,
+          "fork": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-08T15:07:46.363877667Z",
+        "current_node": "merge",
+        "completed_nodes": [
+          "start",
+          "fork",
+          "merge"
+        ],
+        "node_retries": {},
+        "context_values": {
           "internal.run_id": "01KX148ZAMMJRAADHK1HBF7PC3",
           "failure_signature": "",
-          "internal.thread_id": "start",
+          "internal.thread_id": "fork",
+          "thread.fork.current_node": "merge",
+          "internal.retry_count.merge": 0,
           "graph.model_stylesheet": "* { model: claude-sonnet-4-5; }",
           "parallel.results": [
             {
@@ -435,24 +505,44 @@
           "graph.goal": "Repro: does the synth/merge node see branch outputs?",
           "internal.retry_count.fork": 0,
           "graph.rankdir": "LR",
+          "parallel.fan_in.best_id": "a",
           "parallel.branch_count": 2,
+          "parallel.fan_in.best_outcome": "succeeded",
+          "parallel.fan_in.best_head_sha": "379d13d4f7218e30c9ec925d730f40194c63616b",
           "outcome": "succeeded",
-          "current_node": "fork"
+          "current_node": "merge"
         },
         "node_outcomes": {
-          "start": {
+          "merge": {
             "status": "succeeded",
-            "usage": null
+            "context_updates": {
+              "parallel.fan_in.best_id": "a",
+              "parallel.fan_in.best_outcome": "succeeded",
+              "parallel.fan_in.best_head_sha": "379d13d4f7218e30c9ec925d730f40194c63616b"
+            },
+            "notes": "Selected best candidate: a",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 0,
+              "active_time_ms": 0
+            }
           },
           "fork": {
             "status": "succeeded",
             "jump_to_node": "merge",
             "notes": "Parallel node dispatched 2 branches (2 succeeded, 0 failed)",
             "usage": null
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           }
         },
-        "next_node_id": "merge",
+        "next_node_id": "synth",
         "node_visits": {
+          "merge": 1,
           "start": 1,
           "fork": 1
         }
@@ -520,11 +610,39 @@
       },
       "state": "succeeded"
     },
+    "merge@1": {
+      "first_event_seq": 47,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-08T15:07:46.323790616Z",
+      "handler": "parallel.fan_in",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
+    },
     "fork@1": {
       "first_event_seq": 21,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Parallel node dispatched 2 branches (2 succeeded, 0 failed)",
+        "failure_reason": null,
+        "timestamp": "2026-07-08T15:07:42.343874651Z"
+      },
       "provider_used": {
         "mode": "prompt",
         "provider": "anthropic",
@@ -533,10 +651,27 @@
       "diff": null,
       "script_invocation": null,
       "script_timing": null,
-      "parallel_results": null,
+      "parallel_results": [
+        {
+          "id": "a",
+          "status": "succeeded",
+          "head_sha": "379d13d4f7218e30c9ec925d730f40194c63616b"
+        },
+        {
+          "id": "b",
+          "status": "succeeded",
+          "head_sha": "8ee19a3b6be176881b7063c1340d26477c997742"
+        }
+      ],
       "output": null,
       "started_at": "2026-07-08T15:07:08.314410727Z",
       "handler": "parallel",
+      "timing": {
+        "wall_time_ms": 34029,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 49,
         "output_tokens": 2021,
@@ -550,7 +685,7 @@
         "provider": "anthropic",
         "model_id": "claude-sonnet-4-5"
       },
-      "state": "running"
+      "state": "succeeded"
     }
   }
 }
