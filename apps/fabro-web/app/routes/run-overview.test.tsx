@@ -44,12 +44,12 @@ function textFromNode(
   return (node.children ?? []).map(textFromNode).join(" ");
 }
 
-function render(): TestRenderer.ReactTestRenderer {
+function renderAt(entry: string): TestRenderer.ReactTestRenderer {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   let renderer!: TestRenderer.ReactTestRenderer;
   act(() => {
     renderer = TestRenderer.create(
-      <MemoryRouter initialEntries={["/runs/run-1"]}>
+      <MemoryRouter initialEntries={[entry]}>
         <Routes>
           <Route path="/runs/:id" element={<RunOverview />} />
         </Routes>
@@ -58,6 +58,24 @@ function render(): TestRenderer.ReactTestRenderer {
   });
   mountedRenderers.push(renderer);
   return renderer;
+}
+
+function render(): TestRenderer.ReactTestRenderer {
+  return renderAt("/runs/run-1");
+}
+
+// The inner graph node carries `transform: translate(...) scale(...)` reflecting view.zoom/pan.
+function graphTransform(renderer: TestRenderer.ReactTestRenderer): string {
+  const node = renderer.root.findAll(
+    (n) => (n.props?.style as { transformOrigin?: string })?.transformOrigin === "center center",
+  )[0];
+  return (node.props.style as { transform: string }).transform;
+}
+
+function clickTitle(renderer: TestRenderer.ReactTestRenderer, title: string): void {
+  act(() => {
+    renderer.root.findAll((n) => n.props?.title === title)[0].props.onClick();
+  });
 }
 
 afterEach(() => {
@@ -86,5 +104,33 @@ describe("RunOverview", () => {
     expect(text).toContain("Couldn't render workflow graph");
     expect(text).toContain("failed to parse DOT source");
     expect(text).not.toContain("No workflow graph");
+  });
+
+  test("restores graph zoom/pan when the route remounts for the same run", () => {
+    currentGraphData = "<svg viewBox='0 0 100 100'></svg>";
+
+    const first = renderAt("/runs/zoom-persist");
+    const initial = graphTransform(first);
+    clickTitle(first, "Zoom in");
+    const zoomed = graphTransform(first);
+    expect(zoomed).not.toBe(initial);
+
+    // Switching tabs unmounts this route; returning remounts it for the same run.
+    act(() => first.unmount());
+    const second = renderAt("/runs/zoom-persist");
+    expect(graphTransform(second)).toBe(zoomed);
+  });
+
+  test("does not carry one run's zoom over to a different run", () => {
+    currentGraphData = "<svg viewBox='0 0 100 100'></svg>";
+
+    const renderer = renderAt("/runs/run-a");
+    const initial = graphTransform(renderer);
+    clickTitle(renderer, "Zoom in");
+    expect(graphTransform(renderer)).not.toBe(initial);
+
+    act(() => renderer.unmount());
+    const other = renderAt("/runs/run-b");
+    expect(graphTransform(other)).toBe(initial);
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { ApiError } from "../lib/api-client";
 import { useRun, useRunGraph, useRunGraphSource, useRunStages } from "../lib/queries";
@@ -50,6 +50,16 @@ const CENTER = { x: 0, y: 0 };
 // options object changes.
 const WHEEL_LISTENER_OPTS: AddEventListenerOptions = { passive: false };
 
+// Remember each run's graph pan/zoom so it survives leaving and returning to the Overview
+// tab — this route unmounts when you switch to Stages/Files/etc. and remounts on return, so
+// the viewport can't live only in component state. In-memory for the session; a full reload
+// starts fresh. ponytail: unpruned Map, entries are three numbers each and a session views
+// few runs — swap for an LRU if that ever stops holding.
+const graphViewByRun = new Map<string, GraphView>();
+
+const loadGraphView = (id: string | undefined): GraphView =>
+  graphViewByRun.get(id ?? "") ?? { zoom: GRAPH_DEFAULT_ZOOM, pan: { x: 0, y: 0 } };
+
 export default function RunOverview() {
   const { id } = useParams();
   const [direction, setDirection] = useState<Direction | undefined>(undefined);
@@ -80,7 +90,18 @@ export default function RunOverview() {
   const innerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const navigate = useNavigate();
-  const [view, setView] = useState<GraphView>({ zoom: GRAPH_DEFAULT_ZOOM, pan: { x: 0, y: 0 } });
+  const [view, setView] = useState<GraphView>(() => loadGraphView(id));
+  // This route instance is reused (not remounted) when only the run id changes, so reset the
+  // viewport to the new run's remembered/default state rather than carrying the old one over.
+  const viewedRunId = useRef(id);
+  if (viewedRunId.current !== id) {
+    viewedRunId.current = id;
+    setView(loadGraphView(id));
+  }
+  // Persist the viewport so a tab switch (which unmounts this route) restores it on return.
+  useEffect(() => {
+    if (id) graphViewByRun.set(id, view);
+  }, [id, view]);
   const dragState = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
   const [hoveredNode, setHoveredNode] = useState<RunGraphNodeHover | null>(null);
 
