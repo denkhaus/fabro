@@ -20,16 +20,16 @@ pub fn build_redacted_event_payload(
 /// event is reparsed from that same value, so every downstream consumer
 /// observes identical redacted data without re-running the redaction passes.
 pub struct RedactedRunEvent {
-    event: RunEvent,
-    value: Value,
+    event:   RunEvent,
+    payload: EventPayload,
 }
 
 impl RedactedRunEvent {
     pub fn new(event: &RunEvent, redactor: &SecretRedactor) -> Result<Self> {
-        let value = redacted_event_value(event, redactor)?;
-        let event =
-            RunEvent::from_ref(&value).context("Failed to reparse redacted event payload")?;
-        Ok(Self { event, value })
+        let payload = build_redacted_event_payload(event, &event.run_id, redactor)?;
+        let event = RunEvent::from_ref(payload.as_value())
+            .context("Failed to reparse redacted event payload")?;
+        Ok(Self { event, payload })
     }
 
     #[must_use]
@@ -37,12 +37,13 @@ impl RedactedRunEvent {
         &self.event
     }
 
-    pub fn payload(&self) -> Result<EventPayload> {
-        EventPayload::new(self.value.clone(), &self.event.run_id).map_err(anyhow::Error::from)
+    #[must_use]
+    pub fn payload(&self) -> &EventPayload {
+        &self.payload
     }
 
     pub fn json_line(&self) -> Result<String> {
-        serde_json::to_string(&self.value).map_err(anyhow::Error::from)
+        serde_json::to_string(self.payload.as_value()).map_err(anyhow::Error::from)
     }
 }
 

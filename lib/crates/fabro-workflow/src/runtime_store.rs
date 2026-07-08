@@ -87,7 +87,7 @@ impl RunStoreBackend for LocalRunStoreBackend {
 
     async fn append_run_event(&self, event: &RedactedRunEvent) -> Result<()> {
         self.run_store
-            .append_event(&event.payload()?)
+            .append_event(event.payload())
             .await
             .map(|_| ())
             .map_err(anyhow::Error::from)
