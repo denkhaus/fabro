@@ -1,0 +1,533 @@
+{
+  "title": "Demote `server.integrations.slack.default_channel` to a plain literal string",
+  "spec": {
+    "run_id": "01KX4JRJ2NXPQASFNE8PPKTQX6",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "# Demote `server.integrations.slack.default_channel` to a plain literal string\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. Independent — no preconditions; can land\nanytime. (It must land before a separate, later effort freezes a registry of\nconfig-field kinds, but nothing in this plan depends on that.)\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `env.NAME`, `vars.NAME`, `secrets.NAME` as the double-curly-brace token\n> form used in the codebase, and write the real double-brace syntax in the\n> code, tests, and docs you produce.\n\n## Context and goal\n\n`server.integrations.slack.default_channel` is the last server-defined config\nfield still typed `InterpString`. Every other server-scope field was demoted\nto a plain literal under the project's rule that interpolation belongs to\nfields resolved with run context — server-startup consumption is served\nnatively by shells/compose/systemd, and a token there just ferries an env var\nacross a process boundary.\n\nThis field is exactly that case:\n\n- It was **born `Option<String>`** (2026-03-05, in the original Slack\n  integration crate; adopted into server settings 2026-04-07) and was\n  documented from the start with literal examples only. The v2 settings\n  schema typed it `InterpString` (2026-04-09) and wired env resolution the\n  same day as part of that schema's uniform staged design — not a\n  field-specific feature, and never requested or documented as interpolable.\n  The one place env-interpolated Slack channels ARE a deliberate, documented\n  feature is run-scope notification routes (added 2026-05-23) — a surface\n  this change does not touch. The uniform-staging capability was superseded\n  by the later interpolation-taxonomy decision that startup-consumed server\n  fields stay literal, under which every comparable server field was already\n  demoted.\n- It resolves **once, at server startup, env-only** — no secrets, no vars,\n  and never re-resolved at message-send time.\n- **No documentation ever advertised interpolation** on it; every doc example\n  is a plain literal channel name.\n- The **run-scope interpolating surface already exists** and is the\n  user-facing one: `run.notifications.<route>.slack.channel` and\n  `run.interviews.slack.channel` are `InterpString` with variable\n  substitution at run creation. The server field is only the zero-config\n  fallback destination for interview prompts.\n- Product direction reinforces it: in hosted deployments users have no access\n  to server env at all (their surface is variables and secrets at run scope),\n  and a future chat-integration plugin system should inherit a simple literal\n  field, not a special-case interpolating one.\n\n**Goal:** change the field to a plain `Option<String>` end-to-end, drop the\nstartup resolution, and emit the standard demoted-field warning when a\nleftover token-shaped value is found — matching how the earlier server-field\ndemotions were shipped.\n\nDesign rules (fixed):\n\n- **Keep the field** as the operator's literal fallback. Do not remove it or\n  relocate it; run scope already covers per-run needs.\n- **Wire-invisible.** `InterpString` serializes as its raw source string, so\n  the stored/wire JSON shape is unchanged by this demote. The OpenAPI schema\n  already models the field as a plain string — no spec change.\n- **Warn, don't break.** A value still containing a token-shaped span (double\n  curly braces) parses fine as a literal; emit the existing demoted-field\n  warning at resolve time so the ~3 months of nightly builds where an env\n  token would have resolved get a loud, non-fatal migration signal.\n\n## Verified current state (as of main `d5dcd1179`, 2026-07-09 — re-verify before starting; line numbers are anchors, not gospel)\n\n- Type: `lib/crates/fabro-types/src/settings/server.rs:258-271` —\n  `SlackIntegrationSettings { enabled: bool, default_channel:\n  Option<InterpString> }`.\n- Config layer: `lib/crates/fabro-config/src/layers/server.rs:237` —\n  `default_channel: Option<InterpString>`.\n- Resolve copy-through: `lib/crates/fabro-config/src/resolve/server.rs:365-369`\n  (clones the field into resolved server settings).\n- Startup resolution: `lib/crates/fabro-server/src/server.rs:2422-2430` —\n  `slack_settings.default_channel.as_ref().map(|value|\n  value.resolve(process_env_var)...)` feeding\n  `SlackService::new(bot, app, default_channel: Option<String>)`\n  (`server.rs:589-600`). The service posts interview prompts to it\n  (`server.rs:~657` `let Some(default_channel) = ... else return`, `:689`\n  `post_message`).\n- Demoted-field warning helper: `warn_if_demoted_template` in\n  `lib/crates/fabro-config/src/resolve/` (see its callers in\n  `resolve/cli.rs:50-76` for the exact usage pattern: field path string +\n  `Option<&str>` value).\n- Run-scope channels (untouched by this PR):\n  `run.notifications.<route>` slack channel and\n  `run.interviews.slack.channel`, both `InterpString`, variable-substituted at\n  run creation (`fabro-types/src/settings/run.rs`, `substitute_variables`).\n- Docs mentioning the field (all literal examples):\n  `docs/public/administration/server-configuration.mdx:453`,\n  `docs/public/human-tools/interviews.mdx:97`,\n  `docs/public/integrations/slack.mdx:112-117`.\n- OpenAPI: `docs/public/api-reference/fabro-api.yaml:13619-13623` models\n  `default_channel` as a nullable plain string in the relevant schema —\n  expected to need **no change**.\n\n## Implementation\n\n1. **Type change**: `fabro-types/src/settings/server.rs` and\n   `fabro-config/src/layers/server.rs` — `Option<InterpString>` →\n   `Option<String>`. Chase the compiler through the resolve copy-through and\n   any settings merge/serde helpers.\n2. **Demotion warning**: at the server-settings resolve site, call the\n   existing demoted-field warning helper with the field path\n   `server.integrations.slack.default_channel` and the literal value,\n   following the exact pattern of its existing callers. The warning must log\n   the field path and guidance only — never treat the value as sensitive\n   output beyond what the existing helper does.\n3. **Drop the startup resolve**: `fabro-server/src/server.rs` — pass the\n   literal through to `SlackService::new` directly; delete the\n   `resolve(process_env_var)` call and its error mapping. `SlackService`\n   itself is unchanged (it already takes `Option<String>`).\n4. **Verify (read-only) the interview routing preference**: confirm whether\n   the interview-prompt posting path prefers `run.interviews.slack.channel`\n   over the server default when both are set. If it does not, **do not build\n   routing changes** — record the finding in the PR description as a\n   follow-up observation.\n5. **Docs**: the three pages above already show literals; adjust wording only\n   if any implies interpolation (none is expected to). If the generated\n   options reference annotates the field's type, regenerate via\n   `cargo dev docs` and confirm `cargo dev docs check` is green.\n\n## Scope boundaries — deliberately NOT in this PR\n\n- **Run-scope notification and interview channel fields** — leave as-is; they\n  are the intended interpolating surface and are already correct.\n- **Slack credential resolution** (bot/app tokens via the vault at startup) —\n  leave as-is; unrelated to the channel field.\n- **Interview prompt routing behavior** — observe and report only (step 4);\n  changing which channel wins is separate product work.\n- **Any chat-integration plugin restructuring** — future work; this PR only\n  simplifies what that redesign will inherit.\n- **The config-field kind registry and its conformance tests** — separate\n  planned work; do not start it here.\n\nIf work outside these boundaries seems genuinely required for this PR to\ncompile or pass its tests, stop and state that in the PR description rather\nthan expanding scope.\n\n## Tests (failing-first; hermetic — no ambient env dependence)\n\n- A literal channel (`#releases`) parses, merges, and reaches\n  `SlackService::new` unchanged.\n- A value containing a token-shaped span parses as a **literal** (no\n  resolution, no error) and emits the demoted-field warning naming\n  `server.integrations.slack.default_channel` (log-capture, matching how the\n  existing demotion-warning tests assert).\n- Startup wiring: with the field set, the service receives exactly the\n  configured string; with it absent, `None` (existing behavior preserved).\n- Existing Slack/server integration tests pass unchanged.\n- Serde shape: a settings round-trip of the field produces the same JSON/TOML\n  as before the type change (wire-invisibility).\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- `cargo dev docs check`\n- No OpenAPI/wire change (assert: `docs/public/api-reference/fabro-api.yaml`\n  untouched; TypeScript client regeneration not needed).\n\n## Conventions\n\n- Plain-English commit messages, PR text, and comments — describe what the\n  change does; no internal planning identifiers or plan-file names in\n  anything that ships.\n- PR description must state plainly: the field only ever resolved env vars,\n  only at server startup, and was never documented as interpolable; anyone\n  with a token in the field gets a startup warning and the value is treated\n  as a literal; per-run channels (`run.notifications`, `run.interviews.slack`)\n  remain the interpolating surface; no wire change.\n"
+        },
+        "working_dir": null,
+        "metadata": {
+          "series": "interp-followup"
+        },
+        "inputs": {},
+        "model": {
+          "provider": "anthropic",
+          "name": "claude-sonnet-4-6",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "fabro-dev",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        curl git ripgrep ca-certificates build-essential pkg-config libssl-dev unzip python3 \\\n        xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \\\n        libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6 \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install real Chromium (not the snap stub) via xtradeb PPA\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        software-properties-common curl gnupg \\\n    && add-apt-repository -y ppa:xtradeb/apps \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends chromium \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Wrapper: Chromium needs --no-sandbox when running as root in a container,\n# and --disable-dev-shm-usage avoids crashes from small /dev/shm\nRUN printf '#!/bin/bash\\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"$@\"\\n' \\\n        > /usr/local/bin/chromium-wrapper \\\n    && chmod +x /usr/local/bin/chromium-wrapper\n\n# Make the wrapper the default in the system .desktop file and via alternatives\nRUN sed -i 's|^Exec=.*|Exec=/usr/local/bin/chromium-wrapper %U|' \\\n        /usr/share/applications/chromium.desktop \\\n    && update-alternatives --install /usr/bin/x-www-browser x-www-browser \\\n        /usr/local/bin/chromium-wrapper 100\n\n# Tell XFCE's exo-open that Chromium is the WebBrowser helper (system-wide)\nRUN mkdir -p /etc/xdg/xfce4 /usr/share/xfce4/helpers \\\n    && printf 'WebBrowser=custom-WebBrowser\\n' > /etc/xdg/xfce4/helpers.rc \\\n    && printf '[Desktop Entry]\\n\\\nVersion=1.0\\n\\\nType=X-XFCE-Helper\\n\\\nName=Chromium\\n\\\nIcon=chromium\\n\\\nX-XFCE-Category=WebBrowser\\n\\\nX-XFCE-CommandsWithParameter=/usr/local/bin/chromium-wrapper \"%%s\"\\n\\\nX-XFCE-Commands=/usr/local/bin/chromium-wrapper\\n' \\\n        > /usr/share/xfce4/helpers/custom-WebBrowser.desktop\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" \\\n        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update && apt-get install -y --no-install-recommends gh \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": "20GB"
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": "30m"
+          },
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "env": {}
+        },
+        "notifications": {},
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": false,
+          "merge_strategy": "squash"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "ImplementPlan",
+      "nodes": {
+        "verify": {
+          "id": "verify",
+          "attrs": {
+            "goal_gate": {
+              "Boolean": true
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "label": {
+              "String": "Verify"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "retry_target": {
+              "String": "fixup"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "script": {
+              "String": "git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1"
+            },
+            "timeout": {
+              "Duration": {
+                "secs": 1800,
+                "nanos": 0
+              }
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "label": {
+              "String": "Exit"
+            },
+            "shape": {
+              "String": "Msquare"
+            },
+            "provider": {
+              "String": "anthropic"
+            }
+          }
+        },
+        "preflight_compile": {
+          "id": "preflight_compile",
+          "attrs": {
+            "label": {
+              "String": "Preflight Compile"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "script": {
+              "String": "cargo check -q --workspace 2>&1"
+            },
+            "provider": {
+              "String": "anthropic"
+            }
+          }
+        },
+        "simplify_gpt": {
+          "id": "simplify_gpt",
+          "attrs": {
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changes for reuse, quality, and efficiency. Fix any issues found. Feel free to use any sub agents you need.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation. (You may already have the changes in context, if so, feel free to skip this part)\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "label": {
+              "String": "Simplify (GPT-55)"
+            },
+            "model": {
+              "String": "gpt-5.5"
+            },
+            "provider": {
+              "String": "openai"
+            }
+          }
+        },
+        "implement": {
+          "id": "implement",
+          "attrs": {
+            "provider": {
+              "String": "openai"
+            },
+            "prompt": {
+              "String": "Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD. Be sure to use the rust-style-guide skill to help you follow this repo's Rust style conventions."
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "label": {
+              "String": "Implement"
+            },
+            "model": {
+              "String": "gpt-5.5"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "provider": {
+              "String": "anthropic"
+            },
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "label": {
+              "String": "Start"
+            }
+          }
+        },
+        "fix_lints": {
+          "id": "fix_lints",
+          "attrs": {
+            "label": {
+              "String": "Fix Lints"
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "prompt": {
+              "String": "The preflight lint step failed. Read the build output from context and fix all clippy lint warnings."
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "provider": {
+              "String": "anthropic"
+            }
+          }
+        },
+        "simplify_fable": {
+          "id": "simplify_fable",
+          "attrs": {
+            "label": {
+              "String": "Simplify (Fable)"
+            },
+            "model": {
+              "String": "claude-fable-5"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changes for reuse, quality, and efficiency. Fix any issues found. Feel free to use any sub agents you need.\n\n## Phase 1: Identify Changes\n\nRun git diff (or git diff HEAD if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation. (You may already have the changes in context, if so, feel free to skip this part)\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the Agent tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. Search for existing utilities and helpers that could replace newly written code. Use Grep to find similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality. Suggest the existing function to use instead.\n3. Flag any inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\nNote: This is a greenfield app, so focus on maximizing simplicity and don't worry about changing things to achieve it.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. Redundant state: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. Parameter sprawl: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. Copy-paste with slight variation: near-duplicate code blocks that should be unified with a shared abstraction\n4. Leaky abstractions: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. Stringly-typed code: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n\nNote: This is a greenfield app, so be aggressive in optimizing quality.\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. Unnecessary work: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. Missed concurrency: independent operations run sequentially when they could run in parallel\n3. Hot-path bloat: new blocking work added to startup or per-request/per-render hot paths\n4. Unnecessary existence checks: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n5. Memory: unbounded data structures, missing cleanup, event listener leaks\n6. Overly broad operations: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            }
+          }
+        },
+        "fixup": {
+          "id": "fixup",
+          "attrs": {
+            "provider": {
+              "String": "anthropic"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "prompt": {
+              "String": "The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures."
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "label": {
+              "String": "Fixup"
+            }
+          }
+        },
+        "preflight_lint": {
+          "id": "preflight_lint",
+          "attrs": {
+            "max_retries": {
+              "Integer": 0
+            },
+            "label": {
+              "String": "Preflight Lint"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "script": {
+              "String": "cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1"
+            },
+            "shape": {
+              "String": "parallelogram"
+            }
+          }
+        },
+        "toolchain": {
+          "id": "toolchain",
+          "attrs": {
+            "script": {
+              "String": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1"
+            },
+            "model": {
+              "String": "claude-opus-4-8"
+            },
+            "label": {
+              "String": "Toolchain"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "provider": {
+              "String": "anthropic"
+            },
+            "max_retries": {
+              "Integer": 0
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "toolchain",
+          "attrs": {}
+        },
+        {
+          "from": "toolchain",
+          "to": "preflight_compile",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "toolchain",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_compile",
+          "to": "preflight_lint",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_compile",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_lint",
+          "to": "implement",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_lint",
+          "to": "fix_lints",
+          "attrs": {}
+        },
+        {
+          "from": "fix_lints",
+          "to": "preflight_lint",
+          "attrs": {}
+        },
+        {
+          "from": "implement",
+          "to": "simplify_fable",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_fable",
+          "to": "simplify_gpt",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_gpt",
+          "to": "verify",
+          "attrs": {}
+        },
+        {
+          "from": "verify",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "verify",
+          "to": "fixup",
+          "attrs": {}
+        },
+        {
+          "from": "fixup",
+          "to": "verify",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "rankdir": {
+          "String": "LR"
+        },
+        "model_stylesheet": {
+          "String": "\n            * { model: claude-opus-4-8; }\n        "
+        },
+        "goal": {
+          "String": "# Demote `server.integrations.slack.default_channel` to a plain literal string\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. Independent — no preconditions; can land\nanytime. (It must land before a separate, later effort freezes a registry of\nconfig-field kinds, but nothing in this plan depends on that.)\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `env.NAME`, `vars.NAME`, `secrets.NAME` as the double-curly-brace token\n> form used in the codebase, and write the real double-brace syntax in the\n> code, tests, and docs you produce.\n\n## Context and goal\n\n`server.integrations.slack.default_channel` is the last server-defined config\nfield still typed `InterpString`. Every other server-scope field was demoted\nto a plain literal under the project's rule that interpolation belongs to\nfields resolved with run context — server-startup consumption is served\nnatively by shells/compose/systemd, and a token there just ferries an env var\nacross a process boundary.\n\nThis field is exactly that case:\n\n- It was **born `Option<String>`** (2026-03-05, in the original Slack\n  integration crate; adopted into server settings 2026-04-07) and was\n  documented from the start with literal examples only. The v2 settings\n  schema typed it `InterpString` (2026-04-09) and wired env resolution the\n  same day as part of that schema's uniform staged design — not a\n  field-specific feature, and never requested or documented as interpolable.\n  The one place env-interpolated Slack channels ARE a deliberate, documented\n  feature is run-scope notification routes (added 2026-05-23) — a surface\n  this change does not touch. The uniform-staging capability was superseded\n  by the later interpolation-taxonomy decision that startup-consumed server\n  fields stay literal, under which every comparable server field was already\n  demoted.\n- It resolves **once, at server startup, env-only** — no secrets, no vars,\n  and never re-resolved at message-send time.\n- **No documentation ever advertised interpolation** on it; every doc example\n  is a plain literal channel name.\n- The **run-scope interpolating surface already exists** and is the\n  user-facing one: `run.notifications.<route>.slack.channel` and\n  `run.interviews.slack.channel` are `InterpString` with variable\n  substitution at run creation. The server field is only the zero-config\n  fallback destination for interview prompts.\n- Product direction reinforces it: in hosted deployments users have no access\n  to server env at all (their surface is variables and secrets at run scope),\n  and a future chat-integration plugin system should inherit a simple literal\n  field, not a special-case interpolating one.\n\n**Goal:** change the field to a plain `Option<String>` end-to-end, drop the\nstartup resolution, and emit the standard demoted-field warning when a\nleftover token-shaped value is found — matching how the earlier server-field\ndemotions were shipped.\n\nDesign rules (fixed):\n\n- **Keep the field** as the operator's literal fallback. Do not remove it or\n  relocate it; run scope already covers per-run needs.\n- **Wire-invisible.** `InterpString` serializes as its raw source string, so\n  the stored/wire JSON shape is unchanged by this demote. The OpenAPI schema\n  already models the field as a plain string — no spec change.\n- **Warn, don't break.** A value still containing a token-shaped span (double\n  curly braces) parses fine as a literal; emit the existing demoted-field\n  warning at resolve time so the ~3 months of nightly builds where an env\n  token would have resolved get a loud, non-fatal migration signal.\n\n## Verified current state (as of main `d5dcd1179`, 2026-07-09 — re-verify before starting; line numbers are anchors, not gospel)\n\n- Type: `lib/crates/fabro-types/src/settings/server.rs:258-271` —\n  `SlackIntegrationSettings { enabled: bool, default_channel:\n  Option<InterpString> }`.\n- Config layer: `lib/crates/fabro-config/src/layers/server.rs:237` —\n  `default_channel: Option<InterpString>`.\n- Resolve copy-through: `lib/crates/fabro-config/src/resolve/server.rs:365-369`\n  (clones the field into resolved server settings).\n- Startup resolution: `lib/crates/fabro-server/src/server.rs:2422-2430` —\n  `slack_settings.default_channel.as_ref().map(|value|\n  value.resolve(process_env_var)...)` feeding\n  `SlackService::new(bot, app, default_channel: Option<String>)`\n  (`server.rs:589-600`). The service posts interview prompts to it\n  (`server.rs:~657` `let Some(default_channel) = ... else return`, `:689`\n  `post_message`).\n- Demoted-field warning helper: `warn_if_demoted_template` in\n  `lib/crates/fabro-config/src/resolve/` (see its callers in\n  `resolve/cli.rs:50-76` for the exact usage pattern: field path string +\n  `Option<&str>` value).\n- Run-scope channels (untouched by this PR):\n  `run.notifications.<route>` slack channel and\n  `run.interviews.slack.channel`, both `InterpString`, variable-substituted at\n  run creation (`fabro-types/src/settings/run.rs`, `substitute_variables`).\n- Docs mentioning the field (all literal examples):\n  `docs/public/administration/server-configuration.mdx:453`,\n  `docs/public/human-tools/interviews.mdx:97`,\n  `docs/public/integrations/slack.mdx:112-117`.\n- OpenAPI: `docs/public/api-reference/fabro-api.yaml:13619-13623` models\n  `default_channel` as a nullable plain string in the relevant schema —\n  expected to need **no change**.\n\n## Implementation\n\n1. **Type change**: `fabro-types/src/settings/server.rs` and\n   `fabro-config/src/layers/server.rs` — `Option<InterpString>` →\n   `Option<String>`. Chase the compiler through the resolve copy-through and\n   any settings merge/serde helpers.\n2. **Demotion warning**: at the server-settings resolve site, call the\n   existing demoted-field warning helper with the field path\n   `server.integrations.slack.default_channel` and the literal value,\n   following the exact pattern of its existing callers. The warning must log\n   the field path and guidance only — never treat the value as sensitive\n   output beyond what the existing helper does.\n3. **Drop the startup resolve**: `fabro-server/src/server.rs` — pass the\n   literal through to `SlackService::new` directly; delete the\n   `resolve(process_env_var)` call and its error mapping. `SlackService`\n   itself is unchanged (it already takes `Option<String>`).\n4. **Verify (read-only) the interview routing preference**: confirm whether\n   the interview-prompt posting path prefers `run.interviews.slack.channel`\n   over the server default when both are set. If it does not, **do not build\n   routing changes** — record the finding in the PR description as a\n   follow-up observation.\n5. **Docs**: the three pages above already show literals; adjust wording only\n   if any implies interpolation (none is expected to). If the generated\n   options reference annotates the field's type, regenerate via\n   `cargo dev docs` and confirm `cargo dev docs check` is green.\n\n## Scope boundaries — deliberately NOT in this PR\n\n- **Run-scope notification and interview channel fields** — leave as-is; they\n  are the intended interpolating surface and are already correct.\n- **Slack credential resolution** (bot/app tokens via the vault at startup) —\n  leave as-is; unrelated to the channel field.\n- **Interview prompt routing behavior** — observe and report only (step 4);\n  changing which channel wins is separate product work.\n- **Any chat-integration plugin restructuring** — future work; this PR only\n  simplifies what that redesign will inherit.\n- **The config-field kind registry and its conformance tests** — separate\n  planned work; do not start it here.\n\nIf work outside these boundaries seems genuinely required for this PR to\ncompile or pass its tests, stop and state that in the PR description rather\nthan expanding scope.\n\n## Tests (failing-first; hermetic — no ambient env dependence)\n\n- A literal channel (`#releases`) parses, merges, and reaches\n  `SlackService::new` unchanged.\n- A value containing a token-shaped span parses as a **literal** (no\n  resolution, no error) and emits the demoted-field warning naming\n  `server.integrations.slack.default_channel` (log-capture, matching how the\n  existing demotion-warning tests assert).\n- Startup wiring: with the field set, the service receives exactly the\n  configured string; with it absent, `None` (existing behavior preserved).\n- Existing Slack/server integration tests pass unchanged.\n- Serde shape: a settings round-trip of the field produces the same JSON/TOML\n  as before the type change (wire-invisibility).\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- `cargo dev docs check`\n- No OpenAPI/wire change (assert: `docs/public/api-reference/fabro-api.yaml`\n  untouched; TypeScript client regeneration not needed).\n\n## Conventions\n\n- Plain-English commit messages, PR text, and comments — describe what the\n  change does; no internal planning identifiers or plan-file names in\n  anything that ships.\n- PR description must state plainly: the field only ever resolved env vars,\n  only at server startup, and was never documented as interpolable; anyone\n  with a token in the field gets a startup warning and the value is treated\n  as a literal; per-run channels (`run.notifications`, `run.interviews.slack`)\n  remain the interpolating surface; no wire change.\n"
+        }
+      }
+    },
+    "graph_source": "digraph ImplementPlan {\n    graph [\n        goal=\"Implement and simplify\",\n        model_stylesheet=\"\n            * { model: claude-opus-4-8; }\n        \"\n    ]\n    rankdir=LR\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    toolchain         [label=\"Toolchain\", shape=parallelogram, script=\"command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1\", max_retries=0]\n    preflight_compile [label=\"Preflight Compile\", shape=parallelogram, script=\"cargo check -q --workspace 2>&1\", max_retries=0]\n    preflight_lint    [label=\"Preflight Lint\", shape=parallelogram, script=\"cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1\", max_retries=0]\n    fix_lints         [label=\"Fix Lints\", prompt=\"The preflight lint step failed. Read the build output from context and fix all clippy lint warnings.\", max_visits=3]\n    implement         [label=\"Implement\", prompt=\"Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD. Be sure to use the rust-style-guide skill to help you follow this repo's Rust style conventions.\", model=\"gpt-55\", reasoning_effort=\"xhigh\"]\n    simplify_fable    [label=\"Simplify (Fable)\", prompt=\"@prompts/simplify.md\", model=\"claude-fable-5\", reasoning_effort=\"xhigh\"]\n    simplify_gpt      [label=\"Simplify (GPT-55)\", prompt=\"@prompts/simplify.md\", model=\"gpt-55\"]\n    verify            [label=\"Verify\", shape=parallelogram, timeout=\"1800s\", script=\"git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\\\"disabled\\\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1\", goal_gate=true, retry_target=\"fixup\"]\n    fixup             [label=\"Fixup\", prompt=\"The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures.\", max_visits=3]\n\n    start -> toolchain\n    toolchain -> preflight_compile [condition=\"outcome=succeeded\"]\n    toolchain -> exit\n    preflight_compile -> preflight_lint [condition=\"outcome=succeeded\"]\n    preflight_compile -> exit\n    preflight_lint -> implement [condition=\"outcome=succeeded\"]\n    preflight_lint -> fix_lints\n    fix_lints -> preflight_lint\n    implement -> simplify_fable -> simplify_gpt -> verify\n    verify -> exit  [condition=\"outcome=succeeded\"]\n    verify -> fixup\n    fixup -> verify\n}\n",
+    "workflow_slug": "implement-plan",
+    "source_directory": "/Users/swerner/Development/os/fabro-main/fabro",
+    "labels": {
+      "series": "interp-followup"
+    },
+    "provenance": {
+      "server": {
+        "version": "0.287.0-nightly.0"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.267.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.267.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "138379"
+        },
+        "login": "swerner",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/138379?v=4"
+      }
+    },
+    "manifest_blob": "4bc1a0707ad24f83f8eed523f64c9efa9a1bb52b45c20f656f546742af05356b",
+    "definition_blob": "bcd770ef7aa52cfb357cb3fd428c3cd4f347571ccb88096deaed3150a40cfbbf",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "790762fb8ddb7c517e66adfaa8da02311280f2ac",
+      "dirty": "dirty",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KX4JRJ2NXPQASFNE8PPKTQX6",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-09T23:17:46.802827362Z",
+  "last_event_at": "2026-07-09T23:18:01.409396886Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-fdb28dec-1233-892c-b9d7-9f88f8353e7a",
+      "runtime": {
+        "id": "fabro-01KX4JRJ2NXPQASFNE8PPKTQX6",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
