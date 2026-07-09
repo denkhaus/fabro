@@ -1,0 +1,165 @@
+diff --git a/lib/crates/fabro-auth/src/lib.rs b/lib/crates/fabro-auth/src/lib.rs
+index 9f70e39d5..c46283c4e 100644
+--- a/lib/crates/fabro-auth/src/lib.rs
++++ b/lib/crates/fabro-auth/src/lib.rs
+@@ -26,7 +26,6 @@ pub use strategy::{
+ };
+ pub use vault_ext::{
+     VaultLookupError, vault_get_oauth, vault_get_token, vault_set_oauth, vault_set_token,
+-    vault_token_lookup,
+ };
+ pub use vault_source::VaultCredentialSource;
+ 
+diff --git a/lib/crates/fabro-auth/src/resolve.rs b/lib/crates/fabro-auth/src/resolve.rs
+index 8651ea9ee..9ab194b3f 100644
+--- a/lib/crates/fabro-auth/src/resolve.rs
++++ b/lib/crates/fabro-auth/src/resolve.rs
+@@ -427,12 +427,14 @@ impl CredentialResolver {
+                 Ok(cred)
+             }
+             ResolvedSecret::OAuth { credential, .. } => {
+-                let mut extra_headers =
+-                    self.resolved_extra_headers_for_catalog(vault, provider_id, catalog)?;
+                 let mut api_credential = ApiCredential {
+                     provider: provider_id.clone(),
+                     auth_header: Some(ApiKeyHeader::Bearer(credential.tokens.access_token.clone())),
+-                    extra_headers: std::mem::take(&mut extra_headers),
++                    extra_headers: self.resolved_extra_headers_for_catalog(
++                        vault,
++                        provider_id,
++                        catalog,
++                    )?,
+                     base_url,
+                     codex_mode: false,
+                     org_id: None,
+@@ -910,33 +912,7 @@ reasoning = false
+ 
+     #[tokio::test]
+     async fn vault_source_resolves_secret_header_token() {
+-        let catalog = catalog_with(
+-            r#"
+-[providers.portkey]
+-display_name = "Portkey Bedrock"
+-adapter = "anthropic"
+-agent_profile = "anthropic"
+-base_url = "https://api.portkey.ai/v1"
+-
+-[providers.portkey.extra_headers]
+-x-team-secret = "{{ secrets.gateway_team_secret }}"
+-
+-[models."portkey-claude"]
+-provider = "portkey"
+-display_name = "Portkey Claude"
+-family = "claude"
+-default = true
+-
+-[models."portkey-claude".limits]
+-context_window = 200000
+-
+-[models."portkey-claude".features]
+-tools = true
+-vision = true
+-reasoning = true
+-reasoning_effort = "levels"
+-"#,
+-        );
++        let catalog = portkey_catalog(r#"x-team-secret = "{{ secrets.gateway_team_secret }}""#);
+         let dir = tempfile::tempdir().unwrap();
+         let mut vault = Vault::load(dir.path().join("secrets.json")).unwrap();
+         vault_set_token(&mut vault, "gateway_team_secret", "s3cr3t").unwrap();
+@@ -984,33 +960,7 @@ reasoning_effort = "levels"
+ 
+     #[tokio::test]
+     async fn missing_secret_header_fails_without_echoing_value() {
+-        let catalog = catalog_with(
+-            r#"
+-[providers.portkey]
+-display_name = "Portkey Bedrock"
+-adapter = "anthropic"
+-agent_profile = "anthropic"
+-base_url = "https://api.portkey.ai/v1"
+-
+-[providers.portkey.extra_headers]
+-x-team-secret = "{{ secrets.MISSING }}"
+-
+-[models."portkey-claude"]
+-provider = "portkey"
+-display_name = "Portkey Claude"
+-family = "claude"
+-default = true
+-
+-[models."portkey-claude".limits]
+-context_window = 200000
+-
+-[models."portkey-claude".features]
+-tools = true
+-vision = true
+-reasoning = true
+-reasoning_effort = "levels"
+-"#,
+-        );
++        let catalog = portkey_catalog(r#"x-team-secret = "{{ secrets.MISSING }}""#);
+         let dir = tempfile::tempdir().unwrap();
+         let mut vault = Vault::load(dir.path().join("secrets.json")).unwrap();
+         vault_set_token(&mut vault, "OTHER_SECRET", "should-not-leak").unwrap();
+@@ -1041,33 +991,7 @@ reasoning_effort = "levels"
+ 
+     #[tokio::test]
+     async fn header_with_file_or_oauth_vault_entry_fails_closed() {
+-        let catalog = catalog_with(
+-            r#"
+-[providers.portkey]
+-display_name = "Portkey Bedrock"
+-adapter = "anthropic"
+-agent_profile = "anthropic"
+-base_url = "https://api.portkey.ai/v1"
+-
+-[providers.portkey.extra_headers]
+-x-team-secret = "{{ secrets.gateway_team_secret }}"
+-
+-[models."portkey-claude"]
+-provider = "portkey"
+-display_name = "Portkey Claude"
+-family = "claude"
+-default = true
+-
+-[models."portkey-claude".limits]
+-context_window = 200000
+-
+-[models."portkey-claude".features]
+-tools = true
+-vision = true
+-reasoning = true
+-reasoning_effort = "levels"
+-"#,
+-        );
++        let catalog = portkey_catalog(r#"x-team-secret = "{{ secrets.gateway_team_secret }}""#);
+         let dir = tempfile::tempdir().unwrap();
+         let mut vault = Vault::load(dir.path().join("secrets.json")).unwrap();
+         vault_set_oauth(
+diff --git a/lib/crates/fabro-auth/src/vault_ext.rs b/lib/crates/fabro-auth/src/vault_ext.rs
+index fe6bac7a4..792f20b16 100644
+--- a/lib/crates/fabro-auth/src/vault_ext.rs
++++ b/lib/crates/fabro-auth/src/vault_ext.rs
+@@ -38,7 +38,7 @@ pub fn vault_get_token(vault: &Vault, name: &str) -> Result<Option<String>, Vaul
+ /// missing or non-Token entry becomes `None`, so interpolation fails closed
+ /// with a missing-secret error instead of resolving a wrong-schema value.
+ #[must_use]
+-pub fn vault_token_lookup(vault: &Vault, name: &str) -> Option<String> {
++pub(crate) fn vault_token_lookup(vault: &Vault, name: &str) -> Option<String> {
+     vault_get_token(vault, name).ok().flatten()
+ }
+ 
+diff --git a/lib/crates/fabro-workflow/src/operations/start.rs b/lib/crates/fabro-workflow/src/operations/start.rs
+index 1feb0af40..7fa47e938 100644
+--- a/lib/crates/fabro-workflow/src/operations/start.rs
++++ b/lib/crates/fabro-workflow/src/operations/start.rs
+@@ -563,7 +563,7 @@ fn process_env_var(name: &str) -> Option<String> {
+ }
+ 
+ fn vault_token_lookup(vault: Option<&Vault>, name: &str) -> Option<String> {
+-    vault.and_then(|vault| fabro_auth::vault_token_lookup(vault, name))
++    vault.and_then(|vault| fabro_auth::vault_get_token(vault, name).ok().flatten())
+ }
+ 
+ async fn load_accepted_run_definition(
