@@ -1,0 +1,244 @@
+diff --git a/lib/crates/fabro-config/src/layers/server.rs b/lib/crates/fabro-config/src/layers/server.rs
+index fb5cde79f..351d4da68 100644
+--- a/lib/crates/fabro-config/src/layers/server.rs
++++ b/lib/crates/fabro-config/src/layers/server.rs
+@@ -234,7 +234,7 @@ pub struct SlackIntegrationLayer {
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub enabled:         Option<bool>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub default_channel: Option<InterpString>,
++    pub default_channel: Option<String>,
+ }
+ 
+ #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+diff --git a/lib/crates/fabro-config/src/resolve/server.rs b/lib/crates/fabro-config/src/resolve/server.rs
+index cfeffc415..39b41eaf9 100644
+--- a/lib/crates/fabro-config/src/resolve/server.rs
++++ b/lib/crates/fabro-config/src/resolve/server.rs
+@@ -364,9 +364,15 @@ fn resolve_integrations(layer: Option<&ServerIntegrationsLayer>) -> ServerIntegr
+                     enabled:         false,
+                     default_channel: None,
+                 },
+-                |slack| SlackIntegrationSettings {
+-                    enabled:         slack.enabled.unwrap_or(true),
+-                    default_channel: slack.default_channel.clone(),
++                |slack| {
++                    warn_if_demoted_template(
++                        "server.integrations.slack.default_channel",
++                        slack.default_channel.as_deref(),
++                    );
++                    SlackIntegrationSettings {
++                        enabled:         slack.enabled.unwrap_or(true),
++                        default_channel: slack.default_channel.clone(),
++                    }
+                 },
+             ),
+     }
+diff --git a/lib/crates/fabro-config/src/tests/resolve_server.rs b/lib/crates/fabro-config/src/tests/resolve_server.rs
+index a8619f3be..e4eecb353 100644
+--- a/lib/crates/fabro-config/src/tests/resolve_server.rs
++++ b/lib/crates/fabro-config/src/tests/resolve_server.rs
+@@ -145,6 +145,55 @@ _version = 1
+     assert!(settings.integrations.slack.default_channel.is_none());
+ }
+ 
++#[test]
++fn resolve_slack_default_channel_passes_literal_through() {
++    let settings = resolve_server(&parse(
++        r##"
++_version = 1
++
++[server.integrations.slack]
++default_channel = "#releases"
++"##,
++    ));
++
++    assert_eq!(
++        settings.integrations.slack.default_channel.as_deref(),
++        Some("#releases")
++    );
++    // Wire shape is unchanged by the plain-string demotion: the field still
++    // serializes as its raw string.
++    let slack = serde_json::to_value(&settings.integrations.slack)
++        .expect("slack settings should serialize");
++    assert_eq!(
++        slack,
++        serde_json::json!({
++            "enabled": true,
++            "default_channel": "#releases",
++        })
++    );
++}
++
++#[test]
++fn resolve_slack_default_channel_keeps_template_token_literal() {
++    // `server.integrations.slack.default_channel` is a plain literal now: a
++    // `{{ env.* }}` token is stored verbatim and never interpolated. Per-run
++    // Slack channels (`run.notifications`, `run.interviews.slack`) remain the
++    // interpolating surface.
++    let settings = resolve_server(&parse(
++        r#"
++_version = 1
++
++[server.integrations.slack]
++default_channel = "{{ env.SLACK_DEFAULT_CHANNEL }}"
++"#,
++    ));
++
++    assert_eq!(
++        settings.integrations.slack.default_channel.as_deref(),
++        Some("{{ env.SLACK_DEFAULT_CHANNEL }}")
++    );
++}
++
+ #[test]
+ fn server_sandbox_defaults_all_providers_enabled() {
+     let settings = ServerSettingsBuilder::from_toml(
+diff --git a/lib/crates/fabro-server/src/server.rs b/lib/crates/fabro-server/src/server.rs
+index f51a299b6..8ba881fe1 100644
+--- a/lib/crates/fabro-server/src/server.rs
++++ b/lib/crates/fabro-server/src/server.rs
+@@ -2422,11 +2422,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
+     let slack_service = {
+         let slack_settings = &current_server_settings.server.integrations.slack;
+         if slack_settings.enabled {
+-            let default_channel = slack_settings
+-                .default_channel
+-                .as_ref()
+-                .map(|value| value.resolve(process_env_var).map_err(anyhow::Error::from))
+-                .transpose()?;
++            let default_channel = slack_settings.default_channel.clone();
+             let vault_guard = vault.try_read().ok();
+             match resolve_slack_credentials_status_with_lookup(|name| {
+                 vault_guard
+diff --git a/lib/crates/fabro-server/src/server/handler/system.rs b/lib/crates/fabro-server/src/server/handler/system.rs
+index 3d34bd674..ec3ee62c9 100644
+--- a/lib/crates/fabro-server/src/server/handler/system.rs
++++ b/lib/crates/fabro-server/src/server/handler/system.rs
+@@ -7,7 +7,6 @@ use fabro_slack::config::{
+     resolve_credentials_status_with_lookup as resolve_slack_credentials_status_with_lookup,
+ };
+ use fabro_static::EnvVars;
+-use fabro_types::settings::InterpString;
+ use fabro_types::settings::server::GithubIntegrationSettings;
+ 
+ use super::super::{
+@@ -181,18 +180,11 @@ fn github_integration_status(
+     )
+ }
+ 
+-fn display_interp(state: &AppState, value: &InterpString) -> String {
+-    value.resolve_or_source(|name| (state.env_lookup)(name))
+-}
+-
+ fn slack_integration_status(state: &AppState) -> SystemIntegrationStatus {
+     let settings = &state.server_settings().server.integrations.slack;
+     let mut metadata = BTreeMap::new();
+     if let Some(default_channel) = settings.default_channel.as_ref() {
+-        metadata.insert(
+-            "default_channel".to_string(),
+-            display_interp(state, default_channel),
+-        );
++        metadata.insert("default_channel".to_string(), default_channel.clone());
+     }
+ 
+     if !settings.enabled {
+diff --git a/lib/crates/fabro-server/src/server/tests.rs b/lib/crates/fabro-server/src/server/tests.rs
+index 214bff225..45e26df15 100644
+--- a/lib/crates/fabro-server/src/server/tests.rs
++++ b/lib/crates/fabro-server/src/server/tests.rs
+@@ -2073,23 +2073,24 @@ fn slack_app_state_with_settings_and_secret_sources(
+     .expect("slack test app state should build")
+ }
+ 
++fn slack_test_vault_tokens() -> [(&'static str, &'static str, SecretType); 2] {
++    [
++        (
++            EnvVars::FABRO_SLACK_BOT_TOKEN,
++            "xoxb-test",
++            SecretType::Token,
++        ),
++        (
++            EnvVars::FABRO_SLACK_APP_TOKEN,
++            "xapp-test",
++            SecretType::Token,
++        ),
++    ]
++}
++
+ #[test]
+ fn slack_service_ignores_vault_tokens_when_config_is_absent() {
+-    let state = slack_app_state_with_secret_sources(
+-        &[
+-            (
+-                EnvVars::FABRO_SLACK_BOT_TOKEN,
+-                "xoxb-test",
+-                SecretType::Token,
+-            ),
+-            (
+-                EnvVars::FABRO_SLACK_APP_TOKEN,
+-                "xapp-test",
+-                SecretType::Token,
+-            ),
+-        ],
+-        HashMap::new(),
+-    );
++    let state = slack_app_state_with_secret_sources(&slack_test_vault_tokens(), HashMap::new());
+ 
+     assert!(state.slack_service.is_none());
+ }
+@@ -2132,6 +2133,33 @@ enabled = true
+     assert_eq!(connection.status, IntegrationConnectionState::Connecting);
+     assert!(connection.last_connected_at.is_none());
+     assert!(connection.last_error.is_none());
++    assert!(service.default_channel.is_none());
++}
++
++#[test]
++fn slack_service_receives_configured_default_channel_verbatim() {
++    let state = slack_app_state_with_settings_and_secret_sources(
++        server_settings_from_toml(
++            r##"
++_version = 1
++
++[server.auth]
++methods = ["dev-token"]
++
++[server.integrations.slack]
++enabled = true
++default_channel = "#releases"
++"##,
++        ),
++        &slack_test_vault_tokens(),
++        HashMap::new(),
++    );
++
++    let service = state
++        .slack_service
++        .as_ref()
++        .expect("slack service should be enabled by config and vault tokens");
++    assert_eq!(service.default_channel.as_deref(), Some("#releases"));
+ }
+ 
+ #[test]
+diff --git a/lib/crates/fabro-types/src/settings/server.rs b/lib/crates/fabro-types/src/settings/server.rs
+index 59055027c..ef8da68b8 100644
+--- a/lib/crates/fabro-types/src/settings/server.rs
++++ b/lib/crates/fabro-types/src/settings/server.rs
+@@ -12,7 +12,6 @@ use serde::de::Error as _;
+ use serde::{Deserialize, Deserializer, Serialize, Serializer};
+ 
+ use super::duration::Duration;
+-use super::interp::InterpString;
+ 
+ /// A structurally resolved `[server]` view for consumers.
+ ///
+@@ -258,7 +257,7 @@ pub struct GithubIntegrationSettings {
+ #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+ pub struct SlackIntegrationSettings {
+     pub enabled:         bool,
+-    pub default_channel: Option<InterpString>,
++    pub default_channel: Option<String>,
+ }
+ 
+ impl Default for SlackIntegrationSettings {
