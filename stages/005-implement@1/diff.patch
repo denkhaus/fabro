@@ -1,0 +1,1233 @@
+diff --git a/docs/public/changelog/2026-07-09.mdx b/docs/public/changelog/2026-07-09.mdx
+new file mode 100644
+index 000000000..654d1d1fa
+--- /dev/null
++++ b/docs/public/changelog/2026-07-09.mdx
+@@ -0,0 +1,10 @@
++---
++title: "Provider header interpolation"
++date: "2026-07-09"
++---
++
++## Provider header interpolation
++
++Provider `extra_headers` now use interpolation strings instead of typed `{ literal = ... }`, `{ env = ... }`, and `{ vault = ... }` tables. Write literal header values as plain strings, replace `{ env = "X" }` with a `{{ env.X }}` token, and replace `{ vault = "X" }` with a `{{ secrets.X }}` token. Secret header tokens resolve only token-style vault entries, so file and OAuth vault entries fail closed.
++
++This also enables mixed literal and secret values such as `Authorization = "Bearer {{ secrets.GATEWAY_TOKEN }}"`. Bare string header values are now accepted; put credentials in secrets and reference them with `{{ secrets.NAME }}` instead of pasting a credential as a literal. Provider `base_url` remains a plain literal string for now and is not interpolated.
+diff --git a/docs/public/core-concepts/models.mdx b/docs/public/core-concepts/models.mdx
+index 5df8a8be0..67ac32823 100644
+--- a/docs/public/core-concepts/models.mdx
++++ b/docs/public/core-concepts/models.mdx
+@@ -54,8 +54,8 @@ aliases = ["gateway"]
+ credentials = ["env:ACME_GATEWAY_API_KEY", "vault:ACME_GATEWAY_API_KEY"]
+ 
+ [llm.providers.proxy.extra_headers]
+-x-portkey-api-key = { env = "PORTKEY_API_KEY" }
+-x-portkey-config = { literal = "@bedrock-prod" }
++x-portkey-api-key = "{{ env.PORTKEY_API_KEY }}"
++x-portkey-config = "@bedrock-prod"
+ 
+ [llm.models."team-code-large"]
+ provider = "proxy"
+@@ -122,7 +122,7 @@ reasoning = false
+ 
+ Model roles are separate: `default = true` controls normal model selection for workflow execution, while `small_default = true` marks the provider's small/cheap utility model for metadata tasks such as generated run titles. If a provider has no small default, Fabro falls back to that provider's normal default.
+ 
+-Provider auth is declared in `[llm.providers.<id>.auth]` with ordered `env:<NAME>` or `vault:<NAME>` refs. The primary auth header defaults to `bearer`; override with `header = { custom = "Header-Name" }` for providers like Anthropic that use `x-api-key`. Omit the `[llm.providers.<id>.auth]` block entirely for providers that need no API key (e.g. Ollama). Custom headers for any provider — including providers that need only typed headers and no API-key auth — go in `extra_headers` as `{ env = "NAME" }`, `{ vault = "NAME" }`, or `{ literal = "value" }`.
++Provider auth is declared in `[llm.providers.<id>.auth]` with ordered `env:<NAME>` or `vault:<NAME>` refs. The primary auth header defaults to `bearer`; override with `header = { custom = "Header-Name" }` for providers like Anthropic that use `x-api-key`. Omit the `[llm.providers.<id>.auth]` block entirely for providers that need no API key (e.g. Ollama). Custom headers for any provider — including providers that need only interpolation headers and no API-key auth — go in `extra_headers` as literal text, `{{ env.NAME }}` tokens, or `{{ secrets.NAME }}` tokens. Put credentials in secrets and reference them with `{{ secrets.NAME }}` instead of a bare literal.
+ 
+ Provider `agent_profile` defaults from `adapter` and controls profile-specific behavior such as project-memory filenames, CLI/ACP command selection, and native session routing. Valid values are `anthropic`, `openai`, and `gemini`; model-level values override provider-level values.
+ 
+diff --git a/docs/public/integrations/openrouter.mdx b/docs/public/integrations/openrouter.mdx
+index 0aaa53ad9..7e490955a 100644
+--- a/docs/public/integrations/openrouter.mdx
++++ b/docs/public/integrations/openrouter.mdx
+@@ -137,8 +137,8 @@ Fabro does not send OpenRouter's optional attribution headers (`HTTP-Referer`, `
+ 
+ ```toml title="settings.toml"
+ [llm.providers.openrouter.extra_headers]
+-"HTTP-Referer" = { literal = "https://your-site.example" }
+-"X-Title" = { literal = "Your App" }
++"HTTP-Referer" = "https://your-site.example"
++"X-Title" = "Your App"
+ ```
+ 
+ ## Troubleshooting
+diff --git a/docs/public/reference/user-configuration.mdx b/docs/public/reference/user-configuration.mdx
+index 1cfba22b9..fe62e4ee7 100644
+--- a/docs/public/reference/user-configuration.mdx
++++ b/docs/public/reference/user-configuration.mdx
+@@ -94,8 +94,8 @@ aliases = ["gateway"]
+ credentials = ["env:ACME_GATEWAY_API_KEY", "vault:ACME_GATEWAY_API_KEY"]
+ 
+ [llm.providers.proxy.extra_headers]
+-x-portkey-api-key = { env = "PORTKEY_API_KEY" }
+-x-portkey-config = { literal = "@bedrock-prod" }
++x-portkey-api-key = "{{ env.PORTKEY_API_KEY }}"
++x-portkey-config = "@bedrock-prod"
+ 
+ [llm.models."team-code-large"]
+ provider = "proxy"
+@@ -185,9 +185,9 @@ aliases = ["gateway"]
+ credentials = ["env:ACME_GATEWAY_API_KEY", "vault:ACME_GATEWAY_API_KEY"]
+ 
+ [llm.providers.proxy.extra_headers]
+-x-portkey-api-key = { env = "PORTKEY_API_KEY" }
+-x-portkey-config = { literal = "@bedrock-prod" }
+-x-team-secret = { vault = "gateway_team_secret" }
++x-portkey-api-key = "{{ env.PORTKEY_API_KEY }}"
++x-portkey-config = "@bedrock-prod"
++x-team-secret = "{{ secrets.gateway_team_secret }}"
+ ```
+ 
+ | Key | Type / values | Default | Description |
+@@ -200,7 +200,7 @@ x-team-secret = { vault = "gateway_team_secret" }
+ | `auth` | table | omitted | API-key auth config. Omit the table entirely for providers that need no API key; any `extra_headers` are still attached. |
+ | `auth.credentials` | array<string> | required when `auth` present | Ordered credential refs. Accepted forms are `vault:<NAME>`, `env:<NAME>`, and `aws_sigv4` (sign requests from the AWS default credential chain — Bedrock). Literal secret strings are rejected. |
+ | `auth.header` | `"bearer"` or `{ custom = "Header-Name" }` | `"bearer"` | Primary API-key header policy. Omit when the provider uses a standard bearer token. |
+-| `extra_headers` | table | `{}` | Additional headers attached to provider requests. Values must be typed refs: `{ literal = "..." }`, `{ env = "NAME" }`, or `{ vault = "NAME" }`. |
++| `extra_headers` | table | `{}` | Additional headers attached to provider requests. Values are interpolation strings: literal text, an `{{ env.NAME }}` token, or a `{{ secrets.NAME }}` token. Put credentials in a secret and reference them with a `{{ secrets.NAME }}` token, not a bare literal. |
+ | `priority` | integer | `0` | Higher-priority configured providers win default selection; ties use canonical provider ID. |
+ | `enabled` | boolean | `true` | Set `false` to disable a provider after lower-precedence layers define it. |
+ | `aliases` | array<string> | `[]` | Additional provider names accepted by model routing and fallback config. |
+diff --git a/lib/crates/fabro-auth/src/env_source.rs b/lib/crates/fabro-auth/src/env_source.rs
+index ca01a2b3c..aa906c8ae 100644
+--- a/lib/crates/fabro-auth/src/env_source.rs
++++ b/lib/crates/fabro-auth/src/env_source.rs
+@@ -2,8 +2,9 @@ use std::sync::Arc;
+ 
+ use async_trait::async_trait;
+ use fabro_model::catalog::CatalogProvider;
+-use fabro_model::{Catalog, CredentialRef, HeaderValueRef, ProviderId};
++use fabro_model::{Catalog, CredentialRef, ProviderId};
+ use fabro_static::EnvVars;
++use fabro_types::settings::{InterpString, ResolveCtx};
+ 
+ use crate::credential_source::{CredentialSource, ResolvedCredentials};
+ use crate::resolve::{apply_openai_api_env_context, apply_openai_codex_api_context};
+@@ -81,13 +82,15 @@ impl EnvCredentialSource {
+         provider
+             .extra_headers
+             .iter()
+-            .map(|(name, value_ref)| {
+-                let value = match value_ref {
+-                    HeaderValueRef::Literal(value) => Some(value.clone()),
+-                    HeaderValueRef::Env(name) => self.lookup(name),
+-                    HeaderValueRef::Vault(_) => None,
+-                }
+-                .ok_or_else(|| ResolveError::NotConfigured(provider.id.clone()))?;
++            .map(|(name, source)| {
++                let mut ctx = ResolveCtx::new().with_env(|env_name| self.lookup(env_name));
++                let value =
++                    InterpString::parse(source)
++                        .resolve_with(&mut ctx)
++                        .map_err(|source| ResolveError::Interpolation {
++                            provider: provider.id.clone(),
++                            source,
++                        })?;
+                 Ok((name.clone(), value))
+             })
+             .collect()
+@@ -117,7 +120,8 @@ impl CredentialSource for EnvCredentialSource {
+             match self.credential_for(provider) {
+                 Ok(Some(credential)) => credentials.push(credential),
+                 Ok(None) => {}
+-                Err(ResolveError::NotConfigured(_)) if provider.auth.is_some() => {}
++                Err(ResolveError::NotConfigured(_) | ResolveError::Interpolation { .. })
++                    if provider.auth.is_some() => {}
+                 Err(err) => auth_issues.push((provider.id.clone(), err)),
+             }
+         }
+@@ -280,7 +284,7 @@ reasoning = false
+     }
+ 
+     #[tokio::test]
+-    async fn resolve_registers_no_auth_provider_with_env_extra_headers() {
++    async fn env_source_resolves_literal_and_env_header_tokens() {
+         let catalog = catalog_with(
+             r#"
+ [providers.portkey]
+@@ -290,8 +294,8 @@ agent_profile = "anthropic"
+ base_url = "https://api.portkey.ai/v1"
+ 
+ [providers.portkey.extra_headers]
+-x-portkey-api-key = { env = "PORTKEY_API_KEY" }
+-x-portkey-provider = { literal = "@bedrock-prod" }
++x-portkey-api-key = "{{ env.PORTKEY_API_KEY }}"
++x-portkey-provider = "@bedrock-prod"
+ 
+ [models."portkey-claude"]
+ provider = "portkey"
+@@ -330,7 +334,7 @@ reasoning_effort = "levels"
+     }
+ 
+     #[tokio::test]
+-    async fn resolve_reports_missing_required_header_for_no_auth_provider() {
++    async fn env_source_secrets_header_token_is_unavailable() {
+         let catalog = catalog_with(
+             r#"
+ [providers.portkey]
+@@ -340,7 +344,59 @@ agent_profile = "anthropic"
+ base_url = "https://api.portkey.ai/v1"
+ 
+ [providers.portkey.extra_headers]
+-x-portkey-api-key = { env = "PORTKEY_API_KEY" }
++x-team-secret = "{{ secrets.gateway_team_secret }}"
++
++[models."portkey-claude"]
++provider = "portkey"
++display_name = "Portkey Claude"
++family = "claude"
++default = true
++
++[models."portkey-claude".limits]
++context_window = 200000
++
++[models."portkey-claude".features]
++tools = true
++vision = true
++reasoning = true
++reasoning_effort = "levels"
++"#,
++        );
++        let source = test_source(&[]);
++
++        let resolved = source.resolve(&catalog).await.unwrap();
++
++        assert!(
++            !resolved
++                .credentials
++                .iter()
++                .any(|credential| credential.provider == ProviderId::new("portkey"))
++        );
++        let (_, issue) = resolved
++            .auth_issues
++            .iter()
++            .find(|(provider, _)| provider == &ProviderId::new("portkey"))
++            .expect("secrets token should surface as an auth issue");
++        assert!(matches!(
++            issue,
++            crate::ResolveError::Interpolation { provider, .. }
++                if provider == &ProviderId::new("portkey")
++        ));
++        assert!(!issue.to_string().contains("s3cr3t"));
++    }
++
++    #[tokio::test]
++    async fn env_source_reports_missing_env_header_for_no_auth_provider() {
++        let catalog = catalog_with(
++            r#"
++[providers.portkey]
++display_name = "Portkey Bedrock"
++adapter = "anthropic"
++agent_profile = "anthropic"
++base_url = "https://api.portkey.ai/v1"
++
++[providers.portkey.extra_headers]
++x-portkey-api-key = "{{ env.PORTKEY_API_KEY }}"
+ 
+ [models."portkey-claude"]
+ provider = "portkey"
+@@ -373,7 +429,15 @@ reasoning_effort = "levels"
+                 .auth_issues
+                 .iter()
+                 .any(|(provider, issue)| provider == &ProviderId::new("portkey")
+-                    && matches!(issue, crate::ResolveError::NotConfigured(_)))
++                    && matches!(issue, crate::ResolveError::Interpolation { .. }))
+         );
++        let message = resolved
++            .auth_issues
++            .iter()
++            .find(|(provider, _)| provider == &ProviderId::new("portkey"))
++            .map(|(_, issue)| issue.to_string())
++            .expect("missing env header should surface as an auth issue");
++        assert!(message.contains("PORTKEY_API_KEY"));
++        assert!(!message.contains("pk-live"));
+     }
+ }
+diff --git a/lib/crates/fabro-auth/src/resolve.rs b/lib/crates/fabro-auth/src/resolve.rs
+index 62e140331..f255f3d0f 100644
+--- a/lib/crates/fabro-auth/src/resolve.rs
++++ b/lib/crates/fabro-auth/src/resolve.rs
+@@ -2,8 +2,9 @@ use std::collections::HashMap;
+ use std::sync::Arc;
+ 
+ use fabro_model::catalog::CatalogProvider;
+-use fabro_model::{ApiKeyHeaderPolicy, Catalog, CredentialRef, HeaderValueRef, ProviderId};
++use fabro_model::{ApiKeyHeaderPolicy, Catalog, CredentialRef, ProviderId};
+ use fabro_static::EnvVars;
++use fabro_types::settings::{InterpString, ResolveCtx, ResolveError as InterpResolveError};
+ use fabro_vault::{SecretType, Vault};
+ use tokio::sync::RwLock as AsyncRwLock;
+ use tokio::task::spawn_blocking;
+@@ -128,6 +129,12 @@ pub enum ResolvedCredential {
+ pub enum ResolveError {
+     #[error("{0} is not configured")]
+     NotConfigured(ProviderId),
++    #[error("{provider} header interpolation failed: {source}")]
++    Interpolation {
++        provider: ProviderId,
++        #[source]
++        source:   InterpResolveError,
++    },
+     #[error("{provider} vault credential '{name}' has schema {actual:?}, expected Token or Oauth")]
+     VaultSchemaMismatch {
+         provider: ProviderId,
+@@ -158,6 +165,9 @@ pub fn auth_issue_message(provider: &ProviderId, err: &ResolveError) -> String {
+         ResolveError::NotConfigured(_) => {
+             format!("{provider_name} is not configured")
+         }
++        ResolveError::Interpolation { source, .. } => {
++            format!("{provider_name} header interpolation failed: {source}")
++        }
+         ResolveError::VaultSchemaMismatch { name, actual, .. } => {
+             format!(
+                 "{provider_name} vault credential '{name}' has schema {actual:?}, expected Token or Oauth"
+@@ -364,13 +374,20 @@ impl CredentialResolver {
+         catalog_provider
+             .extra_headers
+             .iter()
+-            .map(|(name, value_ref)| {
+-                let value = match value_ref {
+-                    HeaderValueRef::Literal(value) => Some(value.clone()),
+-                    HeaderValueRef::Env(name) => self.lookup_env(name),
+-                    HeaderValueRef::Vault(name) => vault.get(name).map(str::to_string),
+-                }
+-                .ok_or_else(|| ResolveError::NotConfigured(provider.clone()))?;
++            .map(|(name, source)| {
++                // Provider header secrets resolve outside the run-boundary
++                // redactor registration path. Keep this path free of value
++                // logging until exact-match registration is threaded through.
++                let mut ctx = ResolveCtx::new()
++                    .with_env(|env_name| self.lookup_env(env_name))
++                    .with_secrets(|secret_name| vault_get_token(vault, secret_name).ok().flatten());
++                let value =
++                    InterpString::parse(source)
++                        .resolve_with(&mut ctx)
++                        .map_err(|source| ResolveError::Interpolation {
++                            provider: provider.clone(),
++                            source,
++                        })?;
+                 Ok((name.clone(), value))
+             })
+             .collect()
+@@ -504,6 +521,8 @@ pub async fn configured_providers_from_process_env(
+ }
+ #[cfg(test)]
+ mod tests {
++    use std::error::Error as _;
++
+     use chrono::{Duration, Utc};
+     use fabro_model::catalog::LlmCatalogSettings;
+     use httpmock::Method::POST;
+@@ -847,6 +866,225 @@ reasoning = false
+         ]);
+     }
+ 
++    #[tokio::test]
++    async fn vault_source_resolves_secret_header_token() {
++        let catalog = catalog_with(
++            r#"
++[providers.portkey]
++display_name = "Portkey Bedrock"
++adapter = "anthropic"
++agent_profile = "anthropic"
++base_url = "https://api.portkey.ai/v1"
++
++[providers.portkey.extra_headers]
++x-team-secret = "{{ secrets.gateway_team_secret }}"
++
++[models."portkey-claude"]
++provider = "portkey"
++display_name = "Portkey Claude"
++family = "claude"
++default = true
++
++[models."portkey-claude".limits]
++context_window = 200000
++
++[models."portkey-claude".features]
++tools = true
++vision = true
++reasoning = true
++reasoning_effort = "levels"
++"#,
++        );
++        let dir = tempfile::tempdir().unwrap();
++        let mut vault = Vault::load(dir.path().join("secrets.json")).unwrap();
++        vault_set_token(&mut vault, "gateway_team_secret", "s3cr3t").unwrap();
++        let resolver = test_resolver(vault, Arc::new(|_| None));
++
++        let resolved = resolver
++            .resolve(
++                ProviderId::new("portkey"),
++                CredentialUsage::ApiRequest,
++                &catalog,
++            )
++            .await
++            .unwrap();
++
++        let ResolvedCredential::Api(api) = resolved;
++        assert_eq!(
++            api.extra_headers.get("x-team-secret"),
++            Some(&"s3cr3t".to_string())
++        );
++    }
++
++    #[tokio::test]
++    async fn resolve_multi_segment_header_token() {
++        let catalog = catalog_with(
++            r#"
++[providers.portkey]
++display_name = "Portkey Bedrock"
++adapter = "anthropic"
++agent_profile = "anthropic"
++base_url = "https://api.portkey.ai/v1"
++
++[providers.portkey.extra_headers]
++authorization = "Bearer {{ secrets.TOKEN }}"
++
++[models."portkey-claude"]
++provider = "portkey"
++display_name = "Portkey Claude"
++family = "claude"
++default = true
++
++[models."portkey-claude".limits]
++context_window = 200000
++
++[models."portkey-claude".features]
++tools = true
++vision = true
++reasoning = true
++reasoning_effort = "levels"
++"#,
++        );
++        let dir = tempfile::tempdir().unwrap();
++        let mut vault = Vault::load(dir.path().join("secrets.json")).unwrap();
++        vault_set_token(&mut vault, "TOKEN", "gateway-token").unwrap();
++        let resolver = test_resolver(vault, Arc::new(|_| None));
++
++        let resolved = resolver
++            .resolve(
++                ProviderId::new("portkey"),
++                CredentialUsage::ApiRequest,
++                &catalog,
++            )
++            .await
++            .unwrap();
++
++        let ResolvedCredential::Api(api) = resolved;
++        assert_eq!(
++            api.extra_headers.get("authorization"),
++            Some(&"Bearer gateway-token".to_string())
++        );
++    }
++
++    #[tokio::test]
++    async fn missing_secret_header_fails_without_echoing_value() {
++        let catalog = catalog_with(
++            r#"
++[providers.portkey]
++display_name = "Portkey Bedrock"
++adapter = "anthropic"
++agent_profile = "anthropic"
++base_url = "https://api.portkey.ai/v1"
++
++[providers.portkey.extra_headers]
++x-team-secret = "{{ secrets.MISSING }}"
++
++[models."portkey-claude"]
++provider = "portkey"
++display_name = "Portkey Claude"
++family = "claude"
++default = true
++
++[models."portkey-claude".limits]
++context_window = 200000
++
++[models."portkey-claude".features]
++tools = true
++vision = true
++reasoning = true
++reasoning_effort = "levels"
++"#,
++        );
++        let dir = tempfile::tempdir().unwrap();
++        let mut vault = Vault::load(dir.path().join("secrets.json")).unwrap();
++        vault_set_token(&mut vault, "OTHER_SECRET", "should-not-leak").unwrap();
++        let resolver = test_resolver(vault, Arc::new(|_| None));
++
++        let err = resolver
++            .resolve(
++                ProviderId::new("portkey"),
++                CredentialUsage::ApiRequest,
++                &catalog,
++            )
++            .await
++            .unwrap_err();
++
++        assert!(matches!(
++            err,
++            ResolveError::Interpolation { ref provider, .. }
++                if provider == &ProviderId::new("portkey")
++        ));
++        let source = err
++            .source()
++            .expect("interpolation errors should preserve the source error");
++        assert!(source.to_string().contains("MISSING"));
++        let message = err.to_string();
++        assert!(message.contains("MISSING"));
++        assert!(!message.contains("should-not-leak"));
++    }
++
++    #[tokio::test]
++    async fn header_with_file_or_oauth_vault_entry_fails_closed() {
++        let catalog = catalog_with(
++            r#"
++[providers.portkey]
++display_name = "Portkey Bedrock"
++adapter = "anthropic"
++agent_profile = "anthropic"
++base_url = "https://api.portkey.ai/v1"
++
++[providers.portkey.extra_headers]
++x-team-secret = "{{ secrets.gateway_team_secret }}"
++
++[models."portkey-claude"]
++provider = "portkey"
++display_name = "Portkey Claude"
++family = "claude"
++default = true
++
++[models."portkey-claude".limits]
++context_window = 200000
++
++[models."portkey-claude".features]
++tools = true
++vision = true
++reasoning = true
++reasoning_effort = "levels"
++"#,
++        );
++        let dir = tempfile::tempdir().unwrap();
++        let mut vault = Vault::load(dir.path().join("secrets.json")).unwrap();
++        vault_set_oauth(
++            &mut vault,
++            "gateway_team_secret",
++            &oauth_credential(
++                "https://auth.openai.com/oauth/token".to_string(),
++                Utc::now() + Duration::hours(1),
++            ),
++        )
++        .unwrap();
++        let resolver = test_resolver(vault, Arc::new(|_| None));
++
++        let err = resolver
++            .resolve(
++                ProviderId::new("portkey"),
++                CredentialUsage::ApiRequest,
++                &catalog,
++            )
++            .await
++            .unwrap_err();
++
++        assert!(matches!(
++            err,
++            ResolveError::Interpolation { ref provider, .. }
++                if provider == &ProviderId::new("portkey")
++        ));
++        let message = err.to_string();
++        assert!(message.contains("gateway_team_secret"));
++        assert!(!message.contains("expired-access"));
++        assert!(!message.contains("refresh-token"));
++    }
++
+     #[tokio::test]
+     async fn resolve_refreshes_expired_oauth_credentials_and_persists_them() {
+         let server = MockServer::start_async().await;
+diff --git a/lib/crates/fabro-config/src/builders.rs b/lib/crates/fabro-config/src/builders.rs
+index 0b411f113..1e8a70563 100644
+--- a/lib/crates/fabro-config/src/builders.rs
++++ b/lib/crates/fabro-config/src/builders.rs
+@@ -326,6 +326,11 @@ fn llm_layer_to_catalog_settings(llm: LlmLayer) -> model_catalog::LlmCatalogSett
+     }
+ }
+ 
++#[expect(
++    clippy::disallowed_methods,
++    reason = "collapse the authoring InterpString header values to their catalog source strings; \
++              they are re-parsed and resolved at the credential boundary"
++)]
+ fn provider_settings_to_catalog(
+     settings: ProviderSettings,
+ ) -> model_catalog::ProviderCatalogSettings {
+@@ -338,7 +343,12 @@ fn provider_settings_to_catalog(
+         billing_policy: settings.billing_policy,
+         api_key_url:    settings.api_key_url,
+         base_url:       settings.base_url,
+-        extra_headers:  settings.extra_headers,
++        extra_headers:  settings.extra_headers.map(|headers| {
++            headers
++                .into_iter()
++                .map(|(name, value)| (name, value.as_source()))
++                .collect()
++        }),
+         priority:       settings.priority,
+         enabled:        settings.enabled,
+         aliases:        settings.aliases,
+@@ -862,4 +872,49 @@ reasoning = false
+             Some(fabro_model::AgentProfileKind::Gemini)
+         );
+     }
++
++    #[test]
++    fn server_runtime_settings_preserves_extra_header_sources() {
++        let settings = server_runtime_settings_from_toml(
++            r#"
++_version = 1
++
++[server.auth]
++methods = ["dev-token"]
++
++[llm.providers.acme]
++display_name = "Acme"
++adapter = "openai_compatible"
++base_url = "https://api.acme.test/v1"
++
++[llm.providers.acme.extra_headers]
++x-title = "My App"
++x-api-key = "{{ env.ACME_GATEWAY_API_KEY }}"
++x-team-secret = "Bearer {{ secrets.ACME_GATEWAY_TOKEN }}"
++"#,
++            None,
++            None,
++        )
++        .expect("server runtime settings should resolve");
++
++        let provider = settings
++            .llm_catalog_settings
++            .providers
++            .get("acme")
++            .expect("provider settings should be present");
++        let headers = provider
++            .extra_headers
++            .as_ref()
++            .expect("extra header settings should be present");
++
++        assert_eq!(headers.get("x-title").map(String::as_str), Some("My App"));
++        assert_eq!(
++            headers.get("x-api-key").map(String::as_str),
++            Some("{{ env.ACME_GATEWAY_API_KEY }}")
++        );
++        assert_eq!(
++            headers.get("x-team-secret").map(String::as_str),
++            Some("Bearer {{ secrets.ACME_GATEWAY_TOKEN }}")
++        );
++    }
+ }
+diff --git a/lib/crates/fabro-config/src/layers/combine.rs b/lib/crates/fabro-config/src/layers/combine.rs
+index bcadbfc75..abfe83ae1 100644
+--- a/lib/crates/fabro-config/src/layers/combine.rs
++++ b/lib/crates/fabro-config/src/layers/combine.rs
+@@ -15,7 +15,7 @@ use fabro_types::settings::{Duration, InterpString, Size};
+ use super::LogFilter;
+ use super::cli::{CliAuthLayer, CliLoggingLayer, CliTargetLayer};
+ use super::environment::EnvironmentDockerfileLayer;
+-use super::llm::{CostRates, CredentialRef, HeaderValueRef, ReasoningEffortFeature};
++use super::llm::{CostRates, CredentialRef, ReasoningEffortFeature};
+ use super::run::{
+     HookAgentMarker, HookEntry, HookTlsMode, InterviewProviderLayer, ModelRefOrSplice,
+     NotificationProviderLayer, RunArtifactsLayer, RunCheckpointLayer, RunGoalLayer,
+@@ -122,7 +122,7 @@ impl Combine for Option<HashMap<String, toml::Value>> {
+     }
+ }
+ 
+-impl Combine for Option<HashMap<String, HeaderValueRef>> {
++impl Combine for Option<HashMap<String, InterpString>> {
+     fn combine(self, other: Self) -> Self {
+         self.or(other)
+     }
+diff --git a/lib/crates/fabro-config/src/layers/llm.rs b/lib/crates/fabro-config/src/layers/llm.rs
+index 7e531686d..5fb8a0a64 100644
+--- a/lib/crates/fabro-config/src/layers/llm.rs
++++ b/lib/crates/fabro-config/src/layers/llm.rs
+@@ -30,9 +30,8 @@ use std::collections::{BTreeMap, HashMap};
+ 
+ use fabro_model::catalog::deserialize_knowledge_cutoff;
+ use fabro_model::{AgentProfileKind, BillingPolicy, CodecKind, ProviderAuthConfig};
+-pub use fabro_model::{
+-    CredentialRef, CredentialRefParseError, HeaderValueRef, ReasoningEffortFeature,
+-};
++pub use fabro_model::{CredentialRef, CredentialRefParseError, ReasoningEffortFeature};
++use fabro_types::settings::InterpString;
+ use serde::{Deserialize, Serialize};
+ 
+ use super::maps::MergeMap;
+@@ -75,10 +74,12 @@ pub struct ProviderSettings {
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub base_url:       Option<String>,
+     /// Extra HTTP headers attached to every outgoing provider request after
+-    /// credential resolution. Header values are typed so secret-bearing values
+-    /// stay as references until a later resolution phase.
++    /// credential resolution. Values are interpolation strings: literal text,
++    /// `{{ env.NAME }}`, or `{{ secrets.NAME }}`. Put credentials in a secret
++    /// and reference them with a `{{ secrets.NAME }}` token, not a bare
++    /// literal.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub extra_headers:  Option<HashMap<String, HeaderValueRef>>,
++    pub extra_headers:  Option<HashMap<String, InterpString>>,
+     /// Higher wins; missing → `0`; ties broken by canonical provider ID.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub priority:       Option<i32>,
+@@ -400,137 +401,14 @@ agent_profile = "gemini"
+         );
+     }
+ 
+-    // ---- HeaderValueRef --------------------------------------------------
++    // ---- Provider extra headers ------------------------------------------
+ 
+-    #[test]
+-    fn header_value_ref_parses_literal_form() {
+-        let parsed: HeaderValueRef = toml::from_str(r#"value = { literal = "@bedrock-prod" }"#)
+-            .map(|v: toml::Value| {
+-                v.as_table()
+-                    .unwrap()
+-                    .get("value")
+-                    .unwrap()
+-                    .clone()
+-                    .try_into()
+-                    .unwrap()
+-            })
+-            .unwrap();
+-
+-        assert_eq!(parsed, HeaderValueRef::Literal("@bedrock-prod".to_string()));
+-        assert_eq!(parsed.to_string(), "literal:<redacted>");
+-    }
+-
+-    #[test]
+-    fn header_value_ref_parses_env_form() {
+-        let parsed: HeaderValueRef = toml::from_str(r#"value = { env = "PORTKEY_API_KEY" }"#)
+-            .map(|v: toml::Value| {
+-                v.as_table()
+-                    .unwrap()
+-                    .get("value")
+-                    .unwrap()
+-                    .clone()
+-                    .try_into()
+-                    .unwrap()
+-            })
+-            .unwrap();
+-
+-        assert_eq!(parsed, HeaderValueRef::Env("PORTKEY_API_KEY".to_string()));
+-        assert_eq!(parsed.to_string(), "env:PORTKEY_API_KEY");
+-    }
+-
+-    #[test]
+-    fn header_value_ref_parses_vault_form() {
+-        let parsed: HeaderValueRef = toml::from_str(r#"value = { vault = "portkey_config" }"#)
+-            .map(|v: toml::Value| {
+-                v.as_table()
+-                    .unwrap()
+-                    .get("value")
+-                    .unwrap()
+-                    .clone()
+-                    .try_into()
+-                    .unwrap()
+-            })
+-            .unwrap();
+-
+-        assert_eq!(parsed, HeaderValueRef::Vault("portkey_config".to_string()));
+-        assert_eq!(parsed.to_string(), "vault:portkey_config");
+-    }
+-
+-    #[test]
+-    fn header_value_ref_rejects_bare_string() {
+-        #[derive(Debug, Deserialize)]
+-        struct Wrap {
+-            #[expect(
+-                dead_code,
+-                reason = "field exists only to drive the deserializer; we assert on the parse error"
+-            )]
+-            value: HeaderValueRef,
+-        }
+-
+-        let err = toml::from_str::<Wrap>(r#"value = "sk-portkey-literal""#).unwrap_err();
+-        let message = err.message();
+-
+-        assert!(message.contains("header value"));
+-        assert!(
+-            !message.contains("sk-portkey-literal"),
+-            "deserializer message must not echo a possible literal secret",
+-        );
+-    }
+-
+-    #[test]
+-    fn header_value_ref_rejects_ambiguous_table() {
+-        #[derive(Debug, Deserialize)]
+-        struct Wrap {
+-            #[expect(
+-                dead_code,
+-                reason = "field exists only to drive the deserializer; we assert on the parse error"
+-            )]
+-            value: HeaderValueRef,
+-        }
+-
+-        let err = toml::from_str::<Wrap>(
+-            r#"value = { env = "PORTKEY_API_KEY", literal = "@bedrock-prod" }"#,
+-        )
+-        .unwrap_err();
+-
+-        assert!(err.to_string().contains("exactly one"));
+-    }
+-
+-    #[test]
+-    fn header_value_ref_rejects_unknown_keys() {
+-        #[derive(Deserialize)]
+-        #[expect(
+-            dead_code,
+-            reason = "field exists only to drive the deserializer; we assert on the parse error"
+-        )]
+-        struct Wrap {
+-            value: HeaderValueRef,
+-        }
+-
+-        let err: Result<Wrap, _> = toml::from_str(r#"value = { secret = "PORTKEY_API_KEY" }"#);
+-
+-        assert!(err.is_err(), "unknown header value keys must fail");
+-    }
+-
+-    #[test]
+-    fn header_value_ref_rejects_empty_values() {
+-        #[derive(Debug, Deserialize)]
+-        struct Wrap {
+-            #[expect(
+-                dead_code,
+-                reason = "field exists only to drive the deserializer; we assert on the parse error"
+-            )]
+-            value: HeaderValueRef,
+-        }
+-
+-        for source in [
+-            r#"value = { literal = "" }"#,
+-            r#"value = { env = "" }"#,
+-            r#"value = { vault = "" }"#,
+-        ] {
+-            let err = toml::from_str::<Wrap>(source).unwrap_err();
+-            assert!(err.to_string().contains("must not be empty"));
+-        }
++    #[expect(
++        clippy::disallowed_methods,
++        reason = "tests assert unresolved interpolation header source round-trips"
++    )]
++    fn interp_source(value: &InterpString) -> String {
++        value.as_source()
+     }
+ 
+     // ---- LlmLayer parsing -------------------------------------------------
+@@ -568,7 +446,7 @@ credentials = ["env:KIMI_API_KEY", "vault:KIMI_API_KEY"]
+     }
+ 
+     #[test]
+-    fn parses_provider_extra_headers() {
++    fn provider_extra_headers_parse_interp_tokens() {
+         let toml = r#"
+ [providers.portkey]
+ display_name = "Portkey Bedrock"
+@@ -576,9 +454,9 @@ adapter = "anthropic"
+ base_url = "https://api.portkey.ai/v1"
+ 
+ [providers.portkey.extra_headers]
+-x-portkey-api-key = { env = "PORTKEY_API_KEY" }
+-x-portkey-provider = { literal = "@bedrock-prod" }
+-x-portkey-config = { vault = "portkey_config" }
++x-title = "My App"
++x-portkey-api-key = "{{ env.PORTKEY_API_KEY }}"
++x-team-secret = "{{ secrets.gateway_team_secret }}"
+ "#;
+ 
+         let layer: LlmLayer = toml::from_str(toml).unwrap();
+@@ -587,34 +465,46 @@ x-portkey-config = { vault = "portkey_config" }
+         assert!(portkey.auth.is_none());
+         let headers = portkey.extra_headers.as_ref().unwrap();
+         assert_eq!(
+-            headers.get("x-portkey-api-key"),
+-            Some(&HeaderValueRef::Env("PORTKEY_API_KEY".to_string())),
++            interp_source(headers.get("x-title").expect("x-title header should parse")),
++            "My App",
+         );
+         assert_eq!(
+-            headers.get("x-portkey-provider"),
+-            Some(&HeaderValueRef::Literal("@bedrock-prod".to_string())),
++            interp_source(
++                headers
++                    .get("x-portkey-api-key")
++                    .expect("x-portkey-api-key header should parse")
++            ),
++            "{{ env.PORTKEY_API_KEY }}",
+         );
+         assert_eq!(
+-            headers.get("x-portkey-config"),
+-            Some(&HeaderValueRef::Vault("portkey_config".to_string())),
++            interp_source(
++                headers
++                    .get("x-team-secret")
++                    .expect("x-team-secret header should parse")
++            ),
++            "{{ secrets.gateway_team_secret }}",
+         );
+     }
+ 
+     #[test]
+-    fn provider_extra_headers_reject_bare_string_values() {
++    fn provider_extra_headers_accepts_bare_string_literal() {
+         let toml = r#"
+ [providers.portkey.extra_headers]
+ x-portkey-api-key = "sk-portkey-literal"
+ "#;
+ 
+-        let err = toml::from_str::<LlmLayer>(toml).unwrap_err();
+-        let message = err.message();
++        let layer: LlmLayer = toml::from_str(toml).unwrap();
++        let headers = layer
++            .providers
++            .get("portkey")
++            .unwrap()
++            .extra_headers
++            .as_ref()
++            .unwrap();
++        let header = headers.get("x-portkey-api-key").unwrap();
+ 
+-        assert!(message.contains("header value"));
+-        assert!(
+-            !message.contains("sk-portkey-literal"),
+-            "deserializer message must not echo a possible literal secret",
+-        );
++        assert!(header.is_literal());
++        assert_eq!(interp_source(header), "sk-portkey-literal");
+     }
+ 
+     #[test]
+@@ -866,7 +756,7 @@ mystery = 1
+         let high = ProviderSettings {
+             extra_headers: Some(HashMap::from([(
+                 "x-portkey-provider".to_string(),
+-                HeaderValueRef::Literal("@bedrock-prod".to_string()),
++                InterpString::from("@bedrock-prod"),
+             )])),
+             ..ProviderSettings::default()
+         };
+@@ -874,11 +764,11 @@ mystery = 1
+             extra_headers: Some(HashMap::from([
+                 (
+                     "x-portkey-api-key".to_string(),
+-                    HeaderValueRef::Env("PORTKEY_API_KEY".to_string()),
++                    InterpString::from("{{ env.PORTKEY_API_KEY }}"),
+                 ),
+                 (
+                     "x-portkey-provider".to_string(),
+-                    HeaderValueRef::Literal("@bedrock-default".to_string()),
++                    InterpString::from("@bedrock-default"),
+                 ),
+             ])),
+             ..ProviderSettings::default()
+@@ -890,7 +780,7 @@ mystery = 1
+         assert_eq!(headers.len(), 1);
+         assert_eq!(
+             headers.get("x-portkey-provider"),
+-            Some(&HeaderValueRef::Literal("@bedrock-prod".to_string())),
++            Some(&InterpString::from("@bedrock-prod")),
+         );
+         assert!(!headers.contains_key("x-portkey-api-key"));
+     }
+@@ -901,7 +791,7 @@ mystery = 1
+         let low = ProviderSettings {
+             extra_headers: Some(HashMap::from([(
+                 "x-portkey-api-key".to_string(),
+-                HeaderValueRef::Env("PORTKEY_API_KEY".to_string()),
++                InterpString::from("{{ env.PORTKEY_API_KEY }}"),
+             )])),
+             ..ProviderSettings::default()
+         };
+@@ -910,7 +800,7 @@ mystery = 1
+ 
+         assert_eq!(
+             merged.extra_headers.unwrap().get("x-portkey-api-key"),
+-            Some(&HeaderValueRef::Env("PORTKEY_API_KEY".to_string())),
++            Some(&InterpString::from("{{ env.PORTKEY_API_KEY }}")),
+         );
+     }
+ 
+@@ -923,7 +813,7 @@ mystery = 1
+         let low = ProviderSettings {
+             extra_headers: Some(HashMap::from([(
+                 "x-portkey-api-key".to_string(),
+-                HeaderValueRef::Env("PORTKEY_API_KEY".to_string()),
++                InterpString::from("{{ env.PORTKEY_API_KEY }}"),
+             )])),
+             ..ProviderSettings::default()
+         };
+diff --git a/lib/crates/fabro-config/src/layers/mod.rs b/lib/crates/fabro-config/src/layers/mod.rs
+index 0e52a1db8..c3fa1632c 100644
+--- a/lib/crates/fabro-config/src/layers/mod.rs
++++ b/lib/crates/fabro-config/src/layers/mod.rs
+@@ -21,9 +21,9 @@ pub use environment::{
+     EnvironmentNetworkLayer, EnvironmentResourcesLayer, RunEnvironmentLayer,
+ };
+ pub use llm::{
+-    CostRates, CredentialRef, CredentialRefParseError, HeaderValueRef, LlmLayer, ModelControls,
+-    ModelCostTable, ModelFeatures as LlmModelFeatures, ModelLimits as LlmModelLimits,
+-    ModelSettings, ProviderSettings, ReasoningEffortFeature,
++    CostRates, CredentialRef, CredentialRefParseError, LlmLayer, ModelControls, ModelCostTable,
++    ModelFeatures as LlmModelFeatures, ModelLimits as LlmModelLimits, ModelSettings,
++    ProviderSettings, ReasoningEffortFeature,
+ };
+ pub use log_filter::LogFilter;
+ pub use maps::{MergeMap, ReplaceMap, StickyMap};
+diff --git a/lib/crates/fabro-config/src/lib.rs b/lib/crates/fabro-config/src/lib.rs
+index a14a4ecf4..f6097b9be 100644
+--- a/lib/crates/fabro-config/src/lib.rs
++++ b/lib/crates/fabro-config/src/lib.rs
+@@ -45,20 +45,19 @@ pub use layers::{
+     CliOutputLayer, CliTargetLayer, CliUpdatesLayer, CostRates, CredentialRef,
+     CredentialRefParseError, EnvironmentDockerfileLayer, EnvironmentImageLayer, EnvironmentLayer,
+     EnvironmentLifecycleLayer, EnvironmentNetworkLayer, EnvironmentResourcesLayer, GitAuthorLayer,
+-    GithubIntegrationLayer, HeaderValueRef, HookAgentMarker, HookEntry, HookTlsMode,
+-    IntegrationWebhooksLayer, InterviewProviderLayer, InterviewsLayer, LlmLayer, LlmModelFeatures,
+-    LlmModelLimits, LogFilter, McpEntryLayer, MergeMap, ModelControls, ModelCostTable,
+-    ModelRefOrSplice, ModelSettings, NotificationProviderLayer, NotificationRouteLayer,
+-    ObjectStoreLocalLayer, ObjectStoreS3Layer, PrepareStep, ProjectLayer, ProviderSettings,
+-    ReasoningEffortFeature, ReplaceMap, RunAgentLayer, RunArtifactsLayer, RunCheckpointLayer,
+-    RunCloneLayer, RunEnvironmentLayer, RunExecutionLayer, RunGitLayer, RunGoalLayer,
+-    RunIntegrationsGithubLayer, RunIntegrationsLayer, RunLayer, RunMetaBranchLayer,
+-    RunModelControlsLayer, RunModelLayer, RunPrepareLayer, RunPullRequestLayer, RunRunBranchLayer,
+-    RunScmLayer, ScmGitHubLayer, ServerApiLayer, ServerArtifactsLayer, ServerAuthGithubLayer,
+-    ServerAuthLayer, ServerIntegrationsLayer, ServerLayer, ServerListenLayer, ServerLoggingLayer,
+-    ServerSandboxLayer, ServerSandboxProviderLayer, ServerSandboxProvidersLayer,
+-    ServerSchedulerLayer, ServerSlateDbLayer, ServerStorageLayer, ServerWebLayer, SettingsLayer,
+-    SlackIntegrationLayer, StickyMap, StringOrSplice, WorkflowLayer,
++    GithubIntegrationLayer, HookAgentMarker, HookEntry, HookTlsMode, IntegrationWebhooksLayer,
++    InterviewProviderLayer, InterviewsLayer, LlmLayer, LlmModelFeatures, LlmModelLimits, LogFilter,
++    McpEntryLayer, MergeMap, ModelControls, ModelCostTable, ModelRefOrSplice, ModelSettings,
++    NotificationProviderLayer, NotificationRouteLayer, ObjectStoreLocalLayer, ObjectStoreS3Layer,
++    PrepareStep, ProjectLayer, ProviderSettings, ReasoningEffortFeature, ReplaceMap, RunAgentLayer,
++    RunArtifactsLayer, RunCheckpointLayer, RunCloneLayer, RunEnvironmentLayer, RunExecutionLayer,
++    RunGitLayer, RunGoalLayer, RunIntegrationsGithubLayer, RunIntegrationsLayer, RunLayer,
++    RunMetaBranchLayer, RunModelControlsLayer, RunModelLayer, RunPrepareLayer, RunPullRequestLayer,
++    RunRunBranchLayer, RunScmLayer, ScmGitHubLayer, ServerApiLayer, ServerArtifactsLayer,
++    ServerAuthGithubLayer, ServerAuthLayer, ServerIntegrationsLayer, ServerLayer,
++    ServerListenLayer, ServerLoggingLayer, ServerSandboxLayer, ServerSandboxProviderLayer,
++    ServerSandboxProvidersLayer, ServerSchedulerLayer, ServerSlateDbLayer, ServerStorageLayer,
++    ServerWebLayer, SettingsLayer, SlackIntegrationLayer, StickyMap, StringOrSplice, WorkflowLayer,
+ };
+ pub use logging::{resolve_log_destination, resolve_log_destination_with_env};
+ pub use parse::ParseError;
+diff --git a/lib/crates/fabro-dev/src/commands/docs_options_reference.rs b/lib/crates/fabro-dev/src/commands/docs_options_reference.rs
+index d04926cb1..aacc08575 100644
+--- a/lib/crates/fabro-dev/src/commands/docs_options_reference.rs
++++ b/lib/crates/fabro-dev/src/commands/docs_options_reference.rs
+@@ -231,9 +231,9 @@ aliases = ["gateway"]
+ credentials = ["env:ACME_GATEWAY_API_KEY", "vault:ACME_GATEWAY_API_KEY"]
+ 
+ [llm.providers.proxy.extra_headers]
+-x-portkey-api-key = { env = "PORTKEY_API_KEY" }
+-x-portkey-config = { literal = "@bedrock-prod" }
+-x-team-secret = { vault = "gateway_team_secret" }
++x-portkey-api-key = "{{ env.PORTKEY_API_KEY }}"
++x-portkey-config = "@bedrock-prod"
++x-team-secret = "{{ secrets.gateway_team_secret }}"
+ ```
+ 
+ | Key | Type / values | Default | Description |
+@@ -246,7 +246,7 @@ x-team-secret = { vault = "gateway_team_secret" }
+ | `auth` | table | omitted | API-key auth config. Omit the table entirely for providers that need no API key; any `extra_headers` are still attached. |
+ | `auth.credentials` | array<string> | required when `auth` present | Ordered credential refs. Accepted forms are `vault:<NAME>`, `env:<NAME>`, and `aws_sigv4` (sign requests from the AWS default credential chain — Bedrock). Literal secret strings are rejected. |
+ | `auth.header` | `"bearer"` or `{ custom = "Header-Name" }` | `"bearer"` | Primary API-key header policy. Omit when the provider uses a standard bearer token. |
+-| `extra_headers` | table | `{}` | Additional headers attached to provider requests. Values must be typed refs: `{ literal = "..." }`, `{ env = "NAME" }`, or `{ vault = "NAME" }`. |
++| `extra_headers` | table | `{}` | Additional headers attached to provider requests. Values are interpolation strings: literal text, an `{{ env.NAME }}` token, or a `{{ secrets.NAME }}` token. Put credentials in a secret and reference them with a `{{ secrets.NAME }}` token, not a bare literal. |
+ | `priority` | integer | `0` | Higher-priority configured providers win default selection; ties use canonical provider ID. |
+ | `enabled` | boolean | `true` | Set `false` to disable a provider after lower-precedence layers define it. |
+ | `aliases` | array<string> | `[]` | Additional provider names accepted by model routing and fallback config. |
+diff --git a/lib/crates/fabro-llm/src/client.rs b/lib/crates/fabro-llm/src/client.rs
+index 84a7a98fa..a5ab8d6c2 100644
+--- a/lib/crates/fabro-llm/src/client.rs
++++ b/lib/crates/fabro-llm/src/client.rs
+@@ -1650,7 +1650,7 @@ agent_profile = "anthropic"
+ base_url = "https://api.portkey.ai/v1"
+ 
+ [providers.portkey.extra_headers]
+-x-portkey-api-key = { literal = "pk-live" }
++x-portkey-api-key = "pk-live"
+ 
+ [models."portkey-claude"]
+ provider = "portkey"
+diff --git a/lib/crates/fabro-model/src/catalog.rs b/lib/crates/fabro-model/src/catalog.rs
+index 976c7a760..890b974aa 100644
+--- a/lib/crates/fabro-model/src/catalog.rs
++++ b/lib/crates/fabro-model/src/catalog.rs
+@@ -58,7 +58,7 @@ pub struct ProviderCatalogSettings {
+     #[serde(default)]
+     pub base_url:       Option<String>,
+     #[serde(default)]
+-    pub extra_headers:  Option<HashMap<String, HeaderValueRef>>,
++    pub extra_headers:  Option<HashMap<String, String>>,
+     #[serde(default)]
+     pub priority:       Option<i32>,
+     #[serde(default)]
+@@ -344,119 +344,6 @@ pub enum BillingPolicy {
+     None,
+ }
+ 
+-#[derive(Debug, Clone, PartialEq, Eq)]
+-pub enum HeaderValueRef {
+-    Literal(String),
+-    Env(String),
+-    Vault(String),
+-}
+-
+-impl Serialize for HeaderValueRef {
+-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+-    where
+-        S: Serializer,
+-    {
+-        use serde::ser::SerializeMap;
+-
+-        let mut map = serializer.serialize_map(Some(1))?;
+-        match self {
+-            Self::Literal(value) => map.serialize_entry("literal", value)?,
+-            Self::Env(value) => map.serialize_entry("env", value)?,
+-            Self::Vault(value) => map.serialize_entry("vault", value)?,
+-        }
+-        map.end()
+-    }
+-}
+-
+-impl std::fmt::Display for HeaderValueRef {
+-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+-        match self {
+-            Self::Literal(_) => f.write_str("literal:<redacted>"),
+-            Self::Env(name) => write!(f, "env:{name}"),
+-            Self::Vault(id) => write!(f, "vault:{id}"),
+-        }
+-    }
+-}
+-
+-#[derive(Debug, Deserialize)]
+-#[serde(untagged)]
+-enum HeaderValueRefInput {
+-    Table(HeaderValueRefSerde),
+-    BareString(String),
+-}
+-
+-#[derive(Debug, Deserialize)]
+-#[serde(deny_unknown_fields)]
+-struct HeaderValueRefSerde {
+-    #[serde(default)]
+-    literal: Option<String>,
+-    #[serde(default)]
+-    env:     Option<String>,
+-    #[serde(default)]
+-    vault:   Option<String>,
+-}
+-
+-impl<'de> Deserialize<'de> for HeaderValueRef {
+-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+-    where
+-        D: Deserializer<'de>,
+-    {
+-        use serde::de::Error as _;
+-
+-        match HeaderValueRefInput::deserialize(deserializer)? {
+-            HeaderValueRefInput::BareString(value) => {
+-                drop(value);
+-                Err(D::Error::custom("header value must be a table"))
+-            }
+-            HeaderValueRefInput::Table(value) => value.try_into().map_err(D::Error::custom),
+-        }
+-    }
+-}
+-
+-impl TryFrom<HeaderValueRefSerde> for HeaderValueRef {
+-    type Error = HeaderValueRefParseError;
+-
+-    fn try_from(value: HeaderValueRefSerde) -> Result<Self, Self::Error> {
+-        let populated = [
+-            value.literal.as_ref(),
+-            value.env.as_ref(),
+-            value.vault.as_ref(),
+-        ]
+-        .into_iter()
+-        .flatten()
+-        .count();
+-        if populated != 1 {
+-            return Err(HeaderValueRefParseError::WrongFieldCount);
+-        }
+-        if let Some(value) = value.literal {
+-            return non_empty_header_value(value).map(Self::Literal);
+-        }
+-        if let Some(value) = value.env {
+-            return non_empty_header_value(value).map(Self::Env);
+-        }
+-        if let Some(value) = value.vault {
+-            return non_empty_header_value(value).map(Self::Vault);
+-        }
+-        unreachable!("populated field count was already checked");
+-    }
+-}
+-
+-fn non_empty_header_value(value: String) -> Result<String, HeaderValueRefParseError> {
+-    if value.is_empty() {
+-        Err(HeaderValueRefParseError::EmptyValue)
+-    } else {
+-        Ok(value)
+-    }
+-}
+-
+-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+-pub enum HeaderValueRefParseError {
+-    #[error("header value must contain exactly one of `literal`, `env`, or `vault`")]
+-    WrongFieldCount,
+-    #[error("header value reference must not be empty")]
+-    EmptyValue,
+-}
+-
+ pub fn deserialize_knowledge_cutoff<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+ where
+     D: Deserializer<'de>,
+@@ -512,7 +399,7 @@ pub struct CatalogProvider {
+     pub billing_policy: BillingPolicy,
+     pub api_key_url:    Option<String>,
+     pub base_url:       Option<String>,
+-    pub extra_headers:  HashMap<String, HeaderValueRef>,
++    pub extra_headers:  HashMap<String, String>,
+     pub priority:       i32,
+     pub aliases:        Vec<String>,
+ }
+diff --git a/lib/crates/fabro-model/src/catalog/providers/openrouter.toml b/lib/crates/fabro-model/src/catalog/providers/openrouter.toml
+index 957f6aac2..4759b8996 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/openrouter.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/openrouter.toml
+@@ -15,8 +15,8 @@ credentials = ["env:OPENROUTER_API_KEY", "vault:OPENROUTER_API_KEY"]
+ # settings.toml:
+ #
+ #   [llm.providers.openrouter.extra_headers]
+-#   "HTTP-Referer" = { literal = "https://your-site.example" }
+-#   "X-Title" = { literal = "Your App" }
++#   "HTTP-Referer" = "https://your-site.example"
++#   "X-Title" = "Your App"
+ #
+ # To enable OpenRouter, add the following to ~/.fabro/settings.toml:
+ #
+diff --git a/lib/crates/fabro-model/src/lib.rs b/lib/crates/fabro-model/src/lib.rs
+index c134a36e4..8dfd96f23 100644
+--- a/lib/crates/fabro-model/src/lib.rs
++++ b/lib/crates/fabro-model/src/lib.rs
+@@ -19,7 +19,7 @@ pub use billing::{
+ };
+ pub use catalog::{
+     ApiKeyHeaderPolicy, BillingPolicy, Catalog, CredentialRef, CredentialRefParseError,
+-    FallbackTarget, HeaderValueRef, ProviderAuthConfig,
++    FallbackTarget, ProviderAuthConfig,
+ };
+ pub use codec::CodecKind;
+ pub use ids::{ModelId, ProviderId};
