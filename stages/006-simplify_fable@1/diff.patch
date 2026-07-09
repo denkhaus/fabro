@@ -1,0 +1,499 @@
+diff --git a/lib/crates/fabro-auth/src/env_source.rs b/lib/crates/fabro-auth/src/env_source.rs
+index aa906c8ae..8a2d7cc53 100644
+--- a/lib/crates/fabro-auth/src/env_source.rs
++++ b/lib/crates/fabro-auth/src/env_source.rs
+@@ -1,14 +1,15 @@
++use std::collections::HashMap;
+ use std::sync::Arc;
+ 
+ use async_trait::async_trait;
+ use fabro_model::catalog::CatalogProvider;
+ use fabro_model::{Catalog, CredentialRef, ProviderId};
+ use fabro_static::EnvVars;
+-use fabro_types::settings::{InterpString, ResolveCtx};
++use fabro_types::settings::ResolveCtx;
+ 
+ use crate::credential_source::{CredentialSource, ResolvedCredentials};
+ use crate::resolve::{apply_openai_api_env_context, apply_openai_codex_api_context};
+-use crate::{ApiCredential, EnvLookup, ResolveError, build_api_key_header};
++use crate::{ApiCredential, EnvLookup, ResolveError, build_api_key_header, resolve};
+ 
+ #[derive(Clone)]
+ pub struct EnvCredentialSource {
+@@ -78,22 +79,9 @@ impl EnvCredentialSource {
+     fn resolved_extra_headers(
+         &self,
+         provider: &CatalogProvider,
+-    ) -> Result<std::collections::HashMap<String, String>, ResolveError> {
+-        provider
+-            .extra_headers
+-            .iter()
+-            .map(|(name, source)| {
+-                let mut ctx = ResolveCtx::new().with_env(|env_name| self.lookup(env_name));
+-                let value =
+-                    InterpString::parse(source)
+-                        .resolve_with(&mut ctx)
+-                        .map_err(|source| ResolveError::Interpolation {
+-                            provider: provider.id.clone(),
+-                            source,
+-                        })?;
+-                Ok((name.clone(), value))
+-            })
+-            .collect()
++    ) -> Result<HashMap<String, String>, ResolveError> {
++        let mut ctx = ResolveCtx::new().with_env(|env_name| self.lookup(env_name));
++        resolve::resolve_extra_headers(&provider.id, &provider.extra_headers, &mut ctx)
+     }
+ }
+ 
+@@ -175,6 +163,38 @@ mod tests {
+         catalog_with("")
+     }
+ 
++    /// A no-auth portkey provider whose only variation is its `extra_headers`
++    /// TOML lines.
++    fn portkey_catalog(extra_headers: &str) -> Catalog {
++        catalog_with(&format!(
++            r#"
++[providers.portkey]
++display_name = "Portkey Bedrock"
++adapter = "anthropic"
++agent_profile = "anthropic"
++base_url = "https://api.portkey.ai/v1"
++
++[providers.portkey.extra_headers]
++{extra_headers}
++
++[models."portkey-claude"]
++provider = "portkey"
++display_name = "Portkey Claude"
++family = "claude"
++default = true
++
++[models."portkey-claude".limits]
++context_window = 200000
++
++[models."portkey-claude".features]
++tools = true
++vision = true
++reasoning = true
++reasoning_effort = "levels"
++"#
++        ))
++    }
++
+     #[tokio::test]
+     async fn configured_providers_reads_injected_env() {
+         let source = test_source(&[("ANTHROPIC_API_KEY", "anthropic-key")]);
+@@ -285,32 +305,10 @@ reasoning = false
+ 
+     #[tokio::test]
+     async fn env_source_resolves_literal_and_env_header_tokens() {
+-        let catalog = catalog_with(
++        let catalog = portkey_catalog(
+             r#"
+-[providers.portkey]
+-display_name = "Portkey Bedrock"
+-adapter = "anthropic"
+-agent_profile = "anthropic"
+-base_url = "https://api.portkey.ai/v1"
+-
+-[providers.portkey.extra_headers]
+ x-portkey-api-key = "{{ env.PORTKEY_API_KEY }}"
+ x-portkey-provider = "@bedrock-prod"
+-
+-[models."portkey-claude"]
+-provider = "portkey"
+-display_name = "Portkey Claude"
+-family = "claude"
+-default = true
+-
+-[models."portkey-claude".limits]
+-context_window = 200000
+-
+-[models."portkey-claude".features]
+-tools = true
+-vision = true
+-reasoning = true
+-reasoning_effort = "levels"
+ "#,
+         );
+         let source = test_source(&[("PORTKEY_API_KEY", "pk-live")]);
+@@ -335,33 +333,7 @@ reasoning_effort = "levels"
+ 
+     #[tokio::test]
+     async fn env_source_secrets_header_token_is_unavailable() {
+-        let catalog = catalog_with(
+-            r#"
+-[providers.portkey]
+-display_name = "Portkey Bedrock"
+-adapter = "anthropic"
+-agent_profile = "anthropic"
+-base_url = "https://api.portkey.ai/v1"
+-
+-[providers.portkey.extra_headers]
+-x-team-secret = "{{ secrets.gateway_team_secret }}"
+-
+-[models."portkey-claude"]
+-provider = "portkey"
+-display_name = "Portkey Claude"
+-family = "claude"
+-default = true
+-
+-[models."portkey-claude".limits]
+-context_window = 200000
+-
+-[models."portkey-claude".features]
+-tools = true
+-vision = true
+-reasoning = true
+-reasoning_effort = "levels"
+-"#,
+-        );
++        let catalog = portkey_catalog(r#"x-team-secret = "{{ secrets.gateway_team_secret }}""#);
+         let source = test_source(&[]);
+ 
+         let resolved = source.resolve(&catalog).await.unwrap();
+@@ -382,38 +354,12 @@ reasoning_effort = "levels"
+             crate::ResolveError::Interpolation { provider, .. }
+                 if provider == &ProviderId::new("portkey")
+         ));
+-        assert!(!issue.to_string().contains("s3cr3t"));
++        assert!(issue.to_string().contains("gateway_team_secret"));
+     }
+ 
+     #[tokio::test]
+     async fn env_source_reports_missing_env_header_for_no_auth_provider() {
+-        let catalog = catalog_with(
+-            r#"
+-[providers.portkey]
+-display_name = "Portkey Bedrock"
+-adapter = "anthropic"
+-agent_profile = "anthropic"
+-base_url = "https://api.portkey.ai/v1"
+-
+-[providers.portkey.extra_headers]
+-x-portkey-api-key = "{{ env.PORTKEY_API_KEY }}"
+-
+-[models."portkey-claude"]
+-provider = "portkey"
+-display_name = "Portkey Claude"
+-family = "claude"
+-default = true
+-
+-[models."portkey-claude".limits]
+-context_window = 200000
+-
+-[models."portkey-claude".features]
+-tools = true
+-vision = true
+-reasoning = true
+-reasoning_effort = "levels"
+-"#,
+-        );
++        let catalog = portkey_catalog(r#"x-portkey-api-key = "{{ env.PORTKEY_API_KEY }}""#);
+         let source = test_source(&[]);
+ 
+         let resolved = source.resolve(&catalog).await.unwrap();
+@@ -424,20 +370,12 @@ reasoning_effort = "levels"
+                 .iter()
+                 .any(|credential| credential.provider == ProviderId::new("portkey"))
+         );
+-        assert!(
+-            resolved
+-                .auth_issues
+-                .iter()
+-                .any(|(provider, issue)| provider == &ProviderId::new("portkey")
+-                    && matches!(issue, crate::ResolveError::Interpolation { .. }))
+-        );
+-        let message = resolved
++        let (_, issue) = resolved
+             .auth_issues
+             .iter()
+             .find(|(provider, _)| provider == &ProviderId::new("portkey"))
+-            .map(|(_, issue)| issue.to_string())
+             .expect("missing env header should surface as an auth issue");
+-        assert!(message.contains("PORTKEY_API_KEY"));
+-        assert!(!message.contains("pk-live"));
++        assert!(matches!(issue, crate::ResolveError::Interpolation { .. }));
++        assert!(issue.to_string().contains("PORTKEY_API_KEY"));
+     }
+ }
+diff --git a/lib/crates/fabro-auth/src/lib.rs b/lib/crates/fabro-auth/src/lib.rs
+index c46283c4e..9f70e39d5 100644
+--- a/lib/crates/fabro-auth/src/lib.rs
++++ b/lib/crates/fabro-auth/src/lib.rs
+@@ -26,6 +26,7 @@ pub use strategy::{
+ };
+ pub use vault_ext::{
+     VaultLookupError, vault_get_oauth, vault_get_token, vault_set_oauth, vault_set_token,
++    vault_token_lookup,
+ };
+ pub use vault_source::VaultCredentialSource;
+ 
+diff --git a/lib/crates/fabro-auth/src/resolve.rs b/lib/crates/fabro-auth/src/resolve.rs
+index f255f3d0f..8651ea9ee 100644
+--- a/lib/crates/fabro-auth/src/resolve.rs
++++ b/lib/crates/fabro-auth/src/resolve.rs
+@@ -13,7 +13,9 @@ use crate::credential::{ApiKeyHeader, OAuthCredential};
+ use crate::credential_source::CredentialSource;
+ use crate::env_source::EnvCredentialSource;
+ use crate::refresh::refresh_oauth_credential;
+-use crate::vault_ext::{VaultLookupError, vault_get_oauth, vault_get_token, vault_set_oauth};
++use crate::vault_ext::{
++    VaultLookupError, vault_get_oauth, vault_get_token, vault_set_oauth, vault_token_lookup,
++};
+ 
+ pub type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+ 
+@@ -371,26 +373,10 @@ impl CredentialResolver {
+         let Some(catalog_provider) = catalog.provider(provider) else {
+             return Ok(HashMap::new());
+         };
+-        catalog_provider
+-            .extra_headers
+-            .iter()
+-            .map(|(name, source)| {
+-                // Provider header secrets resolve outside the run-boundary
+-                // redactor registration path. Keep this path free of value
+-                // logging until exact-match registration is threaded through.
+-                let mut ctx = ResolveCtx::new()
+-                    .with_env(|env_name| self.lookup_env(env_name))
+-                    .with_secrets(|secret_name| vault_get_token(vault, secret_name).ok().flatten());
+-                let value =
+-                    InterpString::parse(source)
+-                        .resolve_with(&mut ctx)
+-                        .map_err(|source| ResolveError::Interpolation {
+-                            provider: provider.clone(),
+-                            source,
+-                        })?;
+-                Ok((name.clone(), value))
+-            })
+-            .collect()
++        let mut ctx = ResolveCtx::new()
++            .with_env(|env_name| self.lookup_env(env_name))
++            .with_secrets(|secret_name| vault_token_lookup(vault, secret_name));
++        resolve_extra_headers(provider, &catalog_provider.extra_headers, &mut ctx)
+     }
+ 
+     fn to_api_credential(
+@@ -487,6 +473,30 @@ impl CredentialResolver {
+     }
+ }
+ 
++/// Resolve a provider's `extra_headers` interpolation sources with `ctx`.
++///
++/// Provider header secrets resolve outside the run-boundary redactor
++/// registration path. Keep this path free of value logging until exact-match
++/// registration is threaded through.
++pub(crate) fn resolve_extra_headers(
++    provider: &ProviderId,
++    headers: &HashMap<String, String>,
++    ctx: &mut ResolveCtx<'_>,
++) -> Result<HashMap<String, String>, ResolveError> {
++    headers
++        .iter()
++        .map(|(name, source)| {
++            let value = InterpString::parse(source)
++                .resolve_with(ctx)
++                .map_err(|source| ResolveError::Interpolation {
++                    provider: provider.clone(),
++                    source,
++                })?;
++            Ok((name.clone(), value))
++        })
++        .collect()
++}
++
+ fn vault_lookup_error(provider: &ProviderId, name: &str, err: VaultLookupError) -> ResolveError {
+     match err {
+         VaultLookupError::SchemaMismatch { actual, .. } => ResolveError::VaultSchemaMismatch {
+@@ -564,6 +574,38 @@ mod tests {
+         catalog_with("")
+     }
+ 
++    /// A no-auth portkey provider whose only variation is its `extra_headers`
++    /// TOML lines.
++    fn portkey_catalog(extra_headers: &str) -> Catalog {
++        catalog_with(&format!(
++            r#"
++[providers.portkey]
++display_name = "Portkey Bedrock"
++adapter = "anthropic"
++agent_profile = "anthropic"
++base_url = "https://api.portkey.ai/v1"
++
++[providers.portkey.extra_headers]
++{extra_headers}
++
++[models."portkey-claude"]
++provider = "portkey"
++display_name = "Portkey Claude"
++family = "claude"
++default = true
++
++[models."portkey-claude".limits]
++context_window = 200000
++
++[models."portkey-claude".features]
++tools = true
++vision = true
++reasoning = true
++reasoning_effort = "levels"
++"#
++        ))
++    }
++
+     #[tokio::test]
+     async fn resolve_openai_api_request_prefers_env_when_listed_first() {
+         let dir = tempfile::tempdir().unwrap();
+@@ -918,33 +960,7 @@ reasoning_effort = "levels"
+ 
+     #[tokio::test]
+     async fn resolve_multi_segment_header_token() {
+-        let catalog = catalog_with(
+-            r#"
+-[providers.portkey]
+-display_name = "Portkey Bedrock"
+-adapter = "anthropic"
+-agent_profile = "anthropic"
+-base_url = "https://api.portkey.ai/v1"
+-
+-[providers.portkey.extra_headers]
+-authorization = "Bearer {{ secrets.TOKEN }}"
+-
+-[models."portkey-claude"]
+-provider = "portkey"
+-display_name = "Portkey Claude"
+-family = "claude"
+-default = true
+-
+-[models."portkey-claude".limits]
+-context_window = 200000
+-
+-[models."portkey-claude".features]
+-tools = true
+-vision = true
+-reasoning = true
+-reasoning_effort = "levels"
+-"#,
+-        );
++        let catalog = portkey_catalog(r#"authorization = "Bearer {{ secrets.TOKEN }}""#);
+         let dir = tempfile::tempdir().unwrap();
+         let mut vault = Vault::load(dir.path().join("secrets.json")).unwrap();
+         vault_set_token(&mut vault, "TOKEN", "gateway-token").unwrap();
+diff --git a/lib/crates/fabro-auth/src/vault_ext.rs b/lib/crates/fabro-auth/src/vault_ext.rs
+index b08711e9e..fe6bac7a4 100644
+--- a/lib/crates/fabro-auth/src/vault_ext.rs
++++ b/lib/crates/fabro-auth/src/vault_ext.rs
+@@ -34,6 +34,14 @@ pub fn vault_get_token(vault: &Vault, name: &str) -> Result<Option<String>, Vaul
+     Ok(Some(entry.value.clone()))
+ }
+ 
++/// Token-only vault lookup for interpolated `{{ secrets.* }}` values. A
++/// missing or non-Token entry becomes `None`, so interpolation fails closed
++/// with a missing-secret error instead of resolving a wrong-schema value.
++#[must_use]
++pub fn vault_token_lookup(vault: &Vault, name: &str) -> Option<String> {
++    vault_get_token(vault, name).ok().flatten()
++}
++
+ pub fn vault_get_oauth(
+     vault: &Vault,
+     name: &str,
+diff --git a/lib/crates/fabro-config/src/builders.rs b/lib/crates/fabro-config/src/builders.rs
+index 1e8a70563..1458ba0b9 100644
+--- a/lib/crates/fabro-config/src/builders.rs
++++ b/lib/crates/fabro-config/src/builders.rs
+@@ -326,32 +326,33 @@ fn llm_layer_to_catalog_settings(llm: LlmLayer) -> model_catalog::LlmCatalogSett
+     }
+ }
+ 
+-#[expect(
+-    clippy::disallowed_methods,
+-    reason = "collapse the authoring InterpString header values to their catalog source strings; \
+-              they are re-parsed and resolved at the credential boundary"
+-)]
+ fn provider_settings_to_catalog(
+     settings: ProviderSettings,
+ ) -> model_catalog::ProviderCatalogSettings {
++    #[expect(
++        clippy::disallowed_methods,
++        reason = "collapse the authoring InterpString header values to their catalog source \
++                  strings; they are re-parsed and resolved at the credential boundary"
++    )]
++    let extra_headers = settings.extra_headers.map(|headers| {
++        headers
++            .into_iter()
++            .map(|(name, value)| (name, value.as_source()))
++            .collect()
++    });
+     model_catalog::ProviderCatalogSettings {
+-        display_name:   settings.display_name,
+-        adapter:        settings.adapter,
+-        codec:          settings.codec,
+-        agent_profile:  settings.agent_profile,
+-        auth:           settings.auth,
++        display_name: settings.display_name,
++        adapter: settings.adapter,
++        codec: settings.codec,
++        agent_profile: settings.agent_profile,
++        auth: settings.auth,
+         billing_policy: settings.billing_policy,
+-        api_key_url:    settings.api_key_url,
+-        base_url:       settings.base_url,
+-        extra_headers:  settings.extra_headers.map(|headers| {
+-            headers
+-                .into_iter()
+-                .map(|(name, value)| (name, value.as_source()))
+-                .collect()
+-        }),
+-        priority:       settings.priority,
+-        enabled:        settings.enabled,
+-        aliases:        settings.aliases,
++        api_key_url: settings.api_key_url,
++        base_url: settings.base_url,
++        extra_headers,
++        priority: settings.priority,
++        enabled: settings.enabled,
++        aliases: settings.aliases,
+     }
+ }
+ 
+diff --git a/lib/crates/fabro-model/src/catalog.rs b/lib/crates/fabro-model/src/catalog.rs
+index 890b974aa..2cd44e28e 100644
+--- a/lib/crates/fabro-model/src/catalog.rs
++++ b/lib/crates/fabro-model/src/catalog.rs
+@@ -57,6 +57,9 @@ pub struct ProviderCatalogSettings {
+     pub api_key_url:    Option<String>,
+     #[serde(default)]
+     pub base_url:       Option<String>,
++    /// Unresolved interpolation source strings (literal text, `{{ env.NAME }}`,
++    /// or `{{ secrets.NAME }}` tokens), resolved at the credential boundary in
++    /// `fabro-auth`.
+     #[serde(default)]
+     pub extra_headers:  Option<HashMap<String, String>>,
+     #[serde(default)]
+@@ -399,6 +402,9 @@ pub struct CatalogProvider {
+     pub billing_policy: BillingPolicy,
+     pub api_key_url:    Option<String>,
+     pub base_url:       Option<String>,
++    /// Unresolved interpolation source strings (literal text, `{{ env.NAME }}`,
++    /// or `{{ secrets.NAME }}` tokens), resolved at the credential boundary in
++    /// `fabro-auth`.
+     pub extra_headers:  HashMap<String, String>,
+     pub priority:       i32,
+     pub aliases:        Vec<String>,
+diff --git a/lib/crates/fabro-workflow/src/operations/start.rs b/lib/crates/fabro-workflow/src/operations/start.rs
+index 7fa47e938..1feb0af40 100644
+--- a/lib/crates/fabro-workflow/src/operations/start.rs
++++ b/lib/crates/fabro-workflow/src/operations/start.rs
+@@ -563,7 +563,7 @@ fn process_env_var(name: &str) -> Option<String> {
+ }
+ 
+ fn vault_token_lookup(vault: Option<&Vault>, name: &str) -> Option<String> {
+-    vault.and_then(|vault| fabro_auth::vault_get_token(vault, name).ok().flatten())
++    vault.and_then(|vault| fabro_auth::vault_token_lookup(vault, name))
+ }
+ 
+ async fn load_accepted_run_definition(
