@@ -31,14 +31,26 @@ pub async fn append_event_to_sink(
     sink: &RunEventSink,
     run_id: &RunId,
     event: &Event,
-    redactor: &SecretRedactor,
 ) -> Result<()> {
     let stored = to_run_event(run_id, event);
-    sink.write_run_event(&stored, redactor).await
+    sink.write_run_event(&stored).await
+}
+
+/// Destination for run events, carrying the run-scoped [`SecretRedactor`].
+///
+/// The sink owns the exact-match secret registry so every event written
+/// through it — including bootstrap and failure paths that run before a
+/// `RunSession` exists or after one failed to construct — passes the same
+/// registry that run-boundary secret resolution populates via
+/// [`Self::secret_redactor`]. Clones share the registry.
+#[derive(Clone)]
+pub struct RunEventSink {
+    redactor: SecretRedactor,
+    kind:     SinkKind,
 }
 
 #[derive(Clone)]
-pub enum RunEventSink {
+enum SinkKind {
     Store(RunStoreHandle),
     JsonLines(Arc<AsyncMutex<Pin<Box<dyn AsyncWrite + Send>>>>),
     Callback(Arc<RunEventSinkCallback>),
@@ -54,14 +66,21 @@ type RunEventSinkCallback = dyn Fn(RunEvent) -> RunEventSinkFuture + Send + Sync
 type RunEventTransform = dyn Fn(RunEvent) -> RunEvent + Send + Sync + 'static;
 
 impl RunEventSink {
+    fn from_kind(kind: SinkKind) -> Self {
+        Self {
+            redactor: SecretRedactor::default(),
+            kind,
+        }
+    }
+
     #[must_use]
     pub fn store(run_store: RunDatabase) -> Self {
-        Self::Store(RunStoreHandle::local(run_store))
+        Self::from_kind(SinkKind::Store(RunStoreHandle::local(run_store)))
     }
 
     #[must_use]
     pub fn backend(run_store: RunStoreHandle) -> Self {
-        Self::Store(run_store)
+        Self::from_kind(SinkKind::Store(run_store))
     }
 
     #[must_use]
@@ -69,7 +88,9 @@ impl RunEventSink {
     where
         W: AsyncWrite + Send + 'static,
     {
-        Self::JsonLines(Arc::new(AsyncMutex::new(Box::pin(writer))))
+        Self::from_kind(SinkKind::JsonLines(Arc::new(AsyncMutex::new(Box::pin(
+            writer,
+        )))))
     }
 
     #[must_use]
@@ -78,51 +99,78 @@ impl RunEventSink {
         F: Fn(RunEvent) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<()>> + Send + 'static,
     {
-        Self::Callback(Arc::new(move |event| Box::pin(callback(event))))
+        Self::from_kind(SinkKind::Callback(Arc::new(move |event| {
+            Box::pin(callback(event))
+        })))
     }
 
+    /// Fan events out to every sink. The composed sink adopts the first
+    /// sink's secret registry; compose sinks before registering secrets.
     #[must_use]
     pub fn fanout(sinks: Vec<Self>) -> Self {
+        let redactor = sinks
+            .first()
+            .map(|sink| sink.redactor.clone())
+            .unwrap_or_default();
         let mut flattened = Vec::new();
         for sink in sinks {
-            match sink {
-                Self::Composite(inner) => flattened.extend(inner),
+            match sink.kind {
+                SinkKind::Composite(inner) => flattened.extend(inner),
                 other => flattened.push(other),
             }
         }
-        Self::Composite(flattened)
+        Self {
+            redactor,
+            kind: SinkKind::Composite(flattened),
+        }
     }
 
+    /// Transform every event before it reaches `inner`. The composed sink
+    /// keeps the inner sink's secret registry.
     #[must_use]
     pub fn map<F>(transform: F, inner: Self) -> Self
     where
         F: Fn(RunEvent) -> RunEvent + Send + Sync + 'static,
     {
-        Self::Map {
-            transform: Arc::new(transform),
-            inner:     Box::new(inner),
+        Self {
+            redactor: inner.redactor,
+            kind:     SinkKind::Map {
+                transform: Arc::new(transform),
+                inner:     Box::new(inner.kind),
+            },
         }
     }
 
-    pub async fn write_run_event(&self, event: &RunEvent, redactor: &SecretRedactor) -> Result<()> {
-        let mut pending = vec![(self, PendingEvent::Raw(event.clone()))];
+    /// Run-scoped exact-match secret registry consulted on every write.
+    ///
+    /// Run-boundary secret resolution registers each resolved value here;
+    /// clones of this sink share the registry, so events written from any
+    /// phase of the run see every registration made before the write.
+    #[must_use]
+    pub fn secret_redactor(&self) -> &SecretRedactor {
+        &self.redactor
+    }
+
+    pub async fn write_run_event(&self, event: &RunEvent) -> Result<()> {
+        let redactor = &self.redactor;
+        let mut pending = vec![(&self.kind, PendingEvent::Raw(event.clone()))];
         while let Some((sink, event)) = pending.pop() {
             match sink {
-                Self::Store(run_store) => {
+                SinkKind::Store(run_store) => {
                     let redacted = event.into_redacted(redactor)?;
                     run_store.append_run_event(&redacted).await?;
                 }
-                Self::JsonLines(writer) => {
+                SinkKind::JsonLines(writer) => {
                     let line = event.into_redacted(redactor)?.json_line()?;
                     let mut writer = writer.lock().await;
                     writer.write_all(line.as_bytes()).await?;
                     writer.write_all(b"\n").await?;
                     writer.flush().await?;
                 }
-                Self::Callback(callback) => {
+                SinkKind::Callback(callback) => {
                     callback(event.into_redacted(redactor)?.event().clone()).await?;
                 }
-                Self::Map { transform, inner } => {
+                SinkKind::Map { transform, inner } => {
                     // A transform can add new fields, so its output re-enters
                     // the pipeline as a raw event and is redacted downstream.
                     pending.push((
@@ -130,7 +178,7 @@ impl RunEventSink {
                         PendingEvent::Raw(transform(event.into_run_event())),
                     ));
                 }
-                Self::Composite(sinks) => {
+                SinkKind::Composite(sinks) => {
                     // Redact once and share the result with every branch.
                     let redacted = event.into_redacted(redactor)?;
                     for sink in sinks.iter().rev() {
@@ -186,14 +234,14 @@ pub struct RunEventLogger {
 
 impl RunEventLogger {
     #[must_use]
-    pub fn new(sink: RunEventSink, redactor: SecretRedactor) -> Self {
+    pub fn new(sink: RunEventSink) -> Self {
         let (tx, mut rx) = mpsc::unbounded_channel();
 
         tokio::spawn(async move {
             while let Some(command) = rx.recv().await {
                 match command {
                     RunEventCommand::Event(event) => {
-                        if let Err(err) = sink.write_run_event(&event, &redactor).await {
+                        if let Err(err) = sink.write_run_event(&event).await {
                             tracing::warn!(error = %err, "Failed to write run event");
                         }
                     }
@@ -235,9 +283,9 @@ pub struct StoreProgressLogger {
 
 impl StoreProgressLogger {
     #[must_use]
-    pub fn new(run_store: impl Into<RunStoreHandle>, redactor: SecretRedactor) -> Self {
+    pub fn new(run_store: impl Into<RunStoreHandle>) -> Self {
         Self {
-            inner: RunEventLogger::new(RunEventSink::backend(run_store.into()), redactor),
+            inner: RunEventLogger::new(RunEventSink::backend(run_store.into())),
         }
     }
 
@@ -326,9 +374,8 @@ mod tests {
         let (writer, reader) = tokio::io::duplex(4096);
         let sink = RunEventSink::json_lines(writer);
         let event = to_run_event(&fixtures::RUN_7, &Event::RunPauseRequested { actor: None });
-        let redactor = SecretRedactor::default();
 
-        sink.write_run_event(&event, &redactor).await.unwrap();
+        sink.write_run_event(&event).await.unwrap();
 
         let mut reader = BufReader::new(reader);
         let mut line = String::new();
@@ -368,9 +415,8 @@ mod tests {
             ]),
         );
         let event = to_run_event(&fixtures::RUN_7, &Event::RunPauseRequested { actor: None });
-        let redactor = SecretRedactor::default();
 
-        sink.write_run_event(&event, &redactor).await.unwrap();
+        sink.write_run_event(&event).await.unwrap();
 
         let first = first.lock().await;
         let second = second.lock().await;
@@ -386,7 +432,7 @@ mod tests {
 
         let (writer, reader) = tokio::io::duplex(4096);
         let sink = RunEventSink::json_lines(writer);
-        let logger = RunEventLogger::new(sink, SecretRedactor::default());
+        let logger = RunEventLogger::new(sink);
         let emitter = Emitter::new(fixtures::RUN_8);
         logger.register(&emitter);
 
@@ -418,10 +464,9 @@ mod tests {
             message:          "deploy to staging".to_string(),
             exec_output_tail: None,
         });
-        let redactor = SecretRedactor::default();
-        redactor.register("staging");
+        sink.secret_redactor().register("staging");
 
-        sink.write_run_event(&event, &redactor).await.unwrap();
+        sink.write_run_event(&event).await.unwrap();
 
         let events = received.lock().await;
         let text = serde_json::to_string(&events[0].to_value().unwrap()).unwrap();

@@ -1458,10 +1458,7 @@ mod tests {
         );
         let event = running_event(None);
 
-        // This worker-stamp unit test emits no run-declared secret values.
-        sink.write_run_event(&event, &fabro_redact::SecretRedactor::default())
-            .await
-            .unwrap();
+        sink.write_run_event(&event).await.unwrap();
 
         let first = first.lock().await;
         let second = second.lock().await;

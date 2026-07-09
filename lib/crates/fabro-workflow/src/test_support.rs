@@ -201,8 +201,7 @@ async fn initialized(
         .await
         .expect("failed to seed run.starting event in run store");
     let emitter = bound_emitter(run_options.run_id, &emitter);
-    let store_logger =
-        StoreProgressLogger::new(run_store.clone(), fabro_redact::SecretRedactor::default());
+    let store_logger = StoreProgressLogger::new(run_store.clone());
     store_logger.register(emitter.as_ref());
     let artifact_store = ArtifactStore::new(
         Arc::new(

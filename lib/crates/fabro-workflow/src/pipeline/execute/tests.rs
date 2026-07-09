@@ -252,7 +252,7 @@ async fn execute_test_run_with_options(
     let run_store = test_run_store(&run_id_value).await;
     seed_created_and_starting(&run_store, &run_options, &graph).await;
     let emitter = test_emitter_arc("test-run");
-    let store_logger = StoreProgressLogger::new(run_store.clone(), SecretRedactor::default());
+    let store_logger = StoreProgressLogger::new(run_store.clone());
     store_logger.register(&emitter);
     let initialized = initialize(
         persisted_workflow(graph, String::new(), &run_options.run_dir, run_id_value),

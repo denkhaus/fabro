@@ -260,10 +260,7 @@ mod tests {
             .run
             .with_emitter(Arc::new(Emitter::new(fixtures::RUN_1)))
             .with_run_store(run_store.clone().into());
-        let logger = crate::event::StoreProgressLogger::new(
-            run_store.clone(),
-            fabro_redact::SecretRedactor::default(),
-        );
+        let logger = crate::event::StoreProgressLogger::new(run_store.clone());
         logger.register(services.run.emitter.as_ref());
         (services, run_store, logger)
     }

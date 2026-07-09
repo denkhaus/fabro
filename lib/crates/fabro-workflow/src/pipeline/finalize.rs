@@ -1035,8 +1035,7 @@ mod tests {
         let inner_store = test_store().create_run(&test_run_id()).await.unwrap();
         let run_store = inner_store;
         let emitter = Arc::new(Emitter::new(test_run_id()));
-        let store_logger =
-            StoreProgressLogger::new(run_store.clone(), fabro_redact::SecretRedactor::default());
+        let store_logger = StoreProgressLogger::new(run_store.clone());
         store_logger.register(&emitter);
         let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(fabro_agent::LocalSandbox::new(
             std::env::current_dir().unwrap(),

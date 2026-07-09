@@ -82,7 +82,6 @@ struct RunSession {
     vault:             Option<Arc<AsyncRwLock<Vault>>>,
     catalog:           Arc<Catalog>,
     fabro_run_tools:   Option<FabroRunToolServices>,
-    secret_redactor:   SecretRedactor,
 }
 
 struct ResolvedStartLlm {
@@ -147,9 +146,6 @@ pub async fn start(run_dir: &Path, services: StartServices) -> Result<Started, E
         )));
     }
     if matches!(status, RunStatus::Submitted) {
-        // These lifecycle request events are emitted before run-boundary secret
-        // interpolation and carry no user free-form output.
-        let no_run_secret_redactor = SecretRedactor::default();
         append_event_to_sink(
             &services.event_sink,
             &services.run_id,
@@ -157,7 +153,6 @@ pub async fn start(run_dir: &Path, services: StartServices) -> Result<Started, E
                 resume: false,
                 actor:  None,
             },
-            &no_run_secret_redactor,
         )
         .await
         .map_err(|err| Error::engine(err.to_string()))?;
@@ -168,7 +163,6 @@ pub async fn start(run_dir: &Path, services: StartServices) -> Result<Started, E
                 source: RunRunnableSource::StartRequested,
                 actor:  None,
             },
-            &no_run_secret_redactor,
         )
         .await
         .map_err(|err| Error::engine(err.to_string()))?;
@@ -186,9 +180,6 @@ pub(super) async fn execute_persisted_run(
     let run_id = services.run_id;
     let run_store = services.run_store.clone();
     let event_sink = services.event_sink.clone();
-    // Bootstrap events happen before run-boundary secret interpolation, so no
-    // resolved declared-secret value can reach this surface.
-    let bootstrap_redactor = SecretRedactor::default();
     if let Err(err) = run_store.state().await {
         let error = Error::engine(err.to_string());
         let _ = persist_detached_failure(
@@ -199,19 +190,11 @@ pub(super) async fn execute_persisted_run(
             "bootstrap",
             FailureReason::BootstrapFailed,
             &error,
-            &bootstrap_redactor,
         )
         .await;
         return Err(error);
     }
-    if let Err(err) = append_event_to_sink(
-        &event_sink,
-        &run_id,
-        &Event::RunStarting,
-        &bootstrap_redactor,
-    )
-    .await
-    {
+    if let Err(err) = append_event_to_sink(&event_sink, &run_id, &Event::RunStarting).await {
         let error = Error::engine(err.to_string());
         let _ = persist_detached_failure(
             run_id,
@@ -221,7 +204,6 @@ pub(super) async fn execute_persisted_run(
             "bootstrap",
             FailureReason::BootstrapFailed,
             &error,
-            &bootstrap_redactor,
         )
         .await;
         return Err(error);
@@ -245,7 +227,6 @@ pub(super) async fn execute_persisted_run(
                 "bootstrap",
                 FailureReason::BootstrapFailed,
                 &err,
-                &bootstrap_redactor,
             )
             .await;
             bootstrap_guard.defuse();
@@ -264,7 +245,6 @@ pub(super) async fn execute_persisted_run(
                 "bootstrap",
                 FailureReason::BootstrapFailed,
                 &err,
-                &bootstrap_redactor,
             )
             .await;
             bootstrap_guard.defuse();
@@ -273,13 +253,11 @@ pub(super) async fn execute_persisted_run(
     };
 
     bootstrap_guard.defuse();
-    let run_secret_redactor = session.secret_redactor.clone();
     let mut completion_guard = DetachedRunCompletionGuard::arm(
         run_id,
         run_store.clone(),
         event_sink.clone(),
         cancel_token,
-        run_secret_redactor.clone(),
     );
     let run_start = Instant::now();
     let started = Box::pin(session.run(persisted, checkpoint)).await;
@@ -297,7 +275,6 @@ pub(super) async fn execute_persisted_run(
                 run_dir,
                 &err,
                 run_start.elapsed(),
-                &run_secret_redactor,
             )
             .await;
             completion_guard.defuse();
@@ -316,7 +293,6 @@ async fn emit_workflow_run_failed(
     error: &Error,
     reason: FailureReason,
     wall_duration_ms: u64,
-    redactor: &SecretRedactor,
 ) {
     let failure = Some(error::run_failure_from_error(error, reason));
     let conclusion = build_conclusion_from_store(
@@ -338,7 +314,7 @@ async fn emit_workflow_run_failed(
         None,
         conclusion.billing,
     );
-    if let Err(err) = append_event_to_sink(event_sink, &run_id, &failure_event, redactor).await {
+    if let Err(err) = append_event_to_sink(event_sink, &run_id, &failure_event).await {
         tracing::warn!(error = %err, "Failed to append run.failed event");
     }
 }
@@ -350,7 +326,6 @@ async fn persist_terminal_engine_failure(
     _run_dir: &Path,
     error: &Error,
     duration: Duration,
-    redactor: &SecretRedactor,
 ) {
     let engine_result: Result<Outcome, Error> = Err(error.clone());
     let (_, _, run_status) = classify_engine_result(&engine_result);
@@ -365,7 +340,6 @@ async fn persist_terminal_engine_failure(
         error,
         reason,
         crate::millis_u64(duration),
-        redactor,
     )
     .await;
 }
@@ -400,7 +374,10 @@ impl RunSession {
         let configured =
             configured_providers_for_start(services.vault.as_ref(), Arc::clone(&catalog)).await;
         let llm = resolve_start_llm(catalog.as_ref(), &configured, resolved)?;
-        let secret_redactor = SecretRedactor::default();
+        // Register resolved secrets into the event sink's registry so every
+        // event surface — including failure paths that outlive this session or
+        // run when its construction fails partway — redacts them.
+        let secret_redactor = services.event_sink.secret_redactor().clone();
         let vault_guard = match services.vault.as_ref() {
             Some(vault) => Some(vault.read().await),
             None => None,
@@ -537,7 +514,6 @@ impl RunSession {
             vault: services.vault,
             catalog,
             fabro_run_tools: services.fabro_run_tools,
-            secret_redactor,
         })
     }
 }
@@ -868,8 +844,7 @@ impl RunSession {
             });
         }
 
-        let store_progress_logger =
-            RunEventLogger::new(self.event_sink.clone(), self.secret_redactor.clone());
+        let store_progress_logger = RunEventLogger::new(self.event_sink.clone());
         store_progress_logger.register(self.emitter.as_ref());
 
         let init_options = InitOptions {
@@ -896,7 +871,7 @@ impl RunSession {
             checkpoint,
             seed_context: self.seed_context,
             fabro_run_tools: self.fabro_run_tools,
-            secret_redactor: self.secret_redactor.clone(),
+            secret_redactor: self.event_sink.secret_redactor().clone(),
         };
         let mut initialized = match Box::pin(pipeline::initialize(persisted, init_options)).await {
             Ok(initialized) => initialized,
@@ -1020,9 +995,6 @@ impl Drop for DetachedRunBootstrapGuard {
         let event_sink = self.event_sink.clone();
         if let Ok(handle) = Handle::try_current() {
             handle.spawn(async move {
-                // Bootstrap drop failures happen before any run-boundary
-                // declared secret can be resolved into output.
-                let redactor = SecretRedactor::default();
                 emit_workflow_run_failed(
                     run_id,
                     &run_store,
@@ -1030,7 +1002,6 @@ impl Drop for DetachedRunBootstrapGuard {
                     &Error::engine(reason.to_string()),
                     reason,
                     0,
-                    &redactor,
                 )
                 .await;
             });
@@ -1060,12 +1031,11 @@ async fn run_store_reaches_terminal(run_store: &RunStoreHandle, timeout: Duratio
 }
 
 struct DetachedRunCompletionGuard {
-    event_sink:      RunEventSink,
-    run_id:          RunId,
-    run_store:       RunStoreHandle,
-    cancel_token:    CancellationToken,
-    secret_redactor: SecretRedactor,
-    active:          bool,
+    event_sink:   RunEventSink,
+    run_id:       RunId,
+    run_store:    RunStoreHandle,
+    cancel_token: CancellationToken,
+    active:       bool,
 }
 
 impl DetachedRunCompletionGuard {
@@ -1074,14 +1044,12 @@ impl DetachedRunCompletionGuard {
         run_store: RunStoreHandle,
         event_sink: RunEventSink,
         cancel_token: CancellationToken,
-        secret_redactor: SecretRedactor,
     ) -> Self {
         Self {
             event_sink,
             run_id,
             run_store,
             cancel_token,
-            secret_redactor,
             active: true,
         }
     }
@@ -1116,7 +1084,6 @@ impl Drop for DetachedRunCompletionGuard {
         let event_sink = self.event_sink.clone();
         let run_id = self.run_id;
         let run_store = self.run_store.clone();
-        let secret_redactor = self.secret_redactor.clone();
         if let Ok(handle) = Handle::try_current() {
             handle.spawn(async move {
                 if run_store_reaches_terminal(&run_store, DETACHED_COMPLETION_GUARD_TERMINAL_GRACE)
@@ -1131,20 +1098,14 @@ impl Drop for DetachedRunCompletionGuard {
                     &Error::engine(message.to_string()),
                     reason,
                     0,
-                    &secret_redactor,
                 )
                 .await;
-                let _ = append_event_to_sink(
-                    &event_sink,
-                    &run_id,
-                    &Event::RunNotice {
-                        level:            RunNoticeLevel::Error,
-                        code:             code.to_string(),
-                        message:          message.to_string(),
-                        exec_output_tail: None,
-                    },
-                    &secret_redactor,
-                )
+                let _ = append_event_to_sink(&event_sink, &run_id, &Event::RunNotice {
+                    level:            RunNoticeLevel::Error,
+                    code:             code.to_string(),
+                    message:          message.to_string(),
+                    exec_output_tail: None,
+                })
                 .await;
             });
         }
@@ -1159,9 +1120,8 @@ async fn persist_detached_failure(
     phase: &'static str,
     reason: FailureReason,
     error: &Error,
-    redactor: &SecretRedactor,
 ) -> Result<(), Error> {
-    emit_workflow_run_failed(run_id, run_store, event_sink, error, reason, 0, redactor).await;
+    emit_workflow_run_failed(run_id, run_store, event_sink, error, reason, 0).await;
 
     let event = Event::RunNotice {
         level:            RunNoticeLevel::Error,
@@ -1169,7 +1129,7 @@ async fn persist_detached_failure(
         message:          error.to_string(),
         exec_output_tail: None,
     };
-    if let Err(err) = append_event_to_sink(event_sink, &run_id, &event, redactor).await {
+    if let Err(err) = append_event_to_sink(event_sink, &run_id, &event).await {
         tracing::warn!(error = %err, "Failed to append detached failure notice");
     }
 
@@ -1672,17 +1632,12 @@ reasoning = false
         .await
         .unwrap();
 
-        append_event_to_sink(
-            &session.event_sink,
-            &fixtures::RUN_1,
-            &Event::RunNotice {
-                level:            fabro_types::RunNoticeLevel::Warn,
-                code:             "mcp_ready".to_string(),
-                message:          "MCP reported staging before stages".to_string(),
-                exec_output_tail: None,
-            },
-            &session.secret_redactor,
-        )
+        append_event_to_sink(&session.event_sink, &fixtures::RUN_1, &Event::RunNotice {
+            level:            fabro_types::RunNoticeLevel::Warn,
+            code:             "mcp_ready".to_string(),
+            message:          "MCP reported staging before stages".to_string(),
+            exec_output_tail: None,
+        })
         .await
         .unwrap();
 
@@ -1775,16 +1730,81 @@ reasoning = false
         let production_session = session_with_secret("production").await;
 
         let staging_text = staging_session
-            .secret_redactor
+            .event_sink
+            .secret_redactor()
             .redact_into("staging production");
         let production_text = production_session
-            .secret_redactor
+            .event_sink
+            .secret_redactor()
             .redact_into("staging production");
 
         assert!(!staging_text.contains("staging"));
         assert!(staging_text.contains("production"));
         assert!(production_text.contains("staging"));
         assert!(!production_text.contains("production"));
+    }
+
+    #[tokio::test]
+    async fn failed_session_construction_keeps_registered_secrets_on_event_sink() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
+        let mut settings = settings_from_run_layer(RunLayer {
+            execution: Some(RunExecutionLayer {
+                mode: Some(RunMode::DryRun),
+                ..RunExecutionLayer::default()
+            }),
+            ..RunLayer::default()
+        });
+        // MCP env resolves (and registers) the declared secret; the run
+        // environment then references a missing secret, so session
+        // construction fails after partial secret resolution.
+        settings.run.agent.mcps.insert(
+            "vaulted".to_string(),
+            ResolvedMcpEntry::Resolved(ResolvedMcpServerSettings {
+                name: "vaulted".to_string(),
+                transport: ResolvedMcpTransport::Stdio {
+                    command: vec!["mcp-server".to_string()],
+                    env:     HashMap::from([(
+                        "MCP_TOKEN".to_string(),
+                        "{{ secrets.MCP_TOKEN }}".to_string(),
+                    )]),
+                },
+                ..ResolvedMcpServerSettings::default()
+            }),
+        );
+        settings.run.environment.env.insert(
+            "DEPLOY_ENV".to_string(),
+            InterpString::parse("{{ secrets.MISSING }}"),
+        );
+        let (persisted, store) =
+            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+        let vault = Arc::new(AsyncRwLock::new(token_vault("MCP_TOKEN", "staging")));
+
+        let services = StartServices {
+            vault: Some(vault),
+            ..test_start_services(&store, &storage_root, emitter, registry).await
+        };
+        let event_sink = services.event_sink.clone();
+
+        assert!(RunSession::new(&persisted, services).await.is_err());
+
+        // Bootstrap failure paths write through this same sink; values
+        // registered before the construction failure must still redact.
+        append_event_to_sink(&event_sink, &fixtures::RUN_1, &Event::RunNotice {
+            level:            fabro_types::RunNoticeLevel::Error,
+            code:             "bootstrap_failed".to_string(),
+            message:          "failed after resolving staging".to_string(),
+            exec_output_tail: None,
+        })
+        .await
+        .unwrap();
+
+        let run_store = store.open_run(&fixtures::RUN_1).await.unwrap();
+        let serialized = serde_json::to_string(&run_store.list_events().await.unwrap()).unwrap();
+        assert!(!serialized.contains("staging"));
+        assert!(serialized.contains("REDACTED"));
     }
 
     #[tokio::test]
@@ -2209,7 +2229,6 @@ reasoning = false
             &run_dir,
             &Error::engine("visit limit exceeded"),
             Duration::from_millis(9_999),
-            &SecretRedactor::default(),
         )
         .await;
 
@@ -2292,7 +2311,6 @@ reasoning = false
                 run_store_handle,
                 event_sink,
                 CancellationToken::new(),
-                SecretRedactor::default(),
             );
         }
 

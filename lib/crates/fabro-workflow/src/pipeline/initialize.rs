@@ -1196,7 +1196,7 @@ mod tests {
         let emitter = Arc::new(crate::event::Emitter::new(test_run_id()));
         let store = memory_store();
         let run_store = store.create_run(&test_run_id()).await.unwrap();
-        let store_logger = StoreProgressLogger::new(run_store.clone(), SecretRedactor::default());
+        let store_logger = StoreProgressLogger::new(run_store.clone());
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
         emitter.on_event({
             let seen = Arc::clone(&seen);
