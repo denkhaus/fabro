@@ -505,7 +505,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-11T20:41:55.540863608Z",
-  "last_event_at": "2026-07-11T20:41:57.021361400Z",
+  "last_event_at": "2026-07-11T20:42:01.884555957Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -546,9 +546,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 29,
       "checkpoint": {
-        "timestamp": "2026-07-11T20:41:58.325869681Z",
+        "timestamp": "2026-07-11T20:42:01.882538141Z",
         "current_node": "toolchain",
         "completed_nodes": [
           "start",
@@ -556,24 +556,28 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.run_id": "01KX9EM9QF65A43PB064TF7TWY",
-          "failure_class": "",
-          "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1",
-          "graph.goal": "# PR 4 — Resolve hook interpolation at the run boundary (and enable secrets in hooks)\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. Independent — no preconditions; can land\nanytime.\n\n**Redaction context (fixed; do not build on it):** run-output redaction in\nthis codebase is **content-based only** — entropy + credential-pattern\ndetection (`fabro_redact::redact_string` / `redact_json_value`), applied\nwhere events are serialized and where exec-output tails are captured. There\nis no per-run exact-value secret registry (a registration approach was\nconsidered and rejected). Secrets resolved for hooks by this PR get exactly\nthe coverage every other boundary-resolved secret (MCP env, run env, prepare\nsteps) already has: credential-shaped values are redacted from event and\ntail surfaces if echoed; a low-entropy secret value is not — an accepted,\ndocumented trade. Do not add any registration or exact-match machinery.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME` as the double-curly-brace token form used in\n> the codebase, and write the real double-brace syntax in the code, tests, and\n> docs you produce.\n\n## Context and goal\n\nHooks are user-defined callbacks on workflow lifecycle events (`run_start`,\n`stage_start`, `pre_tool_use`, `sandbox_ready`, …) that can observe or gate a\nrun (decisions: proceed / block / skip / override). Four types: **command**\n(shell, runs in the sandbox by default or host-side with `sandbox = false`),\n**http** (POST from the worker), **prompt** and **agent** (LLM evaluation in\nthe worker). Their configurable string fields — `command`, `url`, header\nvalues, `prompt`, `model` — are typed `InterpString` and may carry `env.NAME`\ntokens.\n\nEvery other secret/env-consuming subsystem (MCP transport env, run-environment\nenv, prepare steps, docker config) resolves its InterpStrings **once, at the\nrun boundary** in `RunSession::new`, through one shared lookup closure. Hooks\nare the single exception: the hook **executor** resolves tokens **at fire\ntime**, and only the `env` namespace is wired there — a `secrets.NAME` token\nin a hook currently fails closed with \"unavailable namespace\". This fire-time\nresolution is a fossil, not a decision: it dates from the original hooks\nimplementation, before the boundary-resolution pattern existed, and was\ncarried forward unexamined. A previous attempt to add secrets support built a\nparallel fire-time secrets-resolution and redaction-registration subsystem\ninside the hooks crate to accommodate it; that PR was closed, and the accepted\ndirection is to remove the root special case instead.\n\n**Goal:** resolve all hook InterpStrings once at the run boundary through the\nshared closures, hand the hooks subsystem fully-resolved strings, and delete\nthe executor's resolution layer. Consequences, all intended:\n\n- `secrets.NAME` becomes usable in hook `command`, `url`, and `prompt`/`model`\n  — the user-facing capability — with the same content-based redaction\n  coverage every other boundary-resolved secret already has (see the\n  redaction context above).\n- The invariant \"all env/secrets resolution happens at the run boundary\" holds\n  with **zero exceptions**, so no future secrets/redaction work needs a hooks\n  special case.\n- The hooks crate never learns about vaults or secrets at all.\n\nExplicitly out of scope / preserved:\n\n- The fire-time **context** mechanism is untouched: hooks receive per-firing\n  data (event, node id, tool name, …) out-of-band via the `FABRO_HOOK_CONTEXT`\n  env var, not via interpolation. There is no context namespace in\n  InterpString; nothing interpolates per-firing data today, so boundary\n  resolution loses no capability that exists.\n- Matcher semantics, blocking/decision merging, sandbox-vs-host dispatch,\n  timeouts: unchanged.\n\n## Verified current state (as of main `9daca83b3`, 2026-07-09 — re-verify before starting; line numbers are anchors, not gospel)\n\n`lib/crates/fabro-hooks/src/executor.rs`:\n\n- `resolve_interp(value, env)` (~`:76`) — resolves an `InterpString` against\n  process env at fire time; doc comment says only `env` is wired and other\n  namespaces fail closed. Used for `command` and `url`.\n- `resolve_prompt_and_model` (~`:186`) — same, for prompt/agent hooks.\n- `resolve_header(value, allowed_env_vars, env)` (~`:132`) — header\n  values additionally gate `env.NAME` behind the hook's `allowed_env_vars`\n  list (`HeaderResolveError::NotAllowed`); resolution errors block the hook.\n- `safe_url_source_for_log` — logs the **unresolved** URL source (never the\n  resolved URL) so env-sourced URL material is not logged.\n- Fail-closed dispositions today: a resolution error in `command` blocks; in\n  `url`/headers/prompt/model the hook logs an error and does not fire (http\n  headers produce a block); transport-level failures stay fail-open.\n\n`lib/crates/fabro-types/src/settings/run.rs`:\n\n- `HookDefinition { name, event, command: Option<InterpString>, hook_type,\n  matcher, blocking, timeout_ms, sandbox }` (~`:2173`); `HookType::{Command,\n  Http { url, headers, allowed_env_vars, tls }, Prompt { prompt, model },\n  Agent { prompt, model } }` (~`:2149`). `vars.NAME` tokens in all these\n  fields are already substituted at run creation (`substitute_variables`\n  walks hooks), so only `env`/`secrets` tokens remain by boundary time.\n\n`lib/crates/fabro-workflow/src/operations/start.rs`:\n\n- The boundary pattern to mirror: `runtime_mcp_server(server, process_env_var,\n  secret_lookup)` (~`:718`) and `runtime_setup_commands(...)` (~`:745`) —\n  config type in, resolved runtime type out, hard error on missing names.\n- Hooks are currently passed through to the runner **unresolved** (find the\n  hook wiring where `resolved.hooks` reaches `HookSettings`).\n\nEnvironment-timing note (verified): no `env::set_var` in production worker\npaths, so worker process env is identical at boundary time and fire time —\nresolving earlier does not change resolved values. Command hooks with\n`sandbox = true` already resolve against **worker** env and ship the resolved\nstring into the sandbox; that stays true, just earlier.\n\n## Design\n\n1. **Runtime hook type.** Add a resolved runtime form (e.g.\n   `RuntimeHookDefinition`, plain `String` fields, mirroring\n   `HookDefinition`/`HookType` shape) plus a boundary constructor\n   `runtime_hooks(hooks, process_env_var, secret_lookup) -> Result<Vec<...>>`\n   in `operations/start.rs` alongside `runtime_mcp_server` /\n   `runtime_setup_commands`. The config/wire type `HookDefinition` is\n   unchanged — no API or manifest change. For http hooks, carry the\n   **unresolved url source string** on the runtime type as well, for safe\n   logging (preserves the `safe_url_source_for_log` guarantee).\n2. **Header policy enforced at the boundary, unchanged in substance:**\n   - a `secrets.NAME` token in a header value is rejected **before any vault\n     lookup**, with the existing guidance shape: secrets are not allowed in\n     HTTP hook headers; use secret interpolation in a hook command, prompt,\n     or url instead;\n   - `env.NAME` in header values stays gated by `allowed_env_vars`\n     (non-allowlisted name → error naming the variable; allowlisted-but-unset\n     → missing-variable error);\n   - `command`/`url`/`prompt`/`model` resolve `env` + `secrets` with hard\n     errors on missing names.\n   Any resolution error **fails the run at startup** (consistent with how\n   missing secrets in MCP/prepare config behave).\n3. **Slim the executor.** `HookRunner`/`HookExecutor` take the runtime type;\n   delete `resolve_interp`, `resolve_header`, `resolve_prompt_and_model`,\n   `HeaderResolveError`, and the `Env` type parameters from execution paths.\n   The executor formats, dispatches, and merges decisions — it resolves\n   nothing.\n4. **No hook-side redaction work needed.** Hook output and block/skip reasons\n   flow into events, and event serialization already applies the content-based\n   redaction pass (`event/redaction.rs`, `redact_json_value`). That is the\n   full extent of coverage by design — do not add redaction machinery for\n   hook values (see the redaction context at the top).\n\n### Behavior changes (state these plainly in the PR description)\n\n- **Fail timing moves earlier.** A hook referencing a missing env var or\n  secret today fails when (and only if) the hook fires; after this PR the run\n  fails at startup, including for hooks that would never have fired. Both are\n  fail-closed; startup surfacing is stricter and reports config errors\n  immediately instead of mid-run.\n- **Eager resolution.** Hook secrets resolve even if the hook never fires;\n  values are held in worker memory for the run, like every other\n  boundary-resolved secret.\n- Env snapshot timing is theoretically observable but a practical no-op (see\n  the environment-timing note above).\n\n## Implementation\n\n1. Boundary: `RuntimeHookDefinition` + `runtime_hooks(...)` with header\n   policy; wire into `RunSession::new` next to the other `runtime_*`\n   resolvers; hard-fail the run on any resolve error.\n2. `fabro-hooks`: switch `HookSettings`/runner/executor to the runtime type;\n   delete the resolution layer; keep matcher/blocking/dispatch/\n   `FABRO_HOOK_CONTEXT`/timeout code untouched.\n3. Migrate tests:\n   - executor tests asserting resolution behavior (missing env var blocks at\n     fire time; header allowlist gating; unavailable-namespace errors) become\n     boundary tests asserting startup failure / rejection with the same error\n     content;\n   - executor execution tests (dispatch, decisions, timeouts, sandbox-vs-host)\n     switch to literal strings.\n4. New end-to-end tests (worker level, hermetic temp-dir vaults):\n   - command hook with a `secrets.NAME` token resolves from the vault and\n     proceeds;\n   - missing hook secret fails the run at startup, error names the secret;\n   - `secrets.NAME` in an http-hook header fails at startup with the guidance\n     message, and the endpoint is never called;\n   - http hook with a secret-valued URL resolves and fires (mock server\n     asserts the call);\n   - a blocking command hook whose block reason echoes a resolved\n     **credential-shaped** secret value (use a distinctive high-entropy test\n     marker, never a realistic credential) has that value redacted in stored\n     events by the existing content-based pass — proving hook secrets get the\n     standard coverage. Do not assert redaction of low-entropy values; that\n     is out of coverage by design;\n   - a hook that references only env still works host-side and sandbox-side.\n5. Docs (`docs/public/` hooks page): secrets usable in hook command / url /\n   prompt; headers reject secret tokens with the guidance; missing names fail\n   at run start.\n\n## Scope boundaries — deliberately NOT in this PR\n\n- **No redaction machinery inside `fabro-hooks`** — restated as a boundary:\n  hook output flows into events, and event serialization already applies the\n  content-based pass. If you find yourself adding a redactor, a registry, or\n  a secrets type to the hooks crate, you have left this PR's design.\n- **The event-serialization redaction pass in `event/redaction.rs`** — leave\n  as-is; do not extend, scope, or restructure it for hook fields.\n- **Exec-output tails and any `fabro-sandbox` redaction signatures** — leave\n  as-is; they already apply content-based redaction.\n- **Read-side server handlers and the event-detail `redacted` flag** — leave\n  as-is; a separate change owns read paths.\n- **Typed wrapper types for secret values** — separate planned work. The\n  runtime hook type carries plain resolved `String`s in this PR.\n\nIf work outside these boundaries seems genuinely required for this PR to\ncompile or pass its tests, stop and state that in the PR description rather\nthan expanding scope.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace` (touched: `fabro-hooks`, `fabro-workflow`,\n  `fabro-types` if the runtime type lands there)\n- `cargo dev docs check`\n- No OpenAPI/wire change (config types untouched).\n\n## Conventions\n\n- Never print or log a resolved secret value, including from tests; preserve\n  unresolved-source-only URL logging.\n- Plain-English commit messages, PR text, and comments; no internal planning\n  identifiers or plan-file names in anything that ships.\n- PR description must include the two behavior changes above, framed as\n  intended semantics (fail-fast config errors), and state the capability\n  added (vault secrets in hooks) with the header exclusion.\n- If implementation uncovers a genuine need for per-firing interpolation in\n  hook strings (none is known), stop and surface it rather than re-adding a\n  fire-time resolver.\n",
-          "graph.rankdir": "LR",
-          "internal.work_dir": "/home/daytona/workspace/fabro",
-          "internal.thread_id": "start",
-          "internal.retry_count.start": 0,
-          "internal.fidelity": "compact",
           "internal.node_visit_count": 1,
-          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
-          "current_node": "toolchain",
           "thread.start.current_node": "toolchain",
-          "outcome": "succeeded",
+          "internal.retry_count.start": 0,
+          "internal.run_id": "01KX9EM9QF65A43PB064TF7TWY",
+          "current_node": "toolchain",
+          "internal.retry_count.toolchain": 0,
+          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
+          "graph.rankdir": "LR",
+          "internal.thread_id": "start",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
           "failure_signature": "",
-          "internal.retry_count.toolchain": 0
+          "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1",
+          "failure_class": "",
+          "graph.goal": "# PR 4 — Resolve hook interpolation at the run boundary (and enable secrets in hooks)\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. Independent — no preconditions; can land\nanytime.\n\n**Redaction context (fixed; do not build on it):** run-output redaction in\nthis codebase is **content-based only** — entropy + credential-pattern\ndetection (`fabro_redact::redact_string` / `redact_json_value`), applied\nwhere events are serialized and where exec-output tails are captured. There\nis no per-run exact-value secret registry (a registration approach was\nconsidered and rejected). Secrets resolved for hooks by this PR get exactly\nthe coverage every other boundary-resolved secret (MCP env, run env, prepare\nsteps) already has: credential-shaped values are redacted from event and\ntail surfaces if echoed; a low-entropy secret value is not — an accepted,\ndocumented trade. Do not add any registration or exact-match machinery.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME` as the double-curly-brace token form used in\n> the codebase, and write the real double-brace syntax in the code, tests, and\n> docs you produce.\n\n## Context and goal\n\nHooks are user-defined callbacks on workflow lifecycle events (`run_start`,\n`stage_start`, `pre_tool_use`, `sandbox_ready`, …) that can observe or gate a\nrun (decisions: proceed / block / skip / override). Four types: **command**\n(shell, runs in the sandbox by default or host-side with `sandbox = false`),\n**http** (POST from the worker), **prompt** and **agent** (LLM evaluation in\nthe worker). Their configurable string fields — `command`, `url`, header\nvalues, `prompt`, `model` — are typed `InterpString` and may carry `env.NAME`\ntokens.\n\nEvery other secret/env-consuming subsystem (MCP transport env, run-environment\nenv, prepare steps, docker config) resolves its InterpStrings **once, at the\nrun boundary** in `RunSession::new`, through one shared lookup closure. Hooks\nare the single exception: the hook **executor** resolves tokens **at fire\ntime**, and only the `env` namespace is wired there — a `secrets.NAME` token\nin a hook currently fails closed with \"unavailable namespace\". This fire-time\nresolution is a fossil, not a decision: it dates from the original hooks\nimplementation, before the boundary-resolution pattern existed, and was\ncarried forward unexamined. A previous attempt to add secrets support built a\nparallel fire-time secrets-resolution and redaction-registration subsystem\ninside the hooks crate to accommodate it; that PR was closed, and the accepted\ndirection is to remove the root special case instead.\n\n**Goal:** resolve all hook InterpStrings once at the run boundary through the\nshared closures, hand the hooks subsystem fully-resolved strings, and delete\nthe executor's resolution layer. Consequences, all intended:\n\n- `secrets.NAME` becomes usable in hook `command`, `url`, and `prompt`/`model`\n  — the user-facing capability — with the same content-based redaction\n  coverage every other boundary-resolved secret already has (see the\n  redaction context above).\n- The invariant \"all env/secrets resolution happens at the run boundary\" holds\n  with **zero exceptions**, so no future secrets/redaction work needs a hooks\n  special case.\n- The hooks crate never learns about vaults or secrets at all.\n\nExplicitly out of scope / preserved:\n\n- The fire-time **context** mechanism is untouched: hooks receive per-firing\n  data (event, node id, tool name, …) out-of-band via the `FABRO_HOOK_CONTEXT`\n  env var, not via interpolation. There is no context namespace in\n  InterpString; nothing interpolates per-firing data today, so boundary\n  resolution loses no capability that exists.\n- Matcher semantics, blocking/decision merging, sandbox-vs-host dispatch,\n  timeouts: unchanged.\n\n## Verified current state (as of main `9daca83b3`, 2026-07-09 — re-verify before starting; line numbers are anchors, not gospel)\n\n`lib/crates/fabro-hooks/src/executor.rs`:\n\n- `resolve_interp(value, env)` (~`:76`) — resolves an `InterpString` against\n  process env at fire time; doc comment says only `env` is wired and other\n  namespaces fail closed. Used for `command` and `url`.\n- `resolve_prompt_and_model` (~`:186`) — same, for prompt/agent hooks.\n- `resolve_header(value, allowed_env_vars, env)` (~`:132`) — header\n  values additionally gate `env.NAME` behind the hook's `allowed_env_vars`\n  list (`HeaderResolveError::NotAllowed`); resolution errors block the hook.\n- `safe_url_source_for_log` — logs the **unresolved** URL source (never the\n  resolved URL) so env-sourced URL material is not logged.\n- Fail-closed dispositions today: a resolution error in `command` blocks; in\n  `url`/headers/prompt/model the hook logs an error and does not fire (http\n  headers produce a block); transport-level failures stay fail-open.\n\n`lib/crates/fabro-types/src/settings/run.rs`:\n\n- `HookDefinition { name, event, command: Option<InterpString>, hook_type,\n  matcher, blocking, timeout_ms, sandbox }` (~`:2173`); `HookType::{Command,\n  Http { url, headers, allowed_env_vars, tls }, Prompt { prompt, model },\n  Agent { prompt, model } }` (~`:2149`). `vars.NAME` tokens in all these\n  fields are already substituted at run creation (`substitute_variables`\n  walks hooks), so only `env`/`secrets` tokens remain by boundary time.\n\n`lib/crates/fabro-workflow/src/operations/start.rs`:\n\n- The boundary pattern to mirror: `runtime_mcp_server(server, process_env_var,\n  secret_lookup)` (~`:718`) and `runtime_setup_commands(...)` (~`:745`) —\n  config type in, resolved runtime type out, hard error on missing names.\n- Hooks are currently passed through to the runner **unresolved** (find the\n  hook wiring where `resolved.hooks` reaches `HookSettings`).\n\nEnvironment-timing note (verified): no `env::set_var` in production worker\npaths, so worker process env is identical at boundary time and fire time —\nresolving earlier does not change resolved values. Command hooks with\n`sandbox = true` already resolve against **worker** env and ship the resolved\nstring into the sandbox; that stays true, just earlier.\n\n## Design\n\n1. **Runtime hook type.** Add a resolved runtime form (e.g.\n   `RuntimeHookDefinition`, plain `String` fields, mirroring\n   `HookDefinition`/`HookType` shape) plus a boundary constructor\n   `runtime_hooks(hooks, process_env_var, secret_lookup) -> Result<Vec<...>>`\n   in `operations/start.rs` alongside `runtime_mcp_server` /\n   `runtime_setup_commands`. The config/wire type `HookDefinition` is\n   unchanged — no API or manifest change. For http hooks, carry the\n   **unresolved url source string** on the runtime type as well, for safe\n   logging (preserves the `safe_url_source_for_log` guarantee).\n2. **Header policy enforced at the boundary, unchanged in substance:**\n   - a `secrets.NAME` token in a header value is rejected **before any vault\n     lookup**, with the existing guidance shape: secrets are not allowed in\n     HTTP hook headers; use secret interpolation in a hook command, prompt,\n     or url instead;\n   - `env.NAME` in header values stays gated by `allowed_env_vars`\n     (non-allowlisted name → error naming the variable; allowlisted-but-unset\n     → missing-variable error);\n   - `command`/`url`/`prompt`/`model` resolve `env` + `secrets` with hard\n     errors on missing names.\n   Any resolution error **fails the run at startup** (consistent with how\n   missing secrets in MCP/prepare config behave).\n3. **Slim the executor.** `HookRunner`/`HookExecutor` take the runtime type;\n   delete `resolve_interp`, `resolve_header`, `resolve_prompt_and_model`,\n   `HeaderResolveError`, and the `Env` type parameters from execution paths.\n   The executor formats, dispatches, and merges decisions — it resolves\n   nothing.\n4. **No hook-side redaction work needed.** Hook output and block/skip reasons\n   flow into events, and event serialization already applies the content-based\n   redaction pass (`event/redaction.rs`, `redact_json_value`). That is the\n   full extent of coverage by design — do not add redaction machinery for\n   hook values (see the redaction context at the top).\n\n### Behavior changes (state these plainly in the PR description)\n\n- **Fail timing moves earlier.** A hook referencing a missing env var or\n  secret today fails when (and only if) the hook fires; after this PR the run\n  fails at startup, including for hooks that would never have fired. Both are\n  fail-closed; startup surfacing is stricter and reports config errors\n  immediately instead of mid-run.\n- **Eager resolution.** Hook secrets resolve even if the hook never fires;\n  values are held in worker memory for the run, like every other\n  boundary-resolved secret.\n- Env snapshot timing is theoretically observable but a practical no-op (see\n  the environment-timing note above).\n\n## Implementation\n\n1. Boundary: `RuntimeHookDefinition` + `runtime_hooks(...)` with header\n   policy; wire into `RunSession::new` next to the other `runtime_*`\n   resolvers; hard-fail the run on any resolve error.\n2. `fabro-hooks`: switch `HookSettings`/runner/executor to the runtime type;\n   delete the resolution layer; keep matcher/blocking/dispatch/\n   `FABRO_HOOK_CONTEXT`/timeout code untouched.\n3. Migrate tests:\n   - executor tests asserting resolution behavior (missing env var blocks at\n     fire time; header allowlist gating; unavailable-namespace errors) become\n     boundary tests asserting startup failure / rejection with the same error\n     content;\n   - executor execution tests (dispatch, decisions, timeouts, sandbox-vs-host)\n     switch to literal strings.\n4. New end-to-end tests (worker level, hermetic temp-dir vaults):\n   - command hook with a `secrets.NAME` token resolves from the vault and\n     proceeds;\n   - missing hook secret fails the run at startup, error names the secret;\n   - `secrets.NAME` in an http-hook header fails at startup with the guidance\n     message, and the endpoint is never called;\n   - http hook with a secret-valued URL resolves and fires (mock server\n     asserts the call);\n   - a blocking command hook whose block reason echoes a resolved\n     **credential-shaped** secret value (use a distinctive high-entropy test\n     marker, never a realistic credential) has that value redacted in stored\n     events by the existing content-based pass — proving hook secrets get the\n     standard coverage. Do not assert redaction of low-entropy values; that\n     is out of coverage by design;\n   - a hook that references only env still works host-side and sandbox-side.\n5. Docs (`docs/public/` hooks page): secrets usable in hook command / url /\n   prompt; headers reject secret tokens with the guidance; missing names fail\n   at run start.\n\n## Scope boundaries — deliberately NOT in this PR\n\n- **No redaction machinery inside `fabro-hooks`** — restated as a boundary:\n  hook output flows into events, and event serialization already applies the\n  content-based pass. If you find yourself adding a redactor, a registry, or\n  a secrets type to the hooks crate, you have left this PR's design.\n- **The event-serialization redaction pass in `event/redaction.rs`** — leave\n  as-is; do not extend, scope, or restructure it for hook fields.\n- **Exec-output tails and any `fabro-sandbox` redaction signatures** — leave\n  as-is; they already apply content-based redaction.\n- **Read-side server handlers and the event-detail `redacted` flag** — leave\n  as-is; a separate change owns read paths.\n- **Typed wrapper types for secret values** — separate planned work. The\n  runtime hook type carries plain resolved `String`s in this PR.\n\nIf work outside these boundaries seems genuinely required for this PR to\ncompile or pass its tests, stop and state that in the PR description rather\nthan expanding scope.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace` (touched: `fabro-hooks`, `fabro-workflow`,\n  `fabro-types` if the runtime type lands there)\n- `cargo dev docs check`\n- No OpenAPI/wire change (config types untouched).\n\n## Conventions\n\n- Never print or log a resolved secret value, including from tests; preserve\n  unresolved-source-only URL logging.\n- Plain-English commit messages, PR text, and comments; no internal planning\n  identifiers or plan-file names in anything that ships.\n- PR description must include the two behavior changes above, framed as\n  intended semantics (fail-fast config errors), and state the capability\n  added (vault secrets in hooks) with the header exclusion.\n- If implementation uncovers a genuine need for per-firing interpolation in\n  hook strings (none is known), stop and surface it rather than re-adding a\n  fire-time resolver.\n",
+          "outcome": "succeeded"
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "toolchain": {
             "status": "succeeded",
             "context_updates": {
@@ -587,15 +591,92 @@
               "tool_time_ms": 1299,
               "active_time_ms": 1299
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "preflight_compile",
+        "git_commit_sha": "f8e00c305d9183d1ae4b87463d5815ceda689898",
+        "node_visits": {
+          "toolchain": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-11T20:43:47.406402418Z",
+        "current_node": "preflight_compile",
+        "completed_nodes": [
+          "start",
+          "toolchain",
+          "preflight_compile"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.run_id": "01KX9EM9QF65A43PB064TF7TWY",
+          "failure_class": "",
+          "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+          "thread.toolchain.current_node": "preflight_compile",
+          "graph.goal": "# PR 4 — Resolve hook interpolation at the run boundary (and enable secrets in hooks)\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. Independent — no preconditions; can land\nanytime.\n\n**Redaction context (fixed; do not build on it):** run-output redaction in\nthis codebase is **content-based only** — entropy + credential-pattern\ndetection (`fabro_redact::redact_string` / `redact_json_value`), applied\nwhere events are serialized and where exec-output tails are captured. There\nis no per-run exact-value secret registry (a registration approach was\nconsidered and rejected). Secrets resolved for hooks by this PR get exactly\nthe coverage every other boundary-resolved secret (MCP env, run env, prepare\nsteps) already has: credential-shaped values are redacted from event and\ntail surfaces if echoed; a low-entropy secret value is not — an accepted,\ndocumented trade. Do not add any registration or exact-match machinery.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME` as the double-curly-brace token form used in\n> the codebase, and write the real double-brace syntax in the code, tests, and\n> docs you produce.\n\n## Context and goal\n\nHooks are user-defined callbacks on workflow lifecycle events (`run_start`,\n`stage_start`, `pre_tool_use`, `sandbox_ready`, …) that can observe or gate a\nrun (decisions: proceed / block / skip / override). Four types: **command**\n(shell, runs in the sandbox by default or host-side with `sandbox = false`),\n**http** (POST from the worker), **prompt** and **agent** (LLM evaluation in\nthe worker). Their configurable string fields — `command`, `url`, header\nvalues, `prompt`, `model` — are typed `InterpString` and may carry `env.NAME`\ntokens.\n\nEvery other secret/env-consuming subsystem (MCP transport env, run-environment\nenv, prepare steps, docker config) resolves its InterpStrings **once, at the\nrun boundary** in `RunSession::new`, through one shared lookup closure. Hooks\nare the single exception: the hook **executor** resolves tokens **at fire\ntime**, and only the `env` namespace is wired there — a `secrets.NAME` token\nin a hook currently fails closed with \"unavailable namespace\". This fire-time\nresolution is a fossil, not a decision: it dates from the original hooks\nimplementation, before the boundary-resolution pattern existed, and was\ncarried forward unexamined. A previous attempt to add secrets support built a\nparallel fire-time secrets-resolution and redaction-registration subsystem\ninside the hooks crate to accommodate it; that PR was closed, and the accepted\ndirection is to remove the root special case instead.\n\n**Goal:** resolve all hook InterpStrings once at the run boundary through the\nshared closures, hand the hooks subsystem fully-resolved strings, and delete\nthe executor's resolution layer. Consequences, all intended:\n\n- `secrets.NAME` becomes usable in hook `command`, `url`, and `prompt`/`model`\n  — the user-facing capability — with the same content-based redaction\n  coverage every other boundary-resolved secret already has (see the\n  redaction context above).\n- The invariant \"all env/secrets resolution happens at the run boundary\" holds\n  with **zero exceptions**, so no future secrets/redaction work needs a hooks\n  special case.\n- The hooks crate never learns about vaults or secrets at all.\n\nExplicitly out of scope / preserved:\n\n- The fire-time **context** mechanism is untouched: hooks receive per-firing\n  data (event, node id, tool name, …) out-of-band via the `FABRO_HOOK_CONTEXT`\n  env var, not via interpolation. There is no context namespace in\n  InterpString; nothing interpolates per-firing data today, so boundary\n  resolution loses no capability that exists.\n- Matcher semantics, blocking/decision merging, sandbox-vs-host dispatch,\n  timeouts: unchanged.\n\n## Verified current state (as of main `9daca83b3`, 2026-07-09 — re-verify before starting; line numbers are anchors, not gospel)\n\n`lib/crates/fabro-hooks/src/executor.rs`:\n\n- `resolve_interp(value, env)` (~`:76`) — resolves an `InterpString` against\n  process env at fire time; doc comment says only `env` is wired and other\n  namespaces fail closed. Used for `command` and `url`.\n- `resolve_prompt_and_model` (~`:186`) — same, for prompt/agent hooks.\n- `resolve_header(value, allowed_env_vars, env)` (~`:132`) — header\n  values additionally gate `env.NAME` behind the hook's `allowed_env_vars`\n  list (`HeaderResolveError::NotAllowed`); resolution errors block the hook.\n- `safe_url_source_for_log` — logs the **unresolved** URL source (never the\n  resolved URL) so env-sourced URL material is not logged.\n- Fail-closed dispositions today: a resolution error in `command` blocks; in\n  `url`/headers/prompt/model the hook logs an error and does not fire (http\n  headers produce a block); transport-level failures stay fail-open.\n\n`lib/crates/fabro-types/src/settings/run.rs`:\n\n- `HookDefinition { name, event, command: Option<InterpString>, hook_type,\n  matcher, blocking, timeout_ms, sandbox }` (~`:2173`); `HookType::{Command,\n  Http { url, headers, allowed_env_vars, tls }, Prompt { prompt, model },\n  Agent { prompt, model } }` (~`:2149`). `vars.NAME` tokens in all these\n  fields are already substituted at run creation (`substitute_variables`\n  walks hooks), so only `env`/`secrets` tokens remain by boundary time.\n\n`lib/crates/fabro-workflow/src/operations/start.rs`:\n\n- The boundary pattern to mirror: `runtime_mcp_server(server, process_env_var,\n  secret_lookup)` (~`:718`) and `runtime_setup_commands(...)` (~`:745`) —\n  config type in, resolved runtime type out, hard error on missing names.\n- Hooks are currently passed through to the runner **unresolved** (find the\n  hook wiring where `resolved.hooks` reaches `HookSettings`).\n\nEnvironment-timing note (verified): no `env::set_var` in production worker\npaths, so worker process env is identical at boundary time and fire time —\nresolving earlier does not change resolved values. Command hooks with\n`sandbox = true` already resolve against **worker** env and ship the resolved\nstring into the sandbox; that stays true, just earlier.\n\n## Design\n\n1. **Runtime hook type.** Add a resolved runtime form (e.g.\n   `RuntimeHookDefinition`, plain `String` fields, mirroring\n   `HookDefinition`/`HookType` shape) plus a boundary constructor\n   `runtime_hooks(hooks, process_env_var, secret_lookup) -> Result<Vec<...>>`\n   in `operations/start.rs` alongside `runtime_mcp_server` /\n   `runtime_setup_commands`. The config/wire type `HookDefinition` is\n   unchanged — no API or manifest change. For http hooks, carry the\n   **unresolved url source string** on the runtime type as well, for safe\n   logging (preserves the `safe_url_source_for_log` guarantee).\n2. **Header policy enforced at the boundary, unchanged in substance:**\n   - a `secrets.NAME` token in a header value is rejected **before any vault\n     lookup**, with the existing guidance shape: secrets are not allowed in\n     HTTP hook headers; use secret interpolation in a hook command, prompt,\n     or url instead;\n   - `env.NAME` in header values stays gated by `allowed_env_vars`\n     (non-allowlisted name → error naming the variable; allowlisted-but-unset\n     → missing-variable error);\n   - `command`/`url`/`prompt`/`model` resolve `env` + `secrets` with hard\n     errors on missing names.\n   Any resolution error **fails the run at startup** (consistent with how\n   missing secrets in MCP/prepare config behave).\n3. **Slim the executor.** `HookRunner`/`HookExecutor` take the runtime type;\n   delete `resolve_interp`, `resolve_header`, `resolve_prompt_and_model`,\n   `HeaderResolveError`, and the `Env` type parameters from execution paths.\n   The executor formats, dispatches, and merges decisions — it resolves\n   nothing.\n4. **No hook-side redaction work needed.** Hook output and block/skip reasons\n   flow into events, and event serialization already applies the content-based\n   redaction pass (`event/redaction.rs`, `redact_json_value`). That is the\n   full extent of coverage by design — do not add redaction machinery for\n   hook values (see the redaction context at the top).\n\n### Behavior changes (state these plainly in the PR description)\n\n- **Fail timing moves earlier.** A hook referencing a missing env var or\n  secret today fails when (and only if) the hook fires; after this PR the run\n  fails at startup, including for hooks that would never have fired. Both are\n  fail-closed; startup surfacing is stricter and reports config errors\n  immediately instead of mid-run.\n- **Eager resolution.** Hook secrets resolve even if the hook never fires;\n  values are held in worker memory for the run, like every other\n  boundary-resolved secret.\n- Env snapshot timing is theoretically observable but a practical no-op (see\n  the environment-timing note above).\n\n## Implementation\n\n1. Boundary: `RuntimeHookDefinition` + `runtime_hooks(...)` with header\n   policy; wire into `RunSession::new` next to the other `runtime_*`\n   resolvers; hard-fail the run on any resolve error.\n2. `fabro-hooks`: switch `HookSettings`/runner/executor to the runtime type;\n   delete the resolution layer; keep matcher/blocking/dispatch/\n   `FABRO_HOOK_CONTEXT`/timeout code untouched.\n3. Migrate tests:\n   - executor tests asserting resolution behavior (missing env var blocks at\n     fire time; header allowlist gating; unavailable-namespace errors) become\n     boundary tests asserting startup failure / rejection with the same error\n     content;\n   - executor execution tests (dispatch, decisions, timeouts, sandbox-vs-host)\n     switch to literal strings.\n4. New end-to-end tests (worker level, hermetic temp-dir vaults):\n   - command hook with a `secrets.NAME` token resolves from the vault and\n     proceeds;\n   - missing hook secret fails the run at startup, error names the secret;\n   - `secrets.NAME` in an http-hook header fails at startup with the guidance\n     message, and the endpoint is never called;\n   - http hook with a secret-valued URL resolves and fires (mock server\n     asserts the call);\n   - a blocking command hook whose block reason echoes a resolved\n     **credential-shaped** secret value (use a distinctive high-entropy test\n     marker, never a realistic credential) has that value redacted in stored\n     events by the existing content-based pass — proving hook secrets get the\n     standard coverage. Do not assert redaction of low-entropy values; that\n     is out of coverage by design;\n   - a hook that references only env still works host-side and sandbox-side.\n5. Docs (`docs/public/` hooks page): secrets usable in hook command / url /\n   prompt; headers reject secret tokens with the guidance; missing names fail\n   at run start.\n\n## Scope boundaries — deliberately NOT in this PR\n\n- **No redaction machinery inside `fabro-hooks`** — restated as a boundary:\n  hook output flows into events, and event serialization already applies the\n  content-based pass. If you find yourself adding a redactor, a registry, or\n  a secrets type to the hooks crate, you have left this PR's design.\n- **The event-serialization redaction pass in `event/redaction.rs`** — leave\n  as-is; do not extend, scope, or restructure it for hook fields.\n- **Exec-output tails and any `fabro-sandbox` redaction signatures** — leave\n  as-is; they already apply content-based redaction.\n- **Read-side server handlers and the event-detail `redacted` flag** — leave\n  as-is; a separate change owns read paths.\n- **Typed wrapper types for secret values** — separate planned work. The\n  runtime hook type carries plain resolved `String`s in this PR.\n\nIf work outside these boundaries seems genuinely required for this PR to\ncompile or pass its tests, stop and state that in the PR description rather\nthan expanding scope.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace` (touched: `fabro-hooks`, `fabro-workflow`,\n  `fabro-types` if the runtime type lands there)\n- `cargo dev docs check`\n- No OpenAPI/wire change (config types untouched).\n\n## Conventions\n\n- Never print or log a resolved secret value, including from tests; preserve\n  unresolved-source-only URL logging.\n- Plain-English commit messages, PR text, and comments; no internal planning\n  identifiers or plan-file names in anything that ships.\n- PR description must include the two behavior changes above, framed as\n  intended semantics (fail-fast config errors), and state the capability\n  added (vault secrets in hooks) with the header exclusion.\n- If implementation uncovers a genuine need for per-firing interpolation in\n  hook strings (none is known), stop and surface it rather than re-adding a\n  fire-time resolver.\n",
+          "graph.rankdir": "LR",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.thread_id": "toolchain",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.preflight_compile": 0,
+          "internal.fidelity": "compact",
+          "internal.node_visit_count": 1,
+          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
+          "current_node": "preflight_compile",
+          "thread.start.current_node": "toolchain",
+          "outcome": "succeeded",
+          "failure_signature": "",
+          "internal.retry_count.toolchain": 0
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "preflight_compile": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo check -q --workspace 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 105518,
+              "active_time_ms": 105518
+            }
+          },
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1299,
+              "active_time_ms": 1299
+            }
+          }
+        },
+        "next_node_id": "preflight_lint",
         "node_visits": {
           "start": 1,
+          "preflight_compile": 1,
           "toolchain": 1
         }
       },
@@ -632,7 +713,12 @@
       "first_event_seq": 22,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "failure_reason": null,
+        "timestamp": "2026-07-11T20:41:58.324723Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
@@ -640,11 +726,27 @@
         "command": "exec 2>&1\ncommand -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
         "language": "shell"
       },
-      "script_timing": null,
+      "script_timing": {
+        "output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1",
+        "exit_code": 0,
+        "duration_ms": 1299,
+        "termination": "exited",
+        "output_bytes": 36,
+        "live_streaming": true
+      },
       "parallel_results": null,
       "output": null,
+      "output_bytes": 36,
+      "live_streaming": true,
+      "termination": "exited",
       "started_at": "2026-07-11T20:41:57.021333330Z",
       "handler": "command",
+      "timing": {
+        "wall_time_ms": 1303,
+        "inference_time_ms": 0,
+        "tool_time_ms": 1299,
+        "active_time_ms": 1299
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -653,7 +755,7 @@
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
       },
-      "state": "running"
+      "state": "succeeded"
     },
     "start@1": {
       "first_event_seq": 18,
@@ -688,6 +790,33 @@
         "cache_write_tokens": 0
       },
       "state": "succeeded"
+    },
+    "preflight_compile@1": {
+      "first_event_seq": 32,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "cargo check -q --workspace 2>&1",
+        "command": "exec 2>&1\ncargo check -q --workspace 2>&1",
+        "language": "shell"
+      },
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-11T20:42:01.884049052Z",
+      "handler": "command",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
     }
   }
 }
