@@ -82,7 +82,7 @@ mod tests {
     use fabro_types::fixtures;
 
     use super::*;
-    use crate::config::{HookDefinition, HookSettings};
+    use crate::config::{HookSettings, RuntimeHookDefinition, RuntimeHookType};
     use crate::executor::HookExecutor;
     use crate::types::{HookContext, HookResult};
 
@@ -96,7 +96,7 @@ mod tests {
     impl HookExecutor for CapturingExecutor {
         async fn execute(
             &self,
-            _definition: &HookDefinition,
+            _definition: &RuntimeHookDefinition,
             context: &HookContext,
             _sandbox: Arc<dyn Sandbox>,
             execution_context: &HookExecutionContext,
@@ -116,16 +116,18 @@ mod tests {
         }
     }
 
-    fn make_hook(event: HookEvent) -> HookDefinition {
-        HookDefinition {
+    fn make_hook(event: HookEvent) -> RuntimeHookDefinition {
+        RuntimeHookDefinition {
             name: Some("test-hook".into()),
             event,
-            command: Some("echo test".into()),
-            hook_type: None,
+            hook_type: Some(RuntimeHookType::Command {
+                command: "echo test".into(),
+            }),
             matcher: None,
             blocking: None,
             timeout_ms: None,
             sandbox: Some(false),
+            effective_name: "test-hook".into(),
         }
     }
 

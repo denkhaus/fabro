@@ -36,8 +36,8 @@ Authorization = "Bearer {{ env.API_KEY }}"
 
 | Field | Description |
 |---|---|
-| `url` | The endpoint to POST to. Must use `https://` unless `tls = "off"`. Supports `{{ env.NAME }}` interpolation. |
-| `headers` | Optional HTTP headers. Values support `{{ env.NAME }}` interpolation, scoped to the names in `allowed_env_vars`. A token for any other env var fails to resolve and the hook blocks (fail-closed). |
+| `url` | The endpoint to POST to. Must use `https://` unless `tls = "off"`. Supports `{{ env.NAME }}` and `{{ secrets.NAME }}` interpolation. |
+| `headers` | Optional HTTP headers. Values support `{{ env.NAME }}` interpolation, scoped to the names in `allowed_env_vars` — referencing an env var outside the allowlist fails the run at startup. `{{ secrets.NAME }}` tokens are not allowed in headers — use secret interpolation in a hook `command`, `prompt`, or `url` instead. |
 | `allowed_env_vars` | Allowlist of environment variable names a header may read via `{{ env.NAME }}`. Empty (the default) means no env vars may be interpolated into headers. |
 | `tls` | TLS mode: `"verify"` (default), `"no_verify"`, or `"off"`. |
 
@@ -133,6 +133,24 @@ sandbox = false
 | `blocking` | Whether the hook must complete before execution continues. Defaults vary by event. |
 | `timeout_ms` | Hook timeout in milliseconds. Default: `60000` (60s) for most types, `30000` (30s) for prompt hooks. |
 | `sandbox` | Run inside the sandbox (`true`, default) or on the host (`false`). |
+
+### Interpolation
+
+The configurable string fields of a hook — `command`, `url`, header values, `prompt`, and `model` — support interpolation tokens:
+
+```toml title="run.toml"
+[[hooks]]
+name = "deploy-gate"
+event = "run_start"
+command = "./scripts/deploy-gate.sh --token {{ secrets.DEPLOY_TOKEN }} --region {{ env.AWS_REGION }}"
+sandbox = false
+```
+
+- `{{ env.NAME }}` — an environment variable of the worker process.
+- `{{ secrets.NAME }}` — a secret from the vault. Allowed everywhere **except HTTP hook header values**; put secret tokens in a hook `command`, `prompt`, or `url` instead.
+- `{{ vars.NAME }}` — a run variable, substituted when the run is created.
+
+`env` and `secrets` tokens resolve **once, when the run starts** — the same boundary where MCP server and prepare-step tokens resolve. A referenced env var or secret that is not set fails the run at startup with an error naming the missing value, even if the hook would never have fired. Hooks never re-resolve tokens at fire time; per-firing data (event, node ID, tool name, …) arrives through the [hook context](#hook-context) instead.
 
 ## Blocking vs. non-blocking
 

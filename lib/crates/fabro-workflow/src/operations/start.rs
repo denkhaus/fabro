@@ -16,9 +16,10 @@ use fabro_sandbox::from_environment::{
 use fabro_sandbox::{DockerSandboxOptions, SandboxSpec};
 use fabro_static::EnvVars;
 use fabro_types::settings::run::{
-    ApprovalMode, McpServerSettings as ResolvedMcpServerSettings, PullRequestSettings,
-    ResolvedMcpEntry, RunMode, RunModelSettings as ResolvedRunModelSettings,
+    ApprovalMode, HookDefinition, McpServerSettings as ResolvedMcpServerSettings,
+    PullRequestSettings, ResolvedMcpEntry, RunMode, RunModelSettings as ResolvedRunModelSettings,
     RunNamespace as ResolvedRunSettings, RunPrepareSettings as ResolvedRunPrepareSettings,
+    RuntimeHookDefinition,
 };
 use fabro_types::settings::{ModelRegistry, ResolvedModelRef};
 use fabro_types::{ManifestPath, RunId, RunRunnableSource, SandboxProviderKind};
@@ -463,6 +464,7 @@ impl RunSession {
         let pr_config = resolved.pull_request.clone();
         let setup_commands =
             runtime_setup_commands(&resolved.prepare, process_env_var, secret_lookup)?;
+        let hooks = runtime_hooks(&resolved.hooks, process_env_var, secret_lookup)?;
         drop(vault_guard);
 
         Ok(Self {
@@ -486,9 +488,7 @@ impl RunSession {
                 setup_commands,
                 setup_command_timeout_ms: resolved.prepare.timeout_ms,
             },
-            hooks: fabro_hooks::HookSettings {
-                hooks: resolved.hooks.clone(),
-            },
+            hooks: fabro_hooks::HookSettings { hooks },
             sandbox_env,
             seed_context: None,
             run_store: services.run_store,
@@ -762,6 +762,39 @@ fn runtime_setup_commands(
             env:     step.env,
         })
         .collect())
+}
+
+/// Build the launch-time hook definitions from resolved settings, resolving
+/// any `{{ env.* }}` and `{{ secrets.* }}` tokens in each hook's
+/// `command`/`url`/`headers`/`prompt`/`model` against the worker process
+/// environment and vault — the run boundary, so the hook executor only ever
+/// sees fully resolved strings and fire time involves no resolution at all.
+///
+/// The resolution itself lives on the type ([`HookDefinition::resolve_env`])
+/// together with the HTTP-header policy (secret tokens are rejected in
+/// headers; header env reads stay scoped to `allowed_env_vars`); this wrapper
+/// just adds the hook's name to the error. Hook strings are carried in source
+/// form out of the config resolve layer so `fabro validate` stays portable
+/// (it never requires env to be set), and a referenced env var or secret that
+/// is unset is a hard error that fails the run at startup — even for hooks
+/// that would never have fired.
+fn runtime_hooks(
+    hooks: &[HookDefinition],
+    mut env_lookup: impl FnMut(&str) -> Option<String>,
+    mut secrets_lookup: impl FnMut(&str) -> Option<String>,
+) -> Result<Vec<RuntimeHookDefinition>, Error> {
+    hooks
+        .iter()
+        .map(|hook| {
+            hook.resolve_env(&mut env_lookup, &mut secrets_lookup)
+                .map_err(|err| {
+                    Error::engine_with_source(
+                        format!("failed to resolve hook {:?}", hook.effective_name()),
+                        err,
+                    )
+                })
+        })
+        .collect()
 }
 
 impl RunSession {
@@ -1125,8 +1158,8 @@ mod tests {
     };
     use fabro_store::Database;
     use fabro_types::settings::run::{
-        McpTransport as ResolvedMcpTransport, PreparedStep, PreparedStepRun, RunMode,
-        RunPrepareSettings,
+        HookEvent, HookType, McpTransport as ResolvedMcpTransport, PreparedStep, PreparedStepRun,
+        RunMode, RunPrepareSettings, RuntimeHookType,
     };
     use fabro_types::settings::{InterpString, ModelRef};
     use fabro_types::{
@@ -1489,6 +1522,85 @@ reasoning = false
         assert!(err.causes()[0].contains("GITHUB_APP_PRIVATE_KEY"));
     }
 
+    fn command_hook(name: &str, command: &str) -> HookDefinition {
+        HookDefinition {
+            name:       Some(name.to_string()),
+            event:      HookEvent::RunStart,
+            command:    Some(InterpString::parse(command)),
+            hook_type:  None,
+            matcher:    None,
+            blocking:   None,
+            timeout_ms: None,
+            sandbox:    Some(false),
+        }
+    }
+
+    #[test]
+    fn runtime_hooks_resolve_secret_tokens_from_vault() {
+        let vault = token_vault("HOOK_TOKEN", "vault-token");
+        let hooks = [command_hook("guard", "deploy {{ secrets.HOOK_TOKEN }}")];
+
+        let resolved = runtime_hooks(&hooks, |_| None, vault_secret_lookup(&vault)).unwrap();
+
+        assert_eq!(
+            resolved[0].hook_type,
+            Some(RuntimeHookType::Command {
+                command: "deploy vault-token".to_string(),
+            })
+        );
+    }
+
+    // Fail timing note: a missing hook secret used to surface as a fire-time
+    // Block; boundary resolution turns it into a startup failure, including
+    // for hooks that would never have fired.
+    #[test]
+    fn runtime_hooks_missing_secret_fails_naming_hook_and_secret() {
+        let vault = temp_vault(&[]);
+        let hooks = [command_hook("guard", "deploy {{ secrets.HOOK_TOKEN }}")];
+
+        let err = runtime_hooks(&hooks, |_| None, vault_secret_lookup(&vault)).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "Engine error: failed to resolve hook \"guard\""
+        );
+        assert!(err.causes()[0].contains("HOOK_TOKEN"));
+    }
+
+    #[test]
+    fn runtime_hooks_reject_secret_in_http_header_with_guidance() {
+        let vault = token_vault("HOOK_TOKEN", "vault-token");
+        let hooks = [HookDefinition {
+            name:       Some("notify".to_string()),
+            event:      HookEvent::RunComplete,
+            command:    None,
+            hook_type:  Some(HookType::Http {
+                url:              InterpString::parse("https://hooks.example.com"),
+                headers:          Some(HashMap::from([(
+                    "Authorization".to_string(),
+                    InterpString::parse("Bearer {{ secrets.HOOK_TOKEN }}"),
+                )])),
+                allowed_env_vars: Vec::new(),
+                tls:              fabro_types::settings::run::TlsMode::Verify,
+            }),
+            matcher:    None,
+            blocking:   None,
+            timeout_ms: None,
+            sandbox:    None,
+        }];
+
+        let err = runtime_hooks(&hooks, |_| None, vault_secret_lookup(&vault)).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "Engine error: failed to resolve hook \"notify\""
+        );
+        assert!(err.causes()[0].contains(
+            "not allowed in HTTP hook headers; use secret interpolation in a hook command, \
+             prompt, or url instead"
+        ));
+    }
+
     #[tokio::test]
     async fn run_session_new_resolves_secret_tokens_from_vault_at_boundary() {
         let temp = tempfile::tempdir().unwrap();
@@ -1525,6 +1637,7 @@ reasoning = false
                 ..ResolvedMcpServerSettings::default()
             }),
         );
+        settings.run.hooks = vec![command_hook("guard", "deploy {{ secrets.DEPLOY_TOKEN }}")];
         let (persisted, store) =
             persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
         let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
@@ -1545,6 +1658,12 @@ reasoning = false
                 .get("API_TOKEN")
                 .map(String::as_str),
             Some("vault-token")
+        );
+        assert_eq!(
+            session.hooks.hooks[0].hook_type,
+            Some(RuntimeHookType::Command {
+                command: "deploy vault-token".to_string(),
+            })
         );
         assert_eq!(
             session.lifecycle.setup_commands[0]
@@ -1603,6 +1722,40 @@ reasoning = false
             "Engine error: failed to resolve prepare step"
         );
         assert!(err.causes()[0].contains("DEPLOY_TOKEN"));
+    }
+
+    #[tokio::test]
+    async fn run_session_new_missing_hook_secret_fails_startup() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
+        let mut settings = settings_from_run_layer(RunLayer {
+            execution: Some(RunExecutionLayer {
+                mode: Some(RunMode::DryRun),
+                ..RunExecutionLayer::default()
+            }),
+            ..RunLayer::default()
+        });
+        settings.run.hooks = vec![command_hook("guard", "deploy {{ secrets.HOOK_TOKEN }}")];
+        let (persisted, store) =
+            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+        let vault = Arc::new(AsyncRwLock::new(temp_vault(&[])));
+
+        let Err(err) = RunSession::new(&persisted, StartServices {
+            vault: Some(vault),
+            ..test_start_services(&store, &storage_root, emitter, registry).await
+        })
+        .await
+        else {
+            panic!("missing hook secret should fail run startup");
+        };
+
+        assert_eq!(
+            err.to_string(),
+            "Engine error: failed to resolve hook \"guard\""
+        );
+        assert!(err.causes()[0].contains("HOOK_TOKEN"));
     }
 
     #[test]

@@ -14273,8 +14273,10 @@ components:
           description: >-
             Optional HTTP headers for an http hook. Values support
             `{{ env.NAME }}` interpolation, scoped to the names listed in
-            `allowed_env_vars`; a token for any other env var fails to resolve
-            and the hook blocks (fail-closed).
+            `allowed_env_vars`; a token for any other env var, or any
+            `{{ secrets.NAME }}` token, fails hook resolution and the run
+            fails at startup. Use secret interpolation in a hook command,
+            prompt, or url instead of a header.
         allowed_env_vars:
           type: array
           items:

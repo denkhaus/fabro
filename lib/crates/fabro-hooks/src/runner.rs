@@ -7,7 +7,7 @@ use fabro_auth::CredentialSource;
 use fabro_auth::EnvCredentialSource;
 use fabro_model::Catalog;
 
-use crate::config::{HookDefinition, HookSettings};
+use crate::config::{HookSettings, RuntimeHookDefinition};
 use crate::executor::{HookExecutor, HookExecutorImpl};
 use crate::types::{HookContext, HookDecision, HookExecutionContext};
 
@@ -108,7 +108,7 @@ impl HookRunner {
     }
 
     /// Filter hooks that match the given event and context.
-    fn filter_hooks(&self, context: &HookContext) -> Vec<&HookDefinition> {
+    fn filter_hooks(&self, context: &HookContext) -> Vec<&RuntimeHookDefinition> {
         self.config
             .hooks
             .iter()
@@ -118,7 +118,7 @@ impl HookRunner {
     }
 
     /// Check if a hook's matcher applies to this context.
-    fn matches(&self, hook: &HookDefinition, context: &HookContext) -> bool {
+    fn matches(&self, hook: &RuntimeHookDefinition, context: &HookContext) -> bool {
         let Some(ref pattern) = hook.matcher else {
             return true;
         };
@@ -139,7 +139,7 @@ impl HookRunner {
 
     async fn run_sequential(
         &self,
-        hooks: &[&HookDefinition],
+        hooks: &[&RuntimeHookDefinition],
         context: &HookContext,
         sandbox: Arc<dyn Sandbox>,
         execution_context: &HookExecutionContext,
@@ -147,7 +147,7 @@ impl HookRunner {
         let mut merged = HookDecision::Proceed;
         for hook in hooks {
             tracing::debug!(
-                hook = %hook.effective_name(),
+                hook = %hook.effective_name,
                 event = %context.event,
                 "Executing hook"
             );
@@ -163,7 +163,7 @@ impl HookRunner {
                 )
                 .await;
             tracing::debug!(
-                hook = %hook.effective_name(),
+                hook = %hook.effective_name,
                 duration_ms = result.duration_ms,
                 decision = ?result.decision,
                 "Hook complete"
@@ -174,7 +174,7 @@ impl HookRunner {
                 // Short-circuit on Block
                 if matches!(merged, HookDecision::Block { .. }) {
                     tracing::error!(
-                        hook = %hook.effective_name(),
+                        hook = %hook.effective_name,
                         event = %context.event,
                         decision = ?merged,
                         "Hook blocked execution"
@@ -183,7 +183,7 @@ impl HookRunner {
                 }
             } else if !result.decision.is_proceed() {
                 tracing::warn!(
-                    hook = %hook.effective_name(),
+                    hook = %hook.effective_name,
                     event = %context.event,
                     decision = ?result.decision,
                     "Non-blocking hook returned non-proceed, ignoring"
@@ -195,14 +195,14 @@ impl HookRunner {
 
     async fn run_non_blocking(
         &self,
-        hooks: &[&HookDefinition],
+        hooks: &[&RuntimeHookDefinition],
         context: &HookContext,
         sandbox: Arc<dyn Sandbox>,
         execution_context: &HookExecutionContext,
     ) -> HookDecision {
         for hook in hooks {
             tracing::debug!(
-                hook = %hook.effective_name(),
+                hook = %hook.effective_name,
                 event = %context.event,
                 "Executing hook"
             );
@@ -218,14 +218,14 @@ impl HookRunner {
                 )
                 .await;
             tracing::debug!(
-                hook = %hook.effective_name(),
+                hook = %hook.effective_name,
                 duration_ms = result.duration_ms,
                 decision = ?result.decision,
                 "Hook complete"
             );
             if !result.decision.is_proceed() {
                 tracing::warn!(
-                    hook = %hook.effective_name(),
+                    hook = %hook.effective_name,
                     event = %context.event,
                     decision = ?result.decision,
                     "Non-blocking hook failed, continuing"
@@ -242,7 +242,7 @@ mod tests {
     use fabro_types::fixtures;
 
     use super::*;
-    use crate::config::HookSettings;
+    use crate::config::{HookSettings, RuntimeHookType};
     use crate::types::{HookContext, HookEvent, HookResult};
 
     struct MockExecutor {
@@ -253,7 +253,7 @@ mod tests {
     impl HookExecutor for MockExecutor {
         async fn execute(
             &self,
-            definition: &HookDefinition,
+            definition: &RuntimeHookDefinition,
             _context: &HookContext,
             _sandbox: Arc<dyn Sandbox>,
             _execution_context: &HookExecutionContext,
@@ -286,16 +286,18 @@ mod tests {
         Arc::new(Catalog::from_builtin().expect("default catalog should build"))
     }
 
-    fn make_hook(event: HookEvent, name: &str) -> HookDefinition {
-        HookDefinition {
+    fn make_hook(event: HookEvent, name: &str) -> RuntimeHookDefinition {
+        RuntimeHookDefinition {
             name: Some(name.into()),
             event,
-            command: Some("echo test".into()),
-            hook_type: None,
+            hook_type: Some(RuntimeHookType::Command {
+                command: "echo test".into(),
+            }),
             matcher: None,
             blocking: None,
             timeout_ms: None,
             sandbox: Some(false),
+            effective_name: name.into(),
         }
     }
 
@@ -470,7 +472,9 @@ mod tests {
         let config = HookSettings {
             hooks: vec![{
                 let mut h = make_hook(HookEvent::RunStart, "echo-hook");
-                h.command = Some("exit 0".into());
+                h.hook_type = Some(RuntimeHookType::Command {
+                    command: "exit 0".into(),
+                });
                 h
             }],
         };
@@ -488,7 +492,9 @@ mod tests {
         let config = HookSettings {
             hooks: vec![{
                 let mut h = make_hook(HookEvent::RunStart, "fail-hook");
-                h.command = Some("exit 1".into());
+                h.hook_type = Some(RuntimeHookType::Command {
+                    command: "exit 1".into(),
+                });
                 h
             }],
         };

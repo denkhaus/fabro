@@ -8174,7 +8174,9 @@ fn subgraph_without_label_no_class_derived() {
 // Hook System E2E Tests
 // ---------------------------------------------------------------------------
 
-fn hook_runner_from_defs(hooks: Vec<fabro_hooks::HookDefinition>) -> Arc<fabro_hooks::HookRunner> {
+fn hook_runner_from_defs(
+    hooks: Vec<fabro_hooks::RuntimeHookDefinition>,
+) -> Arc<fabro_hooks::HookRunner> {
     Arc::new(fabro_hooks::HookRunner::new(
         fabro_hooks::HookSettings { hooks },
         Arc::new(fabro_auth::EnvCredentialSource::new()),
@@ -8227,7 +8229,7 @@ fn emitter_with_events() -> (Arc<Emitter>, Arc<std::sync::Mutex<Vec<RunEvent>>>)
     (Arc::new(emitter), events)
 }
 
-fn engine_with_hooks(hooks: Vec<fabro_hooks::HookDefinition>) -> HookTestRunner {
+fn engine_with_hooks(hooks: Vec<fabro_hooks::RuntimeHookDefinition>) -> HookTestRunner {
     HookTestRunner {
         emitter:     Arc::new(Emitter::default()),
         hook_runner: hook_runner_from_defs(hooks),
@@ -8235,7 +8237,7 @@ fn engine_with_hooks(hooks: Vec<fabro_hooks::HookDefinition>) -> HookTestRunner 
 }
 
 fn engine_with_hooks_and_events(
-    hooks: Vec<fabro_hooks::HookDefinition>,
+    hooks: Vec<fabro_hooks::RuntimeHookDefinition>,
 ) -> (HookTestRunner, Arc<std::sync::Mutex<Vec<RunEvent>>>) {
     let (emitter, events) = emitter_with_events();
     (
@@ -8264,16 +8266,18 @@ fn make_run_options(dir: &std::path::Path) -> RunOptions {
     }
 }
 
-fn make_hook(event: fabro_hooks::HookEvent, command: &str) -> fabro_hooks::HookDefinition {
-    fabro_hooks::HookDefinition {
+fn make_hook(event: fabro_hooks::HookEvent, command: &str) -> fabro_hooks::RuntimeHookDefinition {
+    fabro_hooks::RuntimeHookDefinition {
         name: None,
         event,
-        command: Some(command.into()),
-        hook_type: None,
+        hook_type: Some(fabro_hooks::RuntimeHookType::Command {
+            command: command.to_string(),
+        }),
         matcher: None,
         blocking: None,
         timeout_ms: Some(5000),
         sandbox: Some(false), // run on host for test reliability
+        effective_name: format!("{event}:{command}"),
     }
 }
 
@@ -8837,97 +8841,12 @@ async fn hook_stage_start_exit_2_blocks() {
     assert!(result.is_err(), "exit 2 should block");
 }
 
-// --- Config merge tests (server + run) ---
-
-#[tokio::test]
-async fn hook_config_merge_concatenates() {
-    use fabro_hooks::{HookDefinition, HookEvent, HookSettings};
-
-    let server_hooks = HookSettings {
-        hooks: vec![HookDefinition {
-            name:       Some("server-hook".into()),
-            event:      HookEvent::RunStart,
-            command:    Some("exit 0".into()),
-            hook_type:  None,
-            matcher:    None,
-            blocking:   None,
-            timeout_ms: None,
-            sandbox:    Some(false),
-        }],
-    };
-    let run_hooks = HookSettings {
-        hooks: vec![HookDefinition {
-            name:       Some("run-hook".into()),
-            event:      HookEvent::StageComplete,
-            command:    Some("exit 0".into()),
-            hook_type:  None,
-            matcher:    None,
-            blocking:   None,
-            timeout_ms: None,
-            sandbox:    Some(false),
-        }],
-    };
-
-    let merged = server_hooks.merge(run_hooks);
-    assert_eq!(merged.hooks.len(), 2);
-    assert_eq!(merged.hooks[0].name.as_deref(), Some("server-hook"));
-    assert_eq!(merged.hooks[1].name.as_deref(), Some("run-hook"));
-}
-
-#[tokio::test]
-async fn hook_config_merge_run_overrides_by_name() {
-    use fabro_hooks::{HookDefinition, HookEvent, HookSettings};
-
-    let server_hooks = HookSettings {
-        hooks: vec![HookDefinition {
-            name:       Some("shared".into()),
-            event:      HookEvent::RunStart,
-            command:    Some("exit 1".into()), // would block
-            hook_type:  None,
-            matcher:    None,
-            blocking:   None,
-            timeout_ms: None,
-            sandbox:    Some(false),
-        }],
-    };
-    let run_hooks = HookSettings {
-        hooks: vec![HookDefinition {
-            name:       Some("shared".into()),
-            event:      HookEvent::RunStart,
-            command:    Some("exit 0".into()), // allows
-            hook_type:  None,
-            matcher:    None,
-            blocking:   None,
-            timeout_ms: None,
-            sandbox:    Some(false),
-        }],
-    };
-
-    let merged = server_hooks.merge(run_hooks);
-    assert_eq!(merged.hooks.len(), 1);
-    // Run config wins — command should be "exit 0"
-    assert_eq!(
-        merged.hooks[0]
-            .command
-            .as_ref()
-            .map(fabro_hooks::InterpString::as_source),
-        Some("exit 0".to_string())
-    );
-
-    // Verify it actually works end-to-end
-    let engine = engine_with_hooks(merged.hooks);
-    let graph = parse(simple_linear_dot()).unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    let run_options = make_run_options(dir.path());
-
-    let outcome = engine.run(&graph, &run_options).await.unwrap();
-    assert_eq!(outcome.status, StageOutcome::Succeeded);
-}
-
 // The legacy `Settings`-based TOML parsing tests were deleted in Stage
 // 6.3b. Hook TOML parsing now flows through the v2 config parser path,
 // with coverage in fabro-config unit tests and the fabro-cli integration
-// tests under `cmd::config`.
+// tests under `cmd::config`. Server/run hook config merging likewise lives
+// in the config layer resolution; the resolved list arrives here already
+// merged, so the deleted `HookSettings::merge` had no production callers.
 
 // --- Blocking vs non-blocking behavior ---
 
@@ -9120,6 +9039,233 @@ async fn hooks_do_not_duplicate_workflow_events() {
         .filter(|e| e.event_name() == "run.failed")
         .count();
     assert_eq!(run_failed, 0, "Should have 0 WorkflowRunFailed");
+}
+
+// --- Boundary-resolved interpolation (env + vault secrets) ---
+//
+// Hook InterpStrings resolve once, at the run boundary
+// (`operations::start::runtime_hooks`); these tests drive the same resolver
+// (`HookDefinition::resolve_env`) against a hermetic temp-dir vault and then
+// run the resolved hooks through the engine, proving the executor fires
+// correctly on fully resolved strings.
+
+fn boundary_resolved_hooks(
+    hooks: &[fabro_types::settings::run::HookDefinition],
+    env: &'static [(&'static str, &'static str)],
+    vault: &fabro_vault::Vault,
+) -> Vec<fabro_hooks::RuntimeHookDefinition> {
+    hooks
+        .iter()
+        .map(|hook| {
+            hook.resolve_env(
+                |name| {
+                    env.iter()
+                        .find_map(|(key, value)| (*key == name).then(|| (*value).to_string()))
+                },
+                |name| fabro_auth::vault_get_token(vault, name).ok().flatten(),
+            )
+            .expect("hook should resolve at the run boundary")
+        })
+        .collect()
+}
+
+fn config_command_hook(
+    event: fabro_hooks::HookEvent,
+    command: &str,
+    sandbox: bool,
+) -> fabro_types::settings::run::HookDefinition {
+    fabro_types::settings::run::HookDefinition {
+        name: None,
+        event,
+        command: Some(fabro_types::settings::InterpString::parse(command)),
+        hook_type: None,
+        matcher: None,
+        blocking: None,
+        timeout_ms: Some(5000),
+        sandbox: Some(sandbox),
+    }
+}
+
+fn hook_test_vault(dir: &std::path::Path, entries: &[(&str, &str)]) -> fabro_vault::Vault {
+    let mut vault = fabro_vault::Vault::load(dir.join("secrets.json"))
+        .expect("temp-dir vault should load for hook tests");
+    for (name, value) in entries {
+        fabro_auth::vault_set_token(&mut vault, name, value)
+            .expect("test secret should store in temp vault");
+    }
+    vault
+}
+
+#[tokio::test]
+async fn hook_command_secret_resolves_from_vault_and_proceeds() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = hook_test_vault(dir.path(), &[("HOOK_TOKEN", "hook-secret-value")]);
+    let hooks = boundary_resolved_hooks(
+        &[config_command_hook(
+            fabro_hooks::HookEvent::RunStart,
+            r#"test "{{ secrets.HOOK_TOKEN }}" = "hook-secret-value""#,
+            false,
+        )],
+        &[],
+        &vault,
+    );
+
+    let engine = engine_with_hooks(hooks);
+    let graph = parse(simple_linear_dot()).unwrap();
+    let run_options = make_run_options(dir.path());
+
+    let outcome = engine.run(&graph, &run_options).await.unwrap();
+    assert_eq!(outcome.status, StageOutcome::Succeeded);
+}
+
+#[tokio::test]
+async fn hook_http_secret_url_resolves_from_vault_and_fires() {
+    let server = httpmock::MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/hook");
+            then.status(200).body("");
+        })
+        .await;
+
+    let dir = tempfile::tempdir().unwrap();
+    let vault = hook_test_vault(dir.path(), &[("HOOK_URL", &server.url("/hook"))]);
+    let hooks = boundary_resolved_hooks(
+        &[fabro_types::settings::run::HookDefinition {
+            name:       Some("notify".into()),
+            event:      fabro_hooks::HookEvent::RunStart,
+            command:    None,
+            hook_type:  Some(fabro_types::settings::run::HookType::Http {
+                url:              fabro_types::settings::InterpString::parse(
+                    "{{ secrets.HOOK_URL }}",
+                ),
+                headers:          None,
+                allowed_env_vars: Vec::new(),
+                tls:              fabro_hooks::TlsMode::Off,
+            }),
+            matcher:    None,
+            blocking:   None,
+            timeout_ms: Some(5000),
+            sandbox:    Some(false),
+        }],
+        &[],
+        &vault,
+    );
+
+    let engine = engine_with_hooks(hooks);
+    let graph = parse(simple_linear_dot()).unwrap();
+    let run_options = make_run_options(dir.path());
+
+    let outcome = engine.run(&graph, &run_options).await.unwrap();
+    assert_eq!(outcome.status, StageOutcome::Succeeded);
+    mock.assert_async().await;
+}
+
+// Hook secrets get the standard content-based redaction coverage: a block
+// reason that echoes a resolved credential-shaped secret value is redacted
+// where events are serialized into the run store. Low-entropy values are out
+// of coverage by design, so this asserts only on a credential-shaped marker.
+#[tokio::test]
+async fn hook_block_reason_echoing_secret_is_redacted_in_stored_events() {
+    // Same distinctive credential-shaped test marker as the fabro-redact and
+    // event-redaction tests; never a real credential.
+    const CREDENTIAL_SHAPED_SECRET: &str = "sk-ant-api03-xK9mZ2vL8nQ5rT1wY4bC7dF0gH3jE6pA";
+
+    let dir = tempfile::tempdir().unwrap();
+    let vault = hook_test_vault(dir.path(), &[("HOOK_TOKEN", CREDENTIAL_SHAPED_SECRET)]);
+    let hooks = boundary_resolved_hooks(
+        &[config_command_hook(
+            fabro_hooks::HookEvent::RunStart,
+            r#"echo '{"decision": "block", "reason": "denied by {{ secrets.HOOK_TOKEN }}"}'"#,
+            false,
+        )],
+        &[],
+        &vault,
+    );
+
+    let engine = engine_with_hooks(hooks);
+    let graph = parse(simple_linear_dot()).unwrap();
+    let run_options = make_run_options(dir.path());
+
+    let result = engine.run(&graph, &run_options).await;
+    assert!(result.is_err(), "blocking hook should fail the run");
+
+    // Reopen the run store and inspect the stored (redacted) event payloads.
+    let store_dir = test_store_dir(&run_options.run_dir);
+    let store = Database::new(
+        Arc::new(LocalFileSystem::new_with_prefix(&store_dir).unwrap()),
+        "",
+        Duration::from_millis(1),
+        None,
+    );
+    let run_store = store.open_run_reader(&run_options.run_id).await.unwrap();
+    let events = run_store.list_events().await.unwrap();
+    let stored_text = events
+        .iter()
+        .map(|event| event.event.to_value().unwrap().to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        stored_text.contains("denied by"),
+        "block reason should reach stored events: {stored_text}"
+    );
+    assert!(
+        !stored_text.contains(CREDENTIAL_SHAPED_SECRET),
+        "credential-shaped secret must not appear in stored events"
+    );
+    assert!(
+        stored_text.contains("REDACTED"),
+        "redaction marker should replace the secret value: {stored_text}"
+    );
+}
+
+// Env-only hooks keep working through boundary resolution, on both dispatch
+// paths: host-side (`sandbox = false`) and sandbox-side (`sandbox = true`).
+#[tokio::test]
+async fn hook_env_tokens_resolve_at_boundary_for_host_and_sandbox_dispatch() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = hook_test_vault(dir.path(), &[]);
+    let host_marker = dir.path().join("host_marker.txt");
+    let sandbox_marker = dir.path().join("sandbox_marker.txt");
+    let hooks = boundary_resolved_hooks(
+        &[
+            config_command_hook(
+                fabro_hooks::HookEvent::RunStart,
+                &format!(
+                    r#"printf %s "{{{{ env.HOOK_MARKER }}}}" > {}"#,
+                    host_marker.display()
+                ),
+                false,
+            ),
+            config_command_hook(
+                fabro_hooks::HookEvent::RunStart,
+                &format!(
+                    r#"printf %s "{{{{ env.HOOK_MARKER }}}}" > {}"#,
+                    sandbox_marker.display()
+                ),
+                true,
+            ),
+        ],
+        &[("HOOK_MARKER", "marker-value")],
+        &vault,
+    );
+
+    let engine = engine_with_hooks(hooks);
+    let graph = parse(simple_linear_dot()).unwrap();
+    let run_options = make_run_options(dir.path());
+
+    let outcome = engine.run(&graph, &run_options).await.unwrap();
+    assert_eq!(outcome.status, StageOutcome::Succeeded);
+
+    assert_eq!(
+        std::fs::read_to_string(&host_marker).unwrap(),
+        "marker-value"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&sandbox_marker).unwrap(),
+        "marker-value"
+    );
 }
 
 // ---------------------------------------------------------------------------

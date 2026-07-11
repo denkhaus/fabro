@@ -2668,14 +2668,12 @@ dependencies = [
  "fabro-model",
  "fabro-redact",
  "fabro-types",
- "fabro-util",
  "httpmock",
  "regex",
  "serde",
  "serde_json",
  "tokio",
  "tokio-util",
- "toml 0.8.23",
  "tracing",
 ]
 

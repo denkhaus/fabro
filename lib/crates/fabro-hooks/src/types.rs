@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use fabro_types::RunId;
 use serde::{Deserialize, Serialize};
 
-use crate::config::HookDefinition;
 pub use crate::config::HookEvent;
+use crate::config::RuntimeHookDefinition;
 
 /// Rich JSON payload sent to hooks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,7 +128,7 @@ pub struct HookExecutionContext {
 
 impl HookExecutionContext {
     #[must_use]
-    pub fn command_cwd_for(&self, definition: &HookDefinition) -> Option<&Path> {
+    pub fn command_cwd_for(&self, definition: &RuntimeHookDefinition) -> Option<&Path> {
         if definition.runs_in_sandbox() {
             self.sandbox_work_dir.as_deref()
         } else {
@@ -152,17 +152,20 @@ mod tests {
     use fabro_types::fixtures;
 
     use super::*;
+    use crate::config::RuntimeHookType;
 
-    fn command_hook(sandbox: bool) -> HookDefinition {
-        HookDefinition {
-            name:       Some("cwd-test".into()),
-            event:      HookEvent::RunStart,
-            command:    Some("pwd".into()),
-            hook_type:  None,
-            matcher:    None,
-            blocking:   None,
-            timeout_ms: None,
-            sandbox:    Some(sandbox),
+    fn command_hook(sandbox: bool) -> RuntimeHookDefinition {
+        RuntimeHookDefinition {
+            name:           Some("cwd-test".into()),
+            event:          HookEvent::RunStart,
+            hook_type:      Some(RuntimeHookType::Command {
+                command: "pwd".into(),
+            }),
+            matcher:        None,
+            blocking:       None,
+            timeout_ms:     None,
+            sandbox:        Some(sandbox),
+            effective_name: "cwd-test".into(),
         }
     }
 

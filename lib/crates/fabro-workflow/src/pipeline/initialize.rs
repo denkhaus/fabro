@@ -283,11 +283,13 @@ pub async fn initialize(
     let sandbox_git = Arc::new(SandboxGitRuntime::new());
     let metadata_runtime = Arc::new(RunMetadataRuntime::new());
 
+    // Move (not clone) the hooks into the runner: boundary-resolved hooks
+    // carry resolved secret values, so keep a single copy alive for the run.
     let hook_runner = if options.hooks.hooks.is_empty() {
         None
     } else {
         Some(Arc::new(HookRunner::new(
-            options.hooks.clone(),
+            std::mem::take(&mut options.hooks),
             Arc::clone(&llm_source),
             Arc::clone(&catalog),
         )))

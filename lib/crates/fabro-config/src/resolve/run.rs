@@ -526,12 +526,13 @@ fn resolve_hook(hook: &HookEntry, index: usize, errors: &mut Vec<ResolveError>) 
 }
 
 /// Join an argv-style `command` into a single space-separated [`InterpString`],
-/// preserving every `{{ ... }}` token so the executor resolves it at hook fire
-/// time. The join reconstructs the source form once, in one audited place.
+/// preserving every `{{ ... }}` token for its one-time resolution at the run
+/// boundary (`HookDefinition::resolve_env`). The join reconstructs the source
+/// form once, in one audited place.
 #[expect(
     clippy::disallowed_methods,
     reason = "deliberate source reconstruction: argv parts are reassembled into one InterpString \
-              whose tokens stay typed for resolution at hook fire time"
+              whose tokens stay typed for their one-time resolution at the run boundary"
 )]
 fn join_command(command: &[InterpString]) -> InterpString {
     InterpString::parse(

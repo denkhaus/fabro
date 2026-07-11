@@ -7,6 +7,7 @@
 //! behavior, and artifact collection.
 
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
 use std::time::Duration as StdDuration;
 
@@ -1651,11 +1652,24 @@ fn resolve_env_string(
     if !value.contains("{{") {
         return Ok(());
     }
+    *value = resolve_env_secrets(&InterpString::parse(value), env_lookup, secrets_lookup)?;
+    Ok(())
+}
+
+/// Resolve a typed [`InterpString`] against env + secrets lookups — the one
+/// shared run-boundary resolution context. Tokens in any other namespace fail
+/// loudly (`vars` should already be substituted server-side; `inputs` never
+/// resolves in config fields), and a lookup miss is a hard error with no
+/// fallback to the unresolved source.
+fn resolve_env_secrets(
+    value: &InterpString,
+    env_lookup: &mut impl FnMut(&str) -> Option<String>,
+    secrets_lookup: &mut impl FnMut(&str) -> Option<String>,
+) -> Result<String, ResolveError> {
     let mut ctx = ResolveCtx::new()
         .with_env(&mut *env_lookup)
         .with_secrets(&mut *secrets_lookup);
-    *value = InterpString::parse(value).resolve_with(&mut ctx)?;
-    Ok(())
+    value.resolve_with(&mut ctx)
 }
 
 #[cfg(test)]
@@ -2257,32 +2271,9 @@ impl HookDefinition {
     }
 
     #[must_use]
-    pub fn is_blocking(&self) -> bool {
-        self.blocking
-            .unwrap_or_else(|| self.event.is_blocking_by_default())
-    }
-
-    #[must_use]
-    pub fn timeout(&self) -> StdDuration {
-        if let Some(ms) = self.timeout_ms {
-            return StdDuration::from_millis(ms);
-        }
-        let default_ms = match self.resolved_hook_type().as_deref() {
-            Some(HookType::Prompt { .. }) => 30_000,
-            _ => 60_000,
-        };
-        StdDuration::from_millis(default_ms)
-    }
-
-    #[must_use]
-    pub fn runs_in_sandbox(&self) -> bool {
-        self.sandbox.unwrap_or(true)
-    }
-
-    #[must_use]
     #[expect(
         clippy::disallowed_methods,
-        reason = "effective_name builds a human/merge-identity label from the hook's unresolved \
+        reason = "effective_name builds a human-readable label from the hook's unresolved \
                   template source; the source text is the intended display value here"
     )]
     pub fn effective_name(&self) -> String {
@@ -2304,6 +2295,569 @@ impl HookDefinition {
             }
             None => event,
         }
+    }
+
+    /// Resolve `{{ env.* }}` and `{{ secrets.* }}` tokens in this hook's
+    /// interpolatable fields (`command`, `url`, header values, `prompt`,
+    /// `model`) against the supplied lookups, producing the fully resolved
+    /// [`RuntimeHookDefinition`] the hook executor consumes.
+    ///
+    /// This is the late, use-time half of hook interpolation, the counterpart
+    /// to the server-side `{{ vars.* }}` substitution in
+    /// [`RunNamespace::substitute_variables`]: `{{ vars.* }}` are substituted
+    /// earlier, server-side, while `{{ env.* }}` and `{{ secrets.* }}`
+    /// resolve here — once, at the run boundary, in the worker process that
+    /// fires the hooks. Carrying the source form out of the config resolve
+    /// layer keeps `fabro validate` portable (it never requires env to be
+    /// set), and a referenced env var or secret that is unset is a hard error
+    /// — no fallback to the unresolved source and no fire-time resolution.
+    ///
+    /// HTTP hook headers keep their own, stricter policy, enforced here
+    /// before any lookup: a `{{ secrets.* }}` token is rejected outright
+    /// ([`HookResolveError::SecretsInHeader`]), and an `{{ env.* }}` token
+    /// must name a variable listed in the hook's `allowed_env_vars`
+    /// ([`HookResolveError::HeaderEnvNotAllowed`]).
+    pub fn resolve_env(
+        &self,
+        mut env_lookup: impl FnMut(&str) -> Option<String>,
+        mut secrets_lookup: impl FnMut(&str) -> Option<String>,
+    ) -> Result<RuntimeHookDefinition, HookResolveError> {
+        let hook_type = match self.resolved_hook_type().as_deref() {
+            Some(HookType::Command { command }) => Some(RuntimeHookType::Command {
+                command: resolve_hook_value(command, &mut env_lookup, &mut secrets_lookup)?,
+            }),
+            Some(HookType::Http {
+                url,
+                headers,
+                allowed_env_vars,
+                tls,
+            }) => {
+                let headers = headers
+                    .as_ref()
+                    .map(|headers| {
+                        headers
+                            .iter()
+                            .map(|(name, value)| {
+                                let value =
+                                    resolve_hook_header(value, allowed_env_vars, &mut env_lookup)?;
+                                Ok((name.clone(), value))
+                            })
+                            .collect::<Result<HashMap<_, _>, HookResolveError>>()
+                    })
+                    .transpose()?;
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "url_source deliberately carries the unresolved source so hook HTTP \
+                              logging never includes the resolved URL"
+                )]
+                let url_source = url.as_source();
+                Some(RuntimeHookType::Http(RuntimeHttpHook {
+                    url: resolve_hook_value(url, &mut env_lookup, &mut secrets_lookup)?,
+                    url_source,
+                    headers,
+                    tls: *tls,
+                }))
+            }
+            Some(HookType::Prompt { prompt, model }) => Some(RuntimeHookType::Prompt {
+                prompt: resolve_hook_value(prompt, &mut env_lookup, &mut secrets_lookup)?,
+                model:  model
+                    .as_ref()
+                    .map(|model| resolve_hook_value(model, &mut env_lookup, &mut secrets_lookup))
+                    .transpose()?,
+            }),
+            Some(HookType::Agent {
+                prompt,
+                model,
+                max_tool_rounds,
+            }) => Some(RuntimeHookType::Agent {
+                prompt:          resolve_hook_value(prompt, &mut env_lookup, &mut secrets_lookup)?,
+                model:           model
+                    .as_ref()
+                    .map(|model| resolve_hook_value(model, &mut env_lookup, &mut secrets_lookup))
+                    .transpose()?,
+                max_tool_rounds: *max_tool_rounds,
+            }),
+            None => None,
+        };
+
+        Ok(RuntimeHookDefinition {
+            name: self.name.clone(),
+            event: self.event,
+            hook_type,
+            matcher: self.matcher.clone(),
+            blocking: self.blocking,
+            timeout_ms: self.timeout_ms,
+            sandbox: self.sandbox,
+            effective_name: self.effective_name(),
+        })
+    }
+}
+
+/// Resolve `{{ env.* }}` and `{{ secrets.* }}` tokens in one hook field via
+/// the shared run-boundary resolution context ([`resolve_env_secrets`]).
+fn resolve_hook_value(
+    value: &InterpString,
+    env_lookup: &mut impl FnMut(&str) -> Option<String>,
+    secrets_lookup: &mut impl FnMut(&str) -> Option<String>,
+) -> Result<String, HookResolveError> {
+    resolve_env_secrets(value, env_lookup, secrets_lookup).map_err(HookResolveError::Resolve)
+}
+
+/// Resolve an HTTP hook **header** value, enforcing the header credential
+/// policy before any lookup: `{{ secrets.* }}` tokens are rejected outright,
+/// and `{{ env.* }}` lookups are scoped to `allowed_env_vars`. A name outside
+/// the allowlist fails with a distinct error before any lookup, while an
+/// allowlisted-but-unset name still surfaces as the normal missing-variable
+/// error. An empty `allowed_env_vars` therefore permits no env vars in
+/// headers at all.
+fn resolve_hook_header(
+    value: &InterpString,
+    allowed_env_vars: &[String],
+    env_lookup: &mut impl FnMut(&str) -> Option<String>,
+) -> Result<String, HookResolveError> {
+    if let Some(name) = value.names(Namespace::Secrets).first() {
+        return Err(HookResolveError::SecretsInHeader {
+            name: (*name).to_string(),
+        });
+    }
+    if let Some(name) = value.names(Namespace::Env).into_iter().find(|name| {
+        !allowed_env_vars
+            .iter()
+            .any(|allowed| allowed.as_str() == *name)
+    }) {
+        return Err(HookResolveError::HeaderEnvNotAllowed {
+            name: name.to_string(),
+        });
+    }
+    value
+        .resolve(&mut *env_lookup)
+        .map_err(HookResolveError::Resolve)
+}
+
+/// An error from resolving a hook's interpolation tokens at the run boundary
+/// (see [`HookDefinition::resolve_env`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HookResolveError {
+    /// A `{{ secrets.* }}` token in an HTTP hook header value, rejected
+    /// before any vault lookup: header values travel to third-party
+    /// endpoints, so secrets stay out of them by policy.
+    SecretsInHeader { name: String },
+    /// An `{{ env.* }}` token in an HTTP hook header naming a variable that
+    /// is not listed in the hook's `allowed_env_vars`.
+    HeaderEnvNotAllowed { name: String },
+    /// A missing or out-of-scope token in any hook field.
+    Resolve(ResolveError),
+}
+
+impl fmt::Display for HookResolveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SecretsInHeader { name } => write!(
+                f,
+                "secret {name:?} is not allowed in HTTP hook headers; use secret interpolation \
+                 in a hook command, prompt, or url instead"
+            ),
+            Self::HeaderEnvNotAllowed { name } => write!(
+                f,
+                "environment variable {name:?} referenced by an HTTP hook header is not listed \
+                 in allowed_env_vars"
+            ),
+            Self::Resolve(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for HookResolveError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Resolve(error) => Some(error),
+            Self::SecretsInHeader { .. } | Self::HeaderEnvNotAllowed { .. } => None,
+        }
+    }
+}
+
+/// A hook definition with every interpolatable field resolved to a plain
+/// string, produced at the run boundary by [`HookDefinition::resolve_env`].
+///
+/// This is the form the hook executor consumes: it formats, dispatches, and
+/// merges decisions, but never resolves tokens — the hooks subsystem never
+/// learns about process env or vault secrets. The type is deliberately not
+/// serializable: resolved values may carry secrets and must not round-trip
+/// through manifests or events. For the same reason, never log or
+/// `Debug`-format a whole definition — log `effective_name` instead.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuntimeHookDefinition {
+    pub name:           Option<String>,
+    pub event:          HookEvent,
+    pub hook_type:      Option<RuntimeHookType>,
+    pub matcher:        Option<String>,
+    pub blocking:       Option<bool>,
+    pub timeout_ms:     Option<u64>,
+    pub sandbox:        Option<bool>,
+    /// Human-readable label for logs, built at the boundary from the hook's
+    /// *unresolved* config sources so resolved secret material never reaches
+    /// log output.
+    pub effective_name: String,
+}
+
+impl RuntimeHookDefinition {
+    #[must_use]
+    pub fn is_blocking(&self) -> bool {
+        self.blocking
+            .unwrap_or_else(|| self.event.is_blocking_by_default())
+    }
+
+    #[must_use]
+    pub fn timeout(&self) -> StdDuration {
+        if let Some(ms) = self.timeout_ms {
+            return StdDuration::from_millis(ms);
+        }
+        let default_ms = match self.hook_type {
+            Some(RuntimeHookType::Prompt { .. }) => 30_000,
+            _ => 60_000,
+        };
+        StdDuration::from_millis(default_ms)
+    }
+
+    #[must_use]
+    pub fn runs_in_sandbox(&self) -> bool {
+        self.sandbox.unwrap_or(true)
+    }
+}
+
+/// The resolved counterpart of [`HookType`], carried by
+/// [`RuntimeHookDefinition`].
+///
+/// Like [`RuntimeHookDefinition`], the resolved values may carry secrets:
+/// never log or `Debug`-format them — log the definition's `effective_name`
+/// (and, for HTTP hooks, the `url_source`) instead.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuntimeHookType {
+    Command {
+        command: String,
+    },
+    Http(RuntimeHttpHook),
+    Prompt {
+        prompt: String,
+        model:  Option<String>,
+    },
+    Agent {
+        prompt:          String,
+        model:           Option<String>,
+        max_tool_rounds: Option<u32>,
+    },
+}
+
+/// The resolved payload of an HTTP hook, carried by [`RuntimeHookType::Http`].
+///
+/// A dedicated struct (rather than inline variant fields) so `url` and
+/// `url_source` — two same-typed strings with very different logging rules —
+/// can never be swapped positionally at a call site.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuntimeHttpHook {
+    pub url:        String,
+    /// The unresolved source of `url`, carried so hook HTTP logging can keep
+    /// pointing at the config source instead of the resolved URL (which may
+    /// embed secret material).
+    pub url_source: String,
+    pub headers:    Option<HashMap<String, String>>,
+    pub tls:        TlsMode,
+}
+
+#[cfg(test)]
+mod hook_resolve_env_tests {
+    use std::collections::HashMap;
+
+    use super::super::interp::{Namespace, ResolveErrorKind};
+    use super::{
+        HookDefinition, HookEvent, HookResolveError, HookType, InterpString, RuntimeHookType,
+        TlsMode, pair_lookup as env_lookup, pair_lookup as secret_lookup,
+    };
+
+    fn hook(hook_type: HookType) -> HookDefinition {
+        HookDefinition {
+            name:       Some("test-hook".to_string()),
+            event:      HookEvent::RunStart,
+            command:    None,
+            hook_type:  Some(hook_type),
+            matcher:    None,
+            blocking:   None,
+            timeout_ms: None,
+            sandbox:    Some(false),
+        }
+    }
+
+    fn http_hook(url: &str, headers: &[(&str, &str)], allowed_env_vars: &[&str]) -> HookDefinition {
+        hook(HookType::Http {
+            url:              InterpString::parse(url),
+            headers:          (!headers.is_empty()).then(|| {
+                headers
+                    .iter()
+                    .map(|(name, value)| ((*name).to_string(), InterpString::parse(value)))
+                    .collect()
+            }),
+            allowed_env_vars: allowed_env_vars
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect(),
+            tls:              TlsMode::Off,
+        })
+    }
+
+    #[test]
+    fn command_resolves_env_and_secret_tokens() {
+        let definition = hook(HookType::Command {
+            command: InterpString::parse(
+                "deploy --token {{ secrets.TOKEN }} --region {{ env.REGION }}",
+            ),
+        });
+
+        let resolved = definition
+            .resolve_env(
+                env_lookup(&[("REGION", "us-east-1")]),
+                secret_lookup(&[("TOKEN", "vault-value")]),
+            )
+            .unwrap();
+
+        assert_eq!(
+            resolved.hook_type,
+            Some(RuntimeHookType::Command {
+                command: "deploy --token vault-value --region us-east-1".to_string(),
+            })
+        );
+        assert_eq!(resolved.effective_name, "test-hook");
+    }
+
+    #[test]
+    fn legacy_command_field_resolves() {
+        let definition = HookDefinition {
+            hook_type: None,
+            command: Some(InterpString::parse("echo {{ env.MARKER }}")),
+            ..hook(HookType::Command {
+                command: InterpString::parse("unused"),
+            })
+        };
+
+        let resolved = definition
+            .resolve_env(env_lookup(&[("MARKER", "ok")]), secret_lookup(&[]))
+            .unwrap();
+
+        assert_eq!(
+            resolved.hook_type,
+            Some(RuntimeHookType::Command {
+                command: "echo ok".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn missing_secret_is_hard_error_naming_the_secret() {
+        let definition = hook(HookType::Command {
+            command: InterpString::parse("deploy {{ secrets.MISSING_TOKEN }}"),
+        });
+
+        let err = definition
+            .resolve_env(env_lookup(&[]), secret_lookup(&[]))
+            .unwrap_err();
+
+        let HookResolveError::Resolve(error) = err else {
+            panic!("expected resolve error, got {err:?}");
+        };
+        assert_eq!(error.namespace, Namespace::Secrets);
+        assert_eq!(error.name, "MISSING_TOKEN");
+        assert_eq!(error.kind, ResolveErrorKind::Missing);
+    }
+
+    // `inputs` stays template-only: a hook field referencing it fails loudly
+    // as an unavailable namespace, exactly as fire-time resolution did.
+    #[test]
+    fn inputs_token_is_unavailable_namespace_error() {
+        let definition = hook(HookType::Command {
+            command: InterpString::parse("echo {{ inputs.ticket }}"),
+        });
+
+        let err = definition
+            .resolve_env(env_lookup(&[]), secret_lookup(&[]))
+            .unwrap_err();
+
+        let HookResolveError::Resolve(error) = err else {
+            panic!("expected resolve error, got {err:?}");
+        };
+        assert_eq!(error.kind, ResolveErrorKind::Unavailable);
+    }
+
+    #[test]
+    fn http_url_resolves_secret_and_carries_unresolved_source() {
+        let definition = http_hook("{{ secrets.HOOK_URL }}/notify", &[], &[]);
+
+        let resolved = definition
+            .resolve_env(
+                env_lookup(&[]),
+                secret_lookup(&[("HOOK_URL", "https://user:pw@hooks.example.com")]),
+            )
+            .unwrap();
+
+        let Some(RuntimeHookType::Http(http)) = resolved.hook_type else {
+            panic!("expected http hook type");
+        };
+        assert_eq!(http.url, "https://user:pw@hooks.example.com/notify");
+        assert_eq!(http.url_source, "{{ secrets.HOOK_URL }}/notify");
+    }
+
+    #[test]
+    fn header_resolves_allowlisted_env_var() {
+        let definition = http_hook(
+            "https://hooks.example.com",
+            &[("Authorization", "Bearer {{ env.HOOK_KEY }}")],
+            &["HOOK_KEY"],
+        );
+
+        let resolved = definition
+            .resolve_env(env_lookup(&[("HOOK_KEY", "key-123")]), secret_lookup(&[]))
+            .unwrap();
+
+        let Some(RuntimeHookType::Http(http)) = resolved.hook_type else {
+            panic!("expected http hook type");
+        };
+        assert_eq!(
+            http.headers,
+            Some(HashMap::from([(
+                "Authorization".to_string(),
+                "Bearer key-123".to_string(),
+            )]))
+        );
+    }
+
+    // A secret token in a header is rejected before any vault lookup — the
+    // panicking secrets lookup proves the value is never fetched.
+    #[test]
+    fn header_secret_token_is_rejected_before_lookup() {
+        let definition = http_hook(
+            "https://hooks.example.com",
+            &[("Authorization", "Bearer {{ secrets.HOOK_KEY }}")],
+            &[],
+        );
+
+        let err = definition
+            .resolve_env(env_lookup(&[]), |_: &str| -> Option<String> {
+                panic!("secrets lookup must not run for header values")
+            })
+            .unwrap_err();
+
+        assert_eq!(err, HookResolveError::SecretsInHeader {
+            name: "HOOK_KEY".to_string(),
+        });
+        assert_eq!(
+            err.to_string(),
+            "secret \"HOOK_KEY\" is not allowed in HTTP hook headers; use secret interpolation \
+             in a hook command, prompt, or url instead"
+        );
+    }
+
+    // Fail-closed: a header may not read an env var that is set in the
+    // process but missing from `allowed_env_vars`. This is distinct from an
+    // unset allowlisted variable, so the error points at the allowlist.
+    #[test]
+    fn header_rejects_env_var_outside_allowlist() {
+        let definition = http_hook(
+            "https://hooks.example.com",
+            &[("Authorization", "Bearer {{ env.HOOK_KEY }}")],
+            &[],
+        );
+
+        let err = definition
+            .resolve_env(
+                env_lookup(&[("HOOK_KEY", "should_not_appear")]),
+                secret_lookup(&[]),
+            )
+            .unwrap_err();
+
+        assert_eq!(err, HookResolveError::HeaderEnvNotAllowed {
+            name: "HOOK_KEY".to_string(),
+        });
+        assert_eq!(
+            err.to_string(),
+            "environment variable \"HOOK_KEY\" referenced by an HTTP hook header is not listed \
+             in allowed_env_vars"
+        );
+    }
+
+    #[test]
+    fn header_allowlisted_but_unset_env_var_is_missing_error() {
+        let definition = http_hook(
+            "https://hooks.example.com",
+            &[("Authorization", "Bearer {{ env.HOOK_KEY }}")],
+            &["HOOK_KEY"],
+        );
+
+        let err = definition
+            .resolve_env(env_lookup(&[]), secret_lookup(&[]))
+            .unwrap_err();
+
+        let HookResolveError::Resolve(error) = err else {
+            panic!("expected resolve error, got {err:?}");
+        };
+        assert_eq!(error.name, "HOOK_KEY");
+        assert_eq!(error.kind, ResolveErrorKind::Missing);
+    }
+
+    #[test]
+    fn prompt_and_model_resolve_tokens() {
+        let definition = hook(HookType::Prompt {
+            prompt: InterpString::parse("check {{ secrets.POLICY }}"),
+            model:  Some(InterpString::parse("{{ env.HOOK_MODEL }}")),
+        });
+
+        let resolved = definition
+            .resolve_env(
+                env_lookup(&[("HOOK_MODEL", "haiku")]),
+                secret_lookup(&[("POLICY", "no-force-push")]),
+            )
+            .unwrap();
+
+        assert_eq!(
+            resolved.hook_type,
+            Some(RuntimeHookType::Prompt {
+                prompt: "check no-force-push".to_string(),
+                model:  Some("haiku".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn definition_without_hook_type_resolves_to_none() {
+        let definition = HookDefinition {
+            name:       None,
+            event:      HookEvent::StageStart,
+            command:    None,
+            hook_type:  None,
+            matcher:    None,
+            blocking:   None,
+            timeout_ms: None,
+            sandbox:    None,
+        };
+
+        let resolved = definition
+            .resolve_env(env_lookup(&[]), secret_lookup(&[]))
+            .unwrap();
+
+        assert_eq!(resolved.hook_type, None);
+        assert_eq!(resolved.effective_name, "stage_start");
+    }
+
+    #[test]
+    fn runtime_defaults_match_config_semantics() {
+        let resolved = hook(HookType::Prompt {
+            prompt: InterpString::parse("ok?"),
+            model:  None,
+        })
+        .resolve_env(env_lookup(&[]), secret_lookup(&[]))
+        .unwrap();
+
+        // RunStart is blocking by default; prompt hooks default to 30s.
+        assert!(resolved.is_blocking());
+        assert_eq!(resolved.timeout(), std::time::Duration::from_secs(30));
+        assert!(!resolved.runs_in_sandbox());
     }
 }
 

@@ -4,8 +4,8 @@ use std::sync::Arc;
 use fabro_agent::{LocalSandbox, Sandbox};
 use fabro_auth::{CredentialSource, EnvCredentialSource};
 use fabro_hooks::{
-    HookContext, HookDecision, HookDefinition, HookEvent, HookExecutionContext, HookRunner,
-    HookSettings, InterpString,
+    HookContext, HookDecision, HookEvent, HookExecutionContext, HookRunner, HookSettings,
+    RuntimeHookDefinition, RuntimeHookType,
 };
 use fabro_model::Catalog;
 use fabro_types::RunId;
@@ -41,15 +41,17 @@ async fn host_command_hook_uses_host_workdir_not_sandbox_workdir() {
 
     let runner = HookRunner::new(
         HookSettings {
-            hooks: vec![HookDefinition {
-                name:       Some("host-marker".to_string()),
-                event:      HookEvent::RunStart,
-                command:    Some(InterpString::parse("printf ran > marker.txt")),
-                hook_type:  None,
-                matcher:    None,
-                blocking:   Some(true),
-                timeout_ms: Some(5000),
-                sandbox:    Some(false),
+            hooks: vec![RuntimeHookDefinition {
+                name:           Some("host-marker".to_string()),
+                event:          HookEvent::RunStart,
+                hook_type:      Some(RuntimeHookType::Command {
+                    command: "printf ran > marker.txt".to_string(),
+                }),
+                matcher:        None,
+                blocking:       Some(true),
+                timeout_ms:     Some(5000),
+                sandbox:        Some(false),
+                effective_name: "host-marker".to_string(),
             }],
         },
         test_llm_source(),
