@@ -505,7 +505,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-11T20:41:56.850021720Z",
-  "last_event_at": "2026-07-11T20:57:24.004517456Z",
+  "last_event_at": "2026-07-11T21:08:17.901221294Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1249,9 +1249,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 355,
       "checkpoint": {
-        "timestamp": "2026-07-11T21:08:14.363322828Z",
+        "timestamp": "2026-07-11T21:08:17.901025529Z",
         "current_node": "verify",
         "completed_nodes": [
           "start",
@@ -1265,94 +1265,39 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.node_visit_count": 1,
-          "graph.goal": "# Remove the unused per-run secret registry (`SecretRedactor`) and stale references to it\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. Independent — no preconditions; can land\nanytime.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `env.NAME`, `secrets.NAME` as the double-curly-brace token form used in\n> the codebase.\n\n## Context and goal\n\nFabro redacts secrets from run output using **content-based** detection:\nentropy analysis plus gitleaks-style credential patterns\n(`fabro_redact::redact_string` / `redact_json_value`), applied where events are\nserialized and where exec-output tails are captured.\n\nA second mechanism was staged but never adopted: `SecretRedactor`, a per-run\nregistry of exact secret values, intended to be populated when declared\nsecrets resolve at the run boundary and then substituted out of run output\n(catching low-entropy secret values that content-based detection cannot). The\ntype landed as infrastructure ahead of its wiring; the wiring PR was\nultimately **not merged** — the team decided the registration approach was too\nmuch plumbing for too little benefit over the existing content-based\nredaction, and content-based redaction is now the settled mechanism.\n\nThat leaves dead code and two stale forward references on main:\n\n- `SecretRedactor` has **zero consumers** outside its own crate — nothing\n  constructs, registers into, or applies it anywhere in the workspace.\n- A doc comment in `fabro-auth` says provider-header secret resolution sits\n  outside the registry \"until exact-match registration is threaded through\" —\n  a follow-up that will never happen.\n- The `InterpString` module doc in `fabro-types` says declared-secret values\n  \"are intended to be registered into a per-run exact-value redactor\" —\n  describing the abandoned design as if it were pending.\n\n**Goal:** delete the dead type and rewrite both stale comments so the code\ndescribes the real architecture (content-based redaction only). Pure\ndeletion/documentation PR — no behavior change.\n\n## Verified current state (as of main `9daca83b3`, 2026-07-09 — re-verify before starting; line numbers are anchors, not gospel)\n\n- `lib/crates/fabro-redact/src/secret_registry.rs` — the whole module\n  (~217 lines: `SecretRedactor` with `register`, `is_empty`, redaction\n  methods, and its unit tests). Uses `crate::Region`, which is **shared** with\n  `entropy.rs` and `gitleaks.rs` and must stay.\n- `lib/crates/fabro-redact/src/lib.rs:11` — `mod secret_registry;` and `:15`\n  `pub use secret_registry::SecretRedactor;`.\n- Workspace-wide grep for `SecretRedactor` outside `fabro-redact` returns\n  nothing (no consumers in `lib/`, `apps/`, or `docs/`). If this grep finds a\n  consumer when you run it, **stop** — the premise of this plan no longer\n  holds; state that instead of deleting.\n- `lib/crates/fabro-auth/src/resolve.rs:479-482` — doc comment on\n  `resolve_extra_headers`:\n  \"Provider header secrets resolve outside the run-boundary redactor\n  registration path. Keep this path free of value logging until exact-match\n  registration is threaded through.\"\n- `lib/crates/fabro-types/src/settings/interp.rs:17-19` — module doc sentence:\n  \"Declared-secret values are intended to be registered into a per-run\n  exact-value redactor where secrets resolve; sensitivity is not tracked on\n  resolved strings.\"\n\n## Implementation\n\n1. **Delete the module**: remove\n   `lib/crates/fabro-redact/src/secret_registry.rs`, the `mod secret_registry;`\n   declaration, and the `pub use secret_registry::SecretRedactor;` re-export\n   from `lib.rs`. Leave `Region`, `redact_string`, `redact_json_value`,\n   `DisplaySafeUrl`, and everything else in the crate untouched.\n2. **Rewrite the `fabro-auth` comment** on `resolve_extra_headers`: keep the\n   operative guidance (never log resolved header values — they may contain\n   secrets), drop the promise of future exact-match registration. Suggested\n   shape: \"Resolved header values may contain secrets; keep this path free of\n   value logging. Content-based redaction covers credential-shaped values on\n   output surfaces, but nothing substitutes these exact values.\"\n3. **Rewrite the `interp.rs` module-doc sentence**: state the real\n   architecture — resolved secret values are plain strings; sensitivity is not\n   tracked on resolved strings; redaction of run output is content-based\n   (entropy + credential patterns), applied where output is serialized. Do not\n   reference a registry or any pending mechanism.\n4. **Sweep for stragglers**: `rg -n \"SecretRedactor|secret_registry|exact-match|exact-value\" lib/ docs/internal/`\n   — any remaining hit that describes per-run exact-value redaction as\n   existing or planned must be removed or rewritten in this PR. (Expected\n   after steps 1–3: no hits.)\n\n## Scope boundaries — deliberately NOT in this PR\n\n- **Content-based redaction** (`redact_string`, `redact_json_value`, the\n  entropy/gitleaks finders, `Region`) — untouched. This PR removes the unused\n  second mechanism, not the working first one.\n- **Where content-based redaction is applied** (event serialization,\n  exec-output tails, server read paths) — no changes to any application site;\n  this PR does not move, add, or remove redaction passes.\n- **`DisplaySafeUrl` and redacting `Debug` impls** — untouched; unrelated\n  pattern.\n- **The live command-output log path** — has no redaction today; a separate\n  planned change addresses it. Do not touch it here.\n- **`fabro-hooks`** — untouched.\n\nIf work outside these boundaries seems genuinely required for this PR to\ncompile or pass its tests, stop and state that in the PR description rather\nthan expanding scope.\n\n## Tests\n\n- No new tests: the deleted module's tests go with it; no behavior changes to\n  test. Existing `fabro-redact` tests (entropy, gitleaks, jsonl, safe-url)\n  must pass unchanged.\n- `cargo build --workspace` proves no hidden consumer existed.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- The sweep in step 4 returns clean.\n- No OpenAPI/wire change; no TypeScript client regeneration.\n\n## Conventions\n\n- Plain-English commit messages, PR text, and comments — describe what the\n  change does; no internal planning identifiers or plan-file names in\n  anything that ships.\n- PR description must state plainly: the exact-value registry approach was\n  abandoned in favor of the existing content-based redaction; the type was\n  never wired to any consumer; the two rewritten comments previously promised\n  the abandoned mechanism. Known limitation to state honestly: low-entropy\n  declared secret values (e.g. a secret whose value is an ordinary word) are\n  not caught by content-based detection — this is an accepted trade, not a\n  regression introduced here.\n",
-          "internal.fidelity": "compact",
-          "outcome": "succeeded",
-          "thread.toolchain.current_node": "preflight_compile",
-          "command.output": "blob://sha256/039da23795b8b5399d1bf9974313a6b6049fd9039b38fcb6f7e99f8c596ca833",
-          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
-          "internal.thread_id": "simplify_gpt",
-          "thread.preflight_lint.current_node": "implement",
-          "thread.simplify_fable.current_node": "simplify_gpt",
-          "internal.work_dir": "/home/daytona/workspace/fabro",
-          "current_node": "verify",
-          "response.simplify_fable": "Done. The previous implement stage had failed on an API auth error before doing any work, so I completed the implementation and then ran the three-agent review.\n\n## What was done\n\n**Implementation** (per the plan):\n- Deleted `lib/crates/fabro-redact/src/secret_registry.rs` (217 lines: the never-consumed `SecretRedactor` and its tests), plus the `mod` declaration and `pub use` re-export in `lib.rs`\n- Rewrote the `resolve_extra_headers` doc comment in `lib/crates/fabro-auth/src/resolve.rs:478-483` — keeps the \"never log resolved header values\" guidance, drops the abandoned exact-match-registration promise, and states the residual risk (low-entropy header values aren't caught by content-based detection)\n- Rewrote the `interp.rs` module doc in `lib/crates/fabro-types/src/settings/interp.rs:17-20` to describe the real architecture: resolved secrets are plain strings, redaction is content-based at output-serialization surfaces\n\n**Review findings** (three parallel agents — reuse, quality, efficiency):\n- All three verdicts: clean. Deletion is complete (zero `SecretRedactor` references remain; the `secret_registry` module in `fabro-static` is an unrelated registry of secret env-var *names*); nothing in `fabro-redact` became dead (`Region`, `redact_regions`, `serde_json`, and all deps still have live users); no runtime code paths changed; no dependent crate lost its reason to depend on `fabro-redact`\n- **Fixed** two wording nits from the quality reviewer: clarified the ambiguous \"nothing substitutes these exact values\" phrasing in `resolve.rs`, and removed the \"resolved … resolved\" redundancy in `interp.rs`\n- **Skipped** one finding: `Region` could be `pub(crate)` — pre-existing and the plan explicitly says leave `Region` untouched\n\n**Verification** — all green:\n- `cargo +nightly-2026-04-14 fmt --check --all` ✓\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings` ✓\n- `cargo nextest run --workspace` — 6955 passed, 0 failed ✓\n- Straggler sweep clean (only the unrelated `fabro-static` name registry remains)",
-          "failure_class": "",
-          "internal.retry_count.simplify_gpt": 0,
-          "failure_signature": "",
-          "graph.rankdir": "LR",
-          "thread.start.current_node": "toolchain",
-          "internal.retry_count.toolchain": 0,
-          "internal.retry_count.simplify_fable": 0,
           "internal.retry_count.start": 0,
-          "last_stage": "simplify_fable",
+          "failure_class": "",
           "internal.retry_count.preflight_compile": 0,
+          "thread.start.current_node": "toolchain",
+          "thread.preflight_lint.current_node": "implement",
+          "thread.toolchain.current_node": "preflight_compile",
+          "internal.fidelity": "compact",
+          "graph.model_stylesheet": "\n            * { model: claude-opus-4-8; }\n        ",
+          "internal.retry_count.simplify_gpt": 0,
           "thread.preflight_compile.current_node": "preflight_lint",
-          "internal.retry_count.preflight_lint": 0,
-          "internal.retry_count.implement": 0,
-          "last_response": "Done. The previous implement stage had failed on an API auth error before doing any work, so I completed the implementation and then ran the three-agent review.\n\n## What was done\n\n**Implementation** (",
-          "thread.simplify_gpt.current_node": "verify",
+          "internal.run_id": "01KX9EKZGANW47ANJQSDMMFBBP",
           "internal.retry_count.verify": 0,
           "thread.implement.current_node": "simplify_fable",
-          "internal.run_id": "01KX9EKZGANW47ANJQSDMMFBBP"
+          "internal.retry_count.toolchain": 0,
+          "internal.retry_count.implement": 0,
+          "response.simplify_fable": "Done. The previous implement stage had failed on an API auth error before doing any work, so I completed the implementation and then ran the three-agent review.\n\n## What was done\n\n**Implementation** (per the plan):\n- Deleted `lib/crates/fabro-redact/src/secret_registry.rs` (217 lines: the never-consumed `SecretRedactor` and its tests), plus the `mod` declaration and `pub use` re-export in `lib.rs`\n- Rewrote the `resolve_extra_headers` doc comment in `lib/crates/fabro-auth/src/resolve.rs:478-483` — keeps the \"never log resolved header values\" guidance, drops the abandoned exact-match-registration promise, and states the residual risk (low-entropy header values aren't caught by content-based detection)\n- Rewrote the `interp.rs` module doc in `lib/crates/fabro-types/src/settings/interp.rs:17-20` to describe the real architecture: resolved secrets are plain strings, redaction is content-based at output-serialization surfaces\n\n**Review findings** (three parallel agents — reuse, quality, efficiency):\n- All three verdicts: clean. Deletion is complete (zero `SecretRedactor` references remain; the `secret_registry` module in `fabro-static` is an unrelated registry of secret env-var *names*); nothing in `fabro-redact` became dead (`Region`, `redact_regions`, `serde_json`, and all deps still have live users); no runtime code paths changed; no dependent crate lost its reason to depend on `fabro-redact`\n- **Fixed** two wording nits from the quality reviewer: clarified the ambiguous \"nothing substitutes these exact values\" phrasing in `resolve.rs`, and removed the \"resolved … resolved\" redundancy in `interp.rs`\n- **Skipped** one finding: `Region` could be `pub(crate)` — pre-existing and the plan explicitly says leave `Region` untouched\n\n**Verification** — all green:\n- `cargo +nightly-2026-04-14 fmt --check --all` ✓\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings` ✓\n- `cargo nextest run --workspace` — 6955 passed, 0 failed ✓\n- Straggler sweep clean (only the unrelated `fabro-static` name registry remains)",
+          "failure_signature": "",
+          "current_node": "verify",
+          "graph.rankdir": "LR",
+          "outcome": "succeeded",
+          "command.output": "blob://sha256/039da23795b8b5399d1bf9974313a6b6049fd9039b38fcb6f7e99f8c596ca833",
+          "last_response": "Done. The previous implement stage had failed on an API auth error before doing any work, so I completed the implementation and then ran the three-agent review.\n\n## What was done\n\n**Implementation** (",
+          "internal.retry_count.preflight_lint": 0,
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.retry_count.simplify_fable": 0,
+          "graph.goal": "# Remove the unused per-run secret registry (`SecretRedactor`) and stale references to it\n\n**Self-contained implementation plan.** Everything needed to implement this is\nin this file plus the repository. Independent — no preconditions; can land\nanytime.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly as\n> a workflow goal (the goal templater would otherwise try to expand them).\n> Read `env.NAME`, `secrets.NAME` as the double-curly-brace token form used in\n> the codebase.\n\n## Context and goal\n\nFabro redacts secrets from run output using **content-based** detection:\nentropy analysis plus gitleaks-style credential patterns\n(`fabro_redact::redact_string` / `redact_json_value`), applied where events are\nserialized and where exec-output tails are captured.\n\nA second mechanism was staged but never adopted: `SecretRedactor`, a per-run\nregistry of exact secret values, intended to be populated when declared\nsecrets resolve at the run boundary and then substituted out of run output\n(catching low-entropy secret values that content-based detection cannot). The\ntype landed as infrastructure ahead of its wiring; the wiring PR was\nultimately **not merged** — the team decided the registration approach was too\nmuch plumbing for too little benefit over the existing content-based\nredaction, and content-based redaction is now the settled mechanism.\n\nThat leaves dead code and two stale forward references on main:\n\n- `SecretRedactor` has **zero consumers** outside its own crate — nothing\n  constructs, registers into, or applies it anywhere in the workspace.\n- A doc comment in `fabro-auth` says provider-header secret resolution sits\n  outside the registry \"until exact-match registration is threaded through\" —\n  a follow-up that will never happen.\n- The `InterpString` module doc in `fabro-types` says declared-secret values\n  \"are intended to be registered into a per-run exact-value redactor\" —\n  describing the abandoned design as if it were pending.\n\n**Goal:** delete the dead type and rewrite both stale comments so the code\ndescribes the real architecture (content-based redaction only). Pure\ndeletion/documentation PR — no behavior change.\n\n## Verified current state (as of main `9daca83b3`, 2026-07-09 — re-verify before starting; line numbers are anchors, not gospel)\n\n- `lib/crates/fabro-redact/src/secret_registry.rs` — the whole module\n  (~217 lines: `SecretRedactor` with `register`, `is_empty`, redaction\n  methods, and its unit tests). Uses `crate::Region`, which is **shared** with\n  `entropy.rs` and `gitleaks.rs` and must stay.\n- `lib/crates/fabro-redact/src/lib.rs:11` — `mod secret_registry;` and `:15`\n  `pub use secret_registry::SecretRedactor;`.\n- Workspace-wide grep for `SecretRedactor` outside `fabro-redact` returns\n  nothing (no consumers in `lib/`, `apps/`, or `docs/`). If this grep finds a\n  consumer when you run it, **stop** — the premise of this plan no longer\n  holds; state that instead of deleting.\n- `lib/crates/fabro-auth/src/resolve.rs:479-482` — doc comment on\n  `resolve_extra_headers`:\n  \"Provider header secrets resolve outside the run-boundary redactor\n  registration path. Keep this path free of value logging until exact-match\n  registration is threaded through.\"\n- `lib/crates/fabro-types/src/settings/interp.rs:17-19` — module doc sentence:\n  \"Declared-secret values are intended to be registered into a per-run\n  exact-value redactor where secrets resolve; sensitivity is not tracked on\n  resolved strings.\"\n\n## Implementation\n\n1. **Delete the module**: remove\n   `lib/crates/fabro-redact/src/secret_registry.rs`, the `mod secret_registry;`\n   declaration, and the `pub use secret_registry::SecretRedactor;` re-export\n   from `lib.rs`. Leave `Region`, `redact_string`, `redact_json_value`,\n   `DisplaySafeUrl`, and everything else in the crate untouched.\n2. **Rewrite the `fabro-auth` comment** on `resolve_extra_headers`: keep the\n   operative guidance (never log resolved header values — they may contain\n   secrets), drop the promise of future exact-match registration. Suggested\n   shape: \"Resolved header values may contain secrets; keep this path free of\n   value logging. Content-based redaction covers credential-shaped values on\n   output surfaces, but nothing substitutes these exact values.\"\n3. **Rewrite the `interp.rs` module-doc sentence**: state the real\n   architecture — resolved secret values are plain strings; sensitivity is not\n   tracked on resolved strings; redaction of run output is content-based\n   (entropy + credential patterns), applied where output is serialized. Do not\n   reference a registry or any pending mechanism.\n4. **Sweep for stragglers**: `rg -n \"SecretRedactor|secret_registry|exact-match|exact-value\" lib/ docs/internal/`\n   — any remaining hit that describes per-run exact-value redaction as\n   existing or planned must be removed or rewritten in this PR. (Expected\n   after steps 1–3: no hits.)\n\n## Scope boundaries — deliberately NOT in this PR\n\n- **Content-based redaction** (`redact_string`, `redact_json_value`, the\n  entropy/gitleaks finders, `Region`) — untouched. This PR removes the unused\n  second mechanism, not the working first one.\n- **Where content-based redaction is applied** (event serialization,\n  exec-output tails, server read paths) — no changes to any application site;\n  this PR does not move, add, or remove redaction passes.\n- **`DisplaySafeUrl` and redacting `Debug` impls** — untouched; unrelated\n  pattern.\n- **The live command-output log path** — has no redaction today; a separate\n  planned change addresses it. Do not touch it here.\n- **`fabro-hooks`** — untouched.\n\nIf work outside these boundaries seems genuinely required for this PR to\ncompile or pass its tests, stop and state that in the PR description rather\nthan expanding scope.\n\n## Tests\n\n- No new tests: the deleted module's tests go with it; no behavior changes to\n  test. Existing `fabro-redact` tests (entropy, gitleaks, jsonl, safe-url)\n  must pass unchanged.\n- `cargo build --workspace` proves no hidden consumer existed.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- The sweep in step 4 returns clean.\n- No OpenAPI/wire change; no TypeScript client regeneration.\n\n## Conventions\n\n- Plain-English commit messages, PR text, and comments — describe what the\n  change does; no internal planning identifiers or plan-file names in\n  anything that ships.\n- PR description must state plainly: the exact-value registry approach was\n  abandoned in favor of the existing content-based redaction; the type was\n  never wired to any consumer; the two rewritten comments previously promised\n  the abandoned mechanism. Known limitation to state honestly: low-entropy\n  declared secret values (e.g. a secret whose value is an ordinary word) are\n  not caught by content-based detection — this is an accepted trade, not a\n  regression introduced here.\n",
+          "internal.thread_id": "simplify_gpt",
+          "thread.simplify_fable.current_node": "simplify_gpt",
+          "last_stage": "simplify_fable",
+          "thread.simplify_gpt.current_node": "verify"
         },
         "node_outcomes": {
-          "preflight_lint": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
-            },
-            "notes": "Script completed: cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 165593,
-              "active_time_ms": 165593
-            }
-          },
-          "verify": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/039da23795b8b5399d1bf9974313a6b6049fd9039b38fcb6f7e99f8c596ca833"
-            },
-            "notes": "Script completed: git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 650350,
-              "active_time_ms": 650350
-            }
-          },
-          "simplify_gpt": {
-            "status": "failed",
-            "failure": {
-              "message": "LLM error: Authentication error for openai: Your authentication token has been invalidated. Please try signing in again.",
-              "category": "deterministic",
-              "signature": "api_deterministic|openai|authentication"
-            },
-            "usage": null
-          },
-          "preflight_compile": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
-            },
-            "notes": "Script completed: cargo check -q --workspace 2>&1",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 154356,
-              "active_time_ms": 154356
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "implement": {
             "status": "failed",
             "failure": {
@@ -1360,6 +1305,10 @@
               "category": "deterministic",
               "signature": "api_deterministic|openai|authentication"
             },
+            "usage": null
+          },
+          "start": {
+            "status": "succeeded",
             "usage": null
           },
           "simplify_fable": {
@@ -1418,24 +1367,198 @@
               "tool_time_ms": 1257,
               "active_time_ms": 1257
             }
+          },
+          "preflight_lint": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 165593,
+              "active_time_ms": 165593
+            }
+          },
+          "verify": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/039da23795b8b5399d1bf9974313a6b6049fd9039b38fcb6f7e99f8c596ca833"
+            },
+            "notes": "Script completed: git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 650350,
+              "active_time_ms": 650350
+            }
+          },
+          "preflight_compile": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo check -q --workspace 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 154356,
+              "active_time_ms": 154356
+            }
+          },
+          "simplify_gpt": {
+            "status": "failed",
+            "failure": {
+              "message": "LLM error: Authentication error for openai: Your authentication token has been invalidated. Please try signing in again.",
+              "category": "deterministic",
+              "signature": "api_deterministic|openai|authentication"
+            },
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "8331076aa7c1388932a26e2f7efea4fea294932a",
+        "loop_failure_signatures": {
+          "implement|deterministic|api_deterministic|openai|authentication": 1,
+          "simplify_gpt|deterministic|api_deterministic|openai|authentication": 1
+        },
         "node_visits": {
-          "simplify_fable": 1,
-          "start": 1,
           "preflight_compile": 1,
-          "verify": 1,
           "implement": 1,
           "simplify_gpt": 1,
+          "start": 1,
+          "preflight_lint": 1,
+          "simplify_fable": 1,
           "toolchain": 1,
-          "preflight_lint": 1
+          "verify": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 4,
+          "additions": 8,
+          "deletions": 225
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-07-11T21:08:17.917861592Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 1581054,
+      "inference_time_ms": 191710,
+      "tool_time_ms": 1363713,
+      "active_time_ms": 1555423
+    },
+    "final_git_commit_sha": "8331076aa7c1388932a26e2f7efea4fea294932a",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "toolchain",
+        "stage_label": "toolchain",
+        "timing": {
+          "wall_time_ms": 1261,
+          "inference_time_ms": 0,
+          "tool_time_ms": 1257,
+          "active_time_ms": 1257
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "preflight_compile",
+        "stage_label": "preflight_compile",
+        "timing": {
+          "wall_time_ms": 154360,
+          "inference_time_ms": 0,
+          "tool_time_ms": 154356,
+          "active_time_ms": 154356
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "preflight_lint",
+        "stage_label": "preflight_lint",
+        "timing": {
+          "wall_time_ms": 165596,
+          "inference_time_ms": 0,
+          "tool_time_ms": 165593,
+          "active_time_ms": 165593
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "implement",
+        "stage_label": "implement",
+        "timing": {
+          "wall_time_ms": 419,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "simplify_fable",
+        "stage_label": "simplify_fable",
+        "timing": {
+          "wall_time_ms": 584164,
+          "inference_time_ms": 191710,
+          "tool_time_ms": 392157,
+          "active_time_ms": 583867
+        },
+        "billing_usd_micros": 2274690,
+        "retries": 0
+      },
+      {
+        "stage_id": "simplify_gpt",
+        "stage_label": "simplify_gpt",
+        "timing": {
+          "wall_time_ms": 444,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "verify",
+        "stage_label": "verify",
+        "timing": {
+          "wall_time_ms": 650357,
+          "inference_time_ms": 0,
+          "tool_time_ms": 650350,
+          "active_time_ms": 650350
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 29702,
+      "output_tokens": 10578,
+      "total_tokens": 592211,
+      "reasoning_tokens": 0,
+      "cache_read_tokens": 473945,
+      "cache_write_tokens": 77986,
+      "total_usd_micros": 2274690
+    },
+    "total_retries": 0,
+    "diff": {}
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1595,7 +1718,12 @@
       "first_event_seq": 348,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1",
+        "failure_reason": null,
+        "timestamp": "2026-07-11T21:08:14.361284208Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
@@ -1604,11 +1732,27 @@
         "language": "shell",
         "timeout_ms": 1800000
       },
-      "script_timing": null,
+      "script_timing": {
+        "output": "blob://sha256/039da23795b8b5399d1bf9974313a6b6049fd9039b38fcb6f7e99f8c596ca833",
+        "exit_code": 0,
+        "duration_ms": 650350,
+        "termination": "exited",
+        "output_bytes": 245155,
+        "live_streaming": true
+      },
       "parallel_results": null,
       "output": null,
+      "output_bytes": 245155,
+      "live_streaming": true,
+      "termination": "exited",
       "started_at": "2026-07-11T20:57:24.004088518Z",
       "handler": "command",
+      "timing": {
+        "wall_time_ms": 650357,
+        "inference_time_ms": 0,
+        "tool_time_ms": 650350,
+        "active_time_ms": 650350
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -1617,7 +1761,41 @@
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
       },
-      "state": "running"
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 358,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-11T21:08:17.901221294Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-11T21:08:17.901193067Z",
+      "handler": "exit",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
     },
     "simplify_fable@1": {
       "first_event_seq": 69,
