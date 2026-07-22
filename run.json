@@ -552,7 +552,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-22T23:37:25.335970439Z",
-  "last_event_at": "2026-07-22T23:39:59.894960935Z",
+  "last_event_at": "2026-07-22T23:46:38.301567335Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -737,9 +737,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 48,
       "checkpoint": {
-        "timestamp": "2026-07-22T23:42:39.084252382Z",
+        "timestamp": "2026-07-22T23:42:42.610612578Z",
         "current_node": "preflight_lint",
         "completed_nodes": [
           "start",
@@ -749,41 +749,31 @@
         ],
         "node_retries": {},
         "context_values": {
-          "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
-          "thread.preflight_compile.current_node": "preflight_lint",
-          "internal.retry_count.toolchain": 0,
           "graph.rankdir": "LR",
-          "internal.retry_count.preflight_lint": 0,
           "internal.run_id": "01KY631DK5HJHHCM0R5WZWJZGD",
-          "current_node": "preflight_lint",
-          "thread.toolchain.current_node": "preflight_compile",
-          "failure_signature": "",
-          "thread.start.current_node": "toolchain",
-          "internal.retry_count.preflight_compile": 0,
-          "internal.work_dir": "/home/daytona/workspace/fabro",
-          "internal.node_visit_count": 1,
-          "failure_class": "",
-          "internal.retry_count.start": 0,
-          "internal.fidelity": "compact",
-          "graph.model_stylesheet": "\n            * { model: anthropic/claude-opus-4-7; provider: openrouter; }\n        ",
-          "outcome": "succeeded",
           "internal.thread_id": "preflight_compile",
-          "graph.goal": "# Repair the Implement-plan Workflow for OpenRouter\n\n## Objective\n\nRepair the checked-in `implement-plan` workflow so it validates, fails safely, and runs from a clean clone against this Fabro server's OpenRouter-only model configuration.\n\n1. Remove the `.fabro/workflows/implement-plan/prompts/` entry from the repository root `.gitignore`.\n2. Add `.fabro/workflows/implement-plan/prompts/simplify.md` with exactly the canonical content in the appendix below.\n3. In `.fabro/workflows/implement-plan/workflow.fabro`, route the existing model choices through OpenRouter without otherwise changing the graph or prompts:\n   - Change the catch-all stylesheet model from `claude-opus-4-7` to `anthropic/claude-opus-4-7` and add `provider: openrouter` to that rule.\n   - Change each `gpt-55` node model to `openai/gpt-5.5` and set `provider=\"openrouter\"` explicitly on those nodes.\n   - Preserve the current reasoning effort settings.\n4. In `lib/crates/fabro-model/src/catalog/providers/openrouter.toml`, declare `reasoning_effort = \"levels\"` for `openai/gpt-5.5`. PR #587 already forwards `reasoning_effort` through the OpenAI-compatible adapter; this declaration makes the supported control representable in the OpenRouter model catalog instead of rejecting it before transport.\n5. Add a focused `fabro-model` catalog test proving that enabled OpenRouter exposes GPT-5.5 with `ReasoningEffortFeature::Levels` and includes `ReasoningEffort::XHigh` in its allowed controls.\n6. Make every agent transition fail closed:\n   - Replace unconditional transitions out of those nodes with `outcome=succeeded` transitions to the next work node plus fallback transitions to `exit`.\n   - Preserve the existing repair-loop visit limits and the verification retry target.\n7. Do not change dependencies or unrelated production code, tests, workflows, or generated documentation.\n\nThis is a workflow-configuration repair, so red/green TDD is not applicable.\n\n## Acceptance criteria\n\n- `git check-ignore .fabro/workflows/implement-plan/prompts/simplify.md` exits non-zero.\n- The prompt file is tracked by Git.\n- `fabro validate .fabro/workflows/implement-plan/workflow.fabro` succeeds in a clean checkout after Fabro is built or otherwise available.\n- `fabro preflight implement-plan` resolves every LLM stage to the configured `openrouter` provider, with no unconfigured-provider warning.\n- A failed implementation, simplification, or repair stage exits the workflow instead of advancing to later work.\n- The OpenRouter GPT-5.5 catalog entry accepts `reasoning_effort=\"xhigh\"` after the server is built from the repaired revision.\n- The focused `fabro-model` test and the workflow's normal verification gate pass.\n\n## Canonical prompt\n\n```markdown\n# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun \\`git diff\\` (or \\`git diff HEAD\\` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the ${AGENT_TOOL_NAME} tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. **Search for existing utilities and helpers** that could replace newly written code. Look for similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.\n3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction\n4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n6. **Unnecessary JSX nesting**: wrapper Boxes/elements that add no layout value — check if inner component props (flexShrink, alignItems, etc.) already provide the needed behavior\n7. **Unnecessary comments**: comments explaining WHAT the code does (well-named identifiers already do that), narrating the change, or referencing the task/caller — delete; keep only non-obvious WHY (hidden constraints, subtle invariants, workarounds)\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. **Missed concurrency**: independent operations run sequentially when they could run in parallel\n3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths\n4. **Recurring no-op updates**: state/store updates inside polling loops, intervals, or event handlers that fire unconditionally — add a change-detection guard so downstream consumers aren't notified when nothing changed. Also: if a wrapper function takes an updater/reducer callback, verify it honors same-reference returns (or whatever the \"no change\" signal is) — otherwise callers' early-return no-ops are silently defeated\n5. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n6. **Memory**: unbounded data structures, missing cleanup, event listener leaks\n7. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n```\n"
+          "current_node": "preflight_lint",
+          "thread.start.current_node": "toolchain",
+          "graph.goal": "# Repair the Implement-plan Workflow for OpenRouter\n\n## Objective\n\nRepair the checked-in `implement-plan` workflow so it validates, fails safely, and runs from a clean clone against this Fabro server's OpenRouter-only model configuration.\n\n1. Remove the `.fabro/workflows/implement-plan/prompts/` entry from the repository root `.gitignore`.\n2. Add `.fabro/workflows/implement-plan/prompts/simplify.md` with exactly the canonical content in the appendix below.\n3. In `.fabro/workflows/implement-plan/workflow.fabro`, route the existing model choices through OpenRouter without otherwise changing the graph or prompts:\n   - Change the catch-all stylesheet model from `claude-opus-4-7` to `anthropic/claude-opus-4-7` and add `provider: openrouter` to that rule.\n   - Change each `gpt-55` node model to `openai/gpt-5.5` and set `provider=\"openrouter\"` explicitly on those nodes.\n   - Preserve the current reasoning effort settings.\n4. In `lib/crates/fabro-model/src/catalog/providers/openrouter.toml`, declare `reasoning_effort = \"levels\"` for `openai/gpt-5.5`. PR #587 already forwards `reasoning_effort` through the OpenAI-compatible adapter; this declaration makes the supported control representable in the OpenRouter model catalog instead of rejecting it before transport.\n5. Add a focused `fabro-model` catalog test proving that enabled OpenRouter exposes GPT-5.5 with `ReasoningEffortFeature::Levels` and includes `ReasoningEffort::XHigh` in its allowed controls.\n6. Make every agent transition fail closed:\n   - Replace unconditional transitions out of those nodes with `outcome=succeeded` transitions to the next work node plus fallback transitions to `exit`.\n   - Preserve the existing repair-loop visit limits and the verification retry target.\n7. Do not change dependencies or unrelated production code, tests, workflows, or generated documentation.\n\nThis is a workflow-configuration repair, so red/green TDD is not applicable.\n\n## Acceptance criteria\n\n- `git check-ignore .fabro/workflows/implement-plan/prompts/simplify.md` exits non-zero.\n- The prompt file is tracked by Git.\n- `fabro validate .fabro/workflows/implement-plan/workflow.fabro` succeeds in a clean checkout after Fabro is built or otherwise available.\n- `fabro preflight implement-plan` resolves every LLM stage to the configured `openrouter` provider, with no unconfigured-provider warning.\n- A failed implementation, simplification, or repair stage exits the workflow instead of advancing to later work.\n- The OpenRouter GPT-5.5 catalog entry accepts `reasoning_effort=\"xhigh\"` after the server is built from the repaired revision.\n- The focused `fabro-model` test and the workflow's normal verification gate pass.\n\n## Canonical prompt\n\n```markdown\n# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun \\`git diff\\` (or \\`git diff HEAD\\` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the ${AGENT_TOOL_NAME} tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. **Search for existing utilities and helpers** that could replace newly written code. Look for similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.\n3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction\n4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n6. **Unnecessary JSX nesting**: wrapper Boxes/elements that add no layout value — check if inner component props (flexShrink, alignItems, etc.) already provide the needed behavior\n7. **Unnecessary comments**: comments explaining WHAT the code does (well-named identifiers already do that), narrating the change, or referencing the task/caller — delete; keep only non-obvious WHY (hidden constraints, subtle invariants, workarounds)\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. **Missed concurrency**: independent operations run sequentially when they could run in parallel\n3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths\n4. **Recurring no-op updates**: state/store updates inside polling loops, intervals, or event handlers that fire unconditionally — add a change-detection guard so downstream consumers aren't notified when nothing changed. Also: if a wrapper function takes an updater/reducer callback, verify it honors same-reference returns (or whatever the \"no change\" signal is) — otherwise callers' early-return no-ops are silently defeated\n5. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n6. **Memory**: unbounded data structures, missing cleanup, event listener leaks\n7. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n```\n",
+          "internal.retry_count.preflight_compile": 0,
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "thread.toolchain.current_node": "preflight_compile",
+          "failure_class": "",
+          "internal.fidelity": "compact",
+          "failure_signature": "",
+          "graph.model_stylesheet": "\n            * { model: anthropic/claude-opus-4-7; provider: openrouter; }\n        ",
+          "internal.retry_count.preflight_lint": 0,
+          "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+          "internal.retry_count.toolchain": 0,
+          "outcome": "succeeded",
+          "thread.preflight_compile.current_node": "preflight_lint",
+          "internal.node_visit_count": 1
         },
         "node_outcomes": {
-          "preflight_lint": {
+          "start": {
             "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
-            },
-            "notes": "Script completed: cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 159183,
-              "active_time_ms": 159183
-            }
+            "usage": null
           },
           "toolchain": {
             "status": "succeeded",
@@ -799,6 +789,20 @@
               "active_time_ms": 1307
             }
           },
+          "preflight_lint": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 159183,
+              "active_time_ms": 159183
+            }
+          },
           "preflight_compile": {
             "status": "succeeded",
             "context_updates": {
@@ -812,24 +816,100 @@
               "tool_time_ms": 143982,
               "active_time_ms": 143982
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "implement",
+        "git_commit_sha": "b698c48b881ef421650deed5831710b726c70fc5",
         "node_visits": {
-          "start": 1,
           "preflight_compile": 1,
+          "start": 1,
           "preflight_lint": 1,
           "toolchain": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-07-22T23:46:38.305977498Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 552969,
+      "inference_time_ms": 0,
+      "tool_time_ms": 304472,
+      "active_time_ms": 304472
+    },
+    "failure": {
+      "reason": "cancelled",
+      "detail": {
+        "message": "Pipeline cancelled",
+        "category": "canceled"
+      }
+    },
+    "final_git_commit_sha": "b698c48b881ef421650deed5831710b726c70fc5",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "toolchain",
+        "stage_label": "toolchain",
+        "timing": {
+          "wall_time_ms": 1311,
+          "inference_time_ms": 0,
+          "tool_time_ms": 1307,
+          "active_time_ms": 1307
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "preflight_compile",
+        "stage_label": "preflight_compile",
+        "timing": {
+          "wall_time_ms": 143987,
+          "inference_time_ms": 0,
+          "tool_time_ms": 143982,
+          "active_time_ms": 143982
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "preflight_lint",
+        "stage_label": "preflight_lint",
+        "timing": {
+          "wall_time_ms": 159188,
+          "inference_time_ms": 0,
+          "tool_time_ms": 159183,
+          "active_time_ms": 159183
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 82798,
+      "output_tokens": 2932,
+      "total_tokens": 1968505,
+      "reasoning_tokens": 2199,
+      "cache_read_tokens": 1880576,
+      "cache_write_tokens": 0
+    },
+    "total_retries": 0,
+    "diff": {}
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -989,7 +1069,12 @@
       "first_event_seq": 41,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
+        "failure_reason": null,
+        "timestamp": "2026-07-22T23:42:39.083316184Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
@@ -997,11 +1082,27 @@
         "command": "exec 2>&1\ncargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
         "language": "shell"
       },
-      "script_timing": null,
+      "script_timing": {
+        "output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+        "exit_code": 0,
+        "duration_ms": 159183,
+        "termination": "exited",
+        "output_bytes": 0,
+        "live_streaming": false
+      },
       "parallel_results": null,
       "output": null,
+      "output_bytes": 0,
+      "live_streaming": false,
+      "termination": "exited",
       "started_at": "2026-07-22T23:39:59.894456106Z",
       "handler": "command",
+      "timing": {
+        "wall_time_ms": 159188,
+        "inference_time_ms": 0,
+        "tool_time_ms": 159183,
+        "active_time_ms": 159183
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -1009,6 +1110,268 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    },
+    "implement@1": {
+      "first_event_seq": 51,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "agent",
+        "provider": "openrouter",
+        "model": "openai/gpt-5.5"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-22T23:42:42.612598474Z",
+      "handler": "agent",
+      "usage": {
+        "input_tokens": 82798,
+        "output_tokens": 2932,
+        "total_tokens": 1968505,
+        "reasoning_tokens": 2199,
+        "cache_read_tokens": 1880576,
+        "cache_write_tokens": 0
+      },
+      "model": {
+        "provider": "openrouter",
+        "model_id": "openai/gpt-5.5"
+      },
+      "todos": {
+        "kind": "openai_plan",
+        "list_id": "openai_plan:f60971ec-d690-42ec-907b-d6e23a7c7c3a",
+        "items": [
+          {
+            "id": "0c364fcceec41a8a",
+            "status": "in_progress",
+            "order": 0,
+            "subject": "Inspect current ignore rules, implement-plan workflow, and OpenRouter catalog/test structure"
+          },
+          {
+            "id": "bf0ce8a4a36ff829",
+            "status": "pending",
+            "order": 1,
+            "subject": "Apply workflow, prompt, gitignore, and OpenRouter catalog changes"
+          },
+          {
+            "id": "151123cbd9f2e3d0",
+            "status": "pending",
+            "order": 2,
+            "subject": "Add focused fabro-model catalog test"
+          },
+          {
+            "id": "7f24af5d623a3ea1",
+            "status": "pending",
+            "order": 3,
+            "subject": "Run targeted validation/tests and report results"
+          }
+        ]
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": [
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          }
+        ]
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "apply_patch",
+          "description": "Use the `apply_patch` tool to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "close_agent",
+          "description": "Close a running subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by file names using a glob pattern. Use path to choose the search root. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a running subagent when new information or corrected instructions are needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute shell commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": false
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "web_search",
+          "description": "Search the web using Brave Search when current external information is needed. Returns result titles, URLs, and descriptions; use web_fetch for a specific URL.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        }
+      ],
+      "context_window": {
+        "provider": "openrouter",
+        "model": "openai/gpt-5.5",
+        "context_window_tokens": 1050000,
+        "input_tokens": 73134,
+        "usage_percent": 6.965142857142857,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-07-22T23:46:37.760382463Z",
+        "event_seq": 205,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1195,
+            "usage_percent": 0.1138095238095238
+          },
+          {
+            "category": "tools",
+            "tokens": 1726,
+            "usage_percent": 0.16438095238095238
+          },
+          {
+            "category": "skills",
+            "tokens": 224,
+            "usage_percent": 0.021333333333333333
+          },
+          {
+            "category": "memory",
+            "tokens": 4109,
+            "usage_percent": 0.3913333333333333
+          },
+          {
+            "category": "conversation",
+            "tokens": 65873,
+            "usage_percent": 6.273619047619047
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.0006666666666666666
+          }
+        ],
+        "warnings": [
+          {
+            "code": "activated_skill_context_counted_as_conversation",
+            "message": "Activated skill instructions are counted as conversation in this version."
+          }
+        ]
       },
       "state": "running"
     }
