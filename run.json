@@ -543,14 +543,112 @@
     }
   },
   "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KY631DK5HJHHCM0R5WZWJZGD",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-07-22T23:37:25.335935478Z",
+    "run_branch": "fabro/run/01KY631DK5HJHHCM0R5WZWJZGD",
+    "base_sha": "c8d175e3a54ff8c90c55921490e0f2f7d18d0fb3"
   },
-  "status_updated_at": "2026-07-22T23:37:10.569693494Z",
-  "last_event_at": "2026-07-22T23:37:24.932460024Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-07-22T23:37:25.335970439Z",
+  "last_event_at": "2026-07-22T23:37:27.095957096Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 20,
+      "checkpoint": {
+        "timestamp": "2026-07-22T23:37:27.095830721Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.goal": "# Repair the Implement-plan Workflow for OpenRouter\n\n## Objective\n\nRepair the checked-in `implement-plan` workflow so it validates, fails safely, and runs from a clean clone against this Fabro server's OpenRouter-only model configuration.\n\n1. Remove the `.fabro/workflows/implement-plan/prompts/` entry from the repository root `.gitignore`.\n2. Add `.fabro/workflows/implement-plan/prompts/simplify.md` with exactly the canonical content in the appendix below.\n3. In `.fabro/workflows/implement-plan/workflow.fabro`, route the existing model choices through OpenRouter without otherwise changing the graph or prompts:\n   - Change the catch-all stylesheet model from `claude-opus-4-7` to `anthropic/claude-opus-4-7` and add `provider: openrouter` to that rule.\n   - Change each `gpt-55` node model to `openai/gpt-5.5` and set `provider=\"openrouter\"` explicitly on those nodes.\n   - Preserve the current reasoning effort settings.\n4. In `lib/crates/fabro-model/src/catalog/providers/openrouter.toml`, declare `reasoning_effort = \"levels\"` for `openai/gpt-5.5`. PR #587 already forwards `reasoning_effort` through the OpenAI-compatible adapter; this declaration makes the supported control representable in the OpenRouter model catalog instead of rejecting it before transport.\n5. Add a focused `fabro-model` catalog test proving that enabled OpenRouter exposes GPT-5.5 with `ReasoningEffortFeature::Levels` and includes `ReasoningEffort::XHigh` in its allowed controls.\n6. Make every agent transition fail closed:\n   - Replace unconditional transitions out of those nodes with `outcome=succeeded` transitions to the next work node plus fallback transitions to `exit`.\n   - Preserve the existing repair-loop visit limits and the verification retry target.\n7. Do not change dependencies or unrelated production code, tests, workflows, or generated documentation.\n\nThis is a workflow-configuration repair, so red/green TDD is not applicable.\n\n## Acceptance criteria\n\n- `git check-ignore .fabro/workflows/implement-plan/prompts/simplify.md` exits non-zero.\n- The prompt file is tracked by Git.\n- `fabro validate .fabro/workflows/implement-plan/workflow.fabro` succeeds in a clean checkout after Fabro is built or otherwise available.\n- `fabro preflight implement-plan` resolves every LLM stage to the configured `openrouter` provider, with no unconfigured-provider warning.\n- A failed implementation, simplification, or repair stage exits the workflow instead of advancing to later work.\n- The OpenRouter GPT-5.5 catalog entry accepts `reasoning_effort=\"xhigh\"` after the server is built from the repaired revision.\n- The focused `fabro-model` test and the workflow's normal verification gate pass.\n\n## Canonical prompt\n\n```markdown\n# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun \\`git diff\\` (or \\`git diff HEAD\\` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the ${AGENT_TOOL_NAME} tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. **Search for existing utilities and helpers** that could replace newly written code. Look for similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.\n3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction\n4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n6. **Unnecessary JSX nesting**: wrapper Boxes/elements that add no layout value — check if inner component props (flexShrink, alignItems, etc.) already provide the needed behavior\n7. **Unnecessary comments**: comments explaining WHAT the code does (well-named identifiers already do that), narrating the change, or referencing the task/caller — delete; keep only non-obvious WHY (hidden constraints, subtle invariants, workarounds)\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. **Missed concurrency**: independent operations run sequentially when they could run in parallel\n3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths\n4. **Recurring no-op updates**: state/store updates inside polling loops, intervals, or event handlers that fire unconditionally — add a change-detection guard so downstream consumers aren't notified when nothing changed. Also: if a wrapper function takes an updater/reducer callback, verify it honors same-reference returns (or whatever the \"no change\" signal is) — otherwise callers' early-return no-ops are silently defeated\n5. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n6. **Memory**: unbounded data structures, missing cleanup, event listener leaks\n7. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n```\n",
+          "internal.fidelity": "compact",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "failure_class": "",
+          "internal.run_id": "01KY631DK5HJHHCM0R5WZWJZGD",
+          "graph.model_stylesheet": "\n            * { model: anthropic/claude-opus-4-7; provider: openrouter; }\n        ",
+          "graph.rankdir": "LR",
+          "internal.thread_id": null,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "current_node": "start",
+          "failure_signature": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "toolchain",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-22T23:37:28.408508972Z",
+        "current_node": "toolchain",
+        "completed_nodes": [
+          "start",
+          "toolchain"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1",
+          "internal.retry_count.toolchain": 0,
+          "graph.rankdir": "LR",
+          "internal.run_id": "01KY631DK5HJHHCM0R5WZWJZGD",
+          "current_node": "toolchain",
+          "failure_signature": "",
+          "thread.start.current_node": "toolchain",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.node_visit_count": 1,
+          "failure_class": "",
+          "internal.retry_count.start": 0,
+          "internal.fidelity": "compact",
+          "graph.model_stylesheet": "\n            * { model: anthropic/claude-opus-4-7; provider: openrouter; }\n        ",
+          "outcome": "succeeded",
+          "internal.thread_id": "start",
+          "graph.goal": "# Repair the Implement-plan Workflow for OpenRouter\n\n## Objective\n\nRepair the checked-in `implement-plan` workflow so it validates, fails safely, and runs from a clean clone against this Fabro server's OpenRouter-only model configuration.\n\n1. Remove the `.fabro/workflows/implement-plan/prompts/` entry from the repository root `.gitignore`.\n2. Add `.fabro/workflows/implement-plan/prompts/simplify.md` with exactly the canonical content in the appendix below.\n3. In `.fabro/workflows/implement-plan/workflow.fabro`, route the existing model choices through OpenRouter without otherwise changing the graph or prompts:\n   - Change the catch-all stylesheet model from `claude-opus-4-7` to `anthropic/claude-opus-4-7` and add `provider: openrouter` to that rule.\n   - Change each `gpt-55` node model to `openai/gpt-5.5` and set `provider=\"openrouter\"` explicitly on those nodes.\n   - Preserve the current reasoning effort settings.\n4. In `lib/crates/fabro-model/src/catalog/providers/openrouter.toml`, declare `reasoning_effort = \"levels\"` for `openai/gpt-5.5`. PR #587 already forwards `reasoning_effort` through the OpenAI-compatible adapter; this declaration makes the supported control representable in the OpenRouter model catalog instead of rejecting it before transport.\n5. Add a focused `fabro-model` catalog test proving that enabled OpenRouter exposes GPT-5.5 with `ReasoningEffortFeature::Levels` and includes `ReasoningEffort::XHigh` in its allowed controls.\n6. Make every agent transition fail closed:\n   - Replace unconditional transitions out of those nodes with `outcome=succeeded` transitions to the next work node plus fallback transitions to `exit`.\n   - Preserve the existing repair-loop visit limits and the verification retry target.\n7. Do not change dependencies or unrelated production code, tests, workflows, or generated documentation.\n\nThis is a workflow-configuration repair, so red/green TDD is not applicable.\n\n## Acceptance criteria\n\n- `git check-ignore .fabro/workflows/implement-plan/prompts/simplify.md` exits non-zero.\n- The prompt file is tracked by Git.\n- `fabro validate .fabro/workflows/implement-plan/workflow.fabro` succeeds in a clean checkout after Fabro is built or otherwise available.\n- `fabro preflight implement-plan` resolves every LLM stage to the configured `openrouter` provider, with no unconfigured-provider warning.\n- A failed implementation, simplification, or repair stage exits the workflow instead of advancing to later work.\n- The OpenRouter GPT-5.5 catalog entry accepts `reasoning_effort=\"xhigh\"` after the server is built from the repaired revision.\n- The focused `fabro-model` test and the workflow's normal verification gate pass.\n\n## Canonical prompt\n\n```markdown\n# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun \\`git diff\\` (or \\`git diff HEAD\\` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the ${AGENT_TOOL_NAME} tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. **Search for existing utilities and helpers** that could replace newly written code. Look for similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.\n3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction\n4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n6. **Unnecessary JSX nesting**: wrapper Boxes/elements that add no layout value — check if inner component props (flexShrink, alignItems, etc.) already provide the needed behavior\n7. **Unnecessary comments**: comments explaining WHAT the code does (well-named identifiers already do that), narrating the change, or referencing the task/caller — delete; keep only non-obvious WHY (hidden constraints, subtle invariants, workarounds)\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. **Missed concurrency**: independent operations run sequentially when they could run in parallel\n3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths\n4. **Recurring no-op updates**: state/store updates inside polling loops, intervals, or event handlers that fire unconditionally — add a change-detection guard so downstream consumers aren't notified when nothing changed. Also: if a wrapper function takes an updater/reducer callback, verify it honors same-reference returns (or whatever the \"no change\" signal is) — otherwise callers' early-return no-ops are silently defeated\n5. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n6. **Memory**: unbounded data structures, missing cleanup, event listener leaks\n7. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n```\n"
+        },
+        "node_outcomes": {
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1307,
+              "active_time_ms": 1307
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "preflight_compile",
+        "node_visits": {
+          "start": 1,
+          "toolchain": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -576,5 +674,67 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-22T23:37:27.095721305Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-22T23:37:27.095625076Z",
+      "handler": "start",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    },
+    "toolchain@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "command": "exec 2>&1\ncommand -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "language": "shell"
+      },
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-22T23:37:27.095933872Z",
+      "handler": "command",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
+    }
+  }
 }
