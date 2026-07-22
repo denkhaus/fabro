@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "LLM error: Configuration error: model 'openai/gpt-5.5' does not support reasoning_effort 'xhigh'; allowed values: none",
+  "timestamp": "2026-07-22T23:31:04.731795346Z"
+}
