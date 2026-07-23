@@ -302,14 +302,136 @@
     }
   },
   "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KY7KRA7EP1VH5FYEJTC9KM5M",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-07-23T13:48:47.200375618Z",
+    "run_branch": "fabro/run/01KY7KRA7EP1VH5FYEJTC9KM5M",
+    "base_sha": "7b52b3b6ba46385ddf2a2c2f68d19edac8199422"
   },
-  "status_updated_at": "2026-07-23T13:48:32.439253260Z",
-  "last_event_at": "2026-07-23T13:48:46.901922581Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-07-23T13:48:47.200406337Z",
+  "last_event_at": "2026-07-23T13:48:49.194193975Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 21,
+      "checkpoint": {
+        "timestamp": "2026-07-23T13:48:49.134248089Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_class": "",
+          "internal.run_id": "01KY7KRA7EP1VH5FYEJTC9KM5M",
+          "current_node": "start",
+          "internal.fidelity": "compact",
+          "internal.thread_id": null,
+          "graph.goal": "Probe which context values reach parallel branch nodes (branch-level fidelity)",
+          "internal.retry_count.start": 0,
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "outcome": "succeeded",
+          "failure_signature": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "seed",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-23T13:48:52.163382829Z",
+        "current_node": "seed",
+        "completed_nodes": [
+          "start",
+          "seed"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.run_id": "01KY7KRA7EP1VH5FYEJTC9KM5M",
+          "internal.thread_id": "start",
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "last_response": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
+          "last_stage": "seed",
+          "current_node": "seed",
+          "internal.node_visit_count": 1,
+          "thread.start.current_node": "seed",
+          "failure_class": "",
+          "secret_marker": "XYZZY123",
+          "response.seed": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "graph.goal": "Probe which context values reach parallel branch nodes (branch-level fidelity)",
+          "internal.fidelity": "compact",
+          "failure_signature": "",
+          "internal.retry_count.seed": 0
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "seed": {
+            "status": "succeeded",
+            "context_updates": {
+              "secret_marker": "XYZZY123",
+              "last_stage": "seed",
+              "last_response": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
+              "response.seed": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}"
+            },
+            "notes": "Stage completed: seed",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "openrouter",
+                    "model_id": "anthropic/claude-sonnet-4-6"
+                  },
+                  "tokens": {
+                    "input_tokens": 4707,
+                    "output_tokens": 21,
+                    "reasoning_tokens": 0,
+                    "cache_read_tokens": 0,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "anthropic",
+                  "cache_write_5m_tokens": 0,
+                  "cache_write_1h_tokens": 0
+                }
+              },
+              "total_usd_micros": 14436
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 2961,
+              "tool_time_ms": 0,
+              "active_time_ms": 2961
+            }
+          }
+        },
+        "next_node_id": "fork",
+        "node_visits": {
+          "seed": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -335,5 +457,67 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 18,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-23T13:48:49.134129299Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-23T13:48:49.134023613Z",
+      "handler": "start",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    },
+    "seed@1": {
+      "first_event_seq": 22,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "prompt",
+        "provider": "openrouter",
+        "model": "anthropic/claude-sonnet-4-6"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-23T13:48:49.134339859Z",
+      "handler": "prompt",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
+    }
+  }
 }
