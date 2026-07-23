@@ -469,14 +469,110 @@
     }
   },
   "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KY7WQ92JWT90307EBQY6P2HV",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-07-23T16:25:30.716106088Z",
+    "run_branch": "fabro/run/01KY7WQ92JWT90307EBQY6P2HV",
+    "base_sha": "1874497056778d15f33de1a71d5cf23b960f1119"
   },
-  "status_updated_at": "2026-07-23T16:25:15.683092433Z",
-  "last_event_at": "2026-07-23T16:25:30.240994375Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-07-23T16:25:30.716148891Z",
+  "last_event_at": "2026-07-23T16:25:32.531772603Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 20,
+      "checkpoint": {
+        "timestamp": "2026-07-23T16:25:32.531671470Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.rankdir": "LR",
+          "internal.fidelity": "compact",
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01KY7WQ92JWT90307EBQY6P2HV",
+          "current_node": "start",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "failure_signature": "",
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "failure_class": "",
+          "internal.thread_id": null,
+          "graph.goal": "# Plan: Structured output for command nodes (`output_schema` on shape=parallelogram)\n\n## Context\n\nRoadmap item #5 from the \"port security-review to Fabro\" roadmap (Quarry doc, 2026-07-23). The ported scan keeps all trust-critical arithmetic (dedup, caps, vote tallies, coverage checks) in plain code between agent calls. For that, command nodes need to emit **validated structured data** that edge conditions can route on and downstream nodes can consume — today only agent/prompt nodes support `output_schema`. It also upgrades the loop-back feedback pattern (F3) from \"last 25 lines of stdout\" to structured fields.\n\n**Decisions made with Bryan (AskUserQuestion):**\n- Custom JSON Schema output is stored under `output.<node_id>` — **exact parity with agent/prompt nodes** (no flat merge of schema fields).\n- `output_schema=\"routing\"` **is supported** on command nodes. Routing's `context_updates` merge is the mechanism that feeds flat context keys to edge conditions (`condition=\"context.kept_count > 0\"`), since condition evaluation is flat-lookup only (`condition.rs:15-58` — no dotted-path traversal).\n\n**Fixed requirements (from the roadmap):**\n- Invalid output on a zero-exit script = deterministic, non-retryable failure. No repair turn (no model), no retry (deterministic script), even if the node has `retry_policy`/`max_retries`. Failure-edge routing still works (return `Ok(failed outcome)`, don't abort the run).\n- Script crashes keep existing classification: non-zero exit → existing `fail_classify` path (no validation attempted); timeout/cancel/spawn-failure → existing retryable `Err(Error::handler(...))` paths. Validation runs **only on the exit-0 branch**.\n- `output_retries` is ignored for commands; failure message must not say \"repair attempt(s)\".\n\n**Free rides (verified, no changes needed):** `Node::output_schema()` accessor is shape-agnostic (`fabro-types/src/graph.rs:172`); `@file` inlining already covers `output_schema` on every node (`transforms/file_inlining.rs:203-213`, `static_reference.rs:90`); large `output.<node_id>` values are blob-offloaded handler-agnostically (`artifact.rs` `offload_large_values`, 100KB, via `lifecycle/artifact.rs:204`); `Event::StageCompleted` already carries `context_updates` — no new events; nothing in `fabro-validate` flags `output_schema` on parallelogram nodes; agent/prompt `simulate` never validates, so command `simulate` needs zero changes.\n\n## Implementation\n\n### 1. `lib/crates/fabro-workflow/src/handler/structured_output.rs` — one-line change\n\nRemove the `#[cfg(test)]` gate from `messages()` (lines 75-79; keep `#[must_use]`, leave `kind()` gated). Everything else (`parse_node_output_schema`, `validate_response_text`, `apply_validated_output`, `apply_routing_fields`) is reused as-is; prompt/agent behavior is untouched.\n\n### 2. `lib/crates/fabro-workflow/src/handler/command.rs` — the feature\n\n- **Imports:** add `structured_output` + `StructuredOutputError` to the `super::` import (line 9), mirroring `prompt.rs:13`.\n- **Parse schema before side effects:** right after the language check (line 77), before command assembly / `CommandStarted` emit / sandbox exec:\n  ```rust\n  let output_schema = structured_output::parse_node_output_schema(node)?;\n  ```\n  A malformed/empty/unresolved-`@` schema fails fast as `Err(Error::Validation)` — non-retryable, Deterministic, script never runs, no events emitted (same propagation prompt/agent use).\n- **Exit-0 branch (lines 167-175) restructure:** build the base success outcome first (`command.output` blob ref, notes `\"Script completed: {script}\"`, timing), then if a schema is set, validate `finalized.output_text`:\n  - `Ok(validated)` → `structured_output::apply_validated_output(node, schema, &validated, &mut outcome)`. Custom schema → whole object at `output.<node_id>`; routing → `preferred_next_label` / `suggested_next_ids` / `outcome` override / `failure_reason` / `context_updates` flat merge, exactly as for agents. Routing's `outcome:\"failed\"` override yields `Failed { retry_requested: false }` (verified via `StageOutcome` parsing) — no retries.\n  - `Err(error)` → return `Ok` of `Outcome::fail_deterministic(reason)` (`outcome.rs:69-77`) with `command.output` + timing still set (parity with the non-zero-exit failure branch; notes stay `None`). **All** `StructuredOutputError` kinds fail — commands get no `allows_routing_fallback` (that's the agent `status.json` fallback).\n- **New private helper** next to `append_output_tail` (~line 197):\n  ```rust\n  fn schema_validation_failure_reason(script: &str, error: &StructuredOutputError, output_text: &str) -> String\n  ```\n  Message: `\"Script output failed output_schema validation: {script}\"` + one `- {message}` line per validator error + `append_output_tail` (last 4KB under `## output`).\n- Timeout/cancel/spawn/non-zero branches, `simulate()`, and `node_timeout_policy` untouched. `output_retries()` never read.\n\n### 3. Unit tests — `command.rs` `#[cfg(test)]` mod\n\nReuse the existing harness (`make_services()`, `command_text()`, `SpySandbox` + `make_spy_services()`, real echo/python scripts). Schema literal from `prompt.rs:459`: `{\"type\":\"object\",\"required\":[\"passed\"],\"properties\":{\"passed\":{\"type\":\"boolean\"}}}`.\n\n1. `command_custom_output_schema_stores_output_context_key` — `echo '{\"passed\": true}'` → Succeeded; `context_updates[\"output.<id>\"]` equals the object; `command.output` still present.\n2. `command_custom_output_schema_validates_last_json_object` — log lines + earlier JSON, payload JSON last → last object wins (same extraction as agents).\n3. `command_custom_output_schema_failure_is_deterministic` — `echo '{\"passed\":\"yes\"}'` (exit 0) → `Failed { retry_requested: false }`, `FailureCategory::Deterministic`, reason has validator message + `## output` tail, no \"repair attempt\"; `command.output` + timing set.\n4. `command_routing_output_schema_no_json_object_fails` — routing schema, `echo not-json` → deterministic failure (no fallback).\n5. `command_routing_output_schema_applies_routing_fields` — `{\"preferred_next_label\":\"fix\",\"context_updates\":{\"kept_count\":2}}` → Succeeded, `preferred_label`, flat `kept_count` in `context_updates`.\n6. `command_routing_output_schema_outcome_failed_override` — `{\"outcome\":\"failed\",\"failure_reason\":\"tests failed\"}`, exit 0 → `Failed { retry_requested: false }`, `failure_reason() == \"tests failed\"`.\n7. `command_invalid_output_schema_fails_before_execution` — SpySandbox + `output_schema` of invalid JSON → `Err` containing \"Invalid output_schema\", spy captured no command (script never ran).\n8. `command_nonzero_exit_skips_schema_validation` — schema + `echo '{\"passed\":\"bad\"}'; exit 1` → reason is \"exit code: 1\", not schema validation.\n9. `command_simulate_ignores_output_schema` — simulate unchanged with schema set.\n10. `command_python_custom_output_schema` — `language=\"python\"`, `print(json.dumps(...))` parity.\n\n### 4. No-retry integration test — `lib/crates/fabro-workflow/tests/it/integration.rs`\n\n`command_schema_validation_failure_does_not_consume_retries`: graph via `make_graph_with_start_exit` (~line 1917), parallelogram node with `max_retries=2` + custom schema + script echoing invalid JSON at exit 0; `collect_events` → assert exactly **one** `CommandStarted`, final outcome `Failed { retry_requested: false }` / Deterministic.\n\n### 5. CLI black-box test — the roadmap's end-to-end claim\n\nNew fixture `lib/crates/fabro-cli/tests/it/workflow/fixtures/command_routing.fabro` (modeled on `conditional_branching.fabro` + `command_pipeline.fabro`): `classify` parallelogram with `output_schema=\"routing\"` echoing `{\"context_updates\":{\"kept_count\":2}}` → diamond gate → `kept` edge with `condition=\"context.kept_count > 0\"` vs `none` fallback. New test `workflow/command_routing.rs` (register in `workflow/mod.rs`, use `sandbox_tests!`): run validate + `run --auto-approve`, assert conclusion succeeded, `completed_nodes` contains `kept`, not `none`. This proves script → routing merge → flat context key → condition routing end to end. Beware DOT/shell quoting of the JSON (single-quote it; `fabro validate` in the test catches mistakes).\n\n### 6. Docs — `docs/public/`\n\n- `reference/dot-language.mdx`: line ~209 attr-table → \"Supported on agent, prompt, and command nodes\"; add `output_schema` row to the command-node table (~242-247); extend the structured-output section (~217-239) with a command paragraph: validates the **last JSON object** in merged stdout+stderr when the script exits 0; print the JSON last; no repair turns, no retries, no `status.json` fallback; `output_retries` does not apply; custom → `output.<node_id>` (not addressable by edge conditions), routing → routing fields + `context_updates` flat keys (addressable by conditions).\n- `agents/outputs.mdx`: extend \"agent and prompt nodes\" mentions (~lines 69, 148) to include command nodes with the same caveats. Surgical edits.\n\n## Verification\n\n1. `cargo nextest run -p fabro-workflow` — unit + integration tests above.\n2. `cargo nextest run -p fabro-cli` — black-box `command_routing` workflow test.\n3. `cargo build --workspace && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings && cargo +nightly-2026-04-14 fmt --check --all`.\n4. Manual smoke: `fabro run` a scratch workflow with a routing command feeding a condition and a custom-schema command, confirm `stage.completed` events show `context_updates` (`output.<id>` / flat keys) and a validation failure shows the Deterministic reason with the output tail.\n\n## Risks\n\n- **stderr merged after payload:** `exec 2>&1` interleaving means stray trailing `{...}` on stderr could become the \"last JSON object\" — documented (\"print the JSON last\"); acceptable, matches agent extraction semantics.\n- **Routing key collisions** (script writes `command.output` via `context_updates`): last-write-wins, same hazard class as agent routing today — accepted for parity.\n- **Behavior note for release notes:** none — purely additive; nodes without `output_schema` are byte-for-byte unchanged.\n\n## Unresolved questions\n\nNone — the two open design points (context merge shape; routing support) were decided above. Optional follow-ups, not blocking: validate-time lint that `output_schema` parses as a JSON Schema (belongs to roadmap item #2's validation sweep), and a changelog entry via the changelog skill after merge.\n"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "toolchain",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-23T16:25:34.036770690Z",
+        "current_node": "toolchain",
+        "completed_nodes": [
+          "start",
+          "toolchain"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "outcome": "succeeded",
+          "internal.fidelity": "compact",
+          "graph.goal": "# Plan: Structured output for command nodes (`output_schema` on shape=parallelogram)\n\n## Context\n\nRoadmap item #5 from the \"port security-review to Fabro\" roadmap (Quarry doc, 2026-07-23). The ported scan keeps all trust-critical arithmetic (dedup, caps, vote tallies, coverage checks) in plain code between agent calls. For that, command nodes need to emit **validated structured data** that edge conditions can route on and downstream nodes can consume — today only agent/prompt nodes support `output_schema`. It also upgrades the loop-back feedback pattern (F3) from \"last 25 lines of stdout\" to structured fields.\n\n**Decisions made with Bryan (AskUserQuestion):**\n- Custom JSON Schema output is stored under `output.<node_id>` — **exact parity with agent/prompt nodes** (no flat merge of schema fields).\n- `output_schema=\"routing\"` **is supported** on command nodes. Routing's `context_updates` merge is the mechanism that feeds flat context keys to edge conditions (`condition=\"context.kept_count > 0\"`), since condition evaluation is flat-lookup only (`condition.rs:15-58` — no dotted-path traversal).\n\n**Fixed requirements (from the roadmap):**\n- Invalid output on a zero-exit script = deterministic, non-retryable failure. No repair turn (no model), no retry (deterministic script), even if the node has `retry_policy`/`max_retries`. Failure-edge routing still works (return `Ok(failed outcome)`, don't abort the run).\n- Script crashes keep existing classification: non-zero exit → existing `fail_classify` path (no validation attempted); timeout/cancel/spawn-failure → existing retryable `Err(Error::handler(...))` paths. Validation runs **only on the exit-0 branch**.\n- `output_retries` is ignored for commands; failure message must not say \"repair attempt(s)\".\n\n**Free rides (verified, no changes needed):** `Node::output_schema()` accessor is shape-agnostic (`fabro-types/src/graph.rs:172`); `@file` inlining already covers `output_schema` on every node (`transforms/file_inlining.rs:203-213`, `static_reference.rs:90`); large `output.<node_id>` values are blob-offloaded handler-agnostically (`artifact.rs` `offload_large_values`, 100KB, via `lifecycle/artifact.rs:204`); `Event::StageCompleted` already carries `context_updates` — no new events; nothing in `fabro-validate` flags `output_schema` on parallelogram nodes; agent/prompt `simulate` never validates, so command `simulate` needs zero changes.\n\n## Implementation\n\n### 1. `lib/crates/fabro-workflow/src/handler/structured_output.rs` — one-line change\n\nRemove the `#[cfg(test)]` gate from `messages()` (lines 75-79; keep `#[must_use]`, leave `kind()` gated). Everything else (`parse_node_output_schema`, `validate_response_text`, `apply_validated_output`, `apply_routing_fields`) is reused as-is; prompt/agent behavior is untouched.\n\n### 2. `lib/crates/fabro-workflow/src/handler/command.rs` — the feature\n\n- **Imports:** add `structured_output` + `StructuredOutputError` to the `super::` import (line 9), mirroring `prompt.rs:13`.\n- **Parse schema before side effects:** right after the language check (line 77), before command assembly / `CommandStarted` emit / sandbox exec:\n  ```rust\n  let output_schema = structured_output::parse_node_output_schema(node)?;\n  ```\n  A malformed/empty/unresolved-`@` schema fails fast as `Err(Error::Validation)` — non-retryable, Deterministic, script never runs, no events emitted (same propagation prompt/agent use).\n- **Exit-0 branch (lines 167-175) restructure:** build the base success outcome first (`command.output` blob ref, notes `\"Script completed: {script}\"`, timing), then if a schema is set, validate `finalized.output_text`:\n  - `Ok(validated)` → `structured_output::apply_validated_output(node, schema, &validated, &mut outcome)`. Custom schema → whole object at `output.<node_id>`; routing → `preferred_next_label` / `suggested_next_ids` / `outcome` override / `failure_reason` / `context_updates` flat merge, exactly as for agents. Routing's `outcome:\"failed\"` override yields `Failed { retry_requested: false }` (verified via `StageOutcome` parsing) — no retries.\n  - `Err(error)` → return `Ok` of `Outcome::fail_deterministic(reason)` (`outcome.rs:69-77`) with `command.output` + timing still set (parity with the non-zero-exit failure branch; notes stay `None`). **All** `StructuredOutputError` kinds fail — commands get no `allows_routing_fallback` (that's the agent `status.json` fallback).\n- **New private helper** next to `append_output_tail` (~line 197):\n  ```rust\n  fn schema_validation_failure_reason(script: &str, error: &StructuredOutputError, output_text: &str) -> String\n  ```\n  Message: `\"Script output failed output_schema validation: {script}\"` + one `- {message}` line per validator error + `append_output_tail` (last 4KB under `## output`).\n- Timeout/cancel/spawn/non-zero branches, `simulate()`, and `node_timeout_policy` untouched. `output_retries()` never read.\n\n### 3. Unit tests — `command.rs` `#[cfg(test)]` mod\n\nReuse the existing harness (`make_services()`, `command_text()`, `SpySandbox` + `make_spy_services()`, real echo/python scripts). Schema literal from `prompt.rs:459`: `{\"type\":\"object\",\"required\":[\"passed\"],\"properties\":{\"passed\":{\"type\":\"boolean\"}}}`.\n\n1. `command_custom_output_schema_stores_output_context_key` — `echo '{\"passed\": true}'` → Succeeded; `context_updates[\"output.<id>\"]` equals the object; `command.output` still present.\n2. `command_custom_output_schema_validates_last_json_object` — log lines + earlier JSON, payload JSON last → last object wins (same extraction as agents).\n3. `command_custom_output_schema_failure_is_deterministic` — `echo '{\"passed\":\"yes\"}'` (exit 0) → `Failed { retry_requested: false }`, `FailureCategory::Deterministic`, reason has validator message + `## output` tail, no \"repair attempt\"; `command.output` + timing set.\n4. `command_routing_output_schema_no_json_object_fails` — routing schema, `echo not-json` → deterministic failure (no fallback).\n5. `command_routing_output_schema_applies_routing_fields` — `{\"preferred_next_label\":\"fix\",\"context_updates\":{\"kept_count\":2}}` → Succeeded, `preferred_label`, flat `kept_count` in `context_updates`.\n6. `command_routing_output_schema_outcome_failed_override` — `{\"outcome\":\"failed\",\"failure_reason\":\"tests failed\"}`, exit 0 → `Failed { retry_requested: false }`, `failure_reason() == \"tests failed\"`.\n7. `command_invalid_output_schema_fails_before_execution` — SpySandbox + `output_schema` of invalid JSON → `Err` containing \"Invalid output_schema\", spy captured no command (script never ran).\n8. `command_nonzero_exit_skips_schema_validation` — schema + `echo '{\"passed\":\"bad\"}'; exit 1` → reason is \"exit code: 1\", not schema validation.\n9. `command_simulate_ignores_output_schema` — simulate unchanged with schema set.\n10. `command_python_custom_output_schema` — `language=\"python\"`, `print(json.dumps(...))` parity.\n\n### 4. No-retry integration test — `lib/crates/fabro-workflow/tests/it/integration.rs`\n\n`command_schema_validation_failure_does_not_consume_retries`: graph via `make_graph_with_start_exit` (~line 1917), parallelogram node with `max_retries=2` + custom schema + script echoing invalid JSON at exit 0; `collect_events` → assert exactly **one** `CommandStarted`, final outcome `Failed { retry_requested: false }` / Deterministic.\n\n### 5. CLI black-box test — the roadmap's end-to-end claim\n\nNew fixture `lib/crates/fabro-cli/tests/it/workflow/fixtures/command_routing.fabro` (modeled on `conditional_branching.fabro` + `command_pipeline.fabro`): `classify` parallelogram with `output_schema=\"routing\"` echoing `{\"context_updates\":{\"kept_count\":2}}` → diamond gate → `kept` edge with `condition=\"context.kept_count > 0\"` vs `none` fallback. New test `workflow/command_routing.rs` (register in `workflow/mod.rs`, use `sandbox_tests!`): run validate + `run --auto-approve`, assert conclusion succeeded, `completed_nodes` contains `kept`, not `none`. This proves script → routing merge → flat context key → condition routing end to end. Beware DOT/shell quoting of the JSON (single-quote it; `fabro validate` in the test catches mistakes).\n\n### 6. Docs — `docs/public/`\n\n- `reference/dot-language.mdx`: line ~209 attr-table → \"Supported on agent, prompt, and command nodes\"; add `output_schema` row to the command-node table (~242-247); extend the structured-output section (~217-239) with a command paragraph: validates the **last JSON object** in merged stdout+stderr when the script exits 0; print the JSON last; no repair turns, no retries, no `status.json` fallback; `output_retries` does not apply; custom → `output.<node_id>` (not addressable by edge conditions), routing → routing fields + `context_updates` flat keys (addressable by conditions).\n- `agents/outputs.mdx`: extend \"agent and prompt nodes\" mentions (~lines 69, 148) to include command nodes with the same caveats. Surgical edits.\n\n## Verification\n\n1. `cargo nextest run -p fabro-workflow` — unit + integration tests above.\n2. `cargo nextest run -p fabro-cli` — black-box `command_routing` workflow test.\n3. `cargo build --workspace && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings && cargo +nightly-2026-04-14 fmt --check --all`.\n4. Manual smoke: `fabro run` a scratch workflow with a routing command feeding a condition and a custom-schema command, confirm `stage.completed` events show `context_updates` (`output.<id>` / flat keys) and a validation failure shows the Deterministic reason with the output tail.\n\n## Risks\n\n- **stderr merged after payload:** `exec 2>&1` interleaving means stray trailing `{...}` on stderr could become the \"last JSON object\" — documented (\"print the JSON last\"); acceptable, matches agent extraction semantics.\n- **Routing key collisions** (script writes `command.output` via `context_updates`): last-write-wins, same hazard class as agent routing today — accepted for parity.\n- **Behavior note for release notes:** none — purely additive; nodes without `output_schema` are byte-for-byte unchanged.\n\n## Unresolved questions\n\nNone — the two open design points (context merge shape; routing support) were decided above. Optional follow-ups, not blocking: validate-time lint that `output_schema` parses as a JSON Schema (belongs to roadmap item #2's validation sweep), and a changelog entry via the changelog skill after merge.\n",
+          "failure_signature": "",
+          "internal.run_id": "01KY7WQ92JWT90307EBQY6P2HV",
+          "graph.rankdir": "LR",
+          "internal.thread_id": "start",
+          "current_node": "toolchain",
+          "internal.retry_count.start": 0,
+          "failure_class": "",
+          "command.output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c",
+          "thread.start.current_node": "toolchain",
+          "internal.retry_count.toolchain": 0,
+          "internal.node_visit_count": 1
+        },
+        "node_outcomes": {
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1501,
+              "active_time_ms": 1501
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "preflight_compile",
+        "node_visits": {
+          "toolchain": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -502,5 +598,67 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "toolchain@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "command": "exec 2>&1\ncommand -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "language": "shell"
+      },
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-23T16:25:32.531757317Z",
+      "handler": "command",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
+    },
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-23T16:25:32.531561683Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-23T16:25:32.531419144Z",
+      "handler": "start",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    }
+  }
 }
