@@ -1,0 +1,6 @@
+{
+  "mode": "agent",
+  "provider": "openrouter",
+  "model": "anthropic/claude-fable-5",
+  "reasoning_effort": "xhigh"
+}

@@ -1,0 +1,4329 @@
+diff --git a/docs/public/core-concepts/models.mdx b/docs/public/core-concepts/models.mdx
+index 7bda6217b..c466e3f96 100644
+--- a/docs/public/core-concepts/models.mdx
++++ b/docs/public/core-concepts/models.mdx
+@@ -9,6 +9,43 @@ No single model is best at everything. Fabro lets you assign the right model to
+   <img src="/images/ensemble-workflow.svg" alt="Ensemble workflow: fan out to Opus and Gemini Pro, merge, then synthesize" />
+ </Frame>
+ 
++## How model selection works
++
++Fabro separates the name a workflow uses from the value a provider expects on
++the wire:
++
++| Term | Meaning |
++|---|---|
++| **Provider ID** | Who serves the request, such as `openai` or `openrouter`. |
++| **Model slug** | The canonical, human-facing model ID, such as `gpt-5.6-sol`. |
++| **Alias** | An alternate user-facing selector, such as `gpt-56-sol`. |
++| **Offering** | One provider's route to one model slug. Its identity is `(provider, model slug)`. |
++| **Family** | Metadata used for display and compatible-model matching, not a routing namespace. |
++| **API ID** | The opaque string sent to the selected provider API. Workflows do not reference it. |
++
++A model slug is unique within a provider, not across the whole catalog. Two
++providers can offer the same slug and reuse the same alias, so a workflow can
++use one stable selector wherever either provider is available.
++
++For an unqualified selector, Fabro first finds matching offerings on **ready
++providers**—providers whose adapters registered successfully with usable
++credentials and configuration. It then chooses the provider with the highest
++`priority`; equal priorities use canonical provider ID in ascending order. A
++canonical model-slug match is considered before alias matches.
++
++| Ready providers | Selector | Selected offering |
++|---|---|---|
++| OpenAI only | `gpt-56-sol` | OpenAI's `gpt-5.6-sol` |
++| OpenRouter only | `gpt-56-sol` | OpenRouter's `gpt-5.6-sol` offering |
++| OpenAI and OpenRouter | `gpt-56-sol` | OpenAI, because its provider priority is higher |
++| Both, with `provider = "openrouter"` | `gpt-56-sol` | OpenRouter, because an explicit provider is a pin |
++
++<Note>
++An explicit provider restricts lookup to that provider. If the pinned provider
++is unavailable or does not offer the selector, Fabro reports the error instead
++of silently switching providers.
++</Note>
++
+ ## Model catalog
+ 
+ | Model | Provider | Aliases | Context | Cost (in/out per Mtok) | Speed |
+@@ -46,13 +83,14 @@ Claude Fable 5 is available as an explicit model but is not the default Anthropi
+ 
+ ## Configuring providers and models
+ 
+-Fabro's catalog starts with the built-in providers and models, then merges any `[llm]` entries from settings. Provider and model IDs are strings, so a server or project can add an OpenAI-compatible provider without a Fabro release.
++Fabro's catalog starts with the built-in providers and models, then merges any `[llm]` entries from settings. Provider and model IDs are strings, so a server or project can add an OpenAI-compatible provider without a Fabro release. Declare each model under the provider that serves it:
+ 
+ ```toml title="settings.toml"
+ [llm.providers.proxy]
+ display_name = "Acme Gateway"
+ adapter = "openai_compatible"
+ base_url = "https://llm-gateway.example.com/v1"
++priority = 50
+ aliases = ["gateway"]
+ 
+ [llm.providers.proxy.auth]
+@@ -62,8 +100,7 @@ credentials = ["env:ACME_GATEWAY_API_KEY", "vault:ACME_GATEWAY_API_KEY"]
+ x-portkey-api-key = "{{ env.PORTKEY_API_KEY }}"
+ x-portkey-config = "@bedrock-prod"
+ 
+-[llm.models."team-code-large"]
+-provider = "proxy"
++[llm.providers.proxy.models."team-code-large"]
+ api_id = "provider-wire-model-name"
+ agent_profile = "anthropic"
+ display_name = "Team Code Large"
+@@ -73,32 +110,33 @@ small_default = true
+ aliases = ["team-code"]
+ estimated_output_tps = 80
+ 
+-[llm.models."team-code-large".limits]
++[llm.providers.proxy.models."team-code-large".limits]
+ context_window = 200000
+ max_output = 32000
+ 
+-[llm.models."team-code-large".features]
++[llm.providers.proxy.models."team-code-large".features]
+ tools = true
+ reasoning = true
+ reasoning_effort = "levels"
+ prompt_cache = true
+-effort = true
+ 
+-[llm.models."team-code-large".controls]
++[llm.providers.proxy.models."team-code-large".controls]
+ reasoning_effort = ["low", "medium", "high"]
+ speed = ["fast"]
+ 
+-[llm.models."team-code-large".costs]
++[llm.providers.proxy.models."team-code-large".costs]
+ input_cost_per_mtok = 1.50
+ output_cost_per_mtok = 8.00
+ cache_input_cost_per_mtok = 0.30
+ 
+-[llm.models."team-code-large".costs.speed.fast]
++[llm.providers.proxy.models."team-code-large".costs.speed.fast]
+ input_cost_per_mtok = 3.00
+ output_cost_per_mtok = 16.00
+ cache_input_cost_per_mtok = 0.60
+ ```
+ 
++The table key (`team-code-large`) is the model slug that workflows select. `api_id` is an opaque provider-facing wire value. It defaults to the exact model slug when omitted, so configure it only when the provider expects a different string, such as a deployment name, `author/model` slug, or Bedrock inference-profile ID. Fabro does not parse it for provider routing, add prefixes, or otherwise infer meaning from it; an explicitly empty `api_id` is invalid.
++
+ For [LiteLLM](/integrations/litellm), Fabro ships a disabled provider entry. Enable it in settings and declare the models your proxy exposes:
+ 
+ ```toml title="settings.toml"
+@@ -106,24 +144,27 @@ For [LiteLLM](/integrations/litellm), Fabro ships a disabled provider entry. Ena
+ enabled = true
+ base_url = "http://localhost:4000/v1"
+ 
+-[llm.models."litellm-gpt-5"]
+-provider = "litellm"
++[llm.providers.litellm.models."litellm-gpt-5"]
+ api_id = "gpt-5"
+ display_name = "LiteLLM GPT-5"
+ family = "litellm"
+ default = true
+ 
+-[llm.models."litellm-gpt-5".limits]
++[llm.providers.litellm.models."litellm-gpt-5".limits]
+ context_window = 128000
+ max_output = 8192
+ 
+-[llm.models."litellm-gpt-5".features]
++[llm.providers.litellm.models."litellm-gpt-5".features]
+ tools = true
+ vision = false
+ reasoning = false
+ ```
+ 
+-`api_id` is the model name sent to the provider API. Omit it when the Fabro model ID and provider model ID are the same.
++### Reusing aliases across providers
++
++Aliases are scoped to a provider. An alias or canonical slug must identify exactly one model within that provider, so two models under `proxy` cannot both claim `team-code`. The same slug or alias may be reused by another provider; that reuse is what makes unqualified selectors portable. Across providers, an exact canonical-slug match takes precedence over an alias match. You can still reach a shadowed alias by pinning its provider.
++
++The older `[llm.models.<id>]` form remains readable as a compatibility input, but new configuration and built-in catalog entries should use `[llm.providers.<provider>.models.<model>]`.
+ 
+ Model roles are separate: `default = true` controls normal model selection for workflow execution, while `small_default = true` marks the provider's small/cheap utility model for metadata tasks such as generated run titles. If a provider has no small default, Fabro falls back to that provider's normal default.
+ 
+@@ -169,7 +210,7 @@ Fabro ships an Ollama provider definition that is disabled by default. Enable it
+ enabled = true
+ ```
+ 
+-Enabling the provider alone does not expose any models — until #267 adds auto-discovery, add explicit `[llm.models.<id>]` blocks for each Ollama model you have pulled locally. Ollama's OpenAI-compatible endpoint accepts any bearer token, so local users can set `OLLAMA_API_KEY=ollama`.
++Enabling the provider alone does not expose any models — until #267 adds auto-discovery, add an explicit `[llm.providers.ollama.models.<model>]` block for each Ollama model you have pulled locally. Ollama's OpenAI-compatible endpoint accepts any bearer token, so local users can set `OLLAMA_API_KEY=ollama`.
+ 
+ ## Default models
+ 
+@@ -217,11 +258,12 @@ Model stylesheets set per-node models inside the workflow graph, but you can als
+ Pass `--model` and optionally `--provider` to `fabro run`:
+ 
+ ```bash
+-fabro run docs/internal/demo/01-hello.fabro --model claude-opus-4-6
++fabro run docs/internal/demo/01-hello.fabro --model gpt-56-sol
++fabro run docs/internal/demo/01-hello.fabro --model gpt-56-sol --provider openrouter
+ fabro run docs/internal/demo/04-pipeline.fabro --model gemini-3.1-pro-preview
+ ```
+ 
+-These flags set the default model for all nodes that don't have an explicit model assigned via a stylesheet. The provider is automatically inferred from the model catalog — you only need `--provider` for models not in the catalog or to force a specific provider.
++These flags set the default model for all nodes that don't have an explicit model assigned via a stylesheet. Without `--provider`, the selector is portable across ready offerings and provider priority decides. `--provider` is an explicit pin, including for models not in the catalog.
+ 
+ ### Run config TOML
+ 
+@@ -247,7 +289,13 @@ Then launch with:
+ fabro run run.toml
+ ```
+ 
+-The `fallbacks` array is optional. Each entry may be a bare provider token (like `"gemini"`), a bare model alias (like `"gpt-5.4"`), or a qualified `"provider/model"` reference. Fabro tries them in order when the primary provider is unavailable.
++The `fallbacks` array is optional. Each entry may be a bare provider token (like `"gemini"`), a bare model alias (like `"gpt-5.4"`), or a qualified `"provider/model"` reference. Fabro resolves each entry to a concrete provider and canonical model, then tries that persisted chain in order after a failover-eligible error. Provider-only entries choose the closest compatible model; qualified model entries stay pinned to their named provider.
++
++### Resolution is stable for a run
++
++When Fabro creates a run, it resolves every implicit model selector against the ready-provider snapshot and persists the chosen canonical `(provider, model slug)` in the run. Resuming that run uses the materialized choice—it does not re-rank providers because credentials or priorities changed later.
++
++This resolve-once behavior makes a run reproducible; the fallback chain is the separate mechanism for handling a provider that fails after creation. A newly created run can choose a different ready offering from the same portable selector.
+ 
+ <Note>
+ The precedence order is: node-level stylesheet > run config TOML > CLI flags > server defaults. More specific settings always win.
+diff --git a/docs/public/execution/failures.mdx b/docs/public/execution/failures.mdx
+index 6884d5708..7113ac20a 100644
+--- a/docs/public/execution/failures.mdx
++++ b/docs/public/execution/failures.mdx
+@@ -121,7 +121,9 @@ provider = "anthropic"
+ fallbacks = ["gemini", "openai"]
+ ```
+ 
+-When Anthropic is unavailable, Fabro tries Gemini first, then OpenAI. Each fallback entry may be a bare provider token (like `"gemini"`), a bare model alias (like `"gpt-5.4"`), or a qualified `"provider/model"` reference. For each fallback provider, Fabro selects the closest model by matching required capabilities (tool use, vision, reasoning) and minimizing cost difference.
++When Anthropic is unavailable, Fabro tries Gemini first, then OpenAI. Each fallback entry may be a bare provider token (like `"gemini"`), a bare model alias (like `"gpt-5.4"`), or a qualified `"provider/model"` reference. Provider-only entries select the closest model by matching required capabilities (tool use, vision, reasoning) and minimizing cost difference. Qualified model entries are provider pins; bare models and aliases select among ready providers by priority.
++
++Fabro resolves the primary and fallback selectors to concrete provider/model offerings when it creates the run and persists the result. Resume reuses that materialized chain rather than re-ranking providers after credentials or priorities change. Runtime fallback is the mechanism for a provider failure that happens after creation.
+ 
+ ### What triggers failover
+ 
+diff --git a/docs/public/execution/run-configuration.mdx b/docs/public/execution/run-configuration.mdx
+index 1b51a9161..20001cd86 100644
+--- a/docs/public/execution/run-configuration.mdx
++++ b/docs/public/execution/run-configuration.mdx
+@@ -138,11 +138,11 @@ name = "claude-sonnet-4-5"
+ 
+ | Field | Description |
+ |---|---|
+-| `name` | Model ID or alias (e.g. `claude-sonnet-4-5`, `opus`, `gemini-pro`). See [Models](/core-concepts/models). |
+-| `provider` | Provider name (optional — auto-inferred from the model catalog). Only needed for models not in the catalog or to force a specific provider. |
+-| `fallbacks` | Ordered list of model references to try when the primary is unavailable. Entries can be bare provider tokens (`"openai"`), bare model aliases, or qualified `"provider/model"` references. |
++| `name` | Canonical model slug or alias (e.g. `claude-sonnet-4-5`, `opus`, `gemini-pro`). See [Models](/core-concepts/models). |
++| `provider` | Optional provider pin. When omitted, Fabro selects a matching offering from ready providers by provider priority. When set, lookup is restricted to that provider and unavailability is an error. |
++| `fallbacks` | Ordered list of model references to try after a failover-eligible error. Entries can be bare provider tokens (`"openai"`), bare model aliases, or qualified `"provider/model"` references. |
+ 
+-Provider values are catalog provider ID strings. Built-in IDs like `anthropic` and `openai` work, and settings-defined IDs like `proxy` work after they are added under `[llm.providers.<id>]`.
++Provider values are catalog provider ID strings. Built-in IDs like `anthropic` and `openai` work, and settings-defined IDs like `proxy` work after they are added under `[llm.providers.<id>]`. A qualified fallback such as `"openrouter/gpt-56-sol"` is pinned to that provider; a bare alias can select among ready fallback offerings by priority.
+ 
+ #### `[run.model.controls]`
+ 
+@@ -163,6 +163,12 @@ speed = "fast"
+ | `reasoning_effort` | Native reasoning-effort value to request when the selected model allows it, such as `"low"`, `"medium"`, `"high"`, `"xhigh"`, or `"max"`. |
+ | `speed` | Native speed value to request when the selected model declares it, such as `"fast"`. The standard speed is implicit and does not need to be set. |
+ 
++#### Resolution and fallback behavior
++
++At run creation, Fabro resolves unqualified primary and fallback selectors to concrete provider and canonical-model pairs using the ready-provider snapshot, then persists those choices. Resume reuses the materialized routing and does not reconsider provider priority if credentials or configuration changed. Runtime failover walks the persisted fallback chain; create a new run to reselect from current provider availability.
++
++Provider-only fallbacks choose the closest compatible model on that provider. A provider-qualified model or alias resolves only within that provider, while a bare model or alias uses ready providers and priority.
++
+ #### Fallbacks with splice
+ 
+ Use the reserved `"..."` marker in `fallbacks` to splice in the inherited list from lower-precedence layers:
+diff --git a/docs/public/integrations/litellm.mdx b/docs/public/integrations/litellm.mdx
+index 7f1891f8d..f7acf9fd4 100644
+--- a/docs/public/integrations/litellm.mdx
++++ b/docs/public/integrations/litellm.mdx
+@@ -24,24 +24,23 @@ _version = 1
+ enabled = true
+ base_url = "http://localhost:4000/v1"
+ 
+-[llm.models."litellm-gpt-5"]
+-provider = "litellm"
++[llm.providers.litellm.models."litellm-gpt-5"]
+ api_id = "gpt-5"
+ display_name = "LiteLLM GPT-5"
+ family = "litellm"
+ default = true
+ 
+-[llm.models."litellm-gpt-5".limits]
++[llm.providers.litellm.models."litellm-gpt-5".limits]
+ context_window = 128000
+ max_output = 8192
+ 
+-[llm.models."litellm-gpt-5".features]
++[llm.providers.litellm.models."litellm-gpt-5".features]
+ tools = true
+ vision = false
+ reasoning = false
+ ```
+ 
+-`api_id` is the model name Fabro sends to LiteLLM. It should match a model name configured in your LiteLLM proxy.
++`api_id` is the opaque model name Fabro sends to LiteLLM. It should match a model name configured in your LiteLLM proxy. When the provider-facing name is the same as the Fabro model slug, omit `api_id`; it defaults to the slug.
+ 
+ ## Configure credentials
+ 
+diff --git a/lib/crates/fabro-config/src/builders.rs b/lib/crates/fabro-config/src/builders.rs
+index 1458ba0b9..78de24414 100644
+--- a/lib/crates/fabro-config/src/builders.rs
++++ b/lib/crates/fabro-config/src/builders.rs
+@@ -16,9 +16,9 @@ use crate::resolve::{
+ };
+ use crate::user::load_settings_config;
+ use crate::{
+-    CliLayer, Combine, CostRates, EnvironmentLayer, Error, LlmLayer, LlmModelFeatures,
+-    LlmModelLimits, MergeMap, ModelControls, ModelCostTable, ModelSettings, ProviderSettings,
+-    Result, RunLayer, ServerLayer, SettingsLayer, run,
++    CliLayer, Combine, CostRates, EnvironmentLayer, Error, LegacyModelSettings, LlmLayer,
++    LlmModelFeatures, LlmModelLimits, MergeMap, ModelControls, ModelCostTable, ModelSettings,
++    ProviderSettings, Result, RunLayer, ServerLayer, SettingsLayer, run,
+ };
+ 
+ #[derive(Debug, Clone, PartialEq, Eq)]
+@@ -321,7 +321,7 @@ fn llm_layer_to_catalog_settings(llm: LlmLayer) -> model_catalog::LlmCatalogSett
+             .models
+             .into_inner()
+             .into_iter()
+-            .map(|(id, settings)| (id, model_settings_to_catalog(settings)))
++            .map(|(id, settings)| (id, legacy_model_settings_to_catalog(settings)))
+             .collect(),
+     }
+ }
+@@ -341,6 +341,12 @@ fn provider_settings_to_catalog(
+             .collect()
+     });
+     model_catalog::ProviderCatalogSettings {
++        models: settings
++            .models
++            .into_inner()
++            .into_iter()
++            .map(|(id, settings)| (id, model_settings_to_catalog(settings)))
++            .collect(),
+         display_name: settings.display_name,
+         adapter: settings.adapter,
+         codec: settings.codec,
+@@ -356,9 +362,17 @@ fn provider_settings_to_catalog(
+     }
+ }
+ 
++fn legacy_model_settings_to_catalog(
++    settings: LegacyModelSettings,
++) -> model_catalog::ModelCatalogSettings {
++    let LegacyModelSettings { provider, model } = settings;
++    let mut settings = model_settings_to_catalog(model);
++    settings.provider = provider;
++    settings
++}
++
+ fn model_settings_to_catalog(settings: ModelSettings) -> model_catalog::ModelCatalogSettings {
+     let ModelSettings {
+-        provider,
+         api_id,
+         codec,
+         billing_policy,
+@@ -379,7 +393,7 @@ fn model_settings_to_catalog(settings: ModelSettings) -> model_catalog::ModelCat
+         costs,
+     } = settings;
+     model_catalog::ModelCatalogSettings {
+-        provider,
++        provider: None,
+         api_id,
+         codec,
+         billing_policy,
+@@ -820,7 +834,7 @@ provider = "docker"
+     }
+ 
+     #[test]
+-    fn server_runtime_settings_preserves_llm_catalog_overrides() {
++    fn server_runtime_settings_preserves_provider_scoped_llm_catalog_overrides() {
+         let settings = server_runtime_settings_from_toml(
+             r#"
+ _version = 1
+@@ -837,17 +851,16 @@ agent_profile = "anthropic"
+ [llm.providers.acme.auth]
+ credentials = ["env:ACME_API_KEY"]
+ 
+-[llm.models."acme-large"]
+-provider = "acme"
++[llm.providers.acme.models."acme-large"]
+ display_name = "Acme Large"
+ family = "acme"
+ default = true
+ agent_profile = "gemini"
+ 
+-[llm.models."acme-large".limits]
++[llm.providers.acme.models."acme-large".limits]
+ context_window = 128000
+ 
+-[llm.models."acme-large".features]
++[llm.providers.acme.models."acme-large".features]
+ tools = true
+ vision = false
+ reasoning = false
+@@ -857,20 +870,69 @@ reasoning = false
+         )
+         .expect("server runtime settings should resolve");
+ 
+-        let catalog =
+-            fabro_model::Catalog::from_builtin_with_overrides(&settings.llm_catalog_settings)
+-                .expect("catalog overrides should build");
++        let provider = settings
++            .llm_catalog_settings
++            .providers
++            .get("acme")
++            .expect("provider settings should be present");
++        let model = provider
++            .models
++            .get("acme-large")
++            .expect("provider-scoped model settings should be present");
++        assert_eq!(model.display_name.as_deref(), Some("Acme Large"));
++        assert_eq!(model.agent_profile, Some(fabro_model::AgentProfileKind::Gemini));
++        assert!(settings.llm_catalog_settings.models.is_empty());
++    }
++
++    #[test]
++    fn server_runtime_settings_converts_legacy_models_to_provider_catalog_shape() {
++        let settings = server_runtime_settings_from_toml(
++            r#"
++_version = 1
++
++[server.auth]
++methods = ["dev-token"]
++
++[llm.models."acme-large"]
++provider = "acme"
++display_name = "Acme Large"
++"#,
++            None,
++            None,
++        )
++        .expect("legacy catalog settings should resolve");
+ 
+         assert_eq!(
+-            catalog
+-                .get("acme-large")
+-                .map(|model| model.provider.clone()),
+-            Some(fabro_model::ProviderId::new("acme"))
++            settings.llm_catalog_settings.providers["acme"].models["acme-large"]
++                .display_name
++                .as_deref(),
++            Some("Acme Large")
+         );
++        assert!(settings.llm_catalog_settings.models.is_empty());
++    }
++
++    #[test]
++    fn server_runtime_settings_retains_providerless_legacy_models_for_catalog_adoption() {
++        let settings = server_runtime_settings_from_toml(
++            r#"
++_version = 1
++
++[server.auth]
++methods = ["dev-token"]
++
++[llm.models."known-model"]
++display_name = "Renamed Known Model"
++"#,
++            None,
++            None,
++        )
++        .expect("provider-less legacy catalog settings should resolve");
++
+         assert_eq!(
+-            catalog
+-                .effective_agent_profile(&fabro_model::ProviderId::new("acme"), Some("acme-large")),
+-            Some(fabro_model::AgentProfileKind::Gemini)
++            settings.llm_catalog_settings.models["known-model"]
++                .display_name
++                .as_deref(),
++            Some("Renamed Known Model")
+         );
+     }
+ 
+diff --git a/lib/crates/fabro-config/src/layers/llm.rs b/lib/crates/fabro-config/src/layers/llm.rs
+index 5fb8a0a64..00fc79e35 100644
+--- a/lib/crates/fabro-config/src/layers/llm.rs
++++ b/lib/crates/fabro-config/src/layers/llm.rs
+@@ -12,11 +12,15 @@
+ //! enabled = true
+ //! aliases = ["moonshot"]
+ //!
+-//! [llm.models."kimi-k2.5"]
+-//! provider = "kimi"
++//! [llm.providers.kimi.models."kimi-k2.5"]
+ //! ...
+ //! ```
+ //!
++//! Legacy top-level `[llm.models.<id>]` rows remain accepted by the settings
++//! parser. Rows with a `provider` are normalized into the canonical provider
++//! scope before layers combine; provider-less rows are retained for
++//! catalog-aware compatibility handling.
++//!
+ //! Per-provider and per-model entries field-merge across layers (default →
+ //! user → server → project → workflow/run). Inner arrays such as
+ //! `auth.credentials`, `aliases`, `controls.reasoning_effort`, and
+@@ -43,15 +47,22 @@ pub struct LlmLayer {
+     /// Provider definitions keyed by provider ID.
+     #[serde(default, skip_serializing_if = "MergeMap::is_empty")]
+     pub providers: MergeMap<ProviderSettings>,
+-    /// Model definitions keyed by canonical model ID.
++    /// Legacy top-level model definitions keyed by canonical model ID.
++    ///
++    /// Provider-qualified rows are moved into [`ProviderSettings::models`] by
++    /// the settings parser. Rows without a provider remain here until the
++    /// built-in catalog can adopt them unambiguously.
+     #[serde(default, skip_serializing_if = "MergeMap::is_empty")]
+-    pub models:    MergeMap<ModelSettings>,
++    pub models:    MergeMap<LegacyModelSettings>,
+ }
+ 
+ /// One entry in `[llm.providers.<id>]`.
+ #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+ #[serde(deny_unknown_fields)]
+ pub struct ProviderSettings {
++    /// Model definitions owned by this provider, keyed by canonical model ID.
++    #[serde(default, skip_serializing_if = "MergeMap::is_empty")]
++    pub models:         MergeMap<ModelSettings>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub display_name:   Option<String>,
+     /// Adapter registry key (e.g. `"openai_compatible"`).
+@@ -89,13 +100,10 @@ pub struct ProviderSettings {
+     pub aliases:        Option<Vec<String>>,
+ }
+ 
+-/// One entry in `[llm.models.<id>]`.
++/// One entry in `[llm.providers.<provider>.models.<id>]`.
+ #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+ #[serde(deny_unknown_fields)]
+ pub struct ModelSettings {
+-    /// Provider ID this model belongs to.
+-    #[serde(default, skip_serializing_if = "Option::is_none")]
+-    pub provider:             Option<String>,
+     /// Identifier sent to the provider API. Defaults to the catalog model ID
+     /// when omitted.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+@@ -155,6 +163,38 @@ pub struct ModelSettings {
+     pub costs:                Option<ModelCostTable>,
+ }
+ 
++/// Input-only compatibility row for the legacy `[llm.models.<id>]` shape.
++#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
++#[serde(deny_unknown_fields)]
++pub struct LegacyModelSettings {
++    /// Provider ID used to move this row into the canonical provider scope.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub provider: Option<String>,
++    #[serde(flatten)]
++    pub model:    ModelSettings,
++}
++
++impl LegacyModelSettings {
++    #[must_use]
++    pub(crate) fn into_model(self) -> ModelSettings {
++        self.model
++    }
++}
++
++impl std::ops::Deref for LegacyModelSettings {
++    type Target = ModelSettings;
++
++    fn deref(&self) -> &Self::Target {
++        &self.model
++    }
++}
++
++impl std::ops::DerefMut for LegacyModelSettings {
++    fn deref_mut(&mut self) -> &mut Self::Target {
++        &mut self.model
++    }
++}
++
+ #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+ #[serde(deny_unknown_fields)]
+ pub struct ModelLimits {
+diff --git a/lib/crates/fabro-config/src/layers/mod.rs b/lib/crates/fabro-config/src/layers/mod.rs
+index c3fa1632c..aae4c99a6 100644
+--- a/lib/crates/fabro-config/src/layers/mod.rs
++++ b/lib/crates/fabro-config/src/layers/mod.rs
+@@ -21,8 +21,8 @@ pub use environment::{
+     EnvironmentNetworkLayer, EnvironmentResourcesLayer, RunEnvironmentLayer,
+ };
+ pub use llm::{
+-    CostRates, CredentialRef, CredentialRefParseError, LlmLayer, ModelControls, ModelCostTable,
+-    ModelFeatures as LlmModelFeatures, ModelLimits as LlmModelLimits, ModelSettings,
++    CostRates, CredentialRef, CredentialRefParseError, LegacyModelSettings, LlmLayer, ModelControls,
++    ModelCostTable, ModelFeatures as LlmModelFeatures, ModelLimits as LlmModelLimits, ModelSettings,
+     ProviderSettings, ReasoningEffortFeature,
+ };
+ pub use log_filter::LogFilter;
+diff --git a/lib/crates/fabro-config/src/lib.rs b/lib/crates/fabro-config/src/lib.rs
+index f6097b9be..fd7d48608 100644
+--- a/lib/crates/fabro-config/src/lib.rs
++++ b/lib/crates/fabro-config/src/lib.rs
+@@ -46,8 +46,9 @@ pub use layers::{
+     CredentialRefParseError, EnvironmentDockerfileLayer, EnvironmentImageLayer, EnvironmentLayer,
+     EnvironmentLifecycleLayer, EnvironmentNetworkLayer, EnvironmentResourcesLayer, GitAuthorLayer,
+     GithubIntegrationLayer, HookAgentMarker, HookEntry, HookTlsMode, IntegrationWebhooksLayer,
+-    InterviewProviderLayer, InterviewsLayer, LlmLayer, LlmModelFeatures, LlmModelLimits, LogFilter,
+-    McpEntryLayer, MergeMap, ModelControls, ModelCostTable, ModelRefOrSplice, ModelSettings,
++    InterviewProviderLayer, InterviewsLayer, LegacyModelSettings, LlmLayer, LlmModelFeatures,
++    LlmModelLimits, LogFilter, McpEntryLayer, MergeMap, ModelControls, ModelCostTable,
++    ModelRefOrSplice, ModelSettings,
+     NotificationProviderLayer, NotificationRouteLayer, ObjectStoreLocalLayer, ObjectStoreS3Layer,
+     PrepareStep, ProjectLayer, ProviderSettings, ReasoningEffortFeature, ReplaceMap, RunAgentLayer,
+     RunArtifactsLayer, RunCheckpointLayer, RunCloneLayer, RunEnvironmentLayer, RunExecutionLayer,
+diff --git a/lib/crates/fabro-config/src/parse.rs b/lib/crates/fabro-config/src/parse.rs
+index b4e008791..35b7f4709 100644
+--- a/lib/crates/fabro-config/src/parse.rs
++++ b/lib/crates/fabro-config/src/parse.rs
+@@ -39,6 +39,13 @@ pub enum ParseError {
+         path:   String,
+         source: SettingsSource,
+     },
++    ConflictingLlmModelDefinitions {
++        provider: String,
++        model:    String,
++    },
++    InvalidLegacyLlmModelProvider {
++        model: String,
++    },
+ }
+ 
+ impl fmt::Display for ParseError {
+@@ -60,6 +67,14 @@ impl fmt::Display for ParseError {
+                 f,
+                 "`{path}` is server-managed and cannot be set in {source} settings; configure cwd on a server-managed environment instead."
+             ),
++            Self::ConflictingLlmModelDefinitions { provider, model } => write!(
++                f,
++                "model `{model}` on provider `{provider}` is defined in both `llm.models.{model}` and `llm.providers.{provider}.models.{model}` in the same settings source"
++            ),
++            Self::InvalidLegacyLlmModelProvider { model } => write!(
++                f,
++                "legacy model `llm.models.{model}` has an empty provider; omit it for catalog-aware adoption or set a non-empty provider ID"
++            ),
+         }
+     }
+ }
+@@ -118,8 +133,36 @@ pub(crate) fn parse_settings(input: &str) -> Result<SettingsLayer, ParseError> {
+         }
+     }
+ 
+-    raw.try_into::<SettingsLayer>()
+-        .map_err(|e| ParseError::Toml(e.to_string()))
++    let mut layer = raw
++        .try_into::<SettingsLayer>()
++        .map_err(|e| ParseError::Toml(e.to_string()))?;
++    normalize_legacy_llm_models(&mut layer)?;
++    Ok(layer)
++}
++
++fn normalize_legacy_llm_models(layer: &mut SettingsLayer) -> Result<(), ParseError> {
++    let Some(llm) = layer.llm.as_mut() else {
++        return Ok(());
++    };
++
++    let legacy_models = std::mem::take(&mut llm.models).into_inner();
++    for (model, legacy) in legacy_models {
++        let Some(provider) = legacy.provider.as_deref() else {
++            llm.models.insert(model, legacy);
++            continue;
++        };
++        if provider.is_empty() {
++            return Err(ParseError::InvalidLegacyLlmModelProvider { model });
++        }
++
++        let provider = provider.to_string();
++        let provider_settings = llm.providers.entry(provider.clone()).or_default();
++        if provider_settings.models.contains_key(&model) {
++            return Err(ParseError::ConflictingLlmModelDefinitions { provider, model });
++        }
++        provider_settings.models.insert(model, legacy.into_model());
++    }
++    Ok(())
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+@@ -289,11 +332,91 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn accepts_new_llm_models_subtree() {
+-        let parsed = "[llm.models.\"foo\"]\nprovider = \"kimi\"\n"
++    fn accepts_provider_scoped_models_subtree() {
++        let parsed = "[llm.providers.kimi.models.\"foo\"]\ndisplay_name = \"Foo\"\n"
+             .parse::<SettingsLayer>()
+-            .unwrap();
+-        assert!(parsed.llm.unwrap().models.contains_key("foo"));
++            .expect("provider-scoped model should parse");
++        let llm = parsed.llm.expect("llm layer should be present");
++
++        assert_eq!(
++            llm.providers["kimi"].models["foo"].display_name.as_deref(),
++            Some("Foo")
++        );
++        assert!(llm.models.is_empty());
++    }
++
++    #[test]
++    fn normalizes_legacy_llm_model_with_provider_into_provider_scope() {
++        let parsed = r#"
++[llm.models.foo]
++provider = "kimi"
++display_name = "Foo"
++"#
++        .parse::<SettingsLayer>()
++        .expect("legacy model should parse");
++        let llm = parsed.llm.expect("llm layer should be present");
++
++        assert_eq!(
++            llm.providers["kimi"].models["foo"].display_name.as_deref(),
++            Some("Foo")
++        );
++        assert!(llm.models.is_empty());
++    }
++
++    #[test]
++    fn retains_providerless_legacy_llm_model_for_catalog_aware_adoption() {
++        let parsed = r#"
++[llm.models.foo]
++display_name = "Renamed Foo"
++"#
++        .parse::<SettingsLayer>()
++        .expect("provider-less legacy model should remain compatible");
++        let llm = parsed.llm.expect("llm layer should be present");
++
++        assert_eq!(
++            llm.models["foo"].display_name.as_deref(),
++            Some("Renamed Foo")
++        );
++        assert!(llm.providers.is_empty());
++    }
++
++    #[test]
++    fn rejects_same_source_legacy_and_provider_scoped_model_pair() {
++        let error = r#"
++[llm.providers.kimi.models.foo]
++display_name = "Canonical Foo"
++
++[llm.models.foo]
++provider = "kimi"
++display_name = "Legacy Foo"
++"#
++        .parse::<SettingsLayer>()
++        .expect_err("same pair in both syntaxes should be rejected");
++
++        assert_eq!(
++            error,
++            ParseError::ConflictingLlmModelDefinitions {
++                provider: "kimi".to_string(),
++                model:    "foo".to_string(),
++            }
++        );
++    }
++
++    #[test]
++    fn rejects_empty_legacy_llm_model_provider_with_typed_error() {
++        let error = r#"
++[llm.models.foo]
++provider = ""
++"#
++        .parse::<SettingsLayer>()
++        .expect_err("empty legacy provider should be rejected");
++
++        assert_eq!(
++            error,
++            ParseError::InvalidLegacyLlmModelProvider {
++                model: "foo".to_string(),
++            }
++        );
+     }
+ 
+     #[test]
+diff --git a/lib/crates/fabro-config/src/tests/combine.rs b/lib/crates/fabro-config/src/tests/combine.rs
+index ff95a8aec..2a6c487e7 100644
+--- a/lib/crates/fabro-config/src/tests/combine.rs
++++ b/lib/crates/fabro-config/src/tests/combine.rs
+@@ -318,3 +318,117 @@ bucket = "higher-bucket"
+     assert_eq!(s3.bucket, Some("higher-bucket".to_string()));
+     assert_eq!(s3.region, None);
+ }
++
++#[test]
++fn provider_and_model_rows_field_merge_independently() {
++    let lower = parse(
++        r#"
++[llm.providers.acme]
++display_name = "Acme"
++adapter = "openai_compatible"
++base_url = "https://lower.example/v1"
++
++[llm.providers.acme.models.large]
++display_name = "Acme Large"
++family = "acme"
++
++[llm.providers.acme.models.large.limits]
++context_window = 128000
++max_output = 32000
++"#,
++    );
++    let higher = parse(
++        r#"
++[llm.providers.acme]
++base_url = "https://higher.example/v1"
++
++[llm.providers.acme.models.large]
++display_name = "Acme Large v2"
++
++[llm.providers.acme.models.large.limits]
++max_output = 64000
++"#,
++    );
++
++    let merged = higher.combine(lower);
++    let acme = &merged.llm.expect("llm layer should be present").providers["acme"];
++    assert_eq!(acme.display_name.as_deref(), Some("Acme"));
++    assert_eq!(acme.adapter.as_deref(), Some("openai_compatible"));
++    assert_eq!(acme.base_url.as_deref(), Some("https://higher.example/v1"));
++
++    let model = &acme.models["large"];
++    assert_eq!(model.display_name.as_deref(), Some("Acme Large v2"));
++    assert_eq!(model.family.as_deref(), Some("acme"));
++    assert_eq!(
++        model.limits.as_ref().and_then(|limits| limits.context_window),
++        Some(128_000)
++    );
++    assert_eq!(
++        model.limits.as_ref().and_then(|limits| limits.max_output),
++        Some(64_000)
++    );
++}
++
++#[test]
++fn legacy_model_is_normalized_before_cross_source_combine() {
++    let lower = parse(
++        r#"
++[llm.models.large]
++provider = "acme"
++family = "acme"
++
++[llm.models.large.limits]
++context_window = 128000
++"#,
++    );
++    let higher = parse(
++        r#"
++[llm.providers.acme.models.large]
++display_name = "Acme Large"
++
++[llm.providers.acme.models.large.limits]
++max_output = 64000
++"#,
++    );
++
++    let merged = higher.combine(lower);
++    let llm = merged.llm.expect("llm layer should be present");
++    let model = &llm.providers["acme"].models["large"];
++
++    assert_eq!(model.display_name.as_deref(), Some("Acme Large"));
++    assert_eq!(model.family.as_deref(), Some("acme"));
++    assert_eq!(
++        model.limits.as_ref().and_then(|limits| limits.context_window),
++        Some(128_000)
++    );
++    assert_eq!(
++        model.limits.as_ref().and_then(|limits| limits.max_output),
++        Some(64_000)
++    );
++    assert!(llm.models.is_empty());
++}
++
++#[test]
++fn same_model_id_on_different_providers_stays_independent() {
++    let merged = parse(
++        r#"
++[llm.providers.openai.models.shared]
++api_id = "shared"
++
++[llm.providers.openrouter.models.shared]
++api_id = "openai/shared"
++"#,
++    );
++    let llm = merged.llm.expect("llm layer should be present");
++
++    assert_eq!(
++        llm.providers["openai"].models["shared"].api_id.as_deref(),
++        Some("shared")
++    );
++    assert_eq!(
++        llm.providers["openrouter"].models["shared"]
++            .api_id
++            .as_deref(),
++        Some("openai/shared")
++    );
++}
+diff --git a/lib/crates/fabro-dev/src/commands/docs_options_reference.rs b/lib/crates/fabro-dev/src/commands/docs_options_reference.rs
+index aacc08575..a446d048a 100644
+--- a/lib/crates/fabro-dev/src/commands/docs_options_reference.rs
++++ b/lib/crates/fabro-dev/src/commands/docs_options_reference.rs
+@@ -247,19 +247,20 @@ x-team-secret = "{{ secrets.gateway_team_secret }}"
+ | `auth.credentials` | array<string> | required when `auth` present | Ordered credential refs. Accepted forms are `vault:<NAME>`, `env:<NAME>`, and `aws_sigv4` (sign requests from the AWS default credential chain — Bedrock). Literal secret strings are rejected. |
+ | `auth.header` | `"bearer"` or `{ custom = "Header-Name" }` | `"bearer"` | Primary API-key header policy. Omit when the provider uses a standard bearer token. |
+ | `extra_headers` | table | `{}` | Additional headers attached to provider requests. Values are interpolation strings: literal text, an `{{ env.NAME }}` token, or a `{{ secrets.NAME }}` token. Put credentials in a secret and reference them with a `{{ secrets.NAME }}` token, not a bare literal. |
+-| `priority` | integer | `0` | Higher-priority configured providers win default selection; ties use canonical provider ID. |
++| `priority` | integer | `0` | Higher-priority ready providers win unqualified model selection; ties use canonical provider ID in ascending order. |
+ | `enabled` | boolean | `true` | Set `false` to disable a provider after lower-precedence layers define it. |
+ | `aliases` | array<string> | `[]` | Additional provider names accepted by model routing and fallback config. |
+ 
+-## `[llm.models.<id>]`
++## `[llm.providers.<provider>.models.<model>]`
+ 
+-Define or override a model in the catalog. The table key is the canonical
+-model ID Fabro users reference; `api_id` is the model string sent to the
+-provider API.
++Define or override one provider-specific model offering. The containing table
++supplies the provider ID, and `<model>` is the canonical, human-facing model
++slug used by workflows. The stable identity of an offering is the pair
++`(provider, model)`; the same model slug and aliases may be reused by other
++providers.
+ 
+ ```toml title="settings.toml"
+-[llm.models."team-code-large"]
+-provider = "proxy"
++[llm.providers.proxy.models."team-code-large"]
+ api_id = "provider-wire-model-name"
+ agent_profile = "anthropic"
+ display_name = "Team Code Large"
+@@ -270,56 +271,66 @@ enabled = true
+ aliases = ["team-code"]
+ estimated_output_tps = 80
+ 
+-[llm.models."team-code-large".limits]
++[llm.providers.proxy.models."team-code-large".limits]
+ context_window = 200000
+ max_output = 32000
+ 
+-[llm.models."team-code-large".features]
++[llm.providers.proxy.models."team-code-large".features]
+ tools = true
+ vision = false
+ reasoning = true
+ reasoning_effort = "levels"
+ prompt_cache = true
+ 
+-[llm.models."team-code-large".controls]
++[llm.providers.proxy.models."team-code-large".controls]
+ reasoning_effort = ["low", "medium", "high"]
+ speed = ["fast"]
+ 
+-[llm.models."team-code-large".costs]
++[llm.providers.proxy.models."team-code-large".costs]
+ input_cost_per_mtok = 1.50
+ output_cost_per_mtok = 8.00
+ cache_input_cost_per_mtok = 0.30
+ 
+-[llm.models."team-code-large".costs.speed.fast]
++[llm.providers.proxy.models."team-code-large".costs.speed.fast]
+ input_cost_per_mtok = 3.00
+ output_cost_per_mtok = 16.00
+ cache_input_cost_per_mtok = 0.60
+ ```
+ 
++`api_id` is an opaque provider wire identifier, not a workflow selector or a
++routing namespace. When omitted, it defaults to the exact canonical model
++slug. Set it only when the provider expects a different value; an explicitly
++empty value is invalid.
++
++Unqualified model selectors consider ready providers and then choose the
++highest provider `priority`, with canonical provider ID as the deterministic
++tie-breaker. Supplying a provider pins lookup to that provider. An alias must
++identify only one model within a provider, but reusing it on another provider
++is valid and enables portable workflow selectors.
++
+ | Key | Type / values | Default | Description |
+ |---|---|---|---|
+-| `provider` | string | None | Provider ID this model belongs to. |
+-| `api_id` | string | model ID | Identifier sent to the provider API. |
++| `api_id` | string | canonical model slug | Opaque identifier sent to this offering's provider API. It is not parsed for routing. |
+ | `agent_profile` | `"anthropic"` \| `"openai"` \| `"gemini"` | provider profile | Agent profile override for this model. Model overrides take precedence over provider overrides. |
+ | `billing_policy` | `"openai"` \| `"anthropic"` \| `"gemini"` \| `"none"` | provider policy | Billing algorithm override for this model — for models whose billing family differs from their provider's (e.g. Claude served through OpenRouter bills Anthropic-style cache reads/writes). |
+-| `display_name` | string | model ID | Human-readable model name. |
+-| `family` | string | model ID | Family label used for catalog display and matching. |
++| `display_name` | string | model slug | Human-readable model name. |
++| `family` | string | model slug | Family metadata used for catalog display and matching; it is not a routing namespace. |
+ | `training` | string | None | Training data cutoff label. |
+ | `knowledge_cutoff` | string or TOML date | None | Public knowledge cutoff label; TOML dates normalize to `YYYY-MM-DD`. |
+ | `default` | boolean | `false` | Whether this is the provider default model. |
+ | `probe` | boolean | `false` | Whether this model should be preferred for provider connectivity probes. Set `false` in a higher-precedence layer to clear an inherited probe marker. |
+ | `enabled` | boolean | `true` | Set `false` to disable a model after lower-precedence layers define it. |
+-| `aliases` | array<string> | `[]` | Additional model names accepted by routing and fallback config. |
++| `aliases` | array<string> | `[]` | Additional user-facing selectors. Each selector must be unique within this provider but may be reused by other providers. |
+ | `estimated_output_tps` | number | None | Estimated output tokens per second for catalog display and planning. |
+ 
+-## `[llm.models.<id>.limits]`
++## `[llm.providers.<provider>.models.<model>.limits]`
+ 
+ | Key | Type / values | Default | Description |
+ |---|---|---|---|
+ | `context_window` | integer | None | Maximum context window size in tokens. |
+ | `max_output` | integer | None | Maximum output tokens, if known. |
+ 
+-## `[llm.models.<id>.features]`
++## `[llm.providers.<provider>.models.<model>.features]`
+ 
+ | Key | Type / values | Default | Description |
+ |---|---|---|---|
+@@ -330,14 +341,14 @@ cache_input_cost_per_mtok = 0.60
+ | `prompt_cache` | boolean | `false` | Whether prompt cache pricing/usage applies. |
+ | `sampling_params` | boolean | `true` | Whether the model accepts classic sampling parameters (`temperature`, `top_p`). |
+ 
+-## `[llm.models.<id>.controls]`
++## `[llm.providers.<provider>.models.<model>.controls]`
+ 
+ | Key | Type / values | Default | Description |
+ |---|---|---|---|
+ | `reasoning_effort` | array<string> | all standard levels when feature is `"levels"` or `"always_adaptive"` | User-facing reasoning effort values Fabro may send for this model. Can be set explicitly for reasoning models whose provider adapter maps effort to a non-native API shape. |
+ | `speed` | array<string> | `[]` | Additional speeds beyond implicit `standard`; do not list `standard`. |
+ 
+-## `[llm.models.<id>.costs]`
++## `[llm.providers.<provider>.models.<model>.costs]`
+ 
+ | Key | Type / values | Default | Description |
+ |---|---|---|---|
+@@ -345,11 +356,12 @@ cache_input_cost_per_mtok = 0.60
+ | `output_cost_per_mtok` | number | None | Output cost in USD per million tokens. |
+ | `cache_input_cost_per_mtok` | number | None | Cached input/read cost in USD per million tokens. |
+ 
+-## `[llm.models.<id>.costs.speed.<speed>]`
++## `[llm.providers.<provider>.models.<model>.costs.speed.<speed>]`
+ 
+-Per-speed cost overrides use the same keys as `[llm.models.<id>.costs]`.
+-Each `<speed>` key must be declared in `[llm.models.<id>.controls].speed`.
+-The `standard` speed is implicit and always uses the base cost table.
++Per-speed cost overrides use the same keys as
++`[llm.providers.<provider>.models.<model>.costs]`. Each `<speed>` key must be
++declared in `[llm.providers.<provider>.models.<model>.controls].speed`. The
++`standard` speed is implicit and always uses the base cost table.
+ 
+ "#,
+     );
+@@ -389,3 +401,21 @@ See [MCP](/agents/mcp) for transport-specific examples.
+ fn normalize_doc(doc: &str) -> String {
+     doc.trim().trim_end_matches('.').to_string()
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn llm_catalog_reference_teaches_provider_scoped_portable_models() {
++        let reference = render_options_reference();
++
++        assert!(reference.contains("## `[llm.providers.<provider>.models.<model>]`"));
++        assert!(reference.contains("[llm.providers.proxy.models.\"team-code-large\"]"));
++        assert!(reference.contains("defaults to the exact canonical model\nslug"));
++        assert!(reference.contains("Supplying a provider pins lookup to that provider"));
++        assert!(reference.contains("reusing it on another provider\nis valid"));
++        assert!(reference.contains("opaque provider wire identifier"));
++        assert!(!reference.contains("## `[llm.models.<id>]`"));
++    }
++}
+diff --git a/lib/crates/fabro-llm/src/client.rs b/lib/crates/fabro-llm/src/client.rs
+index c72e9ea50..7fe5011e2 100644
+--- a/lib/crates/fabro-llm/src/client.rs
++++ b/lib/crates/fabro-llm/src/client.rs
+@@ -597,6 +597,7 @@ fn format_additional_speeds(values: &[Speed]) -> String {
+ 
+ #[cfg(test)]
+ mod tests {
++    use std::sync::Mutex;
+     use std::sync::atomic::{AtomicUsize, Ordering};
+ 
+     use async_trait::async_trait;
+diff --git a/lib/crates/fabro-llm/src/cost.rs b/lib/crates/fabro-llm/src/cost.rs
+index e03ead5de..00371919c 100644
+--- a/lib/crates/fabro-llm/src/cost.rs
++++ b/lib/crates/fabro-llm/src/cost.rs
+@@ -25,11 +25,11 @@ pub(crate) fn estimate_cost_usd(
+     let catalog = catalog?;
+     // The billing machinery compares ModelRefs against the catalog's
+     // canonical identity, so resolve model aliases and provider names first.
+-    let model = catalog.get(model)?;
+     let provider = catalog.provider(&ProviderId::new(provider))?;
++    let model = catalog.model_on_provider(&provider.id, model)?;
+     let model_ref = ModelRef {
+         provider: provider.id.clone(),
+-        model_id: model.id.clone(),
++        model_id: model.id.to_string(),
+         speed,
+     };
+     let micros = catalog.price_tokens(&model_ref, tokens)?;
+diff --git a/lib/crates/fabro-llm/src/model_test.rs b/lib/crates/fabro-llm/src/model_test.rs
+index 47bca353c..09dc1e632 100644
+--- a/lib/crates/fabro-llm/src/model_test.rs
++++ b/lib/crates/fabro-llm/src/model_test.rs
+@@ -132,7 +132,7 @@ fn build_deep_test_params(info: &Model, client: Arc<Client>) -> Option<GenerateP
+         },
+     );
+ 
+-    let mut params = GenerateParams::new(&info.id, client)
++    let mut params = GenerateParams::new(info.id.as_str(), client)
+         .provider(info.provider.to_string())
+         .prompt(
+             "Use the add tool twice: first add 15 and 27, then add that result to 42. \
+diff --git a/lib/crates/fabro-model/src/billing.rs b/lib/crates/fabro-model/src/billing.rs
+index d75992d7a..0a7700a72 100644
+--- a/lib/crates/fabro-model/src/billing.rs
++++ b/lib/crates/fabro-model/src/billing.rs
+@@ -523,7 +523,7 @@ impl Model {
+     pub fn billing_model_ref(&self, speed: Option<Speed>) -> ModelRef {
+         ModelRef {
+             provider: self.provider.clone(),
+-            model_id: self.id.clone(),
++            model_id: self.id.to_string(),
+             speed,
+         }
+     }
+@@ -544,7 +544,7 @@ fn pricing_for_model_costs(
+     Some(ModelPricing {
+         model: ModelRef {
+             provider: provider_id,
+-            model_id: model.id.clone(),
++            model_id: model.id.to_string(),
+             speed,
+         },
+         policy,
+diff --git a/lib/crates/fabro-model/src/catalog.rs b/lib/crates/fabro-model/src/catalog.rs
+index 9ae07fc8b..0cc3fa0a8 100644
+--- a/lib/crates/fabro-model/src/catalog.rs
++++ b/lib/crates/fabro-model/src/catalog.rs
+@@ -12,7 +12,7 @@ use tracing::warn;
+ use crate::Speed;
+ use crate::adapter::{AdapterKind, AgentProfileKind};
+ use crate::codec::CodecKind;
+-use crate::ids::ProviderId;
++use crate::ids::{ModelId, ProviderId};
+ use crate::provider::Provider;
+ use crate::reasoning::ReasoningEffort;
+ use crate::types::{Model, ModelCosts, ModelFeatures, ModelLimits, ReasoningEffortFeature};
+@@ -39,6 +39,9 @@ pub struct LlmCatalogSettings {
+ #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+ #[serde(deny_unknown_fields)]
+ pub struct ProviderCatalogSettings {
++    /// Provider-scoped model rows keyed by canonical human-facing model slug.
++    #[serde(default)]
++    pub models:         HashMap<String, ModelCatalogSettings>,
+     #[serde(default)]
+     pub display_name:   Option<String>,
+     #[serde(default)]
+@@ -382,6 +385,16 @@ static GLOBAL_CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
+     Catalog::from_builtin_toml().expect("embedded provider TOML files must build a valid catalog")
+ });
+ 
++/// A built-in model identifier that was replaced by a provider-scoped model
++/// slug. Retired identifiers are errors rather than aliases: silently accepting
++/// one could route a persisted reference to a different provider.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct RetiredModelIdentifier {
++    pub identifier: String,
++    pub provider:   ProviderId,
++    pub model:      ModelId,
++}
++
+ /// A resolved fallback target: provider name + model ID.
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub struct FallbackTarget {
+@@ -528,12 +541,24 @@ pub enum CatalogBuildError {
+         model:    String,
+         provider: ProviderId,
+     },
+-    #[error("model identifier '{identifier}' is declared by both '{first}' and '{second}'")]
+-    DuplicateModelIdentifier {
++    #[error(
++        "provider '{provider}' model identifier '{identifier}' is declared by both '{first}' and '{second}'"
++    )]
++    DuplicateProviderModelIdentifier {
++        provider:   ProviderId,
+         identifier: String,
+-        first:      String,
+-        second:     String,
++        first:      ModelId,
++        second:     ModelId,
++    },
++    #[error("provider '{provider}' model '{model}' configures an empty api_id")]
++    EmptyModelApiId {
++        provider: ProviderId,
++        model:    ModelId,
+     },
++    #[error(
++        "legacy model row '{model}' does not name a provider and does not uniquely match a built-in offering"
++    )]
++    AmbiguousLegacyModelProvider { model: String },
+     #[error("provider '{provider}' has multiple default models: {models:?}")]
+     MultipleProviderDefaults {
+         provider: ProviderId,
+@@ -574,17 +599,44 @@ pub enum CatalogBuildError {
+     UndeclaredSpeedCost { model: String, speed: Speed },
+ }
+ 
++/// Failure to select one offering for a user-facing model selector.
++#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
++pub enum ModelSelectionError {
++    #[error(
++        "model identifier '{identifier}' was retired; use provider '{provider}' with model '{model}'"
++    )]
++    RetiredIdentifier {
++        identifier: String,
++        provider:   ProviderId,
++        model:      ModelId,
++    },
++    #[error("unknown model selector '{selector}'")]
++    UnknownSelector { selector: String },
++    #[error("model selector '{selector}' has no offering on an eligible provider")]
++    NoEligibleOffering { selector: String },
++    #[error("provider '{provider}' is not available")]
++    UnavailableProvider { provider: ProviderId },
++    #[error("provider '{provider}' has no model matching selector '{selector}'")]
++    UnknownSelectorOnProvider {
++        provider: ProviderId,
++        selector: String,
++    },
++}
++
+ /// Typed model catalog backed by a `Vec<Model>`.
+ ///
+ /// Use [`Catalog::builtin()`] for the embedded settings-backed catalog.
+ #[derive(Debug)]
+ pub struct Catalog {
+-    models:           Vec<Model>,
+-    providers:        Vec<CatalogProvider>,
+-    model_settings:   HashMap<String, CatalogModelSettings>,
+-    model_index:      HashMap<String, usize>,
+-    provider_aliases: HashMap<String, ProviderId>,
+-    provider_index:   HashMap<ProviderId, usize>,
++    models:               Vec<Model>,
++    providers:            Vec<CatalogProvider>,
++    model_settings:       HashMap<(ProviderId, ModelId), CatalogModelSettings>,
++    offering_index:       HashMap<(ProviderId, ModelId), usize>,
++    canonical_candidates: HashMap<ModelId, Vec<usize>>,
++    alias_candidates:     HashMap<String, Vec<usize>>,
++    provider_aliases:     HashMap<String, ProviderId>,
++    provider_index:       HashMap<ProviderId, usize>,
++    retired_identifiers:  HashMap<String, (ProviderId, ModelId)>,
+ }
+ 
+ impl Catalog {
+@@ -617,27 +669,25 @@ impl Catalog {
+             .collect();
+ 
+         let mut models_with_settings = Vec::new();
+-        let mut model_identifiers = BTreeMap::<String, String>::new();
++        let mut model_identifiers = HashMap::<ProviderId, BTreeMap<String, ModelId>>::new();
+         let mut defaults_by_provider = HashMap::<ProviderId, Vec<String>>::new();
+         let mut small_defaults_by_provider = HashMap::<ProviderId, Vec<String>>::new();
+ 
+-        let mut model_ids = settings.models.keys().cloned().collect::<Vec<_>>();
+-        model_ids.sort_unstable();
+-        for model_id in model_ids {
+-            let model_settings = settings
+-                .models
+-                .get(&model_id)
+-                .expect("model ID came from settings map keys");
++        let normalized_models = normalized_model_settings(settings)?;
++        let mut model_keys = normalized_models.keys().cloned().collect::<Vec<_>>();
++        model_keys.sort_unstable();
++        for (provider_id, model_id) in model_keys {
++            let model_settings = normalized_models
++                .get(&(provider_id.clone(), model_id.clone()))
++                .expect("model key came from normalized settings");
+             if model_settings.enabled == Some(false) {
+                 continue;
+             }
+ 
+-            let provider_id =
+-                required_model_string(&model_id, model_settings.provider.as_ref(), "provider")?;
+             if !known_providers.contains(provider_id.as_str()) {
+                 return Err(CatalogBuildError::UnknownModelProvider {
+-                    model:    model_id,
+-                    provider: ProviderId::from(provider_id),
++                    model: model_id,
++                    provider: provider_id,
+                 });
+             }
+             if !enabled_providers.contains(provider_id.as_str()) {
+@@ -649,22 +699,33 @@ impl Catalog {
+                 .expect("enabled provider ID should have provider metadata");
+             let (model, resolved_settings) = build_model(&model_id, model_settings, provider)?;
+ 
+-            register_model_identifier(&mut model_identifiers, model.id.clone(), model.id.clone())?;
++            let provider_identifiers = model_identifiers.entry(provider_id.clone()).or_default();
++            register_model_identifier(
++                provider_identifiers,
++                model.id.as_str().to_string(),
++                model.id.clone(),
++                &provider_id,
++            )?;
+             for alias in &model.aliases {
+-                register_model_identifier(&mut model_identifiers, alias.clone(), model.id.clone())?;
++                register_model_identifier(
++                    provider_identifiers,
++                    alias.clone(),
++                    model.id.clone(),
++                    &provider_id,
++                )?;
+             }
+ 
+             if model.default {
+                 defaults_by_provider
+                     .entry(model.provider.clone())
+                     .or_default()
+-                    .push(model.id.clone());
++                    .push(model.id.to_string());
+             }
+             if model.small_default {
+                 small_defaults_by_provider
+                     .entry(model.provider.clone())
+                     .or_default()
+-                    .push(model.id.clone());
++                    .push(model.id.to_string());
+             }
+             models_with_settings.push((model, resolved_settings));
+         }
+@@ -691,21 +752,25 @@ impl Catalog {
+ 
+         models_with_settings.sort_by(|(left, _), (right, _)| model_order(left, right));
+         warn_multiple_probe_models(&models_with_settings);
+-        let mut model_settings_by_id = HashMap::new();
++        let mut model_settings = HashMap::new();
+         let mut models = Vec::new();
+         for (model, settings) in models_with_settings {
+-            model_settings_by_id.insert(model.id.clone(), settings);
++            model_settings.insert((model.provider.clone(), model.id.clone()), settings);
+             models.push(model);
+         }
+-        let model_index = build_model_index(&models);
++        let (offering_index, canonical_candidates, alias_candidates) =
++            build_model_indexes(&models);
+ 
+         Ok(Self {
+             models,
+             providers,
+-            model_settings: model_settings_by_id,
+-            model_index,
++            model_settings,
++            offering_index,
++            canonical_candidates,
++            alias_candidates,
+             provider_aliases,
+             provider_index,
++            retired_identifiers: HashMap::new(),
+         })
+     }
+ 
+@@ -713,8 +778,11 @@ impl Catalog {
+         overrides: &LlmCatalogSettings,
+     ) -> Result<Self, CatalogBuildError> {
+         let builtins = Self::builtin_settings()?;
+-        let settings = merge_catalog_settings(overrides.clone(), builtins);
+-        Self::from_settings(&settings)
++        let overrides = adopt_legacy_models(overrides.clone(), &builtins)?;
++        let settings = merge_catalog_settings(overrides, builtins);
++        let mut catalog = Self::from_settings(&settings)?;
++        catalog.retired_identifiers = builtin_retired_identifiers();
++        Ok(catalog)
+     }
+ 
+     /// Builds a fresh catalog from embedded provider TOML without user
+@@ -749,7 +817,13 @@ impl Catalog {
+                     source,
+                 })?;
+             validate_builtin_fragment(&path, &fragment)?;
+-            layer.providers.extend(fragment.providers);
++            for (id, provider) in fragment.providers {
++                let provider = match layer.providers.remove(&id) {
++                    Some(existing) => merge_provider_settings(provider, existing),
++                    None => provider,
++                };
++                layer.providers.insert(id, provider);
++            }
+             layer.models.extend(fragment.models);
+         }
+ 
+@@ -757,17 +831,116 @@ impl Catalog {
+     }
+ 
+     fn from_builtin_toml() -> Result<Self, CatalogBuildError> {
+-        Self::from_settings(&Self::builtin_settings()?)
++        let mut catalog = Self::from_settings(&Self::builtin_settings()?)?;
++        catalog.retired_identifiers = builtin_retired_identifiers();
++        Ok(catalog)
+     }
+ 
+-    /// Look up a model by ID or alias.
++    /// Look up a selector across all enabled providers using catalog provider
++    /// priority. Runtime callers should prefer [`Self::select_model`] and pass
++    /// their ready-provider set explicitly.
+     #[must_use]
+-    pub fn get(&self, id: &str) -> Option<&Model> {
+-        self.model_index
+-            .get(id)
++    pub fn get(&self, selector: &str) -> Option<&Model> {
++        self.select_candidates(selector)
++            .and_then(|candidates| candidates.first())
+             .and_then(|idx| self.models.get(*idx))
+     }
+ 
++    /// Resolve a canonical model ID or alias only on the named provider.
++    #[must_use]
++    pub fn model_on_provider(
++        &self,
++        provider_id: &ProviderId,
++        selector: &str,
++    ) -> Option<&Model> {
++        let provider = self.provider(provider_id)?;
++        if let Some(idx) = self
++            .offering_index
++            .get(&(provider.id.clone(), ModelId::new(selector)))
++        {
++            return self.models.get(*idx);
++        }
++        self.alias_candidates
++            .get(selector)?
++            .iter()
++            .filter_map(|idx| self.models.get(*idx))
++            .find(|model| model.provider == provider.id)
++    }
++
++    /// Return the replacement address for a retired built-in identifier.
++    #[must_use]
++    pub fn retired_identifier(&self, identifier: &str) -> Option<RetiredModelIdentifier> {
++        let (provider, model) = self.retired_identifiers.get(identifier)?;
++        Some(RetiredModelIdentifier {
++            identifier: identifier.to_string(),
++            provider: provider.clone(),
++            model: model.clone(),
++        })
++    }
++
++    /// Select one offering for a selector from caller-supplied eligible
++    /// providers. Canonical ID candidates are considered before aliases;
++    /// candidates are pre-sorted by provider priority descending and canonical
++    /// provider ID ascending.
++    pub fn select_model(
++        &self,
++        selector: &str,
++        explicit_provider: Option<&ProviderId>,
++        eligible_providers: &[ProviderId],
++    ) -> Result<&Model, ModelSelectionError> {
++        if let Some(retired) = self.retired_identifier(selector) {
++            return Err(ModelSelectionError::RetiredIdentifier {
++                identifier: retired.identifier,
++                provider: retired.provider,
++                model: retired.model,
++            });
++        }
++
++        let eligible = eligible_providers
++            .iter()
++            .filter_map(|id| self.provider(id).map(|provider| provider.id.clone()))
++            .collect::<HashSet<_>>();
++
++        if let Some(explicit_provider) = explicit_provider {
++            let provider = self
++                .provider(explicit_provider)
++                .ok_or_else(|| ModelSelectionError::UnknownSelectorOnProvider {
++                    provider: explicit_provider.clone(),
++                    selector: selector.to_string(),
++                })?;
++            if !eligible.contains(&provider.id) {
++                return Err(ModelSelectionError::UnavailableProvider {
++                    provider: provider.id.clone(),
++                });
++            }
++            return self.model_on_provider(&provider.id, selector).ok_or_else(|| {
++                ModelSelectionError::UnknownSelectorOnProvider {
++                    provider: provider.id.clone(),
++                    selector: selector.to_string(),
++                }
++            });
++        }
++
++        let candidates = self
++            .select_candidates(selector)
++            .ok_or_else(|| ModelSelectionError::UnknownSelector {
++                selector: selector.to_string(),
++            })?;
++        candidates
++            .iter()
++            .filter_map(|idx| self.models.get(*idx))
++            .find(|model| eligible.contains(&model.provider))
++            .ok_or_else(|| ModelSelectionError::NoEligibleOffering {
++                selector: selector.to_string(),
++            })
++    }
++
++    fn select_candidates(&self, selector: &str) -> Option<&Vec<usize>> {
++        self.canonical_candidates
++            .get(selector)
++            .or_else(|| self.alias_candidates.get(selector))
++    }
++
+     #[must_use]
+     pub fn providers(&self) -> &[CatalogProvider] {
+         &self.providers
+@@ -786,7 +959,7 @@ impl Catalog {
+             let stats = stats_by_provider.entry(model.provider.clone()).or_default();
+             stats.model_count = stats.model_count.saturating_add(1);
+             if model.default {
+-                stats.default_model = Some(model.id.clone());
++                stats.default_model = Some(model.id.to_string());
+             }
+         }
+ 
+@@ -817,10 +990,29 @@ impl Catalog {
+         self.provider(id)?.vault_secret_name()
+     }
+ 
++    /// Resolve settings for the highest-priority offering matching a selector.
++    /// Prefer [`Self::model_settings_on_provider`] or
++    /// [`Self::model_settings_for`] when provider identity is known.
++    #[must_use]
++    pub fn model_settings(&self, selector: &str) -> Option<&CatalogModelSettings> {
++        let model = self.get(selector)?;
++        self.model_settings_for(model)
++    }
++
+     #[must_use]
+-    pub fn model_settings(&self, id: &str) -> Option<&CatalogModelSettings> {
+-        let model = self.get(id)?;
+-        self.model_settings.get(&model.id)
++    pub fn model_settings_on_provider(
++        &self,
++        provider: &ProviderId,
++        selector: &str,
++    ) -> Option<&CatalogModelSettings> {
++        let model = self.model_on_provider(provider, selector)?;
++        self.model_settings_for(model)
++    }
++
++    #[must_use]
++    pub fn model_settings_for(&self, model: &Model) -> Option<&CatalogModelSettings> {
++        self.model_settings
++            .get(&(model.provider.clone(), model.id.clone()))
+     }
+ 
+     #[must_use]
+@@ -831,9 +1023,8 @@ impl Catalog {
+     ) -> Option<AgentProfileKind> {
+         let provider = self.provider(provider_id)?;
+         let model_profile = model_id_or_alias
+-            .and_then(|model_id| self.get(model_id))
+-            .filter(|model| model.provider == provider.id)
+-            .and_then(|model| self.model_settings.get(&model.id))
++            .and_then(|model_id| self.model_on_provider(&provider.id, model_id))
++            .and_then(|model| self.model_settings_for(model))
+             .map(|settings| settings.agent_profile);
+         Some(model_profile.unwrap_or(provider.agent_profile))
+     }
+@@ -849,9 +1040,8 @@ impl Catalog {
+     ) -> Option<CodecKind> {
+         let provider = self.provider(provider_id)?;
+         let model_codec = model_id_or_alias
+-            .and_then(|model_id| self.get(model_id))
+-            .filter(|model| model.provider == provider.id)
+-            .and_then(|model| self.model_settings.get(&model.id))
++            .and_then(|model_id| self.model_on_provider(&provider.id, model_id))
++            .and_then(|model| self.model_settings_for(model))
+             .map(|settings| settings.codec);
+         Some(model_codec.unwrap_or(provider.codec))
+     }
+@@ -867,9 +1057,8 @@ impl Catalog {
+     ) -> Option<BillingPolicy> {
+         let provider = self.provider(provider_id)?;
+         let model_policy = model_id_or_alias
+-            .and_then(|model_id| self.get(model_id))
+-            .filter(|model| model.provider == provider.id)
+-            .and_then(|model| self.model_settings.get(&model.id))
++            .and_then(|model_id| self.model_on_provider(&provider.id, model_id))
++            .and_then(|model| self.model_settings_for(model))
+             .map(|settings| settings.billing_policy);
+         Some(model_policy.unwrap_or(provider.billing_policy))
+     }
+@@ -993,8 +1182,7 @@ impl Catalog {
+         if let Some(model) = self.models.iter().find(|model| {
+             &model.provider == provider_id
+                 && self
+-                    .model_settings
+-                    .get(&model.id)
++                    .model_settings_for(model)
+                     .is_some_and(|settings| settings.probe)
+         }) {
+             return Some(model);
+@@ -1043,7 +1231,7 @@ impl Catalog {
+         model: &str,
+         fallbacks: &HashMap<String, Vec<String>>,
+     ) -> Vec<FallbackTarget> {
+-        let Some(reference) = self.get(model) else {
++        let Some(reference) = self.model_on_provider(primary, model) else {
+             return Vec::new();
+         };
+ 
+@@ -1057,22 +1245,250 @@ impl Catalog {
+                 let provider = ProviderId::from(provider_str.clone());
+                 self.closest(&provider, reference).map(|m| FallbackTarget {
+                     provider: provider_str.clone(),
+-                    model:    m.id.clone(),
++                    model:    m.id.to_string(),
+                 })
+             })
+             .collect()
+     }
+ }
+ 
+-fn build_model_index(models: &[Model]) -> HashMap<String, usize> {
+-    let mut index = HashMap::new();
++type OfferingIndex = HashMap<(ProviderId, ModelId), usize>;
++type CanonicalCandidates = HashMap<ModelId, Vec<usize>>;
++type AliasCandidates = HashMap<String, Vec<usize>>;
++
++fn builtin_retired_identifiers() -> HashMap<String, (ProviderId, ModelId)> {
++    const RETIRED: &[(&str, &str, &str)] = &[
++        ("openai.gpt-5.5", "bedrock-openai", "gpt-5.5"),
++        ("openai.gpt-5.4", "bedrock-openai", "gpt-5.4"),
++        (
++            "us.anthropic.claude-sonnet-4-6",
++            "bedrock",
++            "claude-sonnet-4-6",
++        ),
++        (
++            "us.anthropic.claude-opus-4-8",
++            "bedrock",
++            "claude-opus-4-8",
++        ),
++        (
++            "us.anthropic.claude-haiku-4-5",
++            "bedrock",
++            "claude-haiku-4-5",
++        ),
++        ("openai.gpt-oss-120b", "bedrock", "gpt-oss-120b"),
++        ("openai.gpt-oss-20b", "bedrock", "gpt-oss-20b"),
++        ("amazon.nova-2-lite", "bedrock", "nova-2-lite"),
++        ("meta.llama4-maverick", "bedrock", "llama-4-maverick"),
++        (
++            "mistral.mistral-large-3",
++            "bedrock",
++            "mistral-large-3",
++        ),
++        ("mistral.devstral-2", "bedrock", "devstral-2"),
++        ("deepseek.v3-2", "bedrock", "deepseek-v3.2"),
++        ("moonshotai.kimi-k2.5", "bedrock", "kimi-k2.5"),
++        ("zai.glm-5", "bedrock", "glm-5"),
++        ("minimax.minimax-m2.5", "bedrock", "minimax-m2.5"),
++        (
++            "nvidia.nemotron-3-super",
++            "bedrock",
++            "nemotron-3-super",
++        ),
++        (
++            "us.anthropic.claude-fable-5",
++            "bedrock",
++            "claude-fable-5",
++        ),
++        (
++            "anthropic/claude-opus-4-7",
++            "openrouter",
++            "claude-opus-4-7",
++        ),
++        (
++            "anthropic/claude-sonnet-4-6",
++            "openrouter",
++            "claude-sonnet-4-6",
++        ),
++        (
++            "anthropic/claude-haiku-4-5",
++            "openrouter",
++            "claude-haiku-4-5",
++        ),
++        ("openai/gpt-5.4", "openrouter", "gpt-5.4"),
++        ("openai/gpt-5.5", "openrouter", "gpt-5.5"),
++        (
++            "google/gemini-3.1-pro-preview",
++            "openrouter",
++            "gemini-3.1-pro-preview",
++        ),
++        (
++            "google/gemini-3.5-flash",
++            "openrouter",
++            "gemini-3.5-flash",
++        ),
++        ("xiaomi/mimo-v2.5-pro", "openrouter", "mimo-v2.5-pro"),
++        (
++            "minimax/minimax-m2.7",
++            "openrouter",
++            "minimax-m2.7",
++        ),
++        (
++            "deepseek/deepseek-v4-pro",
++            "openrouter",
++            "deepseek-v4-pro",
++        ),
++        (
++            "deepseek/deepseek-v4-flash",
++            "openrouter",
++            "deepseek-v4-flash",
++        ),
++        ("moonshotai/kimi-k2.6", "openrouter", "kimi-k2.6"),
++        ("moonshotai/kimi-k3", "openrouter", "kimi-k3"),
++        (
++            "poolside/laguna-s-2.1",
++            "openrouter",
++            "laguna-s-2.1",
++        ),
++        (
++            "poolside/laguna-xs-2.1",
++            "openrouter",
++            "laguna-xs-2.1",
++        ),
++        ("qwen/qwen3-coder", "openrouter", "qwen3-coder"),
++        ("qwen/qwen3.6-flash", "openrouter", "qwen3.6-flash"),
++        ("z-ai/glm-5.2", "openrouter", "glm-5.2"),
++        ("z-ai/glm-4.6", "openrouter", "glm-4.6"),
++        (
++            "nvidia/nemotron-3-super-120b-a12b",
++            "openrouter",
++            "nemotron-3-super",
++        ),
++        ("mistralai/devstral-2512", "openrouter", "devstral-2"),
++    ];
++
++    RETIRED
++        .iter()
++        .map(|(identifier, provider, model)| {
++            (
++                (*identifier).to_string(),
++                (ProviderId::new(*provider), ModelId::new(*model)),
++            )
++        })
++        .collect()
++}
++
++fn build_model_indexes(
++    models: &[Model],
++) -> (OfferingIndex, CanonicalCandidates, AliasCandidates) {
++    let mut offering_index = HashMap::new();
++    let mut canonical_candidates = HashMap::<ModelId, Vec<usize>>::new();
++    let mut alias_candidates = HashMap::<String, Vec<usize>>::new();
+     for (idx, model) in models.iter().enumerate() {
+-        index.insert(model.id.clone(), idx);
++        offering_index.insert((model.provider.clone(), model.id.clone()), idx);
++        canonical_candidates
++            .entry(model.id.clone())
++            .or_default()
++            .push(idx);
+         for alias in &model.aliases {
+-            index.insert(alias.clone(), idx);
++            alias_candidates.entry(alias.clone()).or_default().push(idx);
++        }
++    }
++    (offering_index, canonical_candidates, alias_candidates)
++}
++
++fn adopt_legacy_models(
++    mut overrides: LlmCatalogSettings,
++    builtins: &LlmCatalogSettings,
++) -> Result<LlmCatalogSettings, CatalogBuildError> {
++    let legacy_models = std::mem::take(&mut overrides.models);
++    for (identifier, mut settings) in legacy_models {
++        let provider = match settings.provider.take() {
++            Some(provider) if !provider.is_empty() => ProviderId::new(provider),
++            _ => unique_builtin_provider_for_identifier(builtins, &identifier)
++                .ok_or_else(|| CatalogBuildError::AmbiguousLegacyModelProvider {
++                    model: identifier.clone(),
++                })?,
++        };
++        let canonical_model = builtins
++            .providers
++            .get(provider.as_str())
++            .and_then(|provider_settings| {
++                provider_settings
++                    .models
++                    .iter()
++                    .find(|(model_id, model_settings)| {
++                        model_id.as_str() == identifier
++                            || model_settings
++                                .aliases
++                                .as_ref()
++                                .is_some_and(|aliases| aliases.iter().any(|alias| alias == &identifier))
++                    })
++                    .map(|(model_id, _)| model_id.clone())
++            })
++            .unwrap_or(identifier);
++        let provider_settings = overrides
++            .providers
++            .entry(provider.into_inner())
++            .or_default();
++        let merged = match provider_settings.models.remove(&canonical_model) {
++            Some(scoped) => merge_model_settings(settings, scoped),
++            None => settings,
++        };
++        provider_settings.models.insert(canonical_model, merged);
++    }
++    Ok(overrides)
++}
++
++fn unique_builtin_provider_for_identifier(
++    builtins: &LlmCatalogSettings,
++    identifier: &str,
++) -> Option<ProviderId> {
++    let mut matches = builtins.providers.iter().filter_map(|(provider, settings)| {
++        settings
++            .models
++            .iter()
++            .any(|(model_id, model)| {
++                model_id == identifier
++                    || model
++                        .aliases
++                        .as_ref()
++                        .is_some_and(|aliases| aliases.iter().any(|alias| alias == identifier))
++            })
++            .then(|| ProviderId::new(provider))
++    });
++    let provider = matches.next()?;
++    matches.next().is_none().then_some(provider)
++}
++
++fn normalized_model_settings(
++    settings: &LlmCatalogSettings,
++) -> Result<HashMap<(ProviderId, String), ModelCatalogSettings>, CatalogBuildError> {
++    let mut normalized = HashMap::new();
++
++    for (provider, provider_settings) in &settings.providers {
++        let provider_id = ProviderId::new(provider);
++        for (model_id, model_settings) in &provider_settings.models {
++            normalized.insert(
++                (provider_id.clone(), model_id.clone()),
++                model_settings.clone(),
++            );
+         }
+     }
+-    index
++
++    // Legacy top-level rows remain an input-only compatibility shape. A
++    // provider is required here; fabro-config performs catalog-aware adoption
++    // for provider-less rows before constructing these settings.
++    for (model_id, model_settings) in &settings.models {
++        let provider = required_model_string(model_id, model_settings.provider.as_ref(), "provider")?;
++        let key = (ProviderId::new(provider), model_id.clone());
++        let merged = match normalized.remove(&key) {
++            Some(scoped) => merge_model_settings(model_settings.clone(), scoped),
++            None => model_settings.clone(),
++        };
++        normalized.insert(key, merged);
++    }
++
++    Ok(normalized)
+ }
+ 
+ fn merge_catalog_settings(
+@@ -1115,9 +1531,24 @@ fn merge_provider_settings(
+         priority:       higher.priority.or(fallback.priority),
+         enabled:        higher.enabled.or(fallback.enabled),
+         aliases:        higher.aliases.or(fallback.aliases),
++        models:         merge_model_maps(higher.models, fallback.models),
+     }
+ }
+ 
++fn merge_model_maps(
++    higher: HashMap<String, ModelCatalogSettings>,
++    mut fallback: HashMap<String, ModelCatalogSettings>,
++) -> HashMap<String, ModelCatalogSettings> {
++    for (id, model) in higher {
++        let model = match fallback.remove(&id) {
++            Some(fallback_model) => merge_model_settings(model, fallback_model),
++            None => model,
++        };
++        fallback.insert(id, model);
++    }
++    fallback
++}
++
+ fn merge_model_settings(
+     higher: ModelCatalogSettings,
+     fallback: ModelCatalogSettings,
+@@ -1418,7 +1849,7 @@ fn build_model(
+     let speed_costs = build_speed_costs(model_id, settings.costs.as_ref(), &controls)?;
+ 
+     let model = Model {
+-        id: model_id.to_string(),
++        id: ModelId::new(model_id),
+         provider: provider.id.clone(),
+         family,
+         display_name,
+@@ -1436,6 +1867,12 @@ fn build_model(
+         small_default: settings.small_default.unwrap_or_default(),
+         configured: false,
+     };
++    if settings.api_id.as_deref() == Some("") {
++        return Err(CatalogBuildError::EmptyModelApiId {
++            provider: provider.id.clone(),
++            model: ModelId::new(model_id),
++        });
++    }
+     let catalog_settings = CatalogModelSettings {
+         api_id: settings
+             .api_id
+@@ -1458,7 +1895,7 @@ fn warn_multiple_probe_models(models_with_settings: &[(Model, CatalogModelSettin
+             probes_by_provider
+                 .entry(model.provider.clone())
+                 .or_default()
+-                .push(model.id.clone());
++                .push(model.id.to_string());
+         }
+     }
+ 
+@@ -1675,16 +2112,20 @@ fn register_provider_identifier(
+ }
+ 
+ fn register_model_identifier(
+-    identifiers: &mut BTreeMap<String, String>,
++    identifiers: &mut BTreeMap<String, ModelId>,
+     identifier: String,
+-    owner: String,
++    owner: ModelId,
++    provider: &ProviderId,
+ ) -> Result<(), CatalogBuildError> {
+     match identifiers.get(&identifier) {
+-        Some(existing) if existing != &owner => Err(CatalogBuildError::DuplicateModelIdentifier {
+-            identifier,
+-            first: existing.clone(),
+-            second: owner,
+-        }),
++        Some(existing) if existing != &owner => {
++            Err(CatalogBuildError::DuplicateProviderModelIdentifier {
++                provider: provider.clone(),
++                identifier,
++                first: existing.clone(),
++                second: owner,
++            })
++        }
+         _ => {
+             identifiers.insert(identifier, owner);
+             Ok(())
+@@ -1733,6 +2174,20 @@ fn validate_builtin_fragment(
+             });
+         }
+     }
++    let provider = fragment
++        .providers
++        .get(expected)
++        .expect("provider count and ID were validated");
++    if !fragment.models.is_empty() && !provider.models.is_empty() {
++        // Embedded fragments are canonical output rather than compatibility
++        // inputs; mixing shapes would make ownership unclear.
++        return Err(CatalogBuildError::BuiltinModelProviderMismatch {
++            path: path.to_string(),
++            model: "<mixed model syntax>".to_string(),
++            expected: expected.to_string(),
++            actual: "top-level models".to_string(),
++        });
++    }
+     Ok(())
+ }
+ 
+@@ -1762,6 +2217,255 @@ mod tests {
+         toml::from_str(source).expect("fixture should parse as an LLM settings layer")
+     }
+ 
++    const PORTABLE_MODEL_SETTINGS: &str = r#"
++[providers.openai]
++display_name = "OpenAI"
++adapter = "openai"
++priority = 90
++
++[providers.openai.models."gpt-5.6-sol"]
++display_name = "GPT-5.6 Sol"
++family = "gpt-5"
++aliases = ["gpt-56-sol"]
++default = true
++
++[providers.openai.models."gpt-5.6-sol".limits]
++context_window = 1000
++
++[providers.openai.models."gpt-5.6-sol".features]
++tools = true
++vision = false
++reasoning = true
++
++[providers.openrouter]
++display_name = "OpenRouter"
++adapter = "openai_compatible"
++base_url = "https://openrouter.invalid/v1"
++priority = 25
++
++[providers.openrouter.models."gpt-5.6-sol"]
++api_id = "openai/gpt-5.6-sol"
++display_name = "GPT-5.6 Sol (via OpenRouter)"
++family = "gpt-5"
++aliases = ["gpt-56-sol"]
++default = true
++
++[providers.openrouter.models."gpt-5.6-sol".limits]
++context_window = 1000
++
++[providers.openrouter.models."gpt-5.6-sol".features]
++tools = true
++vision = false
++reasoning = true
++"#;
++
++    fn portable_catalog() -> Catalog {
++        Catalog::from_settings(&minimal_settings(PORTABLE_MODEL_SETTINGS))
++            .expect("portable fixture should build")
++    }
++
++    #[test]
++    fn provider_aware_catalog_allows_shared_canonical_ids_and_aliases() {
++        let catalog = portable_catalog();
++        let openai = catalog
++            .model_on_provider(&ProviderId::new("openai"), "gpt-56-sol")
++            .expect("OpenAI alias should resolve");
++        let openrouter = catalog
++            .model_on_provider(&ProviderId::new("openrouter"), "gpt-56-sol")
++            .expect("OpenRouter alias should resolve");
++
++        assert_eq!(openai.id.as_str(), "gpt-5.6-sol");
++        assert_eq!(openrouter.id.as_str(), "gpt-5.6-sol");
++        assert_ne!(openai.provider, openrouter.provider);
++        assert_eq!(
++            catalog
++                .model_settings_for(openai)
++                .expect("OpenAI settings should exist")
++                .api_id,
++            "gpt-5.6-sol"
++        );
++        assert_eq!(
++            catalog
++                .model_settings_for(openrouter)
++                .expect("OpenRouter settings should exist")
++                .api_id,
++            "openai/gpt-5.6-sol"
++        );
++    }
++
++    #[test]
++    fn provider_aware_selection_uses_eligibility_priority_and_explicit_pin() {
++        let catalog = portable_catalog();
++        let openai = ProviderId::new("openai");
++        let openrouter = ProviderId::new("openrouter");
++
++        assert_eq!(
++            catalog
++                .select_model("gpt-56-sol", None, std::slice::from_ref(&openai))
++                .unwrap()
++                .provider,
++            openai
++        );
++        assert_eq!(
++            catalog
++                .select_model("gpt-56-sol", None, std::slice::from_ref(&openrouter))
++                .unwrap()
++                .provider,
++            openrouter
++        );
++        assert_eq!(
++            catalog
++                .select_model("gpt-56-sol", None, &[openrouter.clone(), openai.clone()])
++                .unwrap()
++                .provider,
++            openai
++        );
++        assert_eq!(
++            catalog
++                .select_model(
++                    "gpt-56-sol",
++                    Some(&openrouter),
++                    &[openai.clone(), openrouter.clone()],
++                )
++                .unwrap()
++                .provider,
++            openrouter
++        );
++        assert!(matches!(
++            catalog.select_model("gpt-56-sol", Some(&openrouter), &[openai]),
++            Err(ModelSelectionError::UnavailableProvider { provider })
++                if provider == openrouter
++        ));
++    }
++
++    #[test]
++    fn provider_aware_selection_ties_by_canonical_provider_id() {
++        let settings = PORTABLE_MODEL_SETTINGS
++            .replace("priority = 90", "priority = 25");
++        let catalog = Catalog::from_settings(&minimal_settings(&settings)).unwrap();
++
++        assert_eq!(
++            catalog
++                .select_model(
++                    "gpt-56-sol",
++                    None,
++                    &[ProviderId::new("openrouter"), ProviderId::new("openai")],
++                )
++                .unwrap()
++                .provider,
++            ProviderId::new("openai")
++        );
++    }
++
++    #[test]
++    fn canonical_id_candidates_shadow_cross_provider_alias_candidates() {
++        let settings = minimal_settings(
++            r#"
++[providers.canonical]
++adapter = "openai"
++priority = 1
++
++[providers.canonical.models.pin]
++display_name = "Canonical Pin"
++family = "pin"
++default = true
++[providers.canonical.models.pin.limits]
++context_window = 1000
++[providers.canonical.models.pin.features]
++tools = false
++vision = false
++reasoning = false
++
++[providers.alias]
++adapter = "openai"
++priority = 100
++
++[providers.alias.models.other]
++display_name = "Alias Pin"
++family = "pin"
++aliases = ["pin"]
++default = true
++[providers.alias.models.other.limits]
++context_window = 1000
++[providers.alias.models.other.features]
++tools = false
++vision = false
++reasoning = false
++"#,
++        );
++        let catalog = Catalog::from_settings(&settings).unwrap();
++        let canonical = ProviderId::new("canonical");
++        let alias = ProviderId::new("alias");
++
++        assert_eq!(
++            catalog
++                .select_model("pin", None, &[alias.clone(), canonical.clone()])
++                .unwrap()
++                .provider,
++            canonical
++        );
++        assert!(matches!(
++            catalog.select_model("pin", None, std::slice::from_ref(&alias)),
++            Err(ModelSelectionError::NoEligibleOffering { selector }) if selector == "pin"
++        ));
++        assert_eq!(
++            catalog
++                .select_model("pin", Some(&alias), std::slice::from_ref(&alias))
++                .unwrap()
++                .id
++                .as_str(),
++            "other"
++        );
++    }
++
++    #[test]
++    fn same_provider_identifier_collision_is_rejected() {
++        let source = PORTABLE_MODEL_SETTINGS.replace(
++            "[providers.openai.models.\"gpt-5.6-sol\".limits]",
++            r#"[providers.openai.models.other]
++display_name = "Other"
++family = "gpt-5"
++aliases = ["gpt-56-sol"]
++[providers.openai.models.other.limits]
++context_window = 1000
++[providers.openai.models.other.features]
++tools = true
++vision = false
++reasoning = true
++
++[providers.openai.models."gpt-5.6-sol".limits]"#,
++        );
++        let err = Catalog::from_settings(&minimal_settings(&source)).unwrap_err();
++
++        assert!(matches!(
++            err,
++            CatalogBuildError::DuplicateProviderModelIdentifier {
++                provider,
++                identifier,
++                first,
++                second,
++            } if provider == ProviderId::new("openai")
++                && identifier == "gpt-56-sol"
++                && first.as_str() == "gpt-5.6-sol"
++                && second.as_str() == "other"
++        ));
++    }
++
++    #[test]
++    fn explicitly_empty_api_id_is_rejected() {
++        let settings = PORTABLE_MODEL_SETTINGS.replace(
++            "display_name = \"GPT-5.6 Sol\"",
++            "api_id = \"\"\ndisplay_name = \"GPT-5.6 Sol\"",
++        );
++        let err = Catalog::from_settings(&minimal_settings(&settings)).unwrap_err();
++
++        assert!(matches!(
++            err,
++            CatalogBuildError::EmptyModelApiId { provider, model }
++                if provider == ProviderId::new("openai") && model.as_str() == "gpt-5.6-sol"
++        ));
++    }
++
+     const BEDROCK_SIGV4_LAYER: &str = r#"
+ [providers.bedrock]
+ adapter = "bedrock"
+@@ -2807,8 +3511,15 @@ reasoning = false
+ 
+         assert!(matches!(
+             err,
+-            CatalogBuildError::DuplicateModelIdentifier { identifier, first, second }
+-                if identifier == "shared" && first == "one" && second == "two"
++            CatalogBuildError::DuplicateProviderModelIdentifier {
++                provider,
++                identifier,
++                first,
++                second,
++            } if provider == ProviderId::new("test")
++                && identifier == "shared"
++                && first.as_str() == "one"
++                && second.as_str() == "two"
+         ));
+     }
+ 
+diff --git a/lib/crates/fabro-model/src/catalog/providers/anthropic.toml b/lib/crates/fabro-model/src/catalog/providers/anthropic.toml
+index 0a1587197..95649e214 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/anthropic.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/anthropic.toml
+@@ -9,18 +9,16 @@ priority = 100
+ credentials = ["env:ANTHROPIC_API_KEY", "vault:ANTHROPIC_API_KEY"]
+ header = { custom = "x-api-key" }
+ 
+-[models."claude-fable-5"]
+-provider = "anthropic"
+-api_id = "claude-fable-5"
++[providers.anthropic.models."claude-fable-5"]
+ display_name = "Claude Fable 5"
+ family = "claude-5"
+ aliases = ["fable", "claude-fable"]
+ 
+-[models."claude-fable-5".limits]
++[providers.anthropic.models."claude-fable-5".limits]
+ context_window = 1000000
+ max_output = 128000
+ 
+-[models."claude-fable-5".features]
++[providers.anthropic.models."claude-fable-5".features]
+ tools = true
+ vision = true
+ reasoning = true
+@@ -28,14 +26,12 @@ reasoning_effort = "always_adaptive"
+ prompt_cache = true
+ sampling_params = false
+ 
+-[models."claude-fable-5".costs]
++[providers.anthropic.models."claude-fable-5".costs]
+ input_cost_per_mtok = 10.0
+ output_cost_per_mtok = 50.0
+ cache_input_cost_per_mtok = 1.0
+ 
+-[models."claude-opus-4-8"]
+-provider = "anthropic"
+-api_id = "claude-opus-4-8"
++[providers.anthropic.models."claude-opus-4-8"]
+ display_name = "Claude Opus 4.8"
+ family = "claude-4"
+ training = "2026-01-01"
+@@ -43,11 +39,11 @@ knowledge_cutoff = "Jan 2026"
+ estimated_output_tps = 25
+ aliases = ["opus", "claude-opus"]
+ 
+-[models."claude-opus-4-8".limits]
++[providers.anthropic.models."claude-opus-4-8".limits]
+ context_window = 1000000
+ max_output = 128000
+ 
+-[models."claude-opus-4-8".features]
++[providers.anthropic.models."claude-opus-4-8".features]
+ tools = true
+ vision = true
+ reasoning = true
+@@ -55,33 +51,31 @@ reasoning_effort = "levels"
+ prompt_cache = true
+ sampling_params = false
+ 
+-[models."claude-opus-4-8".controls]
++[providers.anthropic.models."claude-opus-4-8".controls]
+ speed = ["fast"]
+ 
+-[models."claude-opus-4-8".costs]
++[providers.anthropic.models."claude-opus-4-8".costs]
+ input_cost_per_mtok = 5.0
+ output_cost_per_mtok = 25.0
+ cache_input_cost_per_mtok = 0.5
+ 
+-[models."claude-opus-4-8".costs.speed.fast]
++[providers.anthropic.models."claude-opus-4-8".costs.speed.fast]
+ input_cost_per_mtok = 10.0
+ output_cost_per_mtok = 50.0
+ cache_input_cost_per_mtok = 1.0
+ 
+-[models."claude-opus-4-7"]
+-provider = "anthropic"
+-api_id = "claude-opus-4-7"
++[providers.anthropic.models."claude-opus-4-7"]
+ display_name = "Claude Opus 4.7"
+ family = "claude-4"
+ training = "2025-08-01"
+ knowledge_cutoff = "May 2025"
+ estimated_output_tps = 25
+ 
+-[models."claude-opus-4-7".limits]
++[providers.anthropic.models."claude-opus-4-7".limits]
+ context_window = 1000000
+ max_output = 128000
+ 
+-[models."claude-opus-4-7".features]
++[providers.anthropic.models."claude-opus-4-7".features]
+ tools = true
+ vision = true
+ reasoning = true
+@@ -89,82 +83,76 @@ reasoning_effort = "levels"
+ prompt_cache = true
+ sampling_params = false
+ 
+-[models."claude-opus-4-7".controls]
++[providers.anthropic.models."claude-opus-4-7".controls]
+ speed = ["fast"]
+ 
+-[models."claude-opus-4-7".costs]
++[providers.anthropic.models."claude-opus-4-7".costs]
+ input_cost_per_mtok = 5.0
+ output_cost_per_mtok = 25.0
+ cache_input_cost_per_mtok = 0.5
+ 
+-[models."claude-opus-4-7".costs.speed.fast]
++[providers.anthropic.models."claude-opus-4-7".costs.speed.fast]
+ input_cost_per_mtok = 30.0
+ output_cost_per_mtok = 150.0
+ cache_input_cost_per_mtok = 3.0
+ 
+-[models."claude-opus-4-6"]
+-provider = "anthropic"
+-api_id = "claude-opus-4-6"
++[providers.anthropic.models."claude-opus-4-6"]
+ display_name = "Claude Opus 4.6"
+ family = "claude-4"
+ training = "2025-08-01"
+ knowledge_cutoff = "May 2025"
+ estimated_output_tps = 25
+ 
+-[models."claude-opus-4-6".limits]
++[providers.anthropic.models."claude-opus-4-6".limits]
+ context_window = 1000000
+ max_output = 128000
+ 
+-[models."claude-opus-4-6".features]
++[providers.anthropic.models."claude-opus-4-6".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ prompt_cache = true
+ 
+-[models."claude-opus-4-6".controls]
++[providers.anthropic.models."claude-opus-4-6".controls]
+ speed = ["fast"]
+ 
+-[models."claude-opus-4-6".costs]
++[providers.anthropic.models."claude-opus-4-6".costs]
+ input_cost_per_mtok = 5.0
+ output_cost_per_mtok = 25.0
+ cache_input_cost_per_mtok = 0.5
+ 
+-[models."claude-opus-4-6".costs.speed.fast]
++[providers.anthropic.models."claude-opus-4-6".costs.speed.fast]
+ input_cost_per_mtok = 30.0
+ output_cost_per_mtok = 150.0
+ cache_input_cost_per_mtok = 3.0
+ 
+-[models."claude-sonnet-4-5"]
+-provider = "anthropic"
+-api_id = "claude-sonnet-4-5"
++[providers.anthropic.models."claude-sonnet-4-5"]
+ display_name = "Claude Sonnet 4.5"
+ family = "claude-4"
+ training = "2025-08-01"
+ knowledge_cutoff = "May 2025"
+ estimated_output_tps = 50
+ 
+-[models."claude-sonnet-4-5".limits]
++[providers.anthropic.models."claude-sonnet-4-5".limits]
+ context_window = 200000
+ max_output = 64000
+ 
+-[models."claude-sonnet-4-5".features]
++[providers.anthropic.models."claude-sonnet-4-5".features]
+ tools = true
+ vision = true
+ reasoning = true
+ prompt_cache = true
+ 
+-[models."claude-sonnet-4-5".controls]
++[providers.anthropic.models."claude-sonnet-4-5".controls]
+ reasoning_effort = ["low", "medium", "high", "xhigh", "max"]
+ 
+-[models."claude-sonnet-4-5".costs]
++[providers.anthropic.models."claude-sonnet-4-5".costs]
+ input_cost_per_mtok = 3.0
+ output_cost_per_mtok = 15.0
+ cache_input_cost_per_mtok = 0.3
+ 
+-[models."claude-sonnet-4-6"]
+-provider = "anthropic"
+-api_id = "claude-sonnet-4-6"
++[providers.anthropic.models."claude-sonnet-4-6"]
+ display_name = "Claude Sonnet 4.6"
+ family = "claude-4"
+ training = "2025-08-01"
+@@ -173,25 +161,23 @@ default = true
+ estimated_output_tps = 50
+ aliases = ["sonnet", "claude-sonnet"]
+ 
+-[models."claude-sonnet-4-6".limits]
++[providers.anthropic.models."claude-sonnet-4-6".limits]
+ context_window = 200000
+ max_output = 64000
+ 
+-[models."claude-sonnet-4-6".features]
++[providers.anthropic.models."claude-sonnet-4-6".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ prompt_cache = true
+ 
+-[models."claude-sonnet-4-6".costs]
++[providers.anthropic.models."claude-sonnet-4-6".costs]
+ input_cost_per_mtok = 3.0
+ output_cost_per_mtok = 15.0
+ cache_input_cost_per_mtok = 0.3
+ 
+-[models."claude-haiku-4-5"]
+-provider = "anthropic"
+-api_id = "claude-haiku-4-5"
++[providers.anthropic.models."claude-haiku-4-5"]
+ display_name = "Claude Haiku 4.5"
+ family = "claude-4"
+ training = "2025-08-01"
+@@ -201,17 +187,17 @@ aliases = ["haiku", "claude-haiku"]
+ probe = true
+ small_default = true
+ 
+-[models."claude-haiku-4-5".limits]
++[providers.anthropic.models."claude-haiku-4-5".limits]
+ context_window = 200000
+ max_output = 8192
+ 
+-[models."claude-haiku-4-5".features]
++[providers.anthropic.models."claude-haiku-4-5".features]
+ tools = true
+ vision = true
+ reasoning = false
+ prompt_cache = true
+ 
+-[models."claude-haiku-4-5".costs]
++[providers.anthropic.models."claude-haiku-4-5".costs]
+ input_cost_per_mtok = 0.8
+ output_cost_per_mtok = 4.0
+ cache_input_cost_per_mtok = 0.08
+diff --git a/lib/crates/fabro-model/src/catalog/providers/bedrock-openai.toml b/lib/crates/fabro-model/src/catalog/providers/bedrock-openai.toml
+index 20b011b9c..21384d9b2 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/bedrock-openai.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/bedrock-openai.toml
+@@ -35,41 +35,41 @@ credentials = [
+ # [llm.providers.bedrock-openai]
+ # enabled = true
+ 
+-[models."openai.gpt-5.5"]
+-provider = "bedrock-openai"
++[providers.bedrock-openai.models."gpt-5.5"]
++api_id = "openai.gpt-5.5"
+ display_name = "GPT-5.5 (Bedrock)"
+ family = "gpt-5"
+ default = true
+ 
+-[models."openai.gpt-5.5".limits]
++[providers.bedrock-openai.models."gpt-5.5".limits]
+ context_window = 272000
+ max_output = 128000
+ 
+-[models."openai.gpt-5.5".features]
++[providers.bedrock-openai.models."gpt-5.5".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."openai.gpt-5.5".costs]
++[providers.bedrock-openai.models."gpt-5.5".costs]
+ input_cost_per_mtok = 5.5
+ output_cost_per_mtok = 33.0
+ 
+-[models."openai.gpt-5.4"]
+-provider = "bedrock-openai"
++[providers.bedrock-openai.models."gpt-5.4"]
++api_id = "openai.gpt-5.4"
+ display_name = "GPT-5.4 (Bedrock)"
+ family = "gpt-5"
+ 
+-[models."openai.gpt-5.4".limits]
++[providers.bedrock-openai.models."gpt-5.4".limits]
+ context_window = 272000
+ max_output = 128000
+ 
+-[models."openai.gpt-5.4".features]
++[providers.bedrock-openai.models."gpt-5.4".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."openai.gpt-5.4".costs]
++[providers.bedrock-openai.models."gpt-5.4".costs]
+ input_cost_per_mtok = 2.75
+ output_cost_per_mtok = 16.5
+diff --git a/lib/crates/fabro-model/src/catalog/providers/bedrock.toml b/lib/crates/fabro-model/src/catalog/providers/bedrock.toml
+index f6f217a4f..aeed22e46 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/bedrock.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/bedrock.toml
+@@ -45,68 +45,67 @@ credentials = [
+ # file because its Bedrock deployment pins sampling parameters and requires an
+ # extra data-sharing opt-in.
+ 
+-[models."us.anthropic.claude-sonnet-4-6"]
+-provider = "bedrock"
++[providers.bedrock.models."claude-sonnet-4-6"]
++api_id = "us.anthropic.claude-sonnet-4-6"
+ display_name = "Claude Sonnet 4.6 (Bedrock)"
+ family = "claude-4"
+ billing_policy = "anthropic"
+ default = true
+ 
+-[models."us.anthropic.claude-sonnet-4-6".limits]
++[providers.bedrock.models."claude-sonnet-4-6".limits]
+ context_window = 1000000
+ max_output = 64000
+ 
+-[models."us.anthropic.claude-sonnet-4-6".features]
++[providers.bedrock.models."claude-sonnet-4-6".features]
+ tools = true
+ vision = true
+ reasoning = true
+ prompt_cache = true
+ 
+-[models."us.anthropic.claude-sonnet-4-6".costs]
++[providers.bedrock.models."claude-sonnet-4-6".costs]
+ input_cost_per_mtok = 3.0
+ output_cost_per_mtok = 15.0
+ cache_input_cost_per_mtok = 0.3
+ 
+-[models."us.anthropic.claude-opus-4-8"]
+-provider = "bedrock"
++[providers.bedrock.models."claude-opus-4-8"]
++api_id = "us.anthropic.claude-opus-4-8"
+ display_name = "Claude Opus 4.8 (Bedrock)"
+ family = "claude-4"
+ billing_policy = "anthropic"
+ 
+-[models."us.anthropic.claude-opus-4-8".limits]
++[providers.bedrock.models."claude-opus-4-8".limits]
+ context_window = 1000000
+ max_output = 128000
+ 
+-[models."us.anthropic.claude-opus-4-8".features]
++[providers.bedrock.models."claude-opus-4-8".features]
+ tools = true
+ vision = true
+ reasoning = true
+ prompt_cache = true
+ 
+-[models."us.anthropic.claude-opus-4-8".costs]
++[providers.bedrock.models."claude-opus-4-8".costs]
+ input_cost_per_mtok = 5.0
+ output_cost_per_mtok = 25.0
+ cache_input_cost_per_mtok = 0.5
+ 
+-[models."us.anthropic.claude-haiku-4-5"]
+-provider = "bedrock"
++[providers.bedrock.models."claude-haiku-4-5"]
+ api_id = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+ display_name = "Claude Haiku 4.5 (Bedrock)"
+ family = "claude-4"
+ billing_policy = "anthropic"
+ small_default = true
+ 
+-[models."us.anthropic.claude-haiku-4-5".limits]
++[providers.bedrock.models."claude-haiku-4-5".limits]
+ context_window = 200000
+ max_output = 64000
+ 
+-[models."us.anthropic.claude-haiku-4-5".features]
++[providers.bedrock.models."claude-haiku-4-5".features]
+ tools = true
+ vision = true
+ reasoning = false
+ prompt_cache = true
+ 
+-[models."us.anthropic.claude-haiku-4-5".costs]
++[providers.bedrock.models."claude-haiku-4-5".costs]
+ input_cost_per_mtok = 1.0
+ output_cost_per_mtok = 5.0
+ cache_input_cost_per_mtok = 0.1
+@@ -116,149 +115,142 @@ cache_input_cost_per_mtok = 0.1
+ # GPT-5.5/5.4 are NOT here: on Bedrock they are Responses-API-only on the
+ # bedrock-mantle endpoint (no Converse), a named follow-up route.
+ 
+-[models."openai.gpt-oss-120b"]
+-provider = "bedrock"
++[providers.bedrock.models."gpt-oss-120b"]
+ api_id = "openai.gpt-oss-120b-1:0"
+ display_name = "GPT-OSS 120B (Bedrock)"
+ family = "gpt-oss"
+ billing_policy = "openai"
+ agent_profile = "openai"
+ 
+-[models."openai.gpt-oss-120b".limits]
++[providers.bedrock.models."gpt-oss-120b".limits]
+ context_window = 128000
+ max_output = 16384
+ 
+-[models."openai.gpt-oss-120b".features]
++[providers.bedrock.models."gpt-oss-120b".features]
+ tools = true
+ vision = false
+ reasoning = true
+ 
+-[models."openai.gpt-oss-120b".costs]
++[providers.bedrock.models."gpt-oss-120b".costs]
+ input_cost_per_mtok = 0.15
+ output_cost_per_mtok = 0.60
+ 
+-[models."openai.gpt-oss-20b"]
+-provider = "bedrock"
++[providers.bedrock.models."gpt-oss-20b"]
+ api_id = "openai.gpt-oss-20b-1:0"
+ display_name = "GPT-OSS 20B (Bedrock)"
+ family = "gpt-oss"
+ billing_policy = "openai"
+ agent_profile = "openai"
+ 
+-[models."openai.gpt-oss-20b".limits]
++[providers.bedrock.models."gpt-oss-20b".limits]
+ context_window = 128000
+ max_output = 16384
+ 
+-[models."openai.gpt-oss-20b".features]
++[providers.bedrock.models."gpt-oss-20b".features]
+ tools = true
+ vision = false
+ reasoning = true
+ 
+-[models."openai.gpt-oss-20b".costs]
++[providers.bedrock.models."gpt-oss-20b".costs]
+ input_cost_per_mtok = 0.07
+ output_cost_per_mtok = 0.30
+ 
+ # ---------- Amazon Nova ----------
+ 
+-[models."amazon.nova-2-lite"]
+-provider = "bedrock"
++[providers.bedrock.models."nova-2-lite"]
+ api_id = "global.amazon.nova-2-lite-v1:0"
+ display_name = "Nova 2 Lite (Bedrock)"
+ family = "nova-2"
+ billing_policy = "openai"
+ agent_profile = "openai"
+ 
+-[models."amazon.nova-2-lite".limits]
++[providers.bedrock.models."nova-2-lite".limits]
+ context_window = 1000000
+ # Bedrock caps Nova output at 65535 (2^16 - 1); 65536 trips
+ # "maximum tokens exceeds the model limit of 65535" since the prompt handler
+ # defaults max_tokens to max_output.
+ max_output = 65535
+ 
+-[models."amazon.nova-2-lite".features]
++[providers.bedrock.models."nova-2-lite".features]
+ tools = true
+ vision = true
+ reasoning = false
+ 
+-[models."amazon.nova-2-lite".costs]
++[providers.bedrock.models."nova-2-lite".costs]
+ input_cost_per_mtok = 0.30
+ output_cost_per_mtok = 2.50
+ 
+ # ---------- Open-weights ----------
+ 
+-[models."meta.llama4-maverick"]
+-provider = "bedrock"
++[providers.bedrock.models."llama-4-maverick"]
+ api_id = "us.meta.llama4-maverick-17b-instruct-v1:0"
+ display_name = "Llama 4 Maverick (Bedrock)"
+ family = "llama-4"
+ billing_policy = "openai"
+ agent_profile = "openai"
+ 
+-[models."meta.llama4-maverick".limits]
++[providers.bedrock.models."llama-4-maverick".limits]
+ context_window = 1000000
+ max_output = 8192
+ 
+-[models."meta.llama4-maverick".features]
++[providers.bedrock.models."llama-4-maverick".features]
+ tools = true
+ vision = true
+ reasoning = false
+ 
+-[models."mistral.mistral-large-3"]
+-provider = "bedrock"
++[providers.bedrock.models."mistral-large-3"]
+ api_id = "mistral.mistral-large-3-675b-instruct"
+ display_name = "Mistral Large 3 (Bedrock)"
+ family = "mistral-large"
+ billing_policy = "openai"
+ agent_profile = "openai"
+ 
+-[models."mistral.mistral-large-3".limits]
++[providers.bedrock.models."mistral-large-3".limits]
+ context_window = 256000
+ max_output = 32768
+ 
+-[models."mistral.mistral-large-3".features]
++[providers.bedrock.models."mistral-large-3".features]
+ tools = true
+ vision = true
+ reasoning = false
+ 
+-[models."mistral.mistral-large-3".costs]
++[providers.bedrock.models."mistral-large-3".costs]
+ input_cost_per_mtok = 0.50
+ output_cost_per_mtok = 1.50
+ 
+-[models."mistral.devstral-2"]
+-provider = "bedrock"
++[providers.bedrock.models."devstral-2"]
+ api_id = "mistral.devstral-2-123b"
+ display_name = "Devstral 2 (Bedrock)"
+ family = "devstral"
+ billing_policy = "openai"
+ agent_profile = "openai"
+ 
+-[models."mistral.devstral-2".limits]
++[providers.bedrock.models."devstral-2".limits]
+ context_window = 256000
+ max_output = 32768
+ 
+-[models."mistral.devstral-2".features]
++[providers.bedrock.models."devstral-2".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."deepseek.v3-2"]
+-provider = "bedrock"
++[providers.bedrock.models."deepseek-v3.2"]
+ api_id = "deepseek.v3.2"
+ display_name = "DeepSeek V3.2 (Bedrock)"
+ family = "deepseek-v3"
+ billing_policy = "openai"
+ agent_profile = "openai"
+ 
+-[models."deepseek.v3-2".limits]
++[providers.bedrock.models."deepseek-v3.2".limits]
+ context_window = 164000
+ max_output = 8192
+ 
+-[models."deepseek.v3-2".features]
++[providers.bedrock.models."deepseek-v3.2".features]
+ tools = true
+ vision = false
+ reasoning = true
+ 
+-[models."deepseek.v3-2".costs]
++[providers.bedrock.models."deepseek-v3.2".costs]
+ input_cost_per_mtok = 0.62
+ output_cost_per_mtok = 1.85
+ 
+@@ -267,92 +259,90 @@ output_cost_per_mtok = 1.85
+ # "The provided model identifier is invalid"), so this row needs an explicit
+ # `api_id` confirmed against `aws bedrock list-inference-profiles` before it
+ # ships. Re-add with:
+-#   [models."qwen.qwen3-coder-next"]
+-#   provider = "bedrock"
++#   [providers.bedrock.models."qwen3-coder-next"]
+ #   api_id = "<verified bedrock id>"
+ #   display_name = "Qwen3 Coder Next (Bedrock)"
+ #   family = "qwen3"
+ #   billing_policy = "openai"
+ #   agent_profile = "openai"
+-#   [models."qwen.qwen3-coder-next".limits]
++#   [providers.bedrock.models."qwen3-coder-next".limits]
+ #   context_window = 256000
+ #   max_output = 16384
+-#   [models."qwen.qwen3-coder-next".features]
++#   [providers.bedrock.models."qwen3-coder-next".features]
+ #   tools = true
+ 
+-[models."moonshotai.kimi-k2.5"]
+-provider = "bedrock"
++[providers.bedrock.models."kimi-k2.5"]
++api_id = "moonshotai.kimi-k2.5"
+ display_name = "Kimi K2.5 (Bedrock)"
+ family = "kimi-k2"
+ billing_policy = "openai"
+ agent_profile = "openai"
+ 
+-[models."moonshotai.kimi-k2.5".limits]
++[providers.bedrock.models."kimi-k2.5".limits]
+ context_window = 262144
+ max_output = 16384
+ 
+-[models."moonshotai.kimi-k2.5".features]
++[providers.bedrock.models."kimi-k2.5".features]
+ tools = true
+ vision = true
+ reasoning = false
+ 
+-[models."moonshotai.kimi-k2.5".costs]
++[providers.bedrock.models."kimi-k2.5".costs]
+ input_cost_per_mtok = 0.60
+ output_cost_per_mtok = 3.00
+ 
+-[models."zai.glm-5"]
+-provider = "bedrock"
++[providers.bedrock.models."glm-5"]
++api_id = "zai.glm-5"
+ display_name = "GLM 5 (Bedrock)"
+ family = "glm"
+ billing_policy = "openai"
+ agent_profile = "openai"
+ 
+-[models."zai.glm-5".limits]
++[providers.bedrock.models."glm-5".limits]
+ context_window = 200000
+ max_output = 128000
+ 
+-[models."zai.glm-5".features]
++[providers.bedrock.models."glm-5".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."zai.glm-5".costs]
++[providers.bedrock.models."glm-5".costs]
+ input_cost_per_mtok = 1.00
+ output_cost_per_mtok = 3.20
+ 
+-[models."minimax.minimax-m2.5"]
+-provider = "bedrock"
++[providers.bedrock.models."minimax-m2.5"]
++api_id = "minimax.minimax-m2.5"
+ display_name = "MiniMax M2.5 (Bedrock)"
+ family = "minimax-m2"
+ billing_policy = "openai"
+ agent_profile = "openai"
+ 
+-[models."minimax.minimax-m2.5".limits]
++[providers.bedrock.models."minimax-m2.5".limits]
+ context_window = 196000
+ max_output = 8192
+ 
+-[models."minimax.minimax-m2.5".features]
++[providers.bedrock.models."minimax-m2.5".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."minimax.minimax-m2.5".costs]
++[providers.bedrock.models."minimax-m2.5".costs]
+ input_cost_per_mtok = 0.30
+ output_cost_per_mtok = 1.20
+ 
+-[models."nvidia.nemotron-3-super"]
+-provider = "bedrock"
++[providers.bedrock.models."nemotron-3-super"]
+ api_id = "nvidia.nemotron-super-3-120b"
+ display_name = "Nemotron 3 Super (Bedrock)"
+ family = "nemotron-3"
+ billing_policy = "openai"
+ agent_profile = "openai"
+ 
+-[models."nvidia.nemotron-3-super".limits]
++[providers.bedrock.models."nemotron-3-super".limits]
+ context_window = 256000
+ max_output = 32768
+ 
+-[models."nvidia.nemotron-3-super".features]
++[providers.bedrock.models."nemotron-3-super".features]
+ tools = true
+ vision = false
+ reasoning = false
+@@ -365,24 +355,24 @@ reasoning = false
+ # reasoning_effort stays undeclared here (requests carrying one are
+ # rejected up front rather than silently dropped).
+ 
+-[models."us.anthropic.claude-fable-5"]
+-provider = "bedrock"
++[providers.bedrock.models."claude-fable-5"]
++api_id = "us.anthropic.claude-fable-5"
+ display_name = "Claude Fable 5 (Bedrock)"
+ family = "claude-5"
+ billing_policy = "anthropic"
+ 
+-[models."us.anthropic.claude-fable-5".limits]
++[providers.bedrock.models."claude-fable-5".limits]
+ context_window = 1000000
+ max_output = 128000
+ 
+-[models."us.anthropic.claude-fable-5".features]
++[providers.bedrock.models."claude-fable-5".features]
+ tools = true
+ vision = true
+ reasoning = true
+ prompt_cache = true
+ sampling_params = false
+ 
+-[models."us.anthropic.claude-fable-5".costs]
++[providers.bedrock.models."claude-fable-5".costs]
+ input_cost_per_mtok = 10.0
+ output_cost_per_mtok = 50.0
+ cache_input_cost_per_mtok = 1.0
+diff --git a/lib/crates/fabro-model/src/catalog/providers/gemini.toml b/lib/crates/fabro-model/src/catalog/providers/gemini.toml
+index 74ffc91de..a03c2a249 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/gemini.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/gemini.toml
+@@ -9,9 +9,7 @@ priority = 80
+ credentials = ["env:GEMINI_API_KEY", "env:GOOGLE_API_KEY", "vault:GEMINI_API_KEY"]
+ header = { custom = "x-goog-api-key" }
+ 
+-[models."gemini-3.1-pro-preview"]
+-provider = "gemini"
+-api_id = "gemini-3.1-pro-preview"
++[providers.gemini.models."gemini-3.1-pro-preview"]
+ display_name = "Gemini 3.1 Pro (Preview)"
+ family = "gemini-3"
+ training = "2025-01-01"
+@@ -19,24 +17,22 @@ knowledge_cutoff = "January 2025"
+ estimated_output_tps = 85
+ aliases = ["gemini-pro"]
+ 
+-[models."gemini-3.1-pro-preview".limits]
++[providers.gemini.models."gemini-3.1-pro-preview".limits]
+ context_window = 1048576
+ max_output = 65536
+ 
+-[models."gemini-3.1-pro-preview".features]
++[providers.gemini.models."gemini-3.1-pro-preview".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."gemini-3.1-pro-preview".costs]
++[providers.gemini.models."gemini-3.1-pro-preview".costs]
+ input_cost_per_mtok = 2.0
+ output_cost_per_mtok = 12.0
+ cache_input_cost_per_mtok = 0.5
+ 
+-[models."gemini-3.1-pro-preview-customtools"]
+-provider = "gemini"
+-api_id = "gemini-3.1-pro-preview-customtools"
++[providers.gemini.models."gemini-3.1-pro-preview-customtools"]
+ display_name = "Gemini 3.1 Pro Custom Tools (Preview)"
+ family = "gemini-3"
+ training = "2025-01-01"
+@@ -44,24 +40,22 @@ knowledge_cutoff = "January 2025"
+ estimated_output_tps = 85
+ aliases = ["gemini-customtools"]
+ 
+-[models."gemini-3.1-pro-preview-customtools".limits]
++[providers.gemini.models."gemini-3.1-pro-preview-customtools".limits]
+ context_window = 1048576
+ max_output = 65536
+ 
+-[models."gemini-3.1-pro-preview-customtools".features]
++[providers.gemini.models."gemini-3.1-pro-preview-customtools".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."gemini-3.1-pro-preview-customtools".costs]
++[providers.gemini.models."gemini-3.1-pro-preview-customtools".costs]
+ input_cost_per_mtok = 2.0
+ output_cost_per_mtok = 12.0
+ cache_input_cost_per_mtok = 0.5
+ 
+-[models."gemini-3.5-flash"]
+-provider = "gemini"
+-api_id = "gemini-3.5-flash"
++[providers.gemini.models."gemini-3.5-flash"]
+ display_name = "Gemini 3.5 Flash"
+ family = "gemini-3"
+ training = "2025-01-01"
+@@ -70,24 +64,22 @@ default = true
+ estimated_output_tps = 150
+ aliases = ["gemini-35-flash"]
+ 
+-[models."gemini-3.5-flash".limits]
++[providers.gemini.models."gemini-3.5-flash".limits]
+ context_window = 1048576
+ max_output = 65536
+ 
+-[models."gemini-3.5-flash".features]
++[providers.gemini.models."gemini-3.5-flash".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."gemini-3.5-flash".costs]
++[providers.gemini.models."gemini-3.5-flash".costs]
+ input_cost_per_mtok = 1.5
+ output_cost_per_mtok = 9.0
+ cache_input_cost_per_mtok = 0.15
+ 
+-[models."gemini-3-flash-preview"]
+-provider = "gemini"
+-api_id = "gemini-3-flash-preview"
++[providers.gemini.models."gemini-3-flash-preview"]
+ display_name = "Gemini 3 Flash (Preview)"
+ family = "gemini-3"
+ training = "2025-01-01"
+@@ -95,24 +87,22 @@ knowledge_cutoff = "January 2025"
+ estimated_output_tps = 150
+ aliases = ["gemini-flash"]
+ 
+-[models."gemini-3-flash-preview".limits]
++[providers.gemini.models."gemini-3-flash-preview".limits]
+ context_window = 1048576
+ max_output = 65536
+ 
+-[models."gemini-3-flash-preview".features]
++[providers.gemini.models."gemini-3-flash-preview".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."gemini-3-flash-preview".costs]
++[providers.gemini.models."gemini-3-flash-preview".costs]
+ input_cost_per_mtok = 0.5
+ output_cost_per_mtok = 3.0
+ cache_input_cost_per_mtok = 0.125
+ 
+-[models."gemini-3.1-flash-lite"]
+-provider = "gemini"
+-api_id = "gemini-3.1-flash-lite"
++[providers.gemini.models."gemini-3.1-flash-lite"]
+ display_name = "Gemini 3.1 Flash Lite"
+ family = "gemini-3"
+ training = "2025-01-01"
+@@ -121,17 +111,17 @@ estimated_output_tps = 200
+ aliases = ["gemini-flash-lite", "gemini-3.1-flash-lite-preview"]
+ small_default = true
+ 
+-[models."gemini-3.1-flash-lite".limits]
++[providers.gemini.models."gemini-3.1-flash-lite".limits]
+ context_window = 1048576
+ max_output = 65536
+ 
+-[models."gemini-3.1-flash-lite".features]
++[providers.gemini.models."gemini-3.1-flash-lite".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."gemini-3.1-flash-lite".costs]
++[providers.gemini.models."gemini-3.1-flash-lite".costs]
+ input_cost_per_mtok = 0.25
+ output_cost_per_mtok = 1.5
+ cache_input_cost_per_mtok = 0.025
+diff --git a/lib/crates/fabro-model/src/catalog/providers/inception.toml b/lib/crates/fabro-model/src/catalog/providers/inception.toml
+index 1d2b08a64..965120f27 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/inception.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/inception.toml
+@@ -8,25 +8,23 @@ priority = 40
+ [providers.inception.auth]
+ credentials = ["env:INCEPTION_API_KEY", "vault:INCEPTION_API_KEY"]
+ 
+-[models."mercury-2"]
+-provider = "inception"
+-api_id = "mercury-2"
++[providers.inception.models."mercury-2"]
+ display_name = "Mercury 2"
+ family = "mercury"
+ default = true
+ estimated_output_tps = 1000
+ aliases = ["mercury"]
+ 
+-[models."mercury-2".limits]
++[providers.inception.models."mercury-2".limits]
+ context_window = 131072
+ max_output = 50000
+ 
+-[models."mercury-2".features]
++[providers.inception.models."mercury-2".features]
+ tools = true
+ vision = false
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."mercury-2".costs]
++[providers.inception.models."mercury-2".costs]
+ input_cost_per_mtok = 0.25
+ output_cost_per_mtok = 0.75
+diff --git a/lib/crates/fabro-model/src/catalog/providers/kimi.toml b/lib/crates/fabro-model/src/catalog/providers/kimi.toml
+index c57779116..daa4b20c2 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/kimi.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/kimi.toml
+@@ -8,46 +8,42 @@ priority = 70
+ [providers.kimi.auth]
+ credentials = ["env:KIMI_API_KEY", "vault:KIMI_API_KEY"]
+ 
+-[models."kimi-k2.5"]
+-provider = "kimi"
+-api_id = "kimi-k2.5"
++[providers.kimi.models."kimi-k2.5"]
+ display_name = "Kimi K2.5"
+ family = "kimi-k2"
+ training = "2025-10-01"
+ knowledge_cutoff = "October 2025"
+ estimated_output_tps = 50
+ 
+-[models."kimi-k2.5".limits]
++[providers.kimi.models."kimi-k2.5".limits]
+ context_window = 262144
+ max_output = 32768
+ 
+-[models."kimi-k2.5".features]
++[providers.kimi.models."kimi-k2.5".features]
+ tools = true
+ vision = true
+ reasoning = true
+ prompt_cache = true
+ sampling_params = false
+ 
+-[models."kimi-k2.5".costs]
++[providers.kimi.models."kimi-k2.5".costs]
+ input_cost_per_mtok = 0.6
+ output_cost_per_mtok = 3.0
+ cache_input_cost_per_mtok = 0.1
+ 
+-[models."kimi-k3"]
+-provider = "kimi"
+-api_id = "kimi-k3"
++[providers.kimi.models."kimi-k3"]
+ display_name = "Kimi K3"
+ family = "kimi-k3"
+ default = true
+ aliases = ["kimi"]
+ 
+-[models."kimi-k3".limits]
++[providers.kimi.models."kimi-k3".limits]
+ context_window = 1048576
+ # K3 accepts explicit completion budgets up to 1048576, but Fabro also uses
+ # max_output as the default request budget. Match Kimi's 131072-token default.
+ max_output = 131072
+ 
+-[models."kimi-k3".features]
++[providers.kimi.models."kimi-k3".features]
+ tools = true
+ vision = true
+ reasoning = true
+@@ -55,10 +51,10 @@ reasoning_effort = "always_adaptive"
+ prompt_cache = true
+ sampling_params = false
+ 
+-[models."kimi-k3".controls]
++[providers.kimi.models."kimi-k3".controls]
+ reasoning_effort = ["low", "high", "max"]
+ 
+-[models."kimi-k3".costs]
++[providers.kimi.models."kimi-k3".costs]
+ input_cost_per_mtok = 3.0
+ output_cost_per_mtok = 15.0
+ cache_input_cost_per_mtok = 0.3
+diff --git a/lib/crates/fabro-model/src/catalog/providers/litellm.toml b/lib/crates/fabro-model/src/catalog/providers/litellm.toml
+index 55f5aef15..1307378c1 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/litellm.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/litellm.toml
+@@ -14,18 +14,17 @@ credentials = ["env:LITELLM_API_KEY", "vault:LITELLM_API_KEY"]
+ # enabled = true
+ # base_url = "http://localhost:4000/v1"
+ #
+-# [llm.models."litellm-gpt-5"]
+-# provider = "litellm"
++# [llm.providers.litellm.models."litellm-gpt-5"]
+ # api_id = "gpt-5"
+ # display_name = "LiteLLM GPT-5"
+ # family = "litellm"
+ # default = true
+ #
+-# [llm.models."litellm-gpt-5".limits]
++# [llm.providers.litellm.models."litellm-gpt-5".limits]
+ # context_window = 128000
+ # max_output = 8192
+ #
+-# [llm.models."litellm-gpt-5".features]
++# [llm.providers.litellm.models."litellm-gpt-5".features]
+ # tools = true
+ # vision = false
+ # reasoning = false
+diff --git a/lib/crates/fabro-model/src/catalog/providers/minimax.toml b/lib/crates/fabro-model/src/catalog/providers/minimax.toml
+index 172a6fd6a..e68dfc290 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/minimax.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/minimax.toml
+@@ -8,24 +8,22 @@ priority = 50
+ [providers.minimax.auth]
+ credentials = ["env:MINIMAX_API_KEY", "vault:MINIMAX_API_KEY"]
+ 
+-[models."minimax-m2.5"]
+-provider = "minimax"
+-api_id = "minimax-m2.5"
++[providers.minimax.models."minimax-m2.5"]
+ display_name = "Minimax M2.5"
+ family = "minimax-m2"
+ default = true
+ estimated_output_tps = 45
+ aliases = ["minimax"]
+ 
+-[models."minimax-m2.5".limits]
++[providers.minimax.models."minimax-m2.5".limits]
+ context_window = 196608
+ max_output = 16384
+ 
+-[models."minimax-m2.5".features]
++[providers.minimax.models."minimax-m2.5".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."minimax-m2.5".costs]
++[providers.minimax.models."minimax-m2.5".costs]
+ input_cost_per_mtok = 0.3
+ output_cost_per_mtok = 1.2
+diff --git a/lib/crates/fabro-model/src/catalog/providers/ollama.toml b/lib/crates/fabro-model/src/catalog/providers/ollama.toml
+index bf3b16f5e..78dc5db69 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/ollama.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/ollama.toml
+@@ -9,18 +9,17 @@ enabled = false
+ # Example model. Uncomment after `ollama pull qwen3.5` (and `enabled = true`
+ # above) to expose it through the OpenAI-compatible adapter.
+ #
+-# [models."qwen3.5"]
+-# provider = "ollama"
++# [providers.ollama.models."qwen3.5"]
+ # api_id = "qwen3.5:latest"
+ # display_name = "Qwen3.5"
+ # family = "qwen3.5"
+ # default = true
+ # aliases = ["ollama-qwen3.5"]
+ #
+-# [models."qwen3.5".limits]
++# [providers.ollama.models."qwen3.5".limits]
+ # context_window = 32768
+ #
+-# [models."qwen3.5".features]
++# [providers.ollama.models."qwen3.5".features]
+ # tools = true
+ # vision = false
+ # reasoning = false
+diff --git a/lib/crates/fabro-model/src/catalog/providers/openai.toml b/lib/crates/fabro-model/src/catalog/providers/openai.toml
+index 56fe7a03c..9ae21c91f 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/openai.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/openai.toml
+@@ -8,9 +8,7 @@ priority = 90
+ [providers.openai.auth]
+ credentials = ["env:OPENAI_API_KEY", "vault:OPENAI_API_KEY", "vault:OPENAI_CODEX"]
+ 
+-[models."gpt-5.6-sol"]
+-provider = "openai"
+-api_id = "gpt-5.6-sol"
++[providers.openai.models."gpt-5.6-sol"]
+ display_name = "GPT-5.6 Sol"
+ family = "gpt-5"
+ training = "2026-02-16"
+@@ -18,75 +16,69 @@ knowledge_cutoff = "February 16, 2026"
+ default = true
+ aliases = ["gpt56-sol", "gpt-56-sol", "gpt-5.6", "gpt56", "gpt-56"]
+ 
+-[models."gpt-5.6-sol".limits]
++[providers.openai.models."gpt-5.6-sol".limits]
+ context_window = 272000
+ max_output = 128000
+ 
+-[models."gpt-5.6-sol".features]
++[providers.openai.models."gpt-5.6-sol".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ prompt_cache = true
+ 
+-[models."gpt-5.6-sol".costs]
++[providers.openai.models."gpt-5.6-sol".costs]
+ input_cost_per_mtok = 5.0
+ output_cost_per_mtok = 30.0
+ cache_input_cost_per_mtok = 0.5
+ 
+-[models."gpt-5.6-terra"]
+-provider = "openai"
+-api_id = "gpt-5.6-terra"
++[providers.openai.models."gpt-5.6-terra"]
+ display_name = "GPT-5.6 Terra"
+ family = "gpt-5"
+ training = "2026-02-16"
+ knowledge_cutoff = "February 16, 2026"
+ aliases = ["gpt56-terra", "gpt-56-terra"]
+ 
+-[models."gpt-5.6-terra".limits]
++[providers.openai.models."gpt-5.6-terra".limits]
+ context_window = 272000
+ max_output = 128000
+ 
+-[models."gpt-5.6-terra".features]
++[providers.openai.models."gpt-5.6-terra".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ prompt_cache = true
+ 
+-[models."gpt-5.6-terra".costs]
++[providers.openai.models."gpt-5.6-terra".costs]
+ input_cost_per_mtok = 2.5
+ output_cost_per_mtok = 15.0
+ cache_input_cost_per_mtok = 0.25
+ 
+-[models."gpt-5.6-luna"]
+-provider = "openai"
+-api_id = "gpt-5.6-luna"
++[providers.openai.models."gpt-5.6-luna"]
+ display_name = "GPT-5.6 Luna"
+ family = "gpt-5"
+ training = "2026-02-16"
+ knowledge_cutoff = "February 16, 2026"
+ aliases = ["gpt56-luna", "gpt-56-luna"]
+ 
+-[models."gpt-5.6-luna".limits]
++[providers.openai.models."gpt-5.6-luna".limits]
+ context_window = 272000
+ max_output = 128000
+ 
+-[models."gpt-5.6-luna".features]
++[providers.openai.models."gpt-5.6-luna".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ prompt_cache = true
+ 
+-[models."gpt-5.6-luna".costs]
++[providers.openai.models."gpt-5.6-luna".costs]
+ input_cost_per_mtok = 1.0
+ output_cost_per_mtok = 6.0
+ cache_input_cost_per_mtok = 0.1
+ 
+-[models."gpt-5.4"]
+-provider = "openai"
+-api_id = "gpt-5.4"
++[providers.openai.models."gpt-5.4"]
+ display_name = "GPT-5.4"
+ family = "gpt-5"
+ training = "2025-08-31"
+@@ -94,24 +86,22 @@ knowledge_cutoff = "April 2025"
+ estimated_output_tps = 70
+ aliases = ["gpt54", "gpt-54", "gpt-5.2", "gpt5", "gpt-5.3-codex", "codex"]
+ 
+-[models."gpt-5.4".limits]
++[providers.openai.models."gpt-5.4".limits]
+ context_window = 272000
+ max_output = 128000
+ 
+-[models."gpt-5.4".features]
++[providers.openai.models."gpt-5.4".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."gpt-5.4".costs]
++[providers.openai.models."gpt-5.4".costs]
+ input_cost_per_mtok = 2.5
+ output_cost_per_mtok = 15.0
+ cache_input_cost_per_mtok = 0.25
+ 
+-[models."gpt-5.5"]
+-provider = "openai"
+-api_id = "gpt-5.5"
++[providers.openai.models."gpt-5.5"]
+ display_name = "GPT-5.5"
+ family = "gpt-5"
+ training = "2025-12-01"
+@@ -119,24 +109,22 @@ knowledge_cutoff = "December 2025"
+ estimated_output_tps = 70
+ aliases = ["gpt55", "gpt-55"]
+ 
+-[models."gpt-5.5".limits]
++[providers.openai.models."gpt-5.5".limits]
+ context_window = 272000
+ max_output = 128000
+ 
+-[models."gpt-5.5".features]
++[providers.openai.models."gpt-5.5".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."gpt-5.5".costs]
++[providers.openai.models."gpt-5.5".costs]
+ input_cost_per_mtok = 5.0
+ output_cost_per_mtok = 30.0
+ cache_input_cost_per_mtok = 0.5
+ 
+-[models."gpt-5.5-pro"]
+-provider = "openai"
+-api_id = "gpt-5.5-pro"
++[providers.openai.models."gpt-5.5-pro"]
+ display_name = "GPT-5.5 Pro"
+ family = "gpt-5"
+ training = "2025-12-01"
+@@ -144,24 +132,22 @@ knowledge_cutoff = "December 2025"
+ estimated_output_tps = 20
+ aliases = ["gpt55-pro", "gpt-55-pro"]
+ 
+-[models."gpt-5.5-pro".limits]
++[providers.openai.models."gpt-5.5-pro".limits]
+ context_window = 1050000
+ max_output = 128000
+ 
+-[models."gpt-5.5-pro".features]
++[providers.openai.models."gpt-5.5-pro".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."gpt-5.5-pro".costs]
++[providers.openai.models."gpt-5.5-pro".costs]
+ input_cost_per_mtok = 30.0
+ output_cost_per_mtok = 180.0
+ cache_input_cost_per_mtok = 3.0
+ 
+-[models."gpt-5.4-pro"]
+-provider = "openai"
+-api_id = "gpt-5.4-pro"
++[providers.openai.models."gpt-5.4-pro"]
+ display_name = "GPT-5.4 Pro"
+ family = "gpt-5"
+ training = "2025-08-31"
+@@ -169,24 +155,22 @@ knowledge_cutoff = "April 2025"
+ estimated_output_tps = 20
+ aliases = ["gpt54-pro", "gpt-54-pro"]
+ 
+-[models."gpt-5.4-pro".limits]
++[providers.openai.models."gpt-5.4-pro".limits]
+ context_window = 1047576
+ max_output = 128000
+ 
+-[models."gpt-5.4-pro".features]
++[providers.openai.models."gpt-5.4-pro".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."gpt-5.4-pro".costs]
++[providers.openai.models."gpt-5.4-pro".costs]
+ input_cost_per_mtok = 30.0
+ output_cost_per_mtok = 180.0
+ cache_input_cost_per_mtok = 3.0
+ 
+-[models."gpt-5.4-mini"]
+-provider = "openai"
+-api_id = "gpt-5.4-mini"
++[providers.openai.models."gpt-5.4-mini"]
+ display_name = "GPT-5.4 Mini"
+ family = "gpt-5"
+ training = "2025-08-31"
+@@ -196,17 +180,17 @@ aliases = ["gpt54-mini", "gpt-54-mini", "gpt-5.3-codex-spark", "codex-spark"]
+ probe = true
+ small_default = true
+ 
+-[models."gpt-5.4-mini".limits]
++[providers.openai.models."gpt-5.4-mini".limits]
+ context_window = 272000
+ max_output = 128000
+ 
+-[models."gpt-5.4-mini".features]
++[providers.openai.models."gpt-5.4-mini".features]
+ tools = true
+ vision = true
+ reasoning = true
+ reasoning_effort = "levels"
+ 
+-[models."gpt-5.4-mini".costs]
++[providers.openai.models."gpt-5.4-mini".costs]
+ input_cost_per_mtok = 0.75
+ output_cost_per_mtok = 4.5
+ cache_input_cost_per_mtok = 0.075
+diff --git a/lib/crates/fabro-model/src/catalog/providers/openrouter.toml b/lib/crates/fabro-model/src/catalog/providers/openrouter.toml
+index 86fd43319..bad07290a 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/openrouter.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/openrouter.toml
+@@ -33,262 +33,249 @@ credentials = ["env:OPENROUTER_API_KEY", "vault:OPENROUTER_API_KEY"]
+ # best-effort estimates; OpenRouter returns the authoritative usage.cost
+ # in-band on every response.
+ 
+-[models."anthropic/claude-opus-4-7"]
+-provider = "openrouter"
++[providers.openrouter.models."claude-opus-4-7"]
+ api_id = "anthropic/claude-opus-4.7"
+ display_name = "Claude Opus 4.7 (via OpenRouter)"
+ family = "claude-4"
+ billing_policy = "anthropic"
+ 
+-[models."anthropic/claude-opus-4-7".limits]
++[providers.openrouter.models."claude-opus-4-7".limits]
+ context_window = 1000000
+ max_output = 128000
+ 
+-[models."anthropic/claude-opus-4-7".features]
++[providers.openrouter.models."claude-opus-4-7".features]
+ tools = true
+ vision = true
+ reasoning = true
+ prompt_cache = true
+ 
+-[models."anthropic/claude-opus-4-7".costs]
++[providers.openrouter.models."claude-opus-4-7".costs]
+ input_cost_per_mtok = 5.0
+ output_cost_per_mtok = 25.0
+ cache_input_cost_per_mtok = 0.5
+ 
+-[models."anthropic/claude-sonnet-4-6"]
+-provider = "openrouter"
++[providers.openrouter.models."claude-sonnet-4-6"]
+ api_id = "anthropic/claude-sonnet-4.6"
+ display_name = "Claude Sonnet 4.6 (via OpenRouter)"
+ family = "claude-4"
+ billing_policy = "anthropic"
+ default = true
+ 
+-[models."anthropic/claude-sonnet-4-6".limits]
++[providers.openrouter.models."claude-sonnet-4-6".limits]
+ context_window = 1000000
+ max_output = 64000
+ 
+-[models."anthropic/claude-sonnet-4-6".features]
++[providers.openrouter.models."claude-sonnet-4-6".features]
+ tools = true
+ vision = true
+ reasoning = true
+ prompt_cache = true
+ 
+-[models."anthropic/claude-sonnet-4-6".costs]
++[providers.openrouter.models."claude-sonnet-4-6".costs]
+ input_cost_per_mtok = 3.0
+ output_cost_per_mtok = 15.0
+ cache_input_cost_per_mtok = 0.3
+ 
+-[models."anthropic/claude-haiku-4-5"]
+-provider = "openrouter"
++[providers.openrouter.models."claude-haiku-4-5"]
+ api_id = "anthropic/claude-haiku-4.5"
+ display_name = "Claude Haiku 4.5 (via OpenRouter)"
+ family = "claude-4"
+ billing_policy = "anthropic"
+ small_default = true
+ 
+-[models."anthropic/claude-haiku-4-5".limits]
++[providers.openrouter.models."claude-haiku-4-5".limits]
+ context_window = 200000
+ max_output = 8192
+ 
+-[models."anthropic/claude-haiku-4-5".features]
++[providers.openrouter.models."claude-haiku-4-5".features]
+ tools = true
+ vision = true
+ reasoning = false
+ prompt_cache = true
+ 
+-[models."anthropic/claude-haiku-4-5".costs]
++[providers.openrouter.models."claude-haiku-4-5".costs]
+ input_cost_per_mtok = 1.0
+ output_cost_per_mtok = 5.0
+ cache_input_cost_per_mtok = 0.1
+ 
+ # ---------- OpenAI via OpenRouter ----------
+ 
+-[models."openai/gpt-5.4"]
+-provider = "openrouter"
++[providers.openrouter.models."gpt-5.4"]
+ api_id = "openai/gpt-5.4"
+ display_name = "GPT-5.4 (via OpenRouter)"
+ family = "gpt-5"
+ 
+-[models."openai/gpt-5.4".limits]
++[providers.openrouter.models."gpt-5.4".limits]
+ context_window = 1050000
+ max_output = 32768
+ 
+-[models."openai/gpt-5.4".features]
++[providers.openrouter.models."gpt-5.4".features]
+ tools = true
+ vision = true
+ reasoning = true
+ 
+-[models."openai/gpt-5.4".costs]
++[providers.openrouter.models."gpt-5.4".costs]
+ input_cost_per_mtok = 2.5
+ output_cost_per_mtok = 15.0
+ 
+-[models."openai/gpt-5.5"]
+-provider = "openrouter"
++[providers.openrouter.models."gpt-5.5"]
+ api_id = "openai/gpt-5.5"
+ display_name = "GPT-5.5 (via OpenRouter)"
+ family = "gpt-5"
+ 
+-[models."openai/gpt-5.5".limits]
++[providers.openrouter.models."gpt-5.5".limits]
+ context_window = 1050000
+ max_output = 32768
+ 
+-[models."openai/gpt-5.5".features]
++[providers.openrouter.models."gpt-5.5".features]
+ tools = true
+ vision = true
+ reasoning = true
+ 
+-[models."openai/gpt-5.5".costs]
++[providers.openrouter.models."gpt-5.5".costs]
+ input_cost_per_mtok = 5.0
+ output_cost_per_mtok = 30.0
+ 
+ # ---------- Google Gemini via OpenRouter ----------
+ 
+-[models."google/gemini-3.1-pro-preview"]
+-provider = "openrouter"
++[providers.openrouter.models."gemini-3.1-pro-preview"]
+ api_id = "google/gemini-3.1-pro-preview"
+ display_name = "Gemini 3.1 Pro Preview (via OpenRouter)"
+ family = "gemini-3"
+ 
+-[models."google/gemini-3.1-pro-preview".limits]
++[providers.openrouter.models."gemini-3.1-pro-preview".limits]
+ context_window = 1048576
+ max_output = 65536
+ 
+-[models."google/gemini-3.1-pro-preview".features]
++[providers.openrouter.models."gemini-3.1-pro-preview".features]
+ tools = true
+ vision = true
+ reasoning = true
+ 
+-[models."google/gemini-3.1-pro-preview".costs]
++[providers.openrouter.models."gemini-3.1-pro-preview".costs]
+ input_cost_per_mtok = 2.0
+ output_cost_per_mtok = 12.0
+ 
+-[models."google/gemini-3.5-flash"]
+-provider = "openrouter"
++[providers.openrouter.models."gemini-3.5-flash"]
+ api_id = "google/gemini-3.5-flash"
+ display_name = "Gemini 3.5 Flash (via OpenRouter)"
+ family = "gemini-3"
+ 
+-[models."google/gemini-3.5-flash".limits]
++[providers.openrouter.models."gemini-3.5-flash".limits]
+ context_window = 1048576
+ max_output = 65536
+ 
+-[models."google/gemini-3.5-flash".features]
++[providers.openrouter.models."gemini-3.5-flash".features]
+ tools = true
+ vision = true
+ reasoning = false
+ 
+-[models."google/gemini-3.5-flash".costs]
++[providers.openrouter.models."gemini-3.5-flash".costs]
+ input_cost_per_mtok = 1.5
+ output_cost_per_mtok = 9.0
+ 
+ # ---------- Open-weights models ----------
+ 
+-[models."xiaomi/mimo-v2.5-pro"]
+-provider = "openrouter"
++[providers.openrouter.models."mimo-v2.5-pro"]
+ api_id = "xiaomi/mimo-v2.5-pro"
+ display_name = "Xiaomi MiMo v2.5 Pro"
+ family = "mimo-v2"
+ 
+-[models."xiaomi/mimo-v2.5-pro".limits]
++[providers.openrouter.models."mimo-v2.5-pro".limits]
+ context_window = 1050000
+ max_output = 16384
+ 
+-[models."xiaomi/mimo-v2.5-pro".features]
++[providers.openrouter.models."mimo-v2.5-pro".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."xiaomi/mimo-v2.5-pro".costs]
++[providers.openrouter.models."mimo-v2.5-pro".costs]
+ input_cost_per_mtok = 0.435
+ output_cost_per_mtok = 0.87
+ 
+-[models."minimax/minimax-m2.7"]
+-provider = "openrouter"
++[providers.openrouter.models."minimax-m2.7"]
+ api_id = "minimax/minimax-m2.7"
+ display_name = "MiniMax M2.7"
+ family = "minimax-m2"
+ 
+-[models."minimax/minimax-m2.7".limits]
++[providers.openrouter.models."minimax-m2.7".limits]
+ context_window = 200000
+ max_output = 16384
+ 
+-[models."minimax/minimax-m2.7".features]
++[providers.openrouter.models."minimax-m2.7".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."minimax/minimax-m2.7".costs]
++[providers.openrouter.models."minimax-m2.7".costs]
+ input_cost_per_mtok = 0.28
+ output_cost_per_mtok = 1.20
+ 
+-[models."deepseek/deepseek-v4-pro"]
+-provider = "openrouter"
++[providers.openrouter.models."deepseek-v4-pro"]
+ api_id = "deepseek/deepseek-v4-pro"
+ display_name = "DeepSeek V4 Pro"
+ family = "deepseek-v4"
+ 
+-[models."deepseek/deepseek-v4-pro".limits]
++[providers.openrouter.models."deepseek-v4-pro".limits]
+ context_window = 1050000
+ max_output = 16384
+ 
+-[models."deepseek/deepseek-v4-pro".features]
++[providers.openrouter.models."deepseek-v4-pro".features]
+ tools = true
+ vision = false
+ reasoning = true
+ 
+-[models."deepseek/deepseek-v4-pro".costs]
++[providers.openrouter.models."deepseek-v4-pro".costs]
+ input_cost_per_mtok = 0.435
+ output_cost_per_mtok = 0.87
+ 
+-[models."deepseek/deepseek-v4-flash"]
+-provider = "openrouter"
++[providers.openrouter.models."deepseek-v4-flash"]
+ api_id = "deepseek/deepseek-v4-flash"
+ display_name = "DeepSeek V4 Flash"
+ family = "deepseek-v4"
+ 
+-[models."deepseek/deepseek-v4-flash".limits]
++[providers.openrouter.models."deepseek-v4-flash".limits]
+ context_window = 1050000
+ max_output = 16384
+ 
+-[models."deepseek/deepseek-v4-flash".features]
++[providers.openrouter.models."deepseek-v4-flash".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."deepseek/deepseek-v4-flash".costs]
++[providers.openrouter.models."deepseek-v4-flash".costs]
+ input_cost_per_mtok = 0.10
+ output_cost_per_mtok = 0.20
+ 
+-[models."moonshotai/kimi-k2.6"]
+-provider = "openrouter"
++[providers.openrouter.models."kimi-k2.6"]
+ api_id = "moonshotai/kimi-k2.6"
+ display_name = "Kimi K2.6"
+ family = "kimi-k2"
+ 
+-[models."moonshotai/kimi-k2.6".limits]
++[providers.openrouter.models."kimi-k2.6".limits]
+ context_window = 262144
+ max_output = 16384
+ 
+-[models."moonshotai/kimi-k2.6".features]
++[providers.openrouter.models."kimi-k2.6".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."moonshotai/kimi-k2.6".costs]
++[providers.openrouter.models."kimi-k2.6".costs]
+ input_cost_per_mtok = 0.73
+ output_cost_per_mtok = 3.49
+ 
+-[models."moonshotai/kimi-k3"]
+-provider = "openrouter"
++[providers.openrouter.models."kimi-k3"]
+ api_id = "moonshotai/kimi-k3"
+ display_name = "Kimi K3 (via OpenRouter)"
+ family = "kimi-k3"
+ 
+-[models."moonshotai/kimi-k3".limits]
++[providers.openrouter.models."kimi-k3".limits]
+ context_window = 1048576
+ max_output = 131072
+ 
+-[models."moonshotai/kimi-k3".features]
++[providers.openrouter.models."kimi-k3".features]
+ tools = true
+ vision = true
+ reasoning = true
+@@ -296,47 +283,45 @@ reasoning_effort = "always_adaptive"
+ prompt_cache = true
+ sampling_params = false
+ 
+-[models."moonshotai/kimi-k3".controls]
++[providers.openrouter.models."kimi-k3".controls]
+ reasoning_effort = ["low", "high", "max"]
+ 
+-[models."moonshotai/kimi-k3".costs]
++[providers.openrouter.models."kimi-k3".costs]
+ input_cost_per_mtok = 3.0
+ output_cost_per_mtok = 15.0
+ cache_input_cost_per_mtok = 0.3
+ 
+-[models."poolside/laguna-s-2.1"]
+-provider = "openrouter"
++[providers.openrouter.models."laguna-s-2.1"]
+ api_id = "poolside/laguna-s-2.1"
+ display_name = "Laguna S 2.1 (via OpenRouter)"
+ family = "laguna-2"
+ 
+-[models."poolside/laguna-s-2.1".limits]
++[providers.openrouter.models."laguna-s-2.1".limits]
+ context_window = 1048576
+ max_output = 131072
+ 
+-[models."poolside/laguna-s-2.1".features]
++[providers.openrouter.models."laguna-s-2.1".features]
+ tools = true
+ vision = false
+ reasoning = true
+ prompt_cache = true
+ sampling_params = true
+ 
+-[models."poolside/laguna-s-2.1".costs]
++[providers.openrouter.models."laguna-s-2.1".costs]
+ input_cost_per_mtok = 0.10
+ output_cost_per_mtok = 0.20
+ cache_input_cost_per_mtok = 0.01
+ 
+-[models."poolside/laguna-xs-2.1"]
+-provider = "openrouter"
++[providers.openrouter.models."laguna-xs-2.1"]
+ api_id = "poolside/laguna-xs-2.1"
+ display_name = "Laguna XS 2.1 (via OpenRouter)"
+ family = "laguna-2"
+ 
+-[models."poolside/laguna-xs-2.1".limits]
++[providers.openrouter.models."laguna-xs-2.1".limits]
+ context_window = 262144
+ max_output = 32768
+ 
+-[models."poolside/laguna-xs-2.1".features]
++[providers.openrouter.models."laguna-xs-2.1".features]
+ tools = true
+ vision = false
+ reasoning = true
+@@ -345,127 +330,121 @@ sampling_params = true
+ 
+ # Current promotional rate. OpenRouter's authoritative in-band usage.cost
+ # supersedes this estimate on completed responses.
+-[models."poolside/laguna-xs-2.1".costs]
++[providers.openrouter.models."laguna-xs-2.1".costs]
+ input_cost_per_mtok = 0.06
+ output_cost_per_mtok = 0.12
+ cache_input_cost_per_mtok = 0.03
+ 
+-[models."qwen/qwen3-coder"]
+-provider = "openrouter"
++[providers.openrouter.models."qwen3-coder"]
+ api_id = "qwen/qwen3-coder"
+ display_name = "Qwen3 Coder"
+ family = "qwen3"
+ 
+-[models."qwen/qwen3-coder".limits]
++[providers.openrouter.models."qwen3-coder".limits]
+ context_window = 1050000
+ max_output = 16384
+ 
+-[models."qwen/qwen3-coder".features]
++[providers.openrouter.models."qwen3-coder".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."qwen/qwen3-coder".costs]
++[providers.openrouter.models."qwen3-coder".costs]
+ input_cost_per_mtok = 0.22
+ output_cost_per_mtok = 1.80
+ 
+-[models."qwen/qwen3.6-flash"]
+-provider = "openrouter"
++[providers.openrouter.models."qwen3.6-flash"]
+ api_id = "qwen/qwen3.6-flash"
+ display_name = "Qwen3.6 Flash"
+ family = "qwen3"
+ 
+-[models."qwen/qwen3.6-flash".limits]
++[providers.openrouter.models."qwen3.6-flash".limits]
+ context_window = 1000000
+ max_output = 16384
+ 
+-[models."qwen/qwen3.6-flash".features]
++[providers.openrouter.models."qwen3.6-flash".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."qwen/qwen3.6-flash".costs]
++[providers.openrouter.models."qwen3.6-flash".costs]
+ input_cost_per_mtok = 0.1875
+ output_cost_per_mtok = 1.125
+ 
+-[models."z-ai/glm-5.2"]
+-provider = "openrouter"
++[providers.openrouter.models."glm-5.2"]
+ api_id = "z-ai/glm-5.2"
+ display_name = "GLM 5.2 (via OpenRouter)"
+ family = "glm-5"
+ 
+-[models."z-ai/glm-5.2".limits]
++[providers.openrouter.models."glm-5.2".limits]
+ context_window = 1048576
+ max_output = 131072
+ 
+-[models."z-ai/glm-5.2".features]
++[providers.openrouter.models."glm-5.2".features]
+ tools = true
+ vision = false
+ reasoning = true
+ reasoning_effort = "levels"
+ prompt_cache = true
+ 
+-[models."z-ai/glm-5.2".controls]
++[providers.openrouter.models."glm-5.2".controls]
+ reasoning_effort = ["high", "xhigh"]
+ 
+-[models."z-ai/glm-5.2".costs]
++[providers.openrouter.models."glm-5.2".costs]
+ input_cost_per_mtok = 0.784
+ output_cost_per_mtok = 2.464
+ cache_input_cost_per_mtok = 0.1456
+ 
+-[models."z-ai/glm-4.6"]
+-provider = "openrouter"
++[providers.openrouter.models."glm-4.6"]
+ api_id = "z-ai/glm-4.6"
+ display_name = "GLM 4.6"
+ family = "glm-4"
+ 
+-[models."z-ai/glm-4.6".limits]
++[providers.openrouter.models."glm-4.6".limits]
+ context_window = 203000
+ max_output = 16384
+ 
+-[models."z-ai/glm-4.6".features]
++[providers.openrouter.models."glm-4.6".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."z-ai/glm-4.6".costs]
++[providers.openrouter.models."glm-4.6".costs]
+ input_cost_per_mtok = 0.43
+ output_cost_per_mtok = 1.74
+ 
+-[models."nvidia/nemotron-3-super-120b-a12b"]
+-provider = "openrouter"
++[providers.openrouter.models."nemotron-3-super"]
+ api_id = "nvidia/nemotron-3-super-120b-a12b"
+ display_name = "NVIDIA Nemotron 3 Super 120B"
+ family = "nemotron-3"
+ 
+-[models."nvidia/nemotron-3-super-120b-a12b".limits]
++[providers.openrouter.models."nemotron-3-super".limits]
+ context_window = 1000000
+ max_output = 16384
+ 
+-[models."nvidia/nemotron-3-super-120b-a12b".features]
++[providers.openrouter.models."nemotron-3-super".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."nvidia/nemotron-3-super-120b-a12b".costs]
++[providers.openrouter.models."nemotron-3-super".costs]
+ input_cost_per_mtok = 0.09
+ output_cost_per_mtok = 0.45
+ 
+-[models."mistralai/devstral-2512"]
+-provider = "openrouter"
++[providers.openrouter.models."devstral-2"]
+ api_id = "mistralai/devstral-2512"
+ display_name = "Devstral 2512"
+ family = "devstral"
+ 
+-[models."mistralai/devstral-2512".limits]
++[providers.openrouter.models."devstral-2".limits]
+ context_window = 262144
+ max_output = 16384
+ 
+-[models."mistralai/devstral-2512".features]
++[providers.openrouter.models."devstral-2".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."mistralai/devstral-2512".costs]
++[providers.openrouter.models."devstral-2".costs]
+ input_cost_per_mtok = 0.40
+ output_cost_per_mtok = 2.00
+diff --git a/lib/crates/fabro-model/src/catalog/providers/poolside.toml b/lib/crates/fabro-model/src/catalog/providers/poolside.toml
+index 8fd1b6855..65ce87246 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/poolside.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/poolside.toml
+@@ -8,19 +8,18 @@ priority = 65
+ [providers.poolside.auth]
+ credentials = ["env:POOLSIDE_API_KEY", "vault:POOLSIDE_API_KEY"]
+ 
+-[models."laguna-s-2.1"]
+-provider = "poolside"
++[providers.poolside.models."laguna-s-2.1"]
+ api_id = "poolside/laguna-s-2.1"
+ display_name = "Laguna S 2.1"
+ family = "laguna-2"
+ default = true
+ aliases = ["laguna", "laguna-s"]
+ 
+-[models."laguna-s-2.1".limits]
++[providers.poolside.models."laguna-s-2.1".limits]
+ context_window = 1048576
+ max_output = 131072
+ 
+-[models."laguna-s-2.1".features]
++[providers.poolside.models."laguna-s-2.1".features]
+ tools = true
+ vision = false
+ reasoning = true
+@@ -30,13 +29,12 @@ sampling_params = true
+ # Poolside Platform is free for a limited preview period. Keep the published
+ # paid hosted rate as Fabro's durable estimate for paid access and post-preview
+ # usage.
+-[models."laguna-s-2.1".costs]
++[providers.poolside.models."laguna-s-2.1".costs]
+ input_cost_per_mtok = 0.10
+ output_cost_per_mtok = 0.20
+ cache_input_cost_per_mtok = 0.01
+ 
+-[models."laguna-xs-2.1"]
+-provider = "poolside"
++[providers.poolside.models."laguna-xs-2.1"]
+ api_id = "poolside/laguna-xs-2.1"
+ display_name = "Laguna XS 2.1"
+ family = "laguna-2"
+@@ -44,11 +42,11 @@ small_default = true
+ probe = true
+ aliases = ["laguna-xs"]
+ 
+-[models."laguna-xs-2.1".limits]
++[providers.poolside.models."laguna-xs-2.1".limits]
+ context_window = 262144
+ max_output = 32768
+ 
+-[models."laguna-xs-2.1".features]
++[providers.poolside.models."laguna-xs-2.1".features]
+ tools = true
+ vision = false
+ reasoning = true
+@@ -57,7 +55,7 @@ sampling_params = true
+ 
+ # Poolside Platform is free for a limited preview period. These are Poolside's
+ # published paid endpoint rates.
+-[models."laguna-xs-2.1".costs]
++[providers.poolside.models."laguna-xs-2.1".costs]
+ input_cost_per_mtok = 0.10
+ output_cost_per_mtok = 0.20
+ cache_input_cost_per_mtok = 0.05
+diff --git a/lib/crates/fabro-model/src/catalog/providers/venice.toml b/lib/crates/fabro-model/src/catalog/providers/venice.toml
+index bb91aeada..dc97c4ab4 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/venice.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/venice.toml
+@@ -8,43 +8,39 @@ aliases = ["venice-ai"]
+ [providers.venice.auth]
+ credentials = ["env:VENICE_API_KEY", "vault:VENICE_API_KEY"]
+ 
+-[models."venice-uncensored-1-2"]
+-provider = "venice"
+-api_id = "venice-uncensored-1-2"
++[providers.venice.models."venice-uncensored-1-2"]
+ display_name = "Venice Uncensored 1.2"
+ family = "venice-uncensored"
+ default = true
+ aliases = ["venice-uncensored", "vu"]
+ 
+-[models."venice-uncensored-1-2".limits]
++[providers.venice.models."venice-uncensored-1-2".limits]
+ context_window = 128000
+ max_output = 8192
+ 
+-[models."venice-uncensored-1-2".features]
++[providers.venice.models."venice-uncensored-1-2".features]
+ tools = true
+ vision = true
+ reasoning = false
+ 
+-[models."venice-uncensored-1-2".costs]
++[providers.venice.models."venice-uncensored-1-2".costs]
+ input_cost_per_mtok = 0.2
+ output_cost_per_mtok = 0.9
+ 
+-[models."venice-uncensored-role-play"]
+-provider = "venice"
+-api_id = "venice-uncensored-role-play"
++[providers.venice.models."venice-uncensored-role-play"]
+ display_name = "Venice Uncensored Role Play"
+ family = "venice-uncensored"
+ aliases = ["venice-roleplay", "vrp"]
+ 
+-[models."venice-uncensored-role-play".limits]
++[providers.venice.models."venice-uncensored-role-play".limits]
+ context_window = 128000
+ max_output = 4096
+ 
+-[models."venice-uncensored-role-play".features]
++[providers.venice.models."venice-uncensored-role-play".features]
+ tools = true
+ vision = true
+ reasoning = false
+ 
+-[models."venice-uncensored-role-play".costs]
++[providers.venice.models."venice-uncensored-role-play".costs]
+ input_cost_per_mtok = 0.5
+ output_cost_per_mtok = 2.0
+diff --git a/lib/crates/fabro-model/src/catalog/providers/zai.toml b/lib/crates/fabro-model/src/catalog/providers/zai.toml
+index e720df4da..c6d70cd64 100644
+--- a/lib/crates/fabro-model/src/catalog/providers/zai.toml
++++ b/lib/crates/fabro-model/src/catalog/providers/zai.toml
+@@ -8,50 +8,46 @@ priority = 60
+ [providers.zai.auth]
+ credentials = ["env:ZAI_API_KEY", "vault:ZAI_API_KEY"]
+ 
+-[models."glm-5.2"]
+-provider = "zai"
+-api_id = "glm-5.2"
++[providers.zai.models."glm-5.2"]
+ display_name = "GLM 5.2"
+ family = "glm-5"
+ default = true
+ aliases = ["glm", "glm5"]
+ 
+-[models."glm-5.2".limits]
++[providers.zai.models."glm-5.2".limits]
+ context_window = 1048576
+ max_output = 131072
+ 
+-[models."glm-5.2".features]
++[providers.zai.models."glm-5.2".features]
+ tools = true
+ vision = false
+ reasoning = true
+ reasoning_effort = "levels"
+ prompt_cache = true
+ 
+-[models."glm-5.2".controls]
++[providers.zai.models."glm-5.2".controls]
+ reasoning_effort = ["high", "max"]
+ 
+-[models."glm-5.2".costs]
++[providers.zai.models."glm-5.2".costs]
+ input_cost_per_mtok = 1.4
+ output_cost_per_mtok = 4.4
+ cache_input_cost_per_mtok = 0.26
+ 
+-[models."glm-4.7"]
+-provider = "zai"
+-api_id = "glm-4.7"
++[providers.zai.models."glm-4.7"]
+ display_name = "GLM 4.7"
+ family = "glm-4"
+ estimated_output_tps = 100
+ aliases = ["glm4"]
+ 
+-[models."glm-4.7".limits]
++[providers.zai.models."glm-4.7".limits]
+ context_window = 202752
+ max_output = 16384
+ 
+-[models."glm-4.7".features]
++[providers.zai.models."glm-4.7".features]
+ tools = true
+ vision = false
+ reasoning = false
+ 
+-[models."glm-4.7".costs]
++[providers.zai.models."glm-4.7".costs]
+ input_cost_per_mtok = 0.6
+ output_cost_per_mtok = 2.2
+diff --git a/lib/crates/fabro-model/src/ids.rs b/lib/crates/fabro-model/src/ids.rs
+index 18d1bdd86..94b6f043e 100644
+--- a/lib/crates/fabro-model/src/ids.rs
++++ b/lib/crates/fabro-model/src/ids.rs
+@@ -101,9 +101,12 @@ impl AsRef<str> for ProviderId {
+     }
+ }
+ 
+-/// Stable model identifier — either the canonical catalog ID or one of its
+-/// declared aliases.
+-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
++/// Stable, canonical human-facing model slug.
++///
++/// Aliases are selectors that resolve to a `ModelId`; they are never model
++/// IDs themselves. The same canonical slug may identify one offering on each
++/// provider, so an offering's full identity is `(ProviderId, ModelId)`.
++#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+ #[serde(transparent)]
+ pub struct ModelId(String);
+ 
+@@ -123,12 +126,32 @@ impl ModelId {
+     }
+ }
+ 
++impl std::borrow::Borrow<str> for ModelId {
++    fn borrow(&self) -> &str {
++        self.as_str()
++    }
++}
++
++impl std::ops::Deref for ModelId {
++    type Target = str;
++
++    fn deref(&self) -> &Self::Target {
++        self.as_str()
++    }
++}
++
+ impl fmt::Display for ModelId {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         f.write_str(&self.0)
+     }
+ }
+ 
++impl fmt::Debug for ModelId {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        fmt::Debug::fmt(&self.0, f)
++    }
++}
++
+ impl From<&str> for ModelId {
+     fn from(s: &str) -> Self {
+         Self(s.to_string())
+@@ -147,6 +170,30 @@ impl AsRef<str> for ModelId {
+     }
+ }
+ 
++impl PartialEq<str> for ModelId {
++    fn eq(&self, other: &str) -> bool {
++        self.as_str() == other
++    }
++}
++
++impl PartialEq<&str> for ModelId {
++    fn eq(&self, other: &&str) -> bool {
++        self.as_str() == *other
++    }
++}
++
++impl PartialEq<ModelId> for str {
++    fn eq(&self, other: &ModelId) -> bool {
++        self == other.as_str()
++    }
++}
++
++impl PartialEq<ModelId> for &str {
++    fn eq(&self, other: &ModelId) -> bool {
++        *self == other.as_str()
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/lib/crates/fabro-model/src/types.rs b/lib/crates/fabro-model/src/types.rs
+index 8dcbd3270..312067f9a 100644
+--- a/lib/crates/fabro-model/src/types.rs
++++ b/lib/crates/fabro-model/src/types.rs
+@@ -1,6 +1,6 @@
+ use serde::{Deserialize, Serialize};
+ 
+-use crate::ids::ProviderId;
++use crate::ids::{ModelId, ProviderId};
+ 
+ // --- 2.9 Model ---
+ 
+@@ -78,7 +78,7 @@ pub struct ModelCosts {
+ 
+ #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+ pub struct Model {
+-    pub id:                   String,
++    pub id:                   ModelId,
+     pub provider:             ProviderId,
+     pub family:               String,
+     pub display_name:         String,
+@@ -210,7 +210,7 @@ mod tests {
+     #[test]
+     fn inherent_methods_return_correct_values() {
+         let info = Model {
+-            id:                   "model-id".to_string(),
++            id:                   ModelId::new("model-id"),
+             provider:             ProviderId::new("provider-id"),
+             family:               "family".to_string(),
+             display_name:         "Display Name".to_string(),
