@@ -311,7 +311,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-23T13:48:49.404024139Z",
-  "last_event_at": "2026-07-23T13:49:14.979463613Z",
+  "last_event_at": "2026-07-23T13:49:21.488358691Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -551,9 +551,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 63,
       "checkpoint": {
-        "timestamp": "2026-07-23T13:49:15.062049227Z",
+        "timestamp": "2026-07-23T13:49:21.488172891Z",
         "current_node": "merge",
         "completed_nodes": [
           "start",
@@ -563,6 +563,20 @@
         ],
         "node_retries": {},
         "context_values": {
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01KY7KRAAWF45QQTPR8W2SVMR6",
+          "response.seed": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
+          "internal.retry_count.fork": 0,
+          "last_stage": "seed",
+          "parallel.fan_in.best_outcome": "succeeded",
+          "internal.retry_count.merge": 0,
+          "last_response": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "parallel.fan_in.best_head_sha": "5d9498fc81513f4341e4732632760edf9216b8a0",
+          "internal.retry_count.seed": 0,
+          "thread.fork.current_node": "merge",
+          "internal.retry_count.start": 0,
           "parallel.results": [
             {
               "id": "branch_a",
@@ -575,31 +589,17 @@
               "head_sha": "090c8727619ed039bf620378655d44d7267226ce"
             }
           ],
-          "failure_signature": "",
-          "parallel.branch_count": 2,
-          "graph.goal": "Probe which context values reach parallel branch nodes (fork-level truncate)",
-          "last_stage": "seed",
           "thread.seed.current_node": "fork",
-          "internal.thread_id": "fork",
-          "parallel.fan_in.best_head_sha": "5d9498fc81513f4341e4732632760edf9216b8a0",
-          "current_node": "merge",
-          "last_response": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
-          "internal.node_visit_count": 1,
-          "secret_marker": "XYZZY123",
-          "parallel.fan_in.best_outcome": "succeeded",
-          "internal.retry_count.fork": 0,
-          "failure_class": "",
-          "response.seed": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
-          "internal.retry_count.merge": 0,
-          "internal.fidelity": "compact",
-          "internal.retry_count.start": 0,
-          "parallel.fan_in.best_id": "branch_a",
-          "internal.work_dir": "/home/daytona/workspace/fabro",
-          "internal.retry_count.seed": 0,
-          "thread.fork.current_node": "merge",
           "thread.start.current_node": "seed",
-          "internal.run_id": "01KY7KRAAWF45QQTPR8W2SVMR6",
-          "outcome": "succeeded"
+          "current_node": "merge",
+          "internal.fidelity": "compact",
+          "parallel.fan_in.best_id": "branch_a",
+          "outcome": "succeeded",
+          "parallel.branch_count": 2,
+          "internal.thread_id": "fork",
+          "secret_marker": "XYZZY123",
+          "failure_class": "",
+          "graph.goal": "Probe which context values reach parallel branch nodes (fork-level truncate)"
         },
         "node_outcomes": {
           "merge": {
@@ -669,17 +669,93 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "80b917b30abda3e751eec07c01624739fb869b0b",
         "node_visits": {
-          "merge": 1,
-          "fork": 1,
           "start": 1,
-          "seed": 1
+          "fork": 1,
+          "seed": 1,
+          "merge": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-07-23T13:49:21.503412802Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 32086,
+      "inference_time_ms": 1847,
+      "tool_time_ms": 0,
+      "active_time_ms": 1847
+    },
+    "final_git_commit_sha": "80b917b30abda3e751eec07c01624739fb869b0b",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "seed",
+        "stage_label": "seed",
+        "timing": {
+          "wall_time_ms": 2331,
+          "inference_time_ms": 1847,
+          "tool_time_ms": 0,
+          "active_time_ms": 1847
+        },
+        "billing_usd_micros": 14433,
+        "retries": 0
+      },
+      {
+        "stage_id": "fork",
+        "stage_label": "fork",
+        "timing": {
+          "wall_time_ms": 9848,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "billing_usd_micros": 16503,
+        "retries": 0
+      },
+      {
+        "stage_id": "merge",
+        "stage_label": "merge",
+        "timing": {
+          "wall_time_ms": 82,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 9467,
+      "output_tokens": 169,
+      "total_tokens": 9636,
+      "reasoning_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 30936
+    },
+    "total_retries": 0,
+    "diff": {}
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -705,6 +781,40 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 66,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-23T13:49:21.488358691Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-23T13:49:21.488333671Z",
+      "handler": "exit",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 18,
       "prompt": null,
@@ -797,7 +907,12 @@
       "first_event_seq": 58,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Selected best candidate: branch_a",
+        "failure_reason": null,
+        "timestamp": "2026-07-23T13:49:15.061815761Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": null,
@@ -806,6 +921,12 @@
       "output": null,
       "started_at": "2026-07-23T13:49:14.979463613Z",
       "handler": "parallel.fan_in",
+      "timing": {
+        "wall_time_ms": 82,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -814,7 +935,7 @@
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
       },
-      "state": "running"
+      "state": "succeeded"
     },
     "seed@1": {
       "first_event_seq": 22,
