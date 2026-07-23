@@ -1,0 +1,506 @@
+{
+  "title": "Provider-aware model aliases and API IDs",
+  "spec": {
+    "run_id": "01KY6E8S0YA6KAR5ZF53X7QMWZ",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "# Provider-aware model aliases and API IDs\n\n## Outcome\n\nFabro workflows can name a model with one stable model slug or alias and run unchanged against whichever provider the operator has available. A model offering is identified by `(provider, ModelId)`, so the same `ModelId` and the same alias may appear on multiple providers. For an unqualified selector, Fabro filters to ready providers and then uses provider priority to choose one offering deterministically.\n\nThe motivating behavior is:\n\n| Ready providers | Selector | Selected offering |\n| --- | --- | --- |\n| OpenAI only | `gpt-56-sol` | OpenAI's `gpt-5.6-sol` |\n| OpenRouter only | `gpt-56-sol` | OpenRouter's `gpt-5.6-sol` offering |\n| OpenAI and OpenRouter | `gpt-56-sol` | OpenAI, because its provider priority is higher |\n| OpenAI and OpenRouter, explicit `provider = \"openrouter\"` | `gpt-56-sol` | OpenRouter, because an explicit provider is a pin |\n\nThe provider-facing API identifier remains an implementation detail of the selected offering. It defaults to the canonical model slug and can be overridden with `api_id` when a provider uses another convention.\n\n## Scope and design decisions\n\n### Vocabulary and identity\n\n- `ProviderId` identifies who serves the request, such as `openai` or `openrouter`.\n- `ModelId` is the canonical, human-facing model slug, such as `gpt-5.6-sol` or `claude-opus-4-8`. It never means an alias.\n- An alias is an alternate user-facing selector, such as `gpt-56-sol` or `opus`.\n- An offering is one provider's route to one `ModelId`. Its stable identity is `(ProviderId, ModelId)`.\n- `api_id` is the opaque string sent to that offering's provider API.\n- `family` remains model metadata used for display and matching; it is not a routing namespace and is not combined with `provider` or `api_id`.\n\nDo not add a separate runtime `LogicalModel` type. Use the existing `Model` as the provider-specific offering and use the existing `ModelId` newtype for its canonical ID. Internally, tuple keys `(ProviderId, ModelId)` are enough; do not add an `OfferingId` type unless implementation pressure demonstrates a real invariant it would protect.\n\n### Canonical configuration shape\n\nMove model declarations under their provider, but keep the human model slug as the model table key:\n\n```toml\n[llm.providers.openai]\npriority = 90\n\n[llm.providers.openai.models.\"gpt-5.6-sol\"]\ndisplay_name = \"GPT-5.6 Sol\"\nfamily = \"gpt-5\"\naliases = [\"gpt-56-sol\"]\ndefault = true\n\n[llm.providers.openrouter]\npriority = 25\n\n[llm.providers.openrouter.models.\"gpt-5.6-sol\"]\napi_id = \"openai/gpt-5.6-sol\"\ndisplay_name = \"GPT-5.6 Sol (via OpenRouter)\"\nfamily = \"gpt-5\"\naliases = [\"gpt-56-sol\"]\ndefault = true\n```\n\nThis shape provides a natural unique key without making humans author an API identifier or repeat `provider = \"...\"` inside every model. Model settings continue to field-merge by provider and model slug across configuration layers.\n\nAt catalog build time:\n\n```text\neffective_api_id = configured api_id, otherwise ModelId's exact slug\n```\n\nReject an explicitly empty `api_id`. Do not perform provider-specific string rewrites, prefix inference, or template expansion. A future template feature may be authoring sugar that produces the same resolved `api_id`, but it is not part of this change.\n\n### Alias and selection semantics\n\nBuild candidate sets rather than a global `identifier -> one model` map:\n\n- Canonical model IDs may repeat across providers.\n- Aliases may repeat across providers and may point to different canonical model IDs on different providers. This supports both strict synonyms and portable role-like aliases.\n- Within one provider, a canonical ID or alias must identify exactly one offering. Reject two models on the same provider that claim the same alias.\n- Across providers, an alias may collide with a canonical `ModelId`; the canonical-before-alias check order keeps canonical IDs reliable pins, and the shadowed alias stays reachable through its provider-qualified form. Within one provider, the previous rule already rejects the collision.\n- An explicit provider restricts lookup to that provider and bypasses provider priority.\n- An unqualified selector considers only eligible providers, then sorts by provider priority descending and canonical provider ID ascending.\n- A canonical `ModelId` match is checked before alias matches.\n- Disabled providers and disabled offerings are absent from candidate sets.\n\n\"Eligible\" must be supplied by the caller rather than inferred inside the catalog:\n\n- Runtime calls use providers whose adapters registered successfully. This accounts for credentials and adapter initialization, not merely an enabled catalog row.\n- Static validation explicitly uses all enabled catalog providers and proves that at least one candidate exists without claiming that credentials are available.\n- An explicit but unavailable provider remains a pin and produces a clear unavailable-provider error; Fabro must not silently switch it.\n\nWhen a run is created, resolve every implicit selector once and persist the chosen canonical model ID and provider. Resume uses that materialized choice; it does not reconsider provider priority because credentials changed. Runtime fallbacks remain the mechanism for handling a later provider failure.\n\nPreserve the existing passthrough behavior for uncatalogued models: when a provider is explicit, send the unknown model string unchanged and use the provider's default route policy. An unknown unqualified model may use the runtime's default ready provider as it does today, but it cannot participate in alias-based provider selection.\n\n## Implementation plan\n\n### 1. Make configuration provider-scoped\n\nFiles centered on:\n\n- `lib/crates/fabro-config/src/layers/llm.rs`\n- `lib/crates/fabro-config/src/builders.rs`\n- `lib/crates/fabro-model/src/catalog.rs`\n- `lib/crates/fabro-model/src/catalog/providers/*.toml`\n\nChanges:\n\n1. Add `models: MergeMap<ModelSettings>` to `ProviderSettings` and the equivalent model map to `ProviderCatalogSettings`.\n2. Remove `provider` from the canonical model-row shape; the containing provider supplies it.\n3. Normalize catalog data into provider/model pairs before catalog building, preserving layer precedence independently for each pair.\n4. Convert every built-in provider TOML to `[providers.<provider>.models.\"<model-slug>\"]`.\n5. Re-key OpenRouter, Bedrock, and other aggregator offerings by Fabro's model slug rather than their provider API ID. Retain explicit `api_id` overrides for `author/model`, Bedrock profile IDs, deployment names, and other exceptions.\n6. Remove redundant `api_id` fields where they equal the model slug.\n7. Do not add an unverified provider offering merely to match the motivating example; exercise the exact example with a catalog fixture and use existing verified cross-provider models in the built-in catalog.\n\nCompatibility:\n\n- Accept the current `[llm.models.\"<id>\"]` plus `provider = \"...\"` form as a temporary input shape. A row that omits provider adopts the provider of the unique known offering matching its id or alias; if none or several match, fail with an error naming the row.\n- Normalize each source layer into the canonical provider-scoped form before combining layers, so old and new definitions retain correct precedence.\n- Reject a single source that defines the same `(provider, model)` through both syntaxes instead of choosing silently.\n- Keep built-ins and documentation exclusively on the new syntax. Do not add a filesystem rewrite migration yet because LLM catalog layers can come from more places than one owned settings file; the compatibility parser covers all of those boundaries safely.\n- Ship a retired-identifier map for re-keyed built-in ids (old catalog key to provider plus new slug). Any selector or persisted model reference matching a retired id fails with a typed error naming the new address; nothing silently re-routes. One mechanism covers old config references, workflow graphs, and resumed pre-change runs.\n\n### 2. Rebuild catalog identity and indexes\n\nFiles centered on:\n\n- `lib/crates/fabro-model/src/ids.rs`\n- `lib/crates/fabro-model/src/types.rs`\n- `lib/crates/fabro-model/src/catalog.rs`\n- `lib/crates/fabro-model/src/model_ref.rs`\n- `lib/crates/fabro-model/src/billing.rs`\n\nChanges:\n\n1. Change `Model.id` from `String` to the transparent `ModelId` newtype and correct `ModelId` documentation so aliases are not described as model IDs. JSON remains a plain string.\n2. Key resolved model settings by `(ProviderId, ModelId)` rather than model ID alone.\n3. Replace the one-to-one `model_index` with:\n    - an offering index keyed by `(ProviderId, ModelId)`;\n    - canonical-ID candidates keyed by `ModelId`;\n    - alias candidates keyed by alias string.\n4. Pre-sort candidate vectors with the catalog's provider ordering so every caller receives the same priority and tie-break behavior.\n5. Replace global `Catalog::get`-style assumptions with explicit methods:\n    - lookup on a named provider;\n    - selection from an eligible-provider set;\n    - lookup of settings from a resolved `Model` offering;\n    - listing every offering, optionally by provider.\n6. Make pricing, billing, codec, profile, probe, default, and closest-model lookups use the composite identity. Resolve the run-level default model with the same selection algorithm (default-flagged candidates from eligible providers, ordered by provider priority) without requiring providers to agree on their defaults.\n7. Replace `DuplicateModelIdentifier` with provider-scoped validation errors that name the provider, selector, and conflicting model IDs.\n8. Add a typed selection error that distinguishes an unknown selector from a known selector with no eligible offering. Preserve error sources and render strings only at CLI/API boundaries.\n\n### 3. Centralize provider-aware resolution\n\nFiles centered on:\n\n- `lib/crates/fabro-model/src/catalog.rs`\n- `lib/crates/fabro-types/src/settings/model_ref.rs`\n- `lib/crates/fabro-workflow/src/handler/llm/routing.rs`\n- `lib/crates/fabro-workflow/src/transforms/model_resolution.rs`\n- `lib/crates/fabro-workflow/src/run_materialization.rs`\n- `lib/crates/fabro-workflow/src/operations/start.rs`\n\nChanges:\n\n1. Implement one catalog selection algorithm taking a selector, optional explicit provider, and eligible provider IDs.\n2. Make generic `ModelRef` parsing classify bare versus provider-qualified input only. It must not try to infer a unique provider for a bare alias, because a valid alias may now have several provider candidates.\n3. Keep the existing `provider/model` qualified syntax in this change. The model slug never contains the provider API ID, so OpenRouter's slash is no longer part of the user-facing model address.\n4. Update workflow graph model resolution and run materialization to receive the ready-provider snapshot already collected during run creation.\n5. Materialize aliases to canonical `(provider, ModelId)` values in both node attributes and run defaults before persistence.\n6. Keep static validation credential-independent by resolving against all enabled candidates only for existence/capability checks.\n7. Update fallback resolution so:\n    - a provider-only fallback still selects the closest compatible model;\n    - a provider-qualified model/alias resolves within that provider;\n    - a bare model/alias uses the fallback-time eligible set and provider priority;\n    - provider-name/model-name ambiguity becomes a user-facing typed error; today AmbiguousModelRef is silently swallowed by fallback resolution, so pin this behavior change with a test.\n\n### 4. Resolve the offering before LLM dispatch\n\nFiles centered on:\n\n- `lib/crates/fabro-llm/src/client.rs`\n- `lib/crates/fabro-llm/src/adapter_registry.rs`\n- `lib/crates/fabro-llm/src/providers/common.rs`\n- provider adapter modules under `lib/crates/fabro-llm/src/providers/`\n\nChanges:\n\n1. For requests without an explicit provider, select among the client's successfully registered providers using catalog priority.\n2. For requests with an explicit provider, resolve the model or alias only on that provider and fail if the adapter is unavailable.\n3. Canonicalize a cloned request to the selected `ModelId` before validation, costing, and dispatch; leave caller-owned request data unchanged.\n4. Resolve route metadata and `api_id` from the selected composite offering. Provider adapters must pass their own canonical provider ID into catalog lookups rather than looking up settings by model string alone.\n5. Ensure response costing and billing use the same resolved offering that was dispatched.\n6. Keep explicit-provider unknown-model passthrough intact.\n\n### 5. Update server, API, CLI, and web identities\n\nFiles centered on:\n\n- `docs/public/api-reference/fabro-api.yaml`\n- `lib/crates/fabro-server/src/server/handler/models.rs`\n- `lib/crates/fabro-server/src/server/handler/sessions.rs`\n- `lib/crates/fabro-cli/src/commands/model.rs`\n- `apps/fabro-web/app/routes/settings-models.tsx`\n- generated clients in `lib/crates/fabro-api` and `lib/packages/fabro-api-client`\n\nChanges:\n\n1. Continue returning one `Model` row per offering from `GET /models`. Document that `id` is unique within a provider and that `(provider, id)` is the resource identity.\n2. Add an optional `provider` query parameter to `POST /models/{id}/test`. With a provider it tests that exact offering; without one it selects among ready providers by priority.\n3. Include `provider` in `ModelTestResult` so the tested offering is explicit.\n4. Make model-test lookup, auth issues, and probing use the selected offering rather than a global first match.\n5. Update the CLI so bulk tests always pass each row's provider, and an explicit `--provider` plus `--model` remains pinned. Match returned results by `(provider, id)`.\n6. Update the settings models page to key row state by `(provider, id)` and send the provider when testing a row; duplicate IDs must render and update independently.\n7. Update session/playground/completion resolution to use ready provider IDs and persist or return the selected provider alongside the canonical model. Enumerate the OpenAPI schema changes this implies for session, playground, and completion resources; sessions currently store only a bare model-id string.\n8. Regenerate Rust and TypeScript API clients from the OpenAPI source after changing the contract.\n\n### 6. Document the mental model\n\nFiles centered on:\n\n- `lib/crates/fabro-dev/src/commands/docs_options_reference.rs`\n- `docs/public/reference/user-configuration.mdx` (generated region)\n- `docs/public/core-concepts/models.mdx`\n- `docs/public/execution/run-configuration.mdx`\n- `docs/public/execution/failures.mdx`\n\nDocument:\n\n1. Provider, model slug, family metadata, alias, and API ID as distinct terms.\n2. Provider-scoped model configuration and the `api_id = model slug` default.\n3. The OpenAI/OpenRouter portability example and the priority table from this plan.\n4. Explicit provider selection as a pin and unqualified selection as availability plus priority.\n5. Alias reuse across providers, including the same-provider ambiguity rule.\n6. Resolution-once behavior for persisted runs and the separate role of runtime fallback chains.\n7. API IDs as opaque provider wire values that workflows should not reference.\n\nRun `cargo dev docs refresh` after editing the generator-owned reference.\n\n## Test plan\n\n### Catalog and configuration tests\n\nAdd focused unit tests proving:\n\n- two providers can declare the same canonical `ModelId`;\n- two providers can declare the same alias;\n- only OpenAI eligible selects OpenAI;\n- only OpenRouter eligible selects OpenRouter and its overridden API ID;\n- both eligible select the higher-priority provider;\n- equal priorities use canonical provider ID as the tie-breaker;\n- an explicit provider overrides priority;\n- a disabled or ineligible provider is not selected;\n- two different models on one provider cannot claim the same alias;\n- an unqualified selector matching both a canonical ID and another provider's alias selects the canonical model, while the alias offering stays reachable provider-qualified;\n- omitted `api_id` resolves to the exact model slug;\n- explicit `api_id` is preserved and an empty override is rejected;\n- provider/model layer merges do not overwrite the same slug on another provider;\n- the temporary old config shape normalizes correctly and a same-source old/new collision errors clearly.\n- a provider-less legacy row adopts the unique matching offering's provider, and a retired built-in id fails with the typed error naming its replacement.\n\n### Routing and wire tests\n\nAdd `fabro-llm` tests with fake registered providers or local capture servers that submit the same alias under three availability configurations. Assert the selected adapter and the exact wire model value, including OpenRouter's `author/model` override. Also cover explicit provider, unknown passthrough, request-control validation, and cost lookup on duplicate model IDs.\n\n### Workflow tests\n\nAdd crate-level workflow tests that create the same workflow with:\n\n- only the direct provider ready;\n- only the aggregator ready;\n- both ready;\n- an explicit lower-priority provider.\n\nAssert the persisted graph and run settings contain the selected canonical model and provider. Add a resume-oriented test showing that changing the ready provider set does not re-resolve a materialized run. Add fallback tests for a shared bare alias and a provider-qualified alias, including propagation of a provider/model ambiguity error.\n\n### API, CLI, and web tests\n\n- Server: list two rows with the same ID but different providers; filter by provider; test each exact offering; test priority selection when provider is omitted.\n- CLI: bulk model tests do not conflate duplicate IDs, and JSON output includes the selected provider.\n- Web: duplicate-ID rows have independent React keys and test-result state, and each request includes the row provider.\n- API generation: retain the existing `Model` Rust type replacement and add or update JSON parity/type-identity coverage as required by the API policy.\n\nUse unit/crate integration tests for catalog and routing behavior. Use the existing command/API test layers only for their public contracts; no live provider credentials are required.\n\n## Verification\n\nRun, in this order:\n\n```sh\ncargo build -p fabro-api\ncd lib/packages/fabro-api-client && bun run generate\ncargo dev docs refresh\ncargo nextest run -p fabro-model\ncargo nextest run -p fabro-config\ncargo nextest run -p fabro-llm\ncargo nextest run -p fabro-workflow\ncargo nextest run -p fabro-server\ncd apps/fabro-web && bun test\ncd apps/fabro-web && bun run typecheck\ncargo dev docs check\ncargo +nightly-2026-04-14 fmt --check --all\ncargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings\nulimit -n 4096 && cargo nextest run --workspace\ncargo build --workspace\n```\n\nBefore accepting any changed snapshots, run `cargo insta pending-snapshots` and inspect the complete pending set.\n\n## Completion criteria\n\n- A workflow using one shared alias runs unchanged for an OpenAI-only operator and an OpenRouter-only operator.\n- When both are ready, provider priority selects deterministically.\n- Explicit provider selection always pins the provider.\n- The selected offering's exact `api_id` reaches the provider wire request.\n- No catalog, routing, billing, API, CLI, or UI lookup treats model ID alone as a globally unique offering identity.\n- Built-ins and public documentation use provider-scoped model-slug keys and omit redundant API IDs.\n- Existing user catalog syntax remains readable through the compatibility normalization path.\n\n## Unresolved questions\n\n- What release or date should end support for the legacy top-level `[llm.models]` syntax? This does not block implementation; the plan keeps it as a compatibility input and makes the new provider-scoped form canonical.\n"
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {},
+        "model": {
+          "provider": "openrouter",
+          "name": "anthropic/claude-sonnet-4-6",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false,
+          "commit_timeout_ms": 30000
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "fabro-dev",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        curl git ripgrep ca-certificates build-essential pkg-config libssl-dev unzip python3 \\\n        xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \\\n        libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6 \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install real Chromium (not the snap stub) via xtradeb PPA\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        software-properties-common curl gnupg \\\n    && add-apt-repository -y ppa:xtradeb/apps \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends chromium \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Wrapper: Chromium needs --no-sandbox when running as root in a container,\n# and --disable-dev-shm-usage avoids crashes from small /dev/shm\nRUN printf '#!/bin/bash\\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"$@\"\\n' \\\n        > /usr/local/bin/chromium-wrapper \\\n    && chmod +x /usr/local/bin/chromium-wrapper\n\n# Make the wrapper the default in the system .desktop file and via alternatives\nRUN sed -i 's|^Exec=.*|Exec=/usr/local/bin/chromium-wrapper %U|' \\\n        /usr/share/applications/chromium.desktop \\\n    && update-alternatives --install /usr/bin/x-www-browser x-www-browser \\\n        /usr/local/bin/chromium-wrapper 100\n\n# Tell XFCE's exo-open that Chromium is the WebBrowser helper (system-wide)\nRUN mkdir -p /etc/xdg/xfce4 /usr/share/xfce4/helpers \\\n    && printf 'WebBrowser=custom-WebBrowser\\n' > /etc/xdg/xfce4/helpers.rc \\\n    && printf '[Desktop Entry]\\n\\\nVersion=1.0\\n\\\nType=X-XFCE-Helper\\n\\\nName=Chromium\\n\\\nIcon=chromium\\n\\\nX-XFCE-Category=WebBrowser\\n\\\nX-XFCE-CommandsWithParameter=/usr/local/bin/chromium-wrapper \"%%s\"\\n\\\nX-XFCE-Commands=/usr/local/bin/chromium-wrapper\\n' \\\n        > /usr/share/xfce4/helpers/custom-WebBrowser.desktop\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" \\\n        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update && apt-get install -y --no-install-recommends gh \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": "20GB"
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": "30m"
+          },
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "env": {}
+        },
+        "notifications": {
+          "feed": {
+            "enabled": true,
+            "provider": "slack",
+            "events": [
+              "run.started",
+              "run.completed",
+              "run.failed"
+            ],
+            "slack": {
+              "channel": "#feed-fabro"
+            }
+          }
+        },
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": false,
+          "merge_strategy": "squash"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "ImplementPlan",
+      "nodes": {
+        "fixup": {
+          "id": "fixup",
+          "attrs": {
+            "max_visits": {
+              "Integer": 3
+            },
+            "label": {
+              "String": "Fixup"
+            },
+            "prompt": {
+              "String": "The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures."
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "provider": {
+              "String": "openrouter"
+            },
+            "model": {
+              "String": "anthropic/claude-fable-5"
+            }
+          }
+        },
+        "preflight_lint": {
+          "id": "preflight_lint",
+          "attrs": {
+            "shape": {
+              "String": "parallelogram"
+            },
+            "label": {
+              "String": "Preflight Lint"
+            },
+            "script": {
+              "String": "cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1"
+            },
+            "max_retries": {
+              "Integer": 0
+            }
+          }
+        },
+        "simplify_sol": {
+          "id": "simplify_sol",
+          "attrs": {
+            "label": {
+              "String": "Simplify (GPT-5.6 Sol)"
+            },
+            "model": {
+              "String": "openai/gpt-5.6-sol"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun \\`git diff\\` (or \\`git diff HEAD\\` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the ${AGENT_TOOL_NAME} tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. **Search for existing utilities and helpers** that could replace newly written code. Look for similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.\n3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction\n4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n6. **Unnecessary JSX nesting**: wrapper Boxes/elements that add no layout value — check if inner component props (flexShrink, alignItems, etc.) already provide the needed behavior\n7. **Unnecessary comments**: comments explaining WHAT the code does (well-named identifiers already do that), narrating the change, or referencing the task/caller — delete; keep only non-obvious WHY (hidden constraints, subtle invariants, workarounds)\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. **Missed concurrency**: independent operations run sequentially when they could run in parallel\n3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths\n4. **Recurring no-op updates**: state/store updates inside polling loops, intervals, or event handlers that fire unconditionally — add a change-detection guard so downstream consumers aren't notified when nothing changed. Also: if a wrapper function takes an updater/reducer callback, verify it honors same-reference returns (or whatever the \"no change\" signal is) — otherwise callers' early-return no-ops are silently defeated\n5. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n6. **Memory**: unbounded data structures, missing cleanup, event listener leaks\n7. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "reasoning_effort": {
+              "String": "max"
+            },
+            "provider": {
+              "String": "openrouter"
+            }
+          }
+        },
+        "implement": {
+          "id": "implement",
+          "attrs": {
+            "label": {
+              "String": "Implement"
+            },
+            "model": {
+              "String": "openai/gpt-5.6-sol"
+            },
+            "prompt": {
+              "String": "Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD."
+            },
+            "reasoning_effort": {
+              "String": "max"
+            },
+            "provider": {
+              "String": "openrouter"
+            }
+          }
+        },
+        "fix_lints": {
+          "id": "fix_lints",
+          "attrs": {
+            "max_visits": {
+              "Integer": 3
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "label": {
+              "String": "Fix Lints"
+            },
+            "model": {
+              "String": "anthropic/claude-fable-5"
+            },
+            "provider": {
+              "String": "openrouter"
+            },
+            "prompt": {
+              "String": "The preflight lint step failed. Read the build output from context and fix all clippy lint warnings."
+            }
+          }
+        },
+        "verify": {
+          "id": "verify",
+          "attrs": {
+            "goal_gate": {
+              "Boolean": true
+            },
+            "retry_target": {
+              "String": "fixup"
+            },
+            "label": {
+              "String": "Verify"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "script": {
+              "String": "git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "label": {
+              "String": "Start"
+            },
+            "shape": {
+              "String": "Mdiamond"
+            }
+          }
+        },
+        "toolchain": {
+          "id": "toolchain",
+          "attrs": {
+            "shape": {
+              "String": "parallelogram"
+            },
+            "label": {
+              "String": "Toolchain"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "script": {
+              "String": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1"
+            }
+          }
+        },
+        "preflight_compile": {
+          "id": "preflight_compile",
+          "attrs": {
+            "shape": {
+              "String": "parallelogram"
+            },
+            "label": {
+              "String": "Preflight Compile"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "script": {
+              "String": "cargo check -q --workspace 2>&1"
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "shape": {
+              "String": "Msquare"
+            },
+            "label": {
+              "String": "Exit"
+            }
+          }
+        },
+        "simplify_fable": {
+          "id": "simplify_fable",
+          "attrs": {
+            "provider": {
+              "String": "openrouter"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun \\`git diff\\` (or \\`git diff HEAD\\` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the ${AGENT_TOOL_NAME} tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. **Search for existing utilities and helpers** that could replace newly written code. Look for similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.\n3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction\n4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n6. **Unnecessary JSX nesting**: wrapper Boxes/elements that add no layout value — check if inner component props (flexShrink, alignItems, etc.) already provide the needed behavior\n7. **Unnecessary comments**: comments explaining WHAT the code does (well-named identifiers already do that), narrating the change, or referencing the task/caller — delete; keep only non-obvious WHY (hidden constraints, subtle invariants, workarounds)\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. **Missed concurrency**: independent operations run sequentially when they could run in parallel\n3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths\n4. **Recurring no-op updates**: state/store updates inside polling loops, intervals, or event handlers that fire unconditionally — add a change-detection guard so downstream consumers aren't notified when nothing changed. Also: if a wrapper function takes an updater/reducer callback, verify it honors same-reference returns (or whatever the \"no change\" signal is) — otherwise callers' early-return no-ops are silently defeated\n5. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n6. **Memory**: unbounded data structures, missing cleanup, event listener leaks\n7. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "model": {
+              "String": "anthropic/claude-fable-5"
+            },
+            "label": {
+              "String": "Simplify (Claude Fable 5)"
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "toolchain",
+          "attrs": {}
+        },
+        {
+          "from": "toolchain",
+          "to": "preflight_compile",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "toolchain",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_compile",
+          "to": "preflight_lint",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_compile",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_lint",
+          "to": "implement",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_lint",
+          "to": "fix_lints",
+          "attrs": {}
+        },
+        {
+          "from": "fix_lints",
+          "to": "preflight_lint",
+          "attrs": {}
+        },
+        {
+          "from": "implement",
+          "to": "simplify_fable",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_fable",
+          "to": "simplify_sol",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_sol",
+          "to": "verify",
+          "attrs": {}
+        },
+        {
+          "from": "verify",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "verify",
+          "to": "fixup",
+          "attrs": {}
+        },
+        {
+          "from": "fixup",
+          "to": "verify",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "goal": {
+          "String": "# Provider-aware model aliases and API IDs\n\n## Outcome\n\nFabro workflows can name a model with one stable model slug or alias and run unchanged against whichever provider the operator has available. A model offering is identified by `(provider, ModelId)`, so the same `ModelId` and the same alias may appear on multiple providers. For an unqualified selector, Fabro filters to ready providers and then uses provider priority to choose one offering deterministically.\n\nThe motivating behavior is:\n\n| Ready providers | Selector | Selected offering |\n| --- | --- | --- |\n| OpenAI only | `gpt-56-sol` | OpenAI's `gpt-5.6-sol` |\n| OpenRouter only | `gpt-56-sol` | OpenRouter's `gpt-5.6-sol` offering |\n| OpenAI and OpenRouter | `gpt-56-sol` | OpenAI, because its provider priority is higher |\n| OpenAI and OpenRouter, explicit `provider = \"openrouter\"` | `gpt-56-sol` | OpenRouter, because an explicit provider is a pin |\n\nThe provider-facing API identifier remains an implementation detail of the selected offering. It defaults to the canonical model slug and can be overridden with `api_id` when a provider uses another convention.\n\n## Scope and design decisions\n\n### Vocabulary and identity\n\n- `ProviderId` identifies who serves the request, such as `openai` or `openrouter`.\n- `ModelId` is the canonical, human-facing model slug, such as `gpt-5.6-sol` or `claude-opus-4-8`. It never means an alias.\n- An alias is an alternate user-facing selector, such as `gpt-56-sol` or `opus`.\n- An offering is one provider's route to one `ModelId`. Its stable identity is `(ProviderId, ModelId)`.\n- `api_id` is the opaque string sent to that offering's provider API.\n- `family` remains model metadata used for display and matching; it is not a routing namespace and is not combined with `provider` or `api_id`.\n\nDo not add a separate runtime `LogicalModel` type. Use the existing `Model` as the provider-specific offering and use the existing `ModelId` newtype for its canonical ID. Internally, tuple keys `(ProviderId, ModelId)` are enough; do not add an `OfferingId` type unless implementation pressure demonstrates a real invariant it would protect.\n\n### Canonical configuration shape\n\nMove model declarations under their provider, but keep the human model slug as the model table key:\n\n```toml\n[llm.providers.openai]\npriority = 90\n\n[llm.providers.openai.models.\"gpt-5.6-sol\"]\ndisplay_name = \"GPT-5.6 Sol\"\nfamily = \"gpt-5\"\naliases = [\"gpt-56-sol\"]\ndefault = true\n\n[llm.providers.openrouter]\npriority = 25\n\n[llm.providers.openrouter.models.\"gpt-5.6-sol\"]\napi_id = \"openai/gpt-5.6-sol\"\ndisplay_name = \"GPT-5.6 Sol (via OpenRouter)\"\nfamily = \"gpt-5\"\naliases = [\"gpt-56-sol\"]\ndefault = true\n```\n\nThis shape provides a natural unique key without making humans author an API identifier or repeat `provider = \"...\"` inside every model. Model settings continue to field-merge by provider and model slug across configuration layers.\n\nAt catalog build time:\n\n```text\neffective_api_id = configured api_id, otherwise ModelId's exact slug\n```\n\nReject an explicitly empty `api_id`. Do not perform provider-specific string rewrites, prefix inference, or template expansion. A future template feature may be authoring sugar that produces the same resolved `api_id`, but it is not part of this change.\n\n### Alias and selection semantics\n\nBuild candidate sets rather than a global `identifier -> one model` map:\n\n- Canonical model IDs may repeat across providers.\n- Aliases may repeat across providers and may point to different canonical model IDs on different providers. This supports both strict synonyms and portable role-like aliases.\n- Within one provider, a canonical ID or alias must identify exactly one offering. Reject two models on the same provider that claim the same alias.\n- Across providers, an alias may collide with a canonical `ModelId`; the canonical-before-alias check order keeps canonical IDs reliable pins, and the shadowed alias stays reachable through its provider-qualified form. Within one provider, the previous rule already rejects the collision.\n- An explicit provider restricts lookup to that provider and bypasses provider priority.\n- An unqualified selector considers only eligible providers, then sorts by provider priority descending and canonical provider ID ascending.\n- A canonical `ModelId` match is checked before alias matches.\n- Disabled providers and disabled offerings are absent from candidate sets.\n\n\"Eligible\" must be supplied by the caller rather than inferred inside the catalog:\n\n- Runtime calls use providers whose adapters registered successfully. This accounts for credentials and adapter initialization, not merely an enabled catalog row.\n- Static validation explicitly uses all enabled catalog providers and proves that at least one candidate exists without claiming that credentials are available.\n- An explicit but unavailable provider remains a pin and produces a clear unavailable-provider error; Fabro must not silently switch it.\n\nWhen a run is created, resolve every implicit selector once and persist the chosen canonical model ID and provider. Resume uses that materialized choice; it does not reconsider provider priority because credentials changed. Runtime fallbacks remain the mechanism for handling a later provider failure.\n\nPreserve the existing passthrough behavior for uncatalogued models: when a provider is explicit, send the unknown model string unchanged and use the provider's default route policy. An unknown unqualified model may use the runtime's default ready provider as it does today, but it cannot participate in alias-based provider selection.\n\n## Implementation plan\n\n### 1. Make configuration provider-scoped\n\nFiles centered on:\n\n- `lib/crates/fabro-config/src/layers/llm.rs`\n- `lib/crates/fabro-config/src/builders.rs`\n- `lib/crates/fabro-model/src/catalog.rs`\n- `lib/crates/fabro-model/src/catalog/providers/*.toml`\n\nChanges:\n\n1. Add `models: MergeMap<ModelSettings>` to `ProviderSettings` and the equivalent model map to `ProviderCatalogSettings`.\n2. Remove `provider` from the canonical model-row shape; the containing provider supplies it.\n3. Normalize catalog data into provider/model pairs before catalog building, preserving layer precedence independently for each pair.\n4. Convert every built-in provider TOML to `[providers.<provider>.models.\"<model-slug>\"]`.\n5. Re-key OpenRouter, Bedrock, and other aggregator offerings by Fabro's model slug rather than their provider API ID. Retain explicit `api_id` overrides for `author/model`, Bedrock profile IDs, deployment names, and other exceptions.\n6. Remove redundant `api_id` fields where they equal the model slug.\n7. Do not add an unverified provider offering merely to match the motivating example; exercise the exact example with a catalog fixture and use existing verified cross-provider models in the built-in catalog.\n\nCompatibility:\n\n- Accept the current `[llm.models.\"<id>\"]` plus `provider = \"...\"` form as a temporary input shape. A row that omits provider adopts the provider of the unique known offering matching its id or alias; if none or several match, fail with an error naming the row.\n- Normalize each source layer into the canonical provider-scoped form before combining layers, so old and new definitions retain correct precedence.\n- Reject a single source that defines the same `(provider, model)` through both syntaxes instead of choosing silently.\n- Keep built-ins and documentation exclusively on the new syntax. Do not add a filesystem rewrite migration yet because LLM catalog layers can come from more places than one owned settings file; the compatibility parser covers all of those boundaries safely.\n- Ship a retired-identifier map for re-keyed built-in ids (old catalog key to provider plus new slug). Any selector or persisted model reference matching a retired id fails with a typed error naming the new address; nothing silently re-routes. One mechanism covers old config references, workflow graphs, and resumed pre-change runs.\n\n### 2. Rebuild catalog identity and indexes\n\nFiles centered on:\n\n- `lib/crates/fabro-model/src/ids.rs`\n- `lib/crates/fabro-model/src/types.rs`\n- `lib/crates/fabro-model/src/catalog.rs`\n- `lib/crates/fabro-model/src/model_ref.rs`\n- `lib/crates/fabro-model/src/billing.rs`\n\nChanges:\n\n1. Change `Model.id` from `String` to the transparent `ModelId` newtype and correct `ModelId` documentation so aliases are not described as model IDs. JSON remains a plain string.\n2. Key resolved model settings by `(ProviderId, ModelId)` rather than model ID alone.\n3. Replace the one-to-one `model_index` with:\n    - an offering index keyed by `(ProviderId, ModelId)`;\n    - canonical-ID candidates keyed by `ModelId`;\n    - alias candidates keyed by alias string.\n4. Pre-sort candidate vectors with the catalog's provider ordering so every caller receives the same priority and tie-break behavior.\n5. Replace global `Catalog::get`-style assumptions with explicit methods:\n    - lookup on a named provider;\n    - selection from an eligible-provider set;\n    - lookup of settings from a resolved `Model` offering;\n    - listing every offering, optionally by provider.\n6. Make pricing, billing, codec, profile, probe, default, and closest-model lookups use the composite identity. Resolve the run-level default model with the same selection algorithm (default-flagged candidates from eligible providers, ordered by provider priority) without requiring providers to agree on their defaults.\n7. Replace `DuplicateModelIdentifier` with provider-scoped validation errors that name the provider, selector, and conflicting model IDs.\n8. Add a typed selection error that distinguishes an unknown selector from a known selector with no eligible offering. Preserve error sources and render strings only at CLI/API boundaries.\n\n### 3. Centralize provider-aware resolution\n\nFiles centered on:\n\n- `lib/crates/fabro-model/src/catalog.rs`\n- `lib/crates/fabro-types/src/settings/model_ref.rs`\n- `lib/crates/fabro-workflow/src/handler/llm/routing.rs`\n- `lib/crates/fabro-workflow/src/transforms/model_resolution.rs`\n- `lib/crates/fabro-workflow/src/run_materialization.rs`\n- `lib/crates/fabro-workflow/src/operations/start.rs`\n\nChanges:\n\n1. Implement one catalog selection algorithm taking a selector, optional explicit provider, and eligible provider IDs.\n2. Make generic `ModelRef` parsing classify bare versus provider-qualified input only. It must not try to infer a unique provider for a bare alias, because a valid alias may now have several provider candidates.\n3. Keep the existing `provider/model` qualified syntax in this change. The model slug never contains the provider API ID, so OpenRouter's slash is no longer part of the user-facing model address.\n4. Update workflow graph model resolution and run materialization to receive the ready-provider snapshot already collected during run creation.\n5. Materialize aliases to canonical `(provider, ModelId)` values in both node attributes and run defaults before persistence.\n6. Keep static validation credential-independent by resolving against all enabled candidates only for existence/capability checks.\n7. Update fallback resolution so:\n    - a provider-only fallback still selects the closest compatible model;\n    - a provider-qualified model/alias resolves within that provider;\n    - a bare model/alias uses the fallback-time eligible set and provider priority;\n    - provider-name/model-name ambiguity becomes a user-facing typed error; today AmbiguousModelRef is silently swallowed by fallback resolution, so pin this behavior change with a test.\n\n### 4. Resolve the offering before LLM dispatch\n\nFiles centered on:\n\n- `lib/crates/fabro-llm/src/client.rs`\n- `lib/crates/fabro-llm/src/adapter_registry.rs`\n- `lib/crates/fabro-llm/src/providers/common.rs`\n- provider adapter modules under `lib/crates/fabro-llm/src/providers/`\n\nChanges:\n\n1. For requests without an explicit provider, select among the client's successfully registered providers using catalog priority.\n2. For requests with an explicit provider, resolve the model or alias only on that provider and fail if the adapter is unavailable.\n3. Canonicalize a cloned request to the selected `ModelId` before validation, costing, and dispatch; leave caller-owned request data unchanged.\n4. Resolve route metadata and `api_id` from the selected composite offering. Provider adapters must pass their own canonical provider ID into catalog lookups rather than looking up settings by model string alone.\n5. Ensure response costing and billing use the same resolved offering that was dispatched.\n6. Keep explicit-provider unknown-model passthrough intact.\n\n### 5. Update server, API, CLI, and web identities\n\nFiles centered on:\n\n- `docs/public/api-reference/fabro-api.yaml`\n- `lib/crates/fabro-server/src/server/handler/models.rs`\n- `lib/crates/fabro-server/src/server/handler/sessions.rs`\n- `lib/crates/fabro-cli/src/commands/model.rs`\n- `apps/fabro-web/app/routes/settings-models.tsx`\n- generated clients in `lib/crates/fabro-api` and `lib/packages/fabro-api-client`\n\nChanges:\n\n1. Continue returning one `Model` row per offering from `GET /models`. Document that `id` is unique within a provider and that `(provider, id)` is the resource identity.\n2. Add an optional `provider` query parameter to `POST /models/{id}/test`. With a provider it tests that exact offering; without one it selects among ready providers by priority.\n3. Include `provider` in `ModelTestResult` so the tested offering is explicit.\n4. Make model-test lookup, auth issues, and probing use the selected offering rather than a global first match.\n5. Update the CLI so bulk tests always pass each row's provider, and an explicit `--provider` plus `--model` remains pinned. Match returned results by `(provider, id)`.\n6. Update the settings models page to key row state by `(provider, id)` and send the provider when testing a row; duplicate IDs must render and update independently.\n7. Update session/playground/completion resolution to use ready provider IDs and persist or return the selected provider alongside the canonical model. Enumerate the OpenAPI schema changes this implies for session, playground, and completion resources; sessions currently store only a bare model-id string.\n8. Regenerate Rust and TypeScript API clients from the OpenAPI source after changing the contract.\n\n### 6. Document the mental model\n\nFiles centered on:\n\n- `lib/crates/fabro-dev/src/commands/docs_options_reference.rs`\n- `docs/public/reference/user-configuration.mdx` (generated region)\n- `docs/public/core-concepts/models.mdx`\n- `docs/public/execution/run-configuration.mdx`\n- `docs/public/execution/failures.mdx`\n\nDocument:\n\n1. Provider, model slug, family metadata, alias, and API ID as distinct terms.\n2. Provider-scoped model configuration and the `api_id = model slug` default.\n3. The OpenAI/OpenRouter portability example and the priority table from this plan.\n4. Explicit provider selection as a pin and unqualified selection as availability plus priority.\n5. Alias reuse across providers, including the same-provider ambiguity rule.\n6. Resolution-once behavior for persisted runs and the separate role of runtime fallback chains.\n7. API IDs as opaque provider wire values that workflows should not reference.\n\nRun `cargo dev docs refresh` after editing the generator-owned reference.\n\n## Test plan\n\n### Catalog and configuration tests\n\nAdd focused unit tests proving:\n\n- two providers can declare the same canonical `ModelId`;\n- two providers can declare the same alias;\n- only OpenAI eligible selects OpenAI;\n- only OpenRouter eligible selects OpenRouter and its overridden API ID;\n- both eligible select the higher-priority provider;\n- equal priorities use canonical provider ID as the tie-breaker;\n- an explicit provider overrides priority;\n- a disabled or ineligible provider is not selected;\n- two different models on one provider cannot claim the same alias;\n- an unqualified selector matching both a canonical ID and another provider's alias selects the canonical model, while the alias offering stays reachable provider-qualified;\n- omitted `api_id` resolves to the exact model slug;\n- explicit `api_id` is preserved and an empty override is rejected;\n- provider/model layer merges do not overwrite the same slug on another provider;\n- the temporary old config shape normalizes correctly and a same-source old/new collision errors clearly.\n- a provider-less legacy row adopts the unique matching offering's provider, and a retired built-in id fails with the typed error naming its replacement.\n\n### Routing and wire tests\n\nAdd `fabro-llm` tests with fake registered providers or local capture servers that submit the same alias under three availability configurations. Assert the selected adapter and the exact wire model value, including OpenRouter's `author/model` override. Also cover explicit provider, unknown passthrough, request-control validation, and cost lookup on duplicate model IDs.\n\n### Workflow tests\n\nAdd crate-level workflow tests that create the same workflow with:\n\n- only the direct provider ready;\n- only the aggregator ready;\n- both ready;\n- an explicit lower-priority provider.\n\nAssert the persisted graph and run settings contain the selected canonical model and provider. Add a resume-oriented test showing that changing the ready provider set does not re-resolve a materialized run. Add fallback tests for a shared bare alias and a provider-qualified alias, including propagation of a provider/model ambiguity error.\n\n### API, CLI, and web tests\n\n- Server: list two rows with the same ID but different providers; filter by provider; test each exact offering; test priority selection when provider is omitted.\n- CLI: bulk model tests do not conflate duplicate IDs, and JSON output includes the selected provider.\n- Web: duplicate-ID rows have independent React keys and test-result state, and each request includes the row provider.\n- API generation: retain the existing `Model` Rust type replacement and add or update JSON parity/type-identity coverage as required by the API policy.\n\nUse unit/crate integration tests for catalog and routing behavior. Use the existing command/API test layers only for their public contracts; no live provider credentials are required.\n\n## Verification\n\nRun, in this order:\n\n```sh\ncargo build -p fabro-api\ncd lib/packages/fabro-api-client && bun run generate\ncargo dev docs refresh\ncargo nextest run -p fabro-model\ncargo nextest run -p fabro-config\ncargo nextest run -p fabro-llm\ncargo nextest run -p fabro-workflow\ncargo nextest run -p fabro-server\ncd apps/fabro-web && bun test\ncd apps/fabro-web && bun run typecheck\ncargo dev docs check\ncargo +nightly-2026-04-14 fmt --check --all\ncargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings\nulimit -n 4096 && cargo nextest run --workspace\ncargo build --workspace\n```\n\nBefore accepting any changed snapshots, run `cargo insta pending-snapshots` and inspect the complete pending set.\n\n## Completion criteria\n\n- A workflow using one shared alias runs unchanged for an OpenAI-only operator and an OpenRouter-only operator.\n- When both are ready, provider priority selects deterministically.\n- Explicit provider selection always pins the provider.\n- The selected offering's exact `api_id` reaches the provider wire request.\n- No catalog, routing, billing, API, CLI, or UI lookup treats model ID alone as a globally unique offering identity.\n- Built-ins and public documentation use provider-scoped model-slug keys and omit redundant API IDs.\n- Existing user catalog syntax remains readable through the compatibility normalization path.\n\n## Unresolved questions\n\n- What release or date should end support for the legacy top-level `[llm.models]` syntax? This does not block implementation; the plan keeps it as a compatibility input and makes the new provider-scoped form canonical.\n"
+        },
+        "rankdir": {
+          "String": "LR"
+        }
+      }
+    },
+    "graph_source": "digraph ImplementPlan {\n    graph [goal=\"Implement and simplify\"]\n    rankdir=LR\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    toolchain         [label=\"Toolchain\", shape=parallelogram, script=\"command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1\", max_retries=0]\n    preflight_compile [label=\"Preflight Compile\", shape=parallelogram, script=\"cargo check -q --workspace 2>&1\", max_retries=0]\n    preflight_lint    [label=\"Preflight Lint\", shape=parallelogram, script=\"cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1\", max_retries=0]\n    fix_lints         [label=\"Fix Lints\", prompt=\"The preflight lint step failed. Read the build output from context and fix all clippy lint warnings.\", model=\"anthropic/claude-fable-5\", provider=\"openrouter\", reasoning_effort=\"xhigh\", max_visits=3]\n    implement         [label=\"Implement\", prompt=\"Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD.\", model=\"openai/gpt-5.6-sol\", provider=\"openrouter\", reasoning_effort=\"max\"]\n    simplify_fable    [label=\"Simplify (Claude Fable 5)\", prompt=\"@prompts/simplify.md\", model=\"anthropic/claude-fable-5\", provider=\"openrouter\", reasoning_effort=\"xhigh\"]\n    simplify_sol      [label=\"Simplify (GPT-5.6 Sol)\", prompt=\"@prompts/simplify.md\", model=\"openai/gpt-5.6-sol\", provider=\"openrouter\", reasoning_effort=\"max\"]\n    verify            [label=\"Verify\", shape=parallelogram, script=\"git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\\\"disabled\\\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1\", goal_gate=true, retry_target=\"fixup\"]\n    fixup             [label=\"Fixup\", prompt=\"The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures.\", model=\"anthropic/claude-fable-5\", provider=\"openrouter\", reasoning_effort=\"xhigh\", max_visits=3]\n\n    start -> toolchain\n    toolchain -> preflight_compile [condition=\"outcome=succeeded\"]\n    toolchain -> exit\n    preflight_compile -> preflight_lint [condition=\"outcome=succeeded\"]\n    preflight_compile -> exit\n    preflight_lint -> implement [condition=\"outcome=succeeded\"]\n    preflight_lint -> fix_lints\n    fix_lints -> preflight_lint\n    implement -> simplify_fable -> simplify_sol -> verify\n    verify -> exit  [condition=\"outcome=succeeded\"]\n    verify -> fixup\n    fixup -> verify\n}\n",
+    "workflow_slug": "implement-plan",
+    "source_directory": "/Users/bhelmkamp/p/fabro-sh/fabro",
+    "provenance": {
+      "server": {
+        "version": "0.303.0-nightly.1"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.303.0-nightly.1",
+        "name": "fabro-cli",
+        "version": "0.303.0-nightly.1"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "19"
+        },
+        "login": "brynary",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/19?v=4"
+      }
+    },
+    "manifest_blob": "2aee2e09de98e7c4d08e2acc5b5402ea2fdb4191633229963c8d69b5d3ececd3",
+    "definition_blob": "b7bede56ef77739e2515d77049d32de34f6b342a857ed46c2a18c556622f984d",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "b505833ccdf8412cb635a9ff9cbc87594a4b5444",
+      "dirty": "clean",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KY6E8S0YA6KAR5ZF53X7QMWZ",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-23T02:53:25.989418935Z",
+  "last_event_at": "2026-07-23T02:53:39.945130660Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-fdb28dec-1233-892c-b9d7-9f88f8353e7a",
+      "runtime": {
+        "id": "fabro-01KY6E8S0YA6KAR5ZF53X7QMWZ",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
