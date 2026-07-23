@@ -480,7 +480,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-23T16:47:45.194455943Z",
-  "last_event_at": "2026-07-23T16:47:47.855281541Z",
+  "last_event_at": "2026-07-23T16:47:52.748412218Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -520,9 +520,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 28,
       "checkpoint": {
-        "timestamp": "2026-07-23T16:47:49.219180158Z",
+        "timestamp": "2026-07-23T16:47:52.746349014Z",
         "current_node": "toolchain",
         "completed_nodes": [
           "start",
@@ -530,21 +530,21 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.retry_count.toolchain": 0,
-          "internal.run_id": "01KY7Y01REECZ24XXTMBZ3PPV9",
-          "internal.fidelity": "compact",
-          "internal.thread_id": "start",
           "graph.goal": "# Per-Branch Fidelity for Parallel Branches — Implementation Plan\n\n## Context\n\nParallel branch nodes are dispatched via `dispatch_handler`, bypassing `FidelityLifecycle::before_node` (`lib/crates/fabro-workflow/src/lifecycle/fidelity.rs:76-180`) — the only place fidelity is resolved and preambles are built. Every branch therefore inherits the stale `current.preamble` copied at `context.fork()` (`handler/parallel.rs:226`), and `fidelity`/`thread_id` on branch nodes or `fork -> branch` edges are silently ignored. Confirmed live on the testing server (probes `01KY7KRA7E…`/`01KY7KRAAW…`, 2026-07-23): a `truncate` branch received the identical compact preamble as its default sibling; fork-level fidelity works and is the current workaround. Design reviewed via the Quarry doc \"Fix: Per-Branch Fidelity for Parallel Branches\".\n\nWhy not run the lifecycle per branch: it is a single-token state machine (one-slot `incoming_edge_data` baton, singleton context keys written to shared run state); concurrent invocation would corrupt run state. And `build_preamble` (`handler/llm/preamble.rs:24`, public and pure) needs `state.completed_nodes`/`state.node_outcomes`, which only the lifecycle sees. So: **pre-render per-branch preambles in the lifecycle, hand off to the handler via one context key.**\n\n## Semantics (final, after design pressure-test)\n\n- **Explicit-only resolution.** A branch's fidelity comes from the `fork -> branch` edge attr, else the branch node attr, else **no entry** — the branch inherits the fork's preamble via `fork()` exactly as today. The fork's own resolved fidelity is never re-applied per branch; this keeps the default path byte-identical even when the fork resolves `Full` (where re-derivation would have wrongly degraded every branch).\n- **`full` degrades to `summary:high`** (`Fidelity::degraded()`, `fabro-graphviz/src/fidelity.rs:35-40`) — applied only to *explicitly set* branch fidelity, with a log line (per `docs/internal/logging-strategy.md` — read before writing it).\n- **Equality skip**: if the branch's post-degradation fidelity equals the fork's post-degradation fidelity, store no entry (avoid redundant renders).\n- **`thread_id` stays inert in branches** (concurrent branches must never share an LLM session).\n- **`CURRENT_NODE` in branch contexts stays inherited (fork id).** The pressure-test showed changing it would re-attribute every branch-internal event's stage scope (`context.rs:185-190` → `StageScope::for_handler` used by all handlers) with a visit mismatch against `for_parallel_branch` scoping. The Quarry doc's \"bookkeeping keys describe the branch\" line is consciously deferred to a separate change with proper visit accounting.\n- **`simulate()` untouched.** No simulated handler reads preambles; partial mirroring would risk nested-parallel stash misreads. All-or-nothing → nothing.\n- **Stash shape**: `Value::Array`, length = branch count, `Null` = inherit, else `{\"fidelity\": \"...\", \"preamble\": \"...\"}`. Array length ≠ edge count → treat as absent (legacy). Keyed by edge index; `graph.outgoing_edges` is an ordered Vec filter (`fabro-types/src/graph.rs:393-395`) and lifecycle + handler share the same `Arc<GvGraph>`, so indices align deterministically (including two edges to the same target).\n\n## Implementation steps (ordered; tree compiles at each step)\n\n1. **`lib/crates/fabro-workflow/src/context.rs`** — add `pub const INTERNAL_PARALLEL_BRANCH_PREAMBLES: &str = \"internal.parallel_branch_preambles\";` to `keys`. The `internal.` prefix already excludes it from preamble rendering (`preamble.rs:99-109`) and child→parent propagation (`context.rs:80-85`).\n\n2. **`lib/crates/fabro-workflow/src/artifact.rs`** — strip the new key in `durable_context_snapshot` (`:81`) and `normalize_checkpoint_for_resume` (`:101`), beside `CURRENT_PREAMBLE`. Without this, every post-parallel checkpoint and `CheckpointCompleted` event payload carries the full per-branch preamble map (a `summary:high` preamble embeds up to 50 lines of every command output — multiplied per branch).\n\n3. **`lib/crates/fabro-workflow/src/lifecycle/fidelity.rs`** — in `before_node`:\n   - Set the stash key to `Null` on `state.context` **first**, before the two fallible `resolve_*` calls, so the always-overwritten invariant holds on every early-return path.\n   - After the existing preamble build, when `gv_node.handler_type() == Some(\"parallel\")`: iterate `self.graph.outgoing_edges(node.id())` in order; per edge resolve explicit fidelity (edge attr → target-node attr → none); apply `degraded()` to explicit values (log when it was `full`); push `Null` for inherit/equal-to-fork, else render `build_preamble(final_fidelity, …)` reusing the already-resolved snapshot (blobs resolved once at `:113-128`) and push the entry. Set the array on the stash key.\n   - Extract the per-branch resolution as a pure helper beside `resolve_fidelity` (`:206`, same module — no visibility change) for unit testing.\n\n4. **`lib/crates/fabro-workflow/src/handler/parallel.rs`** — in `execute()`'s branch-setup loop (insert after `:238`, where `INTERNAL_PARALLEL_BRANCH_ID` is set):\n   - Read the stash from the parent context once before the loop; `None`, `Some(Null)`, or length-mismatch all mean strict legacy behavior (note: `Context::get` returns `Some(Null)` for a Nulled key — both must be treated as absent).\n   - Per branch with an entry: `branch_context.set(CURRENT_PREAMBLE, preamble)` and `branch_context.set(INTERNAL_FIDELITY, fidelity)`. Downstream needs nothing: `agent.rs:244`/`prompt.rs:63` read `context.preamble()`.\n   - In **every** branch fork, set the stash key to `Null` — load-bearing, not hygiene: a nested parallel branch target reads its fork's stash, and without the Null it would misinterpret the outer node's array as its own.\n   - After the loop, set the stash key to `Null` on the handler's own context — the write-back diff (`node_handler.rs:99-105`) clears `state.context` so the post-parallel checkpoint carries Null even before the artifact strip.\n\n5. **`lib/crates/fabro-validate/src/rules/parallel_branch_inert_attribute.rs`** — drop `\"fidelity\"` from `BRANCH_IGNORED_ATTRS` and its `fix_message` arm; add a narrow diagnostic in its place: `fidelity=\"full\"` on a fork→branch edge or branch-only node warns \"parallel branches run at most at summary:high; full is degraded at runtime because branches cannot share a session\". Other fidelity values now lint clean. Update doc comment (the snapshot rationale now applies to `thread_id` only) and tests.\n\n6. **`lib/crates/fabro-validate/src/rules/thread_id_requires_fidelity_full.rs`** — skip fork→branch edges and branch-only nodes (factor the branch-only detection from rule 5 into a shared helper). Today it tells branch nodes with `thread_id` to *add* `fidelity=\"full\"` — advice that, post-change, would actively alter runtime behavior while the other rule says \"remove thread_id\". Defer to the inert-attribute rule's guidance on branches.\n\n7. **Docs** — `docs/public/execution/context.mdx` (fidelity precedence: branch edge → branch node → inherit fork; per-branch preamble rendering; `thread_id` inert in branches; `full` degradation), `docs/public/workflows/stages-and-nodes.mdx` (parallel fan-out section + fidelity attribute notes), `docs/public/reference/dot-language.mdx` (edge/node attr rows). Optional changelog entry via the changelog conventions.\n\n## Tests\n\nPer `docs/internal/testing-strategy.md`, preamble content is implementation-facing → `fabro-workflow`, not CLI layers.\n\n- **Pure unit tests** (`lifecycle/fidelity.rs` tests, beside `resolve_fidelity`'s at `:271-321`): explicit edge > node precedence; no-attr → inherit (no entry); explicit `full` → `summary:high` entry; branch fidelity equal to fork's (post-degradation) → no entry; fork resolved `Full` + no branch attrs → no entries at all.\n- **Lifecycle-level**: two consecutive `before_node` calls on the same parallel node rebuild (not merge) the stash; non-parallel node overwrites stash to Null; resume-degrade flag interaction (fork degrades, fallback branches still get no entry).\n- **`artifact.rs` tests** (`:519+` pattern): both snapshot functions strip the stash key.\n- **Parallel handler unit tests** (`handler/parallel.rs` tests module, `EngineServices::test_default()` + recording handler mirroring `PreambleEchoHandler`, `manager_loop.rs:973-1043`): entry applies `CURRENT_PREAMBLE`/`INTERNAL_FIDELITY` to the right branch by index; stash Null in every branch fork; `Some(Null)`/absent/length-mismatch → legacy; duplicate-target edges get distinct entries at indices 0/1 (no-git test — a pre-existing worktree-name collision exists for that topology, don't let it pollute the assertion); existing tests stay unmodified as the legacy guard.\n- **Engine-level regression** in `lib/crates/fabro-workflow/tests/it/integration.rs` beside the `fidelity_prompt_*` tests (`:9245-9479`), reusing `FidelityCapturingHandler` (`:4917-4974`) and the `end_to_end_parallel_fan_out_fan_in` scaffold (`:2441-2480`) via `WorkflowRunner::run_with_state`:\n  - **Probe A analog** (`parallel_branches_get_per_branch_preambles_by_fidelity`): seed sets a context marker → fork → `branch_a` (`fidelity=\"truncate\"`) + `branch_b` (default) → fan-in. Assert branch_a's preamble is goal-only (no marker) while branch_b's contains the marker.\n  - **Probe B analog**: `fidelity=\"truncate\"` on the fork only → both branches goal-only (compat guarantee, unchanged behavior).\n  - Edge-attr-beats-node-attr variant.\n- **Lint tests**: no warning for non-full branch fidelity; warning for branch `fidelity=\"full\"`; `thread_id_requires_fidelity_full` silent on branch-only nodes, still firing elsewhere.\n\n## Verification\n\n- `cargo nextest run -p fabro-workflow -p fabro-validate`, then `ulimit -n 4096 && cargo nextest run --workspace` (do not export `FORCE_COLOR`).\n- `cargo +nightly-2026-04-14 fmt --check --all`; `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`.\n- Live confirmation on the testing server: re-run the two probe workflows (session scratchpad `probes/isolation-a`, `probes/isolation-b`) against a locally built binary — probe A's `stage.prompt` events must now show differentiated branch preambles; probe B byte-identical to before.\n\n## Compatibility\n\n| Situation | Impact |\n|---|---|\n| No fidelity attrs near the parallel node | None — byte-identical (inherit path, no re-render) |\n| Fidelity on the fork node / its incoming edge | None — fork snapshot semantics unchanged |\n| Previously-dead attrs on branch nodes / fork→branch edges | Start working (the fix) |\n| `full` on a branch | Degrades to `summary:high` + log + lint warning |\n| `thread_id` on a branch | Still inert; lint still warns; the contradictory companion lint goes quiet on branches |\n\n## Decisions (user-confirmed 2026-07-23)\n\n1. **`CURRENT_NODE` in branch contexts stays inherited** — the branch-scoped bookkeeping change is deferred to a dedicated event-attribution change.\n2. **The narrow `fidelity=\"full\"` branch lint is in scope** (step 5 stands as written).\n3. **No changelog entry in this PR** — changelog handled in the usual batch.\n",
-          "failure_class": "",
+          "internal.retry_count.toolchain": 0,
           "outcome": "succeeded",
-          "thread.start.current_node": "toolchain",
-          "graph.rankdir": "LR",
-          "internal.node_visit_count": 1,
-          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.fidelity": "compact",
+          "internal.run_id": "01KY7Y01REECZ24XXTMBZ3PPV9",
+          "current_node": "toolchain",
           "internal.retry_count.start": 0,
+          "internal.thread_id": "start",
+          "failure_class": "",
+          "thread.start.current_node": "toolchain",
           "failure_signature": "",
           "command.output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c",
-          "current_node": "toolchain"
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "graph.rankdir": "LR"
         },
         "node_outcomes": {
           "toolchain": {
@@ -567,7 +567,87 @@
           }
         },
         "next_node_id": "preflight_compile",
+        "git_commit_sha": "a2650503e8517d0bd41c3fd6d09e79d41e709514",
         "node_visits": {
+          "toolchain": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-23T16:50:12.995416216Z",
+        "current_node": "preflight_compile",
+        "completed_nodes": [
+          "start",
+          "toolchain",
+          "preflight_compile"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.retry_count.toolchain": 0,
+          "internal.run_id": "01KY7Y01REECZ24XXTMBZ3PPV9",
+          "internal.fidelity": "compact",
+          "internal.thread_id": "toolchain",
+          "graph.goal": "# Per-Branch Fidelity for Parallel Branches — Implementation Plan\n\n## Context\n\nParallel branch nodes are dispatched via `dispatch_handler`, bypassing `FidelityLifecycle::before_node` (`lib/crates/fabro-workflow/src/lifecycle/fidelity.rs:76-180`) — the only place fidelity is resolved and preambles are built. Every branch therefore inherits the stale `current.preamble` copied at `context.fork()` (`handler/parallel.rs:226`), and `fidelity`/`thread_id` on branch nodes or `fork -> branch` edges are silently ignored. Confirmed live on the testing server (probes `01KY7KRA7E…`/`01KY7KRAAW…`, 2026-07-23): a `truncate` branch received the identical compact preamble as its default sibling; fork-level fidelity works and is the current workaround. Design reviewed via the Quarry doc \"Fix: Per-Branch Fidelity for Parallel Branches\".\n\nWhy not run the lifecycle per branch: it is a single-token state machine (one-slot `incoming_edge_data` baton, singleton context keys written to shared run state); concurrent invocation would corrupt run state. And `build_preamble` (`handler/llm/preamble.rs:24`, public and pure) needs `state.completed_nodes`/`state.node_outcomes`, which only the lifecycle sees. So: **pre-render per-branch preambles in the lifecycle, hand off to the handler via one context key.**\n\n## Semantics (final, after design pressure-test)\n\n- **Explicit-only resolution.** A branch's fidelity comes from the `fork -> branch` edge attr, else the branch node attr, else **no entry** — the branch inherits the fork's preamble via `fork()` exactly as today. The fork's own resolved fidelity is never re-applied per branch; this keeps the default path byte-identical even when the fork resolves `Full` (where re-derivation would have wrongly degraded every branch).\n- **`full` degrades to `summary:high`** (`Fidelity::degraded()`, `fabro-graphviz/src/fidelity.rs:35-40`) — applied only to *explicitly set* branch fidelity, with a log line (per `docs/internal/logging-strategy.md` — read before writing it).\n- **Equality skip**: if the branch's post-degradation fidelity equals the fork's post-degradation fidelity, store no entry (avoid redundant renders).\n- **`thread_id` stays inert in branches** (concurrent branches must never share an LLM session).\n- **`CURRENT_NODE` in branch contexts stays inherited (fork id).** The pressure-test showed changing it would re-attribute every branch-internal event's stage scope (`context.rs:185-190` → `StageScope::for_handler` used by all handlers) with a visit mismatch against `for_parallel_branch` scoping. The Quarry doc's \"bookkeeping keys describe the branch\" line is consciously deferred to a separate change with proper visit accounting.\n- **`simulate()` untouched.** No simulated handler reads preambles; partial mirroring would risk nested-parallel stash misreads. All-or-nothing → nothing.\n- **Stash shape**: `Value::Array`, length = branch count, `Null` = inherit, else `{\"fidelity\": \"...\", \"preamble\": \"...\"}`. Array length ≠ edge count → treat as absent (legacy). Keyed by edge index; `graph.outgoing_edges` is an ordered Vec filter (`fabro-types/src/graph.rs:393-395`) and lifecycle + handler share the same `Arc<GvGraph>`, so indices align deterministically (including two edges to the same target).\n\n## Implementation steps (ordered; tree compiles at each step)\n\n1. **`lib/crates/fabro-workflow/src/context.rs`** — add `pub const INTERNAL_PARALLEL_BRANCH_PREAMBLES: &str = \"internal.parallel_branch_preambles\";` to `keys`. The `internal.` prefix already excludes it from preamble rendering (`preamble.rs:99-109`) and child→parent propagation (`context.rs:80-85`).\n\n2. **`lib/crates/fabro-workflow/src/artifact.rs`** — strip the new key in `durable_context_snapshot` (`:81`) and `normalize_checkpoint_for_resume` (`:101`), beside `CURRENT_PREAMBLE`. Without this, every post-parallel checkpoint and `CheckpointCompleted` event payload carries the full per-branch preamble map (a `summary:high` preamble embeds up to 50 lines of every command output — multiplied per branch).\n\n3. **`lib/crates/fabro-workflow/src/lifecycle/fidelity.rs`** — in `before_node`:\n   - Set the stash key to `Null` on `state.context` **first**, before the two fallible `resolve_*` calls, so the always-overwritten invariant holds on every early-return path.\n   - After the existing preamble build, when `gv_node.handler_type() == Some(\"parallel\")`: iterate `self.graph.outgoing_edges(node.id())` in order; per edge resolve explicit fidelity (edge attr → target-node attr → none); apply `degraded()` to explicit values (log when it was `full`); push `Null` for inherit/equal-to-fork, else render `build_preamble(final_fidelity, …)` reusing the already-resolved snapshot (blobs resolved once at `:113-128`) and push the entry. Set the array on the stash key.\n   - Extract the per-branch resolution as a pure helper beside `resolve_fidelity` (`:206`, same module — no visibility change) for unit testing.\n\n4. **`lib/crates/fabro-workflow/src/handler/parallel.rs`** — in `execute()`'s branch-setup loop (insert after `:238`, where `INTERNAL_PARALLEL_BRANCH_ID` is set):\n   - Read the stash from the parent context once before the loop; `None`, `Some(Null)`, or length-mismatch all mean strict legacy behavior (note: `Context::get` returns `Some(Null)` for a Nulled key — both must be treated as absent).\n   - Per branch with an entry: `branch_context.set(CURRENT_PREAMBLE, preamble)` and `branch_context.set(INTERNAL_FIDELITY, fidelity)`. Downstream needs nothing: `agent.rs:244`/`prompt.rs:63` read `context.preamble()`.\n   - In **every** branch fork, set the stash key to `Null` — load-bearing, not hygiene: a nested parallel branch target reads its fork's stash, and without the Null it would misinterpret the outer node's array as its own.\n   - After the loop, set the stash key to `Null` on the handler's own context — the write-back diff (`node_handler.rs:99-105`) clears `state.context` so the post-parallel checkpoint carries Null even before the artifact strip.\n\n5. **`lib/crates/fabro-validate/src/rules/parallel_branch_inert_attribute.rs`** — drop `\"fidelity\"` from `BRANCH_IGNORED_ATTRS` and its `fix_message` arm; add a narrow diagnostic in its place: `fidelity=\"full\"` on a fork→branch edge or branch-only node warns \"parallel branches run at most at summary:high; full is degraded at runtime because branches cannot share a session\". Other fidelity values now lint clean. Update doc comment (the snapshot rationale now applies to `thread_id` only) and tests.\n\n6. **`lib/crates/fabro-validate/src/rules/thread_id_requires_fidelity_full.rs`** — skip fork→branch edges and branch-only nodes (factor the branch-only detection from rule 5 into a shared helper). Today it tells branch nodes with `thread_id` to *add* `fidelity=\"full\"` — advice that, post-change, would actively alter runtime behavior while the other rule says \"remove thread_id\". Defer to the inert-attribute rule's guidance on branches.\n\n7. **Docs** — `docs/public/execution/context.mdx` (fidelity precedence: branch edge → branch node → inherit fork; per-branch preamble rendering; `thread_id` inert in branches; `full` degradation), `docs/public/workflows/stages-and-nodes.mdx` (parallel fan-out section + fidelity attribute notes), `docs/public/reference/dot-language.mdx` (edge/node attr rows). Optional changelog entry via the changelog conventions.\n\n## Tests\n\nPer `docs/internal/testing-strategy.md`, preamble content is implementation-facing → `fabro-workflow`, not CLI layers.\n\n- **Pure unit tests** (`lifecycle/fidelity.rs` tests, beside `resolve_fidelity`'s at `:271-321`): explicit edge > node precedence; no-attr → inherit (no entry); explicit `full` → `summary:high` entry; branch fidelity equal to fork's (post-degradation) → no entry; fork resolved `Full` + no branch attrs → no entries at all.\n- **Lifecycle-level**: two consecutive `before_node` calls on the same parallel node rebuild (not merge) the stash; non-parallel node overwrites stash to Null; resume-degrade flag interaction (fork degrades, fallback branches still get no entry).\n- **`artifact.rs` tests** (`:519+` pattern): both snapshot functions strip the stash key.\n- **Parallel handler unit tests** (`handler/parallel.rs` tests module, `EngineServices::test_default()` + recording handler mirroring `PreambleEchoHandler`, `manager_loop.rs:973-1043`): entry applies `CURRENT_PREAMBLE`/`INTERNAL_FIDELITY` to the right branch by index; stash Null in every branch fork; `Some(Null)`/absent/length-mismatch → legacy; duplicate-target edges get distinct entries at indices 0/1 (no-git test — a pre-existing worktree-name collision exists for that topology, don't let it pollute the assertion); existing tests stay unmodified as the legacy guard.\n- **Engine-level regression** in `lib/crates/fabro-workflow/tests/it/integration.rs` beside the `fidelity_prompt_*` tests (`:9245-9479`), reusing `FidelityCapturingHandler` (`:4917-4974`) and the `end_to_end_parallel_fan_out_fan_in` scaffold (`:2441-2480`) via `WorkflowRunner::run_with_state`:\n  - **Probe A analog** (`parallel_branches_get_per_branch_preambles_by_fidelity`): seed sets a context marker → fork → `branch_a` (`fidelity=\"truncate\"`) + `branch_b` (default) → fan-in. Assert branch_a's preamble is goal-only (no marker) while branch_b's contains the marker.\n  - **Probe B analog**: `fidelity=\"truncate\"` on the fork only → both branches goal-only (compat guarantee, unchanged behavior).\n  - Edge-attr-beats-node-attr variant.\n- **Lint tests**: no warning for non-full branch fidelity; warning for branch `fidelity=\"full\"`; `thread_id_requires_fidelity_full` silent on branch-only nodes, still firing elsewhere.\n\n## Verification\n\n- `cargo nextest run -p fabro-workflow -p fabro-validate`, then `ulimit -n 4096 && cargo nextest run --workspace` (do not export `FORCE_COLOR`).\n- `cargo +nightly-2026-04-14 fmt --check --all`; `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`.\n- Live confirmation on the testing server: re-run the two probe workflows (session scratchpad `probes/isolation-a`, `probes/isolation-b`) against a locally built binary — probe A's `stage.prompt` events must now show differentiated branch preambles; probe B byte-identical to before.\n\n## Compatibility\n\n| Situation | Impact |\n|---|---|\n| No fidelity attrs near the parallel node | None — byte-identical (inherit path, no re-render) |\n| Fidelity on the fork node / its incoming edge | None — fork snapshot semantics unchanged |\n| Previously-dead attrs on branch nodes / fork→branch edges | Start working (the fix) |\n| `full` on a branch | Degrades to `summary:high` + log + lint warning |\n| `thread_id` on a branch | Still inert; lint still warns; the contradictory companion lint goes quiet on branches |\n\n## Decisions (user-confirmed 2026-07-23)\n\n1. **`CURRENT_NODE` in branch contexts stays inherited** — the branch-scoped bookkeeping change is deferred to a dedicated event-attribution change.\n2. **The narrow `fidelity=\"full\"` branch lint is in scope** (step 5 stands as written).\n3. **No changelog entry in this PR** — changelog handled in the usual batch.\n",
+          "failure_class": "",
+          "outcome": "succeeded",
+          "thread.start.current_node": "toolchain",
+          "graph.rankdir": "LR",
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.retry_count.start": 0,
+          "failure_signature": "",
+          "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+          "internal.retry_count.preflight_compile": 0,
+          "current_node": "preflight_compile",
+          "thread.toolchain.current_node": "preflight_compile"
+        },
+        "node_outcomes": {
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1360,
+              "active_time_ms": 1360
+            }
+          },
+          "preflight_compile": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo check -q --workspace 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 140243,
+              "active_time_ms": 140243
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "preflight_lint",
+        "node_visits": {
+          "preflight_compile": 1,
           "start": 1,
           "toolchain": 1
         }
@@ -601,22 +681,22 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "toolchain@1": {
-      "first_event_seq": 21,
+    "preflight_compile@1": {
+      "first_event_seq": 31,
       "prompt": null,
       "response": null,
       "completion": null,
       "provider_used": null,
       "diff": null,
       "script_invocation": {
-        "script": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
-        "command": "exec 2>&1\ncommand -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "script": "cargo check -q --workspace 2>&1",
+        "command": "exec 2>&1\ncargo check -q --workspace 2>&1",
         "language": "shell"
       },
       "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-07-23T16:47:47.855252051Z",
+      "started_at": "2026-07-23T16:47:52.748027473Z",
       "handler": "command",
       "usage": {
         "input_tokens": 0,
@@ -627,6 +707,54 @@
         "cache_write_tokens": 0
       },
       "state": "running"
+    },
+    "toolchain@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "failure_reason": null,
+        "timestamp": "2026-07-23T16:47:49.218153106Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "command": "exec 2>&1\ncommand -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "language": "shell"
+      },
+      "script_timing": {
+        "output": "blob://sha256/fc14b2ba2d770e5cd3169df7a29525c962adfc4cfa3097b9098c63ebd61a748c",
+        "exit_code": 0,
+        "duration_ms": 1360,
+        "termination": "exited",
+        "output_bytes": 36,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 36,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-07-23T16:47:47.855252051Z",
+      "handler": "command",
+      "timing": {
+        "wall_time_ms": 1362,
+        "inference_time_ms": 0,
+        "tool_time_ms": 1360,
+        "active_time_ms": 1360
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
     },
     "start@1": {
       "first_event_seq": 17,
