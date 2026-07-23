@@ -360,7 +360,10 @@ max_output = 64000
     assert_eq!(model.display_name.as_deref(), Some("Acme Large v2"));
     assert_eq!(model.family.as_deref(), Some("acme"));
     assert_eq!(
-        model.limits.as_ref().and_then(|limits| limits.context_window),
+        model
+            .limits
+            .as_ref()
+            .and_then(|limits| limits.context_window),
         Some(128_000)
     );
     assert_eq!(
@@ -398,7 +401,10 @@ max_output = 64000
     assert_eq!(model.display_name.as_deref(), Some("Acme Large"));
     assert_eq!(model.family.as_deref(), Some("acme"));
     assert_eq!(
-        model.limits.as_ref().and_then(|limits| limits.context_window),
+        model
+            .limits
+            .as_ref()
+            .and_then(|limits| limits.context_window),
         Some(128_000)
     );
     assert_eq!(

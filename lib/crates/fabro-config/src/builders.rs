@@ -880,7 +880,10 @@ reasoning = false
             .get("acme-large")
             .expect("provider-scoped model settings should be present");
         assert_eq!(model.display_name.as_deref(), Some("Acme Large"));
-        assert_eq!(model.agent_profile, Some(fabro_model::AgentProfileKind::Gemini));
+        assert_eq!(
+            model.agent_profile,
+            Some(fabro_model::AgentProfileKind::Gemini)
+        );
         assert!(settings.llm_catalog_settings.models.is_empty());
     }
 

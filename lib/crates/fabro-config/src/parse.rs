@@ -393,13 +393,10 @@ display_name = "Legacy Foo"
         .parse::<SettingsLayer>()
         .expect_err("same pair in both syntaxes should be rejected");
 
-        assert_eq!(
-            error,
-            ParseError::ConflictingLlmModelDefinitions {
-                provider: "kimi".to_string(),
-                model:    "foo".to_string(),
-            }
-        );
+        assert_eq!(error, ParseError::ConflictingLlmModelDefinitions {
+            provider: "kimi".to_string(),
+            model:    "foo".to_string(),
+        });
     }
 
     #[test]
@@ -411,12 +408,9 @@ provider = ""
         .parse::<SettingsLayer>()
         .expect_err("empty legacy provider should be rejected");
 
-        assert_eq!(
-            error,
-            ParseError::InvalidLegacyLlmModelProvider {
-                model: "foo".to_string(),
-            }
-        );
+        assert_eq!(error, ParseError::InvalidLegacyLlmModelProvider {
+            model: "foo".to_string(),
+        });
     }
 
     #[test]
