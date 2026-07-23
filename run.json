@@ -1,0 +1,339 @@
+{
+  "title": "Probe which context values reach parallel branch nodes (branch-level fidelity)",
+  "spec": {
+    "run_id": "01KY7KRA7EP1VH5FYEJTC9KM5M",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "graph.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "Probe which context values reach parallel branch nodes (branch-level fidelity)"
+        },
+        "working_dir": null,
+        "metadata": {
+          "variant": "isolation-a",
+          "purpose": "preamble-probe"
+        },
+        "inputs": {},
+        "model": {
+          "provider": "openrouter",
+          "name": "anthropic/claude-sonnet-4-6",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false,
+          "commit_timeout_ms": 30000
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "default",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM buildpack-deps:noble\n"
+            }
+          },
+          "resources": {
+            "cpu": 2,
+            "memory": "4GB",
+            "disk": null
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": null
+          },
+          "labels": {},
+          "env": {}
+        },
+        "notifications": {
+          "feed": {
+            "enabled": true,
+            "provider": "slack",
+            "events": [
+              "run.started",
+              "run.completed",
+              "run.failed"
+            ],
+            "slack": {
+              "channel": "#feed-fabro"
+            }
+          }
+        },
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": null,
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "IsolationProbeA",
+      "nodes": {
+        "start": {
+          "id": "start",
+          "attrs": {
+            "shape": {
+              "String": "Mdiamond"
+            }
+          }
+        },
+        "seed": {
+          "id": "seed",
+          "attrs": {
+            "prompt": {
+              "String": "Respond with exactly this JSON object and nothing else: {\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}"
+            },
+            "label": {
+              "String": "Seed"
+            },
+            "shape": {
+              "String": "tab"
+            }
+          }
+        },
+        "branch_b": {
+          "id": "branch_b",
+          "attrs": {
+            "prompt": {
+              "String": "Report every context value, marker, or prior-stage detail visible to you above this instruction. If you can see a context value named secret_marker, state its value verbatim. If you cannot see any such marker, say exactly: NO-MARKER-VISIBLE."
+            },
+            "shape": {
+              "String": "tab"
+            },
+            "label": {
+              "String": "Branch B (default)"
+            }
+          }
+        },
+        "branch_a": {
+          "id": "branch_a",
+          "attrs": {
+            "fidelity": {
+              "String": "truncate"
+            },
+            "shape": {
+              "String": "tab"
+            },
+            "prompt": {
+              "String": "Report every context value, marker, or prior-stage detail visible to you above this instruction. If you can see a context value named secret_marker, state its value verbatim. If you cannot see any such marker, say exactly: NO-MARKER-VISIBLE."
+            },
+            "label": {
+              "String": "Branch A (truncate)"
+            }
+          }
+        },
+        "fork": {
+          "id": "fork",
+          "attrs": {
+            "shape": {
+              "String": "component"
+            },
+            "label": {
+              "String": "Fan Out"
+            },
+            "join_policy": {
+              "String": "wait_all"
+            }
+          }
+        },
+        "merge": {
+          "id": "merge",
+          "attrs": {
+            "label": {
+              "String": "Merge"
+            },
+            "shape": {
+              "String": "tripleoctagon"
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "shape": {
+              "String": "Msquare"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "seed",
+          "attrs": {}
+        },
+        {
+          "from": "seed",
+          "to": "fork",
+          "attrs": {}
+        },
+        {
+          "from": "fork",
+          "to": "branch_a",
+          "attrs": {}
+        },
+        {
+          "from": "fork",
+          "to": "branch_b",
+          "attrs": {}
+        },
+        {
+          "from": "branch_a",
+          "to": "merge",
+          "attrs": {}
+        },
+        {
+          "from": "branch_b",
+          "to": "merge",
+          "attrs": {}
+        },
+        {
+          "from": "merge",
+          "to": "exit",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "goal": {
+          "String": "Probe which context values reach parallel branch nodes (branch-level fidelity)"
+        }
+      }
+    },
+    "graph_source": "digraph IsolationProbeA {\n    graph [goal=\"Probe which context values reach parallel branch nodes (branch-level fidelity)\"]\n\n    start [shape=Mdiamond]\n    exit  [shape=Msquare]\n\n    seed [shape=tab, label=\"Seed\", prompt=\"Respond with exactly this JSON object and nothing else: {\\\"context_updates\\\": {\\\"secret_marker\\\": \\\"XYZZY123\\\"}}\"]\n\n    fork [shape=component, label=\"Fan Out\", join_policy=\"wait_all\"]\n\n    branch_a [shape=tab, fidelity=\"truncate\", label=\"Branch A (truncate)\", prompt=\"Report every context value, marker, or prior-stage detail visible to you above this instruction. If you can see a context value named secret_marker, state its value verbatim. If you cannot see any such marker, say exactly: NO-MARKER-VISIBLE.\"]\n\n    branch_b [shape=tab, label=\"Branch B (default)\", prompt=\"Report every context value, marker, or prior-stage detail visible to you above this instruction. If you can see a context value named secret_marker, state its value verbatim. If you cannot see any such marker, say exactly: NO-MARKER-VISIBLE.\"]\n\n    merge [shape=tripleoctagon, label=\"Merge\"]\n\n    start -> seed\n    seed -> fork\n    fork -> branch_a\n    fork -> branch_b\n    branch_a -> merge\n    branch_b -> merge\n    merge -> exit\n}\n",
+    "workflow_slug": "graph",
+    "source_directory": "/Users/bhelmkamp/p/fabro-sh/fabro-4",
+    "labels": {
+      "purpose": "preamble-probe",
+      "variant": "isolation-a"
+    },
+    "provenance": {
+      "server": {
+        "version": "0.303.0-nightly.1"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.302.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.302.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "19"
+        },
+        "login": "brynary",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/19?v=4"
+      }
+    },
+    "manifest_blob": "5f91a777a3fbc726920a67f6f47affe9527870e895a73f7395d1a95e469a44f1",
+    "definition_blob": "d8b21dc2a93874876ba5e620bd116d5e2c70dece40175812125a195f65155583",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "f00a2ed1ead1cb990d5c2cfab7562f9d52bc7ad1",
+      "dirty": "dirty",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KY7KRA7EP1VH5FYEJTC9KM5M",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-23T13:48:32.439253260Z",
+  "last_event_at": "2026-07-23T13:48:46.901922581Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-a63a9b12-e5b2-8a28-a6bb-e490731cd4b5",
+      "runtime": {
+        "id": "fabro-01KY7KRA7EP1VH5FYEJTC9KM5M",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}

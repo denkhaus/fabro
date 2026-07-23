@@ -1,0 +1,24 @@
+digraph IsolationProbeA {
+    graph [goal="Probe which context values reach parallel branch nodes (branch-level fidelity)"]
+
+    start [shape=Mdiamond]
+    exit  [shape=Msquare]
+
+    seed [shape=tab, label="Seed", prompt="Respond with exactly this JSON object and nothing else: {\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}"]
+
+    fork [shape=component, label="Fan Out", join_policy="wait_all"]
+
+    branch_a [shape=tab, fidelity="truncate", label="Branch A (truncate)", prompt="Report every context value, marker, or prior-stage detail visible to you above this instruction. If you can see a context value named secret_marker, state its value verbatim. If you cannot see any such marker, say exactly: NO-MARKER-VISIBLE."]
+
+    branch_b [shape=tab, label="Branch B (default)", prompt="Report every context value, marker, or prior-stage detail visible to you above this instruction. If you can see a context value named secret_marker, state its value verbatim. If you cannot see any such marker, say exactly: NO-MARKER-VISIBLE."]
+
+    merge [shape=tripleoctagon, label="Merge"]
+
+    start -> seed
+    seed -> fork
+    fork -> branch_a
+    fork -> branch_b
+    branch_a -> merge
+    branch_b -> merge
+    merge -> exit
+}
