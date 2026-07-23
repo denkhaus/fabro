@@ -469,14 +469,110 @@
     }
   },
   "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KY7YH7RYCJ1BDVTTP96ZA4HV",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-07-23T16:57:08.135508764Z",
+    "run_branch": "fabro/run/01KY7YH7RYCJ1BDVTTP96ZA4HV",
+    "base_sha": "30d770046a1883bb1e0935ce16ef0f1c5cf4b740"
   },
-  "status_updated_at": "2026-07-23T16:56:54.887666904Z",
-  "last_event_at": "2026-07-23T16:57:07.814814220Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-07-23T16:57:08.135544912Z",
+  "last_event_at": "2026-07-23T16:57:09.827724286Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 20,
+      "checkpoint": {
+        "timestamp": "2026-07-23T16:57:09.827620177Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.run_id": "01KY7YH7RYCJ1BDVTTP96ZA4HV",
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0,
+          "internal.fidelity": "compact",
+          "internal.thread_id": null,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "outcome": "succeeded",
+          "failure_class": "",
+          "current_node": "start",
+          "graph.goal": "<proposed_plan>\n# Shared-Checkout Parallel Execution\n\n## Summary\n\nSimplify parallel execution so every branch:\n\n- Receives an isolated context fork.\n- Executes concurrently against the same sandbox and Git checkout.\n- Creates no Git branch, worktree, checkpoint, or branch commit.\n- Always waits for every branch; remove `first_success` and `join_policy`.\n- Produces a collision-free result containing its context updates.\n\nFan-in remains an explicit join node. Without a prompt it is a no-op barrier; with a prompt it behaves like a standard prompt stage that reduces the aggregated results without selecting a branch.\n\n## Implementation Changes\n\n### Parallel execution\n\n- Remove all parallel-specific Git setup, checkpointing, committing, cleanup, and fast-forwarding.\n- Give each branch the same `Arc<dyn Sandbox>` and inherited `internal.work_dir`.\n- Retain `max_parallel`, branch-scoped contexts, IDs, hooks, and lifecycle events.\n- Preserve outgoing-edge order in the final results regardless of completion order.\n- Define the parallel outcome as:\n  - `succeeded` when every branch succeeds.\n  - `failed` when every branch fails.\n  - `partially_succeeded` for every mixed or partial result.\n- Preserve branch ID/index when handler or task execution fails.\n- Keep the current single-node-per-branch topology.\n\n### Results and fan-in\n\nIntroduce a shared typed result:\n\n```rust\nParallelBranchResult {\n    id: String,\n    status: String,\n    context_updates: BTreeMap<String, serde_json::Value>,\n}\n```\n\n- Store the ordered array in `parallel.results` and keep `parallel.branch_count`.\n- Include updates from successful and failed branches; never merge them into the parent context at top level.\n- Offload large leaf values using existing artifact storage while keeping `parallel.results` itself a structured array.\n- Resolve nested textual `response.*` and `command.output` blob references when building downstream prompt context.\n- Emit the same typed results through `parallel.completed` and project them into `StageProjection.parallel_results`.\n- A promptless fan-in verifies results exist and succeeds with a joined-branches note.\n- A prompted fan-in uses standard prompt execution and records `response.<fan_in_id>`, `last_response`, usage, and prompt events. It performs no ranking or selection.\n\nRemove:\n\n- Heuristic and LLM branch-selection code.\n- `parallel.fan_in.best_id`, `best_outcome`, and `best_head_sha`.\n- Per-result `head_sha` and `score`.\n- The special fan-in model-usage mode.\n- Fan-in selected-branch notes and UI.\n\n### Delete obsolete Git/worktree infrastructure\n\n- Delete the parallel-only `WorktreeSandbox`, its options/callbacks, exports, tests, and sandbox trait path helpers.\n- Remove `EngineServices`’ parallel-only `GitState` and pipeline wiring.\n- Remove now-unused branch/worktree/fast-forward Git helpers and parallel ref sanitization.\n- Remove the parallel-base-checkpoint notice code.\n- Remove the now-unemitted `git.branch`, `git.worktree.added`, and `git.worktree.removed` event variants and property types.\n- Leave the server’s independent Git checkout/worktree implementation unchanged.\n- Continue normal run-level checkpointing after the parallel node; any shared workspace changes are captured together.\n\n## Public Interfaces and Documentation\n\n- Remove `join_policy` from DOT documentation, examples, fixtures, events, and UI.\n- Add a validation error directing users to remove any `join_policy` attribute.\n- Update `parallel.started` to contain only visit and branch count.\n- Update `parallel.branch.completed` to remove `head_sha`.\n- Define `ParallelBranchResult` in OpenAPI and change `StageProjection.parallel_results` from untyped objects to that typed array; regenerate Rust and TypeScript clients.\n- Update the parallel UI to show branch status and links without commit SHAs or a join-policy badge.\n- Replace the fan-in trophy/selection UI with joined-state information and the optional standard reducer transcript.\n- Rewrite the active parallel strategy and public docs around shared-checkout concurrency:\n  - Read-only behavior is best effort.\n  - Concurrent writes are allowed but entirely user-managed.\n  - Fabro performs no write enforcement, detection, or warnings.\n  - Results are available through `parallel.results`, not a workspace `parallel_results.json`.\n  - A fan-in prompt synthesizes results but never selects workspace state.\n- Remove `join_policy` from all checked-in tutorial/demo workflows and generated documentation fixtures.\n\n## Test Plan\n\n- Unit-test that every branch receives the same sandbox working directory while retaining independent contexts.\n- Verify deterministic result ordering and complete per-branch context updates, including failed branches and structured/command outputs.\n- Cover all-success, mixed, partial, all-failed, zero-branch, `max_parallel`, dry-run, and run-cancellation behavior.\n- In a temporary Git repository, run parallel branches that write distinct files and assert:\n  - Both files remain in the shared checkout.\n  - No `fabro/run/parallel/*` refs exist.\n  - No parallel worktrees, branch commits, worktree events, or fast-forward commands occur.\n- Test promptless fan-in as a no-op join and prompted fan-in as a standard reducer that sees every branch result and emits a normal response.\n- Update event serialization, store projection, API round-trip, web parser, and renderer tests for the new typed payloads and removed fields.\n- Remove the obsolete host and Daytona parallel-Git-selection tests; retain provider-independent shared-sandbox coverage.\n- Verify with:\n  - `cargo build -p fabro-api`\n  - `cd lib/packages/fabro-api-client && bun run generate && bun run typecheck`\n  - `cargo build --workspace`\n  - `ulimit -n 4096 && cargo nextest run --workspace`\n  - `cargo +nightly-2026-04-14 fmt --check --all`\n  - `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n  - `cd apps/fabro-web && bun test && bun run typecheck && bun run build`\n  - `cargo --locked dev docs check`\n\n## Assumptions and Unresolved Questions\n\n- The application is greenfield; removed fields, events, and attributes receive no compatibility layer.\n- Parallel branches remain single-node executions.\n- `max_parallel` remains supported.\n- Shared-workspace write races are explicitly the user’s responsibility.\n- No Git workspace warning or read-only enforcement will be added.\n- Unresolved questions: none.\n</proposed_plan>\n",
+          "graph.rankdir": "LR"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "toolchain",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-23T16:57:11.117385713Z",
+        "current_node": "toolchain",
+        "completed_nodes": [
+          "start",
+          "toolchain"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.retry_count.start": 0,
+          "internal.run_id": "01KY7YH7RYCJ1BDVTTP96ZA4HV",
+          "failure_class": "",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1",
+          "internal.thread_id": "start",
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.toolchain": 0,
+          "thread.start.current_node": "toolchain",
+          "current_node": "toolchain",
+          "outcome": "succeeded",
+          "graph.goal": "<proposed_plan>\n# Shared-Checkout Parallel Execution\n\n## Summary\n\nSimplify parallel execution so every branch:\n\n- Receives an isolated context fork.\n- Executes concurrently against the same sandbox and Git checkout.\n- Creates no Git branch, worktree, checkpoint, or branch commit.\n- Always waits for every branch; remove `first_success` and `join_policy`.\n- Produces a collision-free result containing its context updates.\n\nFan-in remains an explicit join node. Without a prompt it is a no-op barrier; with a prompt it behaves like a standard prompt stage that reduces the aggregated results without selecting a branch.\n\n## Implementation Changes\n\n### Parallel execution\n\n- Remove all parallel-specific Git setup, checkpointing, committing, cleanup, and fast-forwarding.\n- Give each branch the same `Arc<dyn Sandbox>` and inherited `internal.work_dir`.\n- Retain `max_parallel`, branch-scoped contexts, IDs, hooks, and lifecycle events.\n- Preserve outgoing-edge order in the final results regardless of completion order.\n- Define the parallel outcome as:\n  - `succeeded` when every branch succeeds.\n  - `failed` when every branch fails.\n  - `partially_succeeded` for every mixed or partial result.\n- Preserve branch ID/index when handler or task execution fails.\n- Keep the current single-node-per-branch topology.\n\n### Results and fan-in\n\nIntroduce a shared typed result:\n\n```rust\nParallelBranchResult {\n    id: String,\n    status: String,\n    context_updates: BTreeMap<String, serde_json::Value>,\n}\n```\n\n- Store the ordered array in `parallel.results` and keep `parallel.branch_count`.\n- Include updates from successful and failed branches; never merge them into the parent context at top level.\n- Offload large leaf values using existing artifact storage while keeping `parallel.results` itself a structured array.\n- Resolve nested textual `response.*` and `command.output` blob references when building downstream prompt context.\n- Emit the same typed results through `parallel.completed` and project them into `StageProjection.parallel_results`.\n- A promptless fan-in verifies results exist and succeeds with a joined-branches note.\n- A prompted fan-in uses standard prompt execution and records `response.<fan_in_id>`, `last_response`, usage, and prompt events. It performs no ranking or selection.\n\nRemove:\n\n- Heuristic and LLM branch-selection code.\n- `parallel.fan_in.best_id`, `best_outcome`, and `best_head_sha`.\n- Per-result `head_sha` and `score`.\n- The special fan-in model-usage mode.\n- Fan-in selected-branch notes and UI.\n\n### Delete obsolete Git/worktree infrastructure\n\n- Delete the parallel-only `WorktreeSandbox`, its options/callbacks, exports, tests, and sandbox trait path helpers.\n- Remove `EngineServices`’ parallel-only `GitState` and pipeline wiring.\n- Remove now-unused branch/worktree/fast-forward Git helpers and parallel ref sanitization.\n- Remove the parallel-base-checkpoint notice code.\n- Remove the now-unemitted `git.branch`, `git.worktree.added`, and `git.worktree.removed` event variants and property types.\n- Leave the server’s independent Git checkout/worktree implementation unchanged.\n- Continue normal run-level checkpointing after the parallel node; any shared workspace changes are captured together.\n\n## Public Interfaces and Documentation\n\n- Remove `join_policy` from DOT documentation, examples, fixtures, events, and UI.\n- Add a validation error directing users to remove any `join_policy` attribute.\n- Update `parallel.started` to contain only visit and branch count.\n- Update `parallel.branch.completed` to remove `head_sha`.\n- Define `ParallelBranchResult` in OpenAPI and change `StageProjection.parallel_results` from untyped objects to that typed array; regenerate Rust and TypeScript clients.\n- Update the parallel UI to show branch status and links without commit SHAs or a join-policy badge.\n- Replace the fan-in trophy/selection UI with joined-state information and the optional standard reducer transcript.\n- Rewrite the active parallel strategy and public docs around shared-checkout concurrency:\n  - Read-only behavior is best effort.\n  - Concurrent writes are allowed but entirely user-managed.\n  - Fabro performs no write enforcement, detection, or warnings.\n  - Results are available through `parallel.results`, not a workspace `parallel_results.json`.\n  - A fan-in prompt synthesizes results but never selects workspace state.\n- Remove `join_policy` from all checked-in tutorial/demo workflows and generated documentation fixtures.\n\n## Test Plan\n\n- Unit-test that every branch receives the same sandbox working directory while retaining independent contexts.\n- Verify deterministic result ordering and complete per-branch context updates, including failed branches and structured/command outputs.\n- Cover all-success, mixed, partial, all-failed, zero-branch, `max_parallel`, dry-run, and run-cancellation behavior.\n- In a temporary Git repository, run parallel branches that write distinct files and assert:\n  - Both files remain in the shared checkout.\n  - No `fabro/run/parallel/*` refs exist.\n  - No parallel worktrees, branch commits, worktree events, or fast-forward commands occur.\n- Test promptless fan-in as a no-op join and prompted fan-in as a standard reducer that sees every branch result and emits a normal response.\n- Update event serialization, store projection, API round-trip, web parser, and renderer tests for the new typed payloads and removed fields.\n- Remove the obsolete host and Daytona parallel-Git-selection tests; retain provider-independent shared-sandbox coverage.\n- Verify with:\n  - `cargo build -p fabro-api`\n  - `cd lib/packages/fabro-api-client && bun run generate && bun run typecheck`\n  - `cargo build --workspace`\n  - `ulimit -n 4096 && cargo nextest run --workspace`\n  - `cargo +nightly-2026-04-14 fmt --check --all`\n  - `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n  - `cd apps/fabro-web && bun test && bun run typecheck && bun run build`\n  - `cargo --locked dev docs check`\n\n## Assumptions and Unresolved Questions\n\n- The application is greenfield; removed fields, events, and attributes receive no compatibility layer.\n- Parallel branches remain single-node executions.\n- `max_parallel` remains supported.\n- Shared-workspace write races are explicitly the user’s responsibility.\n- No Git workspace warning or read-only enforcement will be added.\n- Unresolved questions: none.\n</proposed_plan>\n",
+          "graph.rankdir": "LR"
+        },
+        "node_outcomes": {
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1285,
+              "active_time_ms": 1285
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "preflight_compile",
+        "node_visits": {
+          "toolchain": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -502,5 +598,67 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 17,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-07-23T16:57:09.827518704Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-23T16:57:09.827329028Z",
+      "handler": "start",
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "succeeded"
+    },
+    "toolchain@1": {
+      "first_event_seq": 21,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "command": "exec 2>&1\ncommand -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+        "language": "shell"
+      },
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-23T16:57:09.827708360Z",
+      "handler": "command",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
+    }
+  }
 }
