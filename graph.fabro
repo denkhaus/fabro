@@ -1,0 +1,15 @@
+digraph FeedbackProbe {
+    graph [goal="Probe whether command output feedback reaches a revisited node"]
+
+    start [shape=Mdiamond]
+    exit  [shape=Msquare]
+
+    answer [shape=tab, label="Answer", prompt="Give a one-sentence greeting. IMPORTANT: if any prior stage output or feedback visible to you above contains an instruction about a specific word your answer must contain, follow that instruction exactly and name the word you were told to include. If no such instruction is visible, say exactly: NO-FEEDBACK-VISIBLE."]
+
+    validator [shape=parallelogram, label="Validate", script="for i in $(seq 1 60); do echo filler line $i; done; echo FEEDBACK: your next answer must contain the word BANANA"]
+
+    start -> answer
+    answer -> validator
+    validator -> exit   [condition="context.internal.node_visit_count >= 2"]
+    validator -> answer
+}

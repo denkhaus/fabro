@@ -1,0 +1,286 @@
+{
+  "title": "Probe whether command output feedback reaches a revisited node",
+  "spec": {
+    "run_id": "01KY7KRADZ85HPEZSD9MH49GER",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "graph.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "Probe whether command output feedback reaches a revisited node"
+        },
+        "working_dir": null,
+        "metadata": {
+          "variant": "feedback",
+          "purpose": "preamble-probe"
+        },
+        "inputs": {},
+        "model": {
+          "provider": "openrouter",
+          "name": "anthropic/claude-sonnet-4-6",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false,
+          "commit_timeout_ms": 30000
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "default",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM buildpack-deps:noble\n"
+            }
+          },
+          "resources": {
+            "cpu": 2,
+            "memory": "4GB",
+            "disk": null
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": null
+          },
+          "labels": {},
+          "env": {}
+        },
+        "notifications": {
+          "feed": {
+            "enabled": true,
+            "provider": "slack",
+            "events": [
+              "run.started",
+              "run.completed",
+              "run.failed"
+            ],
+            "slack": {
+              "channel": "#feed-fabro"
+            }
+          }
+        },
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": null,
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "FeedbackProbe",
+      "nodes": {
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "shape": {
+              "String": "Msquare"
+            }
+          }
+        },
+        "answer": {
+          "id": "answer",
+          "attrs": {
+            "label": {
+              "String": "Answer"
+            },
+            "shape": {
+              "String": "tab"
+            },
+            "prompt": {
+              "String": "Give a one-sentence greeting. IMPORTANT: if any prior stage output or feedback visible to you above contains an instruction about a specific word your answer must contain, follow that instruction exactly and name the word you were told to include. If no such instruction is visible, say exactly: NO-FEEDBACK-VISIBLE."
+            }
+          }
+        },
+        "validator": {
+          "id": "validator",
+          "attrs": {
+            "shape": {
+              "String": "parallelogram"
+            },
+            "script": {
+              "String": "for i in $(seq 1 60); do echo filler line $i; done; echo FEEDBACK: your next answer must contain the word BANANA"
+            },
+            "label": {
+              "String": "Validate"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "shape": {
+              "String": "Mdiamond"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "answer",
+          "attrs": {}
+        },
+        {
+          "from": "answer",
+          "to": "validator",
+          "attrs": {}
+        },
+        {
+          "from": "validator",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "context.internal.node_visit_count >= 2"
+            }
+          }
+        },
+        {
+          "from": "validator",
+          "to": "answer",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "goal": {
+          "String": "Probe whether command output feedback reaches a revisited node"
+        }
+      }
+    },
+    "graph_source": "digraph FeedbackProbe {\n    graph [goal=\"Probe whether command output feedback reaches a revisited node\"]\n\n    start [shape=Mdiamond]\n    exit  [shape=Msquare]\n\n    answer [shape=tab, label=\"Answer\", prompt=\"Give a one-sentence greeting. IMPORTANT: if any prior stage output or feedback visible to you above contains an instruction about a specific word your answer must contain, follow that instruction exactly and name the word you were told to include. If no such instruction is visible, say exactly: NO-FEEDBACK-VISIBLE.\"]\n\n    validator [shape=parallelogram, label=\"Validate\", script=\"for i in $(seq 1 60); do echo filler line $i; done; echo FEEDBACK: your next answer must contain the word BANANA\"]\n\n    start -> answer\n    answer -> validator\n    validator -> exit   [condition=\"context.internal.node_visit_count >= 2\"]\n    validator -> answer\n}\n",
+    "workflow_slug": "graph",
+    "source_directory": "/Users/bhelmkamp/p/fabro-sh/fabro-4",
+    "labels": {
+      "variant": "feedback",
+      "purpose": "preamble-probe"
+    },
+    "provenance": {
+      "server": {
+        "version": "0.303.0-nightly.1"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.302.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.302.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "19"
+        },
+        "login": "brynary",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/19?v=4"
+      }
+    },
+    "manifest_blob": "235a228554527f5e93c34aa76a94bf619fa0d4751407e1dcfa232b4ec96a6a2d",
+    "definition_blob": "dc4d6bfaf2be8597f5ae8e3de01576ae1254a90a186a1b6f3141e66632aaa119",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "f00a2ed1ead1cb990d5c2cfab7562f9d52bc7ad1",
+      "dirty": "dirty",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KY7KRADZ85HPEZSD9MH49GER",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-23T13:48:32.638304585Z",
+  "last_event_at": "2026-07-23T13:48:47.397814403Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-a63a9b12-e5b2-8a28-a6bb-e490731cd4b5",
+      "runtime": {
+        "id": "fabro-01KY7KRADZ85HPEZSD9MH49GER",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
