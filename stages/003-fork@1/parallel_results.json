@@ -1,0 +1,12 @@
+[
+  {
+    "id": "branch_a",
+    "status": "succeeded",
+    "head_sha": "5d9498fc81513f4341e4732632760edf9216b8a0"
+  },
+  {
+    "id": "branch_b",
+    "status": "succeeded",
+    "head_sha": "090c8727619ed039bf620378655d44d7267226ce"
+  }
+]
