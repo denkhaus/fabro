@@ -478,7 +478,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-23T02:53:40.324596262Z",
-  "last_event_at": "2026-07-23T03:41:09.276791439Z",
+  "last_event_at": "2026-07-23T03:42:47.307411551Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1143,9 +1143,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 3116,
       "checkpoint": {
-        "timestamp": "2026-07-23T03:42:43.394229619Z",
+        "timestamp": "2026-07-23T03:42:46.978783306Z",
         "current_node": "verify",
         "completed_nodes": [
           "start",
@@ -1159,20 +1159,188 @@
         ],
         "node_retries": {},
         "context_values": {
-          "current_node": "verify",
+          "graph.goal": "# Provider-aware model aliases and API IDs\n\n## Outcome\n\nFabro workflows can name a model with one stable model slug or alias and run unchanged against whichever provider the operator has available. A model offering is identified by `(provider, ModelId)`, so the same `ModelId` and the same alias may appear on multiple providers. For an unqualified selector, Fabro filters to ready providers and then uses provider priority to choose one offering deterministically.\n\nThe motivating behavior is:\n\n| Ready providers | Selector | Selected offering |\n| --- | --- | --- |\n| OpenAI only | `gpt-56-sol` | OpenAI's `gpt-5.6-sol` |\n| OpenRouter only | `gpt-56-sol` | OpenRouter's `gpt-5.6-sol` offering |\n| OpenAI and OpenRouter | `gpt-56-sol` | OpenAI, because its provider priority is higher |\n| OpenAI and OpenRouter, explicit `provider = \"openrouter\"` | `gpt-56-sol` | OpenRouter, because an explicit provider is a pin |\n\nThe provider-facing API identifier remains an implementation detail of the selected offering. It defaults to the canonical model slug and can be overridden with `api_id` when a provider uses another convention.\n\n## Scope and design decisions\n\n### Vocabulary and identity\n\n- `ProviderId` identifies who serves the request, such as `openai` or `openrouter`.\n- `ModelId` is the canonical, human-facing model slug, such as `gpt-5.6-sol` or `claude-opus-4-8`. It never means an alias.\n- An alias is an alternate user-facing selector, such as `gpt-56-sol` or `opus`.\n- An offering is one provider's route to one `ModelId`. Its stable identity is `(ProviderId, ModelId)`.\n- `api_id` is the opaque string sent to that offering's provider API.\n- `family` remains model metadata used for display and matching; it is not a routing namespace and is not combined with `provider` or `api_id`.\n\nDo not add a separate runtime `LogicalModel` type. Use the existing `Model` as the provider-specific offering and use the existing `ModelId` newtype for its canonical ID. Internally, tuple keys `(ProviderId, ModelId)` are enough; do not add an `OfferingId` type unless implementation pressure demonstrates a real invariant it would protect.\n\n### Canonical configuration shape\n\nMove model declarations under their provider, but keep the human model slug as the model table key:\n\n```toml\n[llm.providers.openai]\npriority = 90\n\n[llm.providers.openai.models.\"gpt-5.6-sol\"]\ndisplay_name = \"GPT-5.6 Sol\"\nfamily = \"gpt-5\"\naliases = [\"gpt-56-sol\"]\ndefault = true\n\n[llm.providers.openrouter]\npriority = 25\n\n[llm.providers.openrouter.models.\"gpt-5.6-sol\"]\napi_id = \"openai/gpt-5.6-sol\"\ndisplay_name = \"GPT-5.6 Sol (via OpenRouter)\"\nfamily = \"gpt-5\"\naliases = [\"gpt-56-sol\"]\ndefault = true\n```\n\nThis shape provides a natural unique key without making humans author an API identifier or repeat `provider = \"...\"` inside every model. Model settings continue to field-merge by provider and model slug across configuration layers.\n\nAt catalog build time:\n\n```text\neffective_api_id = configured api_id, otherwise ModelId's exact slug\n```\n\nReject an explicitly empty `api_id`. Do not perform provider-specific string rewrites, prefix inference, or template expansion. A future template feature may be authoring sugar that produces the same resolved `api_id`, but it is not part of this change.\n\n### Alias and selection semantics\n\nBuild candidate sets rather than a global `identifier -> one model` map:\n\n- Canonical model IDs may repeat across providers.\n- Aliases may repeat across providers and may point to different canonical model IDs on different providers. This supports both strict synonyms and portable role-like aliases.\n- Within one provider, a canonical ID or alias must identify exactly one offering. Reject two models on the same provider that claim the same alias.\n- Across providers, an alias may collide with a canonical `ModelId`; the canonical-before-alias check order keeps canonical IDs reliable pins, and the shadowed alias stays reachable through its provider-qualified form. Within one provider, the previous rule already rejects the collision.\n- An explicit provider restricts lookup to that provider and bypasses provider priority.\n- An unqualified selector considers only eligible providers, then sorts by provider priority descending and canonical provider ID ascending.\n- A canonical `ModelId` match is checked before alias matches.\n- Disabled providers and disabled offerings are absent from candidate sets.\n\n\"Eligible\" must be supplied by the caller rather than inferred inside the catalog:\n\n- Runtime calls use providers whose adapters registered successfully. This accounts for credentials and adapter initialization, not merely an enabled catalog row.\n- Static validation explicitly uses all enabled catalog providers and proves that at least one candidate exists without claiming that credentials are available.\n- An explicit but unavailable provider remains a pin and produces a clear unavailable-provider error; Fabro must not silently switch it.\n\nWhen a run is created, resolve every implicit selector once and persist the chosen canonical model ID and provider. Resume uses that materialized choice; it does not reconsider provider priority because credentials changed. Runtime fallbacks remain the mechanism for handling a later provider failure.\n\nPreserve the existing passthrough behavior for uncatalogued models: when a provider is explicit, send the unknown model string unchanged and use the provider's default route policy. An unknown unqualified model may use the runtime's default ready provider as it does today, but it cannot participate in alias-based provider selection.\n\n## Implementation plan\n\n### 1. Make configuration provider-scoped\n\nFiles centered on:\n\n- `lib/crates/fabro-config/src/layers/llm.rs`\n- `lib/crates/fabro-config/src/builders.rs`\n- `lib/crates/fabro-model/src/catalog.rs`\n- `lib/crates/fabro-model/src/catalog/providers/*.toml`\n\nChanges:\n\n1. Add `models: MergeMap<ModelSettings>` to `ProviderSettings` and the equivalent model map to `ProviderCatalogSettings`.\n2. Remove `provider` from the canonical model-row shape; the containing provider supplies it.\n3. Normalize catalog data into provider/model pairs before catalog building, preserving layer precedence independently for each pair.\n4. Convert every built-in provider TOML to `[providers.<provider>.models.\"<model-slug>\"]`.\n5. Re-key OpenRouter, Bedrock, and other aggregator offerings by Fabro's model slug rather than their provider API ID. Retain explicit `api_id` overrides for `author/model`, Bedrock profile IDs, deployment names, and other exceptions.\n6. Remove redundant `api_id` fields where they equal the model slug.\n7. Do not add an unverified provider offering merely to match the motivating example; exercise the exact example with a catalog fixture and use existing verified cross-provider models in the built-in catalog.\n\nCompatibility:\n\n- Accept the current `[llm.models.\"<id>\"]` plus `provider = \"...\"` form as a temporary input shape. A row that omits provider adopts the provider of the unique known offering matching its id or alias; if none or several match, fail with an error naming the row.\n- Normalize each source layer into the canonical provider-scoped form before combining layers, so old and new definitions retain correct precedence.\n- Reject a single source that defines the same `(provider, model)` through both syntaxes instead of choosing silently.\n- Keep built-ins and documentation exclusively on the new syntax. Do not add a filesystem rewrite migration yet because LLM catalog layers can come from more places than one owned settings file; the compatibility parser covers all of those boundaries safely.\n- Ship a retired-identifier map for re-keyed built-in ids (old catalog key to provider plus new slug). Any selector or persisted model reference matching a retired id fails with a typed error naming the new address; nothing silently re-routes. One mechanism covers old config references, workflow graphs, and resumed pre-change runs.\n\n### 2. Rebuild catalog identity and indexes\n\nFiles centered on:\n\n- `lib/crates/fabro-model/src/ids.rs`\n- `lib/crates/fabro-model/src/types.rs`\n- `lib/crates/fabro-model/src/catalog.rs`\n- `lib/crates/fabro-model/src/model_ref.rs`\n- `lib/crates/fabro-model/src/billing.rs`\n\nChanges:\n\n1. Change `Model.id` from `String` to the transparent `ModelId` newtype and correct `ModelId` documentation so aliases are not described as model IDs. JSON remains a plain string.\n2. Key resolved model settings by `(ProviderId, ModelId)` rather than model ID alone.\n3. Replace the one-to-one `model_index` with:\n    - an offering index keyed by `(ProviderId, ModelId)`;\n    - canonical-ID candidates keyed by `ModelId`;\n    - alias candidates keyed by alias string.\n4. Pre-sort candidate vectors with the catalog's provider ordering so every caller receives the same priority and tie-break behavior.\n5. Replace global `Catalog::get`-style assumptions with explicit methods:\n    - lookup on a named provider;\n    - selection from an eligible-provider set;\n    - lookup of settings from a resolved `Model` offering;\n    - listing every offering, optionally by provider.\n6. Make pricing, billing, codec, profile, probe, default, and closest-model lookups use the composite identity. Resolve the run-level default model with the same selection algorithm (default-flagged candidates from eligible providers, ordered by provider priority) without requiring providers to agree on their defaults.\n7. Replace `DuplicateModelIdentifier` with provider-scoped validation errors that name the provider, selector, and conflicting model IDs.\n8. Add a typed selection error that distinguishes an unknown selector from a known selector with no eligible offering. Preserve error sources and render strings only at CLI/API boundaries.\n\n### 3. Centralize provider-aware resolution\n\nFiles centered on:\n\n- `lib/crates/fabro-model/src/catalog.rs`\n- `lib/crates/fabro-types/src/settings/model_ref.rs`\n- `lib/crates/fabro-workflow/src/handler/llm/routing.rs`\n- `lib/crates/fabro-workflow/src/transforms/model_resolution.rs`\n- `lib/crates/fabro-workflow/src/run_materialization.rs`\n- `lib/crates/fabro-workflow/src/operations/start.rs`\n\nChanges:\n\n1. Implement one catalog selection algorithm taking a selector, optional explicit provider, and eligible provider IDs.\n2. Make generic `ModelRef` parsing classify bare versus provider-qualified input only. It must not try to infer a unique provider for a bare alias, because a valid alias may now have several provider candidates.\n3. Keep the existing `provider/model` qualified syntax in this change. The model slug never contains the provider API ID, so OpenRouter's slash is no longer part of the user-facing model address.\n4. Update workflow graph model resolution and run materialization to receive the ready-provider snapshot already collected during run creation.\n5. Materialize aliases to canonical `(provider, ModelId)` values in both node attributes and run defaults before persistence.\n6. Keep static validation credential-independent by resolving against all enabled candidates only for existence/capability checks.\n7. Update fallback resolution so:\n    - a provider-only fallback still selects the closest compatible model;\n    - a provider-qualified model/alias resolves within that provider;\n    - a bare model/alias uses the fallback-time eligible set and provider priority;\n    - provider-name/model-name ambiguity becomes a user-facing typed error; today AmbiguousModelRef is silently swallowed by fallback resolution, so pin this behavior change with a test.\n\n### 4. Resolve the offering before LLM dispatch\n\nFiles centered on:\n\n- `lib/crates/fabro-llm/src/client.rs`\n- `lib/crates/fabro-llm/src/adapter_registry.rs`\n- `lib/crates/fabro-llm/src/providers/common.rs`\n- provider adapter modules under `lib/crates/fabro-llm/src/providers/`\n\nChanges:\n\n1. For requests without an explicit provider, select among the client's successfully registered providers using catalog priority.\n2. For requests with an explicit provider, resolve the model or alias only on that provider and fail if the adapter is unavailable.\n3. Canonicalize a cloned request to the selected `ModelId` before validation, costing, and dispatch; leave caller-owned request data unchanged.\n4. Resolve route metadata and `api_id` from the selected composite offering. Provider adapters must pass their own canonical provider ID into catalog lookups rather than looking up settings by model string alone.\n5. Ensure response costing and billing use the same resolved offering that was dispatched.\n6. Keep explicit-provider unknown-model passthrough intact.\n\n### 5. Update server, API, CLI, and web identities\n\nFiles centered on:\n\n- `docs/public/api-reference/fabro-api.yaml`\n- `lib/crates/fabro-server/src/server/handler/models.rs`\n- `lib/crates/fabro-server/src/server/handler/sessions.rs`\n- `lib/crates/fabro-cli/src/commands/model.rs`\n- `apps/fabro-web/app/routes/settings-models.tsx`\n- generated clients in `lib/crates/fabro-api` and `lib/packages/fabro-api-client`\n\nChanges:\n\n1. Continue returning one `Model` row per offering from `GET /models`. Document that `id` is unique within a provider and that `(provider, id)` is the resource identity.\n2. Add an optional `provider` query parameter to `POST /models/{id}/test`. With a provider it tests that exact offering; without one it selects among ready providers by priority.\n3. Include `provider` in `ModelTestResult` so the tested offering is explicit.\n4. Make model-test lookup, auth issues, and probing use the selected offering rather than a global first match.\n5. Update the CLI so bulk tests always pass each row's provider, and an explicit `--provider` plus `--model` remains pinned. Match returned results by `(provider, id)`.\n6. Update the settings models page to key row state by `(provider, id)` and send the provider when testing a row; duplicate IDs must render and update independently.\n7. Update session/playground/completion resolution to use ready provider IDs and persist or return the selected provider alongside the canonical model. Enumerate the OpenAPI schema changes this implies for session, playground, and completion resources; sessions currently store only a bare model-id string.\n8. Regenerate Rust and TypeScript API clients from the OpenAPI source after changing the contract.\n\n### 6. Document the mental model\n\nFiles centered on:\n\n- `lib/crates/fabro-dev/src/commands/docs_options_reference.rs`\n- `docs/public/reference/user-configuration.mdx` (generated region)\n- `docs/public/core-concepts/models.mdx`\n- `docs/public/execution/run-configuration.mdx`\n- `docs/public/execution/failures.mdx`\n\nDocument:\n\n1. Provider, model slug, family metadata, alias, and API ID as distinct terms.\n2. Provider-scoped model configuration and the `api_id = model slug` default.\n3. The OpenAI/OpenRouter portability example and the priority table from this plan.\n4. Explicit provider selection as a pin and unqualified selection as availability plus priority.\n5. Alias reuse across providers, including the same-provider ambiguity rule.\n6. Resolution-once behavior for persisted runs and the separate role of runtime fallback chains.\n7. API IDs as opaque provider wire values that workflows should not reference.\n\nRun `cargo dev docs refresh` after editing the generator-owned reference.\n\n## Test plan\n\n### Catalog and configuration tests\n\nAdd focused unit tests proving:\n\n- two providers can declare the same canonical `ModelId`;\n- two providers can declare the same alias;\n- only OpenAI eligible selects OpenAI;\n- only OpenRouter eligible selects OpenRouter and its overridden API ID;\n- both eligible select the higher-priority provider;\n- equal priorities use canonical provider ID as the tie-breaker;\n- an explicit provider overrides priority;\n- a disabled or ineligible provider is not selected;\n- two different models on one provider cannot claim the same alias;\n- an unqualified selector matching both a canonical ID and another provider's alias selects the canonical model, while the alias offering stays reachable provider-qualified;\n- omitted `api_id` resolves to the exact model slug;\n- explicit `api_id` is preserved and an empty override is rejected;\n- provider/model layer merges do not overwrite the same slug on another provider;\n- the temporary old config shape normalizes correctly and a same-source old/new collision errors clearly.\n- a provider-less legacy row adopts the unique matching offering's provider, and a retired built-in id fails with the typed error naming its replacement.\n\n### Routing and wire tests\n\nAdd `fabro-llm` tests with fake registered providers or local capture servers that submit the same alias under three availability configurations. Assert the selected adapter and the exact wire model value, including OpenRouter's `author/model` override. Also cover explicit provider, unknown passthrough, request-control validation, and cost lookup on duplicate model IDs.\n\n### Workflow tests\n\nAdd crate-level workflow tests that create the same workflow with:\n\n- only the direct provider ready;\n- only the aggregator ready;\n- both ready;\n- an explicit lower-priority provider.\n\nAssert the persisted graph and run settings contain the selected canonical model and provider. Add a resume-oriented test showing that changing the ready provider set does not re-resolve a materialized run. Add fallback tests for a shared bare alias and a provider-qualified alias, including propagation of a provider/model ambiguity error.\n\n### API, CLI, and web tests\n\n- Server: list two rows with the same ID but different providers; filter by provider; test each exact offering; test priority selection when provider is omitted.\n- CLI: bulk model tests do not conflate duplicate IDs, and JSON output includes the selected provider.\n- Web: duplicate-ID rows have independent React keys and test-result state, and each request includes the row provider.\n- API generation: retain the existing `Model` Rust type replacement and add or update JSON parity/type-identity coverage as required by the API policy.\n\nUse unit/crate integration tests for catalog and routing behavior. Use the existing command/API test layers only for their public contracts; no live provider credentials are required.\n\n## Verification\n\nRun, in this order:\n\n```sh\ncargo build -p fabro-api\ncd lib/packages/fabro-api-client && bun run generate\ncargo dev docs refresh\ncargo nextest run -p fabro-model\ncargo nextest run -p fabro-config\ncargo nextest run -p fabro-llm\ncargo nextest run -p fabro-workflow\ncargo nextest run -p fabro-server\ncd apps/fabro-web && bun test\ncd apps/fabro-web && bun run typecheck\ncargo dev docs check\ncargo +nightly-2026-04-14 fmt --check --all\ncargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings\nulimit -n 4096 && cargo nextest run --workspace\ncargo build --workspace\n```\n\nBefore accepting any changed snapshots, run `cargo insta pending-snapshots` and inspect the complete pending set.\n\n## Completion criteria\n\n- A workflow using one shared alias runs unchanged for an OpenAI-only operator and an OpenRouter-only operator.\n- When both are ready, provider priority selects deterministically.\n- Explicit provider selection always pins the provider.\n- The selected offering's exact `api_id` reaches the provider wire request.\n- No catalog, routing, billing, API, CLI, or UI lookup treats model ID alone as a globally unique offering identity.\n- Built-ins and public documentation use provider-scoped model-slug keys and omit redundant API IDs.\n- Existing user catalog syntax remains readable through the compatibility normalization path.\n\n## Unresolved questions\n\n- What release or date should end support for the legacy top-level `[llm.models]` syntax? This does not block implementation; the plan keeps it as a compatibility input and makes the new provider-scoped form canonical.\n",
+          "thread.implement.current_node": "simplify_fable",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "thread.preflight_compile.current_node": "preflight_lint",
+          "internal.retry_count.start": 0,
           "internal.retry_count.toolchain": 0,
+          "current_node": "verify",
+          "failure_signature": "verify|deterministic|script failed with exit code: <n> ## output x) compiling html5ever v0.<n>.<n> compiling num v0.<n>.<n> compiling slatedb-txn-obj v0.<n>.<n> compiling figment v0.<n>.<n> compiling foyer v0.<n>.<n> compiling croner v3.<n>.<n> compiling flatbu",
+          "internal.thread_id": "simplify_sol",
+          "thread.simplify_fable.current_node": "simplify_sol",
+          "command.output": "blob://sha256/469fdc5ebfe84c6fc3074837e43c83a7c0120c945642d7a92b0c225571cd10f6",
+          "graph.rankdir": "LR",
+          "internal.retry_count.simplify_fable": 0,
+          "internal.run_id": "01KY6E8S0YA6KAR5ZF53X7QMWZ",
+          "internal.fidelity": "compact",
+          "internal.retry_count.simplify_sol": 0,
+          "thread.simplify_sol.current_node": "verify",
+          "outcome": "failed",
+          "internal.retry_count.preflight_lint": 0,
+          "internal.retry_count.implement": 0,
+          "internal.retry_count.verify": 0,
+          "internal.node_visit_count": 1,
+          "internal.retry_count.preflight_compile": 0,
+          "thread.preflight_lint.current_node": "implement",
+          "thread.start.current_node": "toolchain",
+          "thread.toolchain.current_node": "preflight_compile",
+          "failure_class": "deterministic"
+        },
+        "node_outcomes": {
+          "simplify_fable": {
+            "status": "failed",
+            "failure": {
+              "message": "LLM error: Invalid request to openrouter: This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 27912. To increase, visit https://openrouter.ai/settings/credits and add more credits",
+              "category": "deterministic",
+              "signature": "api_deterministic|openrouter|invalid_request"
+            },
+            "usage": null
+          },
+          "preflight_lint": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 160248,
+              "active_time_ms": 160248
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implement": {
+            "status": "failed",
+            "failure": {
+              "message": "LLM error: Invalid request to openrouter: This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 46521. To increase, visit https://openrouter.ai/settings/credits and add more credits",
+              "category": "deterministic",
+              "signature": "api_deterministic|openrouter|invalid_request"
+            },
+            "usage": null
+          },
+          "simplify_sol": {
+            "status": "failed",
+            "failure": {
+              "message": "LLM error: Invalid request to openrouter: This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 46521. To increase, visit https://openrouter.ai/settings/credits and add more credits",
+              "category": "deterministic",
+              "signature": "api_deterministic|openrouter|invalid_request"
+            },
+            "usage": null
+          },
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1266,
+              "active_time_ms": 1266
+            }
+          },
+          "preflight_compile": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo check -q --workspace 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 145187,
+              "active_time_ms": 145187
+            }
+          },
+          "verify": {
+            "status": "failed",
+            "context_updates": {
+              "command.output": "blob://sha256/469fdc5ebfe84c6fc3074837e43c83a7c0120c945642d7a92b0c225571cd10f6"
+            },
+            "failure": {
+              "message": "Script failed with exit code: 1\n\n## output\nx)\n   Compiling html5ever v0.35.0\n   Compiling num v0.4.3\n   Compiling slatedb-txn-obj v0.11.2\n   Compiling figment v0.10.19\n   Compiling foyer v0.18.1\n   Compiling croner v3.0.1\n   Compiling flatbuffers v25.12.19\n   Compiling aws-sdk-sts v1.106.0\n   Compiling fabro-oauth v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-oauth)\n   Compiling xml5ever v0.35.0\n   Compiling aws-sdk-sso v1.101.0\n   Compiling aws-sdk-ssooidc v1.103.0\n   Compiling fabro-environment v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-environment)\n   Compiling agent-client-protocol-schema v0.12.0\n   Compiling phf_shared v0.13.1\n   Compiling backon v1.6.0\n   Compiling crossbeam-skiplist v0.1.3\n   Compiling fail-parallel v0.5.1\n   Compiling rand_xoshiro v0.7.0\n   Compiling jsonrpcmsg v0.1.2\n   Compiling sysinfo v0.35.2\n   Compiling rustc-hash v2.1.1\n   Compiling hashbrown v0.14.5\n   Compiling agent-client-protocol v0.11.1\n   Compiling dashmap v6.1.0\n   Compiling slatedb v0.11.2\n   Compiling phf v0.13.1\n   Compiling aws-config v1.8.18\n   Compiling markup5ever_rcdom v0.35.0+unofficial\n   Compiling fabro-auth v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-auth)\n   Compiling fabro-automation v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-automation)\n   Compiling fraction v0.15.3\n   Compiling referencing v0.42.2\n   Compiling fancy-regex v0.17.0\n   Compiling unicode-general-category v1.1.0\n   Compiling aws-smithy-eventstream v0.60.21\n   Compiling progenitor-client v0.13.0\n   Compiling uuid-simd v0.8.0\n   Compiling console v0.16.2\n   Compiling email_address v0.2.9\n   Compiling regress v0.10.5\n   Compiling unicode-linebreak v0.1.5\n   Compiling is_ci v1.2.0\n   Compiling num-cmp v0.1.0\n   Compiling bytecount v0.6.9\n   Compiling jsonschema v0.42.2\n   Compiling supports-color v3.0.2\n   Compiling textwrap v0.16.2\n   Compiling fabro-api v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-api)\n   Compiling fabro-llm v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-llm)\n   Compiling agent-client-protocol-tokio v0.11.1\n   Compiling htmd v0.5.0\n   Compiling graphviz-sys v0.1.0 (https://github.com/fabro-sh/graphviz-sys#e6ed9659)\n   Compiling owo-colors v4.3.0\n   Compiling fabro-mcp v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-mcp)\n   Compiling backtrace-ext v0.2.1\n   Compiling terminal_size v0.4.4\n   Compiling fs2 v0.4.3\n   Compiling memo-map v0.3.3\n   Compiling shell-escape v0.1.5\n   Compiling supports-hyperlinks v3.2.0\n   Compiling supports-unicode v3.0.0\n   Compiling miette v7.6.0\n   Compiling minijinja v2.19.0\n   Compiling fabro-store v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-store)\n   Compiling fabro-agent v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-agent)\n   Compiling fabro-graphviz v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-graphviz)\n   Compiling fabro-acp v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-acp)\nerror[E0308]: `if` and `else` have incompatible types\n   --> lib/crates/fabro-agent/src/cli.rs:545:9\n    |\n542 |        let model = if let Some(model) = args.model.clone() {\n    |  __________________-\n543 | |          model\n    | |          ----- expected because of this\n544 | |      } else {\n545 | |/         catalog\n546 | ||             .default_for_provider(&provider_id)\n547 | ||             .map(|model| model.id.clone())\n548 | ||             .ok_or_else(|| {\n...   ||\n552 | ||             })?\n    | ||_______________^ expected `String`, found `ModelId`\n553 | |      };\n    | |______- `if` and `else` have incompatible types\n    |\nhelp: try using a conversion method\n    |\n552 |             })?.to_string()\n    |                ++++++++++++\n\n   Compiling dialoguer v0.12.0\n   Compiling debugid v0.8.0\nFor more information about this error, try `rustc --explain E0308`.\nerror: could not compile `fabro-agent` (lib) due to 1 previous error\nwarning: build failed, waiting for other jobs to finish...\n",
+              "category": "deterministic"
+            },
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 94077,
+              "active_time_ms": 94077
+            }
+          }
+        },
+        "next_node_id": "fixup",
+        "git_commit_sha": "db16e395ba6e07b3c0659e63a9e3c4338dd7423f",
+        "loop_failure_signatures": {
+          "implement|deterministic|api_deterministic|openrouter|invalid_request": 1,
+          "simplify_sol|deterministic|api_deterministic|openrouter|invalid_request": 1,
+          "verify|deterministic|script failed with exit code: <n> ## output x) compiling html5ever v0.<n>.<n> compiling num v0.<n>.<n> compiling slatedb-txn-obj v0.<n>.<n> compiling figment v0.<n>.<n> compiling foyer v0.<n>.<n> compiling croner v3.<n>.<n> compiling flatbu": 1,
+          "simplify_fable|deterministic|api_deterministic|openrouter|invalid_request": 1
+        },
+        "node_visits": {
+          "verify": 1,
+          "preflight_lint": 1,
+          "implement": 1,
+          "start": 1,
+          "toolchain": 1,
+          "preflight_compile": 1,
+          "simplify_sol": 1,
+          "simplify_fable": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/lib/crates/fabro-config/src/builders.rs b/lib/crates/fabro-config/src/builders.rs\nindex 78de24414..edb3bbb73 100644\n--- a/lib/crates/fabro-config/src/builders.rs\n+++ b/lib/crates/fabro-config/src/builders.rs\n@@ -880,7 +880,10 @@ reasoning = false\n             .get(\"acme-large\")\n             .expect(\"provider-scoped model settings should be present\");\n         assert_eq!(model.display_name.as_deref(), Some(\"Acme Large\"));\n-        assert_eq!(model.agent_profile, Some(fabro_model::AgentProfileKind::Gemini));\n+        assert_eq!(\n+            model.agent_profile,\n+            Some(fabro_model::AgentProfileKind::Gemini)\n+        );\n         assert!(settings.llm_catalog_settings.models.is_empty());\n     }\n \ndiff --git a/lib/crates/fabro-config/src/layers/mod.rs b/lib/crates/fabro-config/src/layers/mod.rs\nindex aae4c99a6..249b295b7 100644\n--- a/lib/crates/fabro-config/src/layers/mod.rs\n+++ b/lib/crates/fabro-config/src/layers/mod.rs\n@@ -21,9 +21,9 @@ pub use environment::{\n     EnvironmentNetworkLayer, EnvironmentResourcesLayer, RunEnvironmentLayer,\n };\n pub use llm::{\n-    CostRates, CredentialRef, CredentialRefParseError, LegacyModelSettings, LlmLayer, ModelControls,\n-    ModelCostTable, ModelFeatures as LlmModelFeatures, ModelLimits as LlmModelLimits, ModelSettings,\n-    ProviderSettings, ReasoningEffortFeature,\n+    CostRates, CredentialRef, CredentialRefParseError, LegacyModelSettings, LlmLayer,\n+    ModelControls, ModelCostTable, ModelFeatures as LlmModelFeatures,\n+    ModelLimits as LlmModelLimits, ModelSettings, ProviderSettings, ReasoningEffortFeature,\n };\n pub use log_filter::LogFilter;\n pub use maps::{MergeMap, ReplaceMap, StickyMap};\ndiff --git a/lib/crates/fabro-config/src/lib.rs b/lib/crates/fabro-config/src/lib.rs\nindex fd7d48608..9f1fc4d00 100644\n--- a/lib/crates/fabro-config/src/lib.rs\n+++ b/lib/crates/fabro-config/src/lib.rs\n@@ -48,17 +48,17 @@ pub use layers::{\n     GithubIntegrationLayer, HookAgentMarker, HookEntry, HookTlsMode, IntegrationWebhooksLayer,\n     InterviewProviderLayer, InterviewsLayer, LegacyModelSettings, LlmLayer, LlmModelFeatures,\n     LlmModelLimits, LogFilter, McpEntryLayer, MergeMap, ModelControls, ModelCostTable,\n-    ModelRefOrSplice, ModelSettings,\n-    NotificationProviderLayer, NotificationRouteLayer, ObjectStoreLocalLayer, ObjectStoreS3Layer,\n-    PrepareStep, ProjectLayer, ProviderSettings, ReasoningEffortFeature, ReplaceMap, RunAgentLayer,\n-    RunArtifactsLayer, RunCheckpointLayer, RunCloneLayer, RunEnvironmentLayer, RunExecutionLayer,\n-    RunGitLayer, RunGoalLayer, RunIntegrationsGithubLayer, RunIntegrationsLayer, RunLayer,\n-    RunMetaBranchLayer, RunModelControlsLayer, RunModelLayer, RunPrepareLayer, RunPullRequestLayer,\n-    RunRunBranchLayer, RunScmLayer, ScmGitHubLayer, ServerApiLayer, ServerArtifactsLayer,\n-    ServerAuthGithubLayer, ServerAuthLayer, ServerIntegrationsLayer, ServerLayer,\n-    ServerListenLayer, ServerLoggingLayer, ServerSandboxLayer, ServerSandboxProviderLayer,\n-    ServerSandboxProvidersLayer, ServerSchedulerLayer, ServerSlateDbLayer, ServerStorageLayer,\n-    ServerWebLayer, SettingsLayer, SlackIntegrationLayer, StickyMap, StringOrSplice, WorkflowLayer,\n+    ModelRefOrSplice, ModelSettings, NotificationProviderLayer, NotificationRouteLayer,\n+    ObjectStoreLocalLayer, ObjectStoreS3Layer, PrepareStep, ProjectLayer, ProviderSettings,\n+    ReasoningEffortFeature, ReplaceMap, RunAgentLayer, RunArtifactsLayer, RunCheckpointLayer,\n+    RunCloneLayer, RunEnvironmentLayer, RunExecutionLayer, RunGitLayer, RunGoalLayer,\n+    RunIntegrationsGithubLayer, RunIntegrationsLayer, RunLayer, RunMetaBranchLayer,\n+    RunModelControlsLayer, RunModelLayer, RunPrepareLayer, RunPullRequestLayer, RunRunBranchLayer,\n+    RunScmLayer, ScmGitHubLayer, ServerApiLayer, ServerArtifactsLayer, ServerAuthGithubLayer,\n+    ServerAuthLayer, ServerIntegrationsLayer, ServerLayer, ServerListenLayer, ServerLoggingLayer,\n+    ServerSandboxLayer, ServerSandboxProviderLayer, ServerSandboxProvidersLayer,\n+    ServerSchedulerLayer, ServerSlateDbLayer, ServerStorageLayer, ServerWebLayer, SettingsLayer,\n+    SlackIntegrationLayer, StickyMap, StringOrSplice, WorkflowLayer,\n };\n pub use logging::{resolve_log_destination, resolve_log_destination_with_env};\n pub use parse::ParseError;\ndiff --git a/lib/crates/fabro-config/src/parse.rs b/lib/crates/fabro-config/src/parse.rs\nindex 35b7f4709..a0ac7a2fd 100644\n--- a/lib/crates/fabro-config/src/parse.rs\n+++ b/lib/crates/fabro-config/src/parse.rs\n@@ -393,13 +393,10 @@ display_name = \"Legacy Foo\"\n         .parse::<SettingsLayer>()\n         .expect_err(\"same pair in both syntaxes should be rejected\");\n \n-        assert_eq!(\n-            error,\n-            ParseError::ConflictingLlmModelDefinitions {\n-                provider: \"kimi\".to_string(),\n-                model:    \"foo\".to_string(),\n-            }\n-        );\n+        assert_eq!(error, ParseError::ConflictingLlmModelDefinitions {\n+            provider: \"kimi\".to_string(),\n+            model:    \"foo\".to_string(),\n+        });\n     }\n \n     #[test]\n@@ -411,12 +408,9 @@ provider = \"\"\n         .parse::<SettingsLayer>()\n         .expect_err(\"empty legacy provider should be rejected\");\n \n-        assert_eq!(\n-            error,\n-            ParseError::InvalidLegacyLlmModelProvider {\n-                model: \"foo\".to_string(),\n-            }\n-        );\n+        assert_eq!(error, ParseError::InvalidLegacyLlmModelProvider {\n+            model: \"foo\".to_string(),\n+        });\n     }\n \n     #[test]\ndiff --git a/lib/crates/fabro-config/src/tests/combine.rs b/lib/crates/fabro-config/src/tests/combine.rs\nindex 2a6c487e7..75293113f 100644\n--- a/lib/crates/fabro-config/src/tests/combine.rs\n+++ b/lib/crates/fabro-config/src/tests/combine.rs\n@@ -360,7 +360,10 @@ max_output = 64000\n     assert_eq!(model.display_name.as_deref(), Some(\"Acme Large v2\"));\n     assert_eq!(model.family.as_deref(), Some(\"acme\"));\n     assert_eq!(\n-        model.limits.as_ref().and_then(|limits| limits.context_window),\n+        model\n+            .limits\n+            .as_ref()\n+            .and_then(|limits| limits.context_window),\n         Some(128_000)\n     );\n     assert_eq!(\n@@ -398,7 +401,10 @@ max_output = 64000\n     assert_eq!(model.display_name.as_deref(), Some(\"Acme Large\"));\n     assert_eq!(model.family.as_deref(), Some(\"acme\"));\n     assert_eq!(\n-        model.limits.as_ref().and_then(|limits| limits.context_window),\n+        model\n+            .limits\n+            .as_ref()\n+            .and_then(|limits| limits.context_window),\n         Some(128_000)\n     );\n     assert_eq!(\ndiff --git a/lib/crates/fabro-model/src/catalog.rs b/lib/crates/fabro-model/src/catalog.rs\nindex 0cc3fa0a8..c324e7b39 100644\n--- a/lib/crates/fabro-model/src/catalog.rs\n+++ b/lib/crates/fabro-model/src/catalog.rs\n@@ -686,7 +686,7 @@ impl Catalog {\n \n             if !known_providers.contains(provider_id.as_str()) {\n                 return Err(CatalogBuildError::UnknownModelProvider {\n-                    model: model_id,\n+                    model:    model_id,\n                     provider: provider_id,\n                 });\n             }\n@@ -758,8 +758,7 @@ impl Catalog {\n             model_settings.insert((model.provider.clone(), model.id.clone()), settings);\n             models.push(model);\n         }\n-        let (offering_index, canonical_candidates, alias_candidates) =\n-            build_model_indexes(&models);\n+        let (offering_index, canonical_candidates, alias_candidates) = build_model_indexes(&models);\n \n         Ok(Self {\n             models,\n@@ -848,11 +847,7 @@ impl Catalog {\n \n     /// Resolve a canonical model ID or alias only on the named provider.\n     #[must_use]\n-    pub fn model_on_provider(\n-        &self,\n-        provider_id: &ProviderId,\n-        selector: &str,\n-    ) -> Option<&Model> {\n+    pub fn model_on_provider(&self, provider_id: &ProviderId, selector: &str) -> Option<&Model> {\n         let provider = self.provider(provider_id)?;\n         if let Some(idx) = self\n             .offering_index\n@@ -873,8 +868,8 @@ impl Catalog {\n         let (provider, model) = self.retired_identifiers.get(identifier)?;\n         Some(RetiredModelIdentifier {\n             identifier: identifier.to_string(),\n-            provider: provider.clone(),\n-            model: model.clone(),\n+            provider:   provider.clone(),\n+            model:      model.clone(),\n         })\n     }\n \n@@ -891,8 +886,8 @@ impl Catalog {\n         if let Some(retired) = self.retired_identifier(selector) {\n             return Err(ModelSelectionError::RetiredIdentifier {\n                 identifier: retired.identifier,\n-                provider: retired.provider,\n-                model: retired.model,\n+                provider:   retired.provider,\n+                model:      retired.model,\n             });\n         }\n \n@@ -902,30 +897,30 @@ impl Catalog {\n             .collect::<HashSet<_>>();\n \n         if let Some(explicit_provider) = explicit_provider {\n-            let provider = self\n-                .provider(explicit_provider)\n-                .ok_or_else(|| ModelSelectionError::UnknownSelectorOnProvider {\n+            let provider = self.provider(explicit_provider).ok_or_else(|| {\n+                ModelSelectionError::UnknownSelectorOnProvider {\n                     provider: explicit_provider.clone(),\n                     selector: selector.to_string(),\n-                })?;\n+                }\n+            })?;\n             if !eligible.contains(&provider.id) {\n                 return Err(ModelSelectionError::UnavailableProvider {\n                     provider: provider.id.clone(),\n                 });\n             }\n-            return self.model_on_provider(&provider.id, selector).ok_or_else(|| {\n-                ModelSelectionError::UnknownSelectorOnProvider {\n+            return self\n+                .model_on_provider(&provider.id, selector)\n+                .ok_or_else(|| ModelSelectionError::UnknownSelectorOnProvider {\n                     provider: provider.id.clone(),\n                     selector: selector.to_string(),\n-                }\n-            });\n+                });\n         }\n \n-        let candidates = self\n-            .select_candidates(selector)\n-            .ok_or_else(|| ModelSelectionError::UnknownSelector {\n+        let candidates = self.select_candidates(selector).ok_or_else(|| {\n+            ModelSelectionError::UnknownSelector {\n                 selector: selector.to_string(),\n-            })?;\n+            }\n+        })?;\n         candidates\n             .iter()\n             .filter_map(|idx| self.models.get(*idx))\n@@ -1265,11 +1260,7 @@ fn builtin_retired_identifiers() -> HashMap<String, (ProviderId, ModelId)> {\n             \"bedrock\",\n             \"claude-sonnet-4-6\",\n         ),\n-        (\n-            \"us.anthropic.claude-opus-4-8\",\n-            \"bedrock\",\n-            \"claude-opus-4-8\",\n-        ),\n+        (\"us.anthropic.claude-opus-4-8\", \"bedrock\", \"claude-opus-4-8\"),\n         (\n             \"us.anthropic.claude-haiku-4-5\",\n             \"bedrock\",\n@@ -1279,31 +1270,15 @@ fn builtin_retired_identifiers() -> HashMap<String, (ProviderId, ModelId)> {\n         (\"openai.gpt-oss-20b\", \"bedrock\", \"gpt-oss-20b\"),\n         (\"amazon.nova-2-lite\", \"bedrock\", \"nova-2-lite\"),\n         (\"meta.llama4-maverick\", \"bedrock\", \"llama-4-maverick\"),\n-        (\n-            \"mistral.mistral-large-3\",\n-            \"bedrock\",\n-            \"mistral-large-3\",\n-        ),\n+        (\"mistral.mistral-large-3\", \"bedrock\", \"mistral-large-3\"),\n         (\"mistral.devstral-2\", \"bedrock\", \"devstral-2\"),\n         (\"deepseek.v3-2\", \"bedrock\", \"deepseek-v3.2\"),\n         (\"moonshotai.kimi-k2.5\", \"bedrock\", \"kimi-k2.5\"),\n         (\"zai.glm-5\", \"bedrock\", \"glm-5\"),\n         (\"minimax.minimax-m2.5\", \"bedrock\", \"minimax-m2.5\"),\n-        (\n-            \"nvidia.nemotron-3-super\",\n-            \"bedrock\",\n-            \"nemotron-3-super\",\n-        ),\n-        (\n-            \"us.anthropic.claude-fable-5\",\n-            \"bedrock\",\n-            \"claude-fable-5\",\n-        ),\n-        (\n-            \"anthropic/claude-opus-4-7\",\n-            \"openrouter\",\n-            \"claude-opus-4-7\",\n-        ),\n+        (\"nvidia.nemotron-3-super\", \"bedrock\", \"nemotron-3-super\"),\n+        (\"us.anthropic.claude-fable-5\", \"bedrock\", \"claude-fable-5\"),\n+        (\"anthropic/claude-opus-4-7\", \"openrouter\", \"claude-opus-4-7\"),\n         (\n             \"anthropic/claude-sonnet-4-6\",\n             \"openrouter\",\n@@ -1321,22 +1296,10 @@ fn builtin_retired_identifiers() -> HashMap<String, (ProviderId, ModelId)> {\n             \"openrouter\",\n             \"gemini-3.1-pro-preview\",\n         ),\n-        (\n-            \"google/gemini-3.5-flash\",\n-            \"openrouter\",\n-            \"gemini-3.5-flash\",\n-        ),\n+        (\"google/gemini-3.5-flash\", \"openrouter\", \"gemini-3.5-flash\"),\n         (\"xiaomi/mimo-v2.5-pro\", \"openrouter\", \"mimo-v2.5-pro\"),\n-        (\n-            \"minimax/minimax-m2.7\",\n-            \"openrouter\",\n-            \"minimax-m2.7\",\n-        ),\n-        (\n-            \"deepseek/deepseek-v4-pro\",\n-            \"openrouter\",\n-            \"deepseek-v4-pro\",\n-        ),\n+        (\"minimax/minimax-m2.7\", \"openrouter\", \"minimax-m2.7\"),\n+        (\"deepseek/deepseek-v4-pro\", \"openrouter\", \"deepseek-v4-pro\"),\n         (\n             \"deepseek/deepseek-v4-flash\",\n             \"openrouter\",\n@@ -1344,16 +1307,8 @@ fn builtin_retired_identifiers() -> HashMap<String, (ProviderId, ModelId)> {\n         ),\n         (\"moonshotai/kimi-k2.6\", \"openrouter\", \"kimi-k2.6\"),\n         (\"moonshotai/kimi-k3\", \"openrouter\", \"kimi-k3\"),\n-        (\n-            \"poolside/laguna-s-2.1\",\n-            \"openrouter\",\n-            \"laguna-s-2.1\",\n-        ),\n-        (\n-            \"poolside/laguna-xs-2.1\",\n-            \"openrouter\",\n-            \"laguna-xs-2.1\",\n-        ),\n+        (\"poolside/laguna-s-2.1\", \"openrouter\", \"laguna-s-2.1\"),\n+        (\"poolside/laguna-xs-2.1\", \"openrouter\", \"laguna-xs-2.1\"),\n         (\"qwen/qwen3-coder\", \"openrouter\", \"qwen3-coder\"),\n         (\"qwen/qwen3.6-flash\", \"openrouter\", \"qwen3.6-flash\"),\n         (\"z-ai/glm-5.2\", \"openrouter\", \"glm-5.2\"),\n@@ -1377,9 +1332,7 @@ fn builtin_retired_identifiers() -> HashMap<String, (ProviderId, ModelId)> {\n         .collect()\n }\n \n-fn build_model_indexes(\n-    models: &[Model],\n-) -> (OfferingIndex, CanonicalCandidates, AliasCandidates) {\n+fn build_model_indexes(models: &[Model]) -> (OfferingIndex, CanonicalCandidates, AliasCandidates) {\n     let mut offering_index = HashMap::new();\n     let mut canonical_candidates = HashMap::<ModelId, Vec<usize>>::new();\n     let mut alias_candidates = HashMap::<String, Vec<usize>>::new();\n@@ -1402,13 +1355,15 @@ fn adopt_legacy_models(\n ) -> Result<LlmCatalogSettings, CatalogBuildError> {\n     let legacy_models = std::mem::take(&mut overrides.models);\n     for (identifier, mut settings) in legacy_models {\n-        let provider = match settings.provider.take() {\n-            Some(provider) if !provider.is_empty() => ProviderId::new(provider),\n-            _ => unique_builtin_provider_for_identifier(builtins, &identifier)\n-                .ok_or_else(|| CatalogBuildError::AmbiguousLegacyModelProvider {\n-                    model: identifier.clone(),\n-                })?,\n-        };\n+        let provider =\n+            match settings.provider.take() {\n+                Some(provider) if !provider.is_empty() => ProviderId::new(provider),\n+                _ => unique_builtin_provider_for_identifier(builtins, &identifier).ok_or_else(\n+                    || CatalogBuildError::AmbiguousLegacyModelProvider {\n+                        model: identifier.clone(),\n+                    },\n+                )?,\n+            };\n         let canonical_model = builtins\n             .providers\n             .get(provider.as_str())\n@@ -1418,10 +1373,9 @@ fn adopt_legacy_models(\n                     .iter()\n                     .find(|(model_id, model_settings)| {\n                         model_id.as_str() == identifier\n-                            || model_settings\n-                                .aliases\n-                                .as_ref()\n-                                .is_some_and(|aliases| aliases.iter().any(|alias| alias == &identifier))\n+                            || model_settings.aliases.as_ref().is_some_and(|aliases| {\n+                                aliases.iter().any(|alias| alias == &identifier)\n+                            })\n                     })\n                     .map(|(model_id, _)| model_id.clone())\n             })\n@@ -1443,19 +1397,22 @@ fn unique_builtin_provider_for_identifier(\n     builtins: &LlmCatalogSettings,\n     identifier: &str,\n ) -> Option<ProviderId> {\n-    let mut matches = builtins.providers.iter().filter_map(|(provider, settings)| {\n-        settings\n-            .models\n-            .iter()\n-            .any(|(model_id, model)| {\n-                model_id == identifier\n-                    || model\n-                        .aliases\n-                        .as_ref()\n-                        .is_some_and(|aliases| aliases.iter().any(|alias| alias == identifier))\n-            })\n-            .then(|| ProviderId::new(provider))\n-    });\n+    let mut matches = builtins\n+        .providers\n+        .iter()\n+        .filter_map(|(provider, settings)| {\n+            settings\n+                .models\n+                .iter()\n+                .any(|(model_id, model)| {\n+                    model_id == identifier\n+                        || model\n+                            .aliases\n+                            .as_ref()\n+                            .is_some_and(|aliases| aliases.iter().any(|alias| alias == identifier))\n+                })\n+                .then(|| ProviderId::new(provider))\n+        });\n     let provider = matches.next()?;\n     matches.next().is_none().then_some(provider)\n }\n@@ -1479,7 +1436,8 @@ fn normalized_model_settings(\n     // provider is required here; fabro-config performs catalog-aware adoption\n     // for provider-less rows before constructing these settings.\n     for (model_id, model_settings) in &settings.models {\n-        let provider = required_model_string(model_id, model_settings.provider.as_ref(), \"provider\")?;\n+        let provider =\n+            required_model_string(model_id, model_settings.provider.as_ref(), \"provider\")?;\n         let key = (ProviderId::new(provider), model_id.clone());\n         let merged = match normalized.remove(&key) {\n             Some(scoped) => merge_model_settings(model_settings.clone(), scoped),\n@@ -1870,7 +1828,7 @@ fn build_model(\n     if settings.api_id.as_deref() == Some(\"\") {\n         return Err(CatalogBuildError::EmptyModelApiId {\n             provider: provider.id.clone(),\n-            model: ModelId::new(model_id),\n+            model:    ModelId::new(model_id),\n         });\n     }\n     let catalog_settings = CatalogModelSettings {\n@@ -2182,10 +2140,10 @@ fn validate_builtin_fragment(\n         // Embedded fragments are canonical output rather than compatibility\n         // inputs; mixing shapes would make ownership unclear.\n         return Err(CatalogBuildError::BuiltinModelProviderMismatch {\n-            path: path.to_string(),\n-            model: \"<mixed model syntax>\".to_string(),\n+            path:     path.to_string(),\n+            model:    \"<mixed model syntax>\".to_string(),\n             expected: expected.to_string(),\n-            actual: \"top-level models\".to_string(),\n+            actual:   \"top-level models\".to_string(),\n         });\n     }\n     Ok(())\n@@ -2322,11 +2280,10 @@ reasoning = true\n         );\n         assert_eq!(\n             catalog\n-                .select_model(\n-                    \"gpt-56-sol\",\n-                    Some(&openrouter),\n-                    &[openai.clone(), openrouter.clone()],\n-                )\n+                .select_model(\"gpt-56-sol\", Some(&openrouter), &[\n+                    openai.clone(),\n+                    openrouter.clone()\n+                ],)\n                 .unwrap()\n                 .provider,\n             openrouter\n@@ -2340,17 +2297,15 @@ reasoning = true\n \n     #[test]\n     fn provider_aware_selection_ties_by_canonical_provider_id() {\n-        let settings = PORTABLE_MODEL_SETTINGS\n-            .replace(\"priority = 90\", \"priority = 25\");\n+        let settings = PORTABLE_MODEL_SETTINGS.replace(\"priority = 90\", \"priority = 25\");\n         let catalog = Catalog::from_settings(&minimal_settings(&settings)).unwrap();\n \n         assert_eq!(\n             catalog\n-                .select_model(\n-                    \"gpt-56-sol\",\n-                    None,\n-                    &[ProviderId::new(\"openrouter\"), ProviderId::new(\"openai\")],\n-                )\n+                .select_model(\"gpt-56-sol\", None, &[\n+                    ProviderId::new(\"openrouter\"),\n+                    ProviderId::new(\"openai\")\n+                ],)\n                 .unwrap()\n                 .provider,\n             ProviderId::new(\"openai\")\n",
+        "summary": {
+          "files_changed": 32,
+          "additions": 1625,
+          "deletions": 574
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-23T03:42:48.008791412Z",
+        "current_node": "fixup",
+        "completed_nodes": [
+          "start",
+          "toolchain",
+          "preflight_compile",
+          "preflight_lint",
+          "implement",
+          "simplify_fable",
+          "simplify_sol",
+          "verify",
+          "fixup"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "current_node": "fixup",
+          "internal.retry_count.toolchain": 0,
+          "internal.retry_count.fixup": 0,
           "command.output": "blob://sha256/469fdc5ebfe84c6fc3074837e43c83a7c0120c945642d7a92b0c225571cd10f6",
           "thread.toolchain.current_node": "preflight_compile",
           "failure_class": "deterministic",
+          "thread.verify.current_node": "fixup",
           "internal.fidelity": "compact",
           "thread.simplify_fable.current_node": "simplify_sol",
-          "internal.thread_id": "simplify_sol",
+          "internal.thread_id": "verify",
           "outcome": "failed",
           "internal.retry_count.start": 0,
           "internal.retry_count.preflight_compile": 0,
           "thread.preflight_lint.current_node": "implement",
           "internal.work_dir": "/home/daytona/workspace/fabro",
-          "failure_signature": "verify|deterministic|script failed with exit code: <n> ## output x) compiling html5ever v0.<n>.<n> compiling num v0.<n>.<n> compiling slatedb-txn-obj v0.<n>.<n> compiling figment v0.<n>.<n> compiling foyer v0.<n>.<n> compiling croner v3.<n>.<n> compiling flatbu",
+          "failure_signature": "fixup|deterministic|api_deterministic|openrouter|invalid_request",
           "internal.retry_count.implement": 0,
           "internal.node_visit_count": 1,
           "internal.retry_count.preflight_lint": 0,
@@ -1188,6 +1356,15 @@
           "internal.retry_count.simplify_fable": 0
         },
         "node_outcomes": {
+          "fixup": {
+            "status": "failed",
+            "failure": {
+              "message": "LLM error: Invalid request to openrouter: This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 23787. To increase, visit https://openrouter.ai/settings/credits and add more credits",
+              "category": "deterministic",
+              "signature": "api_deterministic|openrouter|invalid_request"
+            },
+            "usage": null
+          },
           "verify": {
             "status": "failed",
             "context_updates": {
@@ -1279,10 +1456,11 @@
             "usage": null
           }
         },
-        "next_node_id": "fixup",
+        "next_node_id": "verify",
         "node_visits": {
           "implement": 1,
           "toolchain": 1,
+          "fixup": 1,
           "simplify_sol": 1,
           "preflight_lint": 1,
           "verify": 1,
@@ -2200,23 +2378,24 @@
       ],
       "state": "failed"
     },
-    "verify@1": {
-      "first_event_seq": 3109,
+    "fixup@1": {
+      "first_event_seq": 3119,
       "prompt": null,
       "response": null,
       "completion": null,
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1",
-        "command": "exec 2>&1\ngit fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1",
-        "language": "shell"
+      "provider_used": {
+        "mode": "agent",
+        "provider": "openrouter",
+        "model": "anthropic/claude-fable-5",
+        "reasoning_effort": "xhigh"
       },
+      "diff": null,
+      "script_invocation": null,
       "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-07-23T03:41:09.276298998Z",
-      "handler": "command",
+      "started_at": "2026-07-23T03:42:46.981861303Z",
+      "handler": "agent",
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -2225,7 +2404,202 @@
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
       },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by file names using a glob pattern. Use path to choose the search root. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a running subagent when new information or corrected instructions are needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute shell commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": false
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "web_search",
+          "description": "Search the web using Brave Search when current external information is needed. Returns result titles, URLs, and descriptions; use web_fetch for a specific URL.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
       "state": "running"
+    },
+    "verify@1": {
+      "first_event_seq": 3109,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "Script failed with exit code: 1\n\n## output\nx)\n   Compiling html5ever v0.35.0\n   Compiling num v0.4.3\n   Compiling slatedb-txn-obj v0.11.2\n   Compiling figment v0.10.19\n   Compiling foyer v0.18.1\n   Compiling croner v3.0.1\n   Compiling flatbuffers v25.12.19\n   Compiling aws-sdk-sts v1.106.0\n   Compiling fabro-oauth v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-oauth)\n   Compiling xml5ever v0.35.0\n   Compiling aws-sdk-sso v1.101.0\n   Compiling aws-sdk-ssooidc v1.103.0\n   Compiling fabro-environment v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-environment)\n   Compiling agent-client-protocol-schema v0.12.0\n   Compiling phf_shared v0.13.1\n   Compiling backon v1.6.0\n   Compiling crossbeam-skiplist v0.1.3\n   Compiling fail-parallel v0.5.1\n   Compiling rand_xoshiro v0.7.0\n   Compiling jsonrpcmsg v0.1.2\n   Compiling sysinfo v0.35.2\n   Compiling rustc-hash v2.1.1\n   Compiling hashbrown v0.14.5\n   Compiling agent-client-protocol v0.11.1\n   Compiling dashmap v6.1.0\n   Compiling slatedb v0.11.2\n   Compiling phf v0.13.1\n   Compiling aws-config v1.8.18\n   Compiling markup5ever_rcdom v0.35.0+unofficial\n   Compiling fabro-auth v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-auth)\n   Compiling fabro-automation v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-automation)\n   Compiling fraction v0.15.3\n   Compiling referencing v0.42.2\n   Compiling fancy-regex v0.17.0\n   Compiling unicode-general-category v1.1.0\n   Compiling aws-smithy-eventstream v0.60.21\n   Compiling progenitor-client v0.13.0\n   Compiling uuid-simd v0.8.0\n   Compiling console v0.16.2\n   Compiling email_address v0.2.9\n   Compiling regress v0.10.5\n   Compiling unicode-linebreak v0.1.5\n   Compiling is_ci v1.2.0\n   Compiling num-cmp v0.1.0\n   Compiling bytecount v0.6.9\n   Compiling jsonschema v0.42.2\n   Compiling supports-color v3.0.2\n   Compiling textwrap v0.16.2\n   Compiling fabro-api v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-api)\n   Compiling fabro-llm v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-llm)\n   Compiling agent-client-protocol-tokio v0.11.1\n   Compiling htmd v0.5.0\n   Compiling graphviz-sys v0.1.0 (https://github.com/fabro-sh/graphviz-sys#e6ed9659)\n   Compiling owo-colors v4.3.0\n   Compiling fabro-mcp v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-mcp)\n   Compiling backtrace-ext v0.2.1\n   Compiling terminal_size v0.4.4\n   Compiling fs2 v0.4.3\n   Compiling memo-map v0.3.3\n   Compiling shell-escape v0.1.5\n   Compiling supports-hyperlinks v3.2.0\n   Compiling supports-unicode v3.0.0\n   Compiling miette v7.6.0\n   Compiling minijinja v2.19.0\n   Compiling fabro-store v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-store)\n   Compiling fabro-agent v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-agent)\n   Compiling fabro-graphviz v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-graphviz)\n   Compiling fabro-acp v0.303.0-nightly.1 (/home/daytona/repos/fabro-sh/fabro/lib/crates/fabro-acp)\nerror[E0308]: `if` and `else` have incompatible types\n   --> lib/crates/fabro-agent/src/cli.rs:545:9\n    |\n542 |        let model = if let Some(model) = args.model.clone() {\n    |  __________________-\n543 | |          model\n    | |          ----- expected because of this\n544 | |      } else {\n545 | |/         catalog\n546 | ||             .default_for_provider(&provider_id)\n547 | ||             .map(|model| model.id.clone())\n548 | ||             .ok_or_else(|| {\n...   ||\n552 | ||             })?\n    | ||_______________^ expected `String`, found `ModelId`\n553 | |      };\n    | |______- `if` and `else` have incompatible types\n    |\nhelp: try using a conversion method\n    |\n552 |             })?.to_string()\n    |                ++++++++++++\n\n   Compiling dialoguer v0.12.0\n   Compiling debugid v0.8.0\nFor more information about this error, try `rustc --explain E0308`.\nerror: could not compile `fabro-agent` (lib) due to 1 previous error\nwarning: build failed, waiting for other jobs to finish...\n",
+        "timestamp": "2026-07-23T03:42:43.393174711Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1",
+        "command": "exec 2>&1\ngit fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1",
+        "language": "shell"
+      },
+      "script_timing": {
+        "output": "blob://sha256/469fdc5ebfe84c6fc3074837e43c83a7c0120c945642d7a92b0c225571cd10f6",
+        "exit_code": 1,
+        "duration_ms": 94077,
+        "termination": "exited",
+        "output_bytes": 16844,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 16844,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-07-23T03:41:09.276298998Z",
+      "handler": "command",
+      "timing": {
+        "wall_time_ms": 94116,
+        "inference_time_ms": 0,
+        "tool_time_ms": 94077,
+        "active_time_ms": 94077
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "failed"
     },
     "simplify_sol@1": {
       "first_event_seq": 3091,

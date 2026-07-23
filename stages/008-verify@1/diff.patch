@@ -1,0 +1,483 @@
+diff --git a/lib/crates/fabro-config/src/builders.rs b/lib/crates/fabro-config/src/builders.rs
+index 78de24414..edb3bbb73 100644
+--- a/lib/crates/fabro-config/src/builders.rs
++++ b/lib/crates/fabro-config/src/builders.rs
+@@ -880,7 +880,10 @@ reasoning = false
+             .get("acme-large")
+             .expect("provider-scoped model settings should be present");
+         assert_eq!(model.display_name.as_deref(), Some("Acme Large"));
+-        assert_eq!(model.agent_profile, Some(fabro_model::AgentProfileKind::Gemini));
++        assert_eq!(
++            model.agent_profile,
++            Some(fabro_model::AgentProfileKind::Gemini)
++        );
+         assert!(settings.llm_catalog_settings.models.is_empty());
+     }
+ 
+diff --git a/lib/crates/fabro-config/src/layers/mod.rs b/lib/crates/fabro-config/src/layers/mod.rs
+index aae4c99a6..249b295b7 100644
+--- a/lib/crates/fabro-config/src/layers/mod.rs
++++ b/lib/crates/fabro-config/src/layers/mod.rs
+@@ -21,9 +21,9 @@ pub use environment::{
+     EnvironmentNetworkLayer, EnvironmentResourcesLayer, RunEnvironmentLayer,
+ };
+ pub use llm::{
+-    CostRates, CredentialRef, CredentialRefParseError, LegacyModelSettings, LlmLayer, ModelControls,
+-    ModelCostTable, ModelFeatures as LlmModelFeatures, ModelLimits as LlmModelLimits, ModelSettings,
+-    ProviderSettings, ReasoningEffortFeature,
++    CostRates, CredentialRef, CredentialRefParseError, LegacyModelSettings, LlmLayer,
++    ModelControls, ModelCostTable, ModelFeatures as LlmModelFeatures,
++    ModelLimits as LlmModelLimits, ModelSettings, ProviderSettings, ReasoningEffortFeature,
+ };
+ pub use log_filter::LogFilter;
+ pub use maps::{MergeMap, ReplaceMap, StickyMap};
+diff --git a/lib/crates/fabro-config/src/lib.rs b/lib/crates/fabro-config/src/lib.rs
+index fd7d48608..9f1fc4d00 100644
+--- a/lib/crates/fabro-config/src/lib.rs
++++ b/lib/crates/fabro-config/src/lib.rs
+@@ -48,17 +48,17 @@ pub use layers::{
+     GithubIntegrationLayer, HookAgentMarker, HookEntry, HookTlsMode, IntegrationWebhooksLayer,
+     InterviewProviderLayer, InterviewsLayer, LegacyModelSettings, LlmLayer, LlmModelFeatures,
+     LlmModelLimits, LogFilter, McpEntryLayer, MergeMap, ModelControls, ModelCostTable,
+-    ModelRefOrSplice, ModelSettings,
+-    NotificationProviderLayer, NotificationRouteLayer, ObjectStoreLocalLayer, ObjectStoreS3Layer,
+-    PrepareStep, ProjectLayer, ProviderSettings, ReasoningEffortFeature, ReplaceMap, RunAgentLayer,
+-    RunArtifactsLayer, RunCheckpointLayer, RunCloneLayer, RunEnvironmentLayer, RunExecutionLayer,
+-    RunGitLayer, RunGoalLayer, RunIntegrationsGithubLayer, RunIntegrationsLayer, RunLayer,
+-    RunMetaBranchLayer, RunModelControlsLayer, RunModelLayer, RunPrepareLayer, RunPullRequestLayer,
+-    RunRunBranchLayer, RunScmLayer, ScmGitHubLayer, ServerApiLayer, ServerArtifactsLayer,
+-    ServerAuthGithubLayer, ServerAuthLayer, ServerIntegrationsLayer, ServerLayer,
+-    ServerListenLayer, ServerLoggingLayer, ServerSandboxLayer, ServerSandboxProviderLayer,
+-    ServerSandboxProvidersLayer, ServerSchedulerLayer, ServerSlateDbLayer, ServerStorageLayer,
+-    ServerWebLayer, SettingsLayer, SlackIntegrationLayer, StickyMap, StringOrSplice, WorkflowLayer,
++    ModelRefOrSplice, ModelSettings, NotificationProviderLayer, NotificationRouteLayer,
++    ObjectStoreLocalLayer, ObjectStoreS3Layer, PrepareStep, ProjectLayer, ProviderSettings,
++    ReasoningEffortFeature, ReplaceMap, RunAgentLayer, RunArtifactsLayer, RunCheckpointLayer,
++    RunCloneLayer, RunEnvironmentLayer, RunExecutionLayer, RunGitLayer, RunGoalLayer,
++    RunIntegrationsGithubLayer, RunIntegrationsLayer, RunLayer, RunMetaBranchLayer,
++    RunModelControlsLayer, RunModelLayer, RunPrepareLayer, RunPullRequestLayer, RunRunBranchLayer,
++    RunScmLayer, ScmGitHubLayer, ServerApiLayer, ServerArtifactsLayer, ServerAuthGithubLayer,
++    ServerAuthLayer, ServerIntegrationsLayer, ServerLayer, ServerListenLayer, ServerLoggingLayer,
++    ServerSandboxLayer, ServerSandboxProviderLayer, ServerSandboxProvidersLayer,
++    ServerSchedulerLayer, ServerSlateDbLayer, ServerStorageLayer, ServerWebLayer, SettingsLayer,
++    SlackIntegrationLayer, StickyMap, StringOrSplice, WorkflowLayer,
+ };
+ pub use logging::{resolve_log_destination, resolve_log_destination_with_env};
+ pub use parse::ParseError;
+diff --git a/lib/crates/fabro-config/src/parse.rs b/lib/crates/fabro-config/src/parse.rs
+index 35b7f4709..a0ac7a2fd 100644
+--- a/lib/crates/fabro-config/src/parse.rs
++++ b/lib/crates/fabro-config/src/parse.rs
+@@ -393,13 +393,10 @@ display_name = "Legacy Foo"
+         .parse::<SettingsLayer>()
+         .expect_err("same pair in both syntaxes should be rejected");
+ 
+-        assert_eq!(
+-            error,
+-            ParseError::ConflictingLlmModelDefinitions {
+-                provider: "kimi".to_string(),
+-                model:    "foo".to_string(),
+-            }
+-        );
++        assert_eq!(error, ParseError::ConflictingLlmModelDefinitions {
++            provider: "kimi".to_string(),
++            model:    "foo".to_string(),
++        });
+     }
+ 
+     #[test]
+@@ -411,12 +408,9 @@ provider = ""
+         .parse::<SettingsLayer>()
+         .expect_err("empty legacy provider should be rejected");
+ 
+-        assert_eq!(
+-            error,
+-            ParseError::InvalidLegacyLlmModelProvider {
+-                model: "foo".to_string(),
+-            }
+-        );
++        assert_eq!(error, ParseError::InvalidLegacyLlmModelProvider {
++            model: "foo".to_string(),
++        });
+     }
+ 
+     #[test]
+diff --git a/lib/crates/fabro-config/src/tests/combine.rs b/lib/crates/fabro-config/src/tests/combine.rs
+index 2a6c487e7..75293113f 100644
+--- a/lib/crates/fabro-config/src/tests/combine.rs
++++ b/lib/crates/fabro-config/src/tests/combine.rs
+@@ -360,7 +360,10 @@ max_output = 64000
+     assert_eq!(model.display_name.as_deref(), Some("Acme Large v2"));
+     assert_eq!(model.family.as_deref(), Some("acme"));
+     assert_eq!(
+-        model.limits.as_ref().and_then(|limits| limits.context_window),
++        model
++            .limits
++            .as_ref()
++            .and_then(|limits| limits.context_window),
+         Some(128_000)
+     );
+     assert_eq!(
+@@ -398,7 +401,10 @@ max_output = 64000
+     assert_eq!(model.display_name.as_deref(), Some("Acme Large"));
+     assert_eq!(model.family.as_deref(), Some("acme"));
+     assert_eq!(
+-        model.limits.as_ref().and_then(|limits| limits.context_window),
++        model
++            .limits
++            .as_ref()
++            .and_then(|limits| limits.context_window),
+         Some(128_000)
+     );
+     assert_eq!(
+diff --git a/lib/crates/fabro-model/src/catalog.rs b/lib/crates/fabro-model/src/catalog.rs
+index 0cc3fa0a8..c324e7b39 100644
+--- a/lib/crates/fabro-model/src/catalog.rs
++++ b/lib/crates/fabro-model/src/catalog.rs
+@@ -686,7 +686,7 @@ impl Catalog {
+ 
+             if !known_providers.contains(provider_id.as_str()) {
+                 return Err(CatalogBuildError::UnknownModelProvider {
+-                    model: model_id,
++                    model:    model_id,
+                     provider: provider_id,
+                 });
+             }
+@@ -758,8 +758,7 @@ impl Catalog {
+             model_settings.insert((model.provider.clone(), model.id.clone()), settings);
+             models.push(model);
+         }
+-        let (offering_index, canonical_candidates, alias_candidates) =
+-            build_model_indexes(&models);
++        let (offering_index, canonical_candidates, alias_candidates) = build_model_indexes(&models);
+ 
+         Ok(Self {
+             models,
+@@ -848,11 +847,7 @@ impl Catalog {
+ 
+     /// Resolve a canonical model ID or alias only on the named provider.
+     #[must_use]
+-    pub fn model_on_provider(
+-        &self,
+-        provider_id: &ProviderId,
+-        selector: &str,
+-    ) -> Option<&Model> {
++    pub fn model_on_provider(&self, provider_id: &ProviderId, selector: &str) -> Option<&Model> {
+         let provider = self.provider(provider_id)?;
+         if let Some(idx) = self
+             .offering_index
+@@ -873,8 +868,8 @@ impl Catalog {
+         let (provider, model) = self.retired_identifiers.get(identifier)?;
+         Some(RetiredModelIdentifier {
+             identifier: identifier.to_string(),
+-            provider: provider.clone(),
+-            model: model.clone(),
++            provider:   provider.clone(),
++            model:      model.clone(),
+         })
+     }
+ 
+@@ -891,8 +886,8 @@ impl Catalog {
+         if let Some(retired) = self.retired_identifier(selector) {
+             return Err(ModelSelectionError::RetiredIdentifier {
+                 identifier: retired.identifier,
+-                provider: retired.provider,
+-                model: retired.model,
++                provider:   retired.provider,
++                model:      retired.model,
+             });
+         }
+ 
+@@ -902,30 +897,30 @@ impl Catalog {
+             .collect::<HashSet<_>>();
+ 
+         if let Some(explicit_provider) = explicit_provider {
+-            let provider = self
+-                .provider(explicit_provider)
+-                .ok_or_else(|| ModelSelectionError::UnknownSelectorOnProvider {
++            let provider = self.provider(explicit_provider).ok_or_else(|| {
++                ModelSelectionError::UnknownSelectorOnProvider {
+                     provider: explicit_provider.clone(),
+                     selector: selector.to_string(),
+-                })?;
++                }
++            })?;
+             if !eligible.contains(&provider.id) {
+                 return Err(ModelSelectionError::UnavailableProvider {
+                     provider: provider.id.clone(),
+                 });
+             }
+-            return self.model_on_provider(&provider.id, selector).ok_or_else(|| {
+-                ModelSelectionError::UnknownSelectorOnProvider {
++            return self
++                .model_on_provider(&provider.id, selector)
++                .ok_or_else(|| ModelSelectionError::UnknownSelectorOnProvider {
+                     provider: provider.id.clone(),
+                     selector: selector.to_string(),
+-                }
+-            });
++                });
+         }
+ 
+-        let candidates = self
+-            .select_candidates(selector)
+-            .ok_or_else(|| ModelSelectionError::UnknownSelector {
++        let candidates = self.select_candidates(selector).ok_or_else(|| {
++            ModelSelectionError::UnknownSelector {
+                 selector: selector.to_string(),
+-            })?;
++            }
++        })?;
+         candidates
+             .iter()
+             .filter_map(|idx| self.models.get(*idx))
+@@ -1265,11 +1260,7 @@ fn builtin_retired_identifiers() -> HashMap<String, (ProviderId, ModelId)> {
+             "bedrock",
+             "claude-sonnet-4-6",
+         ),
+-        (
+-            "us.anthropic.claude-opus-4-8",
+-            "bedrock",
+-            "claude-opus-4-8",
+-        ),
++        ("us.anthropic.claude-opus-4-8", "bedrock", "claude-opus-4-8"),
+         (
+             "us.anthropic.claude-haiku-4-5",
+             "bedrock",
+@@ -1279,31 +1270,15 @@ fn builtin_retired_identifiers() -> HashMap<String, (ProviderId, ModelId)> {
+         ("openai.gpt-oss-20b", "bedrock", "gpt-oss-20b"),
+         ("amazon.nova-2-lite", "bedrock", "nova-2-lite"),
+         ("meta.llama4-maverick", "bedrock", "llama-4-maverick"),
+-        (
+-            "mistral.mistral-large-3",
+-            "bedrock",
+-            "mistral-large-3",
+-        ),
++        ("mistral.mistral-large-3", "bedrock", "mistral-large-3"),
+         ("mistral.devstral-2", "bedrock", "devstral-2"),
+         ("deepseek.v3-2", "bedrock", "deepseek-v3.2"),
+         ("moonshotai.kimi-k2.5", "bedrock", "kimi-k2.5"),
+         ("zai.glm-5", "bedrock", "glm-5"),
+         ("minimax.minimax-m2.5", "bedrock", "minimax-m2.5"),
+-        (
+-            "nvidia.nemotron-3-super",
+-            "bedrock",
+-            "nemotron-3-super",
+-        ),
+-        (
+-            "us.anthropic.claude-fable-5",
+-            "bedrock",
+-            "claude-fable-5",
+-        ),
+-        (
+-            "anthropic/claude-opus-4-7",
+-            "openrouter",
+-            "claude-opus-4-7",
+-        ),
++        ("nvidia.nemotron-3-super", "bedrock", "nemotron-3-super"),
++        ("us.anthropic.claude-fable-5", "bedrock", "claude-fable-5"),
++        ("anthropic/claude-opus-4-7", "openrouter", "claude-opus-4-7"),
+         (
+             "anthropic/claude-sonnet-4-6",
+             "openrouter",
+@@ -1321,22 +1296,10 @@ fn builtin_retired_identifiers() -> HashMap<String, (ProviderId, ModelId)> {
+             "openrouter",
+             "gemini-3.1-pro-preview",
+         ),
+-        (
+-            "google/gemini-3.5-flash",
+-            "openrouter",
+-            "gemini-3.5-flash",
+-        ),
++        ("google/gemini-3.5-flash", "openrouter", "gemini-3.5-flash"),
+         ("xiaomi/mimo-v2.5-pro", "openrouter", "mimo-v2.5-pro"),
+-        (
+-            "minimax/minimax-m2.7",
+-            "openrouter",
+-            "minimax-m2.7",
+-        ),
+-        (
+-            "deepseek/deepseek-v4-pro",
+-            "openrouter",
+-            "deepseek-v4-pro",
+-        ),
++        ("minimax/minimax-m2.7", "openrouter", "minimax-m2.7"),
++        ("deepseek/deepseek-v4-pro", "openrouter", "deepseek-v4-pro"),
+         (
+             "deepseek/deepseek-v4-flash",
+             "openrouter",
+@@ -1344,16 +1307,8 @@ fn builtin_retired_identifiers() -> HashMap<String, (ProviderId, ModelId)> {
+         ),
+         ("moonshotai/kimi-k2.6", "openrouter", "kimi-k2.6"),
+         ("moonshotai/kimi-k3", "openrouter", "kimi-k3"),
+-        (
+-            "poolside/laguna-s-2.1",
+-            "openrouter",
+-            "laguna-s-2.1",
+-        ),
+-        (
+-            "poolside/laguna-xs-2.1",
+-            "openrouter",
+-            "laguna-xs-2.1",
+-        ),
++        ("poolside/laguna-s-2.1", "openrouter", "laguna-s-2.1"),
++        ("poolside/laguna-xs-2.1", "openrouter", "laguna-xs-2.1"),
+         ("qwen/qwen3-coder", "openrouter", "qwen3-coder"),
+         ("qwen/qwen3.6-flash", "openrouter", "qwen3.6-flash"),
+         ("z-ai/glm-5.2", "openrouter", "glm-5.2"),
+@@ -1377,9 +1332,7 @@ fn builtin_retired_identifiers() -> HashMap<String, (ProviderId, ModelId)> {
+         .collect()
+ }
+ 
+-fn build_model_indexes(
+-    models: &[Model],
+-) -> (OfferingIndex, CanonicalCandidates, AliasCandidates) {
++fn build_model_indexes(models: &[Model]) -> (OfferingIndex, CanonicalCandidates, AliasCandidates) {
+     let mut offering_index = HashMap::new();
+     let mut canonical_candidates = HashMap::<ModelId, Vec<usize>>::new();
+     let mut alias_candidates = HashMap::<String, Vec<usize>>::new();
+@@ -1402,13 +1355,15 @@ fn adopt_legacy_models(
+ ) -> Result<LlmCatalogSettings, CatalogBuildError> {
+     let legacy_models = std::mem::take(&mut overrides.models);
+     for (identifier, mut settings) in legacy_models {
+-        let provider = match settings.provider.take() {
+-            Some(provider) if !provider.is_empty() => ProviderId::new(provider),
+-            _ => unique_builtin_provider_for_identifier(builtins, &identifier)
+-                .ok_or_else(|| CatalogBuildError::AmbiguousLegacyModelProvider {
+-                    model: identifier.clone(),
+-                })?,
+-        };
++        let provider =
++            match settings.provider.take() {
++                Some(provider) if !provider.is_empty() => ProviderId::new(provider),
++                _ => unique_builtin_provider_for_identifier(builtins, &identifier).ok_or_else(
++                    || CatalogBuildError::AmbiguousLegacyModelProvider {
++                        model: identifier.clone(),
++                    },
++                )?,
++            };
+         let canonical_model = builtins
+             .providers
+             .get(provider.as_str())
+@@ -1418,10 +1373,9 @@ fn adopt_legacy_models(
+                     .iter()
+                     .find(|(model_id, model_settings)| {
+                         model_id.as_str() == identifier
+-                            || model_settings
+-                                .aliases
+-                                .as_ref()
+-                                .is_some_and(|aliases| aliases.iter().any(|alias| alias == &identifier))
++                            || model_settings.aliases.as_ref().is_some_and(|aliases| {
++                                aliases.iter().any(|alias| alias == &identifier)
++                            })
+                     })
+                     .map(|(model_id, _)| model_id.clone())
+             })
+@@ -1443,19 +1397,22 @@ fn unique_builtin_provider_for_identifier(
+     builtins: &LlmCatalogSettings,
+     identifier: &str,
+ ) -> Option<ProviderId> {
+-    let mut matches = builtins.providers.iter().filter_map(|(provider, settings)| {
+-        settings
+-            .models
+-            .iter()
+-            .any(|(model_id, model)| {
+-                model_id == identifier
+-                    || model
+-                        .aliases
+-                        .as_ref()
+-                        .is_some_and(|aliases| aliases.iter().any(|alias| alias == identifier))
+-            })
+-            .then(|| ProviderId::new(provider))
+-    });
++    let mut matches = builtins
++        .providers
++        .iter()
++        .filter_map(|(provider, settings)| {
++            settings
++                .models
++                .iter()
++                .any(|(model_id, model)| {
++                    model_id == identifier
++                        || model
++                            .aliases
++                            .as_ref()
++                            .is_some_and(|aliases| aliases.iter().any(|alias| alias == identifier))
++                })
++                .then(|| ProviderId::new(provider))
++        });
+     let provider = matches.next()?;
+     matches.next().is_none().then_some(provider)
+ }
+@@ -1479,7 +1436,8 @@ fn normalized_model_settings(
+     // provider is required here; fabro-config performs catalog-aware adoption
+     // for provider-less rows before constructing these settings.
+     for (model_id, model_settings) in &settings.models {
+-        let provider = required_model_string(model_id, model_settings.provider.as_ref(), "provider")?;
++        let provider =
++            required_model_string(model_id, model_settings.provider.as_ref(), "provider")?;
+         let key = (ProviderId::new(provider), model_id.clone());
+         let merged = match normalized.remove(&key) {
+             Some(scoped) => merge_model_settings(model_settings.clone(), scoped),
+@@ -1870,7 +1828,7 @@ fn build_model(
+     if settings.api_id.as_deref() == Some("") {
+         return Err(CatalogBuildError::EmptyModelApiId {
+             provider: provider.id.clone(),
+-            model: ModelId::new(model_id),
++            model:    ModelId::new(model_id),
+         });
+     }
+     let catalog_settings = CatalogModelSettings {
+@@ -2182,10 +2140,10 @@ fn validate_builtin_fragment(
+         // Embedded fragments are canonical output rather than compatibility
+         // inputs; mixing shapes would make ownership unclear.
+         return Err(CatalogBuildError::BuiltinModelProviderMismatch {
+-            path: path.to_string(),
+-            model: "<mixed model syntax>".to_string(),
++            path:     path.to_string(),
++            model:    "<mixed model syntax>".to_string(),
+             expected: expected.to_string(),
+-            actual: "top-level models".to_string(),
++            actual:   "top-level models".to_string(),
+         });
+     }
+     Ok(())
+@@ -2322,11 +2280,10 @@ reasoning = true
+         );
+         assert_eq!(
+             catalog
+-                .select_model(
+-                    "gpt-56-sol",
+-                    Some(&openrouter),
+-                    &[openai.clone(), openrouter.clone()],
+-                )
++                .select_model("gpt-56-sol", Some(&openrouter), &[
++                    openai.clone(),
++                    openrouter.clone()
++                ],)
+                 .unwrap()
+                 .provider,
+             openrouter
+@@ -2340,17 +2297,15 @@ reasoning = true
+ 
+     #[test]
+     fn provider_aware_selection_ties_by_canonical_provider_id() {
+-        let settings = PORTABLE_MODEL_SETTINGS
+-            .replace("priority = 90", "priority = 25");
++        let settings = PORTABLE_MODEL_SETTINGS.replace("priority = 90", "priority = 25");
+         let catalog = Catalog::from_settings(&minimal_settings(&settings)).unwrap();
+ 
+         assert_eq!(
+             catalog
+-                .select_model(
+-                    "gpt-56-sol",
+-                    None,
+-                    &[ProviderId::new("openrouter"), ProviderId::new("openai")],
+-                )
++                .select_model("gpt-56-sol", None, &[
++                    ProviderId::new("openrouter"),
++                    ProviderId::new("openai")
++                ],)
+                 .unwrap()
+                 .provider,
+             ProviderId::new("openai")
