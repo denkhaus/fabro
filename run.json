@@ -1,0 +1,506 @@
+{
+  "title": "Structured output for command nodes (`output_schema` on shape=parallelogram)",
+  "spec": {
+    "run_id": "01KY7WQ92JWT90307EBQY6P2HV",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "# Plan: Structured output for command nodes (`output_schema` on shape=parallelogram)\n\n## Context\n\nRoadmap item #5 from the \"port security-review to Fabro\" roadmap (Quarry doc, 2026-07-23). The ported scan keeps all trust-critical arithmetic (dedup, caps, vote tallies, coverage checks) in plain code between agent calls. For that, command nodes need to emit **validated structured data** that edge conditions can route on and downstream nodes can consume — today only agent/prompt nodes support `output_schema`. It also upgrades the loop-back feedback pattern (F3) from \"last 25 lines of stdout\" to structured fields.\n\n**Decisions made with Bryan (AskUserQuestion):**\n- Custom JSON Schema output is stored under `output.<node_id>` — **exact parity with agent/prompt nodes** (no flat merge of schema fields).\n- `output_schema=\"routing\"` **is supported** on command nodes. Routing's `context_updates` merge is the mechanism that feeds flat context keys to edge conditions (`condition=\"context.kept_count > 0\"`), since condition evaluation is flat-lookup only (`condition.rs:15-58` — no dotted-path traversal).\n\n**Fixed requirements (from the roadmap):**\n- Invalid output on a zero-exit script = deterministic, non-retryable failure. No repair turn (no model), no retry (deterministic script), even if the node has `retry_policy`/`max_retries`. Failure-edge routing still works (return `Ok(failed outcome)`, don't abort the run).\n- Script crashes keep existing classification: non-zero exit → existing `fail_classify` path (no validation attempted); timeout/cancel/spawn-failure → existing retryable `Err(Error::handler(...))` paths. Validation runs **only on the exit-0 branch**.\n- `output_retries` is ignored for commands; failure message must not say \"repair attempt(s)\".\n\n**Free rides (verified, no changes needed):** `Node::output_schema()` accessor is shape-agnostic (`fabro-types/src/graph.rs:172`); `@file` inlining already covers `output_schema` on every node (`transforms/file_inlining.rs:203-213`, `static_reference.rs:90`); large `output.<node_id>` values are blob-offloaded handler-agnostically (`artifact.rs` `offload_large_values`, 100KB, via `lifecycle/artifact.rs:204`); `Event::StageCompleted` already carries `context_updates` — no new events; nothing in `fabro-validate` flags `output_schema` on parallelogram nodes; agent/prompt `simulate` never validates, so command `simulate` needs zero changes.\n\n## Implementation\n\n### 1. `lib/crates/fabro-workflow/src/handler/structured_output.rs` — one-line change\n\nRemove the `#[cfg(test)]` gate from `messages()` (lines 75-79; keep `#[must_use]`, leave `kind()` gated). Everything else (`parse_node_output_schema`, `validate_response_text`, `apply_validated_output`, `apply_routing_fields`) is reused as-is; prompt/agent behavior is untouched.\n\n### 2. `lib/crates/fabro-workflow/src/handler/command.rs` — the feature\n\n- **Imports:** add `structured_output` + `StructuredOutputError` to the `super::` import (line 9), mirroring `prompt.rs:13`.\n- **Parse schema before side effects:** right after the language check (line 77), before command assembly / `CommandStarted` emit / sandbox exec:\n  ```rust\n  let output_schema = structured_output::parse_node_output_schema(node)?;\n  ```\n  A malformed/empty/unresolved-`@` schema fails fast as `Err(Error::Validation)` — non-retryable, Deterministic, script never runs, no events emitted (same propagation prompt/agent use).\n- **Exit-0 branch (lines 167-175) restructure:** build the base success outcome first (`command.output` blob ref, notes `\"Script completed: {script}\"`, timing), then if a schema is set, validate `finalized.output_text`:\n  - `Ok(validated)` → `structured_output::apply_validated_output(node, schema, &validated, &mut outcome)`. Custom schema → whole object at `output.<node_id>`; routing → `preferred_next_label` / `suggested_next_ids` / `outcome` override / `failure_reason` / `context_updates` flat merge, exactly as for agents. Routing's `outcome:\"failed\"` override yields `Failed { retry_requested: false }` (verified via `StageOutcome` parsing) — no retries.\n  - `Err(error)` → return `Ok` of `Outcome::fail_deterministic(reason)` (`outcome.rs:69-77`) with `command.output` + timing still set (parity with the non-zero-exit failure branch; notes stay `None`). **All** `StructuredOutputError` kinds fail — commands get no `allows_routing_fallback` (that's the agent `status.json` fallback).\n- **New private helper** next to `append_output_tail` (~line 197):\n  ```rust\n  fn schema_validation_failure_reason(script: &str, error: &StructuredOutputError, output_text: &str) -> String\n  ```\n  Message: `\"Script output failed output_schema validation: {script}\"` + one `- {message}` line per validator error + `append_output_tail` (last 4KB under `## output`).\n- Timeout/cancel/spawn/non-zero branches, `simulate()`, and `node_timeout_policy` untouched. `output_retries()` never read.\n\n### 3. Unit tests — `command.rs` `#[cfg(test)]` mod\n\nReuse the existing harness (`make_services()`, `command_text()`, `SpySandbox` + `make_spy_services()`, real echo/python scripts). Schema literal from `prompt.rs:459`: `{\"type\":\"object\",\"required\":[\"passed\"],\"properties\":{\"passed\":{\"type\":\"boolean\"}}}`.\n\n1. `command_custom_output_schema_stores_output_context_key` — `echo '{\"passed\": true}'` → Succeeded; `context_updates[\"output.<id>\"]` equals the object; `command.output` still present.\n2. `command_custom_output_schema_validates_last_json_object` — log lines + earlier JSON, payload JSON last → last object wins (same extraction as agents).\n3. `command_custom_output_schema_failure_is_deterministic` — `echo '{\"passed\":\"yes\"}'` (exit 0) → `Failed { retry_requested: false }`, `FailureCategory::Deterministic`, reason has validator message + `## output` tail, no \"repair attempt\"; `command.output` + timing set.\n4. `command_routing_output_schema_no_json_object_fails` — routing schema, `echo not-json` → deterministic failure (no fallback).\n5. `command_routing_output_schema_applies_routing_fields` — `{\"preferred_next_label\":\"fix\",\"context_updates\":{\"kept_count\":2}}` → Succeeded, `preferred_label`, flat `kept_count` in `context_updates`.\n6. `command_routing_output_schema_outcome_failed_override` — `{\"outcome\":\"failed\",\"failure_reason\":\"tests failed\"}`, exit 0 → `Failed { retry_requested: false }`, `failure_reason() == \"tests failed\"`.\n7. `command_invalid_output_schema_fails_before_execution` — SpySandbox + `output_schema` of invalid JSON → `Err` containing \"Invalid output_schema\", spy captured no command (script never ran).\n8. `command_nonzero_exit_skips_schema_validation` — schema + `echo '{\"passed\":\"bad\"}'; exit 1` → reason is \"exit code: 1\", not schema validation.\n9. `command_simulate_ignores_output_schema` — simulate unchanged with schema set.\n10. `command_python_custom_output_schema` — `language=\"python\"`, `print(json.dumps(...))` parity.\n\n### 4. No-retry integration test — `lib/crates/fabro-workflow/tests/it/integration.rs`\n\n`command_schema_validation_failure_does_not_consume_retries`: graph via `make_graph_with_start_exit` (~line 1917), parallelogram node with `max_retries=2` + custom schema + script echoing invalid JSON at exit 0; `collect_events` → assert exactly **one** `CommandStarted`, final outcome `Failed { retry_requested: false }` / Deterministic.\n\n### 5. CLI black-box test — the roadmap's end-to-end claim\n\nNew fixture `lib/crates/fabro-cli/tests/it/workflow/fixtures/command_routing.fabro` (modeled on `conditional_branching.fabro` + `command_pipeline.fabro`): `classify` parallelogram with `output_schema=\"routing\"` echoing `{\"context_updates\":{\"kept_count\":2}}` → diamond gate → `kept` edge with `condition=\"context.kept_count > 0\"` vs `none` fallback. New test `workflow/command_routing.rs` (register in `workflow/mod.rs`, use `sandbox_tests!`): run validate + `run --auto-approve`, assert conclusion succeeded, `completed_nodes` contains `kept`, not `none`. This proves script → routing merge → flat context key → condition routing end to end. Beware DOT/shell quoting of the JSON (single-quote it; `fabro validate` in the test catches mistakes).\n\n### 6. Docs — `docs/public/`\n\n- `reference/dot-language.mdx`: line ~209 attr-table → \"Supported on agent, prompt, and command nodes\"; add `output_schema` row to the command-node table (~242-247); extend the structured-output section (~217-239) with a command paragraph: validates the **last JSON object** in merged stdout+stderr when the script exits 0; print the JSON last; no repair turns, no retries, no `status.json` fallback; `output_retries` does not apply; custom → `output.<node_id>` (not addressable by edge conditions), routing → routing fields + `context_updates` flat keys (addressable by conditions).\n- `agents/outputs.mdx`: extend \"agent and prompt nodes\" mentions (~lines 69, 148) to include command nodes with the same caveats. Surgical edits.\n\n## Verification\n\n1. `cargo nextest run -p fabro-workflow` — unit + integration tests above.\n2. `cargo nextest run -p fabro-cli` — black-box `command_routing` workflow test.\n3. `cargo build --workspace && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings && cargo +nightly-2026-04-14 fmt --check --all`.\n4. Manual smoke: `fabro run` a scratch workflow with a routing command feeding a condition and a custom-schema command, confirm `stage.completed` events show `context_updates` (`output.<id>` / flat keys) and a validation failure shows the Deterministic reason with the output tail.\n\n## Risks\n\n- **stderr merged after payload:** `exec 2>&1` interleaving means stray trailing `{...}` on stderr could become the \"last JSON object\" — documented (\"print the JSON last\"); acceptable, matches agent extraction semantics.\n- **Routing key collisions** (script writes `command.output` via `context_updates`): last-write-wins, same hazard class as agent routing today — accepted for parity.\n- **Behavior note for release notes:** none — purely additive; nodes without `output_schema` are byte-for-byte unchanged.\n\n## Unresolved questions\n\nNone — the two open design points (context merge shape; routing support) were decided above. Optional follow-ups, not blocking: validate-time lint that `output_schema` parses as a JSON Schema (belongs to roadmap item #2's validation sweep), and a changelog entry via the changelog skill after merge.\n"
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {},
+        "model": {
+          "provider": "openrouter",
+          "name": "anthropic/claude-sonnet-4-6",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false,
+          "commit_timeout_ms": 30000
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "fabro-dev",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        curl git ripgrep ca-certificates build-essential pkg-config libssl-dev unzip python3 \\\n        xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \\\n        libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6 \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install real Chromium (not the snap stub) via xtradeb PPA\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        software-properties-common curl gnupg \\\n    && add-apt-repository -y ppa:xtradeb/apps \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends chromium \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Wrapper: Chromium needs --no-sandbox when running as root in a container,\n# and --disable-dev-shm-usage avoids crashes from small /dev/shm\nRUN printf '#!/bin/bash\\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"$@\"\\n' \\\n        > /usr/local/bin/chromium-wrapper \\\n    && chmod +x /usr/local/bin/chromium-wrapper\n\n# Make the wrapper the default in the system .desktop file and via alternatives\nRUN sed -i 's|^Exec=.*|Exec=/usr/local/bin/chromium-wrapper %U|' \\\n        /usr/share/applications/chromium.desktop \\\n    && update-alternatives --install /usr/bin/x-www-browser x-www-browser \\\n        /usr/local/bin/chromium-wrapper 100\n\n# Tell XFCE's exo-open that Chromium is the WebBrowser helper (system-wide)\nRUN mkdir -p /etc/xdg/xfce4 /usr/share/xfce4/helpers \\\n    && printf 'WebBrowser=custom-WebBrowser\\n' > /etc/xdg/xfce4/helpers.rc \\\n    && printf '[Desktop Entry]\\n\\\nVersion=1.0\\n\\\nType=X-XFCE-Helper\\n\\\nName=Chromium\\n\\\nIcon=chromium\\n\\\nX-XFCE-Category=WebBrowser\\n\\\nX-XFCE-CommandsWithParameter=/usr/local/bin/chromium-wrapper \"%%s\"\\n\\\nX-XFCE-Commands=/usr/local/bin/chromium-wrapper\\n' \\\n        > /usr/share/xfce4/helpers/custom-WebBrowser.desktop\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" \\\n        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update && apt-get install -y --no-install-recommends gh \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": "20GB"
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": "30m"
+          },
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "env": {}
+        },
+        "notifications": {
+          "feed": {
+            "enabled": true,
+            "provider": "slack",
+            "events": [
+              "run.started",
+              "run.completed",
+              "run.failed"
+            ],
+            "slack": {
+              "channel": "#feed-fabro"
+            }
+          }
+        },
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": false,
+          "merge_strategy": "squash"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "ImplementPlan",
+      "nodes": {
+        "verify": {
+          "id": "verify",
+          "attrs": {
+            "goal_gate": {
+              "Boolean": true
+            },
+            "script": {
+              "String": "git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1"
+            },
+            "label": {
+              "String": "Verify"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "retry_target": {
+              "String": "fixup"
+            }
+          }
+        },
+        "simplify_fable": {
+          "id": "simplify_fable",
+          "attrs": {
+            "label": {
+              "String": "Simplify (Claude Fable 5)"
+            },
+            "model": {
+              "String": "anthropic/claude-fable-5"
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "provider": {
+              "String": "openrouter"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun \\`git diff\\` (or \\`git diff HEAD\\` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the ${AGENT_TOOL_NAME} tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. **Search for existing utilities and helpers** that could replace newly written code. Look for similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.\n3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction\n4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n6. **Unnecessary JSX nesting**: wrapper Boxes/elements that add no layout value — check if inner component props (flexShrink, alignItems, etc.) already provide the needed behavior\n7. **Unnecessary comments**: comments explaining WHAT the code does (well-named identifiers already do that), narrating the change, or referencing the task/caller — delete; keep only non-obvious WHY (hidden constraints, subtle invariants, workarounds)\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. **Missed concurrency**: independent operations run sequentially when they could run in parallel\n3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths\n4. **Recurring no-op updates**: state/store updates inside polling loops, intervals, or event handlers that fire unconditionally — add a change-detection guard so downstream consumers aren't notified when nothing changed. Also: if a wrapper function takes an updater/reducer callback, verify it honors same-reference returns (or whatever the \"no change\" signal is) — otherwise callers' early-return no-ops are silently defeated\n5. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n6. **Memory**: unbounded data structures, missing cleanup, event listener leaks\n7. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            }
+          }
+        },
+        "toolchain": {
+          "id": "toolchain",
+          "attrs": {
+            "max_retries": {
+              "Integer": 0
+            },
+            "script": {
+              "String": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1"
+            },
+            "label": {
+              "String": "Toolchain"
+            },
+            "shape": {
+              "String": "parallelogram"
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "label": {
+              "String": "Exit"
+            },
+            "shape": {
+              "String": "Msquare"
+            }
+          }
+        },
+        "fix_lints": {
+          "id": "fix_lints",
+          "attrs": {
+            "provider": {
+              "String": "openrouter"
+            },
+            "label": {
+              "String": "Fix Lints"
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "prompt": {
+              "String": "The preflight lint step failed. Read the build output from context and fix all clippy lint warnings."
+            },
+            "model": {
+              "String": "anthropic/claude-fable-5"
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            }
+          }
+        },
+        "preflight_lint": {
+          "id": "preflight_lint",
+          "attrs": {
+            "max_retries": {
+              "Integer": 0
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "script": {
+              "String": "cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1"
+            },
+            "label": {
+              "String": "Preflight Lint"
+            }
+          }
+        },
+        "implement": {
+          "id": "implement",
+          "attrs": {
+            "provider": {
+              "String": "openrouter"
+            },
+            "reasoning_effort": {
+              "String": "max"
+            },
+            "prompt": {
+              "String": "Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD."
+            },
+            "label": {
+              "String": "Implement"
+            },
+            "model": {
+              "String": "openai/gpt-5.6-sol"
+            }
+          }
+        },
+        "simplify_sol": {
+          "id": "simplify_sol",
+          "attrs": {
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun \\`git diff\\` (or \\`git diff HEAD\\` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the ${AGENT_TOOL_NAME} tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. **Search for existing utilities and helpers** that could replace newly written code. Look for similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.\n3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction\n4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n6. **Unnecessary JSX nesting**: wrapper Boxes/elements that add no layout value — check if inner component props (flexShrink, alignItems, etc.) already provide the needed behavior\n7. **Unnecessary comments**: comments explaining WHAT the code does (well-named identifiers already do that), narrating the change, or referencing the task/caller — delete; keep only non-obvious WHY (hidden constraints, subtle invariants, workarounds)\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. **Missed concurrency**: independent operations run sequentially when they could run in parallel\n3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths\n4. **Recurring no-op updates**: state/store updates inside polling loops, intervals, or event handlers that fire unconditionally — add a change-detection guard so downstream consumers aren't notified when nothing changed. Also: if a wrapper function takes an updater/reducer callback, verify it honors same-reference returns (or whatever the \"no change\" signal is) — otherwise callers' early-return no-ops are silently defeated\n5. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n6. **Memory**: unbounded data structures, missing cleanup, event listener leaks\n7. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "model": {
+              "String": "openai/gpt-5.6-sol"
+            },
+            "label": {
+              "String": "Simplify (GPT-5.6 Sol)"
+            },
+            "reasoning_effort": {
+              "String": "max"
+            },
+            "provider": {
+              "String": "openrouter"
+            }
+          }
+        },
+        "fixup": {
+          "id": "fixup",
+          "attrs": {
+            "max_visits": {
+              "Integer": 3
+            },
+            "model": {
+              "String": "anthropic/claude-fable-5"
+            },
+            "prompt": {
+              "String": "The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures."
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "provider": {
+              "String": "openrouter"
+            },
+            "label": {
+              "String": "Fixup"
+            }
+          }
+        },
+        "preflight_compile": {
+          "id": "preflight_compile",
+          "attrs": {
+            "script": {
+              "String": "cargo check -q --workspace 2>&1"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "label": {
+              "String": "Preflight Compile"
+            },
+            "shape": {
+              "String": "parallelogram"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "label": {
+              "String": "Start"
+            },
+            "shape": {
+              "String": "Mdiamond"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "toolchain",
+          "attrs": {}
+        },
+        {
+          "from": "toolchain",
+          "to": "preflight_compile",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "toolchain",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_compile",
+          "to": "preflight_lint",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_compile",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_lint",
+          "to": "implement",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_lint",
+          "to": "fix_lints",
+          "attrs": {}
+        },
+        {
+          "from": "fix_lints",
+          "to": "preflight_lint",
+          "attrs": {}
+        },
+        {
+          "from": "implement",
+          "to": "simplify_fable",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_fable",
+          "to": "simplify_sol",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_sol",
+          "to": "verify",
+          "attrs": {}
+        },
+        {
+          "from": "verify",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "verify",
+          "to": "fixup",
+          "attrs": {}
+        },
+        {
+          "from": "fixup",
+          "to": "verify",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "goal": {
+          "String": "# Plan: Structured output for command nodes (`output_schema` on shape=parallelogram)\n\n## Context\n\nRoadmap item #5 from the \"port security-review to Fabro\" roadmap (Quarry doc, 2026-07-23). The ported scan keeps all trust-critical arithmetic (dedup, caps, vote tallies, coverage checks) in plain code between agent calls. For that, command nodes need to emit **validated structured data** that edge conditions can route on and downstream nodes can consume — today only agent/prompt nodes support `output_schema`. It also upgrades the loop-back feedback pattern (F3) from \"last 25 lines of stdout\" to structured fields.\n\n**Decisions made with Bryan (AskUserQuestion):**\n- Custom JSON Schema output is stored under `output.<node_id>` — **exact parity with agent/prompt nodes** (no flat merge of schema fields).\n- `output_schema=\"routing\"` **is supported** on command nodes. Routing's `context_updates` merge is the mechanism that feeds flat context keys to edge conditions (`condition=\"context.kept_count > 0\"`), since condition evaluation is flat-lookup only (`condition.rs:15-58` — no dotted-path traversal).\n\n**Fixed requirements (from the roadmap):**\n- Invalid output on a zero-exit script = deterministic, non-retryable failure. No repair turn (no model), no retry (deterministic script), even if the node has `retry_policy`/`max_retries`. Failure-edge routing still works (return `Ok(failed outcome)`, don't abort the run).\n- Script crashes keep existing classification: non-zero exit → existing `fail_classify` path (no validation attempted); timeout/cancel/spawn-failure → existing retryable `Err(Error::handler(...))` paths. Validation runs **only on the exit-0 branch**.\n- `output_retries` is ignored for commands; failure message must not say \"repair attempt(s)\".\n\n**Free rides (verified, no changes needed):** `Node::output_schema()` accessor is shape-agnostic (`fabro-types/src/graph.rs:172`); `@file` inlining already covers `output_schema` on every node (`transforms/file_inlining.rs:203-213`, `static_reference.rs:90`); large `output.<node_id>` values are blob-offloaded handler-agnostically (`artifact.rs` `offload_large_values`, 100KB, via `lifecycle/artifact.rs:204`); `Event::StageCompleted` already carries `context_updates` — no new events; nothing in `fabro-validate` flags `output_schema` on parallelogram nodes; agent/prompt `simulate` never validates, so command `simulate` needs zero changes.\n\n## Implementation\n\n### 1. `lib/crates/fabro-workflow/src/handler/structured_output.rs` — one-line change\n\nRemove the `#[cfg(test)]` gate from `messages()` (lines 75-79; keep `#[must_use]`, leave `kind()` gated). Everything else (`parse_node_output_schema`, `validate_response_text`, `apply_validated_output`, `apply_routing_fields`) is reused as-is; prompt/agent behavior is untouched.\n\n### 2. `lib/crates/fabro-workflow/src/handler/command.rs` — the feature\n\n- **Imports:** add `structured_output` + `StructuredOutputError` to the `super::` import (line 9), mirroring `prompt.rs:13`.\n- **Parse schema before side effects:** right after the language check (line 77), before command assembly / `CommandStarted` emit / sandbox exec:\n  ```rust\n  let output_schema = structured_output::parse_node_output_schema(node)?;\n  ```\n  A malformed/empty/unresolved-`@` schema fails fast as `Err(Error::Validation)` — non-retryable, Deterministic, script never runs, no events emitted (same propagation prompt/agent use).\n- **Exit-0 branch (lines 167-175) restructure:** build the base success outcome first (`command.output` blob ref, notes `\"Script completed: {script}\"`, timing), then if a schema is set, validate `finalized.output_text`:\n  - `Ok(validated)` → `structured_output::apply_validated_output(node, schema, &validated, &mut outcome)`. Custom schema → whole object at `output.<node_id>`; routing → `preferred_next_label` / `suggested_next_ids` / `outcome` override / `failure_reason` / `context_updates` flat merge, exactly as for agents. Routing's `outcome:\"failed\"` override yields `Failed { retry_requested: false }` (verified via `StageOutcome` parsing) — no retries.\n  - `Err(error)` → return `Ok` of `Outcome::fail_deterministic(reason)` (`outcome.rs:69-77`) with `command.output` + timing still set (parity with the non-zero-exit failure branch; notes stay `None`). **All** `StructuredOutputError` kinds fail — commands get no `allows_routing_fallback` (that's the agent `status.json` fallback).\n- **New private helper** next to `append_output_tail` (~line 197):\n  ```rust\n  fn schema_validation_failure_reason(script: &str, error: &StructuredOutputError, output_text: &str) -> String\n  ```\n  Message: `\"Script output failed output_schema validation: {script}\"` + one `- {message}` line per validator error + `append_output_tail` (last 4KB under `## output`).\n- Timeout/cancel/spawn/non-zero branches, `simulate()`, and `node_timeout_policy` untouched. `output_retries()` never read.\n\n### 3. Unit tests — `command.rs` `#[cfg(test)]` mod\n\nReuse the existing harness (`make_services()`, `command_text()`, `SpySandbox` + `make_spy_services()`, real echo/python scripts). Schema literal from `prompt.rs:459`: `{\"type\":\"object\",\"required\":[\"passed\"],\"properties\":{\"passed\":{\"type\":\"boolean\"}}}`.\n\n1. `command_custom_output_schema_stores_output_context_key` — `echo '{\"passed\": true}'` → Succeeded; `context_updates[\"output.<id>\"]` equals the object; `command.output` still present.\n2. `command_custom_output_schema_validates_last_json_object` — log lines + earlier JSON, payload JSON last → last object wins (same extraction as agents).\n3. `command_custom_output_schema_failure_is_deterministic` — `echo '{\"passed\":\"yes\"}'` (exit 0) → `Failed { retry_requested: false }`, `FailureCategory::Deterministic`, reason has validator message + `## output` tail, no \"repair attempt\"; `command.output` + timing set.\n4. `command_routing_output_schema_no_json_object_fails` — routing schema, `echo not-json` → deterministic failure (no fallback).\n5. `command_routing_output_schema_applies_routing_fields` — `{\"preferred_next_label\":\"fix\",\"context_updates\":{\"kept_count\":2}}` → Succeeded, `preferred_label`, flat `kept_count` in `context_updates`.\n6. `command_routing_output_schema_outcome_failed_override` — `{\"outcome\":\"failed\",\"failure_reason\":\"tests failed\"}`, exit 0 → `Failed { retry_requested: false }`, `failure_reason() == \"tests failed\"`.\n7. `command_invalid_output_schema_fails_before_execution` — SpySandbox + `output_schema` of invalid JSON → `Err` containing \"Invalid output_schema\", spy captured no command (script never ran).\n8. `command_nonzero_exit_skips_schema_validation` — schema + `echo '{\"passed\":\"bad\"}'; exit 1` → reason is \"exit code: 1\", not schema validation.\n9. `command_simulate_ignores_output_schema` — simulate unchanged with schema set.\n10. `command_python_custom_output_schema` — `language=\"python\"`, `print(json.dumps(...))` parity.\n\n### 4. No-retry integration test — `lib/crates/fabro-workflow/tests/it/integration.rs`\n\n`command_schema_validation_failure_does_not_consume_retries`: graph via `make_graph_with_start_exit` (~line 1917), parallelogram node with `max_retries=2` + custom schema + script echoing invalid JSON at exit 0; `collect_events` → assert exactly **one** `CommandStarted`, final outcome `Failed { retry_requested: false }` / Deterministic.\n\n### 5. CLI black-box test — the roadmap's end-to-end claim\n\nNew fixture `lib/crates/fabro-cli/tests/it/workflow/fixtures/command_routing.fabro` (modeled on `conditional_branching.fabro` + `command_pipeline.fabro`): `classify` parallelogram with `output_schema=\"routing\"` echoing `{\"context_updates\":{\"kept_count\":2}}` → diamond gate → `kept` edge with `condition=\"context.kept_count > 0\"` vs `none` fallback. New test `workflow/command_routing.rs` (register in `workflow/mod.rs`, use `sandbox_tests!`): run validate + `run --auto-approve`, assert conclusion succeeded, `completed_nodes` contains `kept`, not `none`. This proves script → routing merge → flat context key → condition routing end to end. Beware DOT/shell quoting of the JSON (single-quote it; `fabro validate` in the test catches mistakes).\n\n### 6. Docs — `docs/public/`\n\n- `reference/dot-language.mdx`: line ~209 attr-table → \"Supported on agent, prompt, and command nodes\"; add `output_schema` row to the command-node table (~242-247); extend the structured-output section (~217-239) with a command paragraph: validates the **last JSON object** in merged stdout+stderr when the script exits 0; print the JSON last; no repair turns, no retries, no `status.json` fallback; `output_retries` does not apply; custom → `output.<node_id>` (not addressable by edge conditions), routing → routing fields + `context_updates` flat keys (addressable by conditions).\n- `agents/outputs.mdx`: extend \"agent and prompt nodes\" mentions (~lines 69, 148) to include command nodes with the same caveats. Surgical edits.\n\n## Verification\n\n1. `cargo nextest run -p fabro-workflow` — unit + integration tests above.\n2. `cargo nextest run -p fabro-cli` — black-box `command_routing` workflow test.\n3. `cargo build --workspace && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings && cargo +nightly-2026-04-14 fmt --check --all`.\n4. Manual smoke: `fabro run` a scratch workflow with a routing command feeding a condition and a custom-schema command, confirm `stage.completed` events show `context_updates` (`output.<id>` / flat keys) and a validation failure shows the Deterministic reason with the output tail.\n\n## Risks\n\n- **stderr merged after payload:** `exec 2>&1` interleaving means stray trailing `{...}` on stderr could become the \"last JSON object\" — documented (\"print the JSON last\"); acceptable, matches agent extraction semantics.\n- **Routing key collisions** (script writes `command.output` via `context_updates`): last-write-wins, same hazard class as agent routing today — accepted for parity.\n- **Behavior note for release notes:** none — purely additive; nodes without `output_schema` are byte-for-byte unchanged.\n\n## Unresolved questions\n\nNone — the two open design points (context merge shape; routing support) were decided above. Optional follow-ups, not blocking: validate-time lint that `output_schema` parses as a JSON Schema (belongs to roadmap item #2's validation sweep), and a changelog entry via the changelog skill after merge.\n"
+        },
+        "rankdir": {
+          "String": "LR"
+        }
+      }
+    },
+    "graph_source": "digraph ImplementPlan {\n    graph [goal=\"Implement and simplify\"]\n    rankdir=LR\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    toolchain         [label=\"Toolchain\", shape=parallelogram, script=\"command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1\", max_retries=0]\n    preflight_compile [label=\"Preflight Compile\", shape=parallelogram, script=\"cargo check -q --workspace 2>&1\", max_retries=0]\n    preflight_lint    [label=\"Preflight Lint\", shape=parallelogram, script=\"cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1\", max_retries=0]\n    fix_lints         [label=\"Fix Lints\", prompt=\"The preflight lint step failed. Read the build output from context and fix all clippy lint warnings.\", model=\"anthropic/claude-fable-5\", provider=\"openrouter\", reasoning_effort=\"xhigh\", max_visits=3]\n    implement         [label=\"Implement\", prompt=\"Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD.\", model=\"openai/gpt-5.6-sol\", provider=\"openrouter\", reasoning_effort=\"max\"]\n    simplify_fable    [label=\"Simplify (Claude Fable 5)\", prompt=\"@prompts/simplify.md\", model=\"anthropic/claude-fable-5\", provider=\"openrouter\", reasoning_effort=\"xhigh\"]\n    simplify_sol      [label=\"Simplify (GPT-5.6 Sol)\", prompt=\"@prompts/simplify.md\", model=\"openai/gpt-5.6-sol\", provider=\"openrouter\", reasoning_effort=\"max\"]\n    verify            [label=\"Verify\", shape=parallelogram, script=\"git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\\\"disabled\\\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1\", goal_gate=true, retry_target=\"fixup\"]\n    fixup             [label=\"Fixup\", prompt=\"The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures.\", model=\"anthropic/claude-fable-5\", provider=\"openrouter\", reasoning_effort=\"xhigh\", max_visits=3]\n\n    start -> toolchain\n    toolchain -> preflight_compile [condition=\"outcome=succeeded\"]\n    toolchain -> exit\n    preflight_compile -> preflight_lint [condition=\"outcome=succeeded\"]\n    preflight_compile -> exit\n    preflight_lint -> implement [condition=\"outcome=succeeded\"]\n    preflight_lint -> fix_lints\n    fix_lints -> preflight_lint\n    implement -> simplify_fable -> simplify_sol -> verify\n    verify -> exit  [condition=\"outcome=succeeded\"]\n    verify -> fixup\n    fixup -> verify\n}\n",
+    "workflow_slug": "implement-plan",
+    "source_directory": "/Users/bhelmkamp/p/fabro-sh/fabro",
+    "provenance": {
+      "server": {
+        "version": "0.303.0-nightly.1"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.302.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.302.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "19"
+        },
+        "login": "brynary",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/19?v=4"
+      }
+    },
+    "manifest_blob": "f4523bf19582db058891f5959cc3a12b20232c489f8fe48df88b5c74fdbd1c5c",
+    "definition_blob": "b7bede56ef77739e2515d77049d32de34f6b342a857ed46c2a18c556622f984d",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "e9a571da2e681d025d97b8b85d6e737cb005644e",
+      "dirty": "clean",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KY7WQ92JWT90307EBQY6P2HV",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-23T16:25:15.683092433Z",
+  "last_event_at": "2026-07-23T16:25:30.240994375Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-fdb28dec-1233-892c-b9d7-9f88f8353e7a",
+      "runtime": {
+        "id": "fabro-01KY7WQ92JWT90307EBQY6P2HV",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
