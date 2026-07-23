@@ -258,7 +258,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-23T13:48:47.654742466Z",
-  "last_event_at": "2026-07-23T13:49:00.644552005Z",
+  "last_event_at": "2026-07-23T13:49:06.106191330Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -490,9 +490,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 49,
       "checkpoint": {
-        "timestamp": "2026-07-23T13:49:02.421263346Z",
+        "timestamp": "2026-07-23T13:49:06.104130009Z",
         "current_node": "answer",
         "completed_nodes": [
           "start",
@@ -502,19 +502,128 @@
         ],
         "node_retries": {},
         "context_values": {
+          "thread.answer.current_node": "validator",
+          "internal.fidelity": "compact",
+          "internal.thread_id": "validator",
+          "failure_signature": "",
+          "last_response": "Hello! BANANA is the word I was instructed to include, as the validator stage feedback explicitly required it in my next answer.",
+          "last_stage": "answer",
+          "graph.goal": "Probe whether command output feedback reaches a revisited node",
+          "outcome": "succeeded",
+          "failure_class": "",
+          "internal.retry_count.validator": 0,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.run_id": "01KY7KRADZ85HPEZSD9MH49GER",
+          "response.answer": "Hello! BANANA is the word I was instructed to include, as the validator stage feedback explicitly required it in my next answer.",
+          "internal.retry_count.answer": 0,
+          "thread.start.current_node": "answer",
+          "current_node": "answer",
+          "internal.retry_count.start": 0,
+          "thread.validator.current_node": "answer",
+          "internal.node_visit_count": 2,
+          "command.output": "blob://sha256/b654ddd0aac61098ad92021c2b5b016ccaa26c83e0facdcb31ece1a71d70187a"
+        },
+        "node_outcomes": {
+          "validator": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/b654ddd0aac61098ad92021c2b5b016ccaa26c83e0facdcb31ece1a71d70187a"
+            },
+            "notes": "Script completed: for i in $(seq 1 60); do echo filler line $i; done; echo FEEDBACK: your next answer must contain the word BANANA",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1264,
+              "active_time_ms": 1264
+            }
+          },
+          "answer": {
+            "status": "succeeded",
+            "context_updates": {
+              "last_stage": "answer",
+              "response.answer": "Hello! BANANA is the word I was instructed to include, as the validator stage feedback explicitly required it in my next answer.",
+              "last_response": "Hello! BANANA is the word I was instructed to include, as the validator stage feedback explicitly required it in my next answer."
+            },
+            "notes": "Stage completed: answer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "openrouter",
+                    "model_id": "anthropic/claude-sonnet-4-6"
+                  },
+                  "tokens": {
+                    "input_tokens": 5025,
+                    "output_tokens": 30,
+                    "reasoning_tokens": 0,
+                    "cache_read_tokens": 0,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "anthropic",
+                  "cache_write_5m_tokens": 0,
+                  "cache_write_1h_tokens": 0
+                }
+              },
+              "total_usd_micros": 15525
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 1765,
+              "tool_time_ms": 0,
+              "active_time_ms": 1765
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "validator",
+        "git_commit_sha": "67ef382dafb2e7343aa5306da29cd59e6416328e",
+        "node_visits": {
+          "start": 1,
+          "validator": 1,
+          "answer": 2
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-23T13:49:07.334899011Z",
+        "current_node": "validator",
+        "completed_nodes": [
+          "start",
+          "answer",
+          "validator",
+          "answer",
+          "validator"
+        ],
+        "node_retries": {},
+        "context_values": {
           "graph.goal": "Probe whether command output feedback reaches a revisited node",
           "failure_class": "",
           "internal.node_visit_count": 2,
           "last_response": "Hello! BANANA is the word I was instructed to include, as the validator stage feedback explicitly required it in my next answer.",
           "thread.answer.current_node": "validator",
-          "internal.thread_id": "validator",
+          "internal.thread_id": "answer",
           "internal.retry_count.validator": 0,
           "thread.validator.current_node": "answer",
           "last_stage": "answer",
           "internal.retry_count.start": 0,
           "internal.work_dir": "/home/daytona/workspace/fabro",
           "failure_signature": "",
-          "current_node": "answer",
+          "current_node": "validator",
           "internal.retry_count.answer": 0,
           "internal.run_id": "01KY7KRADZ85HPEZSD9MH49GER",
           "command.output": "blob://sha256/b654ddd0aac61098ad92021c2b5b016ccaa26c83e0facdcb31ece1a71d70187a",
@@ -572,8 +681,8 @@
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 1264,
-              "active_time_ms": 1264
+              "tool_time_ms": 1225,
+              "active_time_ms": 1225
             }
           },
           "start": {
@@ -581,11 +690,11 @@
             "usage": null
           }
         },
-        "next_node_id": "validator",
+        "next_node_id": "exit",
         "node_visits": {
           "start": 1,
           "answer": 2,
-          "validator": 1
+          "validator": 2
         }
       },
       "diff": {}
@@ -617,6 +726,33 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "validator@2": {
+      "first_event_seq": 52,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "for i in $(seq 1 60); do echo filler line $i; done; echo FEEDBACK: your next answer must contain the word BANANA",
+        "command": "exec 2>&1\nfor i in $(seq 1 60); do echo filler line $i; done; echo FEEDBACK: your next answer must contain the word BANANA",
+        "language": "shell"
+      },
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-23T13:49:06.105621130Z",
+      "handler": "command",
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "state": "running"
+    },
     "answer@1": {
       "first_event_seq": 22,
       "prompt": null,
@@ -746,7 +882,12 @@
       "first_event_seq": 42,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: answer",
+        "failure_reason": null,
+        "timestamp": "2026-07-23T13:49:02.417681729Z"
+      },
       "provider_used": {
         "mode": "prompt",
         "provider": "openrouter",
@@ -759,15 +900,26 @@
       "output": null,
       "started_at": "2026-07-23T13:49:00.589103801Z",
       "handler": "prompt",
+      "timing": {
+        "wall_time_ms": 1828,
+        "inference_time_ms": 1765,
+        "tool_time_ms": 0,
+        "active_time_ms": 1765
+      },
       "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
+        "input_tokens": 5025,
+        "output_tokens": 30,
+        "total_tokens": 5055,
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
-        "cache_write_tokens": 0
+        "cache_write_tokens": 0,
+        "total_usd_micros": 15525
       },
-      "state": "running"
+      "model": {
+        "provider": "openrouter",
+        "model_id": "anthropic/claude-sonnet-4-6"
+      },
+      "state": "succeeded"
     }
   }
 }
