@@ -311,7 +311,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-23T13:48:49.404024139Z",
-  "last_event_at": "2026-07-23T13:48:51.654687185Z",
+  "last_event_at": "2026-07-23T13:49:09.175169262Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -350,9 +350,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 29,
       "checkpoint": {
-        "timestamp": "2026-07-23T13:48:53.509472435Z",
+        "timestamp": "2026-07-23T13:48:59.410308576Z",
         "current_node": "seed",
         "completed_nodes": [
           "start",
@@ -360,23 +360,23 @@
         ],
         "node_retries": {},
         "context_values": {
-          "failure_signature": "",
-          "graph.goal": "Probe which context values reach parallel branch nodes (fork-level truncate)",
-          "last_stage": "seed",
-          "internal.thread_id": "start",
-          "current_node": "seed",
-          "last_response": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
-          "internal.node_visit_count": 1,
-          "secret_marker": "XYZZY123",
           "failure_class": "",
-          "response.seed": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
-          "internal.fidelity": "compact",
-          "internal.retry_count.start": 0,
-          "internal.work_dir": "/home/daytona/workspace/fabro",
-          "internal.retry_count.seed": 0,
-          "thread.start.current_node": "seed",
+          "outcome": "succeeded",
           "internal.run_id": "01KY7KRAAWF45QQTPR8W2SVMR6",
-          "outcome": "succeeded"
+          "secret_marker": "XYZZY123",
+          "graph.goal": "Probe which context values reach parallel branch nodes (fork-level truncate)",
+          "thread.start.current_node": "seed",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.node_visit_count": 1,
+          "last_stage": "seed",
+          "response.seed": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
+          "current_node": "seed",
+          "internal.thread_id": "start",
+          "failure_signature": "",
+          "last_response": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
+          "internal.retry_count.seed": 0,
+          "internal.retry_count.start": 0
         },
         "node_outcomes": {
           "start": {
@@ -424,9 +424,121 @@
           }
         },
         "next_node_id": "fork",
+        "git_commit_sha": "e9f739ce90d935093a5d397844d6eec0a0ecd53e",
         "node_visits": {
           "start": 1,
           "seed": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-23T13:49:09.259517653Z",
+        "current_node": "fork",
+        "completed_nodes": [
+          "start",
+          "seed",
+          "fork"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "parallel.results": [
+            {
+              "id": "branch_a",
+              "status": "succeeded",
+              "head_sha": "5d9498fc81513f4341e4732632760edf9216b8a0"
+            },
+            {
+              "id": "branch_b",
+              "status": "succeeded",
+              "head_sha": "090c8727619ed039bf620378655d44d7267226ce"
+            }
+          ],
+          "failure_signature": "",
+          "parallel.branch_count": 2,
+          "graph.goal": "Probe which context values reach parallel branch nodes (fork-level truncate)",
+          "last_stage": "seed",
+          "thread.seed.current_node": "fork",
+          "internal.thread_id": "seed",
+          "current_node": "fork",
+          "last_response": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
+          "internal.node_visit_count": 1,
+          "secret_marker": "XYZZY123",
+          "internal.retry_count.fork": 0,
+          "failure_class": "",
+          "response.seed": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
+          "internal.fidelity": "truncate",
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "internal.retry_count.seed": 0,
+          "thread.start.current_node": "seed",
+          "internal.run_id": "01KY7KRAAWF45QQTPR8W2SVMR6",
+          "outcome": "succeeded"
+        },
+        "node_outcomes": {
+          "seed": {
+            "status": "succeeded",
+            "context_updates": {
+              "last_stage": "seed",
+              "last_response": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
+              "response.seed": "{\"context_updates\": {\"secret_marker\": \"XYZZY123\"}}",
+              "secret_marker": "XYZZY123"
+            },
+            "notes": "Stage completed: seed",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "openrouter",
+                    "model_id": "anthropic/claude-sonnet-4-6"
+                  },
+                  "tokens": {
+                    "input_tokens": 4706,
+                    "output_tokens": 21,
+                    "reasoning_tokens": 0,
+                    "cache_read_tokens": 0,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "anthropic",
+                  "cache_write_5m_tokens": 0,
+                  "cache_write_1h_tokens": 0
+                }
+              },
+              "total_usd_micros": 14433
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 1847,
+              "tool_time_ms": 0,
+              "active_time_ms": 1847
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "fork": {
+            "status": "succeeded",
+            "jump_to_node": "merge",
+            "notes": "Parallel node dispatched 2 branches (2 succeeded, 0 failed)",
+            "usage": null
+          }
+        },
+        "next_node_id": "merge",
+        "node_visits": {
+          "start": 1,
+          "seed": 1,
+          "fork": 1
         }
       },
       "diff": {}
@@ -492,8 +604,8 @@
       },
       "state": "succeeded"
     },
-    "seed@1": {
-      "first_event_seq": 22,
+    "fork@1": {
+      "first_event_seq": 32,
       "prompt": null,
       "response": null,
       "completion": null,
@@ -507,17 +619,65 @@
       "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-07-23T13:48:51.178131560Z",
-      "handler": "prompt",
+      "started_at": "2026-07-23T13:48:59.410615040Z",
+      "handler": "parallel",
       "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
+        "input_tokens": 4761,
+        "output_tokens": 148,
+        "total_tokens": 4909,
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
-        "cache_write_tokens": 0
+        "cache_write_tokens": 0,
+        "total_usd_micros": 16503
+      },
+      "model": {
+        "provider": "openrouter",
+        "model_id": "anthropic/claude-sonnet-4-6"
       },
       "state": "running"
+    },
+    "seed@1": {
+      "first_event_seq": 22,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: seed",
+        "failure_reason": null,
+        "timestamp": "2026-07-23T13:48:53.509270284Z"
+      },
+      "provider_used": {
+        "mode": "prompt",
+        "provider": "openrouter",
+        "model": "anthropic/claude-sonnet-4-6"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-23T13:48:51.178131560Z",
+      "handler": "prompt",
+      "timing": {
+        "wall_time_ms": 2331,
+        "inference_time_ms": 1847,
+        "tool_time_ms": 0,
+        "active_time_ms": 1847
+      },
+      "usage": {
+        "input_tokens": 4706,
+        "output_tokens": 21,
+        "total_tokens": 4727,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 14433
+      },
+      "model": {
+        "provider": "openrouter",
+        "model_id": "anthropic/claude-sonnet-4-6"
+      },
+      "state": "succeeded"
     }
   }
 }
