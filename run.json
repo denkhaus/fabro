@@ -478,7 +478,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-23T16:57:08.135544912Z",
-  "last_event_at": "2026-07-23T16:59:35.720796555Z",
+  "last_event_at": "2026-07-23T18:52:38.668489287Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -660,15 +660,114 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 48,
       "checkpoint": {
-        "timestamp": "2026-07-23T17:02:21.006573238Z",
+        "timestamp": "2026-07-23T17:02:24.689422139Z",
         "current_node": "preflight_lint",
         "completed_nodes": [
           "start",
           "toolchain",
           "preflight_compile",
           "preflight_lint"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_signature": "",
+          "internal.thread_id": "preflight_compile",
+          "thread.start.current_node": "toolchain",
+          "internal.run_id": "01KY7YH7RYCJ1BDVTTP96ZA4HV",
+          "failure_class": "",
+          "current_node": "preflight_lint",
+          "internal.retry_count.preflight_lint": 0,
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "thread.preflight_compile.current_node": "preflight_lint",
+          "internal.fidelity": "compact",
+          "internal.retry_count.preflight_compile": 0,
+          "internal.retry_count.toolchain": 0,
+          "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+          "graph.goal": "<proposed_plan>\n# Shared-Checkout Parallel Execution\n\n## Summary\n\nSimplify parallel execution so every branch:\n\n- Receives an isolated context fork.\n- Executes concurrently against the same sandbox and Git checkout.\n- Creates no Git branch, worktree, checkpoint, or branch commit.\n- Always waits for every branch; remove `first_success` and `join_policy`.\n- Produces a collision-free result containing its context updates.\n\nFan-in remains an explicit join node. Without a prompt it is a no-op barrier; with a prompt it behaves like a standard prompt stage that reduces the aggregated results without selecting a branch.\n\n## Implementation Changes\n\n### Parallel execution\n\n- Remove all parallel-specific Git setup, checkpointing, committing, cleanup, and fast-forwarding.\n- Give each branch the same `Arc<dyn Sandbox>` and inherited `internal.work_dir`.\n- Retain `max_parallel`, branch-scoped contexts, IDs, hooks, and lifecycle events.\n- Preserve outgoing-edge order in the final results regardless of completion order.\n- Define the parallel outcome as:\n  - `succeeded` when every branch succeeds.\n  - `failed` when every branch fails.\n  - `partially_succeeded` for every mixed or partial result.\n- Preserve branch ID/index when handler or task execution fails.\n- Keep the current single-node-per-branch topology.\n\n### Results and fan-in\n\nIntroduce a shared typed result:\n\n```rust\nParallelBranchResult {\n    id: String,\n    status: String,\n    context_updates: BTreeMap<String, serde_json::Value>,\n}\n```\n\n- Store the ordered array in `parallel.results` and keep `parallel.branch_count`.\n- Include updates from successful and failed branches; never merge them into the parent context at top level.\n- Offload large leaf values using existing artifact storage while keeping `parallel.results` itself a structured array.\n- Resolve nested textual `response.*` and `command.output` blob references when building downstream prompt context.\n- Emit the same typed results through `parallel.completed` and project them into `StageProjection.parallel_results`.\n- A promptless fan-in verifies results exist and succeeds with a joined-branches note.\n- A prompted fan-in uses standard prompt execution and records `response.<fan_in_id>`, `last_response`, usage, and prompt events. It performs no ranking or selection.\n\nRemove:\n\n- Heuristic and LLM branch-selection code.\n- `parallel.fan_in.best_id`, `best_outcome`, and `best_head_sha`.\n- Per-result `head_sha` and `score`.\n- The special fan-in model-usage mode.\n- Fan-in selected-branch notes and UI.\n\n### Delete obsolete Git/worktree infrastructure\n\n- Delete the parallel-only `WorktreeSandbox`, its options/callbacks, exports, tests, and sandbox trait path helpers.\n- Remove `EngineServices`’ parallel-only `GitState` and pipeline wiring.\n- Remove now-unused branch/worktree/fast-forward Git helpers and parallel ref sanitization.\n- Remove the parallel-base-checkpoint notice code.\n- Remove the now-unemitted `git.branch`, `git.worktree.added`, and `git.worktree.removed` event variants and property types.\n- Leave the server’s independent Git checkout/worktree implementation unchanged.\n- Continue normal run-level checkpointing after the parallel node; any shared workspace changes are captured together.\n\n## Public Interfaces and Documentation\n\n- Remove `join_policy` from DOT documentation, examples, fixtures, events, and UI.\n- Add a validation error directing users to remove any `join_policy` attribute.\n- Update `parallel.started` to contain only visit and branch count.\n- Update `parallel.branch.completed` to remove `head_sha`.\n- Define `ParallelBranchResult` in OpenAPI and change `StageProjection.parallel_results` from untyped objects to that typed array; regenerate Rust and TypeScript clients.\n- Update the parallel UI to show branch status and links without commit SHAs or a join-policy badge.\n- Replace the fan-in trophy/selection UI with joined-state information and the optional standard reducer transcript.\n- Rewrite the active parallel strategy and public docs around shared-checkout concurrency:\n  - Read-only behavior is best effort.\n  - Concurrent writes are allowed but entirely user-managed.\n  - Fabro performs no write enforcement, detection, or warnings.\n  - Results are available through `parallel.results`, not a workspace `parallel_results.json`.\n  - A fan-in prompt synthesizes results but never selects workspace state.\n- Remove `join_policy` from all checked-in tutorial/demo workflows and generated documentation fixtures.\n\n## Test Plan\n\n- Unit-test that every branch receives the same sandbox working directory while retaining independent contexts.\n- Verify deterministic result ordering and complete per-branch context updates, including failed branches and structured/command outputs.\n- Cover all-success, mixed, partial, all-failed, zero-branch, `max_parallel`, dry-run, and run-cancellation behavior.\n- In a temporary Git repository, run parallel branches that write distinct files and assert:\n  - Both files remain in the shared checkout.\n  - No `fabro/run/parallel/*` refs exist.\n  - No parallel worktrees, branch commits, worktree events, or fast-forward commands occur.\n- Test promptless fan-in as a no-op join and prompted fan-in as a standard reducer that sees every branch result and emits a normal response.\n- Update event serialization, store projection, API round-trip, web parser, and renderer tests for the new typed payloads and removed fields.\n- Remove the obsolete host and Daytona parallel-Git-selection tests; retain provider-independent shared-sandbox coverage.\n- Verify with:\n  - `cargo build -p fabro-api`\n  - `cd lib/packages/fabro-api-client && bun run generate && bun run typecheck`\n  - `cargo build --workspace`\n  - `ulimit -n 4096 && cargo nextest run --workspace`\n  - `cargo +nightly-2026-04-14 fmt --check --all`\n  - `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n  - `cd apps/fabro-web && bun test && bun run typecheck && bun run build`\n  - `cargo --locked dev docs check`\n\n## Assumptions and Unresolved Questions\n\n- The application is greenfield; removed fields, events, and attributes receive no compatibility layer.\n- Parallel branches remain single-node executions.\n- `max_parallel` remains supported.\n- Shared-workspace write races are explicitly the user’s responsibility.\n- No Git workspace warning or read-only enforcement will be added.\n- Unresolved questions: none.\n</proposed_plan>\n",
+          "thread.toolchain.current_node": "preflight_compile",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "graph.rankdir": "LR",
+          "internal.node_visit_count": 1
+        },
+        "node_outcomes": {
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1285,
+              "active_time_ms": 1285
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "preflight_compile": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo check -q --workspace 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 137028,
+              "active_time_ms": 137028
+            }
+          },
+          "preflight_lint": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 165282,
+              "active_time_ms": 165282
+            }
+          }
+        },
+        "next_node_id": "implement",
+        "git_commit_sha": "845a62f0df8fa7e77959f6bbee680f3b1c199b25",
+        "node_visits": {
+          "preflight_compile": 1,
+          "preflight_lint": 1,
+          "start": 1,
+          "toolchain": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-23T18:52:38.734431986Z",
+        "current_node": "implement",
+        "completed_nodes": [
+          "start",
+          "toolchain",
+          "preflight_compile",
+          "preflight_lint",
+          "implement"
         ],
         "node_retries": {},
         "context_values": {
@@ -680,14 +779,19 @@
           "internal.fidelity": "compact",
           "internal.work_dir": "/home/daytona/workspace/fabro",
           "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
-          "internal.thread_id": "preflight_compile",
+          "internal.thread_id": "preflight_lint",
           "failure_signature": "",
+          "internal.retry_count.implement": 0,
           "internal.node_visit_count": 1,
+          "last_stage": "implement",
           "internal.retry_count.toolchain": 0,
           "thread.toolchain.current_node": "preflight_compile",
+          "thread.preflight_lint.current_node": "implement",
+          "last_response": "Workflow complete. All required implementation and verification steps passed; no blockers remain.",
           "internal.retry_count.preflight_compile": 0,
+          "response.implement": "Workflow complete. All required implementation and verification steps passed; no blockers remain.",
           "thread.start.current_node": "toolchain",
-          "current_node": "preflight_lint",
+          "current_node": "implement",
           "outcome": "succeeded",
           "graph.goal": "<proposed_plan>\n# Shared-Checkout Parallel Execution\n\n## Summary\n\nSimplify parallel execution so every branch:\n\n- Receives an isolated context fork.\n- Executes concurrently against the same sandbox and Git checkout.\n- Creates no Git branch, worktree, checkpoint, or branch commit.\n- Always waits for every branch; remove `first_success` and `join_policy`.\n- Produces a collision-free result containing its context updates.\n\nFan-in remains an explicit join node. Without a prompt it is a no-op barrier; with a prompt it behaves like a standard prompt stage that reduces the aggregated results without selecting a branch.\n\n## Implementation Changes\n\n### Parallel execution\n\n- Remove all parallel-specific Git setup, checkpointing, committing, cleanup, and fast-forwarding.\n- Give each branch the same `Arc<dyn Sandbox>` and inherited `internal.work_dir`.\n- Retain `max_parallel`, branch-scoped contexts, IDs, hooks, and lifecycle events.\n- Preserve outgoing-edge order in the final results regardless of completion order.\n- Define the parallel outcome as:\n  - `succeeded` when every branch succeeds.\n  - `failed` when every branch fails.\n  - `partially_succeeded` for every mixed or partial result.\n- Preserve branch ID/index when handler or task execution fails.\n- Keep the current single-node-per-branch topology.\n\n### Results and fan-in\n\nIntroduce a shared typed result:\n\n```rust\nParallelBranchResult {\n    id: String,\n    status: String,\n    context_updates: BTreeMap<String, serde_json::Value>,\n}\n```\n\n- Store the ordered array in `parallel.results` and keep `parallel.branch_count`.\n- Include updates from successful and failed branches; never merge them into the parent context at top level.\n- Offload large leaf values using existing artifact storage while keeping `parallel.results` itself a structured array.\n- Resolve nested textual `response.*` and `command.output` blob references when building downstream prompt context.\n- Emit the same typed results through `parallel.completed` and project them into `StageProjection.parallel_results`.\n- A promptless fan-in verifies results exist and succeeds with a joined-branches note.\n- A prompted fan-in uses standard prompt execution and records `response.<fan_in_id>`, `last_response`, usage, and prompt events. It performs no ranking or selection.\n\nRemove:\n\n- Heuristic and LLM branch-selection code.\n- `parallel.fan_in.best_id`, `best_outcome`, and `best_head_sha`.\n- Per-result `head_sha` and `score`.\n- The special fan-in model-usage mode.\n- Fan-in selected-branch notes and UI.\n\n### Delete obsolete Git/worktree infrastructure\n\n- Delete the parallel-only `WorktreeSandbox`, its options/callbacks, exports, tests, and sandbox trait path helpers.\n- Remove `EngineServices`’ parallel-only `GitState` and pipeline wiring.\n- Remove now-unused branch/worktree/fast-forward Git helpers and parallel ref sanitization.\n- Remove the parallel-base-checkpoint notice code.\n- Remove the now-unemitted `git.branch`, `git.worktree.added`, and `git.worktree.removed` event variants and property types.\n- Leave the server’s independent Git checkout/worktree implementation unchanged.\n- Continue normal run-level checkpointing after the parallel node; any shared workspace changes are captured together.\n\n## Public Interfaces and Documentation\n\n- Remove `join_policy` from DOT documentation, examples, fixtures, events, and UI.\n- Add a validation error directing users to remove any `join_policy` attribute.\n- Update `parallel.started` to contain only visit and branch count.\n- Update `parallel.branch.completed` to remove `head_sha`.\n- Define `ParallelBranchResult` in OpenAPI and change `StageProjection.parallel_results` from untyped objects to that typed array; regenerate Rust and TypeScript clients.\n- Update the parallel UI to show branch status and links without commit SHAs or a join-policy badge.\n- Replace the fan-in trophy/selection UI with joined-state information and the optional standard reducer transcript.\n- Rewrite the active parallel strategy and public docs around shared-checkout concurrency:\n  - Read-only behavior is best effort.\n  - Concurrent writes are allowed but entirely user-managed.\n  - Fabro performs no write enforcement, detection, or warnings.\n  - Results are available through `parallel.results`, not a workspace `parallel_results.json`.\n  - A fan-in prompt synthesizes results but never selects workspace state.\n- Remove `join_policy` from all checked-in tutorial/demo workflows and generated documentation fixtures.\n\n## Test Plan\n\n- Unit-test that every branch receives the same sandbox working directory while retaining independent contexts.\n- Verify deterministic result ordering and complete per-branch context updates, including failed branches and structured/command outputs.\n- Cover all-success, mixed, partial, all-failed, zero-branch, `max_parallel`, dry-run, and run-cancellation behavior.\n- In a temporary Git repository, run parallel branches that write distinct files and assert:\n  - Both files remain in the shared checkout.\n  - No `fabro/run/parallel/*` refs exist.\n  - No parallel worktrees, branch commits, worktree events, or fast-forward commands occur.\n- Test promptless fan-in as a no-op join and prompted fan-in as a standard reducer that sees every branch result and emits a normal response.\n- Update event serialization, store projection, API round-trip, web parser, and renderer tests for the new typed payloads and removed fields.\n- Remove the obsolete host and Daytona parallel-Git-selection tests; retain provider-independent shared-sandbox coverage.\n- Verify with:\n  - `cargo build -p fabro-api`\n  - `cd lib/packages/fabro-api-client && bun run generate && bun run typecheck`\n  - `cargo build --workspace`\n  - `ulimit -n 4096 && cargo nextest run --workspace`\n  - `cargo +nightly-2026-04-14 fmt --check --all`\n  - `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n  - `cd apps/fabro-web && bun test && bun run typecheck && bun run build`\n  - `cargo --locked dev docs check`\n\n## Assumptions and Unresolved Questions\n\n- The application is greenfield; removed fields, events, and attributes receive no compatibility layer.\n- Parallel branches remain single-node executions.\n- `max_parallel` remains supported.\n- Shared-workspace write races are explicitly the user’s responsibility.\n- No Git workspace warning or read-only enforcement will be added.\n- Unresolved questions: none.\n</proposed_plan>\n",
           "graph.rankdir": "LR"
@@ -738,13 +842,114 @@
               "tool_time_ms": 137028,
               "active_time_ms": 137028
             }
+          },
+          "implement": {
+            "status": "succeeded",
+            "context_updates": {
+              "last_stage": "implement",
+              "last_response": "Workflow complete. All required implementation and verification steps passed; no blockers remain.",
+              "response.implement": "Workflow complete. All required implementation and verification steps passed; no blockers remain."
+            },
+            "notes": "Stage completed: implement",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "openrouter",
+                    "model_id": "openai/gpt-5.6-sol"
+                  },
+                  "tokens": {
+                    "input_tokens": 45285,
+                    "output_tokens": 68995,
+                    "reasoning_tokens": 66511,
+                    "cache_read_tokens": 38872288,
+                    "cache_write_tokens": 1561893
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              }
+            },
+            "files_touched": [
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/fan-in-results.test.tsx",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/fan-in-results.tsx",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/helpers.test.ts",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/helpers.ts",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/parallel-children.test.tsx",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/parallel-children.tsx",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/routes/run-stages.tsx",
+              "/home/daytona/workspace/fabro/docs/internal/events.md",
+              "/home/daytona/workspace/fabro/docs/internal/parallel-strategy.md",
+              "/home/daytona/workspace/fabro/docs/public/api-reference/fabro-api.yaml",
+              "/home/daytona/workspace/fabro/docs/public/examples/clone-substack.mdx",
+              "/home/daytona/workspace/fabro/docs/public/execution/context.mdx",
+              "/home/daytona/workspace/fabro/docs/public/execution/outcomes.mdx",
+              "/home/daytona/workspace/fabro/docs/public/reference/dot-language.mdx",
+              "/home/daytona/workspace/fabro/docs/public/tutorials/ensemble.mdx",
+              "/home/daytona/workspace/fabro/docs/public/tutorials/parallel-review.mdx",
+              "/home/daytona/workspace/fabro/docs/public/workflows/stages-and-nodes.mdx",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-agent/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-agent/src/sandbox.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-api/build.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-api/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-api/tests/run_event_round_trip.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-api/tests/stage_projection_round_trip.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-cli/src/commands/run/run_progress/mod.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-cli/tests/it/workflow/dry_run_examples.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-dump/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-sandbox/src/daytona/mod.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-sandbox/src/docker.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-sandbox/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-sandbox/src/sandbox.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-store/src/run_state.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-store/tests/serializable_projection.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/parallel.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/run_event/infra.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/run_event/misc.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/run_event/mod.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/run_projection.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-validate/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-validate/src/rules/inert_attribute.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-validate/src/rules/join_policy_removed.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-validate/src/rules/mod.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/README.md",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/artifact.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/context.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event/convert.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event/emitter.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event/events.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event/names.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/git.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/handler/fan_in.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/handler/manager_loop.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/handler/parallel.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/pipeline/execute.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/pipeline/initialize.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/sandbox_git.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/services.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/test_support.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/tests/it/daytona_integration.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/tests/it/git_integration.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/tests/it/integration.rs",
+              "/home/daytona/workspace/fabro/test/attractor/reference_template.dot",
+              "/home/daytona/workspace/fabro/test/docs/examples/clone-substack/clone-substack.fabro"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 3405782,
+              "tool_time_ms": 2880638,
+              "active_time_ms": 6286420
+            }
           }
         },
-        "next_node_id": "implement",
+        "next_node_id": "simplify_fable",
         "node_visits": {
           "toolchain": 1,
           "preflight_compile": 1,
           "preflight_lint": 1,
+          "implement": 1,
           "start": 1
         }
       },
@@ -781,7 +986,12 @@
       "first_event_seq": 41,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
+        "failure_reason": null,
+        "timestamp": "2026-07-23T17:02:21.005635430Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
@@ -789,11 +999,27 @@
         "command": "exec 2>&1\ncargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
         "language": "shell"
       },
-      "script_timing": null,
+      "script_timing": {
+        "output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+        "exit_code": 0,
+        "duration_ms": 165282,
+        "termination": "exited",
+        "output_bytes": 0,
+        "live_streaming": false
+      },
       "parallel_results": null,
       "output": null,
+      "output_bytes": 0,
+      "live_streaming": false,
+      "termination": "exited",
       "started_at": "2026-07-23T16:59:35.720472898Z",
       "handler": "command",
+      "timing": {
+        "wall_time_ms": 165285,
+        "inference_time_ms": 0,
+        "tool_time_ms": 165282,
+        "active_time_ms": 165282
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -802,7 +1028,7 @@
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
       },
-      "state": "running"
+      "state": "succeeded"
     },
     "start@1": {
       "first_event_seq": 17,
@@ -885,6 +1111,433 @@
         "cache_write_tokens": 0
       },
       "state": "succeeded"
+    },
+    "implement@1": {
+      "first_event_seq": 51,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "agent",
+        "provider": "openrouter",
+        "model": "openai/gpt-5.6-sol",
+        "reasoning_effort": "xhigh"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-07-23T17:02:24.691854522Z",
+      "handler": "agent",
+      "usage": {
+        "input_tokens": 99254,
+        "output_tokens": 130279,
+        "total_tokens": 56962341,
+        "reasoning_tokens": 138307,
+        "cache_read_tokens": 54025781,
+        "cache_write_tokens": 2568720
+      },
+      "model": {
+        "provider": "openrouter",
+        "model_id": "openai/gpt-5.6-sol"
+      },
+      "todos": {
+        "kind": "openai_plan",
+        "list_id": "openai_plan:ba973de5-1a21-42d7-8cdc-8c953413730f",
+        "items": [
+          {
+            "id": "48935df2b36b543b",
+            "status": "completed",
+            "order": 0,
+            "subject": "Review the current diff and generated client changes for accidental or unrelated edits"
+          },
+          {
+            "id": "4e5585aa9f89534f",
+            "status": "completed",
+            "order": 1,
+            "subject": "Audit active source, tests, workflows, UI, API, and docs for obsolete parallel-selection and Git/worktree behavior"
+          },
+          {
+            "id": "ac600156ad6b7f73",
+            "status": "completed",
+            "order": 2,
+            "subject": "Add or repair any missing shared-checkout parallel behavior tests and implementation details"
+          },
+          {
+            "id": "091b5a30897a0306",
+            "status": "in_progress",
+            "order": 3,
+            "subject": "Run the full required Rust, TypeScript, web, formatting, lint, and docs verification matrix"
+          },
+          {
+            "id": "6153ff39f593de79",
+            "status": "pending",
+            "order": 4,
+            "subject": "Fix verification failures and report the completed implementation"
+          }
+        ]
+      },
+      "subagents": [
+        {
+          "agent_id": "2314301c",
+          "depth": 1,
+          "task": "Map the Rust core implementation for parallel execution and fan-in in this repository. Identify exact files/types/functions/tests for join_policy/first_success, WorktreeSandbox, GitState/services, branch execution/results/outcomes/context/offloading/prompt context. Do not edit files. Return a concise dependency-aware change map and suggested focused TDD tests.",
+          "status": {
+            "kind": "running"
+          }
+        },
+        {
+          "agent_id": "1abfa0cb",
+          "depth": 1,
+          "task": "Map event types, fabro-types store projections, OpenAPI/generated Rust/TypeScript API types, and serialization tests related to parallel.started, parallel.branch.completed, parallel.completed, Git branch/worktree events, StageProjection.parallel_results. Also identify generation commands/files. Do not edit files. Return exact paths and dependencies.",
+          "status": {
+            "kind": "running"
+          }
+        },
+        {
+          "agent_id": "adaa69cd",
+          "depth": 1,
+          "task": "Map fabro-web UI/parser/tests and all checked-in docs/examples/fixtures/workflows related to parallel join_policy, fan-in branch selection/trophy/commit SHA, parallel strategy/docs, and parallel_results.json. Do not edit files. Return exact files and intended updates/removals.",
+          "status": {
+            "kind": "running"
+          }
+        },
+        {
+          "agent_id": "d109356f",
+          "depth": 1,
+          "task": "Implement the event/public type/OpenAPI/API client portion of the Shared-Checkout Parallel Execution plan in your isolated worktree. Use red/green TDD. Scope: add shared fabro-types::ParallelBranchResult exactly {id:String,status:String,context_updates:BTreeMap<String,serde_json::Value>}; update workflow/public run event parallel.started (visit + branch_count only), parallel.branch.completed remove head_sha, parallel.completed typed ordered results; StageProjection.parallel_results typed Vec<ParallelBranchResult>; update event conversions/projection/API tests; update docs/public/api-reference/fabro-api.yaml schema and generated Rust identity/replacement if needed; regenerate TypeScript client with bun generate and typecheck if feasible. Remove obsolete public git.branch/git.worktree.added/git.worktree.removed variants/property structs if no consumers, but do not touch core workflow handlers, UI, or docs other than OpenAPI. Follow AGENTS/CLAUDE and rust skill conventions. Report exact changes/tests and any blockers.",
+          "status": {
+            "kind": "completed",
+            "success": true,
+            "turns_used": 81
+          }
+        },
+        {
+          "agent_id": "81a1ba5d",
+          "depth": 1,
+          "task": "Implement web UI and web tests for Shared-Checkout Parallel Execution in your isolated worktree using red/green TDD. Scope apps/fabro-web only. Update generated-client consumers as needed but do not regenerate client. Parallel UI: branch status and links only, no commit SHA or join-policy badge; replace fan-in trophy/selected-branch UI with joined state and optional standard reducer transcript; update parser/renderer tests. Remove all join_policy/head_sha/best selection assumptions under apps/fabro-web. Follow local AGENTS and React effects policy if relevant. Run bun test/typecheck/build. Report exact changes/tests/blockers.",
+          "status": {
+            "kind": "completed",
+            "success": true,
+            "turns_used": 81
+          }
+        },
+        {
+          "agent_id": "e5f61160",
+          "depth": 1,
+          "task": "Implement docs/examples/fixtures and validation portion of Shared-Checkout Parallel Execution in isolated worktree, red/green TDD for validation. Scope: lib/crates/fabro-validate, public/internal docs, checked-in tutorial/demo workflow files and generated documentation fixtures; do not touch workflow handler implementation, types/events/OpenAPI/UI. Add an error diagnostic explicitly directing users to remove any join_policy attribute (on any node); remove join_policy from active docs/examples/fixtures. Rewrite active parallel strategy/public docs around shared checkout concurrency: same workspace, user-managed races, no enforcement/detection/warnings, results at parallel.results not file, fan-in prompt synthesizes and never selects workspace state. Locate and update all relevant checked-in occurrences, but avoid historical changelog if truly historical unless active docs check requires. Run focused tests and cargo --locked dev docs check if feasible. Report changes/tests and remaining occurrences with reasons.",
+          "status": {
+            "kind": "completed",
+            "success": true,
+            "turns_used": 81
+          }
+        },
+        {
+          "agent_id": "fba9e681",
+          "depth": 1,
+          "task": "Implement deletion of parallel-only worktree/Git/event infrastructure for Shared-Checkout plan in current shared workspace. Scope lib/crates/fabro-sandbox, fabro-agent exports, fabro-workflow event internal variants/emitter/conversion/names, obsolete sandbox Git helpers/tests and trait parallel_worktree_path provider overrides. Delete WorktreeSandbox/WorktreeOptions/WorktreeEvent/callback module and exports/tests; remove git.branch/git.worktree.added/git.worktree.removed workflow/public event variants/property structs and all exhaustive match/test fixtures; remove ParallelBaseCheckpointFailed notice. Do NOT touch server independent checkout/worktree code. Coordinate with current edits; don't overwrite parallel.rs/fan_in.rs/core. Run cargo check focused. Report changed files/blockers.",
+          "status": {
+            "kind": "completed",
+            "success": true,
+            "turns_used": 81
+          }
+        },
+        {
+          "agent_id": "2d81e026",
+          "depth": 1,
+          "task": "Audit active public/internal documentation, checked-in workflow/demo fixtures, and web code/tests for the Shared-Checkout Parallel Execution plan. Do not edit files. Exclude historical brainstorm/ideation/plan archives unless clearly active. Report exact remaining obsolete references to join_policy/first_success, parallel Git refs/worktrees/commits/SHAs, fan-in ranking/selection/trophy/score/special usage, workspace parallel_results.json, or docs contradicting shared-checkout behavior. Also inspect current web tests/types for likely failures after TypeScript regeneration.",
+          "status": {
+            "kind": "completed",
+            "success": true,
+            "turns_used": 9
+          }
+        },
+        {
+          "agent_id": "dd4aa641",
+          "depth": 1,
+          "task": "Audit Rust source and tests for the Shared-Checkout Parallel Execution plan. Do not edit files. Identify stale obsolete code/tests and missing behavior coverage, especially old host/Daytona Git-selection tests, ParallelHandler cancellation/event/result ordering/context/sandbox identity/max_parallel/dry-run/zero branches, fan-in semantics, typed API/projection/dump fixtures. Report exact file locations and prioritized actionable findings. Avoid commands that print git remote URLs.",
+          "status": {
+            "kind": "completed",
+            "success": true,
+            "turns_used": 11
+          }
+        },
+        {
+          "agent_id": "07550cd3",
+          "depth": 1,
+          "task": "Audit only the current shared-checkout parallel implementation and Rust tests against the user's full plan. Focus on lib/crates/fabro-workflow/src/handler/parallel.rs, fan_in.rs, artifact.rs, events/projections, and integration tests. Do not edit files or run broad workspace tests. Report concrete missing behaviors/tests, correctness risks, and exact file/line locations. Ignore historical docs. Never inspect git remotes.",
+          "status": {
+            "kind": "completed",
+            "success": true,
+            "turns_used": 17
+          }
+        },
+        {
+          "agent_id": "62a49b96",
+          "depth": 1,
+          "task": "Audit active web/public docs/API fixtures against the shared-checkout parallel plan. Do not edit. Exclude docs/plans, docs/superpowers, historical ideation, and validator tests that intentionally mention removed join_policy. Find stale fan-in ranking/selection/SHA/join-policy UI, stale generated/client assumptions, and active docs/examples/fixtures. Report exact files/lines and recommended fixes. Do not run broad tests.",
+          "status": {
+            "kind": "completed",
+            "success": true,
+            "turns_used": 17
+          }
+        }
+      ],
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": [
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          },
+          {
+            "name": "rust-style-guide",
+            "source": "tool"
+          }
+        ]
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by file names using a glob pattern. Use path to choose the search root. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a running subagent when new information or corrected instructions are needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute shell commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": true
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": true
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "web_search",
+          "description": "Search the web using Brave Search when current external information is needed. Returns result titles, URLs, and descriptions; use web_fetch for a specific URL.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        }
+      ],
+      "context_window": {
+        "provider": "openrouter",
+        "model": "openai/gpt-5.6-sol",
+        "context_window_tokens": 200000,
+        "input_tokens": 41656,
+        "usage_percent": 20.828,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-07-23T18:52:38.668430524Z",
+        "event_seq": 3534,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1154,
+            "usage_percent": 0.577
+          },
+          {
+            "category": "tools",
+            "tokens": 1706,
+            "usage_percent": 0.853
+          },
+          {
+            "category": "skills",
+            "tokens": 228,
+            "usage_percent": 0.114
+          },
+          {
+            "category": "memory",
+            "tokens": 4194,
+            "usage_percent": 2.097
+          },
+          {
+            "category": "conversation",
+            "tokens": 34365,
+            "usage_percent": 17.1825
+          },
+          {
+            "category": "other",
+            "tokens": 9,
+            "usage_percent": 0.0045
+          }
+        ],
+        "warnings": [
+          {
+            "code": "activated_skill_context_counted_as_conversation",
+            "message": "Activated skill instructions are counted as conversation in this version."
+          }
+        ]
+      },
+      "state": "running"
     },
     "toolchain@1": {
       "first_event_seq": 21,
