@@ -9,6 +9,43 @@ No single model is best at everything. Fabro lets you assign the right model to 
   <img src="/images/ensemble-workflow.svg" alt="Ensemble workflow: fan out to Opus and Gemini Pro, merge, then synthesize" />
 </Frame>
 
+## How model selection works
+
+Fabro separates the name a workflow uses from the value a provider expects on
+the wire:
+
+| Term | Meaning |
+|---|---|
+| **Provider ID** | Who serves the request, such as `openai` or `openrouter`. |
+| **Model slug** | The canonical, human-facing model ID, such as `gpt-5.6-sol`. |
+| **Alias** | An alternate user-facing selector, such as `gpt-56-sol`. |
+| **Offering** | One provider's route to one model slug. Its identity is `(provider, model slug)`. |
+| **Family** | Metadata used for display and compatible-model matching, not a routing namespace. |
+| **API ID** | The opaque string sent to the selected provider API. Workflows do not reference it. |
+
+A model slug is unique within a provider, not across the whole catalog. Two
+providers can offer the same slug and reuse the same alias, so a workflow can
+use one stable selector wherever either provider is available.
+
+For an unqualified selector, Fabro first finds matching offerings on **ready
+providers**—providers whose adapters registered successfully with usable
+credentials and configuration. It then chooses the provider with the highest
+`priority`; equal priorities use canonical provider ID in ascending order. A
+canonical model-slug match is considered before alias matches.
+
+| Ready providers | Selector | Selected offering |
+|---|---|---|
+| OpenAI only | `gpt-56-sol` | OpenAI's `gpt-5.6-sol` |
+| OpenRouter only | `gpt-56-sol` | OpenRouter's `gpt-5.6-sol` offering |
+| OpenAI and OpenRouter | `gpt-56-sol` | OpenAI, because its provider priority is higher |
+| Both, with `provider = "openrouter"` | `gpt-56-sol` | OpenRouter, because an explicit provider is a pin |
+
+<Note>
+An explicit provider restricts lookup to that provider. If the pinned provider
+is unavailable or does not offer the selector, Fabro reports the error instead
+of silently switching providers.
+</Note>
+
 ## Model catalog
 
 | Model | Provider | Aliases | Context | Cost (in/out per Mtok) | Speed |
@@ -46,13 +83,14 @@ Claude Fable 5 is available as an explicit model but is not the default Anthropi
 
 ## Configuring providers and models
 
-Fabro's catalog starts with the built-in providers and models, then merges any `[llm]` entries from settings. Provider and model IDs are strings, so a server or project can add an OpenAI-compatible provider without a Fabro release.
+Fabro's catalog starts with the built-in providers and models, then merges any `[llm]` entries from settings. Provider and model IDs are strings, so a server or project can add an OpenAI-compatible provider without a Fabro release. Declare each model under the provider that serves it:
 
 ```toml title="settings.toml"
 [llm.providers.proxy]
 display_name = "Acme Gateway"
 adapter = "openai_compatible"
 base_url = "https://llm-gateway.example.com/v1"
+priority = 50
 aliases = ["gateway"]
 
 [llm.providers.proxy.auth]
@@ -62,8 +100,7 @@ credentials = ["env:ACME_GATEWAY_API_KEY", "vault:ACME_GATEWAY_API_KEY"]
 x-portkey-api-key = "{{ env.PORTKEY_API_KEY }}"
 x-portkey-config = "@bedrock-prod"
 
-[llm.models."team-code-large"]
-provider = "proxy"
+[llm.providers.proxy.models."team-code-large"]
 api_id = "provider-wire-model-name"
 agent_profile = "anthropic"
 display_name = "Team Code Large"
@@ -73,31 +110,32 @@ small_default = true
 aliases = ["team-code"]
 estimated_output_tps = 80
 
-[llm.models."team-code-large".limits]
+[llm.providers.proxy.models."team-code-large".limits]
 context_window = 200000
 max_output = 32000
 
-[llm.models."team-code-large".features]
+[llm.providers.proxy.models."team-code-large".features]
 tools = true
 reasoning = true
 reasoning_effort = "levels"
 prompt_cache = true
-effort = true
 
-[llm.models."team-code-large".controls]
+[llm.providers.proxy.models."team-code-large".controls]
 reasoning_effort = ["low", "medium", "high"]
 speed = ["fast"]
 
-[llm.models."team-code-large".costs]
+[llm.providers.proxy.models."team-code-large".costs]
 input_cost_per_mtok = 1.50
 output_cost_per_mtok = 8.00
 cache_input_cost_per_mtok = 0.30
 
-[llm.models."team-code-large".costs.speed.fast]
+[llm.providers.proxy.models."team-code-large".costs.speed.fast]
 input_cost_per_mtok = 3.00
 output_cost_per_mtok = 16.00
 cache_input_cost_per_mtok = 0.60
 ```
+
+The table key (`team-code-large`) is the model slug that workflows select. `api_id` is an opaque provider-facing wire value. It defaults to the exact model slug when omitted, so configure it only when the provider expects a different string, such as a deployment name, `author/model` slug, or Bedrock inference-profile ID. Fabro does not parse it for provider routing, add prefixes, or otherwise infer meaning from it; an explicitly empty `api_id` is invalid.
 
 For [LiteLLM](/integrations/litellm), Fabro ships a disabled provider entry. Enable it in settings and declare the models your proxy exposes:
 
@@ -106,24 +144,27 @@ For [LiteLLM](/integrations/litellm), Fabro ships a disabled provider entry. Ena
 enabled = true
 base_url = "http://localhost:4000/v1"
 
-[llm.models."litellm-gpt-5"]
-provider = "litellm"
+[llm.providers.litellm.models."litellm-gpt-5"]
 api_id = "gpt-5"
 display_name = "LiteLLM GPT-5"
 family = "litellm"
 default = true
 
-[llm.models."litellm-gpt-5".limits]
+[llm.providers.litellm.models."litellm-gpt-5".limits]
 context_window = 128000
 max_output = 8192
 
-[llm.models."litellm-gpt-5".features]
+[llm.providers.litellm.models."litellm-gpt-5".features]
 tools = true
 vision = false
 reasoning = false
 ```
 
-`api_id` is the model name sent to the provider API. Omit it when the Fabro model ID and provider model ID are the same.
+### Reusing aliases across providers
+
+Aliases are scoped to a provider. An alias or canonical slug must identify exactly one model within that provider, so two models under `proxy` cannot both claim `team-code`. The same slug or alias may be reused by another provider; that reuse is what makes unqualified selectors portable. Across providers, an exact canonical-slug match takes precedence over an alias match. You can still reach a shadowed alias by pinning its provider.
+
+The older `[llm.models.<id>]` form remains readable as a compatibility input, but new configuration and built-in catalog entries should use `[llm.providers.<provider>.models.<model>]`.
 
 Model roles are separate: `default = true` controls normal model selection for workflow execution, while `small_default = true` marks the provider's small/cheap utility model for metadata tasks such as generated run titles. If a provider has no small default, Fabro falls back to that provider's normal default.
 
@@ -169,7 +210,7 @@ Fabro ships an Ollama provider definition that is disabled by default. Enable it
 enabled = true
 ```
 
-Enabling the provider alone does not expose any models — until #267 adds auto-discovery, add explicit `[llm.models.<id>]` blocks for each Ollama model you have pulled locally. Ollama's OpenAI-compatible endpoint accepts any bearer token, so local users can set `OLLAMA_API_KEY=ollama`.
+Enabling the provider alone does not expose any models — until #267 adds auto-discovery, add an explicit `[llm.providers.ollama.models.<model>]` block for each Ollama model you have pulled locally. Ollama's OpenAI-compatible endpoint accepts any bearer token, so local users can set `OLLAMA_API_KEY=ollama`.
 
 ## Default models
 
@@ -217,11 +258,12 @@ Model stylesheets set per-node models inside the workflow graph, but you can als
 Pass `--model` and optionally `--provider` to `fabro run`:
 
 ```bash
-fabro run docs/internal/demo/01-hello.fabro --model claude-opus-4-6
+fabro run docs/internal/demo/01-hello.fabro --model gpt-56-sol
+fabro run docs/internal/demo/01-hello.fabro --model gpt-56-sol --provider openrouter
 fabro run docs/internal/demo/04-pipeline.fabro --model gemini-3.1-pro-preview
 ```
 
-These flags set the default model for all nodes that don't have an explicit model assigned via a stylesheet. The provider is automatically inferred from the model catalog — you only need `--provider` for models not in the catalog or to force a specific provider.
+These flags set the default model for all nodes that don't have an explicit model assigned via a stylesheet. Without `--provider`, the selector is portable across ready offerings and provider priority decides. `--provider` is an explicit pin, including for models not in the catalog.
 
 ### Run config TOML
 
@@ -247,7 +289,13 @@ Then launch with:
 fabro run run.toml
 ```
 
-The `fallbacks` array is optional. Each entry may be a bare provider token (like `"gemini"`), a bare model alias (like `"gpt-5.4"`), or a qualified `"provider/model"` reference. Fabro tries them in order when the primary provider is unavailable.
+The `fallbacks` array is optional. Each entry may be a bare provider token (like `"gemini"`), a bare model alias (like `"gpt-5.4"`), or a qualified `"provider/model"` reference. Fabro resolves each entry to a concrete provider and canonical model, then tries that persisted chain in order after a failover-eligible error. Provider-only entries choose the closest compatible model; qualified model entries stay pinned to their named provider.
+
+### Resolution is stable for a run
+
+When Fabro creates a run, it resolves every implicit model selector against the ready-provider snapshot and persists the chosen canonical `(provider, model slug)` in the run. Resuming that run uses the materialized choice—it does not re-rank providers because credentials or priorities changed later.
+
+This resolve-once behavior makes a run reproducible; the fallback chain is the separate mechanism for handling a provider that fails after creation. A newly created run can choose a different ready offering from the same portable selector.
 
 <Note>
 The precedence order is: node-level stylesheet > run config TOML > CLI flags > server defaults. More specific settings always win.

@@ -12,10 +12,14 @@
 //! enabled = true
 //! aliases = ["moonshot"]
 //!
-//! [llm.models."kimi-k2.5"]
-//! provider = "kimi"
+//! [llm.providers.kimi.models."kimi-k2.5"]
 //! ...
 //! ```
+//!
+//! Legacy top-level `[llm.models.<id>]` rows remain accepted by the settings
+//! parser. Rows with a `provider` are normalized into the canonical provider
+//! scope before layers combine; provider-less rows are retained for
+//! catalog-aware compatibility handling.
 //!
 //! Per-provider and per-model entries field-merge across layers (default →
 //! user → server → project → workflow/run). Inner arrays such as
@@ -43,15 +47,22 @@ pub struct LlmLayer {
     /// Provider definitions keyed by provider ID.
     #[serde(default, skip_serializing_if = "MergeMap::is_empty")]
     pub providers: MergeMap<ProviderSettings>,
-    /// Model definitions keyed by canonical model ID.
+    /// Legacy top-level model definitions keyed by canonical model ID.
+    ///
+    /// Provider-qualified rows are moved into [`ProviderSettings::models`] by
+    /// the settings parser. Rows without a provider remain here until the
+    /// built-in catalog can adopt them unambiguously.
     #[serde(default, skip_serializing_if = "MergeMap::is_empty")]
-    pub models:    MergeMap<ModelSettings>,
+    pub models:    MergeMap<LegacyModelSettings>,
 }
 
 /// One entry in `[llm.providers.<id>]`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderSettings {
+    /// Model definitions owned by this provider, keyed by canonical model ID.
+    #[serde(default, skip_serializing_if = "MergeMap::is_empty")]
+    pub models:         MergeMap<ModelSettings>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name:   Option<String>,
     /// Adapter registry key (e.g. `"openai_compatible"`).
@@ -89,13 +100,10 @@ pub struct ProviderSettings {
     pub aliases:        Option<Vec<String>>,
 }
 
-/// One entry in `[llm.models.<id>]`.
+/// One entry in `[llm.providers.<provider>.models.<id>]`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
 #[serde(deny_unknown_fields)]
 pub struct ModelSettings {
-    /// Provider ID this model belongs to.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider:             Option<String>,
     /// Identifier sent to the provider API. Defaults to the catalog model ID
     /// when omitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -153,6 +161,38 @@ pub struct ModelSettings {
     pub controls:             Option<ModelControls>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub costs:                Option<ModelCostTable>,
+}
+
+/// Input-only compatibility row for the legacy `[llm.models.<id>]` shape.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+#[serde(deny_unknown_fields)]
+pub struct LegacyModelSettings {
+    /// Provider ID used to move this row into the canonical provider scope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(flatten)]
+    pub model:    ModelSettings,
+}
+
+impl LegacyModelSettings {
+    #[must_use]
+    pub(crate) fn into_model(self) -> ModelSettings {
+        self.model
+    }
+}
+
+impl std::ops::Deref for LegacyModelSettings {
+    type Target = ModelSettings;
+
+    fn deref(&self) -> &Self::Target {
+        &self.model
+    }
+}
+
+impl std::ops::DerefMut for LegacyModelSettings {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.model
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]

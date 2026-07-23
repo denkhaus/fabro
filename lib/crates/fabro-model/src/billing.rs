@@ -523,7 +523,7 @@ impl Model {
     pub fn billing_model_ref(&self, speed: Option<Speed>) -> ModelRef {
         ModelRef {
             provider: self.provider.clone(),
-            model_id: self.id.clone(),
+            model_id: self.id.to_string(),
             speed,
         }
     }
@@ -544,7 +544,7 @@ fn pricing_for_model_costs(
     Some(ModelPricing {
         model: ModelRef {
             provider: provider_id,
-            model_id: model.id.clone(),
+            model_id: model.id.to_string(),
             speed,
         },
         policy,

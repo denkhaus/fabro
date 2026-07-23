@@ -121,7 +121,9 @@ provider = "anthropic"
 fallbacks = ["gemini", "openai"]
 ```
 
-When Anthropic is unavailable, Fabro tries Gemini first, then OpenAI. Each fallback entry may be a bare provider token (like `"gemini"`), a bare model alias (like `"gpt-5.4"`), or a qualified `"provider/model"` reference. For each fallback provider, Fabro selects the closest model by matching required capabilities (tool use, vision, reasoning) and minimizing cost difference.
+When Anthropic is unavailable, Fabro tries Gemini first, then OpenAI. Each fallback entry may be a bare provider token (like `"gemini"`), a bare model alias (like `"gpt-5.4"`), or a qualified `"provider/model"` reference. Provider-only entries select the closest model by matching required capabilities (tool use, vision, reasoning) and minimizing cost difference. Qualified model entries are provider pins; bare models and aliases select among ready providers by priority.
+
+Fabro resolves the primary and fallback selectors to concrete provider/model offerings when it creates the run and persists the result. Resume reuses that materialized chain rather than re-ranking providers after credentials or priorities change. Runtime fallback is the mechanism for a provider failure that happens after creation.
 
 ### What triggers failover
 

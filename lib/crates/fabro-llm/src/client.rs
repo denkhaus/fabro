@@ -597,6 +597,7 @@ fn format_additional_speeds(values: &[Speed]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use async_trait::async_trait;

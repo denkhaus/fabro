@@ -132,7 +132,7 @@ fn build_deep_test_params(info: &Model, client: Arc<Client>) -> Option<GenerateP
         },
     );
 
-    let mut params = GenerateParams::new(&info.id, client)
+    let mut params = GenerateParams::new(info.id.as_str(), client)
         .provider(info.provider.to_string())
         .prompt(
             "Use the add tool twice: first add 15 and 27, then add that result to 42. \

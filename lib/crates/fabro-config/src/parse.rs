@@ -39,6 +39,13 @@ pub enum ParseError {
         path:   String,
         source: SettingsSource,
     },
+    ConflictingLlmModelDefinitions {
+        provider: String,
+        model:    String,
+    },
+    InvalidLegacyLlmModelProvider {
+        model: String,
+    },
 }
 
 impl fmt::Display for ParseError {
@@ -59,6 +66,14 @@ impl fmt::Display for ParseError {
             Self::ServerManagedEnvironmentCwd { path, source } => write!(
                 f,
                 "`{path}` is server-managed and cannot be set in {source} settings; configure cwd on a server-managed environment instead."
+            ),
+            Self::ConflictingLlmModelDefinitions { provider, model } => write!(
+                f,
+                "model `{model}` on provider `{provider}` is defined in both `llm.models.{model}` and `llm.providers.{provider}.models.{model}` in the same settings source"
+            ),
+            Self::InvalidLegacyLlmModelProvider { model } => write!(
+                f,
+                "legacy model `llm.models.{model}` has an empty provider; omit it for catalog-aware adoption or set a non-empty provider ID"
             ),
         }
     }
@@ -118,8 +133,36 @@ pub(crate) fn parse_settings(input: &str) -> Result<SettingsLayer, ParseError> {
         }
     }
 
-    raw.try_into::<SettingsLayer>()
-        .map_err(|e| ParseError::Toml(e.to_string()))
+    let mut layer = raw
+        .try_into::<SettingsLayer>()
+        .map_err(|e| ParseError::Toml(e.to_string()))?;
+    normalize_legacy_llm_models(&mut layer)?;
+    Ok(layer)
+}
+
+fn normalize_legacy_llm_models(layer: &mut SettingsLayer) -> Result<(), ParseError> {
+    let Some(llm) = layer.llm.as_mut() else {
+        return Ok(());
+    };
+
+    let legacy_models = std::mem::take(&mut llm.models).into_inner();
+    for (model, legacy) in legacy_models {
+        let Some(provider) = legacy.provider.as_deref() else {
+            llm.models.insert(model, legacy);
+            continue;
+        };
+        if provider.is_empty() {
+            return Err(ParseError::InvalidLegacyLlmModelProvider { model });
+        }
+
+        let provider = provider.to_string();
+        let provider_settings = llm.providers.entry(provider.clone()).or_default();
+        if provider_settings.models.contains_key(&model) {
+            return Err(ParseError::ConflictingLlmModelDefinitions { provider, model });
+        }
+        provider_settings.models.insert(model, legacy.into_model());
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -289,11 +332,91 @@ mod tests {
     }
 
     #[test]
-    fn accepts_new_llm_models_subtree() {
-        let parsed = "[llm.models.\"foo\"]\nprovider = \"kimi\"\n"
+    fn accepts_provider_scoped_models_subtree() {
+        let parsed = "[llm.providers.kimi.models.\"foo\"]\ndisplay_name = \"Foo\"\n"
             .parse::<SettingsLayer>()
-            .unwrap();
-        assert!(parsed.llm.unwrap().models.contains_key("foo"));
+            .expect("provider-scoped model should parse");
+        let llm = parsed.llm.expect("llm layer should be present");
+
+        assert_eq!(
+            llm.providers["kimi"].models["foo"].display_name.as_deref(),
+            Some("Foo")
+        );
+        assert!(llm.models.is_empty());
+    }
+
+    #[test]
+    fn normalizes_legacy_llm_model_with_provider_into_provider_scope() {
+        let parsed = r#"
+[llm.models.foo]
+provider = "kimi"
+display_name = "Foo"
+"#
+        .parse::<SettingsLayer>()
+        .expect("legacy model should parse");
+        let llm = parsed.llm.expect("llm layer should be present");
+
+        assert_eq!(
+            llm.providers["kimi"].models["foo"].display_name.as_deref(),
+            Some("Foo")
+        );
+        assert!(llm.models.is_empty());
+    }
+
+    #[test]
+    fn retains_providerless_legacy_llm_model_for_catalog_aware_adoption() {
+        let parsed = r#"
+[llm.models.foo]
+display_name = "Renamed Foo"
+"#
+        .parse::<SettingsLayer>()
+        .expect("provider-less legacy model should remain compatible");
+        let llm = parsed.llm.expect("llm layer should be present");
+
+        assert_eq!(
+            llm.models["foo"].display_name.as_deref(),
+            Some("Renamed Foo")
+        );
+        assert!(llm.providers.is_empty());
+    }
+
+    #[test]
+    fn rejects_same_source_legacy_and_provider_scoped_model_pair() {
+        let error = r#"
+[llm.providers.kimi.models.foo]
+display_name = "Canonical Foo"
+
+[llm.models.foo]
+provider = "kimi"
+display_name = "Legacy Foo"
+"#
+        .parse::<SettingsLayer>()
+        .expect_err("same pair in both syntaxes should be rejected");
+
+        assert_eq!(
+            error,
+            ParseError::ConflictingLlmModelDefinitions {
+                provider: "kimi".to_string(),
+                model:    "foo".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_empty_legacy_llm_model_provider_with_typed_error() {
+        let error = r#"
+[llm.models.foo]
+provider = ""
+"#
+        .parse::<SettingsLayer>()
+        .expect_err("empty legacy provider should be rejected");
+
+        assert_eq!(
+            error,
+            ParseError::InvalidLegacyLlmModelProvider {
+                model: "foo".to_string(),
+            }
+        );
     }
 
     #[test]

@@ -138,11 +138,11 @@ name = "claude-sonnet-4-5"
 
 | Field | Description |
 |---|---|
-| `name` | Model ID or alias (e.g. `claude-sonnet-4-5`, `opus`, `gemini-pro`). See [Models](/core-concepts/models). |
-| `provider` | Provider name (optional — auto-inferred from the model catalog). Only needed for models not in the catalog or to force a specific provider. |
-| `fallbacks` | Ordered list of model references to try when the primary is unavailable. Entries can be bare provider tokens (`"openai"`), bare model aliases, or qualified `"provider/model"` references. |
+| `name` | Canonical model slug or alias (e.g. `claude-sonnet-4-5`, `opus`, `gemini-pro`). See [Models](/core-concepts/models). |
+| `provider` | Optional provider pin. When omitted, Fabro selects a matching offering from ready providers by provider priority. When set, lookup is restricted to that provider and unavailability is an error. |
+| `fallbacks` | Ordered list of model references to try after a failover-eligible error. Entries can be bare provider tokens (`"openai"`), bare model aliases, or qualified `"provider/model"` references. |
 
-Provider values are catalog provider ID strings. Built-in IDs like `anthropic` and `openai` work, and settings-defined IDs like `proxy` work after they are added under `[llm.providers.<id>]`.
+Provider values are catalog provider ID strings. Built-in IDs like `anthropic` and `openai` work, and settings-defined IDs like `proxy` work after they are added under `[llm.providers.<id>]`. A qualified fallback such as `"openrouter/gpt-56-sol"` is pinned to that provider; a bare alias can select among ready fallback offerings by priority.
 
 #### `[run.model.controls]`
 
@@ -162,6 +162,12 @@ speed = "fast"
 |---|---|
 | `reasoning_effort` | Native reasoning-effort value to request when the selected model allows it, such as `"low"`, `"medium"`, `"high"`, `"xhigh"`, or `"max"`. |
 | `speed` | Native speed value to request when the selected model declares it, such as `"fast"`. The standard speed is implicit and does not need to be set. |
+
+#### Resolution and fallback behavior
+
+At run creation, Fabro resolves unqualified primary and fallback selectors to concrete provider and canonical-model pairs using the ready-provider snapshot, then persists those choices. Resume reuses the materialized routing and does not reconsider provider priority if credentials or configuration changed. Runtime failover walks the persisted fallback chain; create a new run to reselect from current provider availability.
+
+Provider-only fallbacks choose the closest compatible model on that provider. A provider-qualified model or alias resolves only within that provider, while a bare model or alias uses ready providers and priority.
 
 #### Fallbacks with splice
 

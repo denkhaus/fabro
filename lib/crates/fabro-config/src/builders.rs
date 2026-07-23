@@ -16,9 +16,9 @@ use crate::resolve::{
 };
 use crate::user::load_settings_config;
 use crate::{
-    CliLayer, Combine, CostRates, EnvironmentLayer, Error, LlmLayer, LlmModelFeatures,
-    LlmModelLimits, MergeMap, ModelControls, ModelCostTable, ModelSettings, ProviderSettings,
-    Result, RunLayer, ServerLayer, SettingsLayer, run,
+    CliLayer, Combine, CostRates, EnvironmentLayer, Error, LegacyModelSettings, LlmLayer,
+    LlmModelFeatures, LlmModelLimits, MergeMap, ModelControls, ModelCostTable, ModelSettings,
+    ProviderSettings, Result, RunLayer, ServerLayer, SettingsLayer, run,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -321,7 +321,7 @@ fn llm_layer_to_catalog_settings(llm: LlmLayer) -> model_catalog::LlmCatalogSett
             .models
             .into_inner()
             .into_iter()
-            .map(|(id, settings)| (id, model_settings_to_catalog(settings)))
+            .map(|(id, settings)| (id, legacy_model_settings_to_catalog(settings)))
             .collect(),
     }
 }
@@ -341,6 +341,12 @@ fn provider_settings_to_catalog(
             .collect()
     });
     model_catalog::ProviderCatalogSettings {
+        models: settings
+            .models
+            .into_inner()
+            .into_iter()
+            .map(|(id, settings)| (id, model_settings_to_catalog(settings)))
+            .collect(),
         display_name: settings.display_name,
         adapter: settings.adapter,
         codec: settings.codec,
@@ -356,9 +362,17 @@ fn provider_settings_to_catalog(
     }
 }
 
+fn legacy_model_settings_to_catalog(
+    settings: LegacyModelSettings,
+) -> model_catalog::ModelCatalogSettings {
+    let LegacyModelSettings { provider, model } = settings;
+    let mut settings = model_settings_to_catalog(model);
+    settings.provider = provider;
+    settings
+}
+
 fn model_settings_to_catalog(settings: ModelSettings) -> model_catalog::ModelCatalogSettings {
     let ModelSettings {
-        provider,
         api_id,
         codec,
         billing_policy,
@@ -379,7 +393,7 @@ fn model_settings_to_catalog(settings: ModelSettings) -> model_catalog::ModelCat
         costs,
     } = settings;
     model_catalog::ModelCatalogSettings {
-        provider,
+        provider: None,
         api_id,
         codec,
         billing_policy,
@@ -820,7 +834,7 @@ provider = "docker"
     }
 
     #[test]
-    fn server_runtime_settings_preserves_llm_catalog_overrides() {
+    fn server_runtime_settings_preserves_provider_scoped_llm_catalog_overrides() {
         let settings = server_runtime_settings_from_toml(
             r#"
 _version = 1
@@ -837,17 +851,16 @@ agent_profile = "anthropic"
 [llm.providers.acme.auth]
 credentials = ["env:ACME_API_KEY"]
 
-[llm.models."acme-large"]
-provider = "acme"
+[llm.providers.acme.models."acme-large"]
 display_name = "Acme Large"
 family = "acme"
 default = true
 agent_profile = "gemini"
 
-[llm.models."acme-large".limits]
+[llm.providers.acme.models."acme-large".limits]
 context_window = 128000
 
-[llm.models."acme-large".features]
+[llm.providers.acme.models."acme-large".features]
 tools = true
 vision = false
 reasoning = false
@@ -857,20 +870,69 @@ reasoning = false
         )
         .expect("server runtime settings should resolve");
 
-        let catalog =
-            fabro_model::Catalog::from_builtin_with_overrides(&settings.llm_catalog_settings)
-                .expect("catalog overrides should build");
+        let provider = settings
+            .llm_catalog_settings
+            .providers
+            .get("acme")
+            .expect("provider settings should be present");
+        let model = provider
+            .models
+            .get("acme-large")
+            .expect("provider-scoped model settings should be present");
+        assert_eq!(model.display_name.as_deref(), Some("Acme Large"));
+        assert_eq!(model.agent_profile, Some(fabro_model::AgentProfileKind::Gemini));
+        assert!(settings.llm_catalog_settings.models.is_empty());
+    }
+
+    #[test]
+    fn server_runtime_settings_converts_legacy_models_to_provider_catalog_shape() {
+        let settings = server_runtime_settings_from_toml(
+            r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[llm.models."acme-large"]
+provider = "acme"
+display_name = "Acme Large"
+"#,
+            None,
+            None,
+        )
+        .expect("legacy catalog settings should resolve");
 
         assert_eq!(
-            catalog
-                .get("acme-large")
-                .map(|model| model.provider.clone()),
-            Some(fabro_model::ProviderId::new("acme"))
+            settings.llm_catalog_settings.providers["acme"].models["acme-large"]
+                .display_name
+                .as_deref(),
+            Some("Acme Large")
         );
+        assert!(settings.llm_catalog_settings.models.is_empty());
+    }
+
+    #[test]
+    fn server_runtime_settings_retains_providerless_legacy_models_for_catalog_adoption() {
+        let settings = server_runtime_settings_from_toml(
+            r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[llm.models."known-model"]
+display_name = "Renamed Known Model"
+"#,
+            None,
+            None,
+        )
+        .expect("provider-less legacy catalog settings should resolve");
+
         assert_eq!(
-            catalog
-                .effective_agent_profile(&fabro_model::ProviderId::new("acme"), Some("acme-large")),
-            Some(fabro_model::AgentProfileKind::Gemini)
+            settings.llm_catalog_settings.models["known-model"]
+                .display_name
+                .as_deref(),
+            Some("Renamed Known Model")
         );
     }
 

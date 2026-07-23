@@ -318,3 +318,117 @@ bucket = "higher-bucket"
     assert_eq!(s3.bucket, Some("higher-bucket".to_string()));
     assert_eq!(s3.region, None);
 }
+
+#[test]
+fn provider_and_model_rows_field_merge_independently() {
+    let lower = parse(
+        r#"
+[llm.providers.acme]
+display_name = "Acme"
+adapter = "openai_compatible"
+base_url = "https://lower.example/v1"
+
+[llm.providers.acme.models.large]
+display_name = "Acme Large"
+family = "acme"
+
+[llm.providers.acme.models.large.limits]
+context_window = 128000
+max_output = 32000
+"#,
+    );
+    let higher = parse(
+        r#"
+[llm.providers.acme]
+base_url = "https://higher.example/v1"
+
+[llm.providers.acme.models.large]
+display_name = "Acme Large v2"
+
+[llm.providers.acme.models.large.limits]
+max_output = 64000
+"#,
+    );
+
+    let merged = higher.combine(lower);
+    let acme = &merged.llm.expect("llm layer should be present").providers["acme"];
+    assert_eq!(acme.display_name.as_deref(), Some("Acme"));
+    assert_eq!(acme.adapter.as_deref(), Some("openai_compatible"));
+    assert_eq!(acme.base_url.as_deref(), Some("https://higher.example/v1"));
+
+    let model = &acme.models["large"];
+    assert_eq!(model.display_name.as_deref(), Some("Acme Large v2"));
+    assert_eq!(model.family.as_deref(), Some("acme"));
+    assert_eq!(
+        model.limits.as_ref().and_then(|limits| limits.context_window),
+        Some(128_000)
+    );
+    assert_eq!(
+        model.limits.as_ref().and_then(|limits| limits.max_output),
+        Some(64_000)
+    );
+}
+
+#[test]
+fn legacy_model_is_normalized_before_cross_source_combine() {
+    let lower = parse(
+        r#"
+[llm.models.large]
+provider = "acme"
+family = "acme"
+
+[llm.models.large.limits]
+context_window = 128000
+"#,
+    );
+    let higher = parse(
+        r#"
+[llm.providers.acme.models.large]
+display_name = "Acme Large"
+
+[llm.providers.acme.models.large.limits]
+max_output = 64000
+"#,
+    );
+
+    let merged = higher.combine(lower);
+    let llm = merged.llm.expect("llm layer should be present");
+    let model = &llm.providers["acme"].models["large"];
+
+    assert_eq!(model.display_name.as_deref(), Some("Acme Large"));
+    assert_eq!(model.family.as_deref(), Some("acme"));
+    assert_eq!(
+        model.limits.as_ref().and_then(|limits| limits.context_window),
+        Some(128_000)
+    );
+    assert_eq!(
+        model.limits.as_ref().and_then(|limits| limits.max_output),
+        Some(64_000)
+    );
+    assert!(llm.models.is_empty());
+}
+
+#[test]
+fn same_model_id_on_different_providers_stays_independent() {
+    let merged = parse(
+        r#"
+[llm.providers.openai.models.shared]
+api_id = "shared"
+
+[llm.providers.openrouter.models.shared]
+api_id = "openai/shared"
+"#,
+    );
+    let llm = merged.llm.expect("llm layer should be present");
+
+    assert_eq!(
+        llm.providers["openai"].models["shared"].api_id.as_deref(),
+        Some("shared")
+    );
+    assert_eq!(
+        llm.providers["openrouter"].models["shared"]
+            .api_id
+            .as_deref(),
+        Some("openai/shared")
+    );
+}

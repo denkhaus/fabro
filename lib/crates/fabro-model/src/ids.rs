@@ -101,9 +101,12 @@ impl AsRef<str> for ProviderId {
     }
 }
 
-/// Stable model identifier — either the canonical catalog ID or one of its
-/// declared aliases.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+/// Stable, canonical human-facing model slug.
+///
+/// Aliases are selectors that resolve to a `ModelId`; they are never model
+/// IDs themselves. The same canonical slug may identify one offering on each
+/// provider, so an offering's full identity is `(ProviderId, ModelId)`.
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ModelId(String);
 
@@ -123,9 +126,29 @@ impl ModelId {
     }
 }
 
+impl std::borrow::Borrow<str> for ModelId {
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl std::ops::Deref for ModelId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
 impl fmt::Display for ModelId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+impl fmt::Debug for ModelId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, f)
     }
 }
 
@@ -144,6 +167,30 @@ impl From<String> for ModelId {
 impl AsRef<str> for ModelId {
     fn as_ref(&self) -> &str {
         &self.0
+    }
+}
+
+impl PartialEq<str> for ModelId {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for ModelId {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+impl PartialEq<ModelId> for str {
+    fn eq(&self, other: &ModelId) -> bool {
+        self == other.as_str()
+    }
+}
+
+impl PartialEq<ModelId> for &str {
+    fn eq(&self, other: &ModelId) -> bool {
+        *self == other.as_str()
     }
 }
 

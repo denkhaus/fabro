@@ -247,19 +247,20 @@ x-team-secret = "{{ secrets.gateway_team_secret }}"
 | `auth.credentials` | array<string> | required when `auth` present | Ordered credential refs. Accepted forms are `vault:<NAME>`, `env:<NAME>`, and `aws_sigv4` (sign requests from the AWS default credential chain — Bedrock). Literal secret strings are rejected. |
 | `auth.header` | `"bearer"` or `{ custom = "Header-Name" }` | `"bearer"` | Primary API-key header policy. Omit when the provider uses a standard bearer token. |
 | `extra_headers` | table | `{}` | Additional headers attached to provider requests. Values are interpolation strings: literal text, an `{{ env.NAME }}` token, or a `{{ secrets.NAME }}` token. Put credentials in a secret and reference them with a `{{ secrets.NAME }}` token, not a bare literal. |
-| `priority` | integer | `0` | Higher-priority configured providers win default selection; ties use canonical provider ID. |
+| `priority` | integer | `0` | Higher-priority ready providers win unqualified model selection; ties use canonical provider ID in ascending order. |
 | `enabled` | boolean | `true` | Set `false` to disable a provider after lower-precedence layers define it. |
 | `aliases` | array<string> | `[]` | Additional provider names accepted by model routing and fallback config. |
 
-## `[llm.models.<id>]`
+## `[llm.providers.<provider>.models.<model>]`
 
-Define or override a model in the catalog. The table key is the canonical
-model ID Fabro users reference; `api_id` is the model string sent to the
-provider API.
+Define or override one provider-specific model offering. The containing table
+supplies the provider ID, and `<model>` is the canonical, human-facing model
+slug used by workflows. The stable identity of an offering is the pair
+`(provider, model)`; the same model slug and aliases may be reused by other
+providers.
 
 ```toml title="settings.toml"
-[llm.models."team-code-large"]
-provider = "proxy"
+[llm.providers.proxy.models."team-code-large"]
 api_id = "provider-wire-model-name"
 agent_profile = "anthropic"
 display_name = "Team Code Large"
@@ -270,56 +271,66 @@ enabled = true
 aliases = ["team-code"]
 estimated_output_tps = 80
 
-[llm.models."team-code-large".limits]
+[llm.providers.proxy.models."team-code-large".limits]
 context_window = 200000
 max_output = 32000
 
-[llm.models."team-code-large".features]
+[llm.providers.proxy.models."team-code-large".features]
 tools = true
 vision = false
 reasoning = true
 reasoning_effort = "levels"
 prompt_cache = true
 
-[llm.models."team-code-large".controls]
+[llm.providers.proxy.models."team-code-large".controls]
 reasoning_effort = ["low", "medium", "high"]
 speed = ["fast"]
 
-[llm.models."team-code-large".costs]
+[llm.providers.proxy.models."team-code-large".costs]
 input_cost_per_mtok = 1.50
 output_cost_per_mtok = 8.00
 cache_input_cost_per_mtok = 0.30
 
-[llm.models."team-code-large".costs.speed.fast]
+[llm.providers.proxy.models."team-code-large".costs.speed.fast]
 input_cost_per_mtok = 3.00
 output_cost_per_mtok = 16.00
 cache_input_cost_per_mtok = 0.60
 ```
 
+`api_id` is an opaque provider wire identifier, not a workflow selector or a
+routing namespace. When omitted, it defaults to the exact canonical model
+slug. Set it only when the provider expects a different value; an explicitly
+empty value is invalid.
+
+Unqualified model selectors consider ready providers and then choose the
+highest provider `priority`, with canonical provider ID as the deterministic
+tie-breaker. Supplying a provider pins lookup to that provider. An alias must
+identify only one model within a provider, but reusing it on another provider
+is valid and enables portable workflow selectors.
+
 | Key | Type / values | Default | Description |
 |---|---|---|---|
-| `provider` | string | None | Provider ID this model belongs to. |
-| `api_id` | string | model ID | Identifier sent to the provider API. |
+| `api_id` | string | canonical model slug | Opaque identifier sent to this offering's provider API. It is not parsed for routing. |
 | `agent_profile` | `"anthropic"` \| `"openai"` \| `"gemini"` | provider profile | Agent profile override for this model. Model overrides take precedence over provider overrides. |
 | `billing_policy` | `"openai"` \| `"anthropic"` \| `"gemini"` \| `"none"` | provider policy | Billing algorithm override for this model — for models whose billing family differs from their provider's (e.g. Claude served through OpenRouter bills Anthropic-style cache reads/writes). |
-| `display_name` | string | model ID | Human-readable model name. |
-| `family` | string | model ID | Family label used for catalog display and matching. |
+| `display_name` | string | model slug | Human-readable model name. |
+| `family` | string | model slug | Family metadata used for catalog display and matching; it is not a routing namespace. |
 | `training` | string | None | Training data cutoff label. |
 | `knowledge_cutoff` | string or TOML date | None | Public knowledge cutoff label; TOML dates normalize to `YYYY-MM-DD`. |
 | `default` | boolean | `false` | Whether this is the provider default model. |
 | `probe` | boolean | `false` | Whether this model should be preferred for provider connectivity probes. Set `false` in a higher-precedence layer to clear an inherited probe marker. |
 | `enabled` | boolean | `true` | Set `false` to disable a model after lower-precedence layers define it. |
-| `aliases` | array<string> | `[]` | Additional model names accepted by routing and fallback config. |
+| `aliases` | array<string> | `[]` | Additional user-facing selectors. Each selector must be unique within this provider but may be reused by other providers. |
 | `estimated_output_tps` | number | None | Estimated output tokens per second for catalog display and planning. |
 
-## `[llm.models.<id>.limits]`
+## `[llm.providers.<provider>.models.<model>.limits]`
 
 | Key | Type / values | Default | Description |
 |---|---|---|---|
 | `context_window` | integer | None | Maximum context window size in tokens. |
 | `max_output` | integer | None | Maximum output tokens, if known. |
 
-## `[llm.models.<id>.features]`
+## `[llm.providers.<provider>.models.<model>.features]`
 
 | Key | Type / values | Default | Description |
 |---|---|---|---|
@@ -330,14 +341,14 @@ cache_input_cost_per_mtok = 0.60
 | `prompt_cache` | boolean | `false` | Whether prompt cache pricing/usage applies. |
 | `sampling_params` | boolean | `true` | Whether the model accepts classic sampling parameters (`temperature`, `top_p`). |
 
-## `[llm.models.<id>.controls]`
+## `[llm.providers.<provider>.models.<model>.controls]`
 
 | Key | Type / values | Default | Description |
 |---|---|---|---|
 | `reasoning_effort` | array<string> | all standard levels when feature is `"levels"` or `"always_adaptive"` | User-facing reasoning effort values Fabro may send for this model. Can be set explicitly for reasoning models whose provider adapter maps effort to a non-native API shape. |
 | `speed` | array<string> | `[]` | Additional speeds beyond implicit `standard`; do not list `standard`. |
 
-## `[llm.models.<id>.costs]`
+## `[llm.providers.<provider>.models.<model>.costs]`
 
 | Key | Type / values | Default | Description |
 |---|---|---|---|
@@ -345,11 +356,12 @@ cache_input_cost_per_mtok = 0.60
 | `output_cost_per_mtok` | number | None | Output cost in USD per million tokens. |
 | `cache_input_cost_per_mtok` | number | None | Cached input/read cost in USD per million tokens. |
 
-## `[llm.models.<id>.costs.speed.<speed>]`
+## `[llm.providers.<provider>.models.<model>.costs.speed.<speed>]`
 
-Per-speed cost overrides use the same keys as `[llm.models.<id>.costs]`.
-Each `<speed>` key must be declared in `[llm.models.<id>.controls].speed`.
-The `standard` speed is implicit and always uses the base cost table.
+Per-speed cost overrides use the same keys as
+`[llm.providers.<provider>.models.<model>.costs]`. Each `<speed>` key must be
+declared in `[llm.providers.<provider>.models.<model>.controls].speed`. The
+`standard` speed is implicit and always uses the base cost table.
 
 "#,
     );
@@ -388,4 +400,22 @@ See [MCP](/agents/mcp) for transport-specific examples.
 
 fn normalize_doc(doc: &str) -> String {
     doc.trim().trim_end_matches('.').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn llm_catalog_reference_teaches_provider_scoped_portable_models() {
+        let reference = render_options_reference();
+
+        assert!(reference.contains("## `[llm.providers.<provider>.models.<model>]`"));
+        assert!(reference.contains("[llm.providers.proxy.models.\"team-code-large\"]"));
+        assert!(reference.contains("defaults to the exact canonical model\nslug"));
+        assert!(reference.contains("Supplying a provider pins lookup to that provider"));
+        assert!(reference.contains("reusing it on another provider\nis valid"));
+        assert!(reference.contains("opaque provider wire identifier"));
+        assert!(!reference.contains("## `[llm.models.<id>]`"));
+    }
 }

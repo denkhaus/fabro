@@ -25,11 +25,11 @@ pub(crate) fn estimate_cost_usd(
     let catalog = catalog?;
     // The billing machinery compares ModelRefs against the catalog's
     // canonical identity, so resolve model aliases and provider names first.
-    let model = catalog.get(model)?;
     let provider = catalog.provider(&ProviderId::new(provider))?;
+    let model = catalog.model_on_provider(&provider.id, model)?;
     let model_ref = ModelRef {
         provider: provider.id.clone(),
-        model_id: model.id.clone(),
+        model_id: model.id.to_string(),
         speed,
     };
     let micros = catalog.price_tokens(&model_ref, tokens)?;
