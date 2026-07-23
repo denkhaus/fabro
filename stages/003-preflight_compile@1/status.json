@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Script cancelled: cargo check -q --workspace 2>&1",
+  "timestamp": "2026-07-23T16:56:49.017734536Z"
+}

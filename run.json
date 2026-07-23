@@ -478,7 +478,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-07-23T16:56:38.447412460Z",
-  "last_event_at": "2026-07-23T16:56:45.929416063Z",
+  "last_event_at": "2026-07-23T16:56:53.015328761Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -580,9 +580,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 39,
       "checkpoint": {
-        "timestamp": "2026-07-23T16:56:49.018366685Z",
+        "timestamp": "2026-07-23T16:56:53.015264957Z",
         "current_node": "preflight_compile",
         "completed_nodes": [
           "start",
@@ -591,25 +591,29 @@
         ],
         "node_retries": {},
         "context_values": {
+          "current_node": "preflight_compile",
+          "failure_class": "canceled",
+          "internal.fidelity": "compact",
+          "graph.goal": "<proposed_plan>\n# Shared-Checkout Parallel Execution\n\n## Summary\n\nSimplify parallel execution so every branch:\n\n- Receives an isolated context fork.\n- Executes concurrently against the same sandbox and Git checkout.\n- Creates no Git branch, worktree, checkpoint, or branch commit.\n- Always waits for every branch; remove `first_success` and `join_policy`.\n- Produces a collision-free result containing its context updates.\n\nFan-in remains an explicit join node. Without a prompt it is a no-op barrier; with a prompt it behaves like a standard prompt stage that reduces the aggregated results without selecting a branch.\n\n## Implementation Changes\n\n### Parallel execution\n\n- Remove all parallel-specific Git setup, checkpointing, committing, cleanup, and fast-forwarding.\n- Give each branch the same `Arc<dyn Sandbox>` and inherited `internal.work_dir`.\n- Retain `max_parallel`, branch-scoped contexts, IDs, hooks, and lifecycle events.\n- Preserve outgoing-edge order in the final results regardless of completion order.\n- Define the parallel outcome as:\n  - `succeeded` when every branch succeeds.\n  - `failed` when every branch fails.\n  - `partially_succeeded` for every mixed or partial result.\n- Preserve branch ID/index when handler or task execution fails.\n- Keep the current single-node-per-branch topology.\n\n### Results and fan-in\n\nIntroduce a shared typed result:\n\n```rust\nParallelBranchResult {\n    id: String,\n    status: String,\n    context_updates: BTreeMap<String, serde_json::Value>,\n}\n```\n\n- Store the ordered array in `parallel.results` and keep `parallel.branch_count`.\n- Include updates from successful and failed branches; never merge them into the parent context at top level.\n- Offload large leaf values using existing artifact storage while keeping `parallel.results` itself a structured array.\n- Resolve nested textual `response.*` and `command.output` blob references when building downstream prompt context.\n- Emit the same typed results through `parallel.completed` and project them into `StageProjection.parallel_results`.\n- A promptless fan-in verifies results exist and succeeds with a joined-branches note.\n- A prompted fan-in uses standard prompt execution and records `response.<fan_in_id>`, `last_response`, usage, and prompt events. It performs no ranking or selection.\n\nRemove:\n\n- Heuristic and LLM branch-selection code.\n- `parallel.fan_in.best_id`, `best_outcome`, and `best_head_sha`.\n- Per-result `head_sha` and `score`.\n- The special fan-in model-usage mode.\n- Fan-in selected-branch notes and UI.\n\n### Delete obsolete Git/worktree infrastructure\n\n- Delete the parallel-only `WorktreeSandbox`, its options/callbacks, exports, tests, and sandbox trait path helpers.\n- Remove `EngineServices`’ parallel-only `GitState` and pipeline wiring.\n- Remove now-unused branch/worktree/fast-forward Git helpers and parallel ref sanitization.\n- Remove the parallel-base-checkpoint notice code.\n- Remove the now-unemitted `git.branch`, `git.worktree.added`, and `git.worktree.removed` event variants and property types.\n- Leave the server’s independent Git checkout/worktree implementation unchanged.\n- Continue normal run-level checkpointing after the parallel node; any shared workspace changes are captured together.\n\n## Public Interfaces and Documentation\n\n- Remove `join_policy` from DOT documentation, examples, fixtures, events, and UI.\n- Add a validation error directing users to remove any `join_policy` attribute.\n- Update `parallel.started` to contain only visit and branch count.\n- Update `parallel.branch.completed` to remove `head_sha`.\n- Define `ParallelBranchResult` in OpenAPI and change `StageProjection.parallel_results` from untyped objects to that typed array; regenerate Rust and TypeScript clients.\n- Update the parallel UI to show branch status and links without commit SHAs or a join-policy badge.\n- Replace the fan-in trophy/selection UI with joined-state information and the optional standard reducer transcript.\n- Rewrite the active parallel strategy and public docs around shared-checkout concurrency:\n  - Read-only behavior is best effort.\n  - Concurrent writes are allowed but entirely user-managed.\n  - Fabro performs no write enforcement, detection, or warnings.\n  - Results are available through `parallel.results`, not a workspace `parallel_results.json`.\n  - A fan-in prompt synthesizes results but never selects workspace state.\n- Remove `join_policy` from all checked-in tutorial/demo workflows and generated documentation fixtures.\n\n## Test Plan\n\n- Unit-test that every branch receives the same sandbox working directory while retaining independent contexts.\n- Verify deterministic result ordering and complete per-branch context updates, including failed branches and structured/command outputs.\n- Cover all-success, mixed, partial, all-failed, zero-branch, `max_parallel`, dry-run, and run-cancellation behavior.\n- In a temporary Git repository, run parallel branches that write distinct files and assert:\n  - Both files remain in the shared checkout.\n  - No `fabro/run/parallel/*` refs exist.\n  - No parallel worktrees, branch commits, worktree events, or fast-forward commands occur.\n- Test promptless fan-in as a no-op join and prompted fan-in as a standard reducer that sees every branch result and emits a normal response.\n- Update event serialization, store projection, API round-trip, web parser, and renderer tests for the new typed payloads and removed fields.\n- Remove the obsolete host and Daytona parallel-Git-selection tests; retain provider-independent shared-sandbox coverage.\n- Verify with:\n  - `cargo build -p fabro-api`\n  - `cd lib/packages/fabro-api-client && bun run generate && bun run typecheck`\n  - `cargo build --workspace`\n  - `ulimit -n 4096 && cargo nextest run --workspace`\n  - `cargo +nightly-2026-04-14 fmt --check --all`\n  - `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n  - `cd apps/fabro-web && bun test && bun run typecheck && bun run build`\n  - `cargo --locked dev docs check`\n\n## Assumptions and Unresolved Questions\n\n- The application is greenfield; removed fields, events, and attributes receive no compatibility layer.\n- Parallel branches remain single-node executions.\n- `max_parallel` remains supported.\n- Shared-workspace write races are explicitly the user’s responsibility.\n- No Git workspace warning or read-only enforcement will be added.\n- Unresolved questions: none.\n</proposed_plan>\n",
           "internal.retry_count.preflight_compile": 0,
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0,
+          "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1",
+          "thread.toolchain.current_node": "preflight_compile",
+          "internal.run_id": "01KY7YGA71E6QCRPC7N95MRWD9",
+          "thread.start.current_node": "toolchain",
           "internal.retry_count.toolchain": 0,
           "graph.rankdir": "LR",
-          "outcome": "failed",
-          "internal.fidelity": "compact",
-          "internal.node_visit_count": 1,
-          "failure_class": "canceled",
           "internal.thread_id": "toolchain",
-          "thread.start.current_node": "toolchain",
-          "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1",
-          "current_node": "preflight_compile",
-          "internal.run_id": "01KY7YGA71E6QCRPC7N95MRWD9",
-          "thread.toolchain.current_node": "preflight_compile",
-          "internal.retry_count.start": 0,
-          "graph.goal": "<proposed_plan>\n# Shared-Checkout Parallel Execution\n\n## Summary\n\nSimplify parallel execution so every branch:\n\n- Receives an isolated context fork.\n- Executes concurrently against the same sandbox and Git checkout.\n- Creates no Git branch, worktree, checkpoint, or branch commit.\n- Always waits for every branch; remove `first_success` and `join_policy`.\n- Produces a collision-free result containing its context updates.\n\nFan-in remains an explicit join node. Without a prompt it is a no-op barrier; with a prompt it behaves like a standard prompt stage that reduces the aggregated results without selecting a branch.\n\n## Implementation Changes\n\n### Parallel execution\n\n- Remove all parallel-specific Git setup, checkpointing, committing, cleanup, and fast-forwarding.\n- Give each branch the same `Arc<dyn Sandbox>` and inherited `internal.work_dir`.\n- Retain `max_parallel`, branch-scoped contexts, IDs, hooks, and lifecycle events.\n- Preserve outgoing-edge order in the final results regardless of completion order.\n- Define the parallel outcome as:\n  - `succeeded` when every branch succeeds.\n  - `failed` when every branch fails.\n  - `partially_succeeded` for every mixed or partial result.\n- Preserve branch ID/index when handler or task execution fails.\n- Keep the current single-node-per-branch topology.\n\n### Results and fan-in\n\nIntroduce a shared typed result:\n\n```rust\nParallelBranchResult {\n    id: String,\n    status: String,\n    context_updates: BTreeMap<String, serde_json::Value>,\n}\n```\n\n- Store the ordered array in `parallel.results` and keep `parallel.branch_count`.\n- Include updates from successful and failed branches; never merge them into the parent context at top level.\n- Offload large leaf values using existing artifact storage while keeping `parallel.results` itself a structured array.\n- Resolve nested textual `response.*` and `command.output` blob references when building downstream prompt context.\n- Emit the same typed results through `parallel.completed` and project them into `StageProjection.parallel_results`.\n- A promptless fan-in verifies results exist and succeeds with a joined-branches note.\n- A prompted fan-in uses standard prompt execution and records `response.<fan_in_id>`, `last_response`, usage, and prompt events. It performs no ranking or selection.\n\nRemove:\n\n- Heuristic and LLM branch-selection code.\n- `parallel.fan_in.best_id`, `best_outcome`, and `best_head_sha`.\n- Per-result `head_sha` and `score`.\n- The special fan-in model-usage mode.\n- Fan-in selected-branch notes and UI.\n\n### Delete obsolete Git/worktree infrastructure\n\n- Delete the parallel-only `WorktreeSandbox`, its options/callbacks, exports, tests, and sandbox trait path helpers.\n- Remove `EngineServices`’ parallel-only `GitState` and pipeline wiring.\n- Remove now-unused branch/worktree/fast-forward Git helpers and parallel ref sanitization.\n- Remove the parallel-base-checkpoint notice code.\n- Remove the now-unemitted `git.branch`, `git.worktree.added`, and `git.worktree.removed` event variants and property types.\n- Leave the server’s independent Git checkout/worktree implementation unchanged.\n- Continue normal run-level checkpointing after the parallel node; any shared workspace changes are captured together.\n\n## Public Interfaces and Documentation\n\n- Remove `join_policy` from DOT documentation, examples, fixtures, events, and UI.\n- Add a validation error directing users to remove any `join_policy` attribute.\n- Update `parallel.started` to contain only visit and branch count.\n- Update `parallel.branch.completed` to remove `head_sha`.\n- Define `ParallelBranchResult` in OpenAPI and change `StageProjection.parallel_results` from untyped objects to that typed array; regenerate Rust and TypeScript clients.\n- Update the parallel UI to show branch status and links without commit SHAs or a join-policy badge.\n- Replace the fan-in trophy/selection UI with joined-state information and the optional standard reducer transcript.\n- Rewrite the active parallel strategy and public docs around shared-checkout concurrency:\n  - Read-only behavior is best effort.\n  - Concurrent writes are allowed but entirely user-managed.\n  - Fabro performs no write enforcement, detection, or warnings.\n  - Results are available through `parallel.results`, not a workspace `parallel_results.json`.\n  - A fan-in prompt synthesizes results but never selects workspace state.\n- Remove `join_policy` from all checked-in tutorial/demo workflows and generated documentation fixtures.\n\n## Test Plan\n\n- Unit-test that every branch receives the same sandbox working directory while retaining independent contexts.\n- Verify deterministic result ordering and complete per-branch context updates, including failed branches and structured/command outputs.\n- Cover all-success, mixed, partial, all-failed, zero-branch, `max_parallel`, dry-run, and run-cancellation behavior.\n- In a temporary Git repository, run parallel branches that write distinct files and assert:\n  - Both files remain in the shared checkout.\n  - No `fabro/run/parallel/*` refs exist.\n  - No parallel worktrees, branch commits, worktree events, or fast-forward commands occur.\n- Test promptless fan-in as a no-op join and prompted fan-in as a standard reducer that sees every branch result and emits a normal response.\n- Update event serialization, store projection, API round-trip, web parser, and renderer tests for the new typed payloads and removed fields.\n- Remove the obsolete host and Daytona parallel-Git-selection tests; retain provider-independent shared-sandbox coverage.\n- Verify with:\n  - `cargo build -p fabro-api`\n  - `cd lib/packages/fabro-api-client && bun run generate && bun run typecheck`\n  - `cargo build --workspace`\n  - `ulimit -n 4096 && cargo nextest run --workspace`\n  - `cargo +nightly-2026-04-14 fmt --check --all`\n  - `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n  - `cd apps/fabro-web && bun test && bun run typecheck && bun run build`\n  - `cargo --locked dev docs check`\n\n## Assumptions and Unresolved Questions\n\n- The application is greenfield; removed fields, events, and attributes receive no compatibility layer.\n- Parallel branches remain single-node executions.\n- `max_parallel` remains supported.\n- Shared-workspace write races are explicitly the user’s responsibility.\n- No Git workspace warning or read-only enforcement will be added.\n- Unresolved questions: none.\n</proposed_plan>\n",
+          "outcome": "failed",
           "failure_signature": "preflight_compile|canceled|script cancelled: cargo check -q --workspace <n>>&<n>",
           "internal.work_dir": "/home/daytona/workspace/fabro"
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "preflight_compile": {
             "status": "failed",
             "failure": {
@@ -631,23 +635,80 @@
               "tool_time_ms": 1561,
               "active_time_ms": 1561
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "39d4c1e2e5a561a2e776b5d3777e50a7ce8001a4",
         "node_visits": {
-          "start": 1,
           "toolchain": 1,
+          "start": 1,
           "preflight_compile": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-07-23T16:56:53.023467586Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 14571,
+      "inference_time_ms": 0,
+      "tool_time_ms": 1561,
+      "active_time_ms": 1561
+    },
+    "failure": {
+      "reason": "cancelled",
+      "detail": {
+        "message": "Pipeline cancelled",
+        "category": "canceled"
+      }
+    },
+    "final_git_commit_sha": "39d4c1e2e5a561a2e776b5d3777e50a7ce8001a4",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "toolchain",
+        "stage_label": "toolchain",
+        "timing": {
+          "wall_time_ms": 1563,
+          "inference_time_ms": 0,
+          "tool_time_ms": 1561,
+          "active_time_ms": 1561
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "preflight_compile",
+        "stage_label": "preflight_compile",
+        "timing": {
+          "wall_time_ms": 3087,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      }
+    ],
+    "total_retries": 0,
+    "diff": {}
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -711,7 +772,12 @@
       "first_event_seq": 31,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "Script cancelled: cargo check -q --workspace 2>&1",
+        "timestamp": "2026-07-23T16:56:49.017734536Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
@@ -719,11 +785,26 @@
         "command": "exec 2>&1\ncargo check -q --workspace 2>&1",
         "language": "shell"
       },
-      "script_timing": null,
+      "script_timing": {
+        "output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+        "duration_ms": 3083,
+        "termination": "cancelled",
+        "output_bytes": 0,
+        "live_streaming": false
+      },
       "parallel_results": null,
       "output": null,
+      "output_bytes": 0,
+      "live_streaming": false,
+      "termination": "cancelled",
       "started_at": "2026-07-23T16:56:45.928867673Z",
       "handler": "command",
+      "timing": {
+        "wall_time_ms": 3087,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -732,7 +813,7 @@
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
       },
-      "state": "running"
+      "state": "cancelled"
     },
     "toolchain@1": {
       "first_event_seq": 21,
