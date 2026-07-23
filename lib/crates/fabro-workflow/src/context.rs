@@ -40,9 +40,6 @@ pub mod keys {
     // --- parallel.* keys ---
     pub const PARALLEL_RESULTS: &str = "parallel.results";
     pub const PARALLEL_BRANCH_COUNT: &str = "parallel.branch_count";
-    pub const PARALLEL_FAN_IN_BEST_ID: &str = "parallel.fan_in.best_id";
-    pub const PARALLEL_FAN_IN_BEST_OUTCOME: &str = "parallel.fan_in.best_outcome";
-    pub const PARALLEL_FAN_IN_BEST_HEAD_SHA: &str = "parallel.fan_in.best_head_sha";
 
     // --- Prefix constants (for filtering and dynamic keys) ---
     pub const GRAPH_PREFIX: &str = "graph.";

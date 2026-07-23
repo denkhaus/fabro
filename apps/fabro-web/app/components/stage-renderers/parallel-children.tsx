@@ -4,7 +4,6 @@ import { ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
 import type { EventEnvelope } from "@qltysh/fabro-api-client";
 
 import type { Stage } from "../stage-sidebar";
-import { CopyButton } from "../ui";
 import { formatDurationMs } from "../../lib/format";
 import { StageMetaBar } from "./meta-bar";
 import { parseParallelOverview, type ParallelBranchResult } from "./helpers";
@@ -24,11 +23,6 @@ function statusTone(status: string): string {
 function statusLabel(status: string): string {
   if (!status) return "—";
   return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ");
-}
-
-function shortSha(sha: string | null): string | null {
-  if (!sha) return null;
-  return sha.length > 8 ? sha.slice(0, 8) : sha;
 }
 
 function StatItem({
@@ -59,7 +53,6 @@ function ChildRow({
   result: ParallelBranchResult;
   stageHref: string | null;
 }) {
-  const sha = shortSha(result.headSha);
   const tone = statusTone(result.status);
 
   const inner = (
@@ -72,11 +65,6 @@ function ChildRow({
       <span className="min-w-0 flex-1 truncate font-mono text-sm text-fg-3">
         {result.id}
       </span>
-      {sha && (
-        <span className="inline-flex items-center gap-1 font-mono text-xs text-fg-muted">
-          {sha}
-        </span>
-      )}
       {stageHref && (
         <ArrowTopRightOnSquareIcon
           className="size-3.5 shrink-0 text-fg-muted transition-colors group-hover:text-fg-2"
@@ -97,9 +85,6 @@ function ChildRow({
         </Link>
       ) : (
         <span className="flex flex-1 items-center gap-3">{inner}</span>
-      )}
-      {result.headSha && (
-        <CopyButton value={result.headSha} label="Copy commit SHA" className="shrink-0" />
       )}
     </li>
   );
@@ -134,19 +119,13 @@ export function ParallelChildren({
       ? Array.from({ length: overview.branchCount }, (_, i) => ({
           id: `branch ${i + 1}`,
           status: "running",
-          headSha: null,
+          context_updates: {},
         }))
       : [];
 
   return (
     <div className="space-y-6 pl-3 pr-4 sm:pr-6 lg:pr-8">
-      <StageMetaBar stage={stage}>
-        {overview.joinPolicy ? (
-          <span className="inline-flex items-center rounded-full bg-overlay-strong px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-fg-2">
-            {overview.joinPolicy.replace(/_/g, " ")}
-          </span>
-        ) : null}
-      </StageMetaBar>
+      <StageMetaBar stage={stage} />
 
       <section className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-lg bg-panel p-5 outline-1 -outline-offset-1 outline-line sm:grid-cols-4">
         <StatItem label="Branches" value={overview.branchCount ?? "—"} />

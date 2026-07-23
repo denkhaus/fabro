@@ -273,7 +273,6 @@ impl Handler for SubWorkflowHandler {
                     run: child_run,
                     registry,
                     interviewer,
-                    git_state: std::sync::RwLock::new(None),
                     base_env,
                     github_token,
                     inputs,

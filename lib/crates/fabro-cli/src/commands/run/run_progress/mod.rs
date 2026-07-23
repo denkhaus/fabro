@@ -587,7 +587,6 @@ mod tests {
             node_id:      "fork1".into(),
             visit:        1,
             branch_count: 2,
-            join_policy:  "wait_all".into(),
         });
         assert_eq!(ui.stage.parallel_parent.as_deref(), Some("fork1"));
 
@@ -612,7 +611,6 @@ mod tests {
             index:              0,
             duration_ms:        2000,
             status:             "succeeded".into(),
-            head_sha:           None,
         });
         let stage = &ui.stage.active_stages["fork1"];
         assert!(matches!(
@@ -630,7 +628,6 @@ mod tests {
             node_id:      "fork1".into(),
             visit:        1,
             branch_count: 1,
-            join_policy:  "wait_all".into(),
         });
         emit(&mut ui, Event::ParallelBranchStarted {
             parallel_group_id:  StageId::new("fork1", 1),
@@ -1246,7 +1243,6 @@ mod tests {
             node_id:      "fork1".into(),
             visit:        1,
             branch_count: 1,
-            join_policy:  "wait_all".into(),
         });
         emit(&mut ui, Event::ParallelBranchStarted {
             parallel_group_id:  StageId::new("fork1", 1),
@@ -1261,7 +1257,6 @@ mod tests {
             index:              0,
             duration_ms:        500,
             status:             "succeeded".into(),
-            head_sha:           None,
         });
 
         let stage = &ui.stage.active_stages["fork1"];

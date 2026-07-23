@@ -34,17 +34,50 @@ pub async fn offload_large_values(
     updates: &mut HashMap<String, Value>,
     run_store: &RunStoreHandle,
 ) -> Result<()> {
-    for value in updates.values_mut() {
-        let bytes = serde_json::to_vec(&*value)
-            .map_err(|e| Error::engine_with_source("artifact serialize failed", e))?;
-
-        if bytes.len() > BLOB_OFFLOAD_THRESHOLD {
-            let blob_id = run_store
-                .write_blob(&bytes)
-                .await
-                .map_err(|e| Error::engine_with_anyhow("artifact blob write failed", e))?;
-            *value = Value::String(format_blob_ref(&blob_id));
+    for (key, value) in updates {
+        if key == context::keys::PARALLEL_RESULTS {
+            offload_large_leaves(value, run_store).await?;
+        } else {
+            offload_value(value, run_store).await?;
         }
+    }
+    Ok(())
+}
+
+fn offload_large_leaves<'a>(
+    value: &'a mut Value,
+    run_store: &'a RunStoreHandle,
+) -> BoxFuture<'a, Result<()>> {
+    Box::pin(async move {
+        match value {
+            Value::Array(items) => {
+                for item in items {
+                    offload_large_leaves(item, run_store).await?;
+                }
+            }
+            Value::Object(map) => {
+                for item in map.values_mut() {
+                    offload_large_leaves(item, run_store).await?;
+                }
+            }
+            Value::String(_) | Value::Null | Value::Bool(_) | Value::Number(_) => {
+                offload_value(value, run_store).await?;
+            }
+        }
+        Ok(())
+    })
+}
+
+async fn offload_value(value: &mut Value, run_store: &RunStoreHandle) -> Result<()> {
+    let bytes = serde_json::to_vec(&*value)
+        .map_err(|e| Error::engine_with_source("artifact serialize failed", e))?;
+
+    if bytes.len() > BLOB_OFFLOAD_THRESHOLD {
+        let blob_id = run_store
+            .write_blob(&bytes)
+            .await
+            .map_err(|e| Error::engine_with_anyhow("artifact blob write failed", e))?;
+        *value = Value::String(format_blob_ref(&blob_id));
     }
     Ok(())
 }
@@ -264,6 +297,10 @@ fn resolve_execution_values<'a>(
     })
 }
 
+fn is_text_context_key(key: &str) -> bool {
+    key == context::keys::COMMAND_OUTPUT || key.starts_with(context::keys::RESPONSE_PREFIX)
+}
+
 fn resolve_execution_value<'a>(
     key: Option<&'a str>,
     value: &'a mut Value,
@@ -274,7 +311,7 @@ fn resolve_execution_value<'a>(
     Box::pin(async move {
         match value {
             Value::String(current) => {
-                if matches!(key, Some(context::keys::COMMAND_OUTPUT)) {
+                if key.is_some_and(is_text_context_key) {
                     *current = resolve_text_or_blob_ref_str(current, run_store).await?;
                 } else if let Some(blob_id) = parse_blob_ref(current) {
                     *current = materialize_blob_ref(&blob_id, run_store, env, run_dir).await?;
@@ -286,12 +323,19 @@ fn resolve_execution_value<'a>(
             }
             Value::Array(items) => {
                 for item in items {
-                    resolve_execution_value(None, item, run_store, env, run_dir).await?;
+                    resolve_execution_value(key, item, run_store, env, run_dir).await?;
                 }
             }
             Value::Object(map) => {
-                for item in map.values_mut() {
-                    resolve_execution_value(None, item, run_store, env, run_dir).await?;
+                for (child_key, item) in map.iter_mut() {
+                    resolve_execution_value(
+                        Some(child_key.as_str()),
+                        item,
+                        run_store,
+                        env,
+                        run_dir,
+                    )
+                    .await?;
                 }
             }
             Value::Null | Value::Bool(_) | Value::Number(_) => {}
@@ -466,6 +510,47 @@ mod tests {
         assert_eq!(updates.get("small_key").unwrap(), &small_value);
     }
 
+    #[tokio::test]
+    async fn offload_preserves_parallel_results_and_replaces_only_large_leaves() {
+        let run_store = make_run_store("parallel-result-artifact-offload").await;
+        let large_response = "r".repeat(BLOB_OFFLOAD_THRESHOLD + 1);
+        let large_output = "o".repeat(BLOB_OFFLOAD_THRESHOLD + 1);
+        let mut updates = HashMap::from([(
+            context::keys::PARALLEL_RESULTS.to_string(),
+            serde_json::json!([{
+                "id": "branch_a",
+                "status": "failed",
+                "context_updates": {
+                    "response.branch_a": large_response,
+                    "command.output": large_output,
+                    "small": "kept inline",
+                }
+            }]),
+        )]);
+
+        offload_large_values(&mut updates, &run_store.clone().into())
+            .await
+            .unwrap();
+
+        let results = updates[context::keys::PARALLEL_RESULTS]
+            .as_array()
+            .expect("parallel.results must remain a structured array");
+        let branch_updates = results[0]["context_updates"]
+            .as_object()
+            .expect("context_updates must remain a structured object");
+        assert!(
+            branch_updates["response.branch_a"]
+                .as_str()
+                .is_some_and(|value| fabro_types::parse_blob_ref(value).is_some())
+        );
+        assert!(
+            branch_updates[context::keys::COMMAND_OUTPUT]
+                .as_str()
+                .is_some_and(|value| fabro_types::parse_blob_ref(value).is_some())
+        );
+        assert_eq!(branch_updates["small"], serde_json::json!("kept inline"));
+    }
+
     #[test]
     fn artifact_path_extracts_path_from_pointer() {
         let value = serde_json::json!("file:///tmp/logs/runtime/blobs/response.plan.json");
@@ -485,6 +570,58 @@ mod tests {
     fn artifact_path_returns_none_for_non_string() {
         let value = serde_json::json!(42);
         assert_eq!(artifact_path(&value), None);
+    }
+
+    #[tokio::test]
+    async fn resolve_context_hydrates_nested_parallel_text_blob_references() {
+        let run_store = make_run_store("parallel-result-text-resolution").await;
+        let response = "full branch response";
+        let output = "full command output";
+        let response_blob = run_store
+            .write_blob(&serde_json::to_vec(response).unwrap())
+            .await
+            .unwrap();
+        let output_blob = run_store
+            .write_blob(&serde_json::to_vec(output).unwrap())
+            .await
+            .unwrap();
+        let unrelated_blob = run_store
+            .write_blob(&serde_json::to_vec("unrelated artifact").unwrap())
+            .await
+            .unwrap();
+        let context = Context::new();
+        context.set(
+            context::keys::PARALLEL_RESULTS,
+            serde_json::json!([{
+                "id": "branch_a",
+                "status": "succeeded",
+                "context_updates": {
+                    "response.branch_a": fabro_types::format_blob_ref(&response_blob),
+                    "command.output": fabro_types::format_blob_ref(&output_blob),
+                    "report": fabro_types::format_blob_ref(&unrelated_blob),
+                }
+            }]),
+        );
+        let env = TestSyncEnv::new(true, "/workspace");
+        let run_dir = tempfile::tempdir().unwrap();
+
+        let resolved =
+            resolved_context_snapshot(&context, &run_store.clone().into(), &env, run_dir.path())
+                .await
+                .unwrap();
+
+        let updates = &resolved[context::keys::PARALLEL_RESULTS][0]["context_updates"];
+        assert_eq!(updates["response.branch_a"], serde_json::json!(response));
+        assert_eq!(
+            updates[context::keys::COMMAND_OUTPUT],
+            serde_json::json!(output)
+        );
+        assert!(
+            updates["report"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("file://")),
+            "non-textual nested values should retain artifact semantics"
+        );
     }
 
     #[test]

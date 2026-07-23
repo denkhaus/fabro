@@ -505,13 +505,10 @@ impl RunProjectionReducer for RunProjection {
                 )?;
             }
             EventBody::ParallelCompleted(props) => {
-                let parallel_results = serde_json::to_value(&props.results).map_err(|err| {
-                    Error::InvalidEvent(format!("invalid parallel.completed payload: {err}"))
-                })?;
                 let Some(stage) = stage_at_stored_or_current_visit(self, stored, event.seq) else {
                     return Ok(());
                 };
-                stage.parallel_results = Some(parallel_results);
+                stage.parallel_results = Some(props.results.clone());
             }
             EventBody::ParallelBranchStarted(_) => {
                 // Branches bypass the engine's StageStarted/StageCompleted
@@ -2055,7 +2052,6 @@ mod tests {
                     index:       0,
                     duration_ms: 1234,
                     status:      "succeeded".to_string(),
-                    head_sha:    None,
                 }),
                 branch.clone(),
             ))
@@ -2089,7 +2085,6 @@ mod tests {
                     index:       0,
                     duration_ms: 500,
                     status:      "failed".to_string(),
-                    head_sha:    None,
                 }),
                 branch.clone(),
             ))
