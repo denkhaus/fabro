@@ -1,0 +1,11 @@
+digraph Smoke {
+  graph [goal="Smoke test the Fabro server after upgrade"]
+  rankdir=LR
+
+  start [shape=Mdiamond, label="Start"]
+  exit  [shape=Msquare, label="Exit"]
+
+  greet [label="Greet", prompt="Reply with a single short sentence: 'Hello from Fabro.' Do nothing else."]
+
+  start -> greet -> exit
+}
