@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "LLM error: Invalid request to openrouter: This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 23787. To increase, visit https://openrouter.ai/settings/credits and add more credits",
+  "timestamp": "2026-07-23T03:43:05.538644319Z"
+}
