@@ -470,15 +470,15 @@
   },
   "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KY7YH7RYCJ1BDVTTP96ZA4HV",
   "start": {
-    "start_time": "2026-07-24T02:40:58.433875685Z",
+    "start_time": "2026-07-24T03:21:27.102763886Z",
     "run_branch": "fabro/run/01KY7YH7RYCJ1BDVTTP96ZA4HV",
     "base_sha": "30d770046a1883bb1e0935ce16ef0f1c5cf4b740"
   },
   "status": {
-    "kind": "starting"
+    "kind": "running"
   },
-  "status_updated_at": "2026-07-24T03:20:28.638624171Z",
-  "last_event_at": "2026-07-24T03:20:34.491747828Z",
+  "status_updated_at": "2026-07-24T03:21:27.102803308Z",
+  "last_event_at": "2026-07-24T06:44:55.406982182Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -962,6 +962,273 @@
           "deletions": 3785
         }
       }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-07-24T06:45:17.451168078Z",
+        "current_node": "simplify_fable",
+        "completed_nodes": [
+          "start",
+          "toolchain",
+          "preflight_compile",
+          "preflight_lint",
+          "implement",
+          "simplify_fable"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.fidelity": "compact",
+          "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+          "thread.toolchain.current_node": "preflight_compile",
+          "internal.retry_count.preflight_compile": 0,
+          "outcome": "succeeded",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.implement": 0,
+          "thread.preflight_lint.current_node": "implement",
+          "internal.node_visit_count": 1,
+          "response.implement": "Workflow complete. All required implementation and verification steps passed; no blockers remain.",
+          "internal.thread_id": null,
+          "thread.start.current_node": "toolchain",
+          "graph.rankdir": "LR",
+          "internal.retry_count.preflight_lint": 0,
+          "response.simplify_fable": "Review complete. Three parallel review agents (reuse, quality, efficiency) analyzed the shared-checkout parallel execution diff, and I fixed the verified findings.\n\n## Fixed\n\n**Correctness (high)**\n- **Old stored events failed to deserialize**: `ParallelBranchResult.context_updates` was a required serde field, so pre-change `parallel.completed` events (which lacked it) would hard-fail event replay. Added `#[serde(default)]`.\n\n**Stringly-typed status → `StageOutcome` (medium)**\n- `ParallelBranchResult.status`, `ParallelBranchCompletedProps.status`, the workflow `Event` variant, and the CLI `ProgressEvent` all carried `String` where the existing `StageOutcome` enum (same serde strings, existing OpenAPI schema + build.rs replacement) applied. Typed them end-to-end: OpenAPI now `$ref`s `StageOutcome`, regenerated the TS client, and `run_state.rs` dropped its parse-back `from_str`. This also eliminated the mixed `result.status == \"failed\"` / `failure_category()` predicate in the reap loop.\n\n**Payload lifecycle efficiency (high/medium)**\n- **Offload before emit**: `parallel.completed` previously carried raw (un-offloaded) branch results into the event log, projection, and per-event projection-cache clones. The handler now runs the new `artifact::offload_parallel_branch_updates` on the typed results before emitting/returning them.\n- **Removed the double-apply**: dropped the handler's direct `context.apply_updates(...)` (updates flow only through `outcome.context_updates`, like every other handler), which also kept raw results out of `StageCompleted.context_values`.\n- **Reduced per-branch copies**: parent snapshot taken once and shared via `Arc` (was 3 full context clones per branch), `graph` cloned once into an `Arc`, results moved instead of cloned into the event, removed the no-op `sort_by_key`, and `materialize_blob_ref` now checks file existence before reading the blob (content-addressed, so safe). Added a cheap size fast-path to `offload_value` for short strings.\n\n**Code reuse / structure**\n- `EngineServices` now derives `Clone` — deleted the field-by-field reconstruction in the branch task.\n- Extracted shared `context_diff` into `context.rs` (was duplicated in `manager_loop` and reimplemented in `parallel.rs`), taking `after` by value to move entries.\n- Added `WorkflowContext::parsed_run_id()` replacing identical 4-line parse blocks in `parallel.rs` and `agent.rs`.\n- Replaced the 5-tuple `handles` collection with a named `BranchDispatch` struct; unified simulated/normal notes with a prefix variable.\n- Unified `FanInHandler::simulate`/`execute` copy-paste twins into `run_join(..., simulated)`; fan-in now validates result shape via a slim deserialize instead of cloning the full hydrated payload it never used.\n- Fixed the stale `stage_scope.rs` doc referencing removed worktree/`GitCommit` behavior and renamed the change-narrating `..._omits_git_state_...` test.\n\n**Web**\n- Deleted dead `extractStageNotes` and `asUnknownRecord` (production callers removed by this change) plus their tests.\n- `parallel-children.tsx` now reuses shared `stageStatusTone`/`stageStatusLabel` from `stage-sidebar` (dropping its parallel tone/label maps with the impossible `cancelled` key) via a local `BranchRow` view type; `parseParallelOverview` validates statuses against the typed `StageOutcome` enum.\n- New tests use the existing `setupReactTestEnv` (with teardown) and a new shared `makeEventEnvelope` fixture builder in `test-utils`.\n\n## Validated\n`cargo build -p fabro-api` + API round-trip tests, TS client regen + typecheck, `cargo nextest run --workspace` (7,007 passed), `fmt --check`, `clippy -D warnings`, web `bun test` (679 passed) + typecheck + build, and `cargo dev docs check` — all clean.\n\nNoted but intentionally skipped: per-run blob memoization across resolution passes and concurrent blob resolution (worthwhile but a larger cross-cutting change beyond this cleanup's scope), and the negative string-absence assertions in new tests (harmless short-lived regression guards).",
+          "internal.retry_count.simplify_fable": 0,
+          "internal.retry_count.toolchain": 0,
+          "graph.goal": "<proposed_plan>\n# Shared-Checkout Parallel Execution\n\n## Summary\n\nSimplify parallel execution so every branch:\n\n- Receives an isolated context fork.\n- Executes concurrently against the same sandbox and Git checkout.\n- Creates no Git branch, worktree, checkpoint, or branch commit.\n- Always waits for every branch; remove `first_success` and `join_policy`.\n- Produces a collision-free result containing its context updates.\n\nFan-in remains an explicit join node. Without a prompt it is a no-op barrier; with a prompt it behaves like a standard prompt stage that reduces the aggregated results without selecting a branch.\n\n## Implementation Changes\n\n### Parallel execution\n\n- Remove all parallel-specific Git setup, checkpointing, committing, cleanup, and fast-forwarding.\n- Give each branch the same `Arc<dyn Sandbox>` and inherited `internal.work_dir`.\n- Retain `max_parallel`, branch-scoped contexts, IDs, hooks, and lifecycle events.\n- Preserve outgoing-edge order in the final results regardless of completion order.\n- Define the parallel outcome as:\n  - `succeeded` when every branch succeeds.\n  - `failed` when every branch fails.\n  - `partially_succeeded` for every mixed or partial result.\n- Preserve branch ID/index when handler or task execution fails.\n- Keep the current single-node-per-branch topology.\n\n### Results and fan-in\n\nIntroduce a shared typed result:\n\n```rust\nParallelBranchResult {\n    id: String,\n    status: String,\n    context_updates: BTreeMap<String, serde_json::Value>,\n}\n```\n\n- Store the ordered array in `parallel.results` and keep `parallel.branch_count`.\n- Include updates from successful and failed branches; never merge them into the parent context at top level.\n- Offload large leaf values using existing artifact storage while keeping `parallel.results` itself a structured array.\n- Resolve nested textual `response.*` and `command.output` blob references when building downstream prompt context.\n- Emit the same typed results through `parallel.completed` and project them into `StageProjection.parallel_results`.\n- A promptless fan-in verifies results exist and succeeds with a joined-branches note.\n- A prompted fan-in uses standard prompt execution and records `response.<fan_in_id>`, `last_response`, usage, and prompt events. It performs no ranking or selection.\n\nRemove:\n\n- Heuristic and LLM branch-selection code.\n- `parallel.fan_in.best_id`, `best_outcome`, and `best_head_sha`.\n- Per-result `head_sha` and `score`.\n- The special fan-in model-usage mode.\n- Fan-in selected-branch notes and UI.\n\n### Delete obsolete Git/worktree infrastructure\n\n- Delete the parallel-only `WorktreeSandbox`, its options/callbacks, exports, tests, and sandbox trait path helpers.\n- Remove `EngineServices`’ parallel-only `GitState` and pipeline wiring.\n- Remove now-unused branch/worktree/fast-forward Git helpers and parallel ref sanitization.\n- Remove the parallel-base-checkpoint notice code.\n- Remove the now-unemitted `git.branch`, `git.worktree.added`, and `git.worktree.removed` event variants and property types.\n- Leave the server’s independent Git checkout/worktree implementation unchanged.\n- Continue normal run-level checkpointing after the parallel node; any shared workspace changes are captured together.\n\n## Public Interfaces and Documentation\n\n- Remove `join_policy` from DOT documentation, examples, fixtures, events, and UI.\n- Add a validation error directing users to remove any `join_policy` attribute.\n- Update `parallel.started` to contain only visit and branch count.\n- Update `parallel.branch.completed` to remove `head_sha`.\n- Define `ParallelBranchResult` in OpenAPI and change `StageProjection.parallel_results` from untyped objects to that typed array; regenerate Rust and TypeScript clients.\n- Update the parallel UI to show branch status and links without commit SHAs or a join-policy badge.\n- Replace the fan-in trophy/selection UI with joined-state information and the optional standard reducer transcript.\n- Rewrite the active parallel strategy and public docs around shared-checkout concurrency:\n  - Read-only behavior is best effort.\n  - Concurrent writes are allowed but entirely user-managed.\n  - Fabro performs no write enforcement, detection, or warnings.\n  - Results are available through `parallel.results`, not a workspace `parallel_results.json`.\n  - A fan-in prompt synthesizes results but never selects workspace state.\n- Remove `join_policy` from all checked-in tutorial/demo workflows and generated documentation fixtures.\n\n## Test Plan\n\n- Unit-test that every branch receives the same sandbox working directory while retaining independent contexts.\n- Verify deterministic result ordering and complete per-branch context updates, including failed branches and structured/command outputs.\n- Cover all-success, mixed, partial, all-failed, zero-branch, `max_parallel`, dry-run, and run-cancellation behavior.\n- In a temporary Git repository, run parallel branches that write distinct files and assert:\n  - Both files remain in the shared checkout.\n  - No `fabro/run/parallel/*` refs exist.\n  - No parallel worktrees, branch commits, worktree events, or fast-forward commands occur.\n- Test promptless fan-in as a no-op join and prompted fan-in as a standard reducer that sees every branch result and emits a normal response.\n- Update event serialization, store projection, API round-trip, web parser, and renderer tests for the new typed payloads and removed fields.\n- Remove the obsolete host and Daytona parallel-Git-selection tests; retain provider-independent shared-sandbox coverage.\n- Verify with:\n  - `cargo build -p fabro-api`\n  - `cd lib/packages/fabro-api-client && bun run generate && bun run typecheck`\n  - `cargo build --workspace`\n  - `ulimit -n 4096 && cargo nextest run --workspace`\n  - `cargo +nightly-2026-04-14 fmt --check --all`\n  - `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n  - `cd apps/fabro-web && bun test && bun run typecheck && bun run build`\n  - `cargo --locked dev docs check`\n\n## Assumptions and Unresolved Questions\n\n- The application is greenfield; removed fields, events, and attributes receive no compatibility layer.\n- Parallel branches remain single-node executions.\n- `max_parallel` remains supported.\n- Shared-workspace write races are explicitly the user’s responsibility.\n- No Git workspace warning or read-only enforcement will be added.\n- Unresolved questions: none.\n</proposed_plan>\n",
+          "internal.work_dir": "/home/daytona/workspace/fabro",
+          "last_stage": "simplify_fable",
+          "thread.preflight_compile.current_node": "preflight_lint",
+          "failure_class": "",
+          "current_node": "simplify_fable",
+          "last_response": "Review complete. Three parallel review agents (reuse, quality, efficiency) analyzed the shared-checkout parallel execution diff, and I fixed the verified findings.\n\n## Fixed\n\n**Correctness (high)**\n- ",
+          "failure_signature": "",
+          "internal.run_id": "01KY7YH7RYCJ1BDVTTP96ZA4HV"
+        },
+        "node_outcomes": {
+          "preflight_compile": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo check -q --workspace 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 137028,
+              "active_time_ms": 137028
+            }
+          },
+          "preflight_lint": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+            },
+            "notes": "Script completed: cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 165282,
+              "active_time_ms": 165282
+            }
+          },
+          "simplify_fable": {
+            "status": "succeeded",
+            "context_updates": {
+              "last_stage": "simplify_fable",
+              "last_response": "Review complete. Three parallel review agents (reuse, quality, efficiency) analyzed the shared-checkout parallel execution diff, and I fixed the verified findings.\n\n## Fixed\n\n**Correctness (high)**\n- ",
+              "response.simplify_fable": "Review complete. Three parallel review agents (reuse, quality, efficiency) analyzed the shared-checkout parallel execution diff, and I fixed the verified findings.\n\n## Fixed\n\n**Correctness (high)**\n- **Old stored events failed to deserialize**: `ParallelBranchResult.context_updates` was a required serde field, so pre-change `parallel.completed` events (which lacked it) would hard-fail event replay. Added `#[serde(default)]`.\n\n**Stringly-typed status → `StageOutcome` (medium)**\n- `ParallelBranchResult.status`, `ParallelBranchCompletedProps.status`, the workflow `Event` variant, and the CLI `ProgressEvent` all carried `String` where the existing `StageOutcome` enum (same serde strings, existing OpenAPI schema + build.rs replacement) applied. Typed them end-to-end: OpenAPI now `$ref`s `StageOutcome`, regenerated the TS client, and `run_state.rs` dropped its parse-back `from_str`. This also eliminated the mixed `result.status == \"failed\"` / `failure_category()` predicate in the reap loop.\n\n**Payload lifecycle efficiency (high/medium)**\n- **Offload before emit**: `parallel.completed` previously carried raw (un-offloaded) branch results into the event log, projection, and per-event projection-cache clones. The handler now runs the new `artifact::offload_parallel_branch_updates` on the typed results before emitting/returning them.\n- **Removed the double-apply**: dropped the handler's direct `context.apply_updates(...)` (updates flow only through `outcome.context_updates`, like every other handler), which also kept raw results out of `StageCompleted.context_values`.\n- **Reduced per-branch copies**: parent snapshot taken once and shared via `Arc` (was 3 full context clones per branch), `graph` cloned once into an `Arc`, results moved instead of cloned into the event, removed the no-op `sort_by_key`, and `materialize_blob_ref` now checks file existence before reading the blob (content-addressed, so safe). Added a cheap size fast-path to `offload_value` for short strings.\n\n**Code reuse / structure**\n- `EngineServices` now derives `Clone` — deleted the field-by-field reconstruction in the branch task.\n- Extracted shared `context_diff` into `context.rs` (was duplicated in `manager_loop` and reimplemented in `parallel.rs`), taking `after` by value to move entries.\n- Added `WorkflowContext::parsed_run_id()` replacing identical 4-line parse blocks in `parallel.rs` and `agent.rs`.\n- Replaced the 5-tuple `handles` collection with a named `BranchDispatch` struct; unified simulated/normal notes with a prefix variable.\n- Unified `FanInHandler::simulate`/`execute` copy-paste twins into `run_join(..., simulated)`; fan-in now validates result shape via a slim deserialize instead of cloning the full hydrated payload it never used.\n- Fixed the stale `stage_scope.rs` doc referencing removed worktree/`GitCommit` behavior and renamed the change-narrating `..._omits_git_state_...` test.\n\n**Web**\n- Deleted dead `extractStageNotes` and `asUnknownRecord` (production callers removed by this change) plus their tests.\n- `parallel-children.tsx` now reuses shared `stageStatusTone`/`stageStatusLabel` from `stage-sidebar` (dropping its parallel tone/label maps with the impossible `cancelled` key) via a local `BranchRow` view type; `parseParallelOverview` validates statuses against the typed `StageOutcome` enum.\n- New tests use the existing `setupReactTestEnv` (with teardown) and a new shared `makeEventEnvelope` fixture builder in `test-utils`.\n\n## Validated\n`cargo build -p fabro-api` + API round-trip tests, TS client regen + typecheck, `cargo nextest run --workspace` (7,007 passed), `fmt --check`, `clippy -D warnings`, web `bun test` (679 passed) + typecheck + build, and `cargo dev docs check` — all clean.\n\nNoted but intentionally skipped: per-run blob memoization across resolution passes and concurrent blob resolution (worthwhile but a larger cross-cutting change beyond this cleanup's scope), and the negative string-absence assertions in new tests (harmless short-lived regression guards)."
+            },
+            "notes": "Stage completed: simplify_fable",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "openrouter",
+                    "model_id": "anthropic/claude-fable-5"
+                  },
+                  "tokens": {
+                    "input_tokens": 166817,
+                    "output_tokens": 344509,
+                    "reasoning_tokens": 117120,
+                    "cache_read_tokens": 30620801,
+                    "cache_write_tokens": 382636
+                  }
+                },
+                "facts": {
+                  "algorithm": "anthropic",
+                  "cache_write_5m_tokens": 382636,
+                  "cache_write_1h_tokens": 0
+                }
+              },
+              "total_usd_micros": 60153414
+            },
+            "files_touched": [
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/fan-in-results.test.tsx",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/helpers.test.ts",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/helpers.ts",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/parallel-children.test.tsx",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/parallel-children.tsx",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/lib/test-utils.tsx",
+              "/home/daytona/workspace/fabro/docs/public/api-reference/fabro-api.yaml",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-cli/src/commands/run/run_progress/event.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-cli/src/commands/run/run_progress/mod.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-cli/src/commands/run/run_progress/stage_display.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-store/src/run_state.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/parallel.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/run_event/misc.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/artifact.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/context.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event/convert.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event/events.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/git.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/handler/agent.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/handler/fan_in.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/handler/manager_loop.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/handler/parallel.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/services.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/stage_scope.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/tests/it/integration.rs"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 6293405,
+              "tool_time_ms": 5933474,
+              "active_time_ms": 12226879
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "toolchain": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/20eeffec02497fbda7b51f51b06fe29c1d639551eee4d5ea9845fc1f86bd77e1"
+            },
+            "notes": "Script completed: command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1285,
+              "active_time_ms": 1285
+            }
+          },
+          "implement": {
+            "status": "succeeded",
+            "context_updates": {
+              "last_response": "Workflow complete. All required implementation and verification steps passed; no blockers remain.",
+              "response.implement": "Workflow complete. All required implementation and verification steps passed; no blockers remain.",
+              "last_stage": "implement"
+            },
+            "notes": "Stage completed: implement",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "openrouter",
+                    "model_id": "openai/gpt-5.6-sol"
+                  },
+                  "tokens": {
+                    "input_tokens": 45285,
+                    "output_tokens": 68995,
+                    "reasoning_tokens": 66511,
+                    "cache_read_tokens": 38872288,
+                    "cache_write_tokens": 1561893
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              }
+            },
+            "files_touched": [
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/fan-in-results.test.tsx",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/fan-in-results.tsx",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/helpers.test.ts",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/helpers.ts",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/parallel-children.test.tsx",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/components/stage-renderers/parallel-children.tsx",
+              "/home/daytona/workspace/fabro/apps/fabro-web/app/routes/run-stages.tsx",
+              "/home/daytona/workspace/fabro/docs/internal/events.md",
+              "/home/daytona/workspace/fabro/docs/internal/parallel-strategy.md",
+              "/home/daytona/workspace/fabro/docs/public/api-reference/fabro-api.yaml",
+              "/home/daytona/workspace/fabro/docs/public/examples/clone-substack.mdx",
+              "/home/daytona/workspace/fabro/docs/public/execution/context.mdx",
+              "/home/daytona/workspace/fabro/docs/public/execution/outcomes.mdx",
+              "/home/daytona/workspace/fabro/docs/public/reference/dot-language.mdx",
+              "/home/daytona/workspace/fabro/docs/public/tutorials/ensemble.mdx",
+              "/home/daytona/workspace/fabro/docs/public/tutorials/parallel-review.mdx",
+              "/home/daytona/workspace/fabro/docs/public/workflows/stages-and-nodes.mdx",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-agent/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-agent/src/sandbox.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-api/build.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-api/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-api/tests/run_event_round_trip.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-api/tests/stage_projection_round_trip.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-cli/src/commands/run/run_progress/mod.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-cli/tests/it/workflow/dry_run_examples.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-dump/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-sandbox/src/daytona/mod.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-sandbox/src/docker.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-sandbox/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-sandbox/src/sandbox.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-store/src/run_state.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-store/tests/serializable_projection.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/parallel.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/run_event/infra.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/run_event/misc.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/run_event/mod.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-types/src/run_projection.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-validate/src/lib.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-validate/src/rules/inert_attribute.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-validate/src/rules/join_policy_removed.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-validate/src/rules/mod.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/README.md",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/artifact.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/context.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event/convert.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event/emitter.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event/events.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/event/names.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/git.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/handler/fan_in.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/handler/manager_loop.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/handler/parallel.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/pipeline/execute.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/pipeline/initialize.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/sandbox_git.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/services.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/src/test_support.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/tests/it/daytona_integration.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/tests/it/git_integration.rs",
+              "/home/daytona/workspace/fabro/lib/crates/fabro-workflow/tests/it/integration.rs",
+              "/home/daytona/workspace/fabro/test/attractor/reference_template.dot",
+              "/home/daytona/workspace/fabro/test/docs/examples/clone-substack/clone-substack.fabro"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 3405782,
+              "tool_time_ms": 2880638,
+              "active_time_ms": 6286420
+            }
+          }
+        },
+        "next_node_id": "simplify_sol",
+        "node_visits": {
+          "implement": 1,
+          "toolchain": 1,
+          "start": 1,
+          "simplify_fable": 1,
+          "preflight_compile": 1,
+          "preflight_lint": 1
+        }
+      },
+      "diff": {}
     }
   ],
   "conclusion": null,
@@ -1627,50 +1894,104 @@
       "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-07-24T02:41:00.405678932Z",
+      "started_at": "2026-07-24T03:21:29.172790992Z",
       "handler": "agent",
-      "timing": {
-        "wall_time_ms": 107845,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
       "usage": {
-        "input_tokens": 988739,
-        "output_tokens": 7764,
-        "total_tokens": 997137,
-        "reasoning_tokens": 634,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 10307290
+        "input_tokens": 693556,
+        "output_tokens": 903653,
+        "total_tokens": 91793718,
+        "reasoning_tokens": 407115,
+        "cache_read_tokens": 88597030,
+        "cache_write_tokens": 1192364,
+        "total_usd_micros": 175975679
       },
       "model": {
         "provider": "openrouter",
         "model_id": "claude-fable-5"
       },
+      "todos": {
+        "kind": "openai_plan",
+        "list_id": "openai_plan:ec5b2b6b-fa6d-4336-b140-67130ab9122b",
+        "items": [
+          {
+            "id": "59df515a2d01400d",
+            "status": "completed",
+            "order": 0,
+            "subject": "Identify changes (git diff of implement commit)"
+          },
+          {
+            "id": "8dbd2e4e8f168e09",
+            "status": "completed",
+            "order": 1,
+            "subject": "Launch three review agents in parallel (reuse, quality, efficiency)"
+          },
+          {
+            "id": "9f7065c2bac439f3",
+            "status": "completed",
+            "order": 2,
+            "subject": "Fix: serde default on context_updates + type status as StageOutcome (Rust/OpenAPI/TS)"
+          },
+          {
+            "id": "5ca7423ed69bf381",
+            "status": "completed",
+            "order": 3,
+            "subject": "Fix: parallel.rs — drop double-apply, offload before emit, remove redundant sort/clones, named struct, shared context_diff"
+          },
+          {
+            "id": "5617d6dbfeb3a93a",
+            "status": "completed",
+            "order": 4,
+            "subject": "Fix: fan_in unification, artifact.rs (materialize order, offload fast-path, doc), stage_scope doc, parsed_run_id helper, EngineServices Clone"
+          },
+          {
+            "id": "73867b40d8a4c0af",
+            "status": "completed",
+            "order": 5,
+            "subject": "Fix: web — remove dead helpers, local branch view type, setupReactTestEnv in new tests"
+          },
+          {
+            "id": "445a962adf26d63e",
+            "status": "completed",
+            "order": 6,
+            "subject": "Regenerate API clients and validate (build, tests, fmt, clippy, web)"
+          },
+          {
+            "id": "a680bfc1b146f669",
+            "status": "completed",
+            "order": 7,
+            "subject": "Summarize fixes"
+          }
+        ]
+      },
       "subagents": [
         {
-          "agent_id": "9a024e95",
+          "agent_id": "e7f42651",
           "depth": 1,
-          "task": "You are a CODE REUSE reviewer for a Rust + TypeScript monorepo at /home/daytona/workspace/fabro.\n\nA large change was just implemented: parallel workflow execution was simplified to shared-checkout concurrency (removed Git worktrees/branches per parallel branch, removed join_policy/first_success, introduced a typed `ParallelBranchResult { id, status, context_updates }` shared type, promptless/prompted fan-in as barrier/reducer, updated events, OpenAPI, web UI).\n\nThe full diff is saved at /tmp/implement.diff (313KB, ~7650 lines). Read it in chunks (e.g. with read_file offset/limit or `sed -n`), and review the NEW/CHANGED code for code-reuse issues:\n\n1. Search the repo for existing utilities/helpers that could replace newly written code. Common locations: lib/crates/fabro-util, fabro-types, fabro-workflow/src/context.rs, fabro-workflow/src/artifact.rs, apps/fabro-web/app/components/stage-renderers/helpers.ts, and files adjacent to the changed ones.\n2. Flag any new function that duplicates existing functionality; name the existing function to use instead.\n3. Flag inline logic that could use an existing utility — hand-rolled string manipulation, manual path handling, ad-hoc type guards, JSON traversal, etc.\n\nFocus on files with substantive new logic:\n- lib/crates/fabro-types/src/parallel.rs (new shared ParallelBranchResult type)\n- lib/crates/fabro-workflow/src/handler/parallel.rs and handler/fan_in.rs\n- lib/crates/fabro-workflow/src/artifact.rs and context.rs (blob offloading/resolution for parallel.results)\n- lib/crates/fabro-validate/src/rules/join_policy_removed.rs (new validation rule; compare against existing rules like inert_attribute.rs)\n- apps/fabro-web/app/components/stage-renderers/* (parallel-children.tsx, fan-in-results.tsx, helpers.ts)\n- lib/crates/fabro-api/build.rs with_replacement usage\n\nDO NOT modify any files. Produce a concise report of concrete findings: file, line/snippet, the duplicated/reimplemented logic, and the existing utility to use instead. If something is clean, say so briefly. End with a prioritized list of actionable fixes (or \"no issues found\").",
+          "task": "You are a CODE REUSE reviewer for the Rust/TypeScript repo at /home/daytona/workspace/fabro (a workflow orchestration platform). A recent commit implemented \"shared-checkout parallel execution\": parallel branches now share one sandbox/Git checkout, all Git branch/worktree/checkpoint logic for parallel was deleted, `join_policy`/`first_success` removed, a new typed `ParallelBranchResult { id, status, context_updates }` was introduced (in lib/crates/fabro-types/src/parallel.rs, reused via fabro-api build.rs replacement), fan-in became either a no-op barrier or a standard prompt reducer, and web UI/docs were updated.\n\nThe full diff of the change is saved at /tmp/implement.diff (7653 lines, diff of git range 845a62f0d..99d3e7bf4 in the repo). Read it in chunks. Focus your review on the NEW/CHANGED code (lines added), especially:\n- lib/crates/fabro-workflow/src/handler/parallel.rs\n- lib/crates/fabro-workflow/src/handler/fan_in.rs\n- lib/crates/fabro-workflow/src/artifact.rs\n- lib/crates/fabro-workflow/src/event/convert.rs, events.rs\n- lib/crates/fabro-types/src/parallel.rs, run_event/misc.rs, run_projection.rs\n- lib/crates/fabro-validate/src/rules/join_policy_removed.rs, lib.rs\n- apps/fabro-web/app/components/stage-renderers/*.tsx, helpers.ts\n- lib/crates/fabro-store/src/run_state.rs\n\nYour job:\n1. Search the codebase for existing utilities/helpers that could replace newly written code in this diff. Look in fabro-util, fabro-types, shared modules, and files adjacent to the changed ones (e.g. existing blob/artifact reference resolution helpers, existing JSON traversal helpers, existing status enums vs stringly-typed \"status: String\", existing prompt-execution helpers that fan_in could reuse, existing validation-rule patterns).\n2. Flag any new function in the diff that duplicates existing functionality elsewhere in the repo. Name the existing function/module to use instead, with file paths.\n3. Flag inline logic that could use an existing utility (hand-rolled string manipulation, manual JSON path handling, ad-hoc type guards in TypeScript, duplicated helpers between test files and production code, etc.).\n\nUse rg/read tools to verify each finding against the actual current code (the commit is already applied to the working tree). DO NOT make any edits. Produce a final report as a numbered list of findings, each with: file path + line context, what's duplicated/reinventable, the existing utility to use instead, and severity (high/medium/low). If an area is clean, say so briefly. Be precise — no speculative findings without verifying the named existing utility actually exists.",
           "status": {
-            "kind": "running"
+            "kind": "completed",
+            "success": true,
+            "turns_used": 222
           }
         },
         {
-          "agent_id": "37d82d28",
+          "agent_id": "f6196687",
           "depth": 1,
-          "task": "You are a CODE QUALITY reviewer for a Rust + TypeScript monorepo at /home/daytona/workspace/fabro.\n\nA large change was just implemented: parallel workflow execution was simplified to shared-checkout concurrency (removed Git worktrees/branches per parallel branch, removed join_policy/first_success, introduced a typed `ParallelBranchResult { id, status, context_updates }` shared type, promptless/prompted fan-in as barrier/reducer, updated events, OpenAPI spec, web UI).\n\nThe full diff is saved at /tmp/implement.diff (313KB, ~7650 lines). Read it in chunks (e.g. with read_file offset/limit or `sed -n`), then read the final state of the key changed files to review for hacky patterns:\n\n1. **Redundant state**: state duplicating existing state, cached values that could be derived\n2. **Parameter sprawl**: new parameters bolted onto functions instead of restructuring\n3. **Copy-paste with slight variation**: near-duplicate blocks that should be unified\n4. **Leaky abstractions**: exposing internals that should be encapsulated\n5. **Stringly-typed code**: raw strings where constants/enums/string-unions already exist (e.g. branch status strings — is there an existing Outcome/status enum that should be used instead of `status: String`?)\n6. **Unnecessary JSX nesting**: wrapper elements adding no layout value in the web UI changes\n7. **Unnecessary comments**: comments explaining WHAT (delete) vs non-obvious WHY (keep). Also flag leftover comments referencing removed concepts (join_policy, worktrees, best branch selection, head_sha) and any dead code / unused imports / unused fields left behind by the removal.\n\nAlso check: incomplete removals — search the repo for lingering references to `join_policy`, `first_success`, `best_id`, `best_outcome`, `best_head_sha`, `head_sha` (in parallel context), `WorktreeSandbox`, `git.worktree`, `parallel_results.json`, `fan_in` selection language — that the diff should have removed but didn't (excluding intentional keeps like the new validation rule that errors on join_policy, and the server's independent worktree implementation which is out of scope).\n\nKey files:\n- lib/crates/fabro-workflow/src/handler/parallel.rs, handler/fan_in.rs, handler/manager_loop.rs\n- lib/crates/fabro-types/src/parallel.rs, run_event/*, run_projection.rs\n- lib/crates/fabro-workflow/src/git.rs, sandbox_git.rs, services.rs, artifact.rs, context.rs, event/*\n- lib/crates/fabro-validate/src/rules/join_policy_removed.rs\n- apps/fabro-web/app/components/stage-renderers/parallel-children.tsx, fan-in-results.tsx, helpers.ts, app/routes/run-stages.tsx\n- docs (internal/parallel-strategy.md, public docs) — flag stale references only, don't rewrite prose style\n\nDO NOT modify any files. Produce a concise report: file, snippet/line, issue, suggested fix. End with a prioritized list of actionable fixes (or \"no issues found\").",
+          "task": "You are a CODE QUALITY reviewer for the Rust/TypeScript repo at /home/daytona/workspace/fabro (a workflow orchestration platform). A recent commit implemented \"shared-checkout parallel execution\": parallel branches now share one sandbox/Git checkout, all Git branch/worktree/checkpoint logic for parallel was deleted, `join_policy`/`first_success` removed, a new typed `ParallelBranchResult { id, status, context_updates }` was introduced, fan-in became either a no-op barrier or a standard prompt reducer, and web UI/docs were updated.\n\nThe full diff is saved at /tmp/implement.diff (7653 lines, diff of git range 845a62f0d..99d3e7bf4; the commit is already applied to the working tree). Read it in chunks. Focus on NEWLY ADDED/CHANGED code, especially:\n- lib/crates/fabro-workflow/src/handler/parallel.rs (major rewrite)\n- lib/crates/fabro-workflow/src/handler/fan_in.rs (major rewrite)\n- lib/crates/fabro-workflow/src/artifact.rs (new blob resolution code)\n- lib/crates/fabro-workflow/src/event/convert.rs, events.rs\n- lib/crates/fabro-types/src/parallel.rs\n- lib/crates/fabro-validate/src/rules/join_policy_removed.rs and lib.rs changes\n- apps/fabro-web/app/components/stage-renderers/fan-in-results.tsx, parallel-children.tsx, helpers.ts\n- lib/crates/fabro-store/src/run_state.rs\n\nReview for hacky patterns:\n1. Redundant state: state duplicating existing state, cached values that could be derived\n2. Parameter sprawl: new params added instead of restructuring\n3. Copy-paste with slight variation: near-duplicate blocks that should be unified (check parallel.rs branch-result construction paths, TS test helpers vs prod code, etc.)\n4. Leaky abstractions: exposing internals, breaking abstraction boundaries\n5. Stringly-typed code: raw strings where constants/enums exist — e.g. ParallelBranchResult.status is a String; check whether an existing outcome/status enum in fabro-types should be used or whether string constants like \"succeeded\"/\"failed\"/\"partially_succeeded\" are scattered; check event name literals vs the names.rs constants\n6. Unnecessary JSX nesting: wrapper elements adding no layout value in the new TSX\n7. Unnecessary comments: comments explaining WHAT (delete), narrating the change (\"no longer does X\", \"removed Y\"), or referencing the old implementation — flag these; keep only non-obvious WHY\nAlso flag: dead code left behind (unused functions/imports/fields after removals), stale doc comments referencing removed concepts (join_policy, worktrees, best_id, head_sha), inconsistent naming, and any leftover references to removed features in docs/comments.\n\nUse rg/read tools to verify each finding against the actual working tree. DO NOT make edits. Produce a final report as a numbered list of findings with file path + approximate line, description, suggested fix, and severity (high/medium/low). If an area is clean, say so briefly. Verify before reporting — no speculative findings.",
           "status": {
-            "kind": "running"
+            "kind": "completed",
+            "success": true,
+            "turns_used": 402
           }
         },
         {
-          "agent_id": "5777d9d0",
+          "agent_id": "e5246da0",
           "depth": 1,
-          "task": "You are an EFFICIENCY reviewer for a Rust + TypeScript monorepo at /home/daytona/workspace/fabro.\n\nA large change was just implemented: parallel workflow execution was simplified to shared-checkout concurrency (removed Git worktrees/branches per parallel branch, removed join_policy/first_success, introduced a typed `ParallelBranchResult { id, status, context_updates }` shared type, promptless/prompted fan-in as barrier/reducer, updated events, OpenAPI spec, web UI).\n\nThe full diff is saved at /tmp/implement.diff (313KB, ~7650 lines). Read it in chunks (e.g. with read_file offset/limit or `sed -n`), then read the final state of key changed files to review for efficiency issues:\n\n1. **Unnecessary work**: redundant computations, repeated serialization/deserialization of the same value (e.g. serde_json round-trips of ParallelBranchResult arrays), duplicate clones of large context maps, repeated file reads\n2. **Missed concurrency**: independent operations run sequentially when they could be parallel (branch execution should still use max_parallel concurrency via buffered/JoinSet — verify branch tasks actually run concurrently and results preserve edge order)\n3. **Hot-path bloat**: new blocking work in per-event or per-render paths (web UI: check parallel-children.tsx / fan-in-results.tsx / run-stages.tsx for per-render recomputation without memoization where the codebase pattern uses memoization)\n4. **Recurring no-op updates**: unconditional state/store updates where a change-detection guard is warranted\n5. **Unnecessary existence checks**: TOCTOU-style pre-checks before operating\n6. **Memory**: unbounded accumulation, large `context_updates` cloned per-branch into events AND projections AND context (check whether the same big data is duplicated in multiple places unnecessarily; note the design intentionally offloads large leaf values to artifact storage — verify the offload actually happens before the data is cloned into events)\n7. **Overly broad operations**: cloning whole contexts when only updates are needed, deep-cloning JSON values repeatedly\n\nKey files:\n- lib/crates/fabro-workflow/src/handler/parallel.rs (branch spawning, result collection, context forking)\n- lib/crates/fabro-workflow/src/handler/fan_in.rs\n- lib/crates/fabro-workflow/src/artifact.rs, context.rs (blob offload/resolution)\n- lib/crates/fabro-types/src/parallel.rs\n- lib/crates/fabro-store/src/run_state.rs (projection of parallel results)\n- apps/fabro-web/app/components/stage-renderers/parallel-children.tsx, fan-in-results.tsx, helpers.ts, app/routes/run-stages.tsx\n\nDO NOT modify any files. Produce a concise report: file, snippet/line, issue, why it matters, suggested fix. End with a prioritized list of actionable fixes (or \"no issues found\").",
+          "task": "You are an EFFICIENCY reviewer for the Rust/TypeScript repo at /home/daytona/workspace/fabro (a workflow orchestration platform). A recent commit implemented \"shared-checkout parallel execution\": parallel branches now share one sandbox/Git checkout, Git branch/worktree/checkpoint logic for parallel was deleted, `join_policy` removed, a new typed `ParallelBranchResult { id, status, context_updates }` introduced, fan-in became a no-op barrier or standard prompt reducer, large leaf values are offloaded via artifact storage, and web UI was updated.\n\nThe full diff is saved at /tmp/implement.diff (7653 lines, diff of git range 845a62f0d..99d3e7bf4; the commit is already applied to the working tree). Read it in chunks. Focus on NEWLY ADDED/CHANGED code, especially:\n- lib/crates/fabro-workflow/src/handler/parallel.rs (concurrent branch execution, semaphore/max_parallel, result assembly, context cloning)\n- lib/crates/fabro-workflow/src/handler/fan_in.rs (result aggregation, blob resolution for prompt context)\n- lib/crates/fabro-workflow/src/artifact.rs (offloading large leaf values, resolving nested blob references — check for repeated store reads, recursion over large JSON)\n- lib/crates/fabro-workflow/src/event/convert.rs (event conversion, cloning)\n- apps/fabro-web/app/components/stage-renderers/*.tsx and helpers.ts (re-renders, repeated parsing)\n- lib/crates/fabro-store/src/run_state.rs (projection updates)\n\nReview for:\n1. Unnecessary work: redundant computations, repeated reads of the same artifact/blob, duplicate serialization of large JSON values, N+1 patterns (e.g. resolving blob refs one at a time when batching exists)\n2. Missed concurrency: independent operations run sequentially when they could be parallel (but note: branch execution SHOULD respect max_parallel — verify it does)\n3. Hot-path bloat: new blocking work in per-event or per-render paths\n4. Recurring no-op updates: unconditional state/store updates in loops or handlers; wrapper functions taking updater callbacks that defeat same-reference no-op returns\n5. Unnecessary existence checks: TOCTOU pre-checks before operating\n6. Memory: unbounded accumulation (e.g. cloning full context per branch — is it necessary?), large value clones where references/moves would do, missing cleanup\n7. Overly broad operations: loading/cloning entire contexts or results when only a portion is needed; re-serializing values that are already serialized\n\nAlso verify correctness-adjacent efficiency invariants: result ordering is preserved without sorting overhead beyond what's needed; semaphore-based concurrency doesn't serialize everything accidentally; JoinSet or spawned tasks aren't awaited sequentially in a way that defeats concurrency.\n\nUse rg/read tools to verify each finding against the actual working tree. DO NOT make edits. Produce a final report as a numbered list of findings with file path + approximate line, description, why it matters, suggested fix, and severity (high/medium/low). If an area is clean, say so briefly. Verify before reporting — no speculative findings.",
           "status": {
-            "kind": "running"
+            "kind": "completed",
+            "success": true,
+            "turns_used": 156
           }
         }
       ],
@@ -1692,7 +2013,7 @@
             "kind": "native"
           },
           "category": "subagent",
-          "invoked": false
+          "invoked": true
         },
         {
           "name": "edit_file",
@@ -1701,7 +2022,7 @@
             "kind": "native"
           },
           "category": "write",
-          "invoked": false
+          "invoked": true
         },
         {
           "name": "glob",
@@ -1710,7 +2031,7 @@
             "kind": "native"
           },
           "category": "read",
-          "invoked": false
+          "invoked": true
         },
         {
           "name": "grep",
@@ -1818,55 +2139,55 @@
             "kind": "native"
           },
           "category": "write",
-          "invoked": false
+          "invoked": true
         }
       ],
       "context_window": {
         "provider": "openrouter",
         "model": "anthropic/claude-fable-5",
         "context_window_tokens": 1000000,
-        "input_tokens": 36532,
-        "usage_percent": 3.6532,
+        "input_tokens": 239893,
+        "usage_percent": 23.9893,
         "count_method": "response_usage_scaled_breakdown",
         "staleness": "live",
-        "generated_at": "2026-07-24T02:42:41.551487840Z",
-        "event_seq": 9680,
+        "generated_at": "2026-07-24T06:44:55.406334740Z",
+        "event_seq": 11694,
         "breakdown": [
           {
             "category": "system_prompt",
-            "tokens": 1874,
-            "usage_percent": 0.1874
+            "tokens": 961,
+            "usage_percent": 0.0961
           },
           {
             "category": "tools",
-            "tokens": 1953,
-            "usage_percent": 0.1953
+            "tokens": 1319,
+            "usage_percent": 0.1319
           },
           {
             "category": "skills",
-            "tokens": 371,
-            "usage_percent": 0.0371
+            "tokens": 183,
+            "usage_percent": 0.0183
           },
           {
             "category": "memory",
-            "tokens": 6800,
-            "usage_percent": 0.68
+            "tokens": 3361,
+            "usage_percent": 0.3361
           },
           {
             "category": "conversation",
-            "tokens": 25522,
-            "usage_percent": 2.5522
+            "tokens": 234063,
+            "usage_percent": 23.4063
           },
           {
             "category": "other",
-            "tokens": 12,
-            "usage_percent": 0.0012
+            "tokens": 6,
+            "usage_percent": 0.0006
           }
         ],
         "warnings": []
       },
       "agent_control": "running",
-      "state": "failed"
+      "state": "running"
     }
   }
 }
