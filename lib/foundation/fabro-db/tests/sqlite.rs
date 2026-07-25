@@ -73,6 +73,16 @@ async fn connect_creates_parent_directory_and_migrate_is_idempotent() -> anyhow:
     .await?;
     assert_eq!(runs_table_count, 1);
 
+    for table in ["auth_sessions", "refresh_tokens"] {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
+        )
+        .bind(table)
+        .fetch_one(database.pool())
+        .await?;
+        assert_eq!(count, 1, "{table} table should exist");
+    }
+
     let legacy_import_table_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'legacy_imports'",
     )
@@ -385,6 +395,141 @@ INSERT INTO runs (
     .bind(status)
     .bind(input_tokens)
     .bind(summary_json)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn auth_sessions_schema_enforces_one_live_token_and_cascade() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let database = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
+    database.migrate().await?;
+
+    let session = "11111111-1111-4111-8111-111111111111";
+    insert_auth_session(database.pool(), session, "https://github.com", "12345").await?;
+    insert_refresh_token(database.pool(), &[1_u8; 32], session, 1_000, None).await?;
+
+    // Rotation marks the old token used before issuing the new one, so a
+    // second live token in the same chain must be impossible.
+    assert!(
+        insert_refresh_token(database.pool(), &[2_u8; 32], session, 1_000, None)
+            .await
+            .is_err(),
+        "a session must not hold two live refresh tokens"
+    );
+    // A used token alongside the live one is the normal post-rotation state.
+    insert_refresh_token(database.pool(), &[2_u8; 32], session, 1_000, Some(1_500)).await?;
+
+    assert!(
+        insert_refresh_token(
+            database.pool(),
+            &[3_u8; 32],
+            "22222222-2222-4222-8222-222222222222",
+            1_000,
+            None
+        )
+        .await
+        .is_err(),
+        "a refresh token must reference an existing session"
+    );
+
+    sqlx::query("DELETE FROM auth_sessions WHERE id = ?")
+        .bind(session)
+        .execute(database.pool())
+        .await?;
+    let orphaned: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM refresh_tokens")
+        .fetch_one(database.pool())
+        .await?;
+    assert_eq!(
+        orphaned, 0,
+        "deleting a session should cascade to its tokens"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn auth_sessions_schema_rejects_invalid_rows() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let database = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
+    database.migrate().await?;
+
+    for (id, issuer, subject) in [
+        ("too-short", "https://github.com", "12345"),
+        ("33333333-3333-4333-8333-333333333333", "", "12345"),
+        (
+            "44444444-4444-4444-8444-444444444444",
+            "https://github.com",
+            "",
+        ),
+    ] {
+        assert!(
+            insert_auth_session(database.pool(), id, issuer, subject)
+                .await
+                .is_err(),
+            "auth session row should be rejected: id={id}, issuer={issuer}, subject={subject}"
+        );
+    }
+
+    let session = "55555555-5555-4555-8555-555555555555";
+    insert_auth_session(database.pool(), session, "https://github.com", "12345").await?;
+    for (hash, expires_at_ms, used_at_ms) in [
+        (vec![9_u8; 31], 1_000, None),
+        (vec![9_u8; 32], 0, None),
+        (vec![9_u8; 32], 1_000, Some(-1)),
+    ] {
+        assert!(
+            insert_refresh_token(database.pool(), &hash, session, expires_at_ms, used_at_ms)
+                .await
+                .is_err(),
+            "refresh token row should be rejected: len={}, expires_at_ms={expires_at_ms}",
+            hash.len()
+        );
+    }
+
+    Ok(())
+}
+
+async fn insert_auth_session(
+    pool: &fabro_db::DbPool,
+    id: &str,
+    identity_issuer: &str,
+    identity_subject: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r"
+INSERT INTO auth_sessions (
+    id, identity_issuer, identity_subject, login, name, email,
+    created_at_ms, last_used_at_ms
+) VALUES (?, ?, ?, 'octocat', 'The Octocat', 'octocat@example.com', 0, 0)
+",
+    )
+    .bind(id)
+    .bind(identity_issuer)
+    .bind(identity_subject)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn insert_refresh_token(
+    pool: &fabro_db::DbPool,
+    token_hash: &[u8],
+    session_id: &str,
+    expires_at_ms: i64,
+    used_at_ms: Option<i64>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r"
+INSERT INTO refresh_tokens (token_hash, session_id, issued_at_ms, expires_at_ms, used_at_ms)
+VALUES (?, ?, 0, ?, ?)
+",
+    )
+    .bind(token_hash)
+    .bind(session_id)
+    .bind(expires_at_ms)
+    .bind(used_at_ms)
     .execute(pool)
     .await?;
     Ok(())
