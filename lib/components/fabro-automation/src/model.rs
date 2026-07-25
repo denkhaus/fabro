@@ -80,19 +80,6 @@ impl Automation {
         Ok(Self::from_validated_replace(id, revision, value))
     }
 
-    pub(crate) fn to_persisted(&self) -> PersistedAutomation {
-        PersistedAutomation {
-            name:        self.name.clone(),
-            description: self.description.clone(),
-            target:      self.target.clone(),
-            triggers:    self.triggers.clone(),
-        }
-    }
-
-    pub fn to_toml_string(&self) -> Result<String, AutomationStoreError> {
-        toml::to_string_pretty(&self.to_persisted()).map_err(AutomationStoreError::from)
-    }
-
     /// Returns the enabled API trigger if the automation has one.
     /// Returns `None` when the automation has no enabled API trigger.
     #[must_use]
@@ -563,7 +550,8 @@ expression = "0 0 * * *"
         assert_eq!(automation.description, None);
         assert!(automation.triggers.iter().all(AutomationTrigger::enabled));
 
-        let toml = automation.to_toml_string().unwrap();
+        let persisted = super::parse_persisted(bytes, None).unwrap();
+        let toml = String::from_utf8(super::canonical_bytes(&persisted).unwrap()).unwrap();
         assert!(!top_level_lines(&toml).any(|line| line.starts_with("id = ")));
         assert!(!top_level_lines(&toml).any(|line| line.starts_with("revision = ")));
         assert!(!top_level_lines(&toml).any(|line| line.starts_with("enabled = ")));
