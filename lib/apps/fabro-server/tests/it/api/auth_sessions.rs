@@ -6,10 +6,11 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use cookie::{Cookie, CookieJar, Key};
 use fabro_server::jwt_auth::resolve_auth_mode_with_lookup;
-use fabro_server::server::{RouterOptions, build_router_with_options};
+use fabro_server::server::{AppState, RouterOptions, build_router_with_options};
 use fabro_server::test_support::{TEST_SESSION_SECRET, TestAppStateBuilder};
 use fabro_server::web_auth::{SESSION_COOKIE_NAME, SessionCookie};
-use fabro_store::{ArtifactStore, Database, RefreshToken};
+use fabro_store::auth_session_store::{AuthSessionRecord, RefreshToken};
+use fabro_store::{ArtifactStore, Database};
 use hkdf::Hkdf;
 use object_store::memory::InMemory;
 use sha2::Sha256;
@@ -18,7 +19,7 @@ use uuid::Uuid;
 
 use crate::helpers::{response_json, response_status, settings_from_toml};
 
-fn test_app(source: &str) -> (axum::Router, Arc<Database>) {
+fn test_app(source: &str) -> (axum::Router, Arc<AppState>) {
     let settings = settings_from_toml(source);
     let object_store: Arc<dyn object_store::ObjectStore> = Arc::new(InMemory::new());
     let store = Arc::new(Database::new(
@@ -44,11 +45,11 @@ fn test_app(source: &str) -> (axum::Router, Arc<Database>) {
             TEST_SESSION_SECRET.to_string(),
         )]))
         .build();
-    let app = build_router_with_options(state, &auth_mode, RouterOptions::default());
-    (app, store)
+    let app = build_router_with_options(Arc::clone(&state), &auth_mode, RouterOptions::default());
+    (app, state)
 }
 
-fn github_app() -> (axum::Router, Arc<Database>) {
+fn github_app() -> (axum::Router, Arc<AppState>) {
     test_app(
         r#"
 _version = 1
@@ -118,22 +119,38 @@ fn session_cookie() -> String {
         .to_string()
 }
 
-fn refresh_token(hash: [u8; 32], chain_id: Uuid) -> RefreshToken {
+fn cli_session(id: Uuid, identity: fabro_types::IdpIdentity) -> AuthSessionRecord {
     let now = chrono::Utc::now();
-    RefreshToken {
-        token_hash: hash,
-        chain_id,
-        identity: github_identity(),
+    AuthSessionRecord {
+        id,
+        identity,
         login: "octocat".to_string(),
         name: "The Octocat".to_string(),
         email: "octocat@example.com".to_string(),
         avatar_url: String::new(),
+        user_agent: "fabro-cli/it".to_string(),
+        created_at: now - chrono::Duration::days(1),
+        last_used_at: now,
+    }
+}
+
+fn refresh_token(hash: [u8; 32], session_id: Uuid) -> RefreshToken {
+    let now = chrono::Utc::now();
+    RefreshToken {
+        token_hash: hash,
+        session_id,
         issued_at: now - chrono::Duration::days(1),
         expires_at: now + chrono::Duration::days(30),
-        last_used_at: now,
-        used: false,
-        user_agent: "fabro-cli/it".to_string(),
+        used_at: None,
     }
+}
+
+async fn seed_session(state: &AppState, session: AuthSessionRecord, token: RefreshToken) {
+    state
+        .test_auth_session_store()
+        .create_session(&session, &token)
+        .await
+        .expect("CLI session should insert");
 }
 
 async fn get_sessions(app: axum::Router, cookie: &str) -> serde_json::Value {
@@ -174,16 +191,14 @@ async fn authenticated_browser_requests_receive_current_browser_session() {
 
 #[tokio::test]
 async fn active_cli_refresh_token_chains_for_identity_appear_in_unified_list() {
-    let (app, store) = github_app();
-    let auth_tokens = store
-        .refresh_tokens()
-        .await
-        .expect("refresh token store should open");
+    let (app, state) = github_app();
     let chain_id = Uuid::new_v4();
-    auth_tokens
-        .insert_refresh_token(refresh_token([1_u8; 32], chain_id))
-        .await
-        .expect("refresh token should insert");
+    seed_session(
+        &state,
+        cli_session(chain_id, github_identity()),
+        refresh_token([1_u8; 32], chain_id),
+    )
+    .await;
 
     let body = get_sessions(app, &session_cookie()).await;
     let sessions = body["sessions"]
@@ -207,26 +222,37 @@ async fn active_cli_refresh_token_chains_for_identity_appear_in_unified_list() {
 
 #[tokio::test]
 async fn inactive_and_other_identity_cli_tokens_are_excluded() {
-    let (app, store) = github_app();
-    let auth_tokens = store
-        .refresh_tokens()
-        .await
-        .expect("refresh token store should open");
+    let (app, state) = github_app();
     let active_chain_id = Uuid::new_v4();
     let now = chrono::Utc::now();
-    let active = refresh_token([1_u8; 32], active_chain_id);
-    let mut expired = refresh_token([2_u8; 32], Uuid::new_v4());
-    expired.expires_at = now - chrono::Duration::seconds(1);
-    let mut used = refresh_token([3_u8; 32], Uuid::new_v4());
-    used.used = true;
-    let mut other = refresh_token([4_u8; 32], Uuid::new_v4());
-    other.identity = other_identity();
 
-    for token in [active, expired, used, other] {
-        auth_tokens
-            .insert_refresh_token(token)
-            .await
-            .expect("refresh token should insert");
+    let expired_id = Uuid::new_v4();
+    let mut expired = refresh_token([2_u8; 32], expired_id);
+    expired.expires_at = now - chrono::Duration::seconds(1);
+
+    // A chain whose only token has already been rotated away has nothing left
+    // to spend, so it is inactive even though the token has not expired.
+    let used_id = Uuid::new_v4();
+    let mut used = refresh_token([3_u8; 32], used_id);
+    used.used_at = Some(now);
+
+    for (session, token) in [
+        (
+            cli_session(active_chain_id, github_identity()),
+            refresh_token([1_u8; 32], active_chain_id),
+        ),
+        (cli_session(expired_id, github_identity()), expired),
+        (cli_session(used_id, github_identity()), used),
+        (
+            cli_session(Uuid::new_v4(), other_identity()),
+            refresh_token([4_u8; 32], Uuid::new_v4()),
+        ),
+    ] {
+        let token = RefreshToken {
+            session_id: session.id,
+            ..token
+        };
+        seed_session(&state, session, token).await;
     }
 
     let body = get_sessions(app, &session_cookie()).await;
@@ -250,23 +276,27 @@ async fn inactive_and_other_identity_cli_tokens_are_excluded() {
 
 #[tokio::test]
 async fn deleting_cli_session_removes_refresh_token_chain() {
-    let (app, store) = github_app();
-    let auth_tokens = store
-        .refresh_tokens()
-        .await
-        .expect("refresh token store should open");
+    let (app, state) = github_app();
     let chain_id = Uuid::new_v4();
-    let active = refresh_token([1_u8; 32], chain_id);
-    let mut used = refresh_token([2_u8; 32], chain_id);
-    used.used = true;
-    auth_tokens
-        .insert_refresh_token(active)
+    seed_session(
+        &state,
+        cli_session(chain_id, github_identity()),
+        refresh_token([1_u8; 32], chain_id),
+    )
+    .await;
+    // Rotate once so the chain holds a spent token alongside its live one.
+    let now = chrono::Utc::now();
+    state
+        .test_auth_session_store()
+        .rotate(
+            &[1_u8; 32],
+            &[2_u8; 32],
+            now + chrono::Duration::days(30),
+            "fabro-cli/it",
+            now,
+        )
         .await
-        .expect("active refresh token should insert");
-    auth_tokens
-        .insert_refresh_token(used)
-        .await
-        .expect("used refresh token should insert");
+        .expect("rotation should succeed");
 
     response_status(
         app.oneshot(
@@ -285,15 +315,17 @@ async fn deleting_cli_session_removes_refresh_token_chain() {
     .await;
 
     assert!(
-        auth_tokens
-            .find_refresh_token(&[1_u8; 32])
+        state
+            .test_auth_session_store()
+            .find_session_by_token_hash(&[1_u8; 32])
             .await
             .expect("active token lookup should succeed")
             .is_none()
     );
     assert!(
-        auth_tokens
-            .find_refresh_token(&[2_u8; 32])
+        state
+            .test_auth_session_store()
+            .find_session_by_token_hash(&[2_u8; 32])
             .await
             .expect("used token lookup should succeed")
             .is_none()

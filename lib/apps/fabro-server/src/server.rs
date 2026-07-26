@@ -85,8 +85,9 @@ use fabro_slack::threads::ThreadRegistry;
 use fabro_slack::{blocks as slack_blocks, connection as slack_connection};
 use fabro_static::EnvVars;
 use fabro_store::{
-    ArtifactKey, ArtifactStore, CachedRunProjection, Database, EventEnvelope, EventPayload,
-    NodeArtifact, PendingInterviewRecord, RunSummaryStore, StageArtifactEntry, StageId,
+    ArtifactKey, ArtifactStore, AuthSessionStore, CachedRunProjection, Database, EventEnvelope,
+    EventPayload, NodeArtifact, PendingInterviewRecord, RunSummaryStore, StageArtifactEntry,
+    StageId,
 };
 #[cfg(test)]
 use fabro_types::BlockedReason;
@@ -1153,6 +1154,7 @@ pub struct AppState {
 pub(crate) struct AppStores {
     pub(crate) runs:          Arc<Database>,
     pub(crate) run_summaries: Arc<RunSummaryStore>,
+    pub(crate) auth_sessions: Arc<AuthSessionStore>,
     pub(crate) automations:   Arc<AutomationStore>,
     pub(crate) environments:  Arc<EnvironmentStore>,
     pub(crate) mcp_servers:   Arc<McpServerStore>,
@@ -1161,6 +1163,16 @@ pub(crate) struct AppStores {
 }
 
 type PullRequestCreateLocks = Arc<Mutex<HashMap<RunId, Arc<AsyncMutex<()>>>>>;
+
+#[cfg(any(test, feature = "test-support"))]
+impl AppState {
+    /// Access the auth session store so tests can seed CLI sessions against
+    /// the same SQLite pool the router reads from.
+    #[must_use]
+    pub fn test_auth_session_store(&self) -> &Arc<AuthSessionStore> {
+        &self.stores.auth_sessions
+    }
+}
 
 impl AppState {
     pub(crate) fn automation_store(&self) -> &AutomationStore {
@@ -2434,6 +2446,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
     );
     let run_summaries =
         store.attach_run_summary_store(Arc::new(RunSummaryStore::new(db_pool.clone())));
+    let auth_sessions = Arc::new(AuthSessionStore::new(db_pool.clone()));
     let mcp_server_dir = mcp_server_dir_for_active_config(&active_config_path);
     let mcp_server_pool = db_pool.clone();
     let mcp_server_store = Arc::new(
@@ -2540,6 +2553,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         stores: AppStores {
             runs: store,
             run_summaries,
+            auth_sessions,
             automations: automation_store,
             environments: environment_store,
             mcp_servers: mcp_server_store,

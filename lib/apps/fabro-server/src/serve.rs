@@ -780,7 +780,6 @@ where
         cache_path,
     ));
     let auth_code_store = store.auth_codes().await?;
-    let auth_token_store = store.refresh_tokens().await?;
     let (artifact_object_store, artifact_prefix) = build_artifact_object_store_with_server_secrets(
         &resolved_server_settings,
         &server_secrets,
@@ -845,7 +844,7 @@ where
 
     spawn_auth_store_reapers(
         Arc::clone(&auth_code_store),
-        Arc::clone(&auth_token_store),
+        Arc::clone(&state.stores.auth_sessions),
         shutdown.clone(),
     );
 
@@ -1109,11 +1108,11 @@ async fn shutdown_signal() {
 
 fn spawn_auth_store_reapers(
     auth_codes: Arc<fabro_store::AuthCodeStore>,
-    auth_tokens: Arc<fabro_store::RefreshTokenStore>,
+    auth_sessions: Arc<fabro_store::AuthSessionStore>,
     shutdown: CancellationToken,
 ) {
     spawn_auth_code_reaper(auth_codes, shutdown.clone());
-    spawn_refresh_token_reaper(auth_tokens, shutdown);
+    spawn_refresh_token_reaper(auth_sessions, shutdown);
 }
 
 fn spawn_auth_code_reaper(
@@ -1138,7 +1137,7 @@ fn spawn_auth_code_reaper(
 }
 
 fn spawn_refresh_token_reaper(
-    auth_tokens: Arc<fabro_store::RefreshTokenStore>,
+    auth_sessions: Arc<fabro_store::AuthSessionStore>,
     shutdown: CancellationToken,
 ) {
     tokio::spawn(async move {
@@ -1150,7 +1149,7 @@ fn spawn_refresh_token_reaper(
                 () = shutdown.cancelled() => break,
                 _ = interval.tick() => {
                     let cutoff = chrono::Utc::now() - chrono::Duration::days(7);
-                    if let Err(err) = auth_tokens.gc_expired(cutoff).await {
+                    if let Err(err) = auth_sessions.gc_expired(cutoff).await {
                         warn!(error = %err, "Failed to garbage collect expired refresh tokens");
                     }
                 }

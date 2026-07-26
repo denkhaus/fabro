@@ -5,9 +5,10 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use base64::Engine;
 use fabro_server::jwt_auth::resolve_auth_mode_with_lookup;
-use fabro_server::server::{RouterOptions, build_router_with_options};
+use fabro_server::server::{AppState, RouterOptions, build_router_with_options};
 use fabro_server::test_support::test_app_state_with_store_and_runtime_settings;
-use fabro_store::{ArtifactStore, AuthCode, Database, RefreshToken};
+use fabro_store::auth_session_store::{AuthSessionRecord, RefreshToken};
+use fabro_store::{ArtifactStore, AuthCode, Database};
 use object_store::memory::InMemory;
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;
@@ -15,7 +16,7 @@ use uuid::Uuid;
 
 use crate::helpers::{body_json, settings_from_toml};
 
-fn test_app(source: &str) -> (axum::Router, Arc<Database>) {
+fn test_app(source: &str) -> (axum::Router, Arc<Database>, Arc<AppState>) {
     let settings = settings_from_toml(source);
     let object_store: Arc<dyn object_store::ObjectStore> = Arc::new(InMemory::new());
     let store = Arc::new(Database::new(
@@ -32,18 +33,15 @@ fn test_app(source: &str) -> (axum::Router, Arc<Database>) {
             _ => None,
         })
         .expect("auth mode should resolve");
-    let app = build_router_with_options(
-        test_app_state_with_store_and_runtime_settings(
-            settings.server_settings,
-            settings.manifest_run_defaults,
-            5,
-            Arc::clone(&store),
-            artifact_store,
-        ),
-        &auth_mode,
-        RouterOptions::default(),
+    let state = test_app_state_with_store_and_runtime_settings(
+        settings.server_settings,
+        settings.manifest_run_defaults,
+        5,
+        Arc::clone(&store),
+        artifact_store,
     );
-    (app, store)
+    let app = build_router_with_options(Arc::clone(&state), &auth_mode, RouterOptions::default());
+    (app, store, state)
 }
 
 fn pkce_challenge(verifier: &str) -> String {
@@ -56,7 +54,7 @@ fn hash_refresh_secret(secret: &str) -> [u8; 32] {
 
 #[tokio::test]
 async fn cli_auth_token_exchanges_code_over_public_router() {
-    let (app, store) = test_app(
+    let (app, store, _state) = test_app(
         r#"
 _version = 1
 
@@ -124,7 +122,7 @@ client_id = "Iv1.test"
 
 #[tokio::test]
 async fn cli_auth_refresh_replay_revokes_chain_over_public_router() {
-    let (app, store) = test_app(
+    let (app, _store, state) = test_app(
         r#"
 _version = 1
 
@@ -141,22 +139,26 @@ url = "https://fabro.example"
 client_id = "Iv1.test"
 "#,
     );
-    let auth_tokens = store.refresh_tokens().await.unwrap();
     let now = chrono::Utc::now();
-    auth_tokens
-        .insert_refresh_token(RefreshToken {
-            token_hash:   hash_refresh_secret("integration-refresh"),
-            chain_id:     Uuid::new_v4(),
-            identity:     fabro_types::IdpIdentity::new("https://github.com", "12345").unwrap(),
-            login:        "octocat".to_string(),
-            name:         "The Octocat".to_string(),
-            email:        "octocat@example.com".to_string(),
-            avatar_url:   String::new(),
-            issued_at:    now,
-            expires_at:   now + chrono::Duration::days(30),
-            last_used_at: now,
-            used:         false,
-            user_agent:   "fabro-cli/it".to_string(),
+    let session = AuthSessionRecord {
+        id:           Uuid::new_v4(),
+        identity:     fabro_types::IdpIdentity::new("https://github.com", "12345").unwrap(),
+        login:        "octocat".to_string(),
+        name:         "The Octocat".to_string(),
+        email:        "octocat@example.com".to_string(),
+        avatar_url:   String::new(),
+        user_agent:   "fabro-cli/it".to_string(),
+        created_at:   now,
+        last_used_at: now,
+    };
+    state
+        .test_auth_session_store()
+        .create_session(&session, &RefreshToken {
+            token_hash: hash_refresh_secret("integration-refresh"),
+            session_id: session.id,
+            issued_at:  now,
+            expires_at: now + chrono::Duration::days(30),
+            used_at:    None,
         })
         .await
         .unwrap();
