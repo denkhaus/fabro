@@ -192,11 +192,11 @@ async fn authenticated_browser_requests_receive_current_browser_session() {
 #[tokio::test]
 async fn active_cli_refresh_token_chains_for_identity_appear_in_unified_list() {
     let (app, state) = github_app();
-    let chain_id = Uuid::new_v4();
+    let session_id = Uuid::new_v4();
     seed_session(
         &state,
-        cli_session(chain_id, github_identity()),
-        refresh_token([1_u8; 32], chain_id),
+        cli_session(session_id, github_identity()),
+        refresh_token([1_u8; 32], session_id),
     )
     .await;
 
@@ -209,7 +209,7 @@ async fn active_cli_refresh_token_chains_for_identity_appear_in_unified_list() {
     assert_eq!(sessions[0]["id"], "browser:current");
     let cli = sessions
         .iter()
-        .find(|session| session["id"] == format!("cli:{chain_id}"))
+        .find(|session| session["id"] == format!("cli:{session_id}"))
         .expect("CLI session should be present");
     assert_eq!(cli["kind"], "cli");
     assert_eq!(cli["current"], false);
@@ -223,7 +223,7 @@ async fn active_cli_refresh_token_chains_for_identity_appear_in_unified_list() {
 #[tokio::test]
 async fn inactive_and_other_identity_cli_tokens_are_excluded() {
     let (app, state) = github_app();
-    let active_chain_id = Uuid::new_v4();
+    let active_session_id = Uuid::new_v4();
     let now = chrono::Utc::now();
 
     let expired_id = Uuid::new_v4();
@@ -238,8 +238,8 @@ async fn inactive_and_other_identity_cli_tokens_are_excluded() {
 
     for (session, token) in [
         (
-            cli_session(active_chain_id, github_identity()),
-            refresh_token([1_u8; 32], active_chain_id),
+            cli_session(active_session_id, github_identity()),
+            refresh_token([1_u8; 32], active_session_id),
         ),
         (cli_session(expired_id, github_identity()), expired),
         (cli_session(used_id, github_identity()), used),
@@ -270,18 +270,18 @@ async fn inactive_and_other_identity_cli_tokens_are_excluded() {
 
     assert_eq!(session_ids, vec![
         "browser:current".to_string(),
-        format!("cli:{active_chain_id}")
+        format!("cli:{active_session_id}")
     ]);
 }
 
 #[tokio::test]
 async fn deleting_cli_session_removes_refresh_token_chain() {
     let (app, state) = github_app();
-    let chain_id = Uuid::new_v4();
+    let session_id = Uuid::new_v4();
     seed_session(
         &state,
-        cli_session(chain_id, github_identity()),
-        refresh_token([1_u8; 32], chain_id),
+        cli_session(session_id, github_identity()),
+        refresh_token([1_u8; 32], session_id),
     )
     .await;
     // Rotate once so the chain holds a spent token alongside its live one.
@@ -302,7 +302,7 @@ async fn deleting_cli_session_removes_refresh_token_chain() {
         app.oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/v1/auth/sessions/cli:{chain_id}"))
+                .uri(format!("/api/v1/auth/sessions/cli:{session_id}"))
                 .header(header::COOKIE, session_cookie())
                 .body(Body::empty())
                 .expect("DELETE CLI auth session request should build"),
