@@ -474,11 +474,9 @@ async fn auth_sessions_schema_rejects_invalid_rows() -> anyhow::Result<()> {
 
     let session = "55555555-5555-4555-8555-555555555555";
     insert_auth_session(database.pool(), session, "https://github.com", "12345").await?;
-    for (hash, expires_at_ms, used_at_ms) in [
-        (vec![9_u8; 31], 1_000, None),
-        (vec![9_u8; 32], 0, None),
-        (vec![9_u8; 32], 1_000, Some(-1)),
-    ] {
+    for (hash, expires_at_ms, used_at_ms) in
+        [(vec![9_u8; 31], 1_000, None), (vec![9_u8; 32], 0, None)]
+    {
         assert!(
             insert_refresh_token(database.pool(), &hash, session, expires_at_ms, used_at_ms)
                 .await

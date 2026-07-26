@@ -15,8 +15,7 @@ CREATE TABLE auth_sessions (
     last_used_at_ms   INTEGER NOT NULL,
     CHECK (length(id) = 36),
     CHECK (length(identity_issuer) > 0),
-    CHECK (length(identity_subject) > 0),
-    CHECK (last_used_at_ms >= created_at_ms)
+    CHECK (length(identity_subject) > 0)
 );
 
 CREATE INDEX auth_sessions_by_identity
@@ -32,9 +31,13 @@ CREATE TABLE refresh_tokens (
     expires_at_ms INTEGER NOT NULL,
     used_at_ms    INTEGER,
     CHECK (length(token_hash) = 32),
-    CHECK (expires_at_ms > issued_at_ms),
-    CHECK (used_at_ms IS NULL OR used_at_ms >= issued_at_ms)
+    CHECK (expires_at_ms > issued_at_ms)
 );
+
+-- Deliberately no ordering CHECK between a session's timestamps and its
+-- tokens'. Rotation stamps `now` from the process clock against rows written
+-- by an earlier request, so an NTP step backwards would turn a harmless clock
+-- anomaly into refresh failing outright for every affected session.
 
 -- Rotation marks the presented token used before issuing its successor, so a
 -- chain can only ever hold one live token. Enforcing it here turns an implicit

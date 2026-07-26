@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 
 mod artifact_store;
+pub mod auth_session_store;
 mod error;
 mod keyed_mutex;
 mod keys;
@@ -18,6 +19,9 @@ pub use artifact_store::{
     ArtifactKey, ArtifactStore, NodeArtifact, StageArtifactEntry, retry_storage_segment,
     stage_storage_segment,
 };
+// `RefreshToken` and the rotation outcome stay module-qualified while the
+// SlateDB-backed store below still exports types under those names.
+pub use auth_session_store::{ActiveCliSession, AuthSessionRecord, AuthSessionStore};
 pub use error::{Error, Result};
 pub use fabro_types::{
     EventEnvelope, PendingInterviewRecord, Run, RunBlobId, RunProjection, StageId, StageProjection,
