@@ -19,9 +19,9 @@ pub use artifact_store::{
     ArtifactKey, ArtifactStore, NodeArtifact, StageArtifactEntry, retry_storage_segment,
     stage_storage_segment,
 };
-// `RefreshToken` and the rotation outcome stay module-qualified while the
-// SlateDB-backed store below still exports types under those names.
-pub use auth_session_store::{ActiveCliSession, AuthSessionRecord, AuthSessionStore};
+pub use auth_session_store::{
+    ActiveCliSession, AuthSessionRecord, AuthSessionStore, RefreshToken, RotateOutcome,
+};
 pub use error::{Error, Result};
 pub use fabro_types::{
     EventEnvelope, PendingInterviewRecord, Run, RunBlobId, RunProjection, StageId, StageProjection,
@@ -38,8 +38,8 @@ pub use run_summary_store::{
 };
 pub use serializable_projection::SerializableProjection;
 pub use slate::{
-    AuthCode, AuthCodeStore, Blob, BlobStore, CachedRunProjection, ConsumeOutcome, Database,
-    RefreshToken, RefreshTokenStore, RunCatalogIndex, RunDatabase, Runs, UnreadableRun,
+    AuthCode, AuthCodeStore, Blob, BlobStore, CachedRunProjection, Database, RunCatalogIndex,
+    RunDatabase, Runs, UnreadableRun,
 };
 pub use types::EventPayload;
 

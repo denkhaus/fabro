@@ -1,5 +1,4 @@
 mod auth_codes;
-mod auth_tokens;
 mod blob_store;
 mod projection_cache;
 mod run_catalog_index;
@@ -11,7 +10,6 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 pub use auth_codes::{AuthCode, AuthCodeStore};
-pub use auth_tokens::{ConsumeOutcome, RefreshToken, RefreshTokenStore};
 pub use blob_store::{Blob, BlobStore};
 use chrono::{DateTime, Utc};
 use fabro_types::{Run, RunId, SessionId};
@@ -50,7 +48,6 @@ pub struct Database {
     blobs: Arc<OnceCell<Arc<BlobStore>>>,
     catalog_index: Arc<OnceCell<Arc<RunCatalogIndex>>>,
     auth_codes: Arc<OnceCell<Arc<AuthCodeStore>>>,
-    refresh_tokens: Arc<OnceCell<Arc<RefreshTokenStore>>>,
     projection_cache: Arc<RunProjectionCache>,
     projection_cache_warmed: Arc<OnceCell<()>>,
     run_summary_store: Arc<OnceLock<Arc<RunSummaryStore>>>,
@@ -83,7 +80,6 @@ impl Database {
             blobs: Arc::new(OnceCell::new()),
             catalog_index: Arc::new(OnceCell::new()),
             auth_codes: Arc::new(OnceCell::new()),
-            refresh_tokens: Arc::new(OnceCell::new()),
             projection_cache: Arc::new(RunProjectionCache::default()),
             projection_cache_warmed: Arc::new(OnceCell::new()),
             run_summary_store: Arc::new(OnceLock::new()),
@@ -442,15 +438,27 @@ impl Database {
         Ok(Arc::clone(store))
     }
 
-    pub async fn refresh_tokens(&self) -> Result<Arc<RefreshTokenStore>> {
-        let store = self
-            .refresh_tokens
-            .get_or_try_init(|| async {
-                let db = Arc::new(self.open_db().await?);
-                Ok::<_, Error>(Arc::new(RefreshTokenStore::new(db)))
-            })
+    /// Delete every record under the retired `auth/refresh` prefix.
+    ///
+    /// Refresh tokens moved to SQLite without an import, so these records are
+    /// unreadable -- and the reaper that used to collect them is gone, so
+    /// nothing else would ever remove them. Returns the number of records
+    /// deleted; a later boot finds the prefix empty and does nothing.
+    pub async fn retire_refresh_token_keyspace(&self) -> Result<u64> {
+        let db = self.open_db().await?;
+        let mut iter = db
+            .scan_prefix(keys::SlateKey::new("auth").with("refresh").into_prefix())
             .await?;
-        Ok(Arc::clone(store))
+        let mut batch = slatedb::WriteBatch::new();
+        let mut deletes = 0_u64;
+        while let Some(entry) = iter.next().await? {
+            batch.delete(entry.key);
+            deletes += 1;
+        }
+        if deletes > 0 {
+            db.write(batch).await?;
+        }
+        Ok(deletes)
     }
 
     #[must_use]
@@ -557,6 +565,44 @@ mod tests {
             None,
         );
         (object_store, store)
+    }
+
+    #[tokio::test]
+    async fn retire_refresh_token_keyspace_clears_the_prefix_and_is_idempotent() {
+        let (_object_store, store) = make_store();
+        let db = store.open_db().await.unwrap();
+
+        let refresh_keys = ["aaa", "bbb"].map(|id| {
+            keys::SlateKey::new("auth")
+                .with("refresh")
+                .with(id)
+                .as_ref()
+                .to_vec()
+        });
+        // "auth/code" sorts adjacent to "auth/refresh" and is still live, so
+        // it is the neighbour a too-wide prefix delete would take with it.
+        let auth_code_key = keys::SlateKey::new("auth")
+            .with("code")
+            .with("keep")
+            .as_ref()
+            .to_vec();
+
+        let mut batch = slatedb::WriteBatch::new();
+        for key in &refresh_keys {
+            batch.put(key.as_slice(), b"{}".as_slice());
+        }
+        batch.put(auth_code_key.as_slice(), b"{}".as_slice());
+        db.write(batch).await.unwrap();
+
+        assert_eq!(store.retire_refresh_token_keyspace().await.unwrap(), 2);
+        assert_eq!(store.retire_refresh_token_keyspace().await.unwrap(), 0);
+        for key in &refresh_keys {
+            assert!(db.get(key.as_slice()).await.unwrap().is_none());
+        }
+        assert!(
+            db.get(auth_code_key.as_slice()).await.unwrap().is_some(),
+            "retiring refresh tokens must not touch the auth code prefix"
+        );
     }
 
     async fn make_summary_store() -> (tempfile::TempDir, Arc<RunSummaryStore>) {

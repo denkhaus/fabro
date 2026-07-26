@@ -780,6 +780,14 @@ where
         cache_path,
     ));
     let auth_code_store = store.auth_codes().await?;
+    // Refresh tokens now live in SQLite. Nothing reads the old records and no
+    // reaper collects them any more, so clear them out once rather than
+    // leaving them in the object store forever.
+    match store.retire_refresh_token_keyspace().await {
+        Ok(0) => {}
+        Ok(removed) => info!(removed, "Removed retired SlateDB refresh token records"),
+        Err(err) => warn!(error = %err, "Failed to remove retired SlateDB refresh token records"),
+    }
     let (artifact_object_store, artifact_prefix) = build_artifact_object_store_with_server_secrets(
         &resolved_server_settings,
         &server_secrets,
