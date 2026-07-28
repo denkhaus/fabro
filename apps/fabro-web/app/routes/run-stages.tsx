@@ -63,6 +63,11 @@ import {
 import { StageSummary } from "../components/stage-renderers/stage-summary";
 import { WaitStatus } from "../components/stage-renderers/wait-status";
 import {
+  billingTokenBuckets,
+  formatBillingTokenCount,
+  hasBillingUsage,
+} from "../lib/billing";
+import {
   formatAbsoluteTs,
   formatBytes,
   formatDurationMs,
@@ -870,38 +875,25 @@ export function formatStageModelUsageLabel(
 
 const POPOVER_NUMBER = "block text-right font-mono tabular-nums";
 
-/**
- * The disjoint token buckets behind a stage's usage, labelled and ordered to
- * match the Billing tab's breakdown so the two views read the same. `Uncached`
- * is input that missed the cache; `Output` folds in reasoning tokens.
- */
-function stageTokenBuckets(billing: BilledTokenCounts) {
-  return [
-    { label: "Cache read", value: billing.cache_read_tokens },
-    { label: "Cache creation", value: billing.cache_write_tokens },
-    { label: "Uncached", value: billing.input_tokens },
-    {
-      label: "Output",
-      value: billing.output_tokens + billing.reasoning_tokens,
-    },
-  ];
-}
-
 /** Tokens and cost for this stage visit alone. */
-function StageBillingRows({ billing }: { billing: BilledTokenCounts }) {
-  const buckets = stageTokenBuckets(billing);
-  if (buckets.every((bucket) => bucket.value === 0)) return null;
+function StageBillingRows({
+  billing,
+  className,
+}: {
+  billing: BilledTokenCounts;
+  className?: string;
+}) {
+  if (!hasBillingUsage(billing)) return null;
+  const buckets = billingTokenBuckets(billing);
   const cost = formatUsdMicros(billing.total_usd_micros);
   return (
-    <div className="mt-3">
+    <div className={className}>
       <PopoverHeader>Tokens</PopoverHeader>
       <PopoverRows>
         {buckets.map((bucket) => (
           <PopoverRow key={bucket.label} label={bucket.label}>
             <span className={POPOVER_NUMBER}>
-              {bucket.value === 0
-                ? "0"
-                : formatTokenCount(bucket.value, { compactDecimal: true })}
+              {formatBillingTokenCount(bucket.value)}
             </span>
           </PopoverRow>
         ))}
@@ -920,7 +912,7 @@ export function ModelUsagePopover({
   billing,
 }: {
   providerUsed: StageModelUsage;
-  billing: BilledTokenCounts | null;
+  billing: BilledTokenCounts;
 }) {
   return (
     <>
@@ -943,7 +935,7 @@ export function ModelUsagePopover({
           <PopoverRow label="Speed">{providerUsed.speed}</PopoverRow>
         )}
       </PopoverRows>
-      {billing && <StageBillingRows billing={billing} />}
+      <StageBillingRows className="mt-3" billing={billing} />
     </>
   );
 }
@@ -1977,7 +1969,7 @@ function EventsToolbar({
   filteredCount: number;
   totalCount: number;
   providerUsed: StageModelUsage | null;
-  billing: BilledTokenCounts | null;
+  billing: BilledTokenCounts;
   events: EventEnvelope[];
   runId: string;
   stageId: string;

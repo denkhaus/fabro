@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { EventEnvelope } from "@qltysh/fabro-api-client";
 import TestRenderer, { act } from "react-test-renderer";
 
+import { testBilledTokenCounts } from "../../lib/test-fixtures";
 import { makeEventEnvelope, setupReactTestEnv } from "../../lib/test-utils";
 import type { Stage } from "../stage-sidebar";
 import { FanInResults } from "./fan-in-results";
@@ -20,8 +21,11 @@ const fanInStage: Stage = {
   duration: "1s",
   nodeId: "join",
   visit: 1,
+  graphVisit: null,
+  resumedFromStageId: null,
   startedAt: "2026-04-09T12:00:00Z",
   providerUsed: null,
+  billing: testBilledTokenCounts(),
 };
 
 function event(seq: number, partial: Partial<EventEnvelope>): EventEnvelope {

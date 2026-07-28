@@ -1,8 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import type { PaginatedRunStageList, StageHandler, StageState } from "@qltysh/fabro-api-client";
+import type {
+  PaginatedRunStageList,
+  RunStage,
+  StageHandler,
+  StageState,
+} from "@qltysh/fabro-api-client";
 
 import type { Stage } from "../components/stage-sidebar";
 import { aggregateGraphNodeStatus, formatStageLabel, mapRunStagesToSidebarStages } from "./stage-sidebar";
+import { testBilledTokenCounts } from "./test-fixtures";
+
+function runStage(
+  stage: Omit<RunStage, "billing"> & Partial<Pick<RunStage, "billing">>,
+): RunStage {
+  return {
+    billing: testBilledTokenCounts(),
+    ...stage,
+  };
+}
 
 function makeStage(nodeId: string, visit: number, status: StageState): Stage {
   return {
@@ -17,7 +32,7 @@ function makeStage(nodeId: string, visit: number, status: StageState): Stage {
     duration: "--",
     startedAt: null,
     providerUsed: null,
-    billing: null,
+    billing: testBilledTokenCounts(),
   };
 }
 
@@ -25,7 +40,7 @@ describe("mapRunStagesToSidebarStages", () => {
   test("maps two visits of the same node to distinct sidebar entries", () => {
     const stages: PaginatedRunStageList = {
       data: [
-        {
+        runStage({
           id: "apply-changes@1",
           name: "Apply Changes",
           handler: "command",
@@ -39,7 +54,7 @@ describe("mapRunStagesToSidebarStages", () => {
             model: "gpt-5.5",
             reasoning_effort: "high",
           },
-          billing: {
+          billing: testBilledTokenCounts({
             input_tokens: 28_640,
             output_tokens: 7_550,
             total_tokens: 43_690,
@@ -47,24 +62,16 @@ describe("mapRunStagesToSidebarStages", () => {
             cache_read_tokens: 4_800,
             cache_write_tokens: 1_500,
             total_usd_micros: 720_000,
-          },
-        },
-        {
+          }),
+        }),
+        runStage({
           id: "apply-changes@2",
           name: "Apply Changes",
           handler: "agent",
           status: "running",
           node_id: "apply",
           visit: 2,
-          billing: {
-            input_tokens: 0,
-            output_tokens: 0,
-            total_tokens: 0,
-            reasoning_tokens: 0,
-            cache_read_tokens: 0,
-            cache_write_tokens: 0,
-          },
-        },
+        }),
       ],
       meta: { has_more: false },
     };
@@ -84,8 +91,8 @@ describe("mapRunStagesToSidebarStages", () => {
     });
     // Each visit keeps its own tokens and cost, so the stage popover never
     // shows a sibling visit's usage.
-    expect(result[0].billing?.total_usd_micros).toBe(720_000);
-    expect(result[1].billing?.total_usd_micros).toBeUndefined();
+    expect(result[0].billing.total_usd_micros).toBe(720_000);
+    expect(result[1].billing.total_usd_micros).toBeUndefined();
     expect(formatStageLabel(result[0])).toBe("Apply Changes");
 
     expect(result[1].id).toBe("apply-changes@2");
@@ -98,30 +105,30 @@ describe("mapRunStagesToSidebarStages", () => {
   test("filters by node_id (suffixed start@1 / exit@1 are still hidden)", () => {
     const stages: PaginatedRunStageList = {
       data: [
-        {
+        runStage({
           id: "start@1",
           name: "start",
           handler: "start",
           status: "succeeded",
           node_id: "start",
           visit: 1,
-        },
-        {
+        }),
+        runStage({
           id: "verify@1",
           name: "verify",
           handler: "human",
           status: "succeeded",
           node_id: "verify",
           visit: 1,
-        },
-        {
+        }),
+        runStage({
           id: "exit@1",
           name: "exit",
           handler: "exit",
           status: "succeeded",
           node_id: "exit",
           visit: 1,
-        },
+        }),
       ],
       meta: { has_more: false },
     };
@@ -133,14 +140,14 @@ describe("mapRunStagesToSidebarStages", () => {
   test("missing duration renders as '--'", () => {
     const stages: PaginatedRunStageList = {
       data: [
-        {
+        runStage({
           id: "verify@1",
           name: "verify",
           handler: "wait",
           status: "running",
           node_id: "verify",
           visit: 1,
-        },
+        }),
       ],
       meta: { has_more: false },
     };
@@ -151,7 +158,7 @@ describe("mapRunStagesToSidebarStages", () => {
   test("maps a resumed execution's identity fields and keeps both entries in order", () => {
     const stages: PaginatedRunStageList = {
       data: [
-        {
+        runStage({
           id: "work@1",
           name: "work",
           handler: "agent",
@@ -159,8 +166,8 @@ describe("mapRunStagesToSidebarStages", () => {
           node_id: "work",
           visit: 1,
           graph_visit: 1,
-        },
-        {
+        }),
+        runStage({
           id: "work@2",
           name: "work",
           handler: "agent",
@@ -169,7 +176,7 @@ describe("mapRunStagesToSidebarStages", () => {
           visit: 2,
           graph_visit: 1,
           resumed_from_stage_id: "work@1",
-        },
+        }),
       ],
       meta: { has_more: false },
     };
@@ -187,14 +194,14 @@ describe("mapRunStagesToSidebarStages", () => {
   test("omits identity fields for stages recorded before execution tracking", () => {
     const stages: PaginatedRunStageList = {
       data: [
-        {
+        runStage({
           id: "verify@1",
           name: "verify",
           handler: "agent",
           status: "succeeded",
           node_id: "verify",
           visit: 1,
-        },
+        }),
       ],
       meta: { has_more: false },
     };
@@ -207,14 +214,14 @@ describe("mapRunStagesToSidebarStages", () => {
   test("preserves the authoritative handler for renderer dispatch", () => {
     const stages: PaginatedRunStageList = {
       data: [
-        {
+        runStage({
           id: "approval@1",
           name: "approval",
           handler: "human" satisfies StageHandler,
           status: "pending",
           node_id: "approval",
           visit: 1,
-        },
+        }),
       ],
       meta: { has_more: false },
     };
