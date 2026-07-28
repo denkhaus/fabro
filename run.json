@@ -1,0 +1,499 @@
+{
+  "title": "PR 1 — Make run-event appends validate before write and report commit status unambiguously",
+  "spec": {
+    "run_id": "01KYNBXZ4PAGMNZGHVHPNAQ341",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "# PR 1 — Make run-event appends validate before write and report commit status unambiguously\n\n**Self-contained implementation plan.** Everything needed to implement this\nis in this file plus the repository.\n\n**Precondition:** none — this is foundational work with no dependency on\nother in-flight changes. Re-verify the \"Verified current state\" section\nagainst HEAD before starting; if the append path in\n`lib/components/fabro-store/src/slate/run_store.rs` has been materially\nrestructured since the pinned commit, stop and state that in the PR\ndescription instead of adapting blindly.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly\n> as a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME`, `vars.NAME` as the double-curly-brace\n> token form used in the codebase, and write the real double-brace syntax in\n> the code, tests, and docs you produce.\n\n## Context and goal\n\nFabro's run state is event-sourced: each run has an append-only event log in\na shared SlateDB store (`fabro-store`), a reduced in-memory projection\n(`RunProjection`), and a derived SQLite summary row used by all listing\nendpoints. Run status transitions are enforced by a state machine\n(`RunStatus::can_transition_to` / `transition_to` in\n`lib/foundation/fabro-types/src/status.rs`) — for example, a run whose\ndurable status is `Runnable` may legally move to `Failed` only with reason\n`Cancelled`; a `Failed { WorkflowError }` from `Runnable` is an invalid\ntransition and the reducer hard-errors on it.\n\nThe append path has two defects, and this PR fixes both at the store layer:\n\n**Defect 1 — poison events.** `append_event_envelope_locked` writes the\nevent bytes to SlateDB *before* any reduction happens. If the event turns\nout to be transition-invalid, the caller gets an error — but the invalid\nevent is already durably in the log. From then on the run's projection can\nnever be rebuilt: replay hits the same invalid transition every time. The\nuser-visible consequence is severe: at startup, projection warmup skips the\nunreadable run, and the SQLite reconciler then *deletes its summary row*\nbecause it is absent from the authoritative entries — the run disappears\nfrom every listing, and get/cancel return 404. This is a real shipped bug:\nseveral server failure helpers attempt exactly such illegal appends today\n(e.g. a worker-launch failure helper appends `Failed { LaunchFailed }`\nwhile the durable status is still `Runnable`). Those call sites are being\nfixed in separate planned work — this PR's job is to make the store refuse\nto write the poison event in the first place.\n\n**Defect 2 — ambiguous append errors.** After the SlateDB put succeeds, the\nappend still does derived work: applying the event to the shared projection\ncache and upserting the SQLite summary row. Failures in either currently\npropagate as `Err` from the append — so callers cannot distinguish \"the\nevent was not committed, safe to retry\" from \"the event IS committed but a\nderived update failed.\" Worse, when the projection-cache update fails, the\ncurrent code removes the cache entry entirely. Upcoming scheduler work will\nretry appends that report failure, so this ambiguity must be resolved\nbefore it exists: retrying a committed append would attempt a duplicate\nevent.\n\n**Goal:** after this PR, the append contract is unambiguous:\n\n1. An event that the current projection cannot legally reduce is **rejected\n   before anything is written** — the log, the projection cache, and the\n   summary row are all untouched, and the caller gets a typed rejection\n   error.\n2. A failure of the authoritative SlateDB put (or of event-sequence\n   allocation) returns a typed **not-committed** error — safe to retry.\n3. Once the authoritative put succeeds, the append **is committed** and\n   reports success. Derived-state updates (projection cache install, event\n   cache, SQLite summary upsert) are best-effort: failures are logged\n   loudly with the run id but never surface as an append error. Derived\n   state is repairable (startup reconciliation rebuilds it; the summary\n   upsert is already guarded to be monotonic by event seq, so a later\n   successful append also repairs it).\n\nDesign rules (fixed — do not re-litigate):\n\n- **Validation must reuse the same reduction code that replay uses.** The\n  invariant is \"an event is written iff replay can reduce it.\" Any\n  divergence between the pre-write check and replay reintroduces poison\n  events. Apply the candidate event to a clone of the current projection\n  using the existing reducer entry points; do not write a parallel\n  validity checker.\n- **No event schema changes and no public API changes.** This is a store\n  contract fix, not a wire change.\n- **Do not rework the failing call sites.** Server helpers that attempt\n  illegal appends will now receive a clean rejection with nothing written —\n  that is the intended intermediate state. Fixing their logic is separate\n  planned work.\n- **The rejection error must be a distinct variant** from the existing\n  `Error::InvalidEvent` (which means \"malformed payload\") so callers can\n  tell \"rejected by the run's state machine\" apart from \"bad input\" and\n  from \"not committed, retry.\"\n- **Do not attempt to repair logs that already contain poison events.**\n  Pre-existing corrupted logs remain unreadable and continue to be surfaced\n  by the existing unreadable-runs listing; repair tooling is out of scope.\n\n## Verified current state (as of origin/main `1aa7a153b`, 2026-07-28 — re-verify before starting)\n\n- `lib/components/fabro-store/src/slate/run_store.rs`:\n  - `append_event(&EventPayload)` → `append_event_envelope` → validates the\n    payload shape (`payload.validate(&run_id)`), takes the per-run\n    `state_lock`, then calls `append_event_envelope_locked` (≈ lines\n    273-305).\n  - `append_event_if(payload, predicate)` — same, but loads the current\n    projection under the lock and returns `Ok(None)` when the predicate\n    rejects (≈ 279-294). This method's contract must be preserved.\n  - `append_event_envelope_locked` (≈ 305-324): allocates the event seq\n    (can fail with `Error::EventSequenceExhausted`), builds the\n    `EventEnvelope` (`RunEvent::try_from(payload)?`), then **puts the event\n    bytes into SlateDB first**, then `cache_event`, then\n    `update_summary_projection_after_append`.\n  - `update_summary_projection_after_append` (≈ 325-377): applies the event\n    to the shared projection cache; on failure it attempts a full rebuild\n    from the db (which, for a just-written invalid event, fails again\n    because the poison event is in the log), **removes the cache entry**,\n    warns, and returns `Err`. If the SQLite summary store is attached\n    (`run_summary_store` is an `OnceLock` — absent in some deployments),\n    an upsert failure also returns `Err`. Both paths make a committed\n    append look failed.\n- `lib/components/fabro-store/src/error.rs`: `Error` enum with\n  `InvalidEvent(String)`, `EventSequenceExhausted { max_seq }`,\n  `Slate(..)`, `Sqlite(..)`, etc. No variant distinguishes\n  state-machine rejection or commit status.\n- `lib/foundation/fabro-types/src/status.rs` (:132-202): the transition\n  table; `transition_to` returns `Err(InvalidTransition)`. From `Runnable`,\n  `Failed` is legal only with reason `Cancelled`.\n- `lib/foundation/fabro-types/src/run_projection.rs`: `try_apply_status`\n  (≈ :1025) is where reduction enforces transitions; the reducer dispatch\n  lives in `lib/components/fabro-store/src/run_state.rs`\n  (`apply_event` / `apply_events`, plus `projection_from_created` for the\n  first event). Both files were recently extended for new event kinds —\n  re-derive exact line numbers rather than trusting the ones here.\n- Startup behavior that makes poison events user-visible:\n  `warm_projection_cache` in `lib/components/fabro-store/src/slate/mod.rs`\n  skips runs whose replay fails (per-run `warn!`), and\n  `RunSummaryStore::reconcile` deletes summary rows absent from the\n  authoritative entries (pinned by the existing test\n  `reconcile_removes_rows_absent_from_authoritative_entries` in\n  `run_summary_store.rs`). `list_unreadable_runs` (slate/mod.rs) surfaces\n  skipped runs.\n- The summary upsert is monotonic by event seq (`WHERE excluded.source_last_seq > runs.source_last_seq`\n  in `run_summary_store.rs`), which is what makes \"later append repairs the\n  row\" true.\n- Existing test pinning seq exhaustion:\n  `append_event_rejects_sequences_beyond_key_order_limit`\n  (run_store.rs ≈ :1292).\n\n## Implementation\n\n1. **Add the typed errors** in `lib/components/fabro-store/src/error.rs`.\n   Read `docs/internal/error-handling-strategy.md` first (required by\n   project convention when touching error types). Two additions, named to\n   read well at call sites — suggested shapes:\n   - `EventRejected { reason: String }` (or carrying the\n     `InvalidTransition` detail) — the event cannot be legally reduced by\n     the run's current projection; nothing was written.\n   - A way for callers to know an `Err` means not-committed. Simplest\n     honest contract: after this PR, **every** `Err` from append means\n     not-committed (rejection included), because post-put failures no\n     longer return `Err`. Prefer that global simplification over a wrapper\n     enum; document it on the append methods' doc comments explicitly.\n2. **Validate before the put** in `append_event_envelope_locked` (all under\n   the already-held `state_lock`):\n   - Obtain the current projection: the cheapest correct source is the\n     same one `append_event_if` uses (`projected_state_locked`); for a run\n     with no events yet, the candidate must be validated through the\n     first-event path (`projection_from_created` route in\n     `run_state.rs`) — mirror however `apply_events` treats the initial\n     event so validation ≡ replay exactly.\n   - Apply the candidate envelope to a **clone** of that projection via the\n     existing reducer entry point. On reduction failure → return\n     `EventRejected`, having written nothing.\n   - Keep the pre-existing `payload.validate(...)` shape check where it is.\n3. **Reorder the post-put work to be best-effort.** After a successful\n   SlateDB put:\n   - Install the already-validated clone into the shared projection cache\n     (replacing the apply-then-rebuild-then-remove dance — the clone IS the\n     correct post-append projection, computed before the write). Keep the\n     cache's seq bookkeeping consistent with the existing\n     `apply_event`/`replace` semantics.\n   - `cache_event` and the SQLite upsert stay in place but become\n     log-only on failure (`warn!`/`error!` with run id and seq, matching\n     the logging style already present in this file). The append returns\n     `Ok(envelope)` regardless of derived-state failures.\n   - Do NOT remove the projection-cache entry on derived failure paths\n     anymore; a stale entry that a later append or startup reconciliation\n     repairs is strictly better than an absent one.\n4. **Seq allocation and put failures** already return `Err` before any\n   derived work — with step 3 in place these are now unambiguously\n   not-committed. Verify `EventSequenceExhausted` still propagates (the\n   existing test pins it).\n5. **Audit append callers for compile-only impact.** Call sites that\n   currently treat any `Err` as \"append failed\" remain correct under the\n   new contract (their errors now genuinely mean not-committed). No caller\n   behavior changes in this PR. `append_event_if`'s `Ok(None)` predicate\n   contract is unchanged.\n6. **Doc comments.** State the three-outcome contract (rejected-nothing-\n   written / not-committed / committed-with-best-effort-derived) on\n   `append_event`, `append_event_if`, and `append_event_envelope`.\n\n## Scope boundaries — deliberately NOT in this PR\n\n- **The server failure helpers that attempt illegal appends** (e.g. the\n  worker-launch failure path appending `Failed { LaunchFailed }` from\n  durable `Runnable`, and similar pre-worker failure sites in\n  `fabro-server`) — leave their logic as-is. They will now receive a clean\n  `EventRejected` and write nothing, which is the intended intermediate\n  state; reworking when/what they append is separate planned work. Do not\n  \"fix\" them to append legal events.\n- **Admission/scheduler changes** (durable claims, retry/backoff, startup\n  re-admission of queued runs) — known follow-up work, deliberately\n  excluded here.\n- **Repairing already-poisoned logs** or adding repair/diagnostic tooling —\n  known gap, addressed separately if needed. Pre-existing unreadable runs\n  keep their current behavior (skipped at warmup, surfaced by the\n  unreadable-runs listing).\n- **Event schema, OpenAPI, or public API changes** — none. This PR is\n  entirely inside `fabro-store` (plus its error type).\n- **SQLite schema changes** — none; the monotonic upsert and startup\n  reconcile already provide the repair path.\n\nIf work outside these boundaries seems genuinely required for this PR to\ncompile or pass its tests, stop and state that in the PR description rather\nthan expanding scope.\n\n## Tests (write failing-first; hermetic — temp-dir fixtures, no ambient provider keys)\n\nExisting store tests in `run_store.rs` / `run_summary_store.rs` show the\nfixture style (temp-dir object store, in-memory SQLite). Add:\n\n1. **Rejected transition writes nothing** — create a run, drive it to\n   durable `Runnable` (append the events the lifecycle uses today:\n   created/submitted/start-requested/runnable), then append a\n   `run.failed { WorkflowError }`-shaped event. Assert: the append returns\n   the rejection variant; `list_events` shows no new event; `state()` still\n   reduces successfully; the projection cache still holds an entry for the\n   run (not removed). *Property pinned: an event is written iff replay can\n   reduce it.*\n2. **Rejected transition leaves listings consistent** — after the rejected\n   append, run the summary reconcile path and assert the run's summary row\n   still exists. *Property: no more vanishing runs from rejected appends.*\n3. **Committed append survives derived-state failure** — attach a SQLite\n   summary store, then make its pool unusable (e.g. close the pool or drop\n   the underlying file) before appending a legal event. Assert: append\n   returns `Ok`; the event is in `list_events`; a warning/error was the\n   only symptom. Then restore/reopen the summary store and assert the row\n   is repairable (via reconcile or a subsequent append). If pool-closing\n   proves impractical through public seams, an injected failing summary\n   store behind the existing test-support feature is acceptable — but do\n   not weaken the assertion that append reports success. *Property:\n   committed is committed.*\n4. **Not-committed errors are retryable** — the existing\n   seq-exhaustion test keeps passing; extend it (or add a sibling) to\n   assert the log is unchanged after the error, pinning \"Err ⇒ nothing\n   written.\"\n5. **First-event validation** — a malformed first event (one the reducer\n   cannot initialize a projection from) is rejected with nothing written;\n   a valid `run.created` still works. *Property: the empty-log path\n   validates like replay too.*\n6. **append_event_if contract unchanged** — predicate-false still returns\n   `Ok(None)` with nothing written.\n\nRun the full workspace suite; the reducer and lifecycle tests in\n`fabro-store`, `fabro-workflow`, and `fabro-server` are the regression net\nfor \"legal appends behave exactly as before.\"\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- No OpenAPI/wire change (do not touch `docs/public/api-reference/`).\n- `cargo build --workspace` without the `test-support` feature still\n  succeeds if any test helper was added behind it.\n\n## Conventions\n\n- Read `docs/internal/error-handling-strategy.md` before changing the error\n  enum, and `docs/internal/events-strategy.md` before touching anything\n  that emits or documents events.\n- Never print or log a resolved secret value, including from tests.\n- Plain-English commit messages, PR text, and comments — describe what the\n  change does; no internal planning identifiers or plan-file names in\n  anything that ships.\n- PR description must state plainly: (1) the vanishing-runs failure mode\n  this fixes (invalid append → unreadable projection → summary row deleted\n  → run 404s) and that call sites attempting such appends now get a clean\n  error with nothing written; (2) the new append contract, including that\n  a failed SQLite summary update after a committed append now logs loudly\n  and reports success instead of returning an error — operators see a\n  warning where they previously saw a failed operation; (3) that\n  pre-existing corrupted run logs are not repaired by this change.\n- If implementation uncovers a caller that genuinely depends on the old\n  \"Err after committed write\" behavior, stop and surface it in the PR\n  description rather than working around it.\n"
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {},
+        "model": {
+          "provider": "kimi",
+          "name": "kimi-k3",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false,
+          "commit_timeout_ms": 30000
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "fabro-dev",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        curl git ripgrep ca-certificates build-essential pkg-config libssl-dev unzip python3 \\\n        xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \\\n        libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6 \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install real Chromium (not the snap stub) via xtradeb PPA\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        software-properties-common curl gnupg \\\n    && add-apt-repository -y ppa:xtradeb/apps \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends chromium \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Wrapper: Chromium needs --no-sandbox when running as root in a container,\n# and --disable-dev-shm-usage avoids crashes from small /dev/shm\nRUN printf '#!/bin/bash\\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"$@\"\\n' \\\n        > /usr/local/bin/chromium-wrapper \\\n    && chmod +x /usr/local/bin/chromium-wrapper\n\n# Make the wrapper the default in the system .desktop file and via alternatives\nRUN sed -i 's|^Exec=.*|Exec=/usr/local/bin/chromium-wrapper %U|' \\\n        /usr/share/applications/chromium.desktop \\\n    && update-alternatives --install /usr/bin/x-www-browser x-www-browser \\\n        /usr/local/bin/chromium-wrapper 100\n\n# Tell XFCE's exo-open that Chromium is the WebBrowser helper (system-wide)\nRUN mkdir -p /etc/xdg/xfce4 /usr/share/xfce4/helpers \\\n    && printf 'WebBrowser=custom-WebBrowser\\n' > /etc/xdg/xfce4/helpers.rc \\\n    && printf '[Desktop Entry]\\n\\\nVersion=1.0\\n\\\nType=X-XFCE-Helper\\n\\\nName=Chromium\\n\\\nIcon=chromium\\n\\\nX-XFCE-Category=WebBrowser\\n\\\nX-XFCE-CommandsWithParameter=/usr/local/bin/chromium-wrapper \"%%s\"\\n\\\nX-XFCE-Commands=/usr/local/bin/chromium-wrapper\\n' \\\n        > /usr/share/xfce4/helpers/custom-WebBrowser.desktop\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" \\\n        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update && apt-get install -y --no-install-recommends gh \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": "20GB"
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": "30m"
+          },
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "env": {}
+        },
+        "notifications": {},
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": false,
+          "merge_strategy": "squash"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "ImplementPlan",
+      "nodes": {
+        "implement": {
+          "id": "implement",
+          "attrs": {
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "label": {
+              "String": "Implement"
+            },
+            "prompt": {
+              "String": "Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD."
+            },
+            "model": {
+              "String": "gpt-5.6-sol"
+            },
+            "provider": {
+              "String": "openrouter"
+            }
+          }
+        },
+        "fix_lints": {
+          "id": "fix_lints",
+          "attrs": {
+            "model": {
+              "String": "claude-fable-5"
+            },
+            "label": {
+              "String": "Fix Lints"
+            },
+            "prompt": {
+              "String": "The preflight lint step failed. Read the build output from context and fix all clippy lint warnings."
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "provider": {
+              "String": "openrouter"
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "label": {
+              "String": "Start"
+            },
+            "shape": {
+              "String": "Mdiamond"
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "label": {
+              "String": "Exit"
+            },
+            "shape": {
+              "String": "Msquare"
+            }
+          }
+        },
+        "fixup": {
+          "id": "fixup",
+          "attrs": {
+            "provider": {
+              "String": "openrouter"
+            },
+            "model": {
+              "String": "claude-fable-5"
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "label": {
+              "String": "Fixup"
+            },
+            "prompt": {
+              "String": "The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures."
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            }
+          }
+        },
+        "preflight_compile": {
+          "id": "preflight_compile",
+          "attrs": {
+            "shape": {
+              "String": "parallelogram"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "label": {
+              "String": "Preflight Compile"
+            },
+            "script": {
+              "String": "cargo check -q --workspace 2>&1"
+            }
+          }
+        },
+        "simplify_fable": {
+          "id": "simplify_fable",
+          "attrs": {
+            "label": {
+              "String": "Simplify (Claude Fable 5)"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun \\`git diff\\` (or \\`git diff HEAD\\` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the ${AGENT_TOOL_NAME} tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. **Search for existing utilities and helpers** that could replace newly written code. Look for similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.\n3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction\n4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n6. **Unnecessary JSX nesting**: wrapper Boxes/elements that add no layout value — check if inner component props (flexShrink, alignItems, etc.) already provide the needed behavior\n7. **Unnecessary comments**: comments explaining WHAT the code does (well-named identifiers already do that), narrating the change, or referencing the task/caller — delete; keep only non-obvious WHY (hidden constraints, subtle invariants, workarounds)\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. **Missed concurrency**: independent operations run sequentially when they could run in parallel\n3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths\n4. **Recurring no-op updates**: state/store updates inside polling loops, intervals, or event handlers that fire unconditionally — add a change-detection guard so downstream consumers aren't notified when nothing changed. Also: if a wrapper function takes an updater/reducer callback, verify it honors same-reference returns (or whatever the \"no change\" signal is) — otherwise callers' early-return no-ops are silently defeated\n5. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n6. **Memory**: unbounded data structures, missing cleanup, event listener leaks\n7. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "provider": {
+              "String": "openrouter"
+            },
+            "model": {
+              "String": "claude-fable-5"
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            }
+          }
+        },
+        "verify": {
+          "id": "verify",
+          "attrs": {
+            "shape": {
+              "String": "parallelogram"
+            },
+            "timeout": {
+              "Duration": {
+                "secs": 1200,
+                "nanos": 0
+              }
+            },
+            "script": {
+              "String": "git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1"
+            },
+            "label": {
+              "String": "Verify"
+            },
+            "goal_gate": {
+              "Boolean": true
+            },
+            "retry_target": {
+              "String": "fixup"
+            }
+          }
+        },
+        "simplify_sol": {
+          "id": "simplify_sol",
+          "attrs": {
+            "reasoning_effort": {
+              "String": "max"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun \\`git diff\\` (or \\`git diff HEAD\\` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the ${AGENT_TOOL_NAME} tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. **Search for existing utilities and helpers** that could replace newly written code. Look for similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.\n3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction\n4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n6. **Unnecessary JSX nesting**: wrapper Boxes/elements that add no layout value — check if inner component props (flexShrink, alignItems, etc.) already provide the needed behavior\n7. **Unnecessary comments**: comments explaining WHAT the code does (well-named identifiers already do that), narrating the change, or referencing the task/caller — delete; keep only non-obvious WHY (hidden constraints, subtle invariants, workarounds)\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. **Missed concurrency**: independent operations run sequentially when they could run in parallel\n3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths\n4. **Recurring no-op updates**: state/store updates inside polling loops, intervals, or event handlers that fire unconditionally — add a change-detection guard so downstream consumers aren't notified when nothing changed. Also: if a wrapper function takes an updater/reducer callback, verify it honors same-reference returns (or whatever the \"no change\" signal is) — otherwise callers' early-return no-ops are silently defeated\n5. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n6. **Memory**: unbounded data structures, missing cleanup, event listener leaks\n7. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "provider": {
+              "String": "openrouter"
+            },
+            "label": {
+              "String": "Simplify (GPT-5.6 Sol)"
+            },
+            "model": {
+              "String": "gpt-5.6-sol"
+            }
+          }
+        },
+        "toolchain": {
+          "id": "toolchain",
+          "attrs": {
+            "shape": {
+              "String": "parallelogram"
+            },
+            "label": {
+              "String": "Toolchain"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "script": {
+              "String": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1"
+            }
+          }
+        },
+        "preflight_lint": {
+          "id": "preflight_lint",
+          "attrs": {
+            "label": {
+              "String": "Preflight Lint"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "script": {
+              "String": "cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1"
+            },
+            "shape": {
+              "String": "parallelogram"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "toolchain",
+          "attrs": {}
+        },
+        {
+          "from": "toolchain",
+          "to": "preflight_compile",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "toolchain",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_compile",
+          "to": "preflight_lint",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_compile",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_lint",
+          "to": "implement",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_lint",
+          "to": "fix_lints",
+          "attrs": {}
+        },
+        {
+          "from": "fix_lints",
+          "to": "preflight_lint",
+          "attrs": {}
+        },
+        {
+          "from": "implement",
+          "to": "simplify_fable",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_fable",
+          "to": "simplify_sol",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_sol",
+          "to": "verify",
+          "attrs": {}
+        },
+        {
+          "from": "verify",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "verify",
+          "to": "fixup",
+          "attrs": {}
+        },
+        {
+          "from": "fixup",
+          "to": "verify",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "goal": {
+          "String": "# PR 1 — Make run-event appends validate before write and report commit status unambiguously\n\n**Self-contained implementation plan.** Everything needed to implement this\nis in this file plus the repository.\n\n**Precondition:** none — this is foundational work with no dependency on\nother in-flight changes. Re-verify the \"Verified current state\" section\nagainst HEAD before starting; if the append path in\n`lib/components/fabro-store/src/slate/run_store.rs` has been materially\nrestructured since the pinned commit, stop and state that in the PR\ndescription instead of adapting blindly.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly\n> as a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME`, `vars.NAME` as the double-curly-brace\n> token form used in the codebase, and write the real double-brace syntax in\n> the code, tests, and docs you produce.\n\n## Context and goal\n\nFabro's run state is event-sourced: each run has an append-only event log in\na shared SlateDB store (`fabro-store`), a reduced in-memory projection\n(`RunProjection`), and a derived SQLite summary row used by all listing\nendpoints. Run status transitions are enforced by a state machine\n(`RunStatus::can_transition_to` / `transition_to` in\n`lib/foundation/fabro-types/src/status.rs`) — for example, a run whose\ndurable status is `Runnable` may legally move to `Failed` only with reason\n`Cancelled`; a `Failed { WorkflowError }` from `Runnable` is an invalid\ntransition and the reducer hard-errors on it.\n\nThe append path has two defects, and this PR fixes both at the store layer:\n\n**Defect 1 — poison events.** `append_event_envelope_locked` writes the\nevent bytes to SlateDB *before* any reduction happens. If the event turns\nout to be transition-invalid, the caller gets an error — but the invalid\nevent is already durably in the log. From then on the run's projection can\nnever be rebuilt: replay hits the same invalid transition every time. The\nuser-visible consequence is severe: at startup, projection warmup skips the\nunreadable run, and the SQLite reconciler then *deletes its summary row*\nbecause it is absent from the authoritative entries — the run disappears\nfrom every listing, and get/cancel return 404. This is a real shipped bug:\nseveral server failure helpers attempt exactly such illegal appends today\n(e.g. a worker-launch failure helper appends `Failed { LaunchFailed }`\nwhile the durable status is still `Runnable`). Those call sites are being\nfixed in separate planned work — this PR's job is to make the store refuse\nto write the poison event in the first place.\n\n**Defect 2 — ambiguous append errors.** After the SlateDB put succeeds, the\nappend still does derived work: applying the event to the shared projection\ncache and upserting the SQLite summary row. Failures in either currently\npropagate as `Err` from the append — so callers cannot distinguish \"the\nevent was not committed, safe to retry\" from \"the event IS committed but a\nderived update failed.\" Worse, when the projection-cache update fails, the\ncurrent code removes the cache entry entirely. Upcoming scheduler work will\nretry appends that report failure, so this ambiguity must be resolved\nbefore it exists: retrying a committed append would attempt a duplicate\nevent.\n\n**Goal:** after this PR, the append contract is unambiguous:\n\n1. An event that the current projection cannot legally reduce is **rejected\n   before anything is written** — the log, the projection cache, and the\n   summary row are all untouched, and the caller gets a typed rejection\n   error.\n2. A failure of the authoritative SlateDB put (or of event-sequence\n   allocation) returns a typed **not-committed** error — safe to retry.\n3. Once the authoritative put succeeds, the append **is committed** and\n   reports success. Derived-state updates (projection cache install, event\n   cache, SQLite summary upsert) are best-effort: failures are logged\n   loudly with the run id but never surface as an append error. Derived\n   state is repairable (startup reconciliation rebuilds it; the summary\n   upsert is already guarded to be monotonic by event seq, so a later\n   successful append also repairs it).\n\nDesign rules (fixed — do not re-litigate):\n\n- **Validation must reuse the same reduction code that replay uses.** The\n  invariant is \"an event is written iff replay can reduce it.\" Any\n  divergence between the pre-write check and replay reintroduces poison\n  events. Apply the candidate event to a clone of the current projection\n  using the existing reducer entry points; do not write a parallel\n  validity checker.\n- **No event schema changes and no public API changes.** This is a store\n  contract fix, not a wire change.\n- **Do not rework the failing call sites.** Server helpers that attempt\n  illegal appends will now receive a clean rejection with nothing written —\n  that is the intended intermediate state. Fixing their logic is separate\n  planned work.\n- **The rejection error must be a distinct variant** from the existing\n  `Error::InvalidEvent` (which means \"malformed payload\") so callers can\n  tell \"rejected by the run's state machine\" apart from \"bad input\" and\n  from \"not committed, retry.\"\n- **Do not attempt to repair logs that already contain poison events.**\n  Pre-existing corrupted logs remain unreadable and continue to be surfaced\n  by the existing unreadable-runs listing; repair tooling is out of scope.\n\n## Verified current state (as of origin/main `1aa7a153b`, 2026-07-28 — re-verify before starting)\n\n- `lib/components/fabro-store/src/slate/run_store.rs`:\n  - `append_event(&EventPayload)` → `append_event_envelope` → validates the\n    payload shape (`payload.validate(&run_id)`), takes the per-run\n    `state_lock`, then calls `append_event_envelope_locked` (≈ lines\n    273-305).\n  - `append_event_if(payload, predicate)` — same, but loads the current\n    projection under the lock and returns `Ok(None)` when the predicate\n    rejects (≈ 279-294). This method's contract must be preserved.\n  - `append_event_envelope_locked` (≈ 305-324): allocates the event seq\n    (can fail with `Error::EventSequenceExhausted`), builds the\n    `EventEnvelope` (`RunEvent::try_from(payload)?`), then **puts the event\n    bytes into SlateDB first**, then `cache_event`, then\n    `update_summary_projection_after_append`.\n  - `update_summary_projection_after_append` (≈ 325-377): applies the event\n    to the shared projection cache; on failure it attempts a full rebuild\n    from the db (which, for a just-written invalid event, fails again\n    because the poison event is in the log), **removes the cache entry**,\n    warns, and returns `Err`. If the SQLite summary store is attached\n    (`run_summary_store` is an `OnceLock` — absent in some deployments),\n    an upsert failure also returns `Err`. Both paths make a committed\n    append look failed.\n- `lib/components/fabro-store/src/error.rs`: `Error` enum with\n  `InvalidEvent(String)`, `EventSequenceExhausted { max_seq }`,\n  `Slate(..)`, `Sqlite(..)`, etc. No variant distinguishes\n  state-machine rejection or commit status.\n- `lib/foundation/fabro-types/src/status.rs` (:132-202): the transition\n  table; `transition_to` returns `Err(InvalidTransition)`. From `Runnable`,\n  `Failed` is legal only with reason `Cancelled`.\n- `lib/foundation/fabro-types/src/run_projection.rs`: `try_apply_status`\n  (≈ :1025) is where reduction enforces transitions; the reducer dispatch\n  lives in `lib/components/fabro-store/src/run_state.rs`\n  (`apply_event` / `apply_events`, plus `projection_from_created` for the\n  first event). Both files were recently extended for new event kinds —\n  re-derive exact line numbers rather than trusting the ones here.\n- Startup behavior that makes poison events user-visible:\n  `warm_projection_cache` in `lib/components/fabro-store/src/slate/mod.rs`\n  skips runs whose replay fails (per-run `warn!`), and\n  `RunSummaryStore::reconcile` deletes summary rows absent from the\n  authoritative entries (pinned by the existing test\n  `reconcile_removes_rows_absent_from_authoritative_entries` in\n  `run_summary_store.rs`). `list_unreadable_runs` (slate/mod.rs) surfaces\n  skipped runs.\n- The summary upsert is monotonic by event seq (`WHERE excluded.source_last_seq > runs.source_last_seq`\n  in `run_summary_store.rs`), which is what makes \"later append repairs the\n  row\" true.\n- Existing test pinning seq exhaustion:\n  `append_event_rejects_sequences_beyond_key_order_limit`\n  (run_store.rs ≈ :1292).\n\n## Implementation\n\n1. **Add the typed errors** in `lib/components/fabro-store/src/error.rs`.\n   Read `docs/internal/error-handling-strategy.md` first (required by\n   project convention when touching error types). Two additions, named to\n   read well at call sites — suggested shapes:\n   - `EventRejected { reason: String }` (or carrying the\n     `InvalidTransition` detail) — the event cannot be legally reduced by\n     the run's current projection; nothing was written.\n   - A way for callers to know an `Err` means not-committed. Simplest\n     honest contract: after this PR, **every** `Err` from append means\n     not-committed (rejection included), because post-put failures no\n     longer return `Err`. Prefer that global simplification over a wrapper\n     enum; document it on the append methods' doc comments explicitly.\n2. **Validate before the put** in `append_event_envelope_locked` (all under\n   the already-held `state_lock`):\n   - Obtain the current projection: the cheapest correct source is the\n     same one `append_event_if` uses (`projected_state_locked`); for a run\n     with no events yet, the candidate must be validated through the\n     first-event path (`projection_from_created` route in\n     `run_state.rs`) — mirror however `apply_events` treats the initial\n     event so validation ≡ replay exactly.\n   - Apply the candidate envelope to a **clone** of that projection via the\n     existing reducer entry point. On reduction failure → return\n     `EventRejected`, having written nothing.\n   - Keep the pre-existing `payload.validate(...)` shape check where it is.\n3. **Reorder the post-put work to be best-effort.** After a successful\n   SlateDB put:\n   - Install the already-validated clone into the shared projection cache\n     (replacing the apply-then-rebuild-then-remove dance — the clone IS the\n     correct post-append projection, computed before the write). Keep the\n     cache's seq bookkeeping consistent with the existing\n     `apply_event`/`replace` semantics.\n   - `cache_event` and the SQLite upsert stay in place but become\n     log-only on failure (`warn!`/`error!` with run id and seq, matching\n     the logging style already present in this file). The append returns\n     `Ok(envelope)` regardless of derived-state failures.\n   - Do NOT remove the projection-cache entry on derived failure paths\n     anymore; a stale entry that a later append or startup reconciliation\n     repairs is strictly better than an absent one.\n4. **Seq allocation and put failures** already return `Err` before any\n   derived work — with step 3 in place these are now unambiguously\n   not-committed. Verify `EventSequenceExhausted` still propagates (the\n   existing test pins it).\n5. **Audit append callers for compile-only impact.** Call sites that\n   currently treat any `Err` as \"append failed\" remain correct under the\n   new contract (their errors now genuinely mean not-committed). No caller\n   behavior changes in this PR. `append_event_if`'s `Ok(None)` predicate\n   contract is unchanged.\n6. **Doc comments.** State the three-outcome contract (rejected-nothing-\n   written / not-committed / committed-with-best-effort-derived) on\n   `append_event`, `append_event_if`, and `append_event_envelope`.\n\n## Scope boundaries — deliberately NOT in this PR\n\n- **The server failure helpers that attempt illegal appends** (e.g. the\n  worker-launch failure path appending `Failed { LaunchFailed }` from\n  durable `Runnable`, and similar pre-worker failure sites in\n  `fabro-server`) — leave their logic as-is. They will now receive a clean\n  `EventRejected` and write nothing, which is the intended intermediate\n  state; reworking when/what they append is separate planned work. Do not\n  \"fix\" them to append legal events.\n- **Admission/scheduler changes** (durable claims, retry/backoff, startup\n  re-admission of queued runs) — known follow-up work, deliberately\n  excluded here.\n- **Repairing already-poisoned logs** or adding repair/diagnostic tooling —\n  known gap, addressed separately if needed. Pre-existing unreadable runs\n  keep their current behavior (skipped at warmup, surfaced by the\n  unreadable-runs listing).\n- **Event schema, OpenAPI, or public API changes** — none. This PR is\n  entirely inside `fabro-store` (plus its error type).\n- **SQLite schema changes** — none; the monotonic upsert and startup\n  reconcile already provide the repair path.\n\nIf work outside these boundaries seems genuinely required for this PR to\ncompile or pass its tests, stop and state that in the PR description rather\nthan expanding scope.\n\n## Tests (write failing-first; hermetic — temp-dir fixtures, no ambient provider keys)\n\nExisting store tests in `run_store.rs` / `run_summary_store.rs` show the\nfixture style (temp-dir object store, in-memory SQLite). Add:\n\n1. **Rejected transition writes nothing** — create a run, drive it to\n   durable `Runnable` (append the events the lifecycle uses today:\n   created/submitted/start-requested/runnable), then append a\n   `run.failed { WorkflowError }`-shaped event. Assert: the append returns\n   the rejection variant; `list_events` shows no new event; `state()` still\n   reduces successfully; the projection cache still holds an entry for the\n   run (not removed). *Property pinned: an event is written iff replay can\n   reduce it.*\n2. **Rejected transition leaves listings consistent** — after the rejected\n   append, run the summary reconcile path and assert the run's summary row\n   still exists. *Property: no more vanishing runs from rejected appends.*\n3. **Committed append survives derived-state failure** — attach a SQLite\n   summary store, then make its pool unusable (e.g. close the pool or drop\n   the underlying file) before appending a legal event. Assert: append\n   returns `Ok`; the event is in `list_events`; a warning/error was the\n   only symptom. Then restore/reopen the summary store and assert the row\n   is repairable (via reconcile or a subsequent append). If pool-closing\n   proves impractical through public seams, an injected failing summary\n   store behind the existing test-support feature is acceptable — but do\n   not weaken the assertion that append reports success. *Property:\n   committed is committed.*\n4. **Not-committed errors are retryable** — the existing\n   seq-exhaustion test keeps passing; extend it (or add a sibling) to\n   assert the log is unchanged after the error, pinning \"Err ⇒ nothing\n   written.\"\n5. **First-event validation** — a malformed first event (one the reducer\n   cannot initialize a projection from) is rejected with nothing written;\n   a valid `run.created` still works. *Property: the empty-log path\n   validates like replay too.*\n6. **append_event_if contract unchanged** — predicate-false still returns\n   `Ok(None)` with nothing written.\n\nRun the full workspace suite; the reducer and lifecycle tests in\n`fabro-store`, `fabro-workflow`, and `fabro-server` are the regression net\nfor \"legal appends behave exactly as before.\"\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- No OpenAPI/wire change (do not touch `docs/public/api-reference/`).\n- `cargo build --workspace` without the `test-support` feature still\n  succeeds if any test helper was added behind it.\n\n## Conventions\n\n- Read `docs/internal/error-handling-strategy.md` before changing the error\n  enum, and `docs/internal/events-strategy.md` before touching anything\n  that emits or documents events.\n- Never print or log a resolved secret value, including from tests.\n- Plain-English commit messages, PR text, and comments — describe what the\n  change does; no internal planning identifiers or plan-file names in\n  anything that ships.\n- PR description must state plainly: (1) the vanishing-runs failure mode\n  this fixes (invalid append → unreadable projection → summary row deleted\n  → run 404s) and that call sites attempting such appends now get a clean\n  error with nothing written; (2) the new append contract, including that\n  a failed SQLite summary update after a committed append now logs loudly\n  and reports success instead of returning an error — operators see a\n  warning where they previously saw a failed operation; (3) that\n  pre-existing corrupted run logs are not repaired by this change.\n- If implementation uncovers a caller that genuinely depends on the old\n  \"Err after committed write\" behavior, stop and surface it in the PR\n  description rather than working around it.\n"
+        },
+        "rankdir": {
+          "String": "LR"
+        }
+      }
+    },
+    "graph_source": "digraph ImplementPlan {\n    graph [goal=\"Implement and simplify\"]\n    rankdir=LR\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    toolchain         [label=\"Toolchain\", shape=parallelogram, script=\"command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1\", max_retries=0]\n    preflight_compile [label=\"Preflight Compile\", shape=parallelogram, script=\"cargo check -q --workspace 2>&1\", max_retries=0]\n    preflight_lint    [label=\"Preflight Lint\", shape=parallelogram, script=\"cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1\", max_retries=0]\n    fix_lints         [label=\"Fix Lints\", prompt=\"The preflight lint step failed. Read the build output from context and fix all clippy lint warnings.\", model=\"anthropic/claude-fable-5\", provider=\"openrouter\", reasoning_effort=\"xhigh\", max_visits=3]\n    implement         [label=\"Implement\", prompt=\"Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD.\", model=\"openai/gpt-5.6-sol\", provider=\"openrouter\", reasoning_effort=\"xhigh\"]\n    simplify_fable    [label=\"Simplify (Claude Fable 5)\", prompt=\"@prompts/simplify.md\", model=\"anthropic/claude-fable-5\", provider=\"openrouter\", reasoning_effort=\"xhigh\"]\n    simplify_sol      [label=\"Simplify (GPT-5.6 Sol)\", prompt=\"@prompts/simplify.md\", model=\"openai/gpt-5.6-sol\", provider=\"openrouter\", reasoning_effort=\"max\"]\n    verify            [label=\"Verify\", shape=parallelogram, script=\"git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\\\"disabled\\\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1\", timeout=\"20m\", goal_gate=true, retry_target=\"fixup\"]\n    fixup             [label=\"Fixup\", prompt=\"The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures.\", model=\"anthropic/claude-fable-5\", provider=\"openrouter\", reasoning_effort=\"xhigh\", max_visits=3]\n\n    start -> toolchain\n    toolchain -> preflight_compile [condition=\"outcome=succeeded\"]\n    toolchain -> exit\n    preflight_compile -> preflight_lint [condition=\"outcome=succeeded\"]\n    preflight_compile -> exit\n    preflight_lint -> implement [condition=\"outcome=succeeded\"]\n    preflight_lint -> fix_lints\n    fix_lints -> preflight_lint\n    implement -> simplify_fable -> simplify_sol -> verify\n    verify -> exit  [condition=\"outcome=succeeded\"]\n    verify -> fixup\n    fixup -> verify\n}\n",
+    "workflow_slug": "implement-plan",
+    "source_directory": "/Users/swerner/Development/os/fabro-main/fabro",
+    "provenance": {
+      "server": {
+        "version": "0.305.0-nightly.3"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.267.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.267.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "138379"
+        },
+        "login": "swerner",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/138379?v=4"
+      }
+    },
+    "manifest_blob": "3dcf9b9966e54976bced2bc0587c6227887f709c58b1aa54c9376b501d498203",
+    "definition_blob": "96f3c32b205ba497c24504e2aa5915669403b2592907722a60d14c0fb08ac6b5",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "239490a5531405a3e8738066a408accc2cadba55",
+      "dirty": "dirty",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KYNBXZ4PAGMNZGHVHPNAQ341",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-28T22:01:11.202817156Z",
+  "last_event_at": "2026-07-28T22:01:29.853896992Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-fdb28dec-1233-892c-b9d7-9f88f8353e7a",
+      "runtime": {
+        "id": "fabro-01KYNBXZ4PAGMNZGHVHPNAQ341",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
