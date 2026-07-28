@@ -5259,6 +5259,64 @@ fn test_billed_usage(
     .unwrap()
 }
 
+async fn create_billed_retry_run(state: &Arc<AppState>, run_id: RunId) {
+    create_durable_run_with_events(state, run_id, &[
+        workflow_event::Event::RunSubmitted {
+            definition_blob: None,
+        },
+        workflow_event::Event::RunStarting,
+        workflow_event::Event::RunRunning,
+    ])
+    .await;
+
+    append_scoped_stage_event(
+        state,
+        run_id,
+        "verify",
+        1,
+        &workflow_event::Event::StageFailed {
+            node_id:    "verify".to_string(),
+            name:       "Verify".to_string(),
+            index:      1,
+            failure:    FailureDetail::new("try again", FailureCategory::TransientInfra),
+            will_retry: true,
+            timing:     fabro_types::StageTiming::wall_only(1200),
+            billing:    Some(test_billed_usage("gpt-old", 100, 10)),
+            actor:      None,
+        },
+    )
+    .await;
+    append_scoped_stage_event(
+        state,
+        run_id,
+        "verify",
+        2,
+        &workflow_event::Event::StageCompleted {
+            node_id: "verify".to_string(),
+            name: "Verify".to_string(),
+            index: 1,
+            timing: fabro_types::StageTiming::wall_only(800),
+            status: "succeeded".to_string(),
+            preferred_label: None,
+            suggested_next_ids: Vec::new(),
+            billing: Some(test_billed_usage("gpt-new", 200, 20)),
+            failure: None,
+            notes: None,
+            files_touched: Vec::new(),
+            context_updates: None,
+            jump_to_node: None,
+            context_values: None,
+            node_visits: None,
+            loop_failure_signatures: None,
+            restart_failure_signatures: None,
+            response: None,
+            attempt: 2,
+            max_attempts: 2,
+        },
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn list_run_stages_distinguishes_visits() {
     let state = test_app_state_with_isolated_storage();
@@ -5650,69 +5708,13 @@ async fn run_billing_dedups_retried_nodes_and_sums_their_durations() {
 }
 
 #[tokio::test]
-async fn billing_endpoints_report_retry_usage_per_node_and_per_visit() {
+async fn run_billing_sums_usage_across_retry_visits_and_uses_latest_model() {
     let state = test_app_state_with_isolated_storage();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = RunId::new();
-    let failed_usage = test_billed_usage("gpt-old", 100, 10);
+
+    create_billed_retry_run(&state, run_id).await;
     let success_usage = test_billed_usage("gpt-new", 200, 20);
-
-    create_durable_run_with_events(&state, run_id, &[
-        workflow_event::Event::RunSubmitted {
-            definition_blob: None,
-        },
-        workflow_event::Event::RunStarting,
-        workflow_event::Event::RunRunning,
-    ])
-    .await;
-
-    append_scoped_stage_event(
-        &state,
-        run_id,
-        "verify",
-        1,
-        &workflow_event::Event::StageFailed {
-            node_id:    "verify".to_string(),
-            name:       "Verify".to_string(),
-            index:      1,
-            failure:    FailureDetail::new("try again", FailureCategory::TransientInfra),
-            will_retry: true,
-            timing:     fabro_types::StageTiming::wall_only(1200),
-            billing:    Some(failed_usage),
-            actor:      None,
-        },
-    )
-    .await;
-    append_scoped_stage_event(
-        &state,
-        run_id,
-        "verify",
-        2,
-        &workflow_event::Event::StageCompleted {
-            node_id: "verify".to_string(),
-            name: "Verify".to_string(),
-            index: 1,
-            timing: fabro_types::StageTiming::wall_only(800),
-            status: "succeeded".to_string(),
-            preferred_label: None,
-            suggested_next_ids: Vec::new(),
-            billing: Some(success_usage.clone()),
-            failure: None,
-            notes: None,
-            files_touched: Vec::new(),
-            context_updates: None,
-            jump_to_node: None,
-            context_values: None,
-            node_visits: None,
-            loop_failure_signatures: None,
-            restart_failure_signatures: None,
-            response: None,
-            attempt: 2,
-            max_attempts: 2,
-        },
-    )
-    .await;
-
     let mut latest_outcome: Outcome<Option<fabro_model::BilledModelUsage>> = Outcome::success();
     latest_outcome.usage = Some(success_usage);
     latest_outcome.timing = Some(fabro_types::StageTiming::wall_only(800));
@@ -5746,7 +5748,6 @@ async fn billing_endpoints_report_retry_usage_per_node_and_per_visit() {
     .unwrap();
 
     let response = app
-        .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
@@ -5789,6 +5790,18 @@ async fn billing_endpoints_report_retry_usage_per_node_and_per_visit() {
     assert_eq!(old_model["billing"]["input_tokens"], 100);
     assert_eq!(new_model["stages"], 1);
     assert_eq!(new_model["billing"]["input_tokens"], 200);
+}
+
+/// The stage popover reads `billing` off the stages list, so it must be scoped
+/// to one visit — unlike the Billing tab's rows, which sum every visit of a
+/// node.
+#[tokio::test]
+async fn list_run_stages_reports_billing_per_visit() {
+    let state = test_app_state_with_isolated_storage();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = RunId::new();
+
+    create_billed_retry_run(&state, run_id).await;
 
     let response = app
         .oneshot(
@@ -5827,23 +5840,8 @@ async fn list_run_stages_reports_zero_billing_for_a_stage_that_called_no_model()
         workflow_event::Event::RunRunning,
     ])
     .await;
-    append_scoped_stage_event(
-        &state,
-        run_id,
-        "script",
-        1,
-        &workflow_event::Event::StageStarted {
-            graph_visit:           None,
-            resumed_from_stage_id: None,
-            node_id:               "script".to_string(),
-            name:                  "Script".to_string(),
-            index:                 0,
-            handler_type:          "command".to_string(),
-            attempt:               1,
-            max_attempts:          1,
-        },
-    )
-    .await;
+    let started = stage_started_event("script", "command");
+    append_scoped_stage_event(&state, run_id, "script", 1, &started).await;
 
     let response = app
         .oneshot(

@@ -3,7 +3,7 @@ import type { EventEnvelope } from "@qltysh/fabro-api-client";
 import TestRenderer, { act } from "react-test-renderer";
 import { MemoryRouter } from "react-router";
 
-import { testBilledTokenCounts } from "../../lib/test-fixtures";
+import { makeBilledTokenCounts } from "../../lib/test-fixtures";
 import { makeEventEnvelope, setupReactTestEnv } from "../../lib/test-utils";
 import type { Stage } from "../stage-sidebar";
 import { ParallelChildren } from "./parallel-children";
@@ -26,7 +26,7 @@ const parallelStage: Stage = {
   resumedFromStageId: null,
   startedAt: "2026-04-09T12:00:00Z",
   providerUsed: null,
-  billing: testBilledTokenCounts(),
+  billing: makeBilledTokenCounts(),
 };
 
 function event(partial: Partial<EventEnvelope>): EventEnvelope {

@@ -1054,7 +1054,7 @@ mod iter_stages_tests {
     }
 
     #[test]
-    fn billed_usage_leaves_an_unused_model_uncosted() {
+    fn billed_usage_leaves_zero_tokens_uncosted() {
         let mut stage = priced_stage(None);
         stage.usage = BilledTokenCounts::default();
 

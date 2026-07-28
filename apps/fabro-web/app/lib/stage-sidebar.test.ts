@@ -8,13 +8,13 @@ import type {
 
 import type { Stage } from "../components/stage-sidebar";
 import { aggregateGraphNodeStatus, formatStageLabel, mapRunStagesToSidebarStages } from "./stage-sidebar";
-import { testBilledTokenCounts } from "./test-fixtures";
+import { makeBilledTokenCounts } from "./test-fixtures";
 
 function runStage(
   stage: Omit<RunStage, "billing"> & Partial<Pick<RunStage, "billing">>,
 ): RunStage {
   return {
-    billing: testBilledTokenCounts(),
+    billing: makeBilledTokenCounts(),
     ...stage,
   };
 }
@@ -32,7 +32,7 @@ function makeStage(nodeId: string, visit: number, status: StageState): Stage {
     duration: "--",
     startedAt: null,
     providerUsed: null,
-    billing: testBilledTokenCounts(),
+    billing: makeBilledTokenCounts(),
   };
 }
 
@@ -54,7 +54,7 @@ describe("mapRunStagesToSidebarStages", () => {
             model: "gpt-5.5",
             reasoning_effort: "high",
           },
-          billing: testBilledTokenCounts({
+          billing: makeBilledTokenCounts({
             input_tokens: 28_640,
             output_tokens: 7_550,
             total_tokens: 43_690,

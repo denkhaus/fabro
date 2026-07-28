@@ -3,7 +3,7 @@ import TestRenderer from "react-test-renderer";
 
 import type { RunBilling, StageTiming } from "@qltysh/fabro-api-client";
 
-import { testBilledTokenCounts } from "../lib/test-fixtures";
+import { makeBilledTokenCounts } from "../lib/test-fixtures";
 
 function stageTiming(wall_time_ms = 0, inference_time_ms = 0, tool_time_ms = 0): StageTiming {
   return {
@@ -27,7 +27,7 @@ function billing(overrides: Partial<RunBilling> = {}): RunBilling {
     stages: [],
     totals: {
       timing: stageTiming(),
-      ...testBilledTokenCounts(),
+      ...makeBilledTokenCounts(),
     },
     by_model: [],
     ...overrides,
@@ -71,21 +71,21 @@ describe("RunBilling", () => {
           {
             stage: { id: "start", name: "start" },
             model: null,
-            billing: testBilledTokenCounts(),
+            billing: makeBilledTokenCounts(),
             timing: stageTiming(),
             state: "succeeded",
           },
           {
             stage: { id: "command", name: "command" },
             model: null,
-            billing: testBilledTokenCounts(),
+            billing: makeBilledTokenCounts(),
             timing: stageTiming(61000),
             state: "succeeded",
           },
         ],
         totals: {
           timing: stageTiming(61000),
-          ...testBilledTokenCounts(),
+          ...makeBilledTokenCounts(),
         },
       }),
     );
@@ -106,7 +106,7 @@ describe("RunBilling", () => {
           {
             stage: { id: "start", name: "start" },
             model: null,
-            billing: testBilledTokenCounts(),
+            billing: makeBilledTokenCounts(),
             timing: stageTiming(),
             state: "succeeded",
           },
@@ -116,7 +116,7 @@ describe("RunBilling", () => {
               provider: "anthropic",
               model_id: "claude-sonnet-4-5",
             },
-            billing: testBilledTokenCounts({
+            billing: makeBilledTokenCounts({
               input_tokens: 1200,
               output_tokens: 300,
               total_tokens: 1500,
@@ -128,7 +128,7 @@ describe("RunBilling", () => {
         ],
         totals: {
           timing: stageTiming(42000),
-          ...testBilledTokenCounts({
+          ...makeBilledTokenCounts({
             input_tokens: 1200,
             output_tokens: 300,
             total_tokens: 1500,
@@ -142,7 +142,7 @@ describe("RunBilling", () => {
               model_id: "claude-sonnet-4-5",
             },
             stages: 1,
-            billing: testBilledTokenCounts({
+            billing: makeBilledTokenCounts({
               input_tokens: 1200,
               output_tokens: 300,
               total_tokens: 1500,
@@ -189,7 +189,7 @@ describe("RunBilling", () => {
                 model_id: "claude-opus-4-6",
                 speed: "fast",
               },
-              billing: testBilledTokenCounts({
+              billing: makeBilledTokenCounts({
                 input_tokens: 1200,
                 output_tokens: 300,
                 total_tokens: 1500,
@@ -202,7 +202,7 @@ describe("RunBilling", () => {
           ],
           totals: {
             timing: stageTiming(),
-            ...testBilledTokenCounts({
+            ...makeBilledTokenCounts({
               input_tokens: 1200,
               output_tokens: 300,
               total_tokens: 1500,
@@ -217,7 +217,7 @@ describe("RunBilling", () => {
                 speed: "fast",
               },
               stages: 1,
-              billing: testBilledTokenCounts({
+              billing: makeBilledTokenCounts({
                 input_tokens: 1200,
                 output_tokens: 300,
                 total_tokens: 1500,

@@ -5,13 +5,13 @@ import {
   formatBillingTokenCount,
   hasBillingUsage,
 } from "./billing";
-import { testBilledTokenCounts } from "./test-fixtures";
+import { makeBilledTokenCounts } from "./test-fixtures";
 
 describe("billingTokenBuckets", () => {
   test("returns the shared display order and folds reasoning into output", () => {
     expect(
       billingTokenBuckets(
-        testBilledTokenCounts({
+        makeBilledTokenCounts({
           input_tokens: 10,
           output_tokens: 20,
           reasoning_tokens: 5,
@@ -30,12 +30,15 @@ describe("billingTokenBuckets", () => {
 
 describe("hasBillingUsage", () => {
   test("includes cache-only and cost-only usage", () => {
-    expect(hasBillingUsage(testBilledTokenCounts())).toBe(false);
+    expect(hasBillingUsage(makeBilledTokenCounts())).toBe(false);
     expect(
-      hasBillingUsage(testBilledTokenCounts({ cache_read_tokens: 1 })),
+      hasBillingUsage(makeBilledTokenCounts({ cache_read_tokens: 1 })),
     ).toBe(true);
     expect(
-      hasBillingUsage(testBilledTokenCounts({ total_usd_micros: 1 })),
+      hasBillingUsage(makeBilledTokenCounts({ total_usd_micros: 1 })),
+    ).toBe(true);
+    expect(
+      hasBillingUsage(makeBilledTokenCounts({ total_tokens: 1 })),
     ).toBe(true);
   });
 });

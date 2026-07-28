@@ -3,6 +3,7 @@ import { Fragment, useMemo } from "react";
 import { EmptyState } from "../components/state";
 import { Tooltip } from "../components/ui";
 import {
+  billableOutputTokens,
   billingTokenBuckets,
   formatBillingTokenCount,
   hasBillingUsage,
@@ -75,18 +76,18 @@ function mapStageRow(stage: RunBillingStage, wallTimeMs: number): MappedStageRow
 
 /** Hover breakdown of the disjoint token buckets behind an `in / out` count. */
 function TokenBreakdown({ billing }: { billing: BilledTokenCounts }) {
-  const rows = billingTokenBuckets(billing);
+  const buckets = billingTokenBuckets(billing);
   return (
     <div className="min-w-44 py-0.5">
-      <div className="mb-1.5 border-b border-line pb-1 font-medium text-fg-2">
+      <div className="border-line text-fg-2 mb-1.5 border-b pb-1 font-medium">
         Tokens in / out
       </div>
       <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1">
-        {rows.map((row) => (
-          <Fragment key={row.label}>
-            <dt className="text-fg-3">{row.label}</dt>
-            <dd className="text-right font-mono tabular-nums text-fg">
-              {formatTokens(row.value)}
+        {buckets.map((bucket) => (
+          <Fragment key={bucket.label}>
+            <dt className="text-fg-3">{bucket.label}</dt>
+            <dd className="text-fg text-right font-mono tabular-nums">
+              {formatTokens(bucket.value)}
             </dd>
           </Fragment>
         ))}
@@ -99,21 +100,14 @@ function TokenBreakdown({ billing }: { billing: BilledTokenCounts }) {
  * Renders an `input / output` token count. When the row has model usage,
  * hovering the count reveals the cache breakdown.
  */
-function TokensCell({
-  billing,
-}: {
-  billing: BilledTokenCounts | null;
-}) {
-  const inputTokens = billing?.input_tokens;
-  const outputTokens =
-    billing == null ? null : billing.output_tokens + billing.reasoning_tokens;
+function TokensCell({ billing }: { billing: BilledTokenCounts | null }) {
   const display = (
     <>
-      {formatTokens(inputTokens)} <span className="text-fg-muted">/</span>{" "}
-      {formatTokens(outputTokens)}
+      {formatTokens(billing?.input_tokens)} <span className="text-fg-muted">/</span>{" "}
+      {formatTokens(billing ? billableOutputTokens(billing) : null)}
     </>
   );
-  if (billing == null) return display;
+  if (!billing) return display;
   return (
     <Tooltip label={<TokenBreakdown billing={billing} />}>
       <span>{display}</span>

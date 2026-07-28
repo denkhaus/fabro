@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import TestRenderer, { act } from "react-test-renderer";
 import { MemoryRouter } from "react-router";
 
-import { testBilledTokenCounts } from "../lib/test-fixtures";
+import { makeBilledTokenCounts } from "../lib/test-fixtures";
 import { StageSidebar, type Stage } from "./stage-sidebar";
 
 function makeStage(overrides: Partial<Stage> = {}): Stage {
@@ -18,7 +18,7 @@ function makeStage(overrides: Partial<Stage> = {}): Stage {
     duration:  "--",
     startedAt: null,
     providerUsed: null,
-    billing: testBilledTokenCounts(),
+    billing: makeBilledTokenCounts(),
     ...overrides,
   };
 }

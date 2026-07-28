@@ -7,7 +7,7 @@ import type {
   StageModelUsage,
 } from "@qltysh/fabro-api-client";
 
-import { testBilledTokenCounts } from "../lib/test-fixtures";
+import { makeBilledTokenCounts } from "../lib/test-fixtures";
 import { EventDetails, ModelUsagePopover } from "./run-stages";
 
 const RUN_START = "2026-04-09T12:00:00Z";
@@ -94,7 +94,7 @@ function popoverMarkup(counts: BilledTokenCounts): string {
 describe("ModelUsagePopover billing", () => {
   test("shows the visit's token buckets and cost next to the model", () => {
     const html = popoverMarkup(
-      testBilledTokenCounts({
+      makeBilledTokenCounts({
         input_tokens: 28_640,
         output_tokens: 7_550,
         reasoning_tokens: 1_200,
@@ -120,7 +120,7 @@ describe("ModelUsagePopover billing", () => {
   });
 
   test("omits the token section for a stage that called no model", () => {
-    const html = popoverMarkup(testBilledTokenCounts());
+    const html = popoverMarkup(makeBilledTokenCounts());
 
     expect(html).toContain("kimi-k3");
     expect(html).not.toContain("Tokens");
@@ -129,7 +129,7 @@ describe("ModelUsagePopover billing", () => {
 
   test("still shows tokens when nothing priced the stage", () => {
     const html = popoverMarkup(
-      testBilledTokenCounts({
+      makeBilledTokenCounts({
         input_tokens: 1_000,
         output_tokens: 500,
         total_tokens: 1_500,
@@ -141,14 +141,14 @@ describe("ModelUsagePopover billing", () => {
     expect(html).not.toContain("Cost");
   });
 
-  test("shows a reported cost when token buckets are empty", () => {
+  test("shows a provider-reported cost when token counts are unavailable", () => {
     const html = popoverMarkup(
-      testBilledTokenCounts({ total_usd_micros: 1_000_000 }),
+      makeBilledTokenCounts({ total_usd_micros: 720_000 }),
     );
 
     expect(html).toContain("kimi-k3");
     expect(html).toContain("Tokens");
     expect(html).toContain("Cost");
-    expect(html).toContain("$1.00");
+    expect(html).toContain("$0.72");
   });
 });

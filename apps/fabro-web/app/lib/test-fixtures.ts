@@ -7,16 +7,16 @@ export const TEST_PRINCIPAL: Principal = {
   auth_method: "dev_token",
 };
 
-export function testBilledTokenCounts(
+export function makeBilledTokenCounts(
   overrides: Partial<BilledTokenCounts> = {},
 ): BilledTokenCounts {
   return {
-    input_tokens: 0,
-    output_tokens: 0,
-    total_tokens: 0,
-    reasoning_tokens: 0,
     cache_read_tokens: 0,
     cache_write_tokens: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    reasoning_tokens: 0,
+    total_tokens: 0,
     ...overrides,
   };
 }
