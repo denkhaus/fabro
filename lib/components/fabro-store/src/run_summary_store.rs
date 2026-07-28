@@ -147,6 +147,11 @@ impl RunSummaryStore {
         Self { pool }
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     pub(crate) async fn upsert_projection(&self, entry: &CachedRunProjection) -> Result<()> {
         let record = ProjectedRunSummary::from_entry(entry);
         let mut connection = self.pool.acquire().await?;
