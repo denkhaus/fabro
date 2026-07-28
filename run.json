@@ -1,0 +1,499 @@
+{
+  "title": "PR 4 — Extract a source-neutral run-compiler boundary in fabro-server",
+  "spec": {
+    "run_id": "01KYNC1G9MBG7HDVVJNRYJA8RY",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "# PR 4 — Extract a source-neutral run-compiler boundary in fabro-server\n\n**Self-contained implementation plan.** Everything needed to implement this\nis in this file plus the repository.\n\n**Precondition:** none — this is an independent, behavior-neutral extraction\nwith no dependency on other in-flight changes. Re-verify the \"Verified\ncurrent state\" section against HEAD before starting; if\n`create_run_from_manifest` in\n`lib/apps/fabro-server/src/server/handler/runs.rs` or `operations::create` in\n`lib/components/fabro-workflow/src/operations/create.rs` has been materially\nrestructured since the pinned commit, stop and state that in the PR\ndescription instead of adapting blindly.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly\n> as a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME`, `vars.NAME` as the double-curly-brace\n> token form used in the codebase, and write the real double-brace syntax in\n> the code, tests, and docs you produce.\n\n## Context and goal\n\nWhen a client POSTs a run to the Fabro server, the server compiles the\nrequest into a persisted, executable run: it normalizes the submitted\nworkflow bundle, layers settings from server defaults / environment catalog /\nworkflow config / project config / user config / request args, substitutes\nrun-scoped variables, parses and validates the Graphviz graph (with template\nrendering and model-selector resolution), pins concrete model/provider\nchoices against the catalog and the set of configured providers, and finally\nassembles everything the persistence layer needs to write the run directory\nand the `run.created` / `run.submitted` events.\n\nToday that compile pipeline has no single home. It is smeared across three\nplaces:\n\n1. The HTTP handler `create_run_from_manifest`\n   (`lib/apps/fabro-server/src/server/handler/runs.rs`) drives the sequence\n   inline: prepare, variable snapshot + substitution, run-id resolution,\n   sandbox-policy check, provider resolution, input assembly, persistence\n   call, plus HTTP error mapping interleaved at every step.\n2. `lib/apps/fabro-server/src/run_manifest.rs` owns manifest-to-settings\n   preparation (`prepare_manifest_with_environment_defaults`) and the\n   persistence-input constructor (`create_run_input`) — which hardcodes\n   `submitted_manifest_bytes: None` and `automation: None`, only for the\n   handler to overwrite those fields (and `run_id`) after the fact.\n3. `operations::create` in\n   `lib/components/fabro-workflow/src/operations/create.rs` performs the\n   actual graph compilation (parse / transform / validate, with undefined\n   template variables promoted to errors) and model pinning\n   (`materialize_run`) inside a `spawn_blocking` closure, fused to the\n   persistence write in one opaque call.\n\nWhy this needs to change: separately planned work will (a) call the compile\npipeline from non-HTTP code paths (server-internal admission/scheduling code\nthat prepares a run outside a request handler), and (b) feed it workflow\nsources other than the current client-submitted manifest (for example a\nserver-side checkout of a git repository). Both need one typed entry point\nwhose input speaks in terms of an acquired workflow bundle — not in terms of\nthe HTTP wire body — and whose stages are individually visible so a future\ncaller can run acquisition elsewhere or at a different time. None of that\nfuture work lands here; this PR only creates the seam.\n\n**Goal:** after this PR, fabro-server has a single typed \"run compiler\"\nboundary — a module with a source-neutral input type and a typed output —\ncomposed of four internally-separable stages:\n\n1. **Source normalization** — take an already-acquired workflow bundle plus\n   an entrypoint path; resolve the entrypoint workflow, its root graph\n   source, and bundle-relative references (e.g. dockerfile references in\n   config layers resolved against bundled files).\n2. **Settings / variables / graph compilation** — layer settings from all\n   configured sources, apply the run-variable snapshot, then parse,\n   transform, and validate the graph exactly as run-create does today\n   (structural render mode, model-resolution transform, undefined template\n   variables promoted to hard errors).\n3. **Model/provider policy + pinning** — materialize the run against the\n   catalog and configured provider set, pinning concrete model and provider\n   selections.\n4. **Persistence-input assembly** — produce the complete input for the\n   persistence layer, with the submitted source bytes, automation reference,\n   and resolved run id set once at assembly time instead of patched in\n   afterwards.\n\nThe manifest-shaped HTTP handler adapts the wire `RunManifest` into the\nboundary's input at the edge and keeps all HTTP concerns (status codes,\n`ApiError` construction, response shaping) outside the boundary. Behavior is\nbyte-for-byte unchanged for every endpoint.\n\nDesign rules (fixed — do not re-litigate):\n\n- **The boundary's input must not be `RunManifest`** (or any\n  `fabro_api::types` request type). The manifest is an accident of today's\n  transport; freezing it into the compiler's signature would force every\n  future source to fabricate a fake manifest. The manifest-shaped caller\n  adapts into the boundary at the edge.\n- **No HTTP types inside the boundary.** No `axum` types, `HeaderMap`,\n  `StatusCode`, `Response`, or `ApiError` in the boundary module's\n  signatures or internals. The boundary returns typed errors; the handler\n  maps them to HTTP. A later caller invokes the boundary from non-HTTP\n  server code.\n- **Byte-for-byte behavior neutrality.** This is a pure extraction. Every\n  endpoint's request/response bytes, persisted event contents, error\n  messages, log lines, and side-effect ordering must be unchanged. Existing\n  fixtures and tests pin behavior; add a pinning test first (see Tests) so\n  the refactor is provably neutral.\n- **Each stage runs exactly once per create.** Do not build a boundary that\n  compiles/validates and then calls a persistence entry point that\n  re-compiles internally. If the persistence layer needs restructuring to\n  accept already-compiled inputs, restructure it (see step 4) rather than\n  running the pipeline twice.\n- **The pipeline logic stays in fabro-workflow; the boundary orchestrates\n  it.** Do not copy parse/transform/validate/materialize logic into\n  fabro-server. Single source of truth: the boundary composes fabro-workflow\n  entry points.\n- **Fold in the assembly-seam cleanup.** `run_manifest::create_run_input`\n  hardcoding `submitted_manifest_bytes: None` / `automation: None` and the\n  handler overwriting them (plus `run_id`) post-hoc is a known wart; stage 4\n  must accept these as inputs and set them once. No field of the assembled\n  persistence input may be mutated after assembly.\n- **Async vs blocking is decided per stage by what the stage actually\n  touches today** (see the per-stage notes in Implementation step 3), not by\n  a blanket choice. CPU-heavy graph compilation stays off the async runtime\n  (`spawn_blocking`), as it is today.\n- **No new capability.** No intent types, no new wire fields, no OpenAPI\n  change, no new workflow-source kinds, no behavior change to any endpoint.\n  Separately planned work builds on this seam; this PR only creates it.\n\n## Verified current state (as of origin/main `239490a55`, 2026-07-28 — re-verify before starting)\n\nLine numbers are approximate; the named functions are the stable anchors.\n\n- `lib/apps/fabro-server/src/server/handler/runs.rs`:\n  - `create_run` (≈ :519-543) deserializes the body into `RunManifest` and\n    delegates to `create_run_from_manifest` with\n    `CreateRunFromManifestRequest` (≈ :545-553: manifest, raw submitted\n    bytes, optional explicit run id, explicit-title flag, actor, headers,\n    optional `AutomationRef`).\n  - `create_run_from_manifest` (≈ :555-726) is the whole create pipeline\n    inline: `prepare_manifest_with_environment_defaults` (≈ :571-579, errors\n    → 400 with the error's message); `snapshot_run_variables` (≈ :580-586,\n    errors → 500); `substitute_run_variables` (≈ :587-590, errors → 400\n    `Run config variable interpolation failed: ...`); run-id resolution\n    `explicit_run_id.or(prepared.run_id).unwrap_or_else(RunId::new)`\n    (≈ :591-593); sandbox provider policy check (≈ :594-599, → 400);\n    parent-link validation (≈ :600-607); `info!(run_id = %run_id, \"Run\n    created\")` (≈ :608); `resolve_llm_client_with_ready_ids` (≈ :616) with a\n    test-support hook `test_run_materialization_provider_ids` behind\n    `cfg(any(test, feature = \"test-support\"))` (≈ :618-630);\n    `run_provenance(&headers, &actor)` (≈ :631; fn at ≈ :785);\n    `run_manifest::create_run_input(prepared.clone(), ...)` (≈ :632-638)\n    followed by the post-hoc mutations `create_input.run_id = Some(run_id)`,\n    `create_input.submitted_manifest_bytes = Some(...)`,\n    `create_input.automation = automation` (≈ :639-641); then\n    `operations::create` (≈ :644-666) with this exact error mapping:\n    `ValidationFailed`/`Parse` → 400 `\"Validation failed\"`,\n    `ModelSelection`/`ModelReference` → 400 with the error's display string,\n    anything else → 500 `Failed to persist run state: ...`. Post-create side\n    effects: cached-summary fetch (≈ :667-680), managed-run map insertion\n    (≈ :683-695), spawned title-generation task using `prepared.target_path`\n    (≈ :697-719), `201` response (≈ :721-725).\n  - The automation paths reuse this same function:\n    `server/automation_scheduler.rs` ≈ :264 and `server/handler/\n    automations.rs` ≈ :144 call `create_run_from_manifest` directly with\n    `automation: Some(..)`. Any signature change to it must keep those\n    callers compiling with identical behavior.\n  - `run_preflight` (≈ :823-874) and `validate_run_manifest` (≈ :876-920)\n    also call `prepare_manifest_with_environment_defaults` +\n    `snapshot_run_variables` + `substitute_run_variables`, but then use\n    validate-only helpers — they never model-pin the same way create does\n    (preflight materializes separately inside `run_manifest::run_preflight`)\n    and never persist.\n  - `snapshot_run_variables` (≈ :922-926) reads the variable store (async).\n    `substitute_run_variables` (≈ :941-953) is pure given the snapshot and\n    also validates `run.artifacts.include` globs.\n- `lib/apps/fabro-server/src/run_manifest.rs`:\n  - `PreparedManifest` (≈ :52-65): cwd, git, root_source, run_id, parent_id,\n    title, settings, target_path, workflow_bundle, workflow_input\n    (entrypoint `BundledWorkflow`), source_directory.\n  - `prepare_manifest_with_environment_defaults` (≈ :79-187): manifest\n    version check; `ManifestPath::from_wire` on the target;\n    `workflow_bundle_from_manifest` (≈ :301-342) building the\n    `WorkflowBundle` from wire keys; entrypoint lookup; args parsing via\n    `manifest_args_overrides` (sparse `RunLayer`/`CliLayer`/input\n    overrides); `WorkflowSettingsBuilder` layering (server manifest\n    defaults + environment defaults + MCP catalog + workflow config layer +\n    project config layers + user TOML layers), with dockerfile references in\n    config layers resolved against bundled files\n    (`settings_layer_with_resolved_dockerfiles`, ≈ :370-386); goal\n    extraction; title normalization; run/parent id parsing.\n  - `create_run_input` (≈ :236-262) maps `PreparedManifest` →\n    `CreateRunInput`, hardcoding `submitted_manifest_bytes: None` and\n    `automation: None`. Its only caller is the create handler (≈ runs.rs\n    :632).\n  - The validate-side helpers (`validate_prepared_manifest*`, ≈ :189-234)\n    and preflight/report code in the rest of the file are used by the\n    preflight/validate/graph endpoints and by\n    `manifest_validation.rs`/`run_tool_manifest.rs` — out of scope here.\n- `lib/components/fabro-workflow/src/operations/create.rs`:\n  - `CreateRunInput` (≈ :35-59): workflow (`WorkflowInput`), settings, vars,\n    cwd, workflow_slug, workflow_path, workflow_bundle,\n    submitted_manifest_bytes, run_id, title, automation, git,\n    fork_source_ref, parent_id, provenance, configured_providers, web_url.\n  - `create` (≈ :87-195): `resolve_workflow` (source.rs; for\n    `WorkflowInput::Bundled` it is mostly pure but `resolve_goal_override`\n    can read a goal file from disk when `run.goal` is the file variant);\n    then a `spawn_blocking` closure (≈ :145-170) running\n    `create_from_source` (≈ :288-320) = `preprocess_and_validate`\n    (parse/transform/validate with `RenderMode::Structural`,\n    `ModelResolutionTransform::for_eligible` + configured default provider,\n    ≈ :296-310) + `promote_template_undefined_variables_to_errors`\n    (≈ :312-317) + `persist_validated` (≈ :379-426), which calls\n    `materialize_run` (≈ :399) for model pinning, builds the `RunSpec`, and\n    runs `pipeline::persist` (run-directory writes — blocking I/O). After\n    the closure: an optional `workflow.toml` read (≈ :172-175, `None` for\n    bundled inputs) and `persist_created_run` (≈ :197-282), which writes\n    manifest/definition blobs and appends `run.created` + `run.submitted`.\n    Note `persist_created_run` contains a create-or-reopen fallback\n    (≈ :209-216) that reopens an existing run store on `create_run` failure\n    — a known defect, out of scope (see Scope boundaries).\n  - `operations::create`'s only production caller is the server create\n    handler (runs.rs ≈ :644); the calls in `operations/start.rs`\n    (≈ :1934, :2417) are inside that file's `#[cfg(test)]` module\n    (gate at ≈ :1145). `CreateRunInput` is used outside fabro-workflow only\n    by `run_manifest.rs`. `operations/mod.rs` (≈ :17) re-exports\n    `CreateRunInput`, `CreatedRun`, `create`, `make_run_dir`.\n- Existing tests that pin the current pipeline: handler-level create tests\n  in `lib/apps/fabro-server/src/server/tests.rs` (≈ :3583, :3627 call\n  `create_run_from_manifest` directly); pipeline tests in\n  `operations/create.rs`'s test module (e.g.\n  `create_persists_normalized_config_and_initial_state`,\n  `create_materializes_portable_selectors_for_ready_provider_snapshot_and_pin`,\n  `create_returns_validation_failed_with_diagnostics`); manifest-preparation\n  tests in `run_manifest.rs`'s test module.\n\n## Implementation\n\n1. **Pin current behavior before touching anything.** In the fabro-server\n   test suite (mirror the fixture style of the existing\n   `create_run_from_manifest` tests in `server/tests.rs` and the\n   `TestAppStateBuilder` helper), add a regression test that drives\n   `create_run_from_manifest` with a representative manifest — a bundled\n   workflow with a prompt node, an inline goal, args carrying a model\n   selector and an input override, a project config layer, a git context,\n   and an explicit run id — and asserts the durable outcome precisely: the\n   `201` status, and the persisted run's spec/event contents (pinned model\n   and provider, rendered graph attributes, settings fields affected by\n   layering, labels, provenance, presence of the manifest blob, title).\n   Also pin at least one error path per distinct handler mapping: an\n   invalid manifest (400 with the preparation error message), an undefined\n   `vars.NAME` in a prompt (400 `\"Validation failed\"`), and an unknown\n   model selector (400 with the model-selection error message). Commit this\n   test green against the unmodified code; it is the neutrality proof for\n   everything below.\n2. **Create the boundary module** in fabro-server (suggested:\n   `lib/apps/fabro-server/src/run_compiler.rs`, alongside peers like\n   `run_manifest.rs`; a directory module is fine if it reads better).\n   Define:\n   - A source-neutral input type carrying: the acquired `WorkflowBundle` +\n     entrypoint `ManifestPath`; settings inputs (server run defaults,\n     environment-defaults catalog, MCP server catalog, project config\n     sources as path+TOML-source pairs, user config TOML sources,\n     args-derived sparse overrides — the `RunLayer`/`CliLayer`/input-override\n     shape `manifest_args_overrides` already produces — and the optional\n     inline goal override); the run-variable snapshot; identity and lineage\n     (resolved run id, parent id, normalized title, git context); the\n     configured provider ids; `RunProvenance`; optional web URL; the exact\n     submitted source bytes; and the optional `AutomationRef`. Use existing\n     fabro-config / fabro-types / fabro-workflow vocabulary for every field;\n     no `fabro_api::types` and no axum/HTTP types anywhere in the module.\n   - A typed error enum (read `docs/internal/error-handling-strategy.md`\n     first) whose variants preserve every distinction the handler's HTTP\n     mapping needs: invalid-source/preparation errors, variable\n     interpolation errors, validation/parse failures (carrying the\n     underlying `fabro_workflow::Error` or equivalent detail),\n     model-selection/model-reference errors, and internal errors. The\n     handler must be able to reproduce today's status codes and message\n     strings exactly from these variants.\n   - A typed output: the assembled persistence input (stage 4's product),\n     plus whatever compiled artifacts the handler still needs afterwards\n     (the entrypoint path for title generation is the known one).\n3. **Implement the four stages inside the boundary**, each as its own\n   function with typed input/output so they are individually testable and a\n   future caller can invoke acquisition separately. Per-stage execution\n   model, based on what each touches today:\n   - *Stage 1 — source normalization* (pure, synchronous): entrypoint lookup\n     in the bundle, root source extraction, and dockerfile-reference\n     resolution against bundled files. This subsumes the bundle-facing parts\n     of `prepare_manifest_with_environment_defaults`; the manifest-facing\n     parts (wire-key parsing, version check, args/config extraction) move to\n     the handler-side adapter in step 5.\n   - *Stage 2 — settings/variables/graph compilation*: settings layering via\n     `WorkflowSettingsBuilder` and variable substitution (reuse the logic of\n     `substitute_run_variables`, including its artifact-glob validation) are\n     pure given the snapshot — the snapshot itself is an input, taken by the\n     caller. Graph compilation must keep running through fabro-workflow's\n     pipeline (`resolve_workflow` + `preprocess_and_validate` with\n     `RenderMode::Structural` and the eligible-provider model-resolution\n     transform, then promoting undefined template variables to errors) and\n     must stay on `spawn_blocking` — it is CPU-heavy and can touch the\n     filesystem (goal-file override). Whether stages 2-4 share one blocking\n     closure (as today) or are separately dispatched is the implementer's\n     call; the criterion is that blocking work never runs directly on the\n     async runtime and the observable behavior is unchanged.\n   - *Stage 3 — model/provider policy + pinning*: `materialize_run` with the\n     catalog and configured providers — pure CPU; keep it adjacent to stage\n     2's blocking context as it is today.\n   - *Stage 4 — persistence-input assembly* (pure): build the complete\n     persistence input with run id, submitted source bytes, and automation\n     reference populated from the boundary input. Delete the\n     assemble-then-mutate pattern entirely.\n4. **Open a persist-without-recompile seam in fabro-workflow.** Today\n   `operations::create` fuses compile and persist, so a boundary that\n   compiles would trigger a second compile when calling it. Restructure\n   `operations/create.rs` so the compile portion (resolve +\n   preprocess/validate + promote + materialize) and the persist portion\n   (`RunSpec` assembly + `pipeline::persist` + `persist_created_run`) are\n   separately callable, then reimplement `create` as their composition so\n   its existing signature and behavior are preserved for current users\n   (including its own test module). The server boundary calls the compile\n   pieces from its stages 2-3 and the persist piece with stage 4's output.\n   Mirror the file's existing internal split (`create_from_source` /\n   `persist_validated` / `persist_created_run`) rather than inventing a new\n   pipeline shape; the work is mostly making the seams `pub` (or\n   `pub(crate)`-plus-re-export) with honest input structs, not rewriting\n   logic. Do not duplicate any of this logic into fabro-server.\n5. **Rewire `create_run_from_manifest` as edge adapter + boundary caller.**\n   The handler keeps its signature (its automation callers must not change)\n   and becomes: deserialize/validate the manifest shape and convert to the\n   boundary input (manifest version check, wire-key parsing via\n   `workflow_bundle_from_manifest`, `manifest_args_overrides`, config\n   extraction by type, goal/title/run-id/parent-id extraction — reusing the\n   existing `run_manifest.rs` functions where they are already\n   manifest-shaped); take the variable snapshot; resolve the run id and\n   compute provenance from headers at the edge; run the same pre-checks in\n   the same order (sandbox provider policy, parent-link validation) with\n   identical status codes and messages; call the boundary; map its typed\n   errors to today's exact HTTP responses; then perform the unchanged\n   post-create side effects (summary fetch, managed-run insertion, title\n   generation task, `201`). Keep the `info!(run_id = %run_id, \"Run\n   created\")` log at the equivalent point and keep the test-support\n   provider-ids hook at the edge with the same `cfg` gating. Delete\n   `run_manifest::create_run_input` once nothing calls it.\n6. **Doc comments on the boundary.** State what the boundary is (the single\n   create-time compile pipeline), what each stage consumes and produces, why\n   the input is source-neutral, and that callers own source acquisition,\n   variable snapshotting, and (for HTTP callers) all wire mapping.\n\n## Scope boundaries — deliberately NOT in this PR\n\n- **New request types, workflow-source kinds, or wire/OpenAPI changes** —\n  none. Do not touch `docs/public/api-reference/`. The create endpoint keeps\n  accepting exactly today's manifest body; a future request shape is known\n  follow-up work that will adapt into this boundary the same way the\n  manifest does.\n- **The preflight, validate, and graph endpoints, `manifest_validation.rs`,\n  and `run_tool_manifest.rs`** — leave them on\n  `prepare_manifest_with_environment_defaults` and the validate helpers\n  as-is, even where that leaves some duplication with the new boundary.\n  Migrating those surfaces is known follow-up work; forcing them through the\n  compiler now would change their behavior (they deliberately do not pin\n  models or persist).\n- **When/where compile runs** — the boundary is called at create time from\n  the create handler, exactly as today. Do not move compilation into\n  admission/scheduling code paths; that is separately planned work this seam\n  exists to enable.\n- **fabro-store** — untouched. No changes to event schemas, append\n  semantics, or blob storage.\n- **The create-or-reopen fallback in `persist_created_run`**\n  (operations/create.rs ≈ :209-216, reopening an existing run store and\n  appending another `run.created`) — leave as-is, including when moving code\n  around it. It is a known defect with separately planned work; \"fixing\" it\n  here would be a behavior change in a PR that promises none.\n- **The automation scheduler and automation materializer** — leave their\n  call paths as-is; they funnel through `create_run_from_manifest` and get\n  the boundary for free.\n- **Handler side-effect behavior** — title generation, managed-run map\n  bookkeeping, summary decoration, and response shaping stay exactly as they\n  are; they are the handler's job, not the compiler's.\n- **`RunSpec`, `run.created` event contents, and `run_manifest.rs`'s\n  preflight/report code** — no field additions, removals, or renames.\n\nIf work outside these boundaries seems genuinely required for this PR to\ncompile or pass its tests, stop and state that in the PR description rather\nthan expanding scope.\n\n## Tests\n\nThis is a pure extraction, so the emphasis is pin-first rather than\nfailing-first: the step-1 regression test is written and committed against\nthe unmodified code, then must stay green untouched through the refactor.\nAll tests hermetic — temp-dir fixtures, in-memory stores, no ambient\nprovider keys (use the existing test catalogs and `TestAppStateBuilder`\npatterns).\n\n1. **Handler-output pinning test** (step 1) — the representative manifest\n   produces identical persisted spec/event contents and HTTP responses\n   before and after the extraction, including the three pinned error paths.\n   *Property: the extraction is behavior-neutral at the wire and in the\n   event log.*\n2. **Boundary unit tests per stage**, in the new module:\n   - stage 1: entrypoint resolution and a dockerfile reference resolved\n     against bundle files; a missing entrypoint and a missing bundled\n     dockerfile produce the same error messages as today.\n   - stage 2: settings layering precedence (server default overridden by\n     project layer overridden by args override), variable substitution\n     (a `vars.NAME` reference in run settings resolves from the snapshot;\n     an artifact-include glob error surfaces), and graph compilation\n     (undefined `vars.NAME` in a prompt is a hard error; a defined one\n     renders — mirror the existing\n     `vars_resolve_in_node_prompt_through_create_pipeline` /\n     `unknown_var_in_prompt_warns_at_validate_then_errors_at_run_create`\n     coverage in operations/create.rs).\n   - stage 3: a portable model selector pins to the expected\n     model/provider for a given configured-provider set (mirror\n     `create_materializes_portable_selectors_for_ready_provider_snapshot_and_pin`\n     with the small portable test catalog).\n   - stage 4: the assembled persistence input carries the submitted source\n     bytes, automation reference, and resolved run id exactly as provided —\n     pinning that the post-hoc-mutation seam is gone.\n3. **fabro-workflow seam test** — `operations::create` reimplemented as\n   compile+persist composition still passes its entire existing test module\n   unchanged, and the new persist-precompiled entry point produces the same\n   `CreatedRun`/durable state as `create` for the same input.\n4. **Full workspace suite** — the reducer, lifecycle, handler, automation,\n   and CLI test suites are the regression net; run\n   `cargo nextest run --workspace` and treat any diff as a neutrality\n   violation to fix, not a snapshot to accept. If an insta snapshot changes,\n   the refactor broke neutrality — do not run a blanket\n   `cargo insta accept`.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- No OpenAPI/wire change (do not touch `docs/public/api-reference/`).\n- `cargo build --workspace` without the `test-support` feature still\n  succeeds if any test helper was added behind it.\n- `run_manifest::create_run_input` no longer exists; no call site mutates a\n  persistence input after assembly.\n- The new boundary module has no dependency on `axum`, `fabro_api::types`\n  request types, or anything HTTP-shaped (verify by reading its imports).\n\n## Conventions\n\n- Read `docs/internal/error-handling-strategy.md` before adding the\n  boundary's error type, and `docs/internal/logging-strategy.md` before\n  moving or adding any `tracing` call sites; keep existing log lines' fields\n  and levels unchanged.\n- Never print or log a resolved secret value, including from tests.\n- Plain-English commit messages, PR text, and comments — describe what the\n  change does; no internal planning identifiers or plan-file names in\n  anything that ships.\n- PR description must state plainly: (1) this is a pure refactor with no\n  behavior change — every endpoint's requests, responses, persisted events,\n  and error messages are byte-for-byte unchanged, and a pinned regression\n  test written before the refactor proves it; (2) what the new boundary is —\n  a single typed, source-neutral entry point in fabro-server for the\n  create-time compile pipeline (source normalization, settings/variables/\n  graph compilation, model pinning, persistence-input assembly); (3) why it\n  exists — so the compile pipeline has one home that future non-HTTP server\n  code paths and alternative workflow sources can call, instead of logic\n  smeared across the HTTP handler, the manifest-preparation module, and the\n  workflow-operations internals.\n- If implementation uncovers a hidden behavioral coupling that makes a stage\n  impossible to extract without changing observable behavior, stop and\n  surface it in the PR description rather than working around it.\n"
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {},
+        "model": {
+          "provider": "kimi",
+          "name": "kimi-k3",
+          "fallbacks": [],
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false,
+          "commit_timeout_ms": 30000
+        },
+        "clone": {
+          "enabled": true
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "fabro-dev",
+          "provider": "daytona",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        curl git ripgrep ca-certificates build-essential pkg-config libssl-dev unzip python3 \\\n        xvfb xfce4 xfce4-terminal x11vnc novnc dbus-x11 \\\n        libx11-6 libxrandr2 libxext6 libxrender1 libxfixes3 libxss1 libxtst6 libxi6 \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install real Chromium (not the snap stub) via xtradeb PPA\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n        software-properties-common curl gnupg \\\n    && add-apt-repository -y ppa:xtradeb/apps \\\n    && apt-get update \\\n    && apt-get install -y --no-install-recommends chromium \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Wrapper: Chromium needs --no-sandbox when running as root in a container,\n# and --disable-dev-shm-usage avoids crashes from small /dev/shm\nRUN printf '#!/bin/bash\\nexec /usr/bin/chromium --no-sandbox --disable-dev-shm-usage \"$@\"\\n' \\\n        > /usr/local/bin/chromium-wrapper \\\n    && chmod +x /usr/local/bin/chromium-wrapper\n\n# Make the wrapper the default in the system .desktop file and via alternatives\nRUN sed -i 's|^Exec=.*|Exec=/usr/local/bin/chromium-wrapper %U|' \\\n        /usr/share/applications/chromium.desktop \\\n    && update-alternatives --install /usr/bin/x-www-browser x-www-browser \\\n        /usr/local/bin/chromium-wrapper 100\n\n# Tell XFCE's exo-open that Chromium is the WebBrowser helper (system-wide)\nRUN mkdir -p /etc/xdg/xfce4 /usr/share/xfce4/helpers \\\n    && printf 'WebBrowser=custom-WebBrowser\\n' > /etc/xdg/xfce4/helpers.rc \\\n    && printf '[Desktop Entry]\\n\\\nVersion=1.0\\n\\\nType=X-XFCE-Helper\\n\\\nName=Chromium\\n\\\nIcon=chromium\\n\\\nX-XFCE-Category=WebBrowser\\n\\\nX-XFCE-CommandsWithParameter=/usr/local/bin/chromium-wrapper \"%%s\"\\n\\\nX-XFCE-Commands=/usr/local/bin/chromium-wrapper\\n' \\\n        > /usr/share/xfce4/helpers/custom-WebBrowser.desktop\n\n# GitHub CLI\nRUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" \\\n        | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update && apt-get install -y --no-install-recommends gh \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\"\nRUN rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt\nRUN cargo install cargo-nextest --locked\nENV CARGO_INCREMENTAL=0\n\n# Bun\nRUN curl -fsSL https://bun.sh/install | bash\nENV PATH=\"/root/.bun/bin:${PATH}\"\n\nWORKDIR /root\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": "20GB"
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": "30m"
+          },
+          "labels": {
+            "repo": "fabro-sh/fabro"
+          },
+          "env": {}
+        },
+        "notifications": {},
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "permissions": null,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": false,
+          "merge_strategy": "squash"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "ImplementPlan",
+      "nodes": {
+        "fix_lints": {
+          "id": "fix_lints",
+          "attrs": {
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "label": {
+              "String": "Fix Lints"
+            },
+            "prompt": {
+              "String": "The preflight lint step failed. Read the build output from context and fix all clippy lint warnings."
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "model": {
+              "String": "claude-fable-5"
+            },
+            "provider": {
+              "String": "openrouter"
+            }
+          }
+        },
+        "preflight_lint": {
+          "id": "preflight_lint",
+          "attrs": {
+            "label": {
+              "String": "Preflight Lint"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "script": {
+              "String": "cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1"
+            }
+          }
+        },
+        "implement": {
+          "id": "implement",
+          "attrs": {
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "label": {
+              "String": "Implement"
+            },
+            "prompt": {
+              "String": "Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD."
+            },
+            "model": {
+              "String": "gpt-5.6-sol"
+            },
+            "provider": {
+              "String": "openrouter"
+            }
+          }
+        },
+        "verify": {
+          "id": "verify",
+          "attrs": {
+            "script": {
+              "String": "git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\"disabled\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1"
+            },
+            "retry_target": {
+              "String": "fixup"
+            },
+            "shape": {
+              "String": "parallelogram"
+            },
+            "label": {
+              "String": "Verify"
+            },
+            "goal_gate": {
+              "Boolean": true
+            },
+            "timeout": {
+              "Duration": {
+                "secs": 1200,
+                "nanos": 0
+              }
+            }
+          }
+        },
+        "simplify_sol": {
+          "id": "simplify_sol",
+          "attrs": {
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun \\`git diff\\` (or \\`git diff HEAD\\` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the ${AGENT_TOOL_NAME} tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. **Search for existing utilities and helpers** that could replace newly written code. Look for similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.\n3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction\n4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n6. **Unnecessary JSX nesting**: wrapper Boxes/elements that add no layout value — check if inner component props (flexShrink, alignItems, etc.) already provide the needed behavior\n7. **Unnecessary comments**: comments explaining WHAT the code does (well-named identifiers already do that), narrating the change, or referencing the task/caller — delete; keep only non-obvious WHY (hidden constraints, subtle invariants, workarounds)\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. **Missed concurrency**: independent operations run sequentially when they could run in parallel\n3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths\n4. **Recurring no-op updates**: state/store updates inside polling loops, intervals, or event handlers that fire unconditionally — add a change-detection guard so downstream consumers aren't notified when nothing changed. Also: if a wrapper function takes an updater/reducer callback, verify it honors same-reference returns (or whatever the \"no change\" signal is) — otherwise callers' early-return no-ops are silently defeated\n5. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n6. **Memory**: unbounded data structures, missing cleanup, event listener leaks\n7. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "provider": {
+              "String": "openrouter"
+            },
+            "model": {
+              "String": "gpt-5.6-sol"
+            },
+            "reasoning_effort": {
+              "String": "max"
+            },
+            "label": {
+              "String": "Simplify (GPT-5.6 Sol)"
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "label": {
+              "String": "Start"
+            }
+          }
+        },
+        "simplify_fable": {
+          "id": "simplify_fable",
+          "attrs": {
+            "label": {
+              "String": "Simplify (Claude Fable 5)"
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            },
+            "provider": {
+              "String": "openrouter"
+            },
+            "prompt": {
+              "String": "# Simplify: Code Review and Cleanup\n\nReview all changed files for reuse, quality, and efficiency. Fix any issues found.\n\n## Phase 1: Identify Changes\n\nRun \\`git diff\\` (or \\`git diff HEAD\\` if there are staged changes) to see what changed. If there are no git changes, review the most recently modified files that the user mentioned or that you edited earlier in this conversation.\n\n## Phase 2: Launch Three Review Agents in Parallel\n\nUse the ${AGENT_TOOL_NAME} tool to launch all three agents concurrently in a single message. Pass each agent the full diff so it has the complete context.\n\n### Agent 1: Code Reuse Review\n\nFor each change:\n\n1. **Search for existing utilities and helpers** that could replace newly written code. Look for similar patterns elsewhere in the codebase — common locations are utility directories, shared modules, and files adjacent to the changed ones.\n2. **Flag any new function that duplicates existing functionality.** Suggest the existing function to use instead.\n3. **Flag any inline logic that could use an existing utility** — hand-rolled string manipulation, manual path handling, custom environment checks, ad-hoc type guards, and similar patterns are common candidates.\n\n### Agent 2: Code Quality Review\n\nReview the same changes for hacky patterns:\n\n1. **Redundant state**: state that duplicates existing state, cached values that could be derived, observers/effects that could be direct calls\n2. **Parameter sprawl**: adding new parameters to a function instead of generalizing or restructuring existing ones\n3. **Copy-paste with slight variation**: near-duplicate code blocks that should be unified with a shared abstraction\n4. **Leaky abstractions**: exposing internal details that should be encapsulated, or breaking existing abstraction boundaries\n5. **Stringly-typed code**: using raw strings where constants, enums (string unions), or branded types already exist in the codebase\n6. **Unnecessary JSX nesting**: wrapper Boxes/elements that add no layout value — check if inner component props (flexShrink, alignItems, etc.) already provide the needed behavior\n7. **Unnecessary comments**: comments explaining WHAT the code does (well-named identifiers already do that), narrating the change, or referencing the task/caller — delete; keep only non-obvious WHY (hidden constraints, subtle invariants, workarounds)\n\n### Agent 3: Efficiency Review\n\nReview the same changes for efficiency:\n\n1. **Unnecessary work**: redundant computations, repeated file reads, duplicate network/API calls, N+1 patterns\n2. **Missed concurrency**: independent operations run sequentially when they could run in parallel\n3. **Hot-path bloat**: new blocking work added to startup or per-request/per-render hot paths\n4. **Recurring no-op updates**: state/store updates inside polling loops, intervals, or event handlers that fire unconditionally — add a change-detection guard so downstream consumers aren't notified when nothing changed. Also: if a wrapper function takes an updater/reducer callback, verify it honors same-reference returns (or whatever the \"no change\" signal is) — otherwise callers' early-return no-ops are silently defeated\n5. **Unnecessary existence checks**: pre-checking file/resource existence before operating (TOCTOU anti-pattern) — operate directly and handle the error\n6. **Memory**: unbounded data structures, missing cleanup, event listener leaks\n7. **Overly broad operations**: reading entire files when only a portion is needed, loading all items when filtering for one\n\n## Phase 3: Fix Issues\n\nWait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.\n\nWhen done, briefly summarize what was fixed (or confirm the code was already clean).\n"
+            },
+            "model": {
+              "String": "claude-fable-5"
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "shape": {
+              "String": "Msquare"
+            },
+            "label": {
+              "String": "Exit"
+            }
+          }
+        },
+        "preflight_compile": {
+          "id": "preflight_compile",
+          "attrs": {
+            "shape": {
+              "String": "parallelogram"
+            },
+            "label": {
+              "String": "Preflight Compile"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "script": {
+              "String": "cargo check -q --workspace 2>&1"
+            }
+          }
+        },
+        "toolchain": {
+          "id": "toolchain",
+          "attrs": {
+            "script": {
+              "String": "command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1"
+            },
+            "max_retries": {
+              "Integer": 0
+            },
+            "label": {
+              "String": "Toolchain"
+            },
+            "shape": {
+              "String": "parallelogram"
+            }
+          }
+        },
+        "fixup": {
+          "id": "fixup",
+          "attrs": {
+            "model": {
+              "String": "claude-fable-5"
+            },
+            "max_visits": {
+              "Integer": 3
+            },
+            "label": {
+              "String": "Fixup"
+            },
+            "prompt": {
+              "String": "The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures."
+            },
+            "provider": {
+              "String": "openrouter"
+            },
+            "reasoning_effort": {
+              "String": "xhigh"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "toolchain",
+          "attrs": {}
+        },
+        {
+          "from": "toolchain",
+          "to": "preflight_compile",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "toolchain",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_compile",
+          "to": "preflight_lint",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_compile",
+          "to": "exit",
+          "attrs": {}
+        },
+        {
+          "from": "preflight_lint",
+          "to": "implement",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "preflight_lint",
+          "to": "fix_lints",
+          "attrs": {}
+        },
+        {
+          "from": "fix_lints",
+          "to": "preflight_lint",
+          "attrs": {}
+        },
+        {
+          "from": "implement",
+          "to": "simplify_fable",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_fable",
+          "to": "simplify_sol",
+          "attrs": {}
+        },
+        {
+          "from": "simplify_sol",
+          "to": "verify",
+          "attrs": {}
+        },
+        {
+          "from": "verify",
+          "to": "exit",
+          "attrs": {
+            "condition": {
+              "String": "outcome=succeeded"
+            }
+          }
+        },
+        {
+          "from": "verify",
+          "to": "fixup",
+          "attrs": {}
+        },
+        {
+          "from": "fixup",
+          "to": "verify",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "rankdir": {
+          "String": "LR"
+        },
+        "goal": {
+          "String": "# PR 4 — Extract a source-neutral run-compiler boundary in fabro-server\n\n**Self-contained implementation plan.** Everything needed to implement this\nis in this file plus the repository.\n\n**Precondition:** none — this is an independent, behavior-neutral extraction\nwith no dependency on other in-flight changes. Re-verify the \"Verified\ncurrent state\" section against HEAD before starting; if\n`create_run_from_manifest` in\n`lib/apps/fabro-server/src/server/handler/runs.rs` or `operations::create` in\n`lib/components/fabro-workflow/src/operations/create.rs` has been materially\nrestructured since the pinned commit, stop and state that in the PR\ndescription instead of adapting blindly.\n\n> **Token notation.** Interpolation tokens are written in this file without\n> their enclosing double curly braces, so the file is safe to pass directly\n> as a workflow goal (the goal templater would otherwise try to expand them).\n> Read `secrets.NAME`, `env.NAME`, `vars.NAME` as the double-curly-brace\n> token form used in the codebase, and write the real double-brace syntax in\n> the code, tests, and docs you produce.\n\n## Context and goal\n\nWhen a client POSTs a run to the Fabro server, the server compiles the\nrequest into a persisted, executable run: it normalizes the submitted\nworkflow bundle, layers settings from server defaults / environment catalog /\nworkflow config / project config / user config / request args, substitutes\nrun-scoped variables, parses and validates the Graphviz graph (with template\nrendering and model-selector resolution), pins concrete model/provider\nchoices against the catalog and the set of configured providers, and finally\nassembles everything the persistence layer needs to write the run directory\nand the `run.created` / `run.submitted` events.\n\nToday that compile pipeline has no single home. It is smeared across three\nplaces:\n\n1. The HTTP handler `create_run_from_manifest`\n   (`lib/apps/fabro-server/src/server/handler/runs.rs`) drives the sequence\n   inline: prepare, variable snapshot + substitution, run-id resolution,\n   sandbox-policy check, provider resolution, input assembly, persistence\n   call, plus HTTP error mapping interleaved at every step.\n2. `lib/apps/fabro-server/src/run_manifest.rs` owns manifest-to-settings\n   preparation (`prepare_manifest_with_environment_defaults`) and the\n   persistence-input constructor (`create_run_input`) — which hardcodes\n   `submitted_manifest_bytes: None` and `automation: None`, only for the\n   handler to overwrite those fields (and `run_id`) after the fact.\n3. `operations::create` in\n   `lib/components/fabro-workflow/src/operations/create.rs` performs the\n   actual graph compilation (parse / transform / validate, with undefined\n   template variables promoted to errors) and model pinning\n   (`materialize_run`) inside a `spawn_blocking` closure, fused to the\n   persistence write in one opaque call.\n\nWhy this needs to change: separately planned work will (a) call the compile\npipeline from non-HTTP code paths (server-internal admission/scheduling code\nthat prepares a run outside a request handler), and (b) feed it workflow\nsources other than the current client-submitted manifest (for example a\nserver-side checkout of a git repository). Both need one typed entry point\nwhose input speaks in terms of an acquired workflow bundle — not in terms of\nthe HTTP wire body — and whose stages are individually visible so a future\ncaller can run acquisition elsewhere or at a different time. None of that\nfuture work lands here; this PR only creates the seam.\n\n**Goal:** after this PR, fabro-server has a single typed \"run compiler\"\nboundary — a module with a source-neutral input type and a typed output —\ncomposed of four internally-separable stages:\n\n1. **Source normalization** — take an already-acquired workflow bundle plus\n   an entrypoint path; resolve the entrypoint workflow, its root graph\n   source, and bundle-relative references (e.g. dockerfile references in\n   config layers resolved against bundled files).\n2. **Settings / variables / graph compilation** — layer settings from all\n   configured sources, apply the run-variable snapshot, then parse,\n   transform, and validate the graph exactly as run-create does today\n   (structural render mode, model-resolution transform, undefined template\n   variables promoted to hard errors).\n3. **Model/provider policy + pinning** — materialize the run against the\n   catalog and configured provider set, pinning concrete model and provider\n   selections.\n4. **Persistence-input assembly** — produce the complete input for the\n   persistence layer, with the submitted source bytes, automation reference,\n   and resolved run id set once at assembly time instead of patched in\n   afterwards.\n\nThe manifest-shaped HTTP handler adapts the wire `RunManifest` into the\nboundary's input at the edge and keeps all HTTP concerns (status codes,\n`ApiError` construction, response shaping) outside the boundary. Behavior is\nbyte-for-byte unchanged for every endpoint.\n\nDesign rules (fixed — do not re-litigate):\n\n- **The boundary's input must not be `RunManifest`** (or any\n  `fabro_api::types` request type). The manifest is an accident of today's\n  transport; freezing it into the compiler's signature would force every\n  future source to fabricate a fake manifest. The manifest-shaped caller\n  adapts into the boundary at the edge.\n- **No HTTP types inside the boundary.** No `axum` types, `HeaderMap`,\n  `StatusCode`, `Response`, or `ApiError` in the boundary module's\n  signatures or internals. The boundary returns typed errors; the handler\n  maps them to HTTP. A later caller invokes the boundary from non-HTTP\n  server code.\n- **Byte-for-byte behavior neutrality.** This is a pure extraction. Every\n  endpoint's request/response bytes, persisted event contents, error\n  messages, log lines, and side-effect ordering must be unchanged. Existing\n  fixtures and tests pin behavior; add a pinning test first (see Tests) so\n  the refactor is provably neutral.\n- **Each stage runs exactly once per create.** Do not build a boundary that\n  compiles/validates and then calls a persistence entry point that\n  re-compiles internally. If the persistence layer needs restructuring to\n  accept already-compiled inputs, restructure it (see step 4) rather than\n  running the pipeline twice.\n- **The pipeline logic stays in fabro-workflow; the boundary orchestrates\n  it.** Do not copy parse/transform/validate/materialize logic into\n  fabro-server. Single source of truth: the boundary composes fabro-workflow\n  entry points.\n- **Fold in the assembly-seam cleanup.** `run_manifest::create_run_input`\n  hardcoding `submitted_manifest_bytes: None` / `automation: None` and the\n  handler overwriting them (plus `run_id`) post-hoc is a known wart; stage 4\n  must accept these as inputs and set them once. No field of the assembled\n  persistence input may be mutated after assembly.\n- **Async vs blocking is decided per stage by what the stage actually\n  touches today** (see the per-stage notes in Implementation step 3), not by\n  a blanket choice. CPU-heavy graph compilation stays off the async runtime\n  (`spawn_blocking`), as it is today.\n- **No new capability.** No intent types, no new wire fields, no OpenAPI\n  change, no new workflow-source kinds, no behavior change to any endpoint.\n  Separately planned work builds on this seam; this PR only creates it.\n\n## Verified current state (as of origin/main `239490a55`, 2026-07-28 — re-verify before starting)\n\nLine numbers are approximate; the named functions are the stable anchors.\n\n- `lib/apps/fabro-server/src/server/handler/runs.rs`:\n  - `create_run` (≈ :519-543) deserializes the body into `RunManifest` and\n    delegates to `create_run_from_manifest` with\n    `CreateRunFromManifestRequest` (≈ :545-553: manifest, raw submitted\n    bytes, optional explicit run id, explicit-title flag, actor, headers,\n    optional `AutomationRef`).\n  - `create_run_from_manifest` (≈ :555-726) is the whole create pipeline\n    inline: `prepare_manifest_with_environment_defaults` (≈ :571-579, errors\n    → 400 with the error's message); `snapshot_run_variables` (≈ :580-586,\n    errors → 500); `substitute_run_variables` (≈ :587-590, errors → 400\n    `Run config variable interpolation failed: ...`); run-id resolution\n    `explicit_run_id.or(prepared.run_id).unwrap_or_else(RunId::new)`\n    (≈ :591-593); sandbox provider policy check (≈ :594-599, → 400);\n    parent-link validation (≈ :600-607); `info!(run_id = %run_id, \"Run\n    created\")` (≈ :608); `resolve_llm_client_with_ready_ids` (≈ :616) with a\n    test-support hook `test_run_materialization_provider_ids` behind\n    `cfg(any(test, feature = \"test-support\"))` (≈ :618-630);\n    `run_provenance(&headers, &actor)` (≈ :631; fn at ≈ :785);\n    `run_manifest::create_run_input(prepared.clone(), ...)` (≈ :632-638)\n    followed by the post-hoc mutations `create_input.run_id = Some(run_id)`,\n    `create_input.submitted_manifest_bytes = Some(...)`,\n    `create_input.automation = automation` (≈ :639-641); then\n    `operations::create` (≈ :644-666) with this exact error mapping:\n    `ValidationFailed`/`Parse` → 400 `\"Validation failed\"`,\n    `ModelSelection`/`ModelReference` → 400 with the error's display string,\n    anything else → 500 `Failed to persist run state: ...`. Post-create side\n    effects: cached-summary fetch (≈ :667-680), managed-run map insertion\n    (≈ :683-695), spawned title-generation task using `prepared.target_path`\n    (≈ :697-719), `201` response (≈ :721-725).\n  - The automation paths reuse this same function:\n    `server/automation_scheduler.rs` ≈ :264 and `server/handler/\n    automations.rs` ≈ :144 call `create_run_from_manifest` directly with\n    `automation: Some(..)`. Any signature change to it must keep those\n    callers compiling with identical behavior.\n  - `run_preflight` (≈ :823-874) and `validate_run_manifest` (≈ :876-920)\n    also call `prepare_manifest_with_environment_defaults` +\n    `snapshot_run_variables` + `substitute_run_variables`, but then use\n    validate-only helpers — they never model-pin the same way create does\n    (preflight materializes separately inside `run_manifest::run_preflight`)\n    and never persist.\n  - `snapshot_run_variables` (≈ :922-926) reads the variable store (async).\n    `substitute_run_variables` (≈ :941-953) is pure given the snapshot and\n    also validates `run.artifacts.include` globs.\n- `lib/apps/fabro-server/src/run_manifest.rs`:\n  - `PreparedManifest` (≈ :52-65): cwd, git, root_source, run_id, parent_id,\n    title, settings, target_path, workflow_bundle, workflow_input\n    (entrypoint `BundledWorkflow`), source_directory.\n  - `prepare_manifest_with_environment_defaults` (≈ :79-187): manifest\n    version check; `ManifestPath::from_wire` on the target;\n    `workflow_bundle_from_manifest` (≈ :301-342) building the\n    `WorkflowBundle` from wire keys; entrypoint lookup; args parsing via\n    `manifest_args_overrides` (sparse `RunLayer`/`CliLayer`/input\n    overrides); `WorkflowSettingsBuilder` layering (server manifest\n    defaults + environment defaults + MCP catalog + workflow config layer +\n    project config layers + user TOML layers), with dockerfile references in\n    config layers resolved against bundled files\n    (`settings_layer_with_resolved_dockerfiles`, ≈ :370-386); goal\n    extraction; title normalization; run/parent id parsing.\n  - `create_run_input` (≈ :236-262) maps `PreparedManifest` →\n    `CreateRunInput`, hardcoding `submitted_manifest_bytes: None` and\n    `automation: None`. Its only caller is the create handler (≈ runs.rs\n    :632).\n  - The validate-side helpers (`validate_prepared_manifest*`, ≈ :189-234)\n    and preflight/report code in the rest of the file are used by the\n    preflight/validate/graph endpoints and by\n    `manifest_validation.rs`/`run_tool_manifest.rs` — out of scope here.\n- `lib/components/fabro-workflow/src/operations/create.rs`:\n  - `CreateRunInput` (≈ :35-59): workflow (`WorkflowInput`), settings, vars,\n    cwd, workflow_slug, workflow_path, workflow_bundle,\n    submitted_manifest_bytes, run_id, title, automation, git,\n    fork_source_ref, parent_id, provenance, configured_providers, web_url.\n  - `create` (≈ :87-195): `resolve_workflow` (source.rs; for\n    `WorkflowInput::Bundled` it is mostly pure but `resolve_goal_override`\n    can read a goal file from disk when `run.goal` is the file variant);\n    then a `spawn_blocking` closure (≈ :145-170) running\n    `create_from_source` (≈ :288-320) = `preprocess_and_validate`\n    (parse/transform/validate with `RenderMode::Structural`,\n    `ModelResolutionTransform::for_eligible` + configured default provider,\n    ≈ :296-310) + `promote_template_undefined_variables_to_errors`\n    (≈ :312-317) + `persist_validated` (≈ :379-426), which calls\n    `materialize_run` (≈ :399) for model pinning, builds the `RunSpec`, and\n    runs `pipeline::persist` (run-directory writes — blocking I/O). After\n    the closure: an optional `workflow.toml` read (≈ :172-175, `None` for\n    bundled inputs) and `persist_created_run` (≈ :197-282), which writes\n    manifest/definition blobs and appends `run.created` + `run.submitted`.\n    Note `persist_created_run` contains a create-or-reopen fallback\n    (≈ :209-216) that reopens an existing run store on `create_run` failure\n    — a known defect, out of scope (see Scope boundaries).\n  - `operations::create`'s only production caller is the server create\n    handler (runs.rs ≈ :644); the calls in `operations/start.rs`\n    (≈ :1934, :2417) are inside that file's `#[cfg(test)]` module\n    (gate at ≈ :1145). `CreateRunInput` is used outside fabro-workflow only\n    by `run_manifest.rs`. `operations/mod.rs` (≈ :17) re-exports\n    `CreateRunInput`, `CreatedRun`, `create`, `make_run_dir`.\n- Existing tests that pin the current pipeline: handler-level create tests\n  in `lib/apps/fabro-server/src/server/tests.rs` (≈ :3583, :3627 call\n  `create_run_from_manifest` directly); pipeline tests in\n  `operations/create.rs`'s test module (e.g.\n  `create_persists_normalized_config_and_initial_state`,\n  `create_materializes_portable_selectors_for_ready_provider_snapshot_and_pin`,\n  `create_returns_validation_failed_with_diagnostics`); manifest-preparation\n  tests in `run_manifest.rs`'s test module.\n\n## Implementation\n\n1. **Pin current behavior before touching anything.** In the fabro-server\n   test suite (mirror the fixture style of the existing\n   `create_run_from_manifest` tests in `server/tests.rs` and the\n   `TestAppStateBuilder` helper), add a regression test that drives\n   `create_run_from_manifest` with a representative manifest — a bundled\n   workflow with a prompt node, an inline goal, args carrying a model\n   selector and an input override, a project config layer, a git context,\n   and an explicit run id — and asserts the durable outcome precisely: the\n   `201` status, and the persisted run's spec/event contents (pinned model\n   and provider, rendered graph attributes, settings fields affected by\n   layering, labels, provenance, presence of the manifest blob, title).\n   Also pin at least one error path per distinct handler mapping: an\n   invalid manifest (400 with the preparation error message), an undefined\n   `vars.NAME` in a prompt (400 `\"Validation failed\"`), and an unknown\n   model selector (400 with the model-selection error message). Commit this\n   test green against the unmodified code; it is the neutrality proof for\n   everything below.\n2. **Create the boundary module** in fabro-server (suggested:\n   `lib/apps/fabro-server/src/run_compiler.rs`, alongside peers like\n   `run_manifest.rs`; a directory module is fine if it reads better).\n   Define:\n   - A source-neutral input type carrying: the acquired `WorkflowBundle` +\n     entrypoint `ManifestPath`; settings inputs (server run defaults,\n     environment-defaults catalog, MCP server catalog, project config\n     sources as path+TOML-source pairs, user config TOML sources,\n     args-derived sparse overrides — the `RunLayer`/`CliLayer`/input-override\n     shape `manifest_args_overrides` already produces — and the optional\n     inline goal override); the run-variable snapshot; identity and lineage\n     (resolved run id, parent id, normalized title, git context); the\n     configured provider ids; `RunProvenance`; optional web URL; the exact\n     submitted source bytes; and the optional `AutomationRef`. Use existing\n     fabro-config / fabro-types / fabro-workflow vocabulary for every field;\n     no `fabro_api::types` and no axum/HTTP types anywhere in the module.\n   - A typed error enum (read `docs/internal/error-handling-strategy.md`\n     first) whose variants preserve every distinction the handler's HTTP\n     mapping needs: invalid-source/preparation errors, variable\n     interpolation errors, validation/parse failures (carrying the\n     underlying `fabro_workflow::Error` or equivalent detail),\n     model-selection/model-reference errors, and internal errors. The\n     handler must be able to reproduce today's status codes and message\n     strings exactly from these variants.\n   - A typed output: the assembled persistence input (stage 4's product),\n     plus whatever compiled artifacts the handler still needs afterwards\n     (the entrypoint path for title generation is the known one).\n3. **Implement the four stages inside the boundary**, each as its own\n   function with typed input/output so they are individually testable and a\n   future caller can invoke acquisition separately. Per-stage execution\n   model, based on what each touches today:\n   - *Stage 1 — source normalization* (pure, synchronous): entrypoint lookup\n     in the bundle, root source extraction, and dockerfile-reference\n     resolution against bundled files. This subsumes the bundle-facing parts\n     of `prepare_manifest_with_environment_defaults`; the manifest-facing\n     parts (wire-key parsing, version check, args/config extraction) move to\n     the handler-side adapter in step 5.\n   - *Stage 2 — settings/variables/graph compilation*: settings layering via\n     `WorkflowSettingsBuilder` and variable substitution (reuse the logic of\n     `substitute_run_variables`, including its artifact-glob validation) are\n     pure given the snapshot — the snapshot itself is an input, taken by the\n     caller. Graph compilation must keep running through fabro-workflow's\n     pipeline (`resolve_workflow` + `preprocess_and_validate` with\n     `RenderMode::Structural` and the eligible-provider model-resolution\n     transform, then promoting undefined template variables to errors) and\n     must stay on `spawn_blocking` — it is CPU-heavy and can touch the\n     filesystem (goal-file override). Whether stages 2-4 share one blocking\n     closure (as today) or are separately dispatched is the implementer's\n     call; the criterion is that blocking work never runs directly on the\n     async runtime and the observable behavior is unchanged.\n   - *Stage 3 — model/provider policy + pinning*: `materialize_run` with the\n     catalog and configured providers — pure CPU; keep it adjacent to stage\n     2's blocking context as it is today.\n   - *Stage 4 — persistence-input assembly* (pure): build the complete\n     persistence input with run id, submitted source bytes, and automation\n     reference populated from the boundary input. Delete the\n     assemble-then-mutate pattern entirely.\n4. **Open a persist-without-recompile seam in fabro-workflow.** Today\n   `operations::create` fuses compile and persist, so a boundary that\n   compiles would trigger a second compile when calling it. Restructure\n   `operations/create.rs` so the compile portion (resolve +\n   preprocess/validate + promote + materialize) and the persist portion\n   (`RunSpec` assembly + `pipeline::persist` + `persist_created_run`) are\n   separately callable, then reimplement `create` as their composition so\n   its existing signature and behavior are preserved for current users\n   (including its own test module). The server boundary calls the compile\n   pieces from its stages 2-3 and the persist piece with stage 4's output.\n   Mirror the file's existing internal split (`create_from_source` /\n   `persist_validated` / `persist_created_run`) rather than inventing a new\n   pipeline shape; the work is mostly making the seams `pub` (or\n   `pub(crate)`-plus-re-export) with honest input structs, not rewriting\n   logic. Do not duplicate any of this logic into fabro-server.\n5. **Rewire `create_run_from_manifest` as edge adapter + boundary caller.**\n   The handler keeps its signature (its automation callers must not change)\n   and becomes: deserialize/validate the manifest shape and convert to the\n   boundary input (manifest version check, wire-key parsing via\n   `workflow_bundle_from_manifest`, `manifest_args_overrides`, config\n   extraction by type, goal/title/run-id/parent-id extraction — reusing the\n   existing `run_manifest.rs` functions where they are already\n   manifest-shaped); take the variable snapshot; resolve the run id and\n   compute provenance from headers at the edge; run the same pre-checks in\n   the same order (sandbox provider policy, parent-link validation) with\n   identical status codes and messages; call the boundary; map its typed\n   errors to today's exact HTTP responses; then perform the unchanged\n   post-create side effects (summary fetch, managed-run insertion, title\n   generation task, `201`). Keep the `info!(run_id = %run_id, \"Run\n   created\")` log at the equivalent point and keep the test-support\n   provider-ids hook at the edge with the same `cfg` gating. Delete\n   `run_manifest::create_run_input` once nothing calls it.\n6. **Doc comments on the boundary.** State what the boundary is (the single\n   create-time compile pipeline), what each stage consumes and produces, why\n   the input is source-neutral, and that callers own source acquisition,\n   variable snapshotting, and (for HTTP callers) all wire mapping.\n\n## Scope boundaries — deliberately NOT in this PR\n\n- **New request types, workflow-source kinds, or wire/OpenAPI changes** —\n  none. Do not touch `docs/public/api-reference/`. The create endpoint keeps\n  accepting exactly today's manifest body; a future request shape is known\n  follow-up work that will adapt into this boundary the same way the\n  manifest does.\n- **The preflight, validate, and graph endpoints, `manifest_validation.rs`,\n  and `run_tool_manifest.rs`** — leave them on\n  `prepare_manifest_with_environment_defaults` and the validate helpers\n  as-is, even where that leaves some duplication with the new boundary.\n  Migrating those surfaces is known follow-up work; forcing them through the\n  compiler now would change their behavior (they deliberately do not pin\n  models or persist).\n- **When/where compile runs** — the boundary is called at create time from\n  the create handler, exactly as today. Do not move compilation into\n  admission/scheduling code paths; that is separately planned work this seam\n  exists to enable.\n- **fabro-store** — untouched. No changes to event schemas, append\n  semantics, or blob storage.\n- **The create-or-reopen fallback in `persist_created_run`**\n  (operations/create.rs ≈ :209-216, reopening an existing run store and\n  appending another `run.created`) — leave as-is, including when moving code\n  around it. It is a known defect with separately planned work; \"fixing\" it\n  here would be a behavior change in a PR that promises none.\n- **The automation scheduler and automation materializer** — leave their\n  call paths as-is; they funnel through `create_run_from_manifest` and get\n  the boundary for free.\n- **Handler side-effect behavior** — title generation, managed-run map\n  bookkeeping, summary decoration, and response shaping stay exactly as they\n  are; they are the handler's job, not the compiler's.\n- **`RunSpec`, `run.created` event contents, and `run_manifest.rs`'s\n  preflight/report code** — no field additions, removals, or renames.\n\nIf work outside these boundaries seems genuinely required for this PR to\ncompile or pass its tests, stop and state that in the PR description rather\nthan expanding scope.\n\n## Tests\n\nThis is a pure extraction, so the emphasis is pin-first rather than\nfailing-first: the step-1 regression test is written and committed against\nthe unmodified code, then must stay green untouched through the refactor.\nAll tests hermetic — temp-dir fixtures, in-memory stores, no ambient\nprovider keys (use the existing test catalogs and `TestAppStateBuilder`\npatterns).\n\n1. **Handler-output pinning test** (step 1) — the representative manifest\n   produces identical persisted spec/event contents and HTTP responses\n   before and after the extraction, including the three pinned error paths.\n   *Property: the extraction is behavior-neutral at the wire and in the\n   event log.*\n2. **Boundary unit tests per stage**, in the new module:\n   - stage 1: entrypoint resolution and a dockerfile reference resolved\n     against bundle files; a missing entrypoint and a missing bundled\n     dockerfile produce the same error messages as today.\n   - stage 2: settings layering precedence (server default overridden by\n     project layer overridden by args override), variable substitution\n     (a `vars.NAME` reference in run settings resolves from the snapshot;\n     an artifact-include glob error surfaces), and graph compilation\n     (undefined `vars.NAME` in a prompt is a hard error; a defined one\n     renders — mirror the existing\n     `vars_resolve_in_node_prompt_through_create_pipeline` /\n     `unknown_var_in_prompt_warns_at_validate_then_errors_at_run_create`\n     coverage in operations/create.rs).\n   - stage 3: a portable model selector pins to the expected\n     model/provider for a given configured-provider set (mirror\n     `create_materializes_portable_selectors_for_ready_provider_snapshot_and_pin`\n     with the small portable test catalog).\n   - stage 4: the assembled persistence input carries the submitted source\n     bytes, automation reference, and resolved run id exactly as provided —\n     pinning that the post-hoc-mutation seam is gone.\n3. **fabro-workflow seam test** — `operations::create` reimplemented as\n   compile+persist composition still passes its entire existing test module\n   unchanged, and the new persist-precompiled entry point produces the same\n   `CreatedRun`/durable state as `create` for the same input.\n4. **Full workspace suite** — the reducer, lifecycle, handler, automation,\n   and CLI test suites are the regression net; run\n   `cargo nextest run --workspace` and treat any diff as a neutrality\n   violation to fix, not a snapshot to accept. If an insta snapshot changes,\n   the refactor broke neutrality — do not run a blanket\n   `cargo insta accept`.\n\n## Acceptance / verification\n\n- `cargo +nightly-2026-04-14 fmt --check --all`\n- `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings`\n- `cargo nextest run --workspace`\n- No OpenAPI/wire change (do not touch `docs/public/api-reference/`).\n- `cargo build --workspace` without the `test-support` feature still\n  succeeds if any test helper was added behind it.\n- `run_manifest::create_run_input` no longer exists; no call site mutates a\n  persistence input after assembly.\n- The new boundary module has no dependency on `axum`, `fabro_api::types`\n  request types, or anything HTTP-shaped (verify by reading its imports).\n\n## Conventions\n\n- Read `docs/internal/error-handling-strategy.md` before adding the\n  boundary's error type, and `docs/internal/logging-strategy.md` before\n  moving or adding any `tracing` call sites; keep existing log lines' fields\n  and levels unchanged.\n- Never print or log a resolved secret value, including from tests.\n- Plain-English commit messages, PR text, and comments — describe what the\n  change does; no internal planning identifiers or plan-file names in\n  anything that ships.\n- PR description must state plainly: (1) this is a pure refactor with no\n  behavior change — every endpoint's requests, responses, persisted events,\n  and error messages are byte-for-byte unchanged, and a pinned regression\n  test written before the refactor proves it; (2) what the new boundary is —\n  a single typed, source-neutral entry point in fabro-server for the\n  create-time compile pipeline (source normalization, settings/variables/\n  graph compilation, model pinning, persistence-input assembly); (3) why it\n  exists — so the compile pipeline has one home that future non-HTTP server\n  code paths and alternative workflow sources can call, instead of logic\n  smeared across the HTTP handler, the manifest-preparation module, and the\n  workflow-operations internals.\n- If implementation uncovers a hidden behavioral coupling that makes a stage\n  impossible to extract without changing observable behavior, stop and\n  surface it in the PR description rather than working around it.\n"
+        }
+      }
+    },
+    "graph_source": "digraph ImplementPlan {\n    graph [goal=\"Implement and simplify\"]\n    rankdir=LR\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    toolchain         [label=\"Toolchain\", shape=parallelogram, script=\"command -v cargo >/dev/null || { curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && sudo ln -sf $HOME/.cargo/bin/* /usr/local/bin/; }; cargo --version 2>&1\", max_retries=0]\n    preflight_compile [label=\"Preflight Compile\", shape=parallelogram, script=\"cargo check -q --workspace 2>&1\", max_retries=0]\n    preflight_lint    [label=\"Preflight Lint\", shape=parallelogram, script=\"cargo +nightly-2026-04-14 clippy -q --workspace --all-targets -- -D warnings 2>&1\", max_retries=0]\n    fix_lints         [label=\"Fix Lints\", prompt=\"The preflight lint step failed. Read the build output from context and fix all clippy lint warnings.\", model=\"anthropic/claude-fable-5\", provider=\"openrouter\", reasoning_effort=\"xhigh\", max_visits=3]\n    implement         [label=\"Implement\", prompt=\"Read the plan file referenced in the goal and implement every step. Make all the code changes described in the plan. Use red/green TDD.\", model=\"openai/gpt-5.6-sol\", provider=\"openrouter\", reasoning_effort=\"xhigh\"]\n    simplify_fable    [label=\"Simplify (Claude Fable 5)\", prompt=\"@prompts/simplify.md\", model=\"anthropic/claude-fable-5\", provider=\"openrouter\", reasoning_effort=\"xhigh\"]\n    simplify_sol      [label=\"Simplify (GPT-5.6 Sol)\", prompt=\"@prompts/simplify.md\", model=\"openai/gpt-5.6-sol\", provider=\"openrouter\", reasoning_effort=\"max\"]\n    verify            [label=\"Verify\", shape=parallelogram, script=\"git fetch origin main 2>&1 && git merge --no-edit --no-stat origin/main 2>&1 && cargo +nightly-2026-04-14 fmt --all 2>&1 && cargo dev docs refresh 2>&1 && cargo +nightly-2026-04-14 fmt --check --all 2>&1 && { command -v rg >/dev/null 2>&1 || { echo 'rg is required for verify'; exit 127; }; } && ! rg -n 'AuthMode::Disabled|RunAuthMethod|RunSubjectProvenance|\\bActorRef\\b|\\bActorKind\\b|AuthenticatedSubject|AuthenticatedService|AuthorizeRunScoped|AuthorizeRunBlob|AuthorizeStageArtifact|AuthorizeCommandLog|auth_method\\s*==\\s*\\\"disabled\\\"' lib/crates apps lib/packages docs/public/api-reference/fabro-api.yaml 2>&1 && cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings 2>&1 && cargo nextest run --workspace --status-level slow --profile ci 2>&1 && cargo dev docs check 2>&1 && bun install --frozen-lockfile 2>&1 && (cd apps/fabro-web && bun run typecheck) 2>&1 && (cd apps/fabro-web && bun run test) 2>&1 && (cd lib/packages/fabro-api-client && bun run typecheck) 2>&1 && cargo dev build -- -p fabro-cli --release 2>&1\", timeout=\"20m\", goal_gate=true, retry_target=\"fixup\"]\n    fixup             [label=\"Fixup\", prompt=\"The verify step failed. Read the build output from context and fix all format, clippy, Rust test, docs, TypeScript typecheck/test, and build failures.\", model=\"anthropic/claude-fable-5\", provider=\"openrouter\", reasoning_effort=\"xhigh\", max_visits=3]\n\n    start -> toolchain\n    toolchain -> preflight_compile [condition=\"outcome=succeeded\"]\n    toolchain -> exit\n    preflight_compile -> preflight_lint [condition=\"outcome=succeeded\"]\n    preflight_compile -> exit\n    preflight_lint -> implement [condition=\"outcome=succeeded\"]\n    preflight_lint -> fix_lints\n    fix_lints -> preflight_lint\n    implement -> simplify_fable -> simplify_sol -> verify\n    verify -> exit  [condition=\"outcome=succeeded\"]\n    verify -> fixup\n    fixup -> verify\n}\n",
+    "workflow_slug": "implement-plan",
+    "source_directory": "/Users/swerner/Development/os/fabro-main/fabro",
+    "provenance": {
+      "server": {
+        "version": "0.305.0-nightly.3"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.267.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.267.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "https://github.com",
+          "subject": "138379"
+        },
+        "login": "swerner",
+        "auth_method": "github",
+        "avatar_url": "https://avatars.githubusercontent.com/u/138379?v=4"
+      }
+    },
+    "manifest_blob": "7a208993e96f07ffbc0c2051f2e4d2695e37d4778baf5b84ea0f39466c78eca0",
+    "definition_blob": "20343376addc41a1db9614ce241af543abca91c37477deef01276300250ef02c",
+    "git": {
+      "origin_url": "https://github.com/fabro-sh/fabro",
+      "branch": "main",
+      "sha": "239490a5531405a3e8738066a408accc2cadba55",
+      "dirty": "dirty",
+      "push_outcome": {
+        "type": "not_attempted"
+      }
+    }
+  },
+  "web_url": "https://fabro-testing.walleye-rainbow.ts.net/runs/01KYNC1G9MBG7HDVVJNRYJA8RY",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-07-28T22:03:07.093177559Z",
+  "last_event_at": "2026-07-28T22:03:23.813947332Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "daytona"
+    },
+    "instance": {
+      "provider": "daytona",
+      "snapshot": "fabro-fdb28dec-1233-892c-b9d7-9f88f8353e7a",
+      "runtime": {
+        "id": "fabro-01KYNC1G9MBG7HDVVJNRYJA8RY",
+        "working_directory": "/home/daytona/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/fabro-sh/fabro",
+        "clone_branch": "main",
+        "workspace_root": "/home/daytona/workspace",
+        "repos_root": "/home/daytona/repos",
+        "primary_repo_path": "/home/daytona/repos/fabro-sh/fabro",
+        "primary_repo_link": "/home/daytona/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
