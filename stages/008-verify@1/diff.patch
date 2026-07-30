@@ -1,0 +1,755 @@
+diff --git a/docs/public/reference/cli.mdx b/docs/public/reference/cli.mdx
+index f264f7bab..530107c6a 100644
+--- a/docs/public/reference/cli.mdx
++++ b/docs/public/reference/cli.mdx
+@@ -186,7 +186,8 @@ fabro artifact cp [OPTIONS] <SOURCE> [DEST]
+ | `--node <node>` | Filter to artifacts from a specific node |
+ | `--retry <retry>` | Filter to artifacts from a specific retry attempt |
+ | `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
+-| `--tree` | Preserve {node_slug}/retry_{N}/ directory structure |
++| `--stage <stage>` | Filter to artifacts from a specific stage visit (node@visit) |
++| `--tree` | Preserve node[/visit_{N}]/retry_{N}/ directory structure |
+ 
+ #### `fabro artifact list`
+ 
+@@ -209,6 +210,7 @@ fabro artifact list [OPTIONS] <RUN_ID>
+ | `--node <node>` | Filter to artifacts from a specific node |
+ | `--retry <retry>` | Filter to artifacts from a specific retry attempt |
+ | `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
++| `--stage <stage>` | Filter to artifacts from a specific stage visit (node@visit) |
+ 
+ ### `fabro ask`
+ 
+diff --git a/docs/public/workflows/stages-and-nodes.mdx b/docs/public/workflows/stages-and-nodes.mdx
+index 79ae0b00f..59f48df69 100644
+--- a/docs/public/workflows/stages-and-nodes.mdx
++++ b/docs/public/workflows/stages-and-nodes.mdx
+@@ -117,7 +117,7 @@ When a node has no explicit `shape` or `type`, the presence of `script` makes it
+ 
+ For `stdin_source`, strings are passed unchanged. Other JSON values use compact
+ JSON. Fabro does not add a newline. A missing source, or a value larger than
+-10 MiB, fails before the command starts.
++30 MiB, fails before the command starts.
+ 
+ ### Human
+ 
+diff --git a/lib/apps/fabro-cli/src/args.rs b/lib/apps/fabro-cli/src/args.rs
+index fb20b1158..d9b487670 100644
+--- a/lib/apps/fabro-cli/src/args.rs
++++ b/lib/apps/fabro-cli/src/args.rs
+@@ -531,6 +531,10 @@ pub(crate) struct ArtifactListArgs {
+     #[arg(long)]
+     pub(crate) node: Option<String>,
+ 
++    /// Filter to artifacts from a specific stage visit (node@visit)
++    #[arg(long)]
++    pub(crate) stage: Option<String>,
++
+     /// Filter to artifacts from a specific retry attempt
+     #[arg(long)]
+     pub(crate) retry: Option<u32>,
+@@ -552,11 +556,15 @@ pub(crate) struct ArtifactCpArgs {
+     #[arg(long)]
+     pub(crate) node: Option<String>,
+ 
++    /// Filter to artifacts from a specific stage visit (node@visit)
++    #[arg(long)]
++    pub(crate) stage: Option<String>,
++
+     /// Filter to artifacts from a specific retry attempt
+     #[arg(long)]
+     pub(crate) retry: Option<u32>,
+ 
+-    /// Preserve {node_slug}/retry_{N}/ directory structure
++    /// Preserve node[/visit_{N}]/retry_{N}/ directory structure
+     #[arg(long)]
+     pub(crate) tree: bool,
+ }
+diff --git a/lib/apps/fabro-cli/src/commands/artifact/cp.rs b/lib/apps/fabro-cli/src/commands/artifact/cp.rs
+index e33ec2cfc..76e755549 100644
+--- a/lib/apps/fabro-cli/src/commands/artifact/cp.rs
++++ b/lib/apps/fabro-cli/src/commands/artifact/cp.rs
+@@ -3,6 +3,7 @@
+     reason = "CLI `artifact cp` command: sync file I/O in command handler; not on a Tokio hot path"
+ )]
+ 
++use std::collections::{HashMap, HashSet};
+ use std::path::{Path, PathBuf};
+ 
+ use anyhow::{Context, Result, bail};
+@@ -20,6 +21,7 @@ pub(super) async fn cp_command(args: &ArtifactCpArgs, base_ctx: &CommandContext)
+         &args.server,
+         run_id_selector,
+         args.node.as_deref(),
++        args.stage.as_deref(),
+         args.retry,
+     )
+     .await?;
+@@ -45,7 +47,7 @@ pub(super) async fn cp_command(args: &ArtifactCpArgs, base_ctx: &CommandContext)
+                 .map(|entry| format_candidate(entry))
+                 .collect();
+             bail!(
+-                "Path '{path}' matches multiple artifacts: {}. Use --node and/or --retry to disambiguate.",
++                "Path '{path}' matches multiple artifacts: {}. Use --stage and/or --retry to disambiguate.",
+                 candidates.join(", ")
+             );
+         }
+@@ -77,10 +79,9 @@ pub(super) async fn cp_command(args: &ArtifactCpArgs, base_ctx: &CommandContext)
+ 
+     let mut copied = Vec::new();
+     if args.tree {
++        let multi_visit_nodes = multi_visit_nodes(&entries);
+         for entry in &entries {
+-            let relative_dest = PathBuf::from(&entry.node_slug)
+-                .join(format!("retry_{}", entry.retry))
+-                .join(&entry.relative_path);
++            let relative_dest = artifact_tree_path(entry, &multi_visit_nodes);
+             let dest_file = args.dest.join(relative_dest);
+             write_artifact_file(&client, &run_id, entry, &dest_file).await?;
+             copied.push(serde_json::json!({
+@@ -99,7 +100,7 @@ pub(super) async fn cp_command(args: &ArtifactCpArgs, base_ctx: &CommandContext)
+                 .into_owned();
+             if let Some((_, existing)) = by_filename.iter().find(|(name, _)| name == &filename) {
+                 bail!(
+-                    "Filename collision: '{}' exists in both {} and {}. Use --tree to preserve directory structure, or --node and/or --retry to filter.",
++                    "Filename collision: '{}' exists in both {} and {}. Use --tree to preserve directory structure, or --stage and/or --retry to filter.",
+                     filename,
+                     format_candidate(existing),
+                     format_candidate(entry)
+@@ -157,7 +158,34 @@ fn parse_source(source: &str) -> (&str, Option<&str>) {
+ }
+ 
+ fn format_candidate(entry: &super::ArtifactEntry) -> String {
+-    format!("{}:retry_{}", entry.node_slug, entry.retry)
++    format!("{}:retry_{}", entry.stage_id, entry.retry)
++}
++
++fn multi_visit_nodes(entries: &[super::ArtifactEntry]) -> HashSet<&str> {
++    let mut first_visit_by_node = HashMap::new();
++    let mut multi_visit_nodes = HashSet::new();
++    for entry in entries {
++        let node_slug = entry.node_slug.as_str();
++        let visit = entry.stage_id.visit();
++        if first_visit_by_node
++            .get(node_slug)
++            .is_some_and(|first_visit| *first_visit != visit)
++        {
++            multi_visit_nodes.insert(node_slug);
++        } else {
++            first_visit_by_node.entry(node_slug).or_insert(visit);
++        }
++    }
++    multi_visit_nodes
++}
++
++fn artifact_tree_path(entry: &super::ArtifactEntry, multi_visit_nodes: &HashSet<&str>) -> PathBuf {
++    let mut path = PathBuf::from(&entry.node_slug);
++    if entry.stage_id.visit() != 1 || multi_visit_nodes.contains(entry.node_slug.as_str()) {
++        path.push(format!("visit_{}", entry.stage_id.visit()));
++    }
++    path.join(format!("retry_{}", entry.retry))
++        .join(&entry.relative_path)
+ }
+ 
+ #[cfg(test)]
+@@ -202,6 +230,6 @@ mod tests {
+             size:          6,
+         };
+ 
+-        assert_eq!(format_candidate(&entry), "retry_assets:retry_2");
++        assert_eq!(format_candidate(&entry), "retry_assets@2:retry_2");
+     }
+ }
+diff --git a/lib/apps/fabro-cli/src/commands/artifact/list.rs b/lib/apps/fabro-cli/src/commands/artifact/list.rs
+index 782e323c9..4c533115f 100644
+--- a/lib/apps/fabro-cli/src/commands/artifact/list.rs
++++ b/lib/apps/fabro-cli/src/commands/artifact/list.rs
+@@ -13,6 +13,7 @@ pub(super) async fn list_command(args: &ArtifactListArgs, base_ctx: &CommandCont
+         &args.server,
+         &args.run_id,
+         args.node.as_deref(),
++        args.stage.as_deref(),
+         args.retry,
+     )
+     .await?;
+@@ -31,7 +32,7 @@ pub(super) async fn list_command(args: &ArtifactListArgs, base_ctx: &CommandCont
+     let use_color = styles.use_color;
+ 
+     let title: Vec<CellStruct> = vec![
+-        "NODE".cell().bold(use_color),
++        "STAGE".cell().bold(use_color),
+         "RETRY".cell().bold(use_color).justify(Justify::Right),
+         "PATH".cell().bold(use_color),
+     ];
+@@ -40,7 +41,7 @@ pub(super) async fn list_command(args: &ArtifactListArgs, base_ctx: &CommandCont
+         .iter()
+         .map(|entry| {
+             vec![
+-                entry.node_slug.clone().cell().bold(use_color),
++                entry.stage_id.to_string().cell().bold(use_color),
+                 entry.retry.cell().justify(Justify::Right),
+                 entry.relative_path.clone().cell(),
+             ]
+diff --git a/lib/apps/fabro-cli/src/commands/artifact/mod.rs b/lib/apps/fabro-cli/src/commands/artifact/mod.rs
+index f0325fd49..a4bdfedf3 100644
+--- a/lib/apps/fabro-cli/src/commands/artifact/mod.rs
++++ b/lib/apps/fabro-cli/src/commands/artifact/mod.rs
+@@ -10,7 +10,6 @@ use crate::server_client::Client;
+ 
+ #[derive(Clone, Debug, serde::Serialize)]
+ pub(super) struct ArtifactEntry {
+-    #[serde(skip_serializing)]
+     pub(super) stage_id:      StageId,
+     pub(super) node_slug:     String,
+     pub(super) retry:         u32,
+@@ -23,8 +22,13 @@ pub(super) async fn resolve_artifacts(
+     server: &ServerTargetArgs,
+     run_selector: &str,
+     node: Option<&str>,
++    stage: Option<&str>,
+     retry: Option<u32>,
+ ) -> Result<(RunId, Client, Vec<ArtifactEntry>)> {
++    let stage = stage
++        .map(str::parse::<StageId>)
++        .transpose()
++        .context("invalid artifact stage filter")?;
+     let ctx = base_ctx.with_target(server)?;
+     let client = ctx.server().await?;
+     let run_id = client.resolve_run(run_selector).await?.id;
+@@ -33,6 +37,10 @@ pub(super) async fn resolve_artifacts(
+         if node.is_some_and(|value| entry.node_slug != value) {
+             continue;
+         }
++        let stage_id = parse_server_stage_id(&entry.stage_id)?;
++        if stage.as_ref().is_some_and(|value| &stage_id != value) {
++            continue;
++        }
+         let entry_retry = u32::try_from(entry.retry)
+             .context("server returned invalid negative artifact retry")?;
+         if retry.is_some_and(|value| entry_retry != value) {
+@@ -41,7 +49,7 @@ pub(super) async fn resolve_artifacts(
+         let size =
+             u64::try_from(entry.size).context("server returned invalid negative artifact size")?;
+         entries.push(ArtifactEntry {
+-            stage_id: entry.stage_id.parse()?,
++            stage_id,
+             node_slug: entry.node_slug,
+             retry: entry_retry,
+             relative_path: entry.relative_path,
+@@ -59,9 +67,31 @@ pub(super) async fn resolve_artifacts(
+     Ok((run_id, client.clone_for_reuse(), entries))
+ }
+ 
++fn parse_server_stage_id(value: &str) -> Result<StageId> {
++    value
++        .parse()
++        .context("server returned invalid artifact stage ID")
++}
++
+ pub(crate) async fn dispatch(ns: ArtifactNamespace, base_ctx: &CommandContext) -> Result<()> {
+     match ns.command {
+         ArtifactCommand::List(args) => list::list_command(&args, base_ctx).await,
+         ArtifactCommand::Cp(args) => cp::cp_command(&args, base_ctx).await,
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::parse_server_stage_id;
++
++    #[test]
++    fn invalid_server_stage_id_preserves_parse_error_context() {
++        let err = parse_server_stage_id("invalid").unwrap_err();
++        let chain = err.chain().map(ToString::to_string).collect::<Vec<_>>();
++
++        assert_eq!(chain, [
++            "server returned invalid artifact stage ID",
++            "stage id must contain '@'",
++        ]);
++    }
++}
+diff --git a/lib/apps/fabro-cli/src/commands/run/output.rs b/lib/apps/fabro-cli/src/commands/run/output.rs
+index 65e60d85c..136d2b506 100644
+--- a/lib/apps/fabro-cli/src/commands/run/output.rs
++++ b/lib/apps/fabro-cli/src/commands/run/output.rs
+@@ -5,7 +5,7 @@ use anyhow::{Context as _, Result};
+ use cli_table::format::{Border, Justify, Separator};
+ use cli_table::{Cell, CellStruct, Style, Table};
+ use fabro_api::types;
+-use fabro_types::{PullRequestLink, RunBlobId, RunId, parse_blob_ref};
++use fabro_types::{PullRequestLink, RunBlobId, RunId, StageId, parse_blob_ref};
+ use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
+ use fabro_util::error::render_with_causes;
+ use fabro_util::printer::Printer;
+@@ -348,12 +348,16 @@ fn blob_id_from_response(response: &str) -> Option<RunBlobId> {
+ async fn list_artifact_display_entries_with_client(
+     client: &server_client::Client,
+     run_id: &RunId,
+-) -> Result<Vec<(String, u32, String)>> {
++) -> Result<Vec<(StageId, u32, String)>> {
+     let mut entries = Vec::new();
+     for entry in client.list_run_artifacts(run_id).await? {
+         let retry = u32::try_from(entry.retry)
+             .context("server returned invalid negative artifact retry")?;
+-        entries.push((entry.node_slug, retry, entry.relative_path));
++        let stage_id = entry
++            .stage_id
++            .parse()
++            .context("server returned invalid artifact stage ID")?;
++        entries.push((stage_id, retry, entry.relative_path));
+     }
+     entries.sort();
+     Ok(entries)
+@@ -373,16 +377,16 @@ async fn print_assets_with_client(
+     let use_color = styles.use_color;
+ 
+     let title: Vec<CellStruct> = vec![
+-        "NODE".cell().bold(use_color),
++        "STAGE".cell().bold(use_color),
+         "RETRY".cell().bold(use_color).justify(Justify::Right),
+         "PATH".cell().bold(use_color),
+     ];
+ 
+     let rows: Vec<Vec<CellStruct>> = entries
+         .iter()
+-        .map(|(node_slug, retry, relative_path)| {
++        .map(|(stage_id, retry, relative_path)| {
+             vec![
+-                node_slug.clone().cell().bold(use_color),
++                stage_id.to_string().cell().bold(use_color),
+                 retry.cell().justify(Justify::Right),
+                 relative_path.clone().cell(),
+             ]
+@@ -413,7 +417,7 @@ async fn print_assets_with_client(
+         printer,
+         "{}",
+         styles.dim.apply_to(format!(
+-            "Copy with: fabro artifact cp {run_id}:<path> <dest> --node <node_slug> --retry <retry>"
++            "Copy with: fabro artifact cp {run_id}:<path> <dest> --stage <node@visit> --retry <retry>"
+         ))
+     );
+     Ok(())
+diff --git a/lib/apps/fabro-cli/tests/it/cmd/support.rs b/lib/apps/fabro-cli/tests/it/cmd/support.rs
+index 7d462eb1c..b3c133695 100644
+--- a/lib/apps/fabro-cli/tests/it/cmd/support.rs
++++ b/lib/apps/fabro-cli/tests/it/cmd/support.rs
+@@ -931,6 +931,7 @@ async fn seed_artifact_run(context: &TestContext) -> RunSetup {
+     for (stage_id, retry, path, contents) in [
+         ("create_assets@1", 1, "assets/node_a/summary.txt", "alpha"),
+         ("create_assets@1", 1, "assets/shared/report.txt", "one"),
++        ("create_assets@2", 1, "assets/shared/report.txt", "two"),
+         ("create_colliding@1", 1, "assets/other/summary.txt", "beta"),
+         ("create_colliding@1", 1, "assets/retry/report.txt", "second"),
+         ("retry_assets@1", 1, "assets/retry/report.txt", "first"),
+@@ -1455,7 +1456,7 @@ async fn append_seeded_artifact_run_events(
+         "run.completed",
+         serde_json::json!({
+             "timing": {"wall_time_ms": 123, "inference_time_ms": 0, "tool_time_ms": 0, "active_time_ms": 0},
+-            "artifact_count": 6,
++            "artifact_count": 7,
+             "status": "succeeded",
+             "reason": "completed",
+             "total_usd_micros": null,
+diff --git a/lib/apps/fabro-cli/tests/it/scenario/artifacts.rs b/lib/apps/fabro-cli/tests/it/scenario/artifacts.rs
+index b5d5b006f..d35e3ec53 100644
+--- a/lib/apps/fabro-cli/tests/it/scenario/artifacts.rs
++++ b/lib/apps/fabro-cli/tests/it/scenario/artifacts.rs
+@@ -27,36 +27,49 @@ fn artifact_commands_share_populated_run_fixture() {
+     ----- stdout -----
+     [
+       {
++        "stage_id": "create_assets@1",
+         "node_slug": "create_assets",
+         "retry": 1,
+         "relative_path": "assets/node_a/summary.txt",
+         "size": 5
+       },
+       {
++        "stage_id": "create_assets@1",
+         "node_slug": "create_assets",
+         "retry": 1,
+         "relative_path": "assets/shared/report.txt",
+         "size": 3
+       },
+       {
++        "stage_id": "create_assets@2",
++        "node_slug": "create_assets",
++        "retry": 1,
++        "relative_path": "assets/shared/report.txt",
++        "size": 3
++      },
++      {
++        "stage_id": "create_colliding@1",
+         "node_slug": "create_colliding",
+         "retry": 1,
+         "relative_path": "assets/other/summary.txt",
+         "size": 4
+       },
+       {
++        "stage_id": "create_colliding@1",
+         "node_slug": "create_colliding",
+         "retry": 1,
+         "relative_path": "assets/retry/report.txt",
+         "size": 6
+       },
+       {
++        "stage_id": "retry_assets@1",
+         "node_slug": "retry_assets",
+         "retry": 1,
+         "relative_path": "assets/retry/report.txt",
+         "size": 5
+       },
+       {
++        "stage_id": "retry_assets@1",
+         "node_slug": "retry_assets",
+         "retry": 2,
+         "relative_path": "assets/retry/report.txt",
+@@ -83,6 +96,7 @@ fn artifact_commands_share_populated_run_fixture() {
+     ----- stdout -----
+     [
+       {
++        "stage_id": "retry_assets@1",
+         "node_slug": "retry_assets",
+         "retry": 2,
+         "relative_path": "assets/retry/report.txt",
+@@ -92,6 +106,31 @@ fn artifact_commands_share_populated_run_fixture() {
+     ----- stderr -----
+     "#);
+ 
++    let mut list_stage_filtered = context.command();
++    list_stage_filtered.args([
++        "artifact",
++        "list",
++        &run.run_id,
++        "--stage",
++        "create_assets@2",
++        "--json",
++    ]);
++    fabro_snapshot!(filters.clone(), list_stage_filtered, @r#"
++    success: true
++    exit_code: 0
++    ----- stdout -----
++    [
++      {
++        "stage_id": "create_assets@2",
++        "node_slug": "create_assets",
++        "retry": 1,
++        "relative_path": "assets/shared/report.txt",
++        "size": 3
++      }
++    ]
++    ----- stderr -----
++    "#);
++
+     let single_dest = context.temp_dir.join("artifact-one");
+     let mut cp_single = context.command();
+     cp_single.args([
+@@ -99,8 +138,8 @@ fn artifact_commands_share_populated_run_fixture() {
+         "cp",
+         &format!("{}:assets/shared/report.txt", run.run_id),
+         single_dest.to_str().unwrap(),
+-        "--node",
+-        "create_assets",
++        "--stage",
++        "create_assets@2",
+     ]);
+     fabro_snapshot!(context.filters(), cp_single, @"
+     success: true
+@@ -109,7 +148,50 @@ fn artifact_commands_share_populated_run_fixture() {
+     Copied assets/shared/report.txt to [TEMP_DIR]/artifact-one/report.txt
+     ----- stderr -----
+     ");
+-    assert_eq!(read_text(&single_dest.join("report.txt")), "one");
++    assert_eq!(read_text(&single_dest.join("report.txt")), "two");
++
++    let stage_tree_dest = context.temp_dir.join("artifact-stage-tree");
++    let mut cp_stage_tree = context.command();
++    cp_stage_tree.args([
++        "artifact",
++        "cp",
++        &run.run_id,
++        stage_tree_dest.to_str().unwrap(),
++        "--stage",
++        "create_assets@2",
++        "--tree",
++    ]);
++    fabro_snapshot!(context.filters(), cp_stage_tree, @"
++    success: true
++    exit_code: 0
++    ----- stdout -----
++    Copied 1 artifact(s) to [TEMP_DIR]/artifact-stage-tree
++    ----- stderr -----
++    ");
++    insta::assert_snapshot!(
++        text_tree(&stage_tree_dest).join("\n"),
++        @"create_assets/visit_2/retry_1/assets/shared/report.txt = two"
++    );
++
++    let repeated_visit_dest = context.temp_dir.join("artifact-repeated-visit");
++    let mut cp_repeated_visit = context.command();
++    cp_repeated_visit.args([
++        "artifact",
++        "cp",
++        &format!("{}:assets/shared/report.txt", run.run_id),
++        repeated_visit_dest.to_str().unwrap(),
++        "--node",
++        "create_assets",
++        "--retry",
++        "1",
++    ]);
++    fabro_snapshot!(context.filters(), cp_repeated_visit, @"
++    success: false
++    exit_code: 1
++    ----- stdout -----
++    ----- stderr -----
++      × Path 'assets/shared/report.txt' matches multiple artifacts: create_assets@1:retry_1, create_assets@2:retry_1. Use --stage and/or --retry to disambiguate.
++    ");
+ 
+     let tree_dest = context.temp_dir.join("artifact-tree");
+     let mut cp_tree = context.command();
+@@ -125,14 +207,15 @@ fn artifact_commands_share_populated_run_fixture() {
+     success: true
+     exit_code: 0
+     ----- stdout -----
+-    Copied 6 artifact(s) to [TEMP_DIR]/artifact-tree
++    Copied 7 artifact(s) to [TEMP_DIR]/artifact-tree
+     ----- stderr -----
+     ");
+     insta::assert_snapshot!(
+         text_tree(&tree_dest).join("\n"),
+         @r"
+-        create_assets/retry_1/assets/node_a/summary.txt = alpha
+-        create_assets/retry_1/assets/shared/report.txt = one
++        create_assets/visit_1/retry_1/assets/node_a/summary.txt = alpha
++        create_assets/visit_1/retry_1/assets/shared/report.txt = one
++        create_assets/visit_2/retry_1/assets/shared/report.txt = two
+         create_colliding/retry_1/assets/other/summary.txt = beta
+         create_colliding/retry_1/assets/retry/report.txt = second
+         retry_assets/retry_1/assets/retry/report.txt = first
+@@ -153,7 +236,7 @@ fn artifact_commands_share_populated_run_fixture() {
+     exit_code: 1
+     ----- stdout -----
+     ----- stderr -----
+-      × Path 'assets/retry/report.txt' matches multiple artifacts: create_colliding:retry_1, retry_assets:retry_1, retry_assets:retry_2. Use --node and/or --retry to disambiguate.
++      × Path 'assets/retry/report.txt' matches multiple artifacts: create_colliding@1:retry_1, retry_assets@1:retry_1, retry_assets@1:retry_2. Use --stage and/or --retry to disambiguate.
+     ");
+ 
+     let flat_dest = context.temp_dir.join("artifact-flat");
+@@ -164,6 +247,6 @@ fn artifact_commands_share_populated_run_fixture() {
+     exit_code: 1
+     ----- stdout -----
+     ----- stderr -----
+-      × Filename collision: 'summary.txt' exists in both create_assets:retry_1 and create_colliding:retry_1. Use --tree to preserve directory structure, or --node and/or --retry to filter.
++      × Filename collision: 'report.txt' exists in both create_assets@1:retry_1 and create_assets@2:retry_1. Use --tree to preserve directory structure, or --stage and/or --retry to filter.
+     ");
+ }
+diff --git a/lib/apps/fabro-cli/tests/it/scenario/smoke.rs b/lib/apps/fabro-cli/tests/it/scenario/smoke.rs
+index 08e56acb8..aac6eb33f 100644
+--- a/lib/apps/fabro-cli/tests/it/scenario/smoke.rs
++++ b/lib/apps/fabro-cli/tests/it/scenario/smoke.rs
+@@ -79,8 +79,9 @@ fn help_smoke_covers_high_cost_commands() {
+           --debug             Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+           --node <NODE>       Filter to artifacts from a specific node
+           --no-upgrade-check  Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
+-          --retry <RETRY>     Filter to artifacts from a specific retry attempt
++          --stage <STAGE>     Filter to artifacts from a specific stage visit (node@visit)
+           --quiet             Suppress non-essential output [env: FABRO_QUIET=]
++          --retry <RETRY>     Filter to artifacts from a specific retry attempt
+           --verbose           Enable verbose output [env: FABRO_VERBOSE=]
+       -h, --help              Print help
+     ----- stderr -----
+@@ -106,9 +107,10 @@ fn help_smoke_covers_high_cost_commands() {
+           --debug             Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+           --node <NODE>       Filter to artifacts from a specific node
+           --no-upgrade-check  Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
+-          --retry <RETRY>     Filter to artifacts from a specific retry attempt
++          --stage <STAGE>     Filter to artifacts from a specific stage visit (node@visit)
+           --quiet             Suppress non-essential output [env: FABRO_QUIET=]
+-          --tree              Preserve {node_slug}/retry_{N}/ directory structure
++          --retry <RETRY>     Filter to artifacts from a specific retry attempt
++          --tree              Preserve node[/visit_{N}]/retry_{N}/ directory structure
+           --verbose           Enable verbose output [env: FABRO_VERBOSE=]
+       -h, --help              Print help
+     ----- stderr -----
+diff --git a/lib/components/fabro-workflow/src/handler/command.rs b/lib/components/fabro-workflow/src/handler/command.rs
+index 0de483869..6cf7d5741 100644
+--- a/lib/components/fabro-workflow/src/handler/command.rs
++++ b/lib/components/fabro-workflow/src/handler/command.rs
+@@ -220,8 +220,10 @@ impl Handler for CommandHandler {
+ /// Ceiling on encoded stdin bytes. `stdin_source` values are runtime data —
+ /// often model-produced — so their size is not something a workflow author
+ /// reviewed; this bounds peak memory and remote uploads the same way
+-/// `MAX_FOR_EACH_ITEMS` bounds `for_each` fan-out.
+-const MAX_STDIN_BYTES: usize = 10 * 1024 * 1024;
++/// `MAX_FOR_EACH_ITEMS` bounds `for_each` fan-out. Sized for wide fan-in:
++/// a `context.parallel.results` batch from a large `for_each` round easily
++/// carries tens of structured agent outputs.
++const MAX_STDIN_BYTES: usize = 30 * 1024 * 1024;
+ 
+ fn validated_stdin_source(node: &Node) -> Result<Option<&str>, String> {
+     match node.context_key_attr("stdin_source") {
+diff --git a/lib/components/fabro-workflow/src/handler/llm/api.rs b/lib/components/fabro-workflow/src/handler/llm/api.rs
+index 178448bc4..6523b8477 100644
+--- a/lib/components/fabro-workflow/src/handler/llm/api.rs
++++ b/lib/components/fabro-workflow/src/handler/llm/api.rs
+@@ -838,13 +838,17 @@ impl AgentApiBackend {
+         let supervisor = SubAgentSupervisor::new(config.max_subagent_depth);
+         let supervisor_for_session = supervisor.clone();
+ 
+-        // Build factory that creates child sessions WITHOUT subagent tools
++        // Build factory that creates child sessions WITHOUT subagent tools.
++        // Child sessions inherit the parent's tool hooks: blocking
++        // pre_tool_use hooks are the only policy boundary workflow agents
++        // have, so a subagent's tool calls must pass through them too.
+         let factory_client = client.clone();
+         let factory_profile_builder = profile_builder;
+         let factory_env = Arc::clone(sandbox);
+         let factory_tool_env = tool_env.cloned();
+         let factory_fabro_run_tools = fabro_run_tools.clone();
+         let factory_permission_level = config.permission_level;
++        let factory_tool_hooks = config.tool_hooks.clone();
+         let factory: SessionFactory = Arc::new(move || {
+             let mut child_profile = factory_profile_builder.build();
+             if let Some(services) = factory_fabro_run_tools.clone() {
+@@ -858,6 +862,7 @@ impl AgentApiBackend {
+                 SessionOptions {
+                     reasoning_effort: controls.reasoning_effort,
+                     speed: controls.speed,
++                    tool_hooks: factory_tool_hooks.clone(),
+                     permission_level: factory_permission_level,
+                     ..SessionOptions::default()
+                 },
+@@ -2706,6 +2711,133 @@ reasoning = false
+         assert!(names.contains(&"close_agent".to_string()));
+     }
+ 
++    /// Records every `pre_tool_use` call it sees and lets them all proceed.
++    struct RecordingHooks(Arc<Mutex<Vec<String>>>);
++
++    #[async_trait]
++    impl fabro_agent::ToolHookCallback for RecordingHooks {
++        async fn pre_tool_use(
++            &self,
++            tool_name: &str,
++            _tool_input: &serde_json::Value,
++        ) -> fabro_agent::ToolHookDecision {
++            self.0.lock().unwrap().push(tool_name.to_string());
++            fabro_agent::ToolHookDecision::Proceed
++        }
++
++        async fn post_tool_use(&self, _tool_name: &str, _tool_call_id: &str, _output: &str) {}
++
++        async fn post_tool_use_failure(&self, _tool_name: &str, _tool_call_id: &str, _error: &str) {
++        }
++    }
++
++    /// Blocking `pre_tool_use` hooks are the only policy boundary a workflow
++    /// agent has: workflow sessions run at `PermissionLevel::Full` with the
++    /// whole tool registry exposed. A child session created for `spawn_agent`
++    /// therefore has to run under the same `tool_hooks` as its parent —
++    /// otherwise any agent that can spawn a subagent gets an unguarded
++    /// read-write-shell escape from every hook-enforced policy.
++    #[tokio::test]
++    async fn subagent_tool_calls_pass_through_session_tool_hooks() {
++        let server = MockServer::start();
++        // Parent turn 1: spawn a subagent.
++        let parent_spawn = server.mock(|when, then| {
++            when.method(POST)
++                .path("/chat/completions")
++                .body_includes("PARENT_PROMPT_MARKER")
++                .body_excludes(r#""role":"tool""#);
++            then.status(200)
++                .header("content-type", "text/event-stream")
++                .body(chat_completion_tool_call_stream(
++                    "spawn_agent",
++                    "call_spawn_helper",
++                    r#"{"task":"CHILD_TASK_MARKER: read data.txt and report its contents"}"#,
++                ));
++        });
++        // Parent turn 2: the spawn result is back; finish the parent turn
++        // while the child keeps running in the background.
++        let parent_final = server.mock(|when, then| {
++            when.method(POST)
++                .path("/chat/completions")
++                .body_includes("call_spawn_helper");
++            then.status(200)
++                .header("content-type", "text/event-stream")
++                .body(chat_completion_stream("parent done", 10, 1));
++        });
++        // Child turn 1: the child session uses a tool.
++        let child_read = server.mock(|when, then| {
++            when.method(POST)
++                .path("/chat/completions")
++                .body_includes("CHILD_TASK_MARKER")
++                .body_excludes("PARENT_PROMPT_MARKER")
++                .body_excludes(r#""role":"tool""#);
++            then.status(200)
++                .header("content-type", "text/event-stream")
++                .body(chat_completion_tool_call_stream(
++                    "read_file",
++                    "call_child_read",
++                    r#"{"file_path":"data.txt"}"#,
++                ));
++        });
++        // Child turn 2: the tool result is back; the child completes.
++        let child_final = server.mock(|when, then| {
++            when.method(POST)
++                .path("/chat/completions")
++                .body_includes("call_child_read");
++            then.status(200)
++                .header("content-type", "text/event-stream")
++                .body(chat_completion_stream("child done", 10, 1));
++        });
++
++        let hook_calls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
++        let hooks: Arc<dyn fabro_agent::ToolHookCallback> =
++            Arc::new(RecordingHooks(Arc::clone(&hook_calls)));
++
++        let backend = mock_api_backend(&server);
++        let node = Node::new("researcher");
++        let workspace = tempfile::tempdir().unwrap();
++        tokio::fs::write(workspace.path().join("data.txt"), "hello\n")
++            .await
++            .unwrap();
++        let sandbox: Arc<dyn fabro_agent::Sandbox> =
++            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
++
++        let mut session = backend
++            .create_session(&node, &sandbox, Some(hooks))
++            .await
++            .unwrap();
++        session
++            .process_input("PARENT_PROMPT_MARKER: spawn a helper subagent")
++            .await
++            .unwrap();
++
++        // The child runs on background tasks owned by the still-alive parent
++        // session; wait until its final turn has been served.
++        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
++        while child_final.calls() == 0 {
++            assert!(
++                tokio::time::Instant::now() < deadline,
++                "the spawned subagent never completed its turns against the mock provider"
++            );
++            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
++        }
++        parent_spawn.assert_calls(1);
++        parent_final.assert_calls(1);
++        child_read.assert_calls(1);
++        child_final.assert_calls(1);
++
++        let recorded = hook_calls.lock().unwrap().clone();
++        assert!(
++            recorded.iter().any(|name| name == "spawn_agent"),
++            "the parent's own tool calls should reach the hooks; hooks saw: {recorded:?}"
++        );
++        assert!(
++            recorded.iter().any(|name| name == "read_file"),
++            "the child subagent's tool calls must pass through the same tool hooks as the \
++             parent's, but the hooks never saw the child's read_file; hooks saw: {recorded:?}"
++        );
++    }
++
+     #[test]
+     fn api_backend_provider_pin_wins_over_priority_selection() {
+         let settings: LlmCatalogSettings = toml::from_str(
