@@ -1,0 +1,440 @@
+diff --git a/lib/apps/fabro-server/Cargo.toml b/lib/apps/fabro-server/Cargo.toml
+index e24dd114b..f0acde539 100644
+--- a/lib/apps/fabro-server/Cargo.toml
++++ b/lib/apps/fabro-server/Cargo.toml
+@@ -121,5 +121,6 @@ tokio-util.workspace = true
+ tokio-tungstenite.workspace = true
+ fabro-macros = { path = "../../foundation/fabro-macros" }
+ fabro-sandbox = { path = "../../components/fabro-sandbox", features = ["test-support"] }
++fabro-store = { path = "../../components/fabro-store", features = ["test-support"] }
+ fabro-test = { workspace = true }
+ fabro-types = { path = "../../foundation/fabro-types", features = ["test-support"] }
+diff --git a/lib/apps/fabro-server/src/server/tests.rs b/lib/apps/fabro-server/src/server/tests.rs
+index b3da5be63..7735c5e99 100644
+--- a/lib/apps/fabro-server/src/server/tests.rs
++++ b/lib/apps/fabro-server/src/server/tests.rs
+@@ -6366,31 +6366,38 @@ async fn create_unreadable_durable_run(state: &Arc<AppState>, run_id: RunId) {
+     workflow_event::append_event(&run_store, &run_id, &workflow_event::Event::RunRunning)
+         .await
+         .unwrap();
+-    let payload = fabro_store::EventPayload::new(
+-        json!({
+-            "id": "evt-unreadable-run-completed",
+-            "ts": "2026-05-05T20:46:33Z",
+-            "run_id": run_id,
+-            "event": "run.completed",
+-            "properties": {
+-                "timing": {
+-                    "wall_time_ms": 1,
+-                    "inference_time_ms": 0,
+-                    "tool_time_ms": 0,
+-                    "active_time_ms": 0
++    // Appends now validate before write, so a corrupted log can only exist if
++    // it predates that check. Write the poison event directly to simulate one.
++    state
++        .stores
++        .runs
++        .test_put_unvalidated_run_event(
++            &run_id,
++            5,
++            &json!({
++                "id": "evt-unreadable-run-completed",
++                "ts": "2026-05-05T20:46:33Z",
++                "run_id": run_id,
++                "event": "run.completed",
++                "properties": {
++                    "timing": {
++                        "wall_time_ms": 1,
++                        "inference_time_ms": 0,
++                        "tool_time_ms": 0,
++                        "active_time_ms": 0
++                    },
++                    "artifact_count": 0,
++                    "status": "legacy-status",
++                    "reason": "completed",
+                 },
+-                "artifact_count": 0,
+-                "status": "legacy-status",
+-                "reason": "completed",
+-            },
+-        }),
+-        &run_id,
+-    )
+-    .unwrap();
++            }),
++        )
++        .await
++        .unwrap();
+     let err = run_store
+-        .append_event(&payload)
++        .state()
+         .await
+-        .expect_err("invalid projection event should be persisted but rejected by projection");
++        .expect_err("poison event should make the run projection unreadable");
+     assert!(
+         err.to_string().contains("invalid completed stage status"),
+         "unexpected projection error: {err}"
+diff --git a/lib/components/fabro-store/Cargo.toml b/lib/components/fabro-store/Cargo.toml
+index 796119e18..588e285a0 100644
+--- a/lib/components/fabro-store/Cargo.toml
++++ b/lib/components/fabro-store/Cargo.toml
+@@ -11,6 +11,9 @@ doctest = false
+ [lints]
+ workspace = true
+ 
++[features]
++test-support = []
++
+ [dependencies]
+ fabro-types = { path = "../../foundation/fabro-types" }
+ fabro-util = { path = "../../foundation/fabro-util" }
+diff --git a/lib/components/fabro-store/src/error.rs b/lib/components/fabro-store/src/error.rs
+index 5f2fdee80..ff78213d0 100644
+--- a/lib/components/fabro-store/src/error.rs
++++ b/lib/components/fabro-store/src/error.rs
+@@ -37,7 +37,7 @@ pub enum Error {
+         run_id: String,
+         field:  &'static str,
+     },
+-    #[error("invalid status transition: {0}")]
++    #[error(transparent)]
+     InvalidTransition(#[from] fabro_types::InvalidTransition),
+     #[error("{0}")]
+     Other(String),
+diff --git a/lib/components/fabro-store/src/slate/mod.rs b/lib/components/fabro-store/src/slate/mod.rs
+index c9750c35a..d9f542498 100644
+--- a/lib/components/fabro-store/src/slate/mod.rs
++++ b/lib/components/fabro-store/src/slate/mod.rs
+@@ -322,6 +322,24 @@ impl Database {
+         Ok(unreadable)
+     }
+ 
++    /// Writes a raw event record without append validation, simulating a
++    /// pre-existing poison event in the log for unreadable-run tests.
++    #[cfg(any(test, feature = "test-support"))]
++    pub async fn test_put_unvalidated_run_event(
++        &self,
++        run_id: &RunId,
++        seq: u32,
++        payload: &serde_json::Value,
++    ) -> Result<()> {
++        let db = self.open_db().await?;
++        db.put(
++            keys::run_event_key(run_id, seq, 0),
++            serde_json::to_vec(payload)?,
++        )
++        .await?;
++        Ok(())
++    }
++
+     pub async fn get_cached_run(&self, run_id: &RunId) -> Result<Option<CachedRunProjection>> {
+         self.warm_projection_cache().await?;
+         Ok(self.projection_cache.get(run_id).await)
+@@ -978,11 +996,7 @@ mod tests {
+         let stored = run.get_event(2).await.unwrap().unwrap();
+         assert_eq!(stored.event, result.unwrap().event);
+ 
+-        let repaired_database = fabro_db::Database::connect(directory.path().join("fabro.sqlite3"))
+-            .await
+-            .unwrap();
+-        repaired_database.migrate().await.unwrap();
+-        let repaired_summaries = RunSummaryStore::new(repaired_database.clone_pool());
++        let repaired_summaries = test_util::sqlite_summary_store_at(directory.path()).await;
+         let stale = repaired_summaries
+             .get(&run_id, Utc::now())
+             .await
+@@ -1526,13 +1540,14 @@ mod tests {
+             .add(&bad_run_id)
+             .await
+             .unwrap();
+-        let db = store.open_db().await.unwrap();
+-        db.put(
+-            keys::run_event_key(&bad_run_id, 1, 0),
+-            br#"{"not":"a valid run event"}"#,
+-        )
+-        .await
+-        .unwrap();
++        store
++            .test_put_unvalidated_run_event(
++                &bad_run_id,
++                1,
++                &serde_json::json!({ "not": "a valid run event" }),
++            )
++            .await
++            .unwrap();
+ 
+         let reopened = Database::new(object_store, "runs", Duration::from_millis(1), None);
+         reopened.warm_projection_cache().await.unwrap();
+@@ -1574,28 +1589,28 @@ mod tests {
+             .and_then(serde_json::Value::as_object_mut)
+             .unwrap();
+         run_settings.remove("integrations");
+-        let db = store.open_db().await.unwrap();
+-        db.put(
+-            keys::run_event_key(&bad_run_id, 1, 0),
+-            serde_json::to_vec(&serde_json::json!({
+-                "id": "evt-run-2-run.created",
+-                "ts": "2026-03-27T12:00:10Z",
+-                "run_id": bad_run_id,
+-                "event": "run.created",
+-                "properties": {
+-                    "settings": run_spec["settings"],
+-                    "graph": run_spec["graph"],
+-                    "workflow_slug": run_spec["workflow_slug"],
+-                    "source_directory": run_spec["source_directory"],
+-                    "run_dir": "/tmp/run-2",
+-                    "git": run_spec["git"],
+-                    "labels": run_spec["labels"],
+-                },
+-            }))
+-            .unwrap(),
+-        )
+-        .await
+-        .unwrap();
++        store
++            .test_put_unvalidated_run_event(
++                &bad_run_id,
++                1,
++                &serde_json::json!({
++                    "id": "evt-run-2-run.created",
++                    "ts": "2026-03-27T12:00:10Z",
++                    "run_id": bad_run_id,
++                    "event": "run.created",
++                    "properties": {
++                        "settings": run_spec["settings"],
++                        "graph": run_spec["graph"],
++                        "workflow_slug": run_spec["workflow_slug"],
++                        "source_directory": run_spec["source_directory"],
++                        "run_dir": "/tmp/run-2",
++                        "git": run_spec["git"],
++                        "labels": run_spec["labels"],
++                    },
++                }),
++            )
++            .await
++            .unwrap();
+ 
+         let reopened = Database::new(object_store, "runs", Duration::from_millis(1), None);
+         let unreadable = reopened.list_unreadable_runs().await.unwrap();
+@@ -1880,23 +1895,9 @@ mod tests {
+         ))
+         .await
+         .unwrap();
+-        run.append_event(&event_payload(
+-            "run-1",
+-            "2026-03-27T12:00:04Z",
+-            "run.failed",
+-            &serde_json::json!({
+-                "failure": {
+-                    "reason": "workflow_error",
+-                    "detail": {
+-                        "message": "workflow failed",
+-                        "category": "deterministic"
+-                    }
+-                },
+-                "timing": {"wall_time_ms": 1, "inference_time_ms": 0, "tool_time_ms": 0, "active_time_ms": 0},
+-            }),
+-        ))
+-        .await
+-        .unwrap();
++        run.append_event(&workflow_failure_payload("run-1"))
++            .await
++            .unwrap();
+ 
+         let reopened = Database::new(
+             Arc::clone(&object_store),
+diff --git a/lib/components/fabro-store/src/slate/run_store.rs b/lib/components/fabro-store/src/slate/run_store.rs
+index 48cd69249..57f54a311 100644
+--- a/lib/components/fabro-store/src/slate/run_store.rs
++++ b/lib/components/fabro-store/src/slate/run_store.rs
+@@ -214,6 +214,23 @@ impl RunDatabase {
+         Ok(cache.state.clone())
+     }
+ 
++    /// Current projection for validating an append allocated at `seq`. In the
++    /// steady state the local cache already sits at `seq - 1` because
++    /// `state_lock` serializes appends, so this skips the storage scan that
++    /// `projected_state_option_locked` issues.
++    async fn projected_state_for_append_locked(
++        &self,
++        seq: u32,
++    ) -> Result<Option<Arc<RunProjection>>> {
++        {
++            let cache = self.inner.projection_cache.lock().await;
++            if cache.last_seq.saturating_add(1) == seq {
++                return Ok(cache.state.clone());
++            }
++        }
++        self.projected_state_option_locked().await
++    }
++
+     async fn install_derived_state_after_append(
+         &self,
+         event: &EventEnvelope,
+@@ -242,8 +259,8 @@ impl RunDatabase {
+                 warn!(
+                     run_id = %self.inner.run_id,
+                     source_last_seq = event.seq,
+-                    error = ?err,
+-                    "failed to update SQLite run summary after committed append"
++                    error = %err,
++                    "Failed to update SQLite run summary after committed append"
+                 );
+             }
+         }
+@@ -325,18 +342,19 @@ impl RunDatabase {
+             seq,
+             event: RunEvent::try_from(payload)?,
+         };
+-        let current_projection = self.projected_state_option_locked().await?;
+-        let next_projection = match current_projection {
+-            Some(projection) => {
+-                let mut projection = (*projection).clone();
+-                projection.apply_event(&event).map_err(event_rejected)?;
+-                projection
+-            }
+-            None => {
+-                RunProjection::apply_events(std::slice::from_ref(&event)).map_err(event_rejected)?
+-            }
+-        };
+-        let cached = CachedRunProjection::from_projection(self.inner.run_id, next_projection, seq);
++        // Validation reduces through the exact code replay uses, so an event
++        // is written iff replay can reduce it. `Arc::make_mut` copy-on-writes,
++        // leaving the local projection cache untouched on rejection.
++        let mut next_state = self.projected_state_for_append_locked(seq).await?;
++        apply_cached_projection_event(&mut next_state, &event)
++            .map_err(|err| event_rejected(&err))?;
++        let next_projection =
++            next_state.expect("apply_cached_projection_event sets the state on success");
++        let cached = CachedRunProjection::from_projection(
++            self.inner.run_id,
++            Arc::unwrap_or_clone(next_projection),
++            seq,
++        );
+         let event_bytes = serde_json::to_vec(payload)?;
+         self.inner
+             .db
+@@ -345,8 +363,9 @@ impl RunDatabase {
+                 event_bytes,
+             )
+             .await?;
+-        // Box the derived-update future so this frequently awaited append API
+-        // does not pass a large state machine into every caller.
++        // Box::pin keeps this future small enough for the
++        // clippy::large_futures budget of append_event_envelope's many
++        // callers.
+         Box::pin(self.install_derived_state_after_append(&event, cached)).await;
+         Ok(event)
+     }
+@@ -564,12 +583,10 @@ impl RunDatabase {
+     }
+ }
+ 
+-fn event_rejected(error: Error) -> Error {
+-    let reason = match error {
+-        Error::InvalidTransition(transition) => transition.to_string(),
+-        error => error.to_string(),
+-    };
+-    Error::EventRejected { reason }
++fn event_rejected(error: &Error) -> Error {
++    Error::EventRejected {
++        reason: error.to_string(),
++    }
+ }
+ 
+ fn allocate_event_seq(event_seq: &AtomicU32) -> Result<u32> {
+diff --git a/lib/components/fabro-store/src/test_util.rs b/lib/components/fabro-store/src/test_util.rs
+index bbc0b8717..a5b7e17f9 100644
+--- a/lib/components/fabro-store/src/test_util.rs
++++ b/lib/components/fabro-store/src/test_util.rs
+@@ -1,10 +1,17 @@
++use std::path::Path;
++
+ use crate::RunSummaryStore;
+ 
+ pub(crate) async fn sqlite_summary_store() -> (tempfile::TempDir, RunSummaryStore) {
+     let directory = tempfile::tempdir().unwrap();
+-    let database = fabro_db::Database::connect(directory.path().join("fabro.sqlite3"))
++    let store = sqlite_summary_store_at(directory.path()).await;
++    (directory, store)
++}
++
++pub(crate) async fn sqlite_summary_store_at(directory: &Path) -> RunSummaryStore {
++    let database = fabro_db::Database::connect(directory.join("fabro.sqlite3"))
+         .await
+         .unwrap();
+     database.migrate().await.unwrap();
+-    (directory, RunSummaryStore::new(database.clone_pool()))
++    RunSummaryStore::new(database.clone_pool())
+ }
+diff --git a/lib/foundation/fabro-types/src/run_event/mod.rs b/lib/foundation/fabro-types/src/run_event/mod.rs
+index 6680fff2e..34cc88ed8 100644
+--- a/lib/foundation/fabro-types/src/run_event/mod.rs
++++ b/lib/foundation/fabro-types/src/run_event/mod.rs
+@@ -12,7 +12,7 @@ pub use fabro_model::BilledTokenCounts;
+ pub use infra::*;
+ pub use misc::*;
+ pub use run::*;
+-use serde::de::Error as DeError;
++use serde::de::Error as _;
+ use serde::ser::Error as SerError;
+ use serde::{Deserialize, Deserializer, Serialize, Serializer};
+ use serde_json::{Map, Value, json};
+@@ -764,57 +764,6 @@ impl RunEvent {
+         })
+     }
+ 
+-    pub fn from_ref(value: &Value) -> serde_json::Result<Self> {
+-        fn opt_field<T: for<'a> Deserialize<'a>>(
+-            obj: &Map<String, Value>,
+-            key: &str,
+-        ) -> serde_json::Result<Option<T>> {
+-            match obj.get(key) {
+-                Some(value) if !value.is_null() => Ok(Some(T::deserialize(value)?)),
+-                _ => Ok(None),
+-            }
+-        }
+-
+-        let obj = value.as_object().ok_or_else(|| {
+-            <serde_json::Error as DeError>::custom("run event must be a JSON object")
+-        })?;
+-        let opt_str = |key: &str| obj.get(key).and_then(Value::as_str).map(str::to_string);
+-        let id = obj.get("id").and_then(Value::as_str).ok_or_else(|| {
+-            <serde_json::Error as DeError>::custom("missing or non-string field: id")
+-        })?;
+-        let ts = obj
+-            .get("ts")
+-            .ok_or_else(|| <serde_json::Error as DeError>::custom("missing field: ts"))
+-            .and_then(DateTime::<Utc>::deserialize)?;
+-        let run_id = obj
+-            .get("run_id")
+-            .ok_or_else(|| <serde_json::Error as DeError>::custom("missing field: run_id"))
+-            .and_then(RunId::deserialize)?;
+-        let event = obj.get("event").and_then(Value::as_str).ok_or_else(|| {
+-            <serde_json::Error as DeError>::custom("missing or non-string field: event")
+-        })?;
+-        let properties = obj
+-            .get("properties")
+-            .cloned()
+-            .unwrap_or_else(default_properties);
+-        Self::from_parts(RunEventParts {
+-            id: id.to_string(),
+-            ts,
+-            run_id,
+-            node_id: opt_str("node_id"),
+-            node_label: opt_str("node_label"),
+-            stage_id: opt_field(obj, "stage_id")?,
+-            parallel_group_id: opt_field(obj, "parallel_group_id")?,
+-            parallel_branch_id: opt_field(obj, "parallel_branch_id")?,
+-            session_id: opt_str("session_id"),
+-            parent_session_id: opt_str("parent_session_id"),
+-            tool_call_id: opt_str("tool_call_id"),
+-            actor: opt_field(obj, "actor")?,
+-            event,
+-            properties: &properties,
+-        })
+-    }
+-
+     fn from_parts(parts: RunEventParts<'_>) -> serde_json::Result<Self> {
+         let body_payload = json!({
+             "event": parts.event,
