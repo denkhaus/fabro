@@ -200,6 +200,10 @@ pub(super) async fn execute_persisted_run(
             return Err(error);
         }
     };
+    // Non-atomic twin of the server's durable admission claim (`admit_run`'s
+    // conditional `RunStarting` append): it goes through the event sink so
+    // fan-out sinks observe the event. Keep the accepted-status set in sync
+    // with the server's claim predicate.
     match bootstrap_state.status {
         RunStatus::Runnable => {
             if let Err(err) = append_event_to_sink(&event_sink, &run_id, &Event::RunStarting).await
@@ -1828,6 +1832,16 @@ reasoning = false
         .unwrap();
     }
 
+    async fn starting_event_count(run_store: &fabro_store::RunDatabase) -> usize {
+        run_store
+            .list_events()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|event| matches!(event.event.body, EventBody::RunStarting(_)))
+            .count()
+    }
+
     async fn wait_for_conclusion(
         run_store: &fabro_store::RunDatabase,
     ) -> crate::records::Conclusion {
@@ -2097,14 +2111,7 @@ reasoning = false
         assert_eq!(started.finalized.conclusion.status, StageOutcome::Succeeded);
         let run_store = store.open_run(&fixtures::RUN_1).await.unwrap();
         assert!(run_store.state().await.unwrap().conclusion.is_some());
-        let starting_count = run_store
-            .list_events()
-            .await
-            .unwrap()
-            .iter()
-            .filter(|event| matches!(event.event.body, EventBody::RunStarting(_)))
-            .count();
-        assert_eq!(starting_count, 1);
+        assert_eq!(starting_event_count(&run_store).await, 1);
     }
 
     #[tokio::test]
@@ -2133,14 +2140,7 @@ reasoning = false
         .await
         .unwrap();
 
-        let starting_count = run_store
-            .list_events()
-            .await
-            .unwrap()
-            .iter()
-            .filter(|event| matches!(event.event.body, EventBody::RunStarting(_)))
-            .count();
-        assert_eq!(starting_count, 1);
+        assert_eq!(starting_event_count(&run_store).await, 1);
     }
 
     #[tokio::test]

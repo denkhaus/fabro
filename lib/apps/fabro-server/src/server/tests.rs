@@ -2859,14 +2859,7 @@ allowed_usernames = ["octocat"]
             .collect::<Vec<_>>()
             .join(", ")
     );
-    let runtime_directory = Storage::new(storage_dir).runtime_directory();
-    ServerDaemon::new(
-        std::process::id(),
-        Bind::Tcp("127.0.0.1:32276".parse::<std::net::SocketAddr>().unwrap()),
-        runtime_directory.log_path(),
-    )
-    .write(&runtime_directory)
-    .unwrap();
+    write_worker_test_server_record(storage_dir);
 
     let mut server_secret_env: HashMap<String, String> = dev_token
         .map(|token| HashMap::from([("FABRO_DEV_TOKEN".to_string(), token)]))
@@ -16500,7 +16493,7 @@ fn admission_error_classifier_is_structural() {
     for (error, kind) in transient {
         assert_eq!(
             classify_admission_error(&anyhow::Error::new(error)),
-            AdmissionErrorClass::Transient(kind),
+            AdmissionErrorClass::transient(kind),
         );
     }
 
@@ -16526,12 +16519,12 @@ fn admission_error_classifier_is_structural() {
     for (error, kind) in permanent {
         assert_eq!(
             classify_admission_error(&anyhow::Error::new(error)),
-            AdmissionErrorClass::Permanent(kind),
+            AdmissionErrorClass::permanent(kind),
         );
     }
     assert_eq!(
         classify_admission_error(&anyhow::anyhow!("unrecognized")),
-        AdmissionErrorClass::Permanent("unrecognized"),
+        AdmissionErrorClass::permanent("unrecognized"),
     );
 }
 
@@ -16800,8 +16793,8 @@ async fn cancellation_after_admission_does_not_start_in_process_workflow() {
     assert_cancelled_admission_history(&run_store.list_events().await.unwrap());
 }
 
-fn write_worker_test_server_record(state: &AppState) {
-    let runtime_directory = Storage::new(state.server_storage_dir()).runtime_directory();
+fn write_worker_test_server_record(storage_dir: &Path) {
+    let runtime_directory = Storage::new(storage_dir).runtime_directory();
     ServerDaemon::new(
         std::process::id(),
         Bind::Tcp("127.0.0.1:32276".parse::<std::net::SocketAddr>().unwrap()),
@@ -16818,7 +16811,7 @@ async fn subprocess_launch_failure_follows_starting_and_preserves_source_chain()
         .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
         .worker_runtime(runtime.clone())
         .build();
-    write_worker_test_server_record(state.as_ref());
+    write_worker_test_server_record(&state.server_storage_dir());
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = create_and_start_run(&app, MINIMAL_DOT)
         .await
