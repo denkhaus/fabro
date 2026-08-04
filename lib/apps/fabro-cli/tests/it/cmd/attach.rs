@@ -1078,10 +1078,6 @@ fn attach_json_errors_without_prompting_for_human_input() {
         "ts": "[TIMESTAMP]"
       },
       {
-        "actor": {
-          "kind": "worker",
-          "run_id": "[ULID]"
-        },
         "event": "run.starting",
         "id": "[EVENT_ID]",
         "properties": {},
