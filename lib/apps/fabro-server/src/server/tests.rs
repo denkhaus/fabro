@@ -4,7 +4,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc as StdArc, Mutex as StdMutex};
 
 use async_zip::base::read::mem::ZipFileReader;
@@ -2945,6 +2945,7 @@ fn worker_token_claims(cmd: &Command, state: &AppState) -> crate::worker_token::
 
 #[derive(Default)]
 struct RecordingWorkerRuntime {
+    starts:        AtomicUsize,
     requested:     StdMutex<Vec<WorkerRef>>,
     forced:        StdMutex<Vec<WorkerRef>>,
     alive:         AtomicBool,
@@ -2952,6 +2953,10 @@ struct RecordingWorkerRuntime {
 }
 
 impl RecordingWorkerRuntime {
+    fn start_count(&self) -> usize {
+        self.starts.load(Ordering::Relaxed)
+    }
+
     fn requested_refs(&self) -> Vec<WorkerRef> {
         self.requested
             .lock()
@@ -2985,7 +2990,11 @@ impl RecordingWorkerRuntime {
 #[async_trait::async_trait]
 impl WorkerRuntime for RecordingWorkerRuntime {
     async fn start(&self, _spec: WorkerLaunchSpec) -> anyhow::Result<StartedWorker> {
-        anyhow::bail!("recording runtime does not start workers")
+        self.starts.fetch_add(1, Ordering::Relaxed);
+        Err(
+            anyhow::Error::new(std::io::Error::other("recording runtime source failure"))
+                .context("recording runtime does not start workers"),
+        )
     }
 
     async fn request_stop(&self, worker_ref: &WorkerRef) {
@@ -5271,8 +5280,6 @@ async fn delete_terminal_managed_run_does_not_send_cancel_signal() {
         RunExecutionMode::Start,
     );
     run.cancel_token = Some(cancel_token.clone());
-    let (cancel_tx, _cancel_rx) = oneshot::channel();
-    run.cancel_tx = Some(cancel_tx);
     state
         .runs
         .lock()
@@ -15541,7 +15548,6 @@ async fn cancel_durably_blocked_in_process_run_cancels_pending_interview_without
     let ask = tokio::spawn(async move { ask_interviewer.ask(question).await });
     tokio::task::yield_now().await;
 
-    let (cancel_tx, mut cancel_rx) = oneshot::channel();
     let cancel_token = CancellationToken::new();
     let temp_dir = tempfile::tempdir().unwrap();
     let mut run = managed_run(
@@ -15557,8 +15563,7 @@ async fn cancel_durably_blocked_in_process_run_cancels_pending_interview_without
             fabro_workflow::event::Emitter::new(run_id),
         ))),
     });
-    run.cancel_token = Some(cancel_token);
-    run.cancel_tx = Some(cancel_tx);
+    run.cancel_token = Some(cancel_token.clone());
     state
         .runs
         .lock()
@@ -15579,10 +15584,7 @@ async fn cancel_durably_blocked_in_process_run_cancels_pending_interview_without
         .expect("interview task should not panic");
     assert_eq!(submission.answer.value, AnswerValue::Cancelled);
     assert!(
-        matches!(
-            cancel_rx.try_recv(),
-            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
-        ),
+        !cancel_token.is_cancelled(),
         "blocked in-process cancellation should let the workflow unwind instead of aborting it"
     );
 }
@@ -16341,6 +16343,634 @@ fn scheduler_capacity_counts_only_runs_occupying_slots() {
         reason: FailureReason::WorkflowError,
     }));
     assert!(!counts_toward_scheduler_capacity(RunStatus::Dead));
+}
+
+async fn stage_runnable_managed_run(
+    state: &Arc<AppState>,
+    run_id: RunId,
+    run_dir: &Path,
+) -> fabro_store::RunDatabase {
+    create_durable_run_with_events(state, run_id, &[workflow_event::Event::RunRunnable {
+        source: RunRunnableSource::StartRequested,
+        actor:  None,
+    }])
+    .await;
+    state.runs.lock().expect("runs lock poisoned").insert(
+        run_id,
+        managed_run(
+            MINIMAL_DOT.to_string(),
+            RunStatus::Runnable,
+            Utc::now(),
+            run_dir.to_path_buf(),
+            RunExecutionMode::Start,
+        ),
+    );
+    state.stores.runs.open_run(&run_id).await.unwrap()
+}
+
+fn starting_event_count(events: &[EventEnvelope]) -> usize {
+    events
+        .iter()
+        .filter(|event| matches!(event.event.body, EventBody::RunStarting(_)))
+        .count()
+}
+
+#[tokio::test]
+async fn concurrent_durable_admission_has_one_winner() {
+    let state = test_app_state();
+    let direct_run_id = fixtures::RUN_1;
+    create_durable_run_with_events(&state, direct_run_id, &[
+        workflow_event::Event::RunRunnable {
+            source: RunRunnableSource::StartRequested,
+            actor:  None,
+        },
+    ])
+    .await;
+    let run_store = state.stores.runs.open_run(&direct_run_id).await.unwrap();
+    let claim = || {
+        workflow_event::append_event_if(
+            &run_store,
+            &direct_run_id,
+            &workflow_event::Event::RunStarting,
+            |projection| projection.status == RunStatus::Runnable,
+        )
+    };
+    let (first, second) = tokio::join!(claim(), claim());
+    let mut outcomes = [first.unwrap(), second.unwrap()];
+    outcomes.sort_unstable();
+    assert_eq!(outcomes, [false, true]);
+    assert_eq!(run_store.state().await.unwrap().status, RunStatus::Starting);
+    assert_eq!(
+        starting_event_count(&run_store.list_events().await.unwrap()),
+        1
+    );
+
+    let temp = tempfile::tempdir().unwrap();
+    let managed_run_id = fixtures::RUN_2;
+    stage_runnable_managed_run(&state, managed_run_id, temp.path()).await;
+    let (first, second) = tokio::join!(
+        Box::pin(admit_run(&state, managed_run_id)),
+        Box::pin(admit_run(&state, managed_run_id)),
+    );
+    assert_eq!(
+        usize::from(first.is_some()) + usize::from(second.is_some()),
+        1
+    );
+    let run_store = state.stores.runs.open_run(&managed_run_id).await.unwrap();
+    assert_eq!(run_store.state().await.unwrap().status, RunStatus::Starting);
+    assert_eq!(
+        starting_event_count(&run_store.list_events().await.unwrap()),
+        1
+    );
+}
+
+#[tokio::test]
+async fn admission_predicate_false_reconciles_durable_cancellation() {
+    let state = test_app_state();
+    let run_id = fixtures::RUN_1;
+    create_durable_run_with_events(&state, run_id, &[
+        workflow_event::Event::WorkflowRunFailed {
+            failure:              fabro_types::RunFailure {
+                reason: FailureReason::Cancelled,
+                detail: FailureDetail::new("cancelled", FailureCategory::Canceled),
+            },
+            timing:               fabro_types::RunTiming::default(),
+            final_git_commit_sha: None,
+            final_patch:          None,
+            diff_summary:         None,
+            billing:              None,
+        },
+    ])
+    .await;
+    let run_store = state.stores.runs.open_run(&run_id).await.unwrap();
+    let event_count = run_store.list_events().await.unwrap().len();
+    let temp = tempfile::tempdir().unwrap();
+    let mut run = managed_run(
+        MINIMAL_DOT.to_string(),
+        RunStatus::Runnable,
+        Utc::now(),
+        temp.path().to_path_buf(),
+        RunExecutionMode::Start,
+    );
+    run.cancel_token = Some(CancellationToken::new());
+    run.worker_ref = Some(test_worker_ref(123));
+    state
+        .runs
+        .lock()
+        .expect("runs lock poisoned")
+        .insert(run_id, run);
+
+    assert!(Box::pin(admit_run(&state, run_id)).await.is_none());
+
+    let runs = state.runs.lock().expect("runs lock poisoned");
+    let run = runs.get(&run_id).unwrap();
+    assert_eq!(run.status, RunStatus::Failed {
+        reason: FailureReason::Cancelled,
+    });
+    assert!(run.cancel_token.is_none());
+    assert!(run.worker_ref.is_none());
+    assert_eq!(run.admission_retry, AdmissionRetryState::Ready);
+    drop(runs);
+    assert_eq!(run_store.list_events().await.unwrap().len(), event_count);
+}
+
+#[test]
+fn admission_error_classifier_is_structural() {
+    let transient = [
+        (
+            fabro_store::Error::Slate(slatedb::Error::unavailable("test outage".to_string())),
+            "slate",
+        ),
+        (
+            fabro_store::Error::ObjectStore(object_store::Error::Generic {
+                store:  "test",
+                source: Box::new(std::io::Error::other("test outage")),
+            }),
+            "object_store",
+        ),
+        (
+            fabro_store::Error::Sqlite(sqlx::Error::RowNotFound),
+            "sqlite",
+        ),
+        (
+            fabro_store::Error::Io(std::io::Error::other("test outage")),
+            "io",
+        ),
+    ];
+    for (error, kind) in transient {
+        assert_eq!(
+            classify_admission_error(&anyhow::Error::new(error)),
+            AdmissionErrorClass::Transient(kind),
+        );
+    }
+
+    let serde_error = serde_json::from_str::<serde_json::Value>("{").unwrap_err();
+    let permanent = [
+        (
+            fabro_store::Error::EventRejected {
+                source: Box::new(fabro_store::Error::ReadOnly),
+            },
+            "event_rejected",
+        ),
+        (
+            fabro_store::Error::EventSequenceExhausted { max_seq: 10 },
+            "event_sequence_exhausted",
+        ),
+        (
+            fabro_store::Error::RunNotFound("missing".to_string()),
+            "run_not_found",
+        ),
+        (fabro_store::Error::ReadOnly, "read_only"),
+        (fabro_store::Error::Serde(serde_error), "serialization"),
+    ];
+    for (error, kind) in permanent {
+        assert_eq!(
+            classify_admission_error(&anyhow::Error::new(error)),
+            AdmissionErrorClass::Permanent(kind),
+        );
+    }
+    assert_eq!(
+        classify_admission_error(&anyhow::anyhow!("unrecognized")),
+        AdmissionErrorClass::Permanent("unrecognized"),
+    );
+}
+
+#[test]
+fn admission_retry_backoff_is_bounded_and_scheduler_selection_is_fair() {
+    let mut retry = AdmissionRetryState::Ready;
+    let mut now = Instant::now();
+    for (failure_count, expected_delay) in [(1, 1), (2, 2), (3, 4), (4, 8)] {
+        let outcome = retry.record_transient_failure(now);
+        assert_eq!(outcome, AdmissionRetryOutcome::Retry {
+            failures: failure_count,
+            delay:    Duration::from_secs(expected_delay),
+        });
+        let retry_deadline = now + Duration::from_secs(expected_delay);
+        assert!(
+            !retry.is_eligible(
+                retry_deadline
+                    .checked_sub(Duration::from_millis(1))
+                    .unwrap()
+            )
+        );
+        now = retry_deadline;
+        assert!(retry.is_eligible(now));
+    }
+    assert_eq!(
+        retry.record_transient_failure(now),
+        AdmissionRetryOutcome::GivenUp { failures: 5 }
+    );
+    assert!(!retry.is_eligible(now + Duration::from_mins(1)));
+
+    let temp = tempfile::tempdir().unwrap();
+    let mut older = managed_run(
+        MINIMAL_DOT.to_string(),
+        RunStatus::Runnable,
+        Utc::now() - ChronoDuration::seconds(1),
+        temp.path().join("older"),
+        RunExecutionMode::Start,
+    );
+    older.admission_retry = AdmissionRetryState::Backoff {
+        failures: 1,
+        retry_at: now + Duration::from_secs(1),
+    };
+    let healthy = managed_run(
+        MINIMAL_DOT.to_string(),
+        RunStatus::Runnable,
+        Utc::now(),
+        temp.path().join("healthy"),
+        RunExecutionMode::Start,
+    );
+    let runs = HashMap::from([(fixtures::RUN_1, older), (fixtures::RUN_2, healthy)]);
+    assert_eq!(select_runs_for_admission(&runs, 1, now), vec![
+        fixtures::RUN_2
+    ]);
+}
+
+#[tokio::test]
+async fn transient_admission_failure_restores_runnable_and_arms_retry() {
+    let state = test_app_state();
+    let temp = tempfile::tempdir().unwrap();
+    let run_store = stage_runnable_managed_run(&state, fixtures::RUN_1, temp.path()).await;
+    let original_events = run_store.list_events().await.unwrap().len();
+    {
+        let mut runs = state.runs.lock().expect("runs lock poisoned");
+        let run = runs.get_mut(&fixtures::RUN_1).unwrap();
+        run.status = RunStatus::Starting;
+        run.cancel_token = Some(CancellationToken::new());
+    }
+    let error = anyhow::Error::new(fabro_store::Error::Io(std::io::Error::other(
+        "temporary outage",
+    )));
+
+    record_admission_failure(&state, fixtures::RUN_1, &error);
+
+    let runs = state.runs.lock().expect("runs lock poisoned");
+    let run = runs.get(&fixtures::RUN_1).unwrap();
+    let AdmissionRetryState::Backoff { failures, retry_at } = run.admission_retry else {
+        panic!("transient failure should arm admission backoff")
+    };
+    assert_eq!(failures, 1);
+    assert_eq!(run.status, RunStatus::Runnable);
+    assert!(run.cancel_token.is_none());
+    assert!(select_runs_for_admission(&runs, 1, Instant::now()).is_empty());
+    assert_eq!(select_runs_for_admission(&runs, 1, retry_at), vec![
+        fixtures::RUN_1
+    ]);
+    drop(runs);
+    assert_eq!(run_store.state().await.unwrap().status, RunStatus::Runnable);
+    assert_eq!(
+        run_store.list_events().await.unwrap().len(),
+        original_events
+    );
+}
+
+#[tokio::test]
+async fn permanent_admission_failure_gives_up_without_mutating_durable_run() {
+    let state = test_app_state();
+    let temp = tempfile::tempdir().unwrap();
+    let run_store = stage_runnable_managed_run(&state, fixtures::RUN_1, temp.path()).await;
+    let original_events = run_store.list_events().await.unwrap().len();
+    {
+        let mut runs = state.runs.lock().expect("runs lock poisoned");
+        let run = runs.get_mut(&fixtures::RUN_1).unwrap();
+        run.status = RunStatus::Starting;
+        run.cancel_token = Some(CancellationToken::new());
+    }
+
+    record_admission_failure(
+        &state,
+        fixtures::RUN_1,
+        &anyhow::Error::new(fabro_store::Error::EventSequenceExhausted { max_seq: 10 }),
+    );
+
+    let runs = state.runs.lock().expect("runs lock poisoned");
+    let run = runs.get(&fixtures::RUN_1).unwrap();
+    assert_eq!(run.status, RunStatus::Runnable);
+    assert_eq!(run.admission_retry, AdmissionRetryState::GivenUp {
+        failures: 1,
+    });
+    assert!(run.cancel_token.is_none());
+    assert!(select_runs_for_admission(&runs, 1, Instant::now()).is_empty());
+    drop(runs);
+    assert_eq!(run_store.state().await.unwrap().status, RunStatus::Runnable);
+    assert_eq!(
+        run_store.list_events().await.unwrap().len(),
+        original_events
+    );
+}
+
+#[tokio::test]
+async fn successful_admission_clears_retry_bookkeeping() {
+    let state = test_app_state();
+    let temp = tempfile::tempdir().unwrap();
+    let run_store = stage_runnable_managed_run(&state, fixtures::RUN_1, temp.path()).await;
+    {
+        let mut runs = state.runs.lock().expect("runs lock poisoned");
+        runs.get_mut(&fixtures::RUN_1).unwrap().admission_retry = AdmissionRetryState::Backoff {
+            failures: 2,
+            retry_at: Instant::now().checked_sub(Duration::from_secs(1)).unwrap(),
+        };
+    }
+
+    assert!(Box::pin(admit_run(&state, fixtures::RUN_1)).await.is_some());
+    let runs = state.runs.lock().expect("runs lock poisoned");
+    assert_eq!(
+        runs.get(&fixtures::RUN_1).unwrap().admission_retry,
+        AdmissionRetryState::Ready
+    );
+    drop(runs);
+    assert_eq!(run_store.state().await.unwrap().status, RunStatus::Starting);
+    assert_eq!(
+        starting_event_count(&run_store.list_events().await.unwrap()),
+        1
+    );
+}
+
+async fn cancel_admitted_run(app: &Router, run_id: RunId) {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/cancel")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::ACCEPTED).await;
+}
+
+fn assert_cancelled_admission_history(events: &[EventEnvelope]) {
+    let starting = events
+        .iter()
+        .position(|event| matches!(event.event.body, EventBody::RunStarting(_)))
+        .expect("admission should append run.starting");
+    let requested = events
+        .iter()
+        .position(|event| matches!(event.event.body, EventBody::RunCancelRequested(_)))
+        .expect("cancellation should append run.cancel.requested");
+    let failed = events
+        .iter()
+        .position(|event| {
+            matches!(
+                event.event.body,
+                EventBody::RunFailed(ref props)
+                    if props.failure.reason == FailureReason::Cancelled
+            )
+        })
+        .expect("cancellation should append a cancelled run.failed event");
+    assert!(starting < requested && requested < failed);
+    assert!(!events.iter().any(|event| {
+        matches!(
+            event.event.body,
+            EventBody::RunFailed(ref props)
+                if props.failure.reason == FailureReason::LaunchFailed
+        )
+    }));
+}
+
+#[tokio::test]
+async fn cancellation_after_admission_does_not_start_subprocess_worker() {
+    let runtime = Arc::new(RecordingWorkerRuntime::default());
+    let state = TestAppStateBuilder::new()
+        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .worker_runtime(runtime.clone())
+        .build();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let temp = tempfile::tempdir().unwrap();
+    let run_store = stage_runnable_managed_run(&state, fixtures::RUN_1, temp.path()).await;
+    let admitted = Box::pin(admit_run(&state, fixtures::RUN_1))
+        .await
+        .expect("run should win durable admission");
+    let cancel_token = admitted.cancel_token.clone();
+
+    cancel_admitted_run(&app, fixtures::RUN_1).await;
+    Box::pin(execute_run_subprocess(
+        Arc::clone(&state),
+        fixtures::RUN_1,
+        admitted,
+    ))
+    .await;
+
+    assert!(cancel_token.is_cancelled());
+    assert_eq!(runtime.start_count(), 0);
+    let runs = state.runs.lock().expect("runs lock poisoned");
+    let run = runs.get(&fixtures::RUN_1).unwrap();
+    assert_eq!(run.status, RunStatus::Failed {
+        reason: FailureReason::Cancelled,
+    });
+    assert!(run.cancel_token.is_none());
+    assert!(run.worker_ref.is_none());
+    drop(runs);
+    assert_cancelled_admission_history(&run_store.list_events().await.unwrap());
+}
+
+#[tokio::test]
+async fn cancellation_after_admission_does_not_start_in_process_workflow() {
+    let registry_calls = Arc::new(AtomicUsize::new(0));
+    let calls = Arc::clone(&registry_calls);
+    let state = TestAppStateBuilder::new()
+        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .registry_factory(move |interviewer| {
+            calls.fetch_add(1, Ordering::Relaxed);
+            fabro_workflow::handler::default_registry(interviewer, || None)
+        })
+        .build();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let temp = tempfile::tempdir().unwrap();
+    let run_store = stage_runnable_managed_run(&state, fixtures::RUN_1, temp.path()).await;
+    let admitted = Box::pin(admit_run(&state, fixtures::RUN_1))
+        .await
+        .expect("run should win durable admission");
+
+    cancel_admitted_run(&app, fixtures::RUN_1).await;
+    Box::pin(execute_run_in_process(
+        Arc::clone(&state),
+        fixtures::RUN_1,
+        admitted,
+    ))
+    .await;
+
+    assert_eq!(registry_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(run_store.state().await.unwrap().status, RunStatus::Failed {
+        reason: FailureReason::Cancelled,
+    });
+    assert_cancelled_admission_history(&run_store.list_events().await.unwrap());
+}
+
+fn write_worker_test_server_record(state: &AppState) {
+    let runtime_directory = Storage::new(state.server_storage_dir()).runtime_directory();
+    ServerDaemon::new(
+        std::process::id(),
+        Bind::Tcp("127.0.0.1:32276".parse::<std::net::SocketAddr>().unwrap()),
+        runtime_directory.log_path(),
+    )
+    .write(&runtime_directory)
+    .unwrap();
+}
+
+#[tokio::test]
+async fn subprocess_launch_failure_follows_starting_and_preserves_source_chain() {
+    let runtime = Arc::new(RecordingWorkerRuntime::default());
+    let state = TestAppStateBuilder::new()
+        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .worker_runtime(runtime.clone())
+        .build();
+    write_worker_test_server_record(state.as_ref());
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_and_start_run(&app, MINIMAL_DOT)
+        .await
+        .parse::<RunId>()
+        .unwrap();
+
+    execute_run(Arc::clone(&state), run_id).await;
+
+    assert_eq!(runtime.start_count(), 1);
+    let run_store = state.stores.runs.open_run(&run_id).await.unwrap();
+    let events = run_store.list_events().await.unwrap();
+    let starting = events
+        .iter()
+        .position(|event| matches!(event.event.body, EventBody::RunStarting(_)))
+        .unwrap();
+    let (failed, failure) = events
+        .iter()
+        .enumerate()
+        .find_map(|(index, event)| match &event.event.body {
+            EventBody::RunFailed(props) => Some((index, &props.failure)),
+            _ => None,
+        })
+        .expect("worker launch should persist run.failed");
+    assert!(starting < failed);
+    assert_eq!(failure.reason, FailureReason::LaunchFailed);
+    assert_eq!(failure.detail.message, "Failed to spawn worker");
+    assert!(
+        failure
+            .detail
+            .causes
+            .iter()
+            .any(|cause| cause.contains("recording runtime source failure"))
+    );
+    assert_eq!(run_store.state().await.unwrap().status, RunStatus::Failed {
+        reason: FailureReason::LaunchFailed,
+    });
+    let summaries = state
+        .stores
+        .runs
+        .list_runs(&fabro_store::ListRunsQuery::default(), Utc::now())
+        .await
+        .unwrap();
+    assert!(summaries.iter().any(|summary| summary.id == run_id));
+    assert!(
+        state
+            .stores
+            .runs
+            .list_unreadable_runs()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn in_process_policy_failure_follows_durable_starting() {
+    let disabled_source = r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[server.sandbox.providers.docker]
+enabled = false
+"#;
+    let state = test_app_state_with_registry_factory(|interviewer| {
+        fabro_workflow::handler::default_registry(interviewer, || None)
+    });
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_and_start_run(&app, MINIMAL_DOT)
+        .await
+        .parse::<RunId>()
+        .unwrap();
+    state
+        .replace_runtime_settings(resolved_runtime_settings_from_toml(disabled_source))
+        .unwrap();
+
+    execute_run(Arc::clone(&state), run_id).await;
+
+    let run_store = state.stores.runs.open_run(&run_id).await.unwrap();
+    let events = run_store.list_events().await.unwrap();
+    let starting = events
+        .iter()
+        .position(|event| matches!(event.event.body, EventBody::RunStarting(_)))
+        .unwrap();
+    let failed = events
+        .iter()
+        .position(|event| {
+            matches!(
+                event.event.body,
+                EventBody::RunFailed(ref props)
+                    if props.failure.reason == FailureReason::LaunchFailed
+            )
+        })
+        .expect("disabled provider should fail the admitted run");
+    assert!(starting < failed);
+    assert_eq!(run_store.state().await.unwrap().status, RunStatus::Failed {
+        reason: FailureReason::LaunchFailed,
+    });
+}
+
+#[tokio::test]
+async fn failure_append_error_keeps_local_status_aligned_with_durable_starting() {
+    let state = test_app_state();
+    let temp = tempfile::tempdir().unwrap();
+    let run_store = stage_runnable_managed_run(&state, fixtures::RUN_1, temp.path()).await;
+    let admitted = Box::pin(admit_run(&state, fixtures::RUN_1))
+        .await
+        .expect("run should win durable admission");
+    let read_only = state
+        .stores
+        .runs
+        .open_run_reader(&fixtures::RUN_1)
+        .await
+        .unwrap();
+
+    fail_run_before_execution(
+        &state,
+        &read_only,
+        fixtures::RUN_1,
+        FailureReason::LaunchFailed,
+        WorkflowError::engine_with_source(
+            "Launch setup failed",
+            std::io::Error::other("source survives"),
+        ),
+    )
+    .await;
+
+    drop(admitted);
+    let runs = state.runs.lock().expect("runs lock poisoned");
+    let run = runs.get(&fixtures::RUN_1).unwrap();
+    assert_eq!(run.status, RunStatus::Starting);
+    assert!(run.cancel_token.is_none());
+    assert!(run.worker_ref.is_none());
+    drop(runs);
+    assert_eq!(run_store.state().await.unwrap().status, RunStatus::Starting);
+    assert!(
+        !run_store
+            .list_events()
+            .await
+            .unwrap()
+            .iter()
+            .any(|event| { matches!(event.event.body, EventBody::RunFailed(_)) })
+    );
+
+    let boundary_error = anyhow::Error::new(std::io::Error::other(
+        "https://user:password@example.com/private",
+    ))
+    .context("failure append context");
+    let rendered = safe_error_chain(&boundary_error);
+    assert!(rendered.contains("failure append context"));
+    assert!(!rendered.contains("password"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

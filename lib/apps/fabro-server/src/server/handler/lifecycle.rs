@@ -350,7 +350,11 @@ async fn deny_run(
     run_response(state.as_ref(), id, StatusCode::OK).await
 }
 
-fn schedule_worker_cancel_escalation(state: Arc<AppState>, run_id: RunId, worker_ref: WorkerRef) {
+pub(in crate::server) fn schedule_worker_cancel_escalation(
+    state: Arc<AppState>,
+    run_id: RunId,
+    worker_ref: WorkerRef,
+) {
     let requested_at = Instant::now();
     let armed = {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -487,16 +491,15 @@ async fn cancel_run(
                                 reason: FailureReason::Cancelled,
                             };
                         }
-                        let cancel_tx = if should_cancel_pending_interview {
+                        let cancel_token = if should_cancel_pending_interview {
                             None
                         } else {
-                            managed_run.cancel_tx.take()
+                            managed_run.cancel_token.clone()
                         };
                         Some((
                             persist_cancelled_status,
                             answer_transport,
-                            managed_run.cancel_token.clone(),
-                            cancel_tx,
+                            cancel_token,
                             managed_run.worker_ref.clone(),
                         ))
                     }
@@ -509,7 +512,7 @@ async fn cancel_run(
             None => None,
         }
     };
-    let Some((persist_cancelled_status, answer_transport, cancel_token, cancel_tx, worker_ref)) =
+    let Some((persist_cancelled_status, answer_transport, cancel_token, worker_ref)) =
         cancel_target
     else {
         return unmanaged_cancel_response(state.as_ref(), id, actor, pending_control).await;
@@ -527,20 +530,8 @@ async fn cancel_run(
     if let Some(token) = &cancel_token {
         token.cancel();
     }
-    let sent_in_process_cancel = if let Some(cancel_tx) = cancel_tx {
-        let _ = cancel_tx.send(());
-        true
-    } else {
-        false
-    };
     let delivered_control = if let Some(answer_transport) = answer_transport {
-        if sent_in_process_cancel
-            && matches!(answer_transport, RunAnswerTransport::InProcess { .. })
-        {
-            true
-        } else {
-            answer_transport.cancel_run().await.is_ok()
-        }
+        answer_transport.cancel_run().await.is_ok()
     } else {
         false
     };

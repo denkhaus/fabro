@@ -183,33 +183,47 @@ pub(super) async fn execute_persisted_run(
     let run_id = services.run_id;
     let run_store = services.run_store.clone();
     let event_sink = services.event_sink.clone();
-    if let Err(err) = run_store.state().await {
-        let error = Error::engine(err.to_string());
-        let _ = persist_detached_failure(
-            run_id,
-            &run_store,
-            &event_sink,
-            run_dir,
-            "bootstrap",
-            FailureReason::BootstrapFailed,
-            &error,
-        )
-        .await;
-        return Err(error);
-    }
-    if let Err(err) = append_event_to_sink(&event_sink, &run_id, &Event::RunStarting).await {
-        let error = Error::engine(err.to_string());
-        let _ = persist_detached_failure(
-            run_id,
-            &run_store,
-            &event_sink,
-            run_dir,
-            "bootstrap",
-            FailureReason::BootstrapFailed,
-            &error,
-        )
-        .await;
-        return Err(error);
+    let bootstrap_state = match run_store.state().await {
+        Ok(state) => state,
+        Err(err) => {
+            let error = Error::engine(err.to_string());
+            let _ = persist_detached_failure(
+                run_id,
+                &run_store,
+                &event_sink,
+                run_dir,
+                "bootstrap",
+                FailureReason::BootstrapFailed,
+                &error,
+            )
+            .await;
+            return Err(error);
+        }
+    };
+    match bootstrap_state.status {
+        RunStatus::Runnable => {
+            if let Err(err) = append_event_to_sink(&event_sink, &run_id, &Event::RunStarting).await
+            {
+                let error = Error::engine(err.to_string());
+                let _ = persist_detached_failure(
+                    run_id,
+                    &run_store,
+                    &event_sink,
+                    run_dir,
+                    "bootstrap",
+                    FailureReason::BootstrapFailed,
+                    &error,
+                )
+                .await;
+                return Err(error);
+            }
+        }
+        RunStatus::Starting => {}
+        status => {
+            return Err(Error::Precondition(format!(
+                "cannot execute persisted run: status is {status}, expected runnable or starting"
+            )));
+        }
     }
 
     let mut bootstrap_guard = DetachedRunBootstrapGuard::arm(
@@ -2083,6 +2097,50 @@ reasoning = false
         assert_eq!(started.finalized.conclusion.status, StageOutcome::Succeeded);
         let run_store = store.open_run(&fixtures::RUN_1).await.unwrap();
         assert!(run_store.state().await.unwrap().conclusion.is_some());
+        let starting_count = run_store
+            .list_events()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|event| matches!(event.event.body, EventBody::RunStarting(_)))
+            .count();
+        assert_eq!(starting_count, 1);
+    }
+
+    #[tokio::test]
+    async fn start_from_already_starting_emits_no_duplicate_starting_event() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+        let (_persisted, store) = persisted_workflow(MINIMAL_DOT, &storage_root).await;
+        let run_store = store.open_run(&fixtures::RUN_1).await.unwrap();
+
+        crate::event::append_event(&run_store, &fixtures::RUN_1, &Event::RunRunnable {
+            source: RunRunnableSource::StartRequested,
+            actor:  None,
+        })
+        .await
+        .unwrap();
+        crate::event::append_event(&run_store, &fixtures::RUN_1, &Event::RunStarting)
+            .await
+            .unwrap();
+
+        start(
+            &run_dir,
+            test_start_services(&store, &run_dir, emitter, registry).await,
+        )
+        .await
+        .unwrap();
+
+        let starting_count = run_store
+            .list_events()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|event| matches!(event.event.body, EventBody::RunStarting(_)))
+            .count();
+        assert_eq!(starting_count, 1);
     }
 
     #[tokio::test]

@@ -67,7 +67,7 @@ use fabro_llm::types::{
 use fabro_mcp_store::McpServerStore;
 use fabro_model::catalog::LlmCatalogSettings;
 use fabro_model::{BilledTokenCounts, Catalog, ModelRef, ModelTestMode, ProviderId};
-use fabro_redact::redact_jsonl_line;
+use fabro_redact::{DisplaySafeUrl, redact_jsonl_line, redact_string};
 use fabro_sandbox::daytona::{self, DaytonaSandbox};
 use fabro_sandbox::details::sandbox_details;
 use fabro_sandbox::reconnect::reconnect_for_run;
@@ -98,8 +98,8 @@ use fabro_types::settings::server::{
 use fabro_types::{
     AgentBackend, AskFabro, AskFabroUnavailableReason, EventBody, InterviewQuestionRecord, PairId,
     PairMessageId, PairTarget, PendingReason, Principal, PullRequestLink, QuestionType, RunBlobId,
-    RunControlAction, RunEvent, RunId, RunRunnableSource, SandboxProviderKind, ServerSettings,
-    SessionCapability,
+    RunControlAction, RunEvent, RunId, RunProjection, RunRunnableSource, SandboxProviderKind,
+    ServerSettings, SessionCapability,
 };
 use fabro_util::error::{
     SharedError, collect_causes, render_compact_with_causes, render_with_causes,
@@ -128,8 +128,7 @@ use tokio::process::Command;
 use tokio::runtime::Builder as TokioRuntimeBuilder;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{
-    Mutex as AsyncMutex, Notify, OwnedMutexGuard, RwLock as AsyncRwLock, Semaphore, broadcast,
-    mpsc, oneshot,
+    Mutex as AsyncMutex, Notify, OwnedMutexGuard, RwLock as AsyncRwLock, Semaphore, broadcast, mpsc,
 };
 use tokio::task::spawn_blocking;
 use tokio::time::{sleep, timeout};
@@ -276,16 +275,87 @@ struct ManagedRun {
     /// Stage IDs of currently running agent sessions that have no live
     /// steering capability, keyed to the session id that owns the marker.
     active_non_steerable_stages: HashMap<StageId, String>,
-    event_tx: Option<broadcast::Sender<RunEvent>>,
     checkpoint: Option<Checkpoint>,
-    cancel_tx: Option<oneshot::Sender<()>>,
     cancel_token: Option<CancellationToken>,
+    admission_retry: AdmissionRetryState,
     worker_ref: Option<WorkerRef>,
     /// Exact worker currently covered by a cancellation escalation task.
     /// Prevents repeated cancel requests from arming duplicate watchdogs.
     cancel_escalation_worker: Option<WorkerRef>,
     run_dir: Option<std::path::PathBuf>,
     execution_mode: RunExecutionMode,
+}
+
+const MAX_ADMISSION_FAILURES: u8 = 5;
+const MAX_ADMISSION_RETRY_DELAY: Duration = Duration::from_secs(30);
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum AdmissionRetryState {
+    #[default]
+    Ready,
+    Backoff {
+        failures: u8,
+        retry_at: Instant,
+    },
+    GivenUp {
+        failures: u8,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AdmissionRetryOutcome {
+    Retry { failures: u8, delay: Duration },
+    GivenUp { failures: u8 },
+}
+
+impl AdmissionRetryState {
+    fn is_eligible(self, now: Instant) -> bool {
+        match self {
+            Self::Ready => true,
+            Self::Backoff { retry_at, .. } => now >= retry_at,
+            Self::GivenUp { .. } => false,
+        }
+    }
+
+    fn reset(&mut self) {
+        *self = Self::Ready;
+    }
+
+    fn record_transient_failure(&mut self, now: Instant) -> AdmissionRetryOutcome {
+        let failures = self.failures().saturating_add(1);
+        if failures >= MAX_ADMISSION_FAILURES {
+            *self = Self::GivenUp { failures };
+            return AdmissionRetryOutcome::GivenUp { failures };
+        }
+
+        let exponent = u32::from(failures.saturating_sub(1));
+        let delay = Duration::from_secs(1_u64.checked_shl(exponent).unwrap_or(u64::MAX))
+            .min(MAX_ADMISSION_RETRY_DELAY);
+        *self = Self::Backoff {
+            failures,
+            retry_at: now + delay,
+        };
+        AdmissionRetryOutcome::Retry { failures, delay }
+    }
+
+    fn record_permanent_failure(&mut self) -> AdmissionRetryOutcome {
+        let failures = self.failures().saturating_add(1);
+        *self = Self::GivenUp { failures };
+        AdmissionRetryOutcome::GivenUp { failures }
+    }
+
+    fn failures(self) -> u8 {
+        match self {
+            Self::Ready => 0,
+            Self::Backoff { failures, .. } | Self::GivenUp { failures } => failures,
+        }
+    }
+}
+
+struct AdmittedRun {
+    run_store:    fabro_store::RunDatabase,
+    run_dir:      PathBuf,
+    cancel_token: CancellationToken,
 }
 
 impl ManagedRun {
@@ -2633,9 +2703,6 @@ async fn delete_run_internal(
             if let Some(answer_transport) = managed_run.answer_transport.clone() {
                 let _ = answer_transport.cancel_run().await;
             }
-            if let Some(cancel_tx) = managed_run.cancel_tx.take() {
-                let _ = cancel_tx.send(());
-            }
         }
         // Terminal runs can still carry a stale worker ref briefly after their
         // completion events land, so avoid paying the full cancellation grace.
@@ -2887,6 +2954,35 @@ pub(in crate::server) fn counts_toward_scheduler_capacity(status: RunStatus) -> 
     )
 }
 
+fn select_runs_for_admission(
+    runs: &HashMap<RunId, ManagedRun>,
+    max_concurrent_runs: usize,
+    now: Instant,
+) -> Vec<RunId> {
+    let active = runs
+        .values()
+        .filter(|run| counts_toward_scheduler_capacity(run.status))
+        .count();
+    let available = max_concurrent_runs.saturating_sub(active);
+    if available == 0 {
+        return Vec::new();
+    }
+
+    let mut runnable: Vec<_> = runs
+        .iter()
+        .filter(|(_, run)| {
+            run.status == RunStatus::Runnable && run.admission_retry.is_eligible(now)
+        })
+        .map(|(id, run)| (*id, run.created_at))
+        .collect();
+    runnable.sort_by_key(|(_, created_at)| *created_at);
+    runnable
+        .into_iter()
+        .take(available)
+        .map(|(id, _)| id)
+        .collect()
+}
+
 #[allow(
     clippy::result_large_err,
     reason = "Run ID parsing returns HTTP 400 responses directly."
@@ -2982,8 +3078,6 @@ fn clear_live_run_state(run: &mut ManagedRun) {
     run.active_api_targets.clear();
     run.active_steerable_stages.clear();
     run.active_non_steerable_stages.clear();
-    run.event_tx = None;
-    run.cancel_tx = None;
     run.cancel_token = None;
     run.worker_ref = None;
     run.cancel_escalation_worker = None;
@@ -3229,6 +3323,13 @@ async fn alive_refs(state: &AppState, refs: &[WorkerRef]) -> Vec<WorkerRef> {
 
 async fn persist_cancelled_run_status(state: &AppState, run_id: RunId) -> anyhow::Result<()> {
     let run_store = state.stores.runs.open_run(&run_id).await?;
+    persist_cancelled_run_status_to_store(&run_store, run_id).await
+}
+
+async fn persist_cancelled_run_status_to_store(
+    run_store: &fabro_store::RunDatabase,
+    run_id: RunId,
+) -> anyhow::Result<()> {
     let run_state = run_store.state().await?;
     if run_state.status.is_terminal() {
         return Ok(());
@@ -3243,19 +3344,45 @@ async fn persist_cancelled_run_status(state: &AppState, run_id: RunId) -> anyhow
         None,
         None,
     );
-    workflow_event::append_event(&run_store, &run_id, &failure_event).await
+    workflow_event::append_event(run_store, &run_id, &failure_event).await
 }
 
-async fn finish_cancelled_run_before_execution(state: &Arc<AppState>, run_id: RunId) {
-    if let Err(err) = persist_cancelled_run_status(state.as_ref(), run_id).await {
-        error!(run_id = %run_id, error = %err, "Failed to persist cancelled run status");
+async fn finish_cancelled_run_before_execution(
+    state: &Arc<AppState>,
+    run_store: &fabro_store::RunDatabase,
+    run_id: RunId,
+) {
+    let persist_result = persist_cancelled_run_status_to_store(run_store, run_id).await;
+    let durable_status = match run_store.state().await {
+        Ok(projection) => Some(projection.status),
+        Err(err) => {
+            error!(
+                run_id = %run_id,
+                error = %safe_error_chain(&anyhow::Error::new(err)),
+                "Failed to load durable status after pre-launch cancellation"
+            );
+            None
+        }
+    };
+    if !durable_status.is_some_and(RunStatus::is_terminal) {
+        if let Err(err) = &persist_result {
+            error!(
+                run_id = %run_id,
+                error = %safe_error_chain(err),
+                "Failed to persist cancelled run status"
+            );
+        }
     }
 
     let mut runs = state.runs.lock().expect("runs lock poisoned");
     if let Some(managed_run) = runs.get_mut(&run_id) {
-        managed_run.status = RunStatus::Failed {
-            reason: FailureReason::Cancelled,
-        };
+        if let Some(status) = durable_status {
+            managed_run.status = status;
+        } else if persist_result.is_ok() {
+            managed_run.status = RunStatus::Failed {
+                reason: FailureReason::Cancelled,
+            };
+        }
         clear_live_run_state(managed_run);
     }
     drop(runs);
@@ -3267,6 +3394,7 @@ async fn finish_cancelled_run_before_execution(state: &Arc<AppState>, run_id: Ru
 /// disabled by server policy. Returns `true` when the run was rejected.
 async fn reject_run_if_sandbox_provider_disabled(
     state: &Arc<AppState>,
+    run_store: &fabro_store::RunDatabase,
     server_settings: &ServerSettings,
     run_id: RunId,
     settings: &RunNamespace,
@@ -3276,36 +3404,48 @@ async fn reject_run_if_sandbox_provider_disabled(
         return false;
     };
     tracing::warn!(run_id = %run_id, error = %error, "Sandbox provider disabled by server policy");
-    fail_run_before_execution(state, run_id, FailureReason::LaunchFailed, error).await;
+    fail_run_before_execution(
+        state,
+        run_store,
+        run_id,
+        FailureReason::LaunchFailed,
+        WorkflowError::engine(error),
+    )
+    .await;
     true
 }
 
 async fn fail_run_before_execution(
     state: &Arc<AppState>,
+    run_store: &fabro_store::RunDatabase,
     run_id: RunId,
     reason: FailureReason,
-    message: String,
+    error: WorkflowError,
 ) {
-    match state.stores.runs.open_run(&run_id).await {
-        Ok(run_store) => {
-            let failure_event = workflow_event::Event::workflow_run_failed_from_error(
-                &WorkflowError::engine(message.clone()),
-                fabro_types::RunTiming::default(),
-                reason,
-                None,
-                None,
-                None,
-                None,
-            );
-            if let Err(err) =
-                workflow_event::append_event(&run_store, &run_id, &failure_event).await
-            {
-                error!(run_id = %run_id, error = %err, "Failed to persist run failure status");
-            }
+    let message = error.display_with_causes();
+    let failure_event = workflow_event::Event::workflow_run_failed_from_error(
+        &error,
+        fabro_types::RunTiming::default(),
+        reason,
+        None,
+        None,
+        None,
+        None,
+    );
+    if let Err(err) = workflow_event::append_event(run_store, &run_id, &failure_event).await {
+        error!(
+            run_id = %run_id,
+            error = %safe_error_chain(&err),
+            "Failed to persist run failure status"
+        );
+        let mut runs = state.runs.lock().expect("runs lock poisoned");
+        if let Some(managed_run) = runs.get_mut(&run_id) {
+            clear_live_run_state(managed_run);
         }
-        Err(err) => {
-            error!(run_id = %run_id, error = %err, "Failed to open run store while persisting run failure");
-        }
+        drop(runs);
+        cleanup_worker_control_bus_for_run(state.as_ref(), run_id);
+        state.scheduler_notify.notify_one();
+        return;
     }
 
     fail_managed_run(state, run_id, reason, message);
@@ -3349,10 +3489,9 @@ fn managed_run(
         active_api_targets: HashMap::new(),
         active_steerable_stages: HashMap::new(),
         active_non_steerable_stages: HashMap::new(),
-        event_tx: None,
         checkpoint: None,
-        cancel_tx: None,
         cancel_token: None,
+        admission_retry: AdmissionRetryState::Ready,
         worker_ref: None,
         cancel_escalation_worker: None,
         run_dir: Some(run_dir),
@@ -3581,19 +3720,14 @@ async fn fail_worker_launch(
     err: anyhow::Error,
 ) {
     tracing::error!(run_id = %run_id, error = %err, "Failed to spawn worker");
-    let message = format!("Failed to spawn worker: {err}");
-    let failure_event = workflow_event::Event::workflow_run_failed_from_error(
-        &WorkflowError::engine_with_anyhow("Failed to spawn worker", err),
-        fabro_types::RunTiming::default(),
+    fail_run_before_execution(
+        state,
+        run_store,
+        run_id,
         FailureReason::LaunchFailed,
-        None,
-        None,
-        None,
-        None,
-    );
-    let _ = workflow_event::append_event(run_store, &run_id, &failure_event).await;
-    fail_managed_run(state, run_id, FailureReason::LaunchFailed, message);
-    state.scheduler_notify.notify_one();
+        WorkflowError::engine_with_anyhow("Failed to spawn worker", err),
+    )
+    .await;
 }
 
 async fn append_worker_exit_failure(
@@ -3898,6 +4032,265 @@ fn answer_from_request(
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AdmissionErrorClass {
+    Transient(&'static str),
+    Permanent(&'static str),
+}
+
+fn classify_admission_error(error: &anyhow::Error) -> AdmissionErrorClass {
+    let Some(store_error) = error.downcast_ref::<fabro_store::Error>() else {
+        return AdmissionErrorClass::Permanent("unrecognized");
+    };
+    match store_error {
+        fabro_store::Error::Slate(_) => AdmissionErrorClass::Transient("slate"),
+        fabro_store::Error::ObjectStore(_) => AdmissionErrorClass::Transient("object_store"),
+        fabro_store::Error::Sqlite(_) => AdmissionErrorClass::Transient("sqlite"),
+        fabro_store::Error::Io(_) => AdmissionErrorClass::Transient("io"),
+        fabro_store::Error::InvalidEvent(_) => AdmissionErrorClass::Permanent("invalid_event"),
+        fabro_store::Error::EventRejected { .. } => {
+            AdmissionErrorClass::Permanent("event_rejected")
+        }
+        fabro_store::Error::RunNotFound(_) => AdmissionErrorClass::Permanent("run_not_found"),
+        fabro_store::Error::SessionNotFound(_) => {
+            AdmissionErrorClass::Permanent("session_not_found")
+        }
+        fabro_store::Error::SessionAlreadyExists(_) => {
+            AdmissionErrorClass::Permanent("session_already_exists")
+        }
+        fabro_store::Error::ReadOnly => AdmissionErrorClass::Permanent("read_only"),
+        fabro_store::Error::EventSequenceExhausted { .. } => {
+            AdmissionErrorClass::Permanent("event_sequence_exhausted")
+        }
+        fabro_store::Error::InvalidKeySegment { .. } => {
+            AdmissionErrorClass::Permanent("invalid_key_segment")
+        }
+        fabro_store::Error::KeyParse(_) => AdmissionErrorClass::Permanent("key_parse"),
+        fabro_store::Error::RunSummaryMismatch { .. } => {
+            AdmissionErrorClass::Permanent("run_summary_mismatch")
+        }
+        fabro_store::Error::InvalidTransition(_) => {
+            AdmissionErrorClass::Permanent("invalid_transition")
+        }
+        fabro_store::Error::Serde(_) => AdmissionErrorClass::Permanent("serialization"),
+        fabro_store::Error::Other(_) => AdmissionErrorClass::Permanent("internal"),
+    }
+}
+
+fn safe_error_chain(error: &anyhow::Error) -> String {
+    static URL_PATTERN: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r#"https?://[^\s\[\](){}<>\"']+"#)
+            .expect("embedded URL redaction regex should compile")
+    });
+
+    let rendered = render_with_causes(&error.to_string(), &collect_causes(error.as_ref()));
+    let url_safe = URL_PATTERN.replace_all(&rendered, |captures: &regex::Captures<'_>| {
+        DisplaySafeUrl::parse(&captures[0])
+            .map_or_else(|_| "<invalid url>".to_string(), |url| url.redacted_string())
+    });
+    redact_string(&url_safe)
+}
+
+fn projection_failure_message(projection: &RunProjection) -> Option<String> {
+    projection.conclusion.as_ref().and_then(|conclusion| {
+        conclusion.failure.as_ref().map(|failure| {
+            render_compact_with_causes(&failure.detail.message, &failure.detail.causes)
+        })
+    })
+}
+
+fn record_admission_failure(state: &Arc<AppState>, run_id: RunId, error: &anyhow::Error) {
+    let class = classify_admission_error(error);
+    let rendered_error = safe_error_chain(error);
+    let outcome = {
+        let mut runs = state.runs.lock().expect("runs lock poisoned");
+        let Some(managed_run) = runs.get_mut(&run_id) else {
+            return;
+        };
+        if managed_run.status == RunStatus::Starting {
+            managed_run.status = RunStatus::Runnable;
+        }
+        clear_live_run_state(managed_run);
+        match class {
+            AdmissionErrorClass::Transient(_) => managed_run
+                .admission_retry
+                .record_transient_failure(Instant::now()),
+            AdmissionErrorClass::Permanent(_) => {
+                managed_run.admission_retry.record_permanent_failure()
+            }
+        }
+    };
+
+    let error_kind = match class {
+        AdmissionErrorClass::Transient(kind) | AdmissionErrorClass::Permanent(kind) => kind,
+    };
+    match outcome {
+        AdmissionRetryOutcome::Retry { failures, delay } => {
+            warn!(
+                run_id = %run_id,
+                failure_count = failures,
+                max_failures = MAX_ADMISSION_FAILURES,
+                retry_delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX),
+                error_kind,
+                error = %rendered_error,
+                "Run admission claim failed; retrying"
+            );
+        }
+        AdmissionRetryOutcome::GivenUp { failures } => {
+            error!(
+                run_id = %run_id,
+                failure_count = failures,
+                max_failures = MAX_ADMISSION_FAILURES,
+                error_kind,
+                gave_up = true,
+                error = %rendered_error,
+                "Run admission claim failed; giving up"
+            );
+        }
+    }
+    state.scheduler_notify.notify_one();
+}
+
+async fn admit_run(state: &Arc<AppState>, run_id: RunId) -> Option<AdmittedRun> {
+    let (run_dir, cancel_token) = {
+        let mut runs = state.runs.lock().expect("runs lock poisoned");
+        if state.is_shutting_down() {
+            return None;
+        }
+        let managed_run = runs.get_mut(&run_id)?;
+        if managed_run.status != RunStatus::Runnable
+            || !managed_run.admission_retry.is_eligible(Instant::now())
+        {
+            return None;
+        }
+
+        let cancel_token = CancellationToken::new();
+        managed_run.status = RunStatus::Starting;
+        managed_run.cancel_token = Some(cancel_token.clone());
+        (managed_run.run_dir.clone(), cancel_token)
+    };
+
+    let run_store = match state.stores.runs.open_run(&run_id).await {
+        Ok(run_store) => run_store,
+        Err(error) => {
+            record_admission_failure(state, run_id, &anyhow::Error::new(error));
+            return None;
+        }
+    };
+    let run_events = run_store.subscribe();
+    let mut observed_status = None;
+    let mut observed_error = None;
+    let claimed = workflow_event::append_event_if(
+        &run_store,
+        &run_id,
+        &workflow_event::Event::RunStarting,
+        |projection| {
+            if projection.status == RunStatus::Runnable {
+                true
+            } else {
+                observed_status = Some(projection.status);
+                observed_error = projection_failure_message(projection);
+                false
+            }
+        },
+    )
+    .await;
+
+    match claimed {
+        Ok(true) => {
+            let mut runs = state.runs.lock().expect("runs lock poisoned");
+            if let Some(managed_run) = runs.get_mut(&run_id) {
+                managed_run.admission_retry.reset();
+            }
+            drop(runs);
+            tokio::spawn(forward_run_events_to_global(
+                Arc::clone(state),
+                run_id,
+                run_events,
+            ));
+        }
+        Ok(false) => {
+            let mut runs = state.runs.lock().expect("runs lock poisoned");
+            if let Some(managed_run) = runs.get_mut(&run_id) {
+                if let Some(status) = observed_status {
+                    managed_run.status = status;
+                }
+                managed_run.error = observed_error;
+                managed_run.admission_retry.reset();
+                clear_live_run_state(managed_run);
+            }
+            drop(runs);
+            cleanup_worker_control_bus_for_run(state.as_ref(), run_id);
+            state.scheduler_notify.notify_one();
+            return None;
+        }
+        Err(error) => {
+            record_admission_failure(state, run_id, &error);
+            return None;
+        }
+    }
+
+    let Some(run_dir) = run_dir else {
+        fail_run_before_execution(
+            state,
+            &run_store,
+            run_id,
+            FailureReason::WorkflowError,
+            WorkflowError::engine("Run directory is unavailable before execution"),
+        )
+        .await;
+        return None;
+    };
+
+    let projection = match run_store.state().await {
+        Ok(projection) => projection,
+        Err(error) => {
+            fail_run_before_execution(
+                state,
+                &run_store,
+                run_id,
+                FailureReason::WorkflowError,
+                WorkflowError::engine_with_source("Failed to load admitted run state", error),
+            )
+            .await;
+            return None;
+        }
+    };
+    if projection.pending_control == Some(RunControlAction::Cancel) || cancel_token.is_cancelled() {
+        finish_cancelled_run_before_execution(state, &run_store, run_id).await;
+        return None;
+    }
+
+    Some(AdmittedRun {
+        run_store,
+        run_dir,
+        cancel_token,
+    })
+}
+
+fn execution_mode_for_run(state: &AppState, run_id: RunId) -> Option<RunExecutionMode> {
+    state
+        .runs
+        .lock()
+        .expect("runs lock poisoned")
+        .get(&run_id)
+        .map(|managed_run| managed_run.execution_mode)
+}
+
+fn launch_is_allowed(state: &AppState, run_id: RunId, cancel_token: &CancellationToken) -> bool {
+    if cancel_token.is_cancelled() {
+        return false;
+    }
+    let runs = state.runs.lock().expect("runs lock poisoned");
+    runs.get(&run_id).is_some_and(|managed_run| {
+        managed_run.status == RunStatus::Starting
+            && managed_run
+                .cancel_token
+                .as_ref()
+                .is_some_and(|token| !token.is_cancelled())
+    })
+}
+
 /// Execute a single run: transitions runnable → starting → running →
 /// completed/failed/cancelled.
 async fn execute_run(state: Arc<AppState>, run_id: RunId) {
@@ -3905,53 +4298,44 @@ async fn execute_run(state: Arc<AppState>, run_id: RunId) {
         return;
     }
 
+    let Some(admitted) = Box::pin(admit_run(&state, run_id)).await else {
+        return;
+    };
+
     if state.registry_factory_override.is_some() {
-        Box::pin(execute_run_in_process(state, run_id)).await;
+        Box::pin(execute_run_in_process(state, run_id, admitted)).await;
         return;
     }
 
-    Box::pin(execute_run_subprocess(state, run_id)).await;
+    Box::pin(execute_run_subprocess(state, run_id, admitted)).await;
 }
 
-async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
-    // Transition to Starting and set up cancel infrastructure
-    let (cancel_rx, run_dir, event_tx, cancel_token, execution_mode) = {
-        let mut runs = state.runs.lock().expect("runs lock poisoned");
-        let managed_run = match runs.get_mut(&run_id) {
-            Some(r) if r.status == RunStatus::Runnable => r,
-            _ => return,
-        };
-        let Some(run_dir) = managed_run.run_dir.clone() else {
-            return;
-        };
-
-        let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
-        let cancel_token = CancellationToken::new();
-        let (event_tx, _) = broadcast::channel(256);
-
-        managed_run.status = RunStatus::Starting;
-        managed_run.cancel_tx = Some(cancel_tx);
-        managed_run.cancel_token = Some(cancel_token.clone());
-        managed_run.event_tx = Some(event_tx);
-
-        (
-            cancel_rx,
-            run_dir,
-            managed_run.event_tx.clone(),
-            cancel_token,
-            managed_run.execution_mode,
+async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId, admitted: AdmittedRun) {
+    let AdmittedRun {
+        run_store,
+        run_dir,
+        cancel_token,
+    } = admitted;
+    if !launch_is_allowed(state.as_ref(), run_id, &cancel_token) {
+        finish_cancelled_run_before_execution(&state, &run_store, run_id).await;
+        return;
+    }
+    let Some(execution_mode) = execution_mode_for_run(state.as_ref(), run_id) else {
+        fail_run_before_execution(
+            &state,
+            &run_store,
+            run_id,
+            FailureReason::WorkflowError,
+            WorkflowError::engine("Managed run disappeared before in-process execution"),
         )
+        .await;
+        return;
     };
 
     // Create interviewer and event plumbing (this is the "provisioning" phase)
     let interviewer = Arc::new(ControlInterviewer::new());
     let interview_runtime: Arc<dyn Interviewer> = interviewer.clone();
     let emitter = Emitter::new(run_id);
-    if let Some(tx_clone) = event_tx {
-        emitter.on_event(move |event| {
-            let _ = tx_clone.send(event.clone());
-        });
-    }
     let registry_override = state
         .registry_factory_override
         .as_ref()
@@ -3959,12 +4343,12 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
     let emitter = Arc::new(emitter);
     let steering_hub = Arc::new(fabro_workflow::SteeringHub::new(Arc::clone(&emitter)));
 
-    // Transition to Running, populate interviewer
+    // Publish the in-process control transport while preserving Starting
+    // until the workflow emits its durable Running event.
     let cancelled_during_setup = {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
         if let Some(managed_run) = runs.get_mut(&run_id) {
-            if managed_run.status == RunStatus::Starting {
-                managed_run.status = RunStatus::Running;
+            if managed_run.status == RunStatus::Starting && !cancel_token.is_cancelled() {
                 managed_run.answer_transport = Some(RunAnswerTransport::InProcess {
                     interviewer:  Arc::clone(&interviewer),
                     steering_hub: Arc::clone(&steering_hub),
@@ -3977,46 +4361,23 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
                 true
             }
         } else {
-            false
+            true
         }
     };
     if cancelled_during_setup {
-        if let Err(err) = persist_cancelled_run_status(state.as_ref(), run_id).await {
-            error!(run_id = %run_id, error = %err, "Failed to persist cancelled run status");
-        }
+        finish_cancelled_run_before_execution(&state, &run_store, run_id).await;
         return;
     }
-
-    let run_store = match state.stores.runs.open_run(&run_id).await {
-        Ok(run_store) => run_store,
-        Err(e) => {
-            tracing::error!(run_id = %run_id, error = %e, "Failed to open run store");
-            let mut runs = state.runs.lock().expect("runs lock poisoned");
-            if let Some(managed_run) = runs.get_mut(&run_id) {
-                managed_run.status = RunStatus::Failed {
-                    reason: FailureReason::WorkflowError,
-                };
-                managed_run.error = Some(format!("Failed to open run store: {e}"));
-                clear_live_run_state(managed_run);
-            }
-            state.scheduler_notify.notify_one();
-            return;
-        }
-    };
-    tokio::spawn(forward_run_events_to_global(
-        Arc::clone(&state),
-        run_id,
-        run_store.subscribe(),
-    ));
     let persisted = match Persisted::load_from_store(&run_store.clone().into(), &run_dir).await {
         Ok(persisted) => persisted,
         Err(e) => {
             tracing::error!(run_id = %run_id, error = %e, "Failed to load persisted run");
             fail_run_before_execution(
                 &state,
+                &run_store,
                 run_id,
                 FailureReason::WorkflowError,
-                format!("Failed to load persisted run: {e}"),
+                WorkflowError::engine_with_source("Failed to load persisted run", e),
             )
             .await;
             return;
@@ -4025,11 +4386,12 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
     let server_settings = state.server_settings();
     let github_settings = &server_settings.server.integrations.github;
     if cancel_token.is_cancelled() {
-        finish_cancelled_run_before_execution(&state, run_id).await;
+        finish_cancelled_run_before_execution(&state, &run_store, run_id).await;
         return;
     }
     if reject_run_if_sandbox_provider_disabled(
         &state,
+        &run_store,
         &server_settings,
         run_id,
         &persisted.run_spec().settings.run,
@@ -4070,15 +4432,16 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
         Ok(github_app) => github_app,
         Err(e) => {
             if cancel_token.is_cancelled() {
-                finish_cancelled_run_before_execution(&state, run_id).await;
+                finish_cancelled_run_before_execution(&state, &run_store, run_id).await;
                 return;
             }
             tracing::error!(run_id = %run_id, error = %e, "Invalid GitHub credentials");
             fail_run_before_execution(
                 &state,
+                &run_store,
                 run_id,
                 FailureReason::WorkflowError,
-                format!("Invalid GitHub credentials: {e}"),
+                WorkflowError::engine_with_source("Invalid GitHub credentials", e),
             )
             .await;
             return;
@@ -4101,9 +4464,10 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
             );
             fail_run_before_execution(
                 &state,
+                &run_store,
                 run_id,
                 FailureReason::WorkflowError,
-                format!("Failed to resolve GitHub permissions: {err}"),
+                WorkflowError::engine_with_source("Failed to resolve GitHub permissions", err),
             )
             .await;
             return;
@@ -4115,9 +4479,10 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
             tracing::error!(run_id = %run_id, error = ?err, "Loading run secrets failed");
             fail_run_before_execution(
                 &state,
+                &run_store,
                 run_id,
                 FailureReason::WorkflowError,
-                "Loading run secrets failed".to_string(),
+                WorkflowError::engine_with_source("Loading run secrets failed", err),
             )
             .await;
             return;
@@ -4142,6 +4507,11 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
         fabro_run_tools: None,
     };
 
+    if !launch_is_allowed(state.as_ref(), run_id, &cancel_token) {
+        finish_cancelled_run_before_execution(&state, &run_store, run_id).await;
+        return;
+    }
+
     let execution = async {
         match execution_mode {
             RunExecutionMode::Start => operations::start(&run_dir, services).await,
@@ -4151,14 +4521,11 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
 
     let result = tokio::select! {
         result = execution => ExecutionResult::Completed(Box::new(result)),
-        _ = cancel_rx => {
-            cancel_token.cancel();
-            ExecutionResult::CancelledBySignal
-        }
+        () = cancel_token.cancelled() => ExecutionResult::CancelledBySignal,
     };
 
     if matches!(&result, ExecutionResult::CancelledBySignal) {
-        if let Err(err) = persist_cancelled_run_status(state.as_ref(), run_id).await {
+        if let Err(err) = persist_cancelled_run_status_to_store(&run_store, run_id).await {
             error!(run_id = %run_id, error = %err, "Failed to persist cancelled run status");
         }
     }
@@ -4236,60 +4603,51 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
     state.scheduler_notify.notify_one();
 }
 
-async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
-    let (run_dir, execution_mode) = {
-        let mut runs = state.runs.lock().expect("runs lock poisoned");
-        if state.is_shutting_down() {
-            return;
-        }
-        let managed_run = match runs.get_mut(&run_id) {
-            Some(run) if run.status == RunStatus::Runnable => run,
-            _ => return,
-        };
-        let Some(run_dir) = managed_run.run_dir.clone() else {
-            return;
-        };
-        managed_run.status = RunStatus::Starting;
-        (run_dir, managed_run.execution_mode)
+async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId, admitted: AdmittedRun) {
+    let AdmittedRun {
+        run_store,
+        run_dir,
+        cancel_token,
+    } = admitted;
+    if !launch_is_allowed(state.as_ref(), run_id, &cancel_token) {
+        finish_cancelled_run_before_execution(&state, &run_store, run_id).await;
+        return;
+    }
+    let Some(execution_mode) = execution_mode_for_run(state.as_ref(), run_id) else {
+        fail_run_before_execution(
+            &state,
+            &run_store,
+            run_id,
+            FailureReason::WorkflowError,
+            WorkflowError::engine("Managed run disappeared before subprocess execution"),
+        )
+        .await;
+        return;
     };
-
-    let run_store = match state.stores.runs.open_run(&run_id).await {
-        Ok(run_store) => run_store,
-        Err(err) => {
-            tracing::error!(run_id = %run_id, error = %err, "Failed to open run store");
-            fail_managed_run(
-                &state,
-                run_id,
-                FailureReason::WorkflowError,
-                format!("Failed to open run store: {err}"),
-            );
-            state.scheduler_notify.notify_one();
-            return;
-        }
-    };
-    tokio::spawn(forward_run_events_to_global(
-        Arc::clone(&state),
-        run_id,
-        run_store.subscribe(),
-    ));
 
     let run_state = match run_store.state().await {
         Ok(run_state) => run_state,
         Err(err) => {
             tracing::error!(run_id = %run_id, error = %err, "Failed to load run state");
-            fail_managed_run(
+            fail_run_before_execution(
                 &state,
+                &run_store,
                 run_id,
                 FailureReason::WorkflowError,
-                format!("Failed to load run state: {err}"),
-            );
-            state.scheduler_notify.notify_one();
+                WorkflowError::engine_with_source("Failed to load run state", err),
+            )
+            .await;
             return;
         }
     };
     let agent_fabro_tools_enabled = run_state.spec.settings.run.agent.fabro_tools;
+    if cancel_token.is_cancelled() {
+        finish_cancelled_run_before_execution(&state, &run_store, run_id).await;
+        return;
+    }
     if reject_run_if_sandbox_provider_disabled(
         &state,
+        &run_store,
         &state.server_settings(),
         run_id,
         &run_state.spec.settings.run,
@@ -4304,15 +4662,19 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
         Err(err) => {
             fail_run_before_execution(
                 &state,
+                &run_store,
                 run_id,
                 FailureReason::WorkflowError,
-                "Loading worker secrets failed".to_string(),
+                WorkflowError::engine_with_source("Loading worker secrets failed", err),
             )
             .await;
-            tracing::error!(run_id = %run_id, error = ?err, "Loading worker secrets failed");
             return;
         }
     };
+    if cancel_token.is_cancelled() {
+        finish_cancelled_run_before_execution(&state, &run_store, run_id).await;
+        return;
+    }
     let state_for_build = Arc::clone(&state);
     let run_dir_for_build = run_dir.clone();
     let start_result = spawn_blocking(move || {
@@ -4329,10 +4691,28 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
     .context("worker_launch_spec task failed")
     .and_then(|inner| inner);
 
-    let launch_result = match start_result {
-        Ok(spec) => state.worker_runtime.start(spec).await,
-        Err(err) => Err(err),
+    let spec = match start_result {
+        Ok(spec) => spec,
+        Err(err) => {
+            fail_run_before_execution(
+                &state,
+                &run_store,
+                run_id,
+                FailureReason::LaunchFailed,
+                WorkflowError::engine_with_anyhow(
+                    "Failed to build worker launch specification",
+                    err,
+                ),
+            )
+            .await;
+            return;
+        }
     };
+    if !launch_is_allowed(state.as_ref(), run_id, &cancel_token) {
+        finish_cancelled_run_before_execution(&state, &run_store, run_id).await;
+        return;
+    }
+    let launch_result = state.worker_runtime.start(spec).await;
     let started_worker = match launch_result {
         Ok(worker) => worker,
         Err(err) => {
@@ -4352,6 +4732,14 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
                 bus: Arc::clone(&state.worker_control_bus),
             });
         }
+    }
+    if cancel_token.is_cancelled() {
+        state.worker_runtime.request_stop(&worker_ref).await;
+        handler::lifecycle::schedule_worker_cancel_escalation(
+            Arc::clone(&state),
+            run_id,
+            worker_ref.clone(),
+        );
     }
 
     let stderr_task = tokio::spawn(drain_worker_stderr(run_id, started_worker.stderr));
@@ -4469,26 +4857,7 @@ pub fn spawn_scheduler(state: Arc<AppState>) {
             }
             let runs_to_start = {
                 let runs = state.runs.lock().expect("runs lock poisoned");
-                let active = runs
-                    .values()
-                    .filter(|r| counts_toward_scheduler_capacity(r.status))
-                    .count();
-                let available = state.max_concurrent_runs.saturating_sub(active);
-                if available == 0 {
-                    Vec::new()
-                } else {
-                    let mut runnable: Vec<_> = runs
-                        .iter()
-                        .filter(|(_, r)| r.status == RunStatus::Runnable)
-                        .map(|(id, r)| (*id, r.created_at))
-                        .collect();
-                    runnable.sort_by_key(|(_, created_at)| *created_at);
-                    runnable
-                        .into_iter()
-                        .take(available)
-                        .map(|(id, _)| id)
-                        .collect::<Vec<_>>()
-                }
+                select_runs_for_admission(&runs, state.max_concurrent_runs, Instant::now())
             };
             for id in runs_to_start {
                 if state.is_shutting_down() {
