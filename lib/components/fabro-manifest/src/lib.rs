@@ -6,7 +6,7 @@
 mod working_tree;
 
 use std::collections::HashMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use fabro_api::types;
@@ -21,7 +21,7 @@ use fabro_graphviz::graph::AttrValue;
 use fabro_graphviz::parser;
 use fabro_types::settings::interp::InterpString;
 use fabro_types::settings::run::{ApprovalMode, ResolvedGoalSource, ResolvedRunGoal, RunMode};
-use fabro_types::{DirtyStatus, GitContext, ManifestPath, WorkflowSettings};
+use fabro_types::{DirtyStatus, GitContext, WorkflowSettings};
 use fabro_workflow::git::{
     GitSyncStatus, branch_needs_push, head_sha, push_branch_noninteractive, sync_status,
 };
@@ -29,7 +29,7 @@ use fabro_workflow::static_reference::ReferenceKind;
 
 use crate::working_tree::{
     CollectWorkingTreeInput, CollectedDocument, CollectedFileReferenceType, CollectedSourceInput,
-    CollectedWorkingTree,
+    CollectedWorkingTree, manifest_path_from_absolute, normalize_absolute_path,
 };
 
 #[derive(Debug, Default)]
@@ -137,16 +137,13 @@ pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
     }
     let project_config = discover_project_config(&root_location.dir)?;
     let project_config_source = project_config
-        .as_ref()
-        .map(|path| {
-            let source = std::fs::read_to_string(path)
-                .with_context(|| format!("Failed to read {}", path.display()))?;
-            Ok::<_, anyhow::Error>(CollectedSourceInput {
-                access_path: path.clone(),
-                source,
-            })
-        })
+        .as_deref()
+        .map(read_source_input)
         .transpose()?;
+    let user_settings_path = input
+        .user_settings_path
+        .as_deref()
+        .filter(|path| path.is_file());
 
     let mut workflow_settings_builder = WorkflowSettingsBuilder::new()
         .server_manifest_defaults(RunLayer::default(), input.environment_defaults.clone());
@@ -162,11 +159,7 @@ pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
     if let Some(path) = project_config.as_ref() {
         workflow_settings_builder = workflow_settings_builder.project_file(path)?;
     }
-    if let Some(path) = input
-        .user_settings_path
-        .as_ref()
-        .filter(|path| path.is_file())
-    {
+    if let Some(path) = user_settings_path {
         workflow_settings_builder = workflow_settings_builder.user_file(path)?;
     }
     let mut workflow_settings = workflow_settings_builder
@@ -174,19 +167,7 @@ pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
         .context("failed to resolve manifest settings")?;
     workflow_settings.run.inputs.extend(input.input_overrides);
     let target_path = root_location.graph.clone();
-    let user_config_source = input
-        .user_settings_path
-        .as_ref()
-        .filter(|path| path.is_file())
-        .map(|path| {
-            let source = std::fs::read_to_string(path)
-                .with_context(|| format!("Failed to read {}", path.display()))?;
-            Ok::<_, anyhow::Error>(CollectedSourceInput {
-                access_path: path.clone(),
-                source,
-            })
-        })
-        .transpose()?;
+    let user_config_source = user_settings_path.map(read_source_input).transpose()?;
     let collected = working_tree::collect_working_tree(CollectWorkingTreeInput {
         cwd: &input.cwd,
         root_location,
@@ -194,7 +175,7 @@ pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
         project_config: project_config_source,
         user_config: user_config_source,
     })?;
-    let assembled = assemble_current_manifest(&collected, &input.cwd)?;
+    let assembled = assemble_current_manifest(collected, &input.cwd)?;
 
     let working_directory =
         project::resolve_working_directory_from_run(&workflow_settings.run, &input.cwd);
@@ -238,72 +219,63 @@ struct AssembledCurrentManifest {
 }
 
 fn assemble_current_manifest(
-    collected: &CollectedWorkingTree,
+    collected: CollectedWorkingTree,
     cwd: &Path,
 ) -> Result<AssembledCurrentManifest> {
+    let root = collected
+        .workflows
+        .get(&collected.entrypoint)
+        .ok_or_else(|| anyhow!("root workflow missing from collected working tree"))?;
+    let target_key = manifest_path_from_absolute(&root.graph.access_path, cwd)?.to_string();
+    let root_source = root.graph.source.clone();
+
     let mut workflows = HashMap::new();
-    for workflow in collected.workflows().values() {
-        let graph = workflow.graph();
-        let graph_key = manifest_path_from_absolute(graph.access_path(), cwd)?.to_string();
+    for workflow in collected.workflows.into_values() {
+        let graph_key = manifest_path_from_absolute(&workflow.graph.access_path, cwd)?.to_string();
         let config = workflow
-            .config()
+            .config
             .map(|config| {
                 Ok::<_, anyhow::Error>(types::ManifestWorkflowConfig {
-                    path:   manifest_path_from_absolute(config.access_path(), cwd)?.to_string(),
-                    source: config.source().to_owned(),
+                    path:   manifest_path_from_absolute(&config.access_path, cwd)?.to_string(),
+                    source: config.source,
                 })
             })
             .transpose()?;
         let mut files = HashMap::new();
-        for file in workflow.files().values() {
-            let document = file.document();
-            let reference = file.reference();
-            let key = manifest_path_from_absolute(document.access_path(), cwd)?.to_string();
-            let from = reference
-                .source_access_path()
+        for file in workflow.files.into_values() {
+            let key = manifest_path_from_absolute(&file.document.access_path, cwd)?.to_string();
+            let from = file
+                .reference
+                .from_access_path
+                .as_deref()
                 .map(|path| manifest_path_from_absolute(path, cwd).map(|path| path.to_string()))
                 .transpose()?;
-            let type_ = match reference.type_() {
+            let type_ = match file.reference.type_ {
                 CollectedFileReferenceType::FileInline => types::ManifestFileRefType::FileInline,
                 CollectedFileReferenceType::Import => types::ManifestFileRefType::Import,
                 CollectedFileReferenceType::Dockerfile => types::ManifestFileRefType::Dockerfile,
             };
             files.insert(key, types::ManifestFileEntry {
-                content: document.source().to_owned(),
+                content: file.document.source,
                 ref_:    types::ManifestFileRef {
                     from,
-                    original: reference.original().to_owned(),
+                    original: file.reference.original,
                     type_,
                 },
             });
         }
         workflows.insert(graph_key, types::ManifestWorkflow {
-            source: graph.source().to_owned(),
+            source: workflow.graph.source,
             config,
             files,
         });
     }
 
-    let target_key = manifest_path_from_absolute(
-        collected
-            .workflows()
-            .get(collected.entrypoint())
-            .ok_or_else(|| anyhow!("root workflow missing from collected working tree"))?
-            .graph()
-            .access_path(),
-        cwd,
-    )?
-    .to_string();
-    let root_source = workflows
-        .get(&target_key)
-        .map(|workflow| workflow.source.clone())
-        .ok_or_else(|| anyhow!("root workflow missing from manifest bundle"))?;
-
     let mut configs = Vec::new();
-    if let Some(config) = collected.project_config() {
+    if let Some(config) = collected.project_config {
         configs.push(manifest_config(config, types::ManifestConfigType::Project));
     }
-    if let Some(config) = collected.user_config() {
+    if let Some(config) = collected.user_config {
         configs.push(manifest_config(config, types::ManifestConfigType::User));
     }
 
@@ -316,14 +288,23 @@ fn assemble_current_manifest(
 }
 
 fn manifest_config(
-    document: &CollectedDocument,
+    document: CollectedDocument,
     type_: types::ManifestConfigType,
 ) -> types::ManifestConfig {
     types::ManifestConfig {
-        path: Some(document.access_path().display().to_string()),
-        source: Some(document.source().to_owned()),
+        path: Some(document.access_path.display().to_string()),
+        source: Some(document.source),
         type_,
     }
+}
+
+fn read_source_input(path: &Path) -> Result<CollectedSourceInput> {
+    let source = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+    Ok(CollectedSourceInput {
+        access_path: path.to_path_buf(),
+        source,
+    })
 }
 
 fn resolve_manifest_goal(
@@ -489,32 +470,6 @@ fn push_manifest_branch_best_effort(
     }
 
     let _ = push_branch_noninteractive(repo_path, "origin", branch);
-}
-
-fn normalize_absolute_path(base_dir: &Path, reference: &str) -> Option<PathBuf> {
-    let path = Path::new(reference);
-    if path.is_absolute() || reference.starts_with('~') {
-        return None;
-    }
-
-    let mut normalized = PathBuf::new();
-    for component in base_dir.join(path).components() {
-        match component {
-            Component::CurDir => {}
-            Component::Normal(part) => normalized.push(part),
-            Component::ParentDir => {
-                normalized.pop();
-            }
-            Component::RootDir => normalized.push(Path::new("/")),
-            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
-        }
-    }
-    Some(normalized)
-}
-
-fn manifest_path_from_absolute(path: &Path, cwd: &Path) -> Result<ManifestPath> {
-    ManifestPath::from_absolute(path, cwd)
-        .ok_or_else(|| anyhow!("Failed to compute manifest path for {}", path.display()))
 }
 
 pub fn manifest_args_is_empty(args: &types::ManifestArgs) -> bool {

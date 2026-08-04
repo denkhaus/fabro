@@ -18,8 +18,6 @@ use fabro_workflow::static_reference::{
     AttributeScope, ReferenceKind, reference_kind_for_attribute,
 };
 
-use super::{manifest_path_from_absolute, normalize_absolute_path};
-
 pub(super) struct CollectWorkingTreeInput<'a> {
     pub(super) cwd:            &'a Path,
     pub(super) root_location:  WorkflowLocation,
@@ -35,82 +33,30 @@ pub(super) struct CollectedSourceInput {
 
 #[derive(Clone, Debug)]
 pub(super) struct CollectedWorkingTree {
-    entrypoint:     CollectedPath,
-    workflows:      BTreeMap<CollectedPath, CollectedWorkflow>,
-    project_config: Option<CollectedDocument>,
-    user_config:    Option<CollectedDocument>,
-}
-
-impl CollectedWorkingTree {
-    pub(super) fn entrypoint(&self) -> &CollectedPath {
-        &self.entrypoint
-    }
-
-    pub(super) fn workflows(&self) -> &BTreeMap<CollectedPath, CollectedWorkflow> {
-        &self.workflows
-    }
-
-    pub(super) fn project_config(&self) -> Option<&CollectedDocument> {
-        self.project_config.as_ref()
-    }
-
-    pub(super) fn user_config(&self) -> Option<&CollectedDocument> {
-        self.user_config.as_ref()
-    }
+    pub(super) entrypoint:     CollectedPath,
+    pub(super) workflows:      BTreeMap<CollectedPath, CollectedWorkflow>,
+    pub(super) project_config: Option<CollectedDocument>,
+    pub(super) user_config:    Option<CollectedDocument>,
 }
 
 #[derive(Clone, Debug)]
 pub(super) struct CollectedWorkflow {
-    graph:  CollectedDocument,
-    config: Option<CollectedDocument>,
-    files:  BTreeMap<CollectedPath, CollectedFile>,
-}
-
-impl CollectedWorkflow {
-    pub(super) fn graph(&self) -> &CollectedDocument {
-        &self.graph
-    }
-
-    pub(super) fn config(&self) -> Option<&CollectedDocument> {
-        self.config.as_ref()
-    }
-
-    pub(super) fn files(&self) -> &BTreeMap<CollectedPath, CollectedFile> {
-        &self.files
-    }
+    pub(super) graph:  CollectedDocument,
+    pub(super) config: Option<CollectedDocument>,
+    pub(super) files:  BTreeMap<CollectedPath, CollectedFile>,
 }
 
 #[derive(Clone, Debug)]
 pub(super) struct CollectedDocument {
-    access_path: PathBuf,
-    path:        CollectedPath,
-    source:      String,
-}
-
-impl CollectedDocument {
-    pub(super) fn access_path(&self) -> &Path {
-        &self.access_path
-    }
-
-    pub(super) fn source(&self) -> &str {
-        &self.source
-    }
+    pub(super) access_path: PathBuf,
+    pub(super) path:        CollectedPath,
+    pub(super) source:      String,
 }
 
 #[derive(Clone, Debug)]
 pub(super) struct CollectedFile {
-    document:  CollectedDocument,
-    reference: CollectedFileReference,
-}
-
-impl CollectedFile {
-    pub(super) fn document(&self) -> &CollectedDocument {
-        &self.document
-    }
-
-    pub(super) fn reference(&self) -> &CollectedFileReference {
-        &self.reference
-    }
+    pub(super) document:  CollectedDocument,
+    pub(super) reference: CollectedFileReference,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -122,23 +68,9 @@ pub(super) enum CollectedFileReferenceType {
 
 #[derive(Clone, Debug)]
 pub(super) struct CollectedFileReference {
-    type_:            CollectedFileReferenceType,
-    original:         String,
-    from_access_path: Option<PathBuf>,
-}
-
-impl CollectedFileReference {
-    pub(super) fn type_(&self) -> CollectedFileReferenceType {
-        self.type_
-    }
-
-    pub(super) fn original(&self) -> &str {
-        &self.original
-    }
-
-    pub(super) fn source_access_path(&self) -> Option<&Path> {
-        self.from_access_path.as_deref()
-    }
+    pub(super) type_:            CollectedFileReferenceType,
+    pub(super) original:         String,
+    pub(super) from_access_path: Option<PathBuf>,
 }
 
 /// A canonical virtual coordinate inside one collected working-tree closure.
@@ -379,15 +311,15 @@ impl<'a> CollectionDraft<'a> {
         files: &mut BTreeMap<String, DraftFile>,
         visited_imports: &mut HashSet<String>,
     ) -> Result<()> {
-        let graph_document = self.document(graph_document_id).clone();
-        let graph = parser::parse(&graph_document.source)
-            .with_context(|| format!("Failed to parse {}", graph_document.access_path.display()))?;
-        let workflow_base_dir = graph_document
-            .access_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."));
-        let graph_manifest_path =
-            manifest_path_from_absolute(&graph_document.access_path, &self.cwd)?;
+        let graph = parser::parse(&self.document(graph_document_id).source).with_context(|| {
+            format!(
+                "Failed to parse {}",
+                self.document(graph_document_id).access_path.display()
+            )
+        })?;
+        let graph_access_path = self.document(graph_document_id).access_path.clone();
+        let workflow_base_dir = graph_access_path.parent().unwrap_or_else(|| Path::new("."));
+        let graph_manifest_path = manifest_path_from_absolute(&graph_access_path, &self.cwd)?;
         let workflow_template_root = manifest_parent_or_dot(&graph_manifest_path)?;
 
         if let Some(goal_reference) = graph.attrs.get("goal").and_then(AttrValue::as_str) {
@@ -400,17 +332,10 @@ impl<'a> CollectionDraft<'a> {
                     manifest_attr_reference_kind(AttributeScope::Graph, "goal", goal_reference)?,
                     graph_document_id,
                 )?;
-                let source = self.document(bundled).source.clone();
-                let bundled_manifest_path =
-                    manifest_path_from_absolute(&self.document(bundled).access_path, &self.cwd)?;
-                let template_root = template_root_for_bundled_file(
-                    &bundled_manifest_path,
-                    &workflow_template_root,
-                )?;
-                self.collect_template_include_files(
+                self.collect_bundled_template_includes(
                     files,
-                    TemplateSource::new(bundled_manifest_path, template_root, source),
                     bundled,
+                    &workflow_template_root,
                     graph_document_id,
                 )?;
             } else {
@@ -469,19 +394,10 @@ impl<'a> CollectionDraft<'a> {
                 )?;
 
                 if name == "prompt" {
-                    let source = self.document(bundled).source.clone();
-                    let bundled_manifest_path = manifest_path_from_absolute(
-                        &self.document(bundled).access_path,
-                        &self.cwd,
-                    )?;
-                    let template_root = template_root_for_bundled_file(
-                        &bundled_manifest_path,
-                        &workflow_template_root,
-                    )?;
-                    self.collect_template_include_files(
+                    self.collect_bundled_template_includes(
                         files,
-                        TemplateSource::new(bundled_manifest_path, template_root, source),
                         bundled,
+                        &workflow_template_root,
                         graph_document_id,
                     )?;
                 }
@@ -532,6 +448,28 @@ impl<'a> CollectionDraft<'a> {
         }
 
         Ok(())
+    }
+
+    /// Collects the template dependency closure of an already-bundled
+    /// `@`-referenced file (a goal or prompt document).
+    fn collect_bundled_template_includes(
+        &mut self,
+        files: &mut BTreeMap<String, DraftFile>,
+        bundled: DocumentId,
+        workflow_template_root: &ManifestPath,
+        from_document: DocumentId,
+    ) -> Result<()> {
+        let document = self.document(bundled);
+        let source = document.source.clone();
+        let bundled_manifest_path = manifest_path_from_absolute(&document.access_path, &self.cwd)?;
+        let template_root =
+            template_root_for_bundled_file(&bundled_manifest_path, workflow_template_root)?;
+        self.collect_template_include_files(
+            files,
+            TemplateSource::new(bundled_manifest_path, template_root, source),
+            bundled,
+            from_document,
+        )
     }
 
     fn collect_template_include_files(
@@ -611,10 +549,10 @@ impl<'a> CollectionDraft<'a> {
             .iter()
             .map(|(path, source)| (path.clone(), source.content.clone()))
             .collect::<HashMap<_, _>>();
-        for file in files.values() {
-            let document = self.document(file.document);
-            let path = manifest_path_from_absolute(&document.access_path, &self.cwd)?;
-            bundled_files.insert(path, document.source.clone());
+        for (key, file) in files {
+            let path = ManifestPath::from_wire(key)
+                .ok_or_else(|| anyhow!("invalid collected file key: {key}"))?;
+            bundled_files.insert(path, self.document(file.document).source.clone());
         }
         let allowed = bundled_files.keys().cloned().collect();
         let store =
@@ -640,13 +578,13 @@ impl<'a> CollectionDraft<'a> {
         config: DocumentId,
         files: &mut BTreeMap<String, DraftFile>,
     ) -> Result<()> {
-        let config_document = self.document(config).clone();
-        let layer = config_document
+        let layer = self
+            .document(config)
             .source
             .parse::<SettingsLayer>()
             .context("Failed to parse run config TOML")?;
-        let base_dir = config_document
-            .access_path
+        let config_access_path = self.document(config).access_path.clone();
+        let base_dir = config_access_path
             .parent()
             .unwrap_or_else(|| Path::new("."));
 
@@ -708,7 +646,6 @@ impl<'a> CollectionDraft<'a> {
 
         let access_path = normalize_absolute_path(base_dir, reference)
             .ok_or_else(|| anyhow!("unsupported manifest reference: {reference}"))?;
-        let access_path = lexically_normalize_access_path(&access_path);
         let manifest_path = manifest_path_from_absolute(&access_path, &self.cwd)?;
         let key = manifest_path.to_string();
         let provisional_path = virtual_reference_path(
@@ -756,7 +693,7 @@ impl<'a> CollectionDraft<'a> {
         project_config: Option<DocumentId>,
         user_config: Option<DocumentId>,
     ) -> Result<CollectedWorkingTree> {
-        let documents = CollectionNamespace::finalize(self.documents)?;
+        let documents = finalize_documents(self.documents)?;
         let mut workflows = BTreeMap::new();
         for workflow in self.workflows.into_values() {
             let graph = documents[workflow.graph.0].clone();
@@ -795,85 +732,71 @@ impl<'a> CollectionDraft<'a> {
     }
 }
 
-struct CollectionNamespace {
-    physical_to_virtual: BTreeMap<PathBuf, CollectedPath>,
-    virtual_to_physical: BTreeMap<CollectedPath, PathBuf>,
-}
-
-impl CollectionNamespace {
-    fn finalize(drafts: Vec<DraftDocument>) -> Result<Vec<CollectedDocument>> {
-        let mut deficits = BTreeMap::<ComponentRole, usize>::new();
-        for draft in &drafts {
-            let deficit = leading_parent_count(&draft.provisional_path);
-            deficits
-                .entry(draft.component)
-                .and_modify(|current| *current = (*current).max(deficit))
-                .or_insert(deficit);
-        }
-
-        let paths = drafts
-            .iter()
-            .map(|draft| {
-                finalize_component_path(
-                    &draft.provisional_path,
-                    draft.component,
-                    deficits.get(&draft.component).copied().unwrap_or_default(),
-                )
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        let mut order = (0..drafts.len()).collect::<Vec<_>>();
-        order.sort_by(|left, right| {
-            paths[*left]
-                .cmp(&paths[*right])
-                .then_with(|| drafts[*left].access_path.cmp(&drafts[*right].access_path))
-        });
-
-        let mut namespace = Self {
-            physical_to_virtual: BTreeMap::new(),
-            virtual_to_physical: BTreeMap::new(),
-        };
-        for index in order {
-            let physical =
-                std::fs::canonicalize(&drafts[index].access_path).with_context(|| {
-                    format!(
-                        "failed to identify collected file {}",
-                        drafts[index].access_path.display()
-                    )
-                })?;
-            namespace.register(physical, paths[index].clone())?;
-        }
-
-        Ok(drafts
-            .into_iter()
-            .zip(paths)
-            .map(|(draft, path)| CollectedDocument {
-                access_path: draft.access_path,
-                path,
-                source: draft.source,
-            })
-            .collect())
+/// Finalizes draft documents into collected documents, rejecting conflicting
+/// physical aliases and virtual-coordinate collisions.
+fn finalize_documents(drafts: Vec<DraftDocument>) -> Result<Vec<CollectedDocument>> {
+    let mut deficits = BTreeMap::<ComponentRole, usize>::new();
+    for draft in &drafts {
+        let deficit = leading_parent_count(&draft.provisional_path);
+        deficits
+            .entry(draft.component)
+            .and_modify(|current| *current = (*current).max(deficit))
+            .or_insert(deficit);
     }
 
-    fn register(&mut self, physical: PathBuf, path: CollectedPath) -> Result<()> {
-        if let Some(existing) = self.physical_to_virtual.get(&physical) {
-            if existing != &path {
+    let paths = drafts
+        .iter()
+        .map(|draft| {
+            finalize_component_path(
+                &draft.provisional_path,
+                draft.component,
+                deficits.get(&draft.component).copied().unwrap_or_default(),
+            )
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let mut order = (0..drafts.len()).collect::<Vec<_>>();
+    order.sort_by(|left, right| {
+        paths[*left]
+            .cmp(&paths[*right])
+            .then_with(|| drafts[*left].access_path.cmp(&drafts[*right].access_path))
+    });
+
+    let mut physical_to_virtual = BTreeMap::<PathBuf, CollectedPath>::new();
+    let mut virtual_to_physical = BTreeMap::<CollectedPath, PathBuf>::new();
+    for index in order {
+        let physical = std::fs::canonicalize(&drafts[index].access_path).with_context(|| {
+            format!(
+                "failed to identify collected file {}",
+                drafts[index].access_path.display()
+            )
+        })?;
+        let path = &paths[index];
+        if let Some(existing) = physical_to_virtual.get(&physical) {
+            if existing != path {
                 bail!(
                     "one physical file has conflicting collected coordinates `{existing}` and `{path}`"
                 );
             }
         }
-        if let Some(existing) = self.virtual_to_physical.get(&path) {
+        if let Some(existing) = virtual_to_physical.get(path) {
             if existing != &physical {
                 bail!("collected coordinate `{path}` maps to multiple physical files");
             }
         }
-
-        self.physical_to_virtual
-            .insert(physical.clone(), path.clone());
-        self.virtual_to_physical.insert(path, physical);
-        Ok(())
+        physical_to_virtual.insert(physical.clone(), path.clone());
+        virtual_to_physical.insert(path.clone(), physical);
     }
+
+    Ok(drafts
+        .into_iter()
+        .zip(paths)
+        .map(|(draft, path)| CollectedDocument {
+            access_path: draft.access_path,
+            path,
+            source: draft.source,
+        })
+        .collect())
 }
 
 pub(super) fn collect_working_tree(
@@ -886,31 +809,11 @@ pub(super) fn collect_working_tree(
 
     let project_config = input
         .project_config
-        .map(|config| {
-            let access_path = normalized_absolute_access_path(&config.access_path)?;
-            let provisional_path =
-                seed_component_path(&access_path, &draft.cwd, ComponentRole::ProjectConfig)?;
-            Ok::<_, anyhow::Error>(draft.insert_document(
-                &access_path,
-                provisional_path,
-                ComponentRole::ProjectConfig,
-                config.source,
-            ))
-        })
+        .map(|config| seed_config_document(&mut draft, config, ComponentRole::ProjectConfig))
         .transpose()?;
     let user_config = input
         .user_config
-        .map(|config| {
-            let access_path = normalized_absolute_access_path(&config.access_path)?;
-            let provisional_path =
-                seed_component_path(&access_path, &draft.cwd, ComponentRole::UserConfig)?;
-            Ok::<_, anyhow::Error>(draft.insert_document(
-                &access_path,
-                provisional_path,
-                ComponentRole::UserConfig,
-                config.source,
-            ))
-        })
+        .map(|config| seed_config_document(&mut draft, config, ComponentRole::UserConfig))
         .transpose()?;
 
     let entrypoint = draft.collect_workflow_location(&input.root_location, root_graph_path)?;
@@ -927,6 +830,16 @@ pub(super) fn collect_working_tree(
     }
 
     draft.finish(entrypoint, project_config, user_config)
+}
+
+fn seed_config_document(
+    draft: &mut CollectionDraft<'_>,
+    config: CollectedSourceInput,
+    role: ComponentRole,
+) -> Result<DocumentId> {
+    let access_path = normalized_absolute_access_path(&config.access_path)?;
+    let provisional_path = seed_component_path(&access_path, &draft.cwd, role)?;
+    Ok(draft.insert_document(&access_path, provisional_path, role, config.source))
 }
 
 fn seed_component_path(
@@ -1073,6 +986,19 @@ fn normalized_absolute_access_path(path: &Path) -> Result<PathBuf> {
     Ok(lexically_normalize_access_path(&absolute))
 }
 
+pub(super) fn normalize_absolute_path(base_dir: &Path, reference: &str) -> Option<PathBuf> {
+    let path = Path::new(reference);
+    if path.is_absolute() || reference.starts_with('~') {
+        return None;
+    }
+    Some(lexically_normalize_access_path(&base_dir.join(path)))
+}
+
+pub(super) fn manifest_path_from_absolute(path: &Path, cwd: &Path) -> Result<ManifestPath> {
+    ManifestPath::from_absolute(path, cwd)
+        .ok_or_else(|| anyhow!("Failed to compute manifest path for {}", path.display()))
+}
+
 fn manifest_parent_or_dot(path: &ManifestPath) -> Result<ManifestPath> {
     let parent = path.parent_or_dot().to_string_lossy();
     ManifestPath::from_wire(&parent)
@@ -1134,21 +1060,21 @@ mod tests {
 
     fn logical_contents(tree: &CollectedWorkingTree) -> BTreeMap<String, String> {
         let mut contents = BTreeMap::new();
-        if let Some(config) = tree.project_config() {
+        if let Some(config) = &tree.project_config {
             contents.insert(config.path.to_string(), config.source.clone());
         }
-        if let Some(config) = tree.user_config() {
+        if let Some(config) = &tree.user_config {
             contents.insert(config.path.to_string(), config.source.clone());
         }
-        for workflow in tree.workflows().values() {
+        for workflow in tree.workflows.values() {
             contents.insert(
                 workflow.graph.path.to_string(),
                 workflow.graph.source.clone(),
             );
-            if let Some(config) = workflow.config() {
+            if let Some(config) = &workflow.config {
                 contents.insert(config.path.to_string(), config.source.clone());
             }
-            for file in workflow.files().values() {
+            for file in workflow.files.values() {
                 contents.insert(file.document.path.to_string(), file.document.source.clone());
             }
         }
@@ -1159,21 +1085,21 @@ mod tests {
         tree: &CollectedWorkingTree,
     ) -> BTreeMap<String, (CollectedFileReferenceType, String, Option<String>)> {
         let mut paths_by_access = HashMap::new();
-        if let Some(config) = tree.project_config() {
+        if let Some(config) = &tree.project_config {
             paths_by_access.insert(config.access_path.clone(), config.path.to_string());
         }
-        if let Some(config) = tree.user_config() {
+        if let Some(config) = &tree.user_config {
             paths_by_access.insert(config.access_path.clone(), config.path.to_string());
         }
-        for workflow in tree.workflows().values() {
+        for workflow in tree.workflows.values() {
             paths_by_access.insert(
                 workflow.graph.access_path.clone(),
                 workflow.graph.path.to_string(),
             );
-            if let Some(config) = workflow.config() {
+            if let Some(config) = &workflow.config {
                 paths_by_access.insert(config.access_path.clone(), config.path.to_string());
             }
-            for file in workflow.files().values() {
+            for file in workflow.files.values() {
                 paths_by_access.insert(
                     file.document.access_path.clone(),
                     file.document.path.to_string(),
@@ -1182,9 +1108,9 @@ mod tests {
         }
 
         let mut provenance = BTreeMap::new();
-        for workflow in tree.workflows().values() {
-            for file in workflow.files().values() {
-                let from = file.reference.source_access_path().map(|access_path| {
+        for workflow in tree.workflows.values() {
+            for file in workflow.files.values() {
+                let from = file.reference.from_access_path.as_ref().map(|access_path| {
                     paths_by_access
                         .get(access_path)
                         .expect("reference source should be collected")
@@ -1192,11 +1118,7 @@ mod tests {
                 });
                 provenance.insert(
                     file.document.path.to_string(),
-                    (
-                        file.reference.type_(),
-                        file.reference.original.clone(),
-                        from,
-                    ),
+                    (file.reference.type_, file.reference.original.clone(), from),
                 );
             }
         }
@@ -1327,10 +1249,10 @@ dockerfile = { path = "Dockerfile" }
         .expect("working tree should collect");
 
         assert_eq!(
-            tree.entrypoint().as_str(),
+            tree.entrypoint.as_str(),
             ".fabro/workflows/root/workflow.fabro"
         );
-        assert_eq!(tree.workflows().len(), 2);
+        assert_eq!(tree.workflows.len(), 2);
         assert_eq!(
             logical_contents(&tree)
                 .keys()
@@ -1383,7 +1305,7 @@ dockerfile = { path = "Dockerfile" }
         let second_tree = collect_graph(&second_cwd, &second_workflow)
             .expect("second working tree should collect");
 
-        assert_eq!(first_tree.entrypoint(), second_tree.entrypoint());
+        assert_eq!(first_tree.entrypoint, second_tree.entrypoint);
         assert_eq!(
             logical_contents(&first_tree),
             logical_contents(&second_tree)
@@ -1393,7 +1315,7 @@ dockerfile = { path = "Dockerfile" }
             logical_provenance(&second_tree)
         );
         assert_eq!(
-            first_tree.entrypoint().as_str(),
+            first_tree.entrypoint.as_str(),
             "_fabro_external/entrypoint/workflow.fabro"
         );
     }
@@ -1471,7 +1393,7 @@ dockerfile = { path = "Dockerfile" }
             collect_graph(&first_cwd, &first_root).expect("first working tree should collect");
         let moved =
             collect_graph(&second_cwd, &second_root).expect("moved working tree should collect");
-        let entrypoint = tree.entrypoint();
+        let entrypoint = &tree.entrypoint;
         let resolved = virtual_reference_path(
             entrypoint
                 .as_path()
@@ -1482,12 +1404,12 @@ dockerfile = { path = "Dockerfile" }
         .expect("child reference should resolve");
 
         assert_eq!(resolved, Path::new("_fabro_external/child/workflow.fabro"));
-        assert!(tree.workflows().contains_key(
+        assert!(tree.workflows.contains_key(
             &CollectedPath::try_new(resolved).expect("child path should be canonical")
         ));
         assert_eq!(logical_contents(&tree), logical_contents(&moved));
         assert_eq!(logical_provenance(&tree), logical_provenance(&moved));
-        assert_eq!(tree.entrypoint(), moved.entrypoint());
+        assert_eq!(tree.entrypoint, moved.entrypoint);
         for path in logical_contents(&tree).into_keys() {
             assert!(!path.contains(first.path().file_name().unwrap().to_string_lossy().as_ref()));
             CollectedPath::try_new(path).expect("every collected coordinate should be canonical");
@@ -1513,13 +1435,13 @@ dockerfile = { path = "Dockerfile" }
 
         let tree = collect_graph(cwd, &graph).expect("working tree should collect");
         let root = tree
-            .workflows()
-            .get(tree.entrypoint())
+            .workflows
+            .get(&tree.entrypoint)
             .expect("root workflow should be present");
 
-        assert_eq!(root.files().len(), 1);
+        assert_eq!(root.files.len(), 1);
         let assembled =
-            crate::assemble_current_manifest(&tree, cwd).expect("legacy manifest should assemble");
+            crate::assemble_current_manifest(tree, cwd).expect("legacy manifest should assemble");
         assert_eq!(assembled.workflows["workflow.fabro"].files.len(), 1);
     }
 
@@ -1571,7 +1493,7 @@ dockerfile = { path = "Dockerfile" }
             source: String::new(),
         };
 
-        let error = CollectionNamespace::finalize(vec![draft(first), draft(second)])
+        let error = finalize_documents(vec![draft(first), draft(second)])
             .expect_err("virtual collision should be rejected");
 
         assert!(
@@ -1592,8 +1514,8 @@ dockerfile = { path = "Dockerfile" }
             source:           String::new(),
         };
 
-        let error = CollectionNamespace::finalize(vec![draft])
-            .expect_err("missing physical identity should fail");
+        let error =
+            finalize_documents(vec![draft]).expect_err("missing physical identity should fail");
 
         assert!(
             error
