@@ -147,7 +147,7 @@ impl ComponentRole {
 struct DocumentId(usize);
 
 #[derive(Clone, Debug)]
-struct DraftDocument {
+struct DocumentRecord {
     access_path:      PathBuf,
     provisional_path: PathBuf,
     component:        ComponentRole,
@@ -155,31 +155,31 @@ struct DraftDocument {
 }
 
 #[derive(Clone, Debug)]
-struct DraftFileReference {
+struct FileReferenceRecord {
     type_:         CollectedFileReferenceType,
     original:      String,
     from_document: Option<DocumentId>,
 }
 
 #[derive(Clone, Debug)]
-struct DraftFile {
+struct FileRecord {
     document:  DocumentId,
-    reference: DraftFileReference,
+    reference: FileReferenceRecord,
 }
 
 #[derive(Clone, Debug)]
-struct DraftWorkflow {
+struct WorkflowRecord {
     graph:  DocumentId,
     config: Option<DocumentId>,
-    files:  BTreeMap<String, DraftFile>,
+    files:  BTreeMap<String, FileRecord>,
 }
 
 struct WorkflowBundler<'a> {
     cwd:               PathBuf,
     inputs:            &'a HashMap<String, toml::Value>,
-    documents:         Vec<DraftDocument>,
+    documents:         Vec<DocumentRecord>,
     document_ids:      HashMap<(PathBuf, ComponentRole, PathBuf), DocumentId>,
-    workflows:         BTreeMap<String, DraftWorkflow>,
+    workflows:         BTreeMap<String, WorkflowRecord>,
     visited_workflows: HashMap<String, DocumentId>,
 }
 
@@ -209,7 +209,7 @@ impl<'a> WorkflowBundler<'a> {
         }
 
         let document = DocumentId(self.documents.len());
-        self.documents.push(DraftDocument {
+        self.documents.push(DocumentRecord {
             access_path,
             provisional_path,
             component,
@@ -219,7 +219,7 @@ impl<'a> WorkflowBundler<'a> {
         document
     }
 
-    fn document(&self, document: DocumentId) -> &DraftDocument {
+    fn document(&self, document: DocumentId) -> &DocumentRecord {
         &self.documents[document.0]
     }
 
@@ -271,7 +271,7 @@ impl<'a> WorkflowBundler<'a> {
             })
             .transpose()?;
 
-        let mut workflow = DraftWorkflow {
+        let mut workflow = WorkflowRecord {
             graph,
             config,
             files: BTreeMap::new(),
@@ -308,7 +308,7 @@ impl<'a> WorkflowBundler<'a> {
     fn collect_workflow_files(
         &mut self,
         graph_document_id: DocumentId,
-        files: &mut BTreeMap<String, DraftFile>,
+        files: &mut BTreeMap<String, FileRecord>,
         visited_imports: &mut HashSet<String>,
     ) -> Result<()> {
         let graph = parser::parse(&self.document(graph_document_id).source).with_context(|| {
@@ -454,7 +454,7 @@ impl<'a> WorkflowBundler<'a> {
     /// `@`-referenced file (a goal or prompt document).
     fn collect_bundled_template_includes(
         &mut self,
-        files: &mut BTreeMap<String, DraftFile>,
+        files: &mut BTreeMap<String, FileRecord>,
         bundled: DocumentId,
         workflow_template_root: &ManifestPath,
         from_document: DocumentId,
@@ -474,7 +474,7 @@ impl<'a> WorkflowBundler<'a> {
 
     fn collect_template_include_files(
         &mut self,
-        files: &mut BTreeMap<String, DraftFile>,
+        files: &mut BTreeMap<String, FileRecord>,
         source: TemplateSource,
         source_document: DocumentId,
         from_document: DocumentId,
@@ -522,9 +522,9 @@ impl<'a> WorkflowBundler<'a> {
                 ComponentRole::Workflow,
                 source.content,
             );
-            files.insert(key.clone(), DraftFile {
+            files.insert(key.clone(), FileRecord {
                 document,
-                reference: DraftFileReference {
+                reference: FileReferenceRecord {
                     type_:         CollectedFileReferenceType::FileInline,
                     original:      key,
                     from_document: Some(from_document),
@@ -538,7 +538,7 @@ impl<'a> WorkflowBundler<'a> {
         &self,
         source_path: &ManifestPath,
         closure: &TemplateDependencyClosure,
-        files: &BTreeMap<String, DraftFile>,
+        files: &BTreeMap<String, FileRecord>,
         from_document: DocumentId,
     ) -> Result<()> {
         let Some(source) = closure.sources.get(source_path) else {
@@ -576,7 +576,7 @@ impl<'a> WorkflowBundler<'a> {
     fn collect_config_dockerfile(
         &mut self,
         config: DocumentId,
-        files: &mut BTreeMap<String, DraftFile>,
+        files: &mut BTreeMap<String, FileRecord>,
     ) -> Result<()> {
         let layer = self
             .document(config)
@@ -611,7 +611,7 @@ impl<'a> WorkflowBundler<'a> {
 
     fn collect_environment_dockerfile(
         &mut self,
-        files: &mut BTreeMap<String, DraftFile>,
+        files: &mut BTreeMap<String, FileRecord>,
         base_dir: &Path,
         config: DocumentId,
         image: Option<&EnvironmentImageLayer>,
@@ -633,7 +633,7 @@ impl<'a> WorkflowBundler<'a> {
 
     fn collect_bundled_file(
         &mut self,
-        files: &mut BTreeMap<String, DraftFile>,
+        files: &mut BTreeMap<String, FileRecord>,
         base_dir: &Path,
         reference: &str,
         reference_type: CollectedFileReferenceType,
@@ -676,9 +676,9 @@ impl<'a> WorkflowBundler<'a> {
             self.document(from_document).component,
             source,
         );
-        files.insert(key, DraftFile {
+        files.insert(key, FileRecord {
             document,
-            reference: DraftFileReference {
+            reference: FileReferenceRecord {
                 type_:         reference_type,
                 original:      reference.to_owned(),
                 from_document: Some(from_document),
@@ -742,43 +742,43 @@ impl<'a> WorkflowBundler<'a> {
     }
 }
 
-/// Finalizes draft documents into collected documents, rejecting conflicting
+/// Finalizes document records into collected documents, rejecting conflicting
 /// physical aliases and virtual-coordinate collisions.
-fn finalize_documents(drafts: Vec<DraftDocument>) -> Result<Vec<CollectedDocument>> {
+fn finalize_documents(records: Vec<DocumentRecord>) -> Result<Vec<CollectedDocument>> {
     let mut deficits = BTreeMap::<ComponentRole, usize>::new();
-    for draft in &drafts {
-        let deficit = leading_parent_count(&draft.provisional_path);
+    for record in &records {
+        let deficit = leading_parent_count(&record.provisional_path);
         deficits
-            .entry(draft.component)
+            .entry(record.component)
             .and_modify(|current| *current = (*current).max(deficit))
             .or_insert(deficit);
     }
 
-    let paths = drafts
+    let paths = records
         .iter()
-        .map(|draft| {
+        .map(|record| {
             finalize_component_path(
-                &draft.provisional_path,
-                draft.component,
-                deficits.get(&draft.component).copied().unwrap_or_default(),
+                &record.provisional_path,
+                record.component,
+                deficits.get(&record.component).copied().unwrap_or_default(),
             )
         })
         .collect::<Result<Vec<_>>>()?;
 
-    let mut order = (0..drafts.len()).collect::<Vec<_>>();
+    let mut order = (0..records.len()).collect::<Vec<_>>();
     order.sort_by(|left, right| {
         paths[*left]
             .cmp(&paths[*right])
-            .then_with(|| drafts[*left].access_path.cmp(&drafts[*right].access_path))
+            .then_with(|| records[*left].access_path.cmp(&records[*right].access_path))
     });
 
     let mut physical_to_virtual = BTreeMap::<PathBuf, CollectedPath>::new();
     let mut virtual_to_physical = BTreeMap::<CollectedPath, PathBuf>::new();
     for index in order {
-        let physical = std::fs::canonicalize(&drafts[index].access_path).with_context(|| {
+        let physical = std::fs::canonicalize(&records[index].access_path).with_context(|| {
             format!(
                 "failed to identify collected file {}",
-                drafts[index].access_path.display()
+                records[index].access_path.display()
             )
         })?;
         let path = &paths[index];
@@ -798,13 +798,13 @@ fn finalize_documents(drafts: Vec<DraftDocument>) -> Result<Vec<CollectedDocumen
         virtual_to_physical.insert(path.clone(), physical);
     }
 
-    Ok(drafts
+    Ok(records
         .into_iter()
         .zip(paths)
-        .map(|(draft, path)| CollectedDocument {
-            access_path: draft.access_path,
+        .map(|(record, path)| CollectedDocument {
+            access_path: record.access_path,
             path,
-            source: draft.source,
+            source: record.source,
         })
         .collect())
 }
@@ -870,7 +870,7 @@ fn seed_component_path(
     normalize_relative_path(&root.join(file_name))
 }
 
-fn stable_template_root(document: &DraftDocument, source: &TemplateSource) -> Result<PathBuf> {
+fn stable_template_root(document: &DocumentRecord, source: &TemplateSource) -> Result<PathBuf> {
     let relative = source
         .path
         .as_path()
@@ -1489,14 +1489,14 @@ dockerfile = { path = "Dockerfile" }
         let second = temp.path().join("second.md");
         write_file(&first, "first\n");
         write_file(&second, "second\n");
-        let draft = |access_path| DraftDocument {
+        let record = |access_path| DocumentRecord {
             access_path,
             provisional_path: PathBuf::from("shared.md"),
             component: ComponentRole::Workflow,
             source: String::new(),
         };
 
-        let error = finalize_documents(vec![draft(first), draft(second)])
+        let error = finalize_documents(vec![record(first), record(second)])
             .expect_err("virtual collision should be rejected");
 
         assert!(
@@ -1510,7 +1510,7 @@ dockerfile = { path = "Dockerfile" }
     #[test]
     fn namespace_identity_errors_keep_the_io_error_in_the_source_chain() {
         let temp = tempfile::tempdir().expect("temp directory should be created");
-        let draft = DraftDocument {
+        let record = DocumentRecord {
             access_path:      temp.path().join("missing.md"),
             provisional_path: PathBuf::from("missing.md"),
             component:        ComponentRole::Workflow,
@@ -1518,7 +1518,7 @@ dockerfile = { path = "Dockerfile" }
         };
 
         let error =
-            finalize_documents(vec![draft]).expect_err("missing physical identity should fail");
+            finalize_documents(vec![record]).expect_err("missing physical identity should fail");
 
         assert!(
             error
