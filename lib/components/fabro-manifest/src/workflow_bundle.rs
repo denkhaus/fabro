@@ -174,7 +174,7 @@ struct DraftWorkflow {
     files:  BTreeMap<String, DraftFile>,
 }
 
-struct CollectionDraft<'a> {
+struct WorkflowBundler<'a> {
     cwd:               PathBuf,
     inputs:            &'a HashMap<String, toml::Value>,
     documents:         Vec<DraftDocument>,
@@ -183,8 +183,8 @@ struct CollectionDraft<'a> {
     visited_workflows: HashMap<String, DocumentId>,
 }
 
-impl<'a> CollectionDraft<'a> {
-    fn new(cwd: &Path, inputs: &'a HashMap<String, toml::Value>) -> Result<Self> {
+impl<'a> WorkflowBundler<'a> {
+    fn try_new(cwd: &Path, inputs: &'a HashMap<String, toml::Value>) -> Result<Self> {
         Ok(Self {
             cwd: normalized_absolute_access_path(cwd)?,
             inputs,
@@ -687,6 +687,16 @@ impl<'a> CollectionDraft<'a> {
         Ok(document)
     }
 
+    fn seed_config_document(
+        &mut self,
+        config: CollectedSourceInput,
+        role: ComponentRole,
+    ) -> Result<DocumentId> {
+        let access_path = normalized_absolute_access_path(&config.access_path)?;
+        let provisional_path = seed_component_path(&access_path, &self.cwd, role)?;
+        Ok(self.insert_document(&access_path, provisional_path, role, config.source))
+    }
+
     fn finish(
         self,
         entrypoint: DocumentId,
@@ -802,44 +812,37 @@ fn finalize_documents(drafts: Vec<DraftDocument>) -> Result<Vec<CollectedDocumen
 pub(super) fn collect_workflow_bundle(
     input: CollectWorkflowBundleInput<'_>,
 ) -> Result<CollectedWorkflowBundle> {
-    let mut draft = CollectionDraft::new(input.cwd, input.inputs)?;
+    let mut bundler = WorkflowBundler::try_new(input.cwd, input.inputs)?;
     let root_graph_access_path = normalized_absolute_access_path(&input.root_location.graph)?;
-    let root_graph_path =
-        seed_component_path(&root_graph_access_path, &draft.cwd, ComponentRole::Workflow)?;
+    let root_graph_path = seed_component_path(
+        &root_graph_access_path,
+        &bundler.cwd,
+        ComponentRole::Workflow,
+    )?;
 
     let project_config = input
         .project_config
-        .map(|config| seed_config_document(&mut draft, config, ComponentRole::ProjectConfig))
+        .map(|config| bundler.seed_config_document(config, ComponentRole::ProjectConfig))
         .transpose()?;
     let user_config = input
         .user_config
-        .map(|config| seed_config_document(&mut draft, config, ComponentRole::UserConfig))
+        .map(|config| bundler.seed_config_document(config, ComponentRole::UserConfig))
         .transpose()?;
 
-    let entrypoint = draft.collect_workflow_location(&input.root_location, root_graph_path)?;
+    let entrypoint = bundler.collect_workflow_location(&input.root_location, root_graph_path)?;
     if let Some(project_config) = project_config {
         let root_key =
-            manifest_path_from_absolute(&draft.document(entrypoint).access_path, &draft.cwd)?
+            manifest_path_from_absolute(&bundler.document(entrypoint).access_path, &bundler.cwd)?
                 .to_string();
-        let mut root = draft
+        let mut root = bundler
             .workflows
             .remove(&root_key)
             .ok_or_else(|| anyhow!("root workflow missing from collected workflow bundle"))?;
-        draft.collect_config_dockerfile(project_config, &mut root.files)?;
-        draft.workflows.insert(root_key, root);
+        bundler.collect_config_dockerfile(project_config, &mut root.files)?;
+        bundler.workflows.insert(root_key, root);
     }
 
-    draft.finish(entrypoint, project_config, user_config)
-}
-
-fn seed_config_document(
-    draft: &mut CollectionDraft<'_>,
-    config: CollectedSourceInput,
-    role: ComponentRole,
-) -> Result<DocumentId> {
-    let access_path = normalized_absolute_access_path(&config.access_path)?;
-    let provisional_path = seed_component_path(&access_path, &draft.cwd, role)?;
-    Ok(draft.insert_document(&access_path, provisional_path, role, config.source))
+    bundler.finish(entrypoint, project_config, user_config)
 }
 
 fn seed_component_path(
