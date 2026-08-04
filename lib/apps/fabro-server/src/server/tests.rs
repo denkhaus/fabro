@@ -16467,64 +16467,32 @@ async fn admission_predicate_false_reconciles_durable_cancellation() {
     assert_eq!(run_store.list_events().await.unwrap().len(), event_count);
 }
 
+// The per-variant transience and kind labels are covered where they live, in
+// fabro-store's error tests; this only covers the downcast plumbing.
 #[test]
-fn admission_error_classifier_is_structural() {
-    let transient = [
-        (
-            fabro_store::Error::Slate(slatedb::Error::unavailable("test outage".to_string())),
-            "slate",
-        ),
-        (
-            fabro_store::Error::ObjectStore(object_store::Error::Generic {
-                store:  "test",
-                source: Box::new(std::io::Error::other("test outage")),
-            }),
-            "object_store",
-        ),
-        (
-            fabro_store::Error::Sqlite(sqlx::Error::RowNotFound),
-            "sqlite",
-        ),
-        (
-            fabro_store::Error::Io(std::io::Error::other("test outage")),
-            "io",
-        ),
-    ];
-    for (error, kind) in transient {
-        assert_eq!(
-            classify_admission_error(&anyhow::Error::new(error)),
-            AdmissionErrorClass::transient(kind),
-        );
-    }
-
-    let serde_error = serde_json::from_str::<serde_json::Value>("{").unwrap_err();
-    let permanent = [
-        (
-            fabro_store::Error::EventRejected {
-                source: Box::new(fabro_store::Error::ReadOnly),
-            },
-            "event_rejected",
-        ),
-        (
-            fabro_store::Error::EventSequenceExhausted { max_seq: 10 },
-            "event_sequence_exhausted",
-        ),
-        (
-            fabro_store::Error::RunNotFound("missing".to_string()),
-            "run_not_found",
-        ),
-        (fabro_store::Error::ReadOnly, "read_only"),
-        (fabro_store::Error::Serde(serde_error), "serialization"),
-    ];
-    for (error, kind) in permanent {
-        assert_eq!(
-            classify_admission_error(&anyhow::Error::new(error)),
-            AdmissionErrorClass::permanent(kind),
-        );
-    }
+fn admission_error_classification_follows_store_error() {
+    assert_eq!(
+        classify_admission_error(&anyhow::Error::new(fabro_store::Error::Io(
+            std::io::Error::other("test outage")
+        ))),
+        AdmissionErrorClass {
+            transient: true,
+            kind:      "io",
+        },
+    );
+    assert_eq!(
+        classify_admission_error(&anyhow::Error::new(fabro_store::Error::ReadOnly)),
+        AdmissionErrorClass {
+            transient: false,
+            kind:      "read_only",
+        },
+    );
     assert_eq!(
         classify_admission_error(&anyhow::anyhow!("unrecognized")),
-        AdmissionErrorClass::permanent("unrecognized"),
+        AdmissionErrorClass {
+            transient: false,
+            kind:      "unrecognized",
+        },
     );
 }
 

@@ -4054,58 +4054,16 @@ struct AdmissionErrorClass {
     kind:      &'static str,
 }
 
-impl AdmissionErrorClass {
-    const fn transient(kind: &'static str) -> Self {
-        Self {
-            transient: true,
-            kind,
-        }
-    }
-
-    const fn permanent(kind: &'static str) -> Self {
-        Self {
-            transient: false,
-            kind,
-        }
-    }
-}
-
 fn classify_admission_error(error: &anyhow::Error) -> AdmissionErrorClass {
     let Some(store_error) = error.downcast_ref::<fabro_store::Error>() else {
-        return AdmissionErrorClass::permanent("unrecognized");
+        return AdmissionErrorClass {
+            transient: false,
+            kind:      "unrecognized",
+        };
     };
-    match store_error {
-        fabro_store::Error::Slate(_) => AdmissionErrorClass::transient("slate"),
-        fabro_store::Error::ObjectStore(_) => AdmissionErrorClass::transient("object_store"),
-        fabro_store::Error::Sqlite(_) => AdmissionErrorClass::transient("sqlite"),
-        fabro_store::Error::Io(_) => AdmissionErrorClass::transient("io"),
-        fabro_store::Error::InvalidEvent(_) => AdmissionErrorClass::permanent("invalid_event"),
-        fabro_store::Error::EventRejected { .. } => {
-            AdmissionErrorClass::permanent("event_rejected")
-        }
-        fabro_store::Error::RunNotFound(_) => AdmissionErrorClass::permanent("run_not_found"),
-        fabro_store::Error::SessionNotFound(_) => {
-            AdmissionErrorClass::permanent("session_not_found")
-        }
-        fabro_store::Error::SessionAlreadyExists(_) => {
-            AdmissionErrorClass::permanent("session_already_exists")
-        }
-        fabro_store::Error::ReadOnly => AdmissionErrorClass::permanent("read_only"),
-        fabro_store::Error::EventSequenceExhausted { .. } => {
-            AdmissionErrorClass::permanent("event_sequence_exhausted")
-        }
-        fabro_store::Error::InvalidKeySegment { .. } => {
-            AdmissionErrorClass::permanent("invalid_key_segment")
-        }
-        fabro_store::Error::KeyParse(_) => AdmissionErrorClass::permanent("key_parse"),
-        fabro_store::Error::RunSummaryMismatch { .. } => {
-            AdmissionErrorClass::permanent("run_summary_mismatch")
-        }
-        fabro_store::Error::InvalidTransition(_) => {
-            AdmissionErrorClass::permanent("invalid_transition")
-        }
-        fabro_store::Error::Serde(_) => AdmissionErrorClass::permanent("serialization"),
-        fabro_store::Error::Other(_) => AdmissionErrorClass::permanent("internal"),
+    AdmissionErrorClass {
+        transient: store_error.is_transient(),
+        kind:      store_error.into(),
     }
 }
 
