@@ -18,7 +18,7 @@ use fabro_workflow::static_reference::{
     AttributeScope, ReferenceKind, reference_kind_for_attribute,
 };
 
-pub(super) struct CollectWorkingTreeInput<'a> {
+pub(super) struct CollectWorkflowBundleInput<'a> {
     pub(super) cwd:            &'a Path,
     pub(super) root_location:  WorkflowLocation,
     pub(super) inputs:         &'a HashMap<String, toml::Value>,
@@ -32,7 +32,7 @@ pub(super) struct CollectedSourceInput {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct CollectedWorkingTree {
+pub(super) struct CollectedWorkflowBundle {
     pub(super) entrypoint:     CollectedPath,
     pub(super) workflows:      BTreeMap<CollectedPath, CollectedWorkflow>,
     pub(super) project_config: Option<CollectedDocument>,
@@ -73,7 +73,7 @@ pub(super) struct CollectedFileReference {
     pub(super) from_access_path: Option<PathBuf>,
 }
 
-/// A canonical virtual coordinate inside one collected working-tree closure.
+/// A canonical virtual coordinate inside one collected workflow bundle.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(super) struct CollectedPath(String);
 
@@ -692,7 +692,7 @@ impl<'a> CollectionDraft<'a> {
         entrypoint: DocumentId,
         project_config: Option<DocumentId>,
         user_config: Option<DocumentId>,
-    ) -> Result<CollectedWorkingTree> {
+    ) -> Result<CollectedWorkflowBundle> {
         let documents = finalize_documents(self.documents)?;
         let mut workflows = BTreeMap::new();
         for workflow in self.workflows.into_values() {
@@ -723,7 +723,7 @@ impl<'a> CollectionDraft<'a> {
             });
         }
 
-        Ok(CollectedWorkingTree {
+        Ok(CollectedWorkflowBundle {
             entrypoint: documents[entrypoint.0].path.clone(),
             workflows,
             project_config: project_config.map(|document| documents[document.0].clone()),
@@ -799,9 +799,9 @@ fn finalize_documents(drafts: Vec<DraftDocument>) -> Result<Vec<CollectedDocumen
         .collect())
 }
 
-pub(super) fn collect_working_tree(
-    input: CollectWorkingTreeInput<'_>,
-) -> Result<CollectedWorkingTree> {
+pub(super) fn collect_workflow_bundle(
+    input: CollectWorkflowBundleInput<'_>,
+) -> Result<CollectedWorkflowBundle> {
     let mut draft = CollectionDraft::new(input.cwd, input.inputs)?;
     let root_graph_access_path = normalized_absolute_access_path(&input.root_location.graph)?;
     let root_graph_path =
@@ -824,7 +824,7 @@ pub(super) fn collect_working_tree(
         let mut root = draft
             .workflows
             .remove(&root_key)
-            .ok_or_else(|| anyhow!("root workflow missing from collected working tree"))?;
+            .ok_or_else(|| anyhow!("root workflow missing from collected workflow bundle"))?;
         draft.collect_config_dockerfile(project_config, &mut root.files)?;
         draft.workflows.insert(root_key, root);
     }
@@ -1046,10 +1046,10 @@ mod tests {
         std::fs::write(path, source).expect("fixture file should be written");
     }
 
-    fn collect_graph(cwd: &Path, graph: &Path) -> Result<CollectedWorkingTree> {
+    fn collect_graph(cwd: &Path, graph: &Path) -> Result<CollectedWorkflowBundle> {
         let inputs = HashMap::new();
         let root_location = WorkflowLocation::resolve(graph, cwd)?;
-        collect_working_tree(CollectWorkingTreeInput {
+        collect_workflow_bundle(CollectWorkflowBundleInput {
             cwd,
             root_location,
             inputs: &inputs,
@@ -1058,15 +1058,15 @@ mod tests {
         })
     }
 
-    fn logical_contents(tree: &CollectedWorkingTree) -> BTreeMap<String, String> {
+    fn logical_contents(bundle: &CollectedWorkflowBundle) -> BTreeMap<String, String> {
         let mut contents = BTreeMap::new();
-        if let Some(config) = &tree.project_config {
+        if let Some(config) = &bundle.project_config {
             contents.insert(config.path.to_string(), config.source.clone());
         }
-        if let Some(config) = &tree.user_config {
+        if let Some(config) = &bundle.user_config {
             contents.insert(config.path.to_string(), config.source.clone());
         }
-        for workflow in tree.workflows.values() {
+        for workflow in bundle.workflows.values() {
             contents.insert(
                 workflow.graph.path.to_string(),
                 workflow.graph.source.clone(),
@@ -1082,16 +1082,16 @@ mod tests {
     }
 
     fn logical_provenance(
-        tree: &CollectedWorkingTree,
+        bundle: &CollectedWorkflowBundle,
     ) -> BTreeMap<String, (CollectedFileReferenceType, String, Option<String>)> {
         let mut paths_by_access = HashMap::new();
-        if let Some(config) = &tree.project_config {
+        if let Some(config) = &bundle.project_config {
             paths_by_access.insert(config.access_path.clone(), config.path.to_string());
         }
-        if let Some(config) = &tree.user_config {
+        if let Some(config) = &bundle.user_config {
             paths_by_access.insert(config.access_path.clone(), config.path.to_string());
         }
-        for workflow in tree.workflows.values() {
+        for workflow in bundle.workflows.values() {
             paths_by_access.insert(
                 workflow.graph.access_path.clone(),
                 workflow.graph.path.to_string(),
@@ -1108,7 +1108,7 @@ mod tests {
         }
 
         let mut provenance = BTreeMap::new();
-        for workflow in tree.workflows.values() {
+        for workflow in bundle.workflows.values() {
             for file in workflow.files.values() {
                 let from = file.reference.from_access_path.as_ref().map(|access_path| {
                     paths_by_access
@@ -1166,7 +1166,7 @@ mod tests {
     }
 
     #[test]
-    fn collector_captures_complete_workflow_and_config_closure() {
+    fn collector_captures_complete_workflow_bundle() {
         let temp = tempfile::tempdir().expect("temp directory should be created");
         let project = temp.path().join("project");
         let root = project.join(".fabro/workflows/root");
@@ -1232,7 +1232,7 @@ dockerfile = { path = "Dockerfile" }
         );
 
         let inputs = HashMap::new();
-        let tree = collect_working_tree(CollectWorkingTreeInput {
+        let bundle = collect_workflow_bundle(CollectWorkflowBundleInput {
             cwd:            &project,
             root_location:  WorkflowLocation::resolve(&root.join("workflow.toml"), &project)
                 .expect("root workflow should resolve"),
@@ -1246,15 +1246,15 @@ dockerfile = { path = "Dockerfile" }
                 source:      user_config.to_owned(),
             }),
         })
-        .expect("working tree should collect");
+        .expect("workflow bundle should collect");
 
         assert_eq!(
-            tree.entrypoint.as_str(),
+            bundle.entrypoint.as_str(),
             ".fabro/workflows/root/workflow.fabro"
         );
-        assert_eq!(tree.workflows.len(), 2);
+        assert_eq!(bundle.workflows.len(), 2);
         assert_eq!(
-            logical_contents(&tree)
+            logical_contents(&bundle)
                 .keys()
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
@@ -1300,22 +1300,22 @@ dockerfile = { path = "Dockerfile" }
         let (first_cwd, first_workflow) = fixture(first.path());
         let (second_cwd, second_workflow) = fixture(second.path());
 
-        let first_tree =
-            collect_graph(&first_cwd, &first_workflow).expect("first working tree should collect");
-        let second_tree = collect_graph(&second_cwd, &second_workflow)
-            .expect("second working tree should collect");
+        let first_bundle = collect_graph(&first_cwd, &first_workflow)
+            .expect("first workflow bundle should collect");
+        let second_bundle = collect_graph(&second_cwd, &second_workflow)
+            .expect("second workflow bundle should collect");
 
-        assert_eq!(first_tree.entrypoint, second_tree.entrypoint);
+        assert_eq!(first_bundle.entrypoint, second_bundle.entrypoint);
         assert_eq!(
-            logical_contents(&first_tree),
-            logical_contents(&second_tree)
+            logical_contents(&first_bundle),
+            logical_contents(&second_bundle)
         );
         assert_eq!(
-            logical_provenance(&first_tree),
-            logical_provenance(&second_tree)
+            logical_provenance(&first_bundle),
+            logical_provenance(&second_bundle)
         );
         assert_eq!(
-            first_tree.entrypoint.as_str(),
+            first_bundle.entrypoint.as_str(),
             "_fabro_external/entrypoint/workflow.fabro"
         );
     }
@@ -1389,11 +1389,11 @@ dockerfile = { path = "Dockerfile" }
         let second = tempfile::tempdir().expect("second temp directory should be created");
         let (first_cwd, first_root) = fixture(first.path());
         let (second_cwd, second_root) = fixture(second.path());
-        let tree =
-            collect_graph(&first_cwd, &first_root).expect("first working tree should collect");
+        let bundle =
+            collect_graph(&first_cwd, &first_root).expect("first workflow bundle should collect");
         let moved =
-            collect_graph(&second_cwd, &second_root).expect("moved working tree should collect");
-        let entrypoint = &tree.entrypoint;
+            collect_graph(&second_cwd, &second_root).expect("moved workflow bundle should collect");
+        let entrypoint = &bundle.entrypoint;
         let resolved = virtual_reference_path(
             entrypoint
                 .as_path()
@@ -1404,13 +1404,13 @@ dockerfile = { path = "Dockerfile" }
         .expect("child reference should resolve");
 
         assert_eq!(resolved, Path::new("_fabro_external/child/workflow.fabro"));
-        assert!(tree.workflows.contains_key(
+        assert!(bundle.workflows.contains_key(
             &CollectedPath::try_new(resolved).expect("child path should be canonical")
         ));
-        assert_eq!(logical_contents(&tree), logical_contents(&moved));
-        assert_eq!(logical_provenance(&tree), logical_provenance(&moved));
-        assert_eq!(tree.entrypoint, moved.entrypoint);
-        for path in logical_contents(&tree).into_keys() {
+        assert_eq!(logical_contents(&bundle), logical_contents(&moved));
+        assert_eq!(logical_provenance(&bundle), logical_provenance(&moved));
+        assert_eq!(bundle.entrypoint, moved.entrypoint);
+        for path in logical_contents(&bundle).into_keys() {
             assert!(!path.contains(first.path().file_name().unwrap().to_string_lossy().as_ref()));
             CollectedPath::try_new(path).expect("every collected coordinate should be canonical");
         }
@@ -1433,15 +1433,15 @@ dockerfile = { path = "Dockerfile" }
         );
         write_file(&cwd.join("prompt.md"), "prompt\n");
 
-        let tree = collect_graph(cwd, &graph).expect("working tree should collect");
-        let root = tree
+        let bundle = collect_graph(cwd, &graph).expect("workflow bundle should collect");
+        let root = bundle
             .workflows
-            .get(&tree.entrypoint)
+            .get(&bundle.entrypoint)
             .expect("root workflow should be present");
 
         assert_eq!(root.files.len(), 1);
         let assembled =
-            crate::assemble_current_manifest(tree, cwd).expect("legacy manifest should assemble");
+            crate::assemble_current_manifest(bundle, cwd).expect("legacy manifest should assemble");
         assert_eq!(assembled.workflows["workflow.fabro"].files.len(), 1);
     }
 
@@ -1613,7 +1613,7 @@ dockerfile = { path = "Dockerfile" }
         assert_ne!(first_commit, ahead_commit);
 
         collect_graph(&checkout, &checkout.join("workflow.fabro"))
-            .expect("working tree should collect");
+            .expect("workflow bundle should collect");
 
         let origin_commit = origin
             .find_reference("refs/heads/main")

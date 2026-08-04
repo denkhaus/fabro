@@ -3,7 +3,7 @@
     reason = "CLI manifest builder: sync file I/O building install manifests"
 )]
 
-mod working_tree;
+mod workflow_bundle;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -27,9 +27,10 @@ use fabro_workflow::git::{
 };
 use fabro_workflow::static_reference::ReferenceKind;
 
-use crate::working_tree::{
-    CollectWorkingTreeInput, CollectedDocument, CollectedFileReferenceType, CollectedSourceInput,
-    CollectedWorkingTree, manifest_path_from_absolute, normalize_absolute_path,
+use crate::workflow_bundle::{
+    CollectWorkflowBundleInput, CollectedDocument, CollectedFileReferenceType,
+    CollectedSourceInput, CollectedWorkflowBundle, manifest_path_from_absolute,
+    normalize_absolute_path,
 };
 
 #[derive(Debug, Default)]
@@ -168,7 +169,7 @@ pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
     workflow_settings.run.inputs.extend(input.input_overrides);
     let target_path = root_location.graph.clone();
     let user_config_source = user_settings_path.map(read_source_input).transpose()?;
-    let collected = working_tree::collect_working_tree(CollectWorkingTreeInput {
+    let collected = workflow_bundle::collect_workflow_bundle(CollectWorkflowBundleInput {
         cwd: &input.cwd,
         root_location,
         inputs: &workflow_settings.run.inputs,
@@ -219,13 +220,13 @@ struct AssembledCurrentManifest {
 }
 
 fn assemble_current_manifest(
-    collected: CollectedWorkingTree,
+    collected: CollectedWorkflowBundle,
     cwd: &Path,
 ) -> Result<AssembledCurrentManifest> {
     let root = collected
         .workflows
         .get(&collected.entrypoint)
-        .ok_or_else(|| anyhow!("root workflow missing from collected working tree"))?;
+        .ok_or_else(|| anyhow!("root workflow missing from collected workflow bundle"))?;
     let target_key = manifest_path_from_absolute(&root.graph.access_path, cwd)?.to_string();
     let root_source = root.graph.source.clone();
 
