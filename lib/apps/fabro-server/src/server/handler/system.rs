@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Utc;
 use fabro_slack::config::{
@@ -9,6 +11,7 @@ use fabro_slack::config::{
 use fabro_static::EnvVars;
 use fabro_types::settings::server::GithubIntegrationSettings;
 use fabro_vault::Vault;
+use tokio::time::timeout;
 
 use super::super::{
     AggregateBilling, AggregateBillingTotals, ApiError, AppState, BilledTokenCounts,
@@ -20,6 +23,8 @@ use super::super::{
     counts_toward_scheduler_capacity, delete_run_internal, diagnostics, get, post,
     resource_sampler, spawn_blocking, system_sandbox_provider, to_i64,
 };
+
+const SERVER_DIAGNOSTICS_TIMEOUT: Duration = Duration::from_secs(25);
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -683,11 +688,34 @@ async fn get_github_repo(
 }
 
 async fn run_diagnostics(_auth: RequiredUser, State(state): State<Arc<AppState>>) -> Response {
-    (
-        StatusCode::OK,
-        Json(diagnostics::run_all(state.as_ref()).await),
+    diagnostics_response_with_timeout(
+        Box::pin(diagnostics::run_all(state.as_ref())),
+        SERVER_DIAGNOSTICS_TIMEOUT,
     )
-        .into_response()
+    .await
+}
+
+async fn diagnostics_response_with_timeout<F>(
+    diagnostics: F,
+    operation_timeout: Duration,
+) -> Response
+where
+    F: Future<Output = diagnostics::DiagnosticsReport>,
+{
+    let Ok(report) = timeout(operation_timeout, diagnostics).await else {
+        tracing::warn!(
+            timeout_secs = operation_timeout.as_secs(),
+            "server diagnostics timed out"
+        );
+        return ApiError::with_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            "Server diagnostics timed out.",
+            "diagnostics_timeout",
+        )
+        .into_response();
+    };
+
+    (StatusCode::OK, Json(report)).into_response()
 }
 
 pub(in crate::server) async fn openapi_spec() -> Response {
@@ -736,4 +764,27 @@ async fn get_aggregate_billing(
         by_model,
     };
     (StatusCode::OK, Json(response)).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn diagnostics_response_returns_gateway_timeout_before_client_deadline() {
+        let response = diagnostics_response_with_timeout(
+            std::future::pending::<diagnostics::DiagnosticsReport>(),
+            Duration::from_millis(1),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("diagnostics timeout response body should be readable");
+        let body: serde_json::Value = serde_json::from_slice(&body)
+            .expect("diagnostics timeout response should contain JSON");
+        assert_eq!(body["errors"][0]["code"], "diagnostics_timeout");
+        assert_eq!(body["errors"][0]["detail"], "Server diagnostics timed out.");
+    }
 }
