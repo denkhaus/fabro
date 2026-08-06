@@ -3,10 +3,10 @@
     reason = "CLI manifest builder: sync file I/O building install manifests"
 )]
 
-mod workflow_bundle;
+mod workflow_bundler;
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use fabro_api::types;
@@ -21,17 +21,13 @@ use fabro_graphviz::graph::AttrValue;
 use fabro_graphviz::parser;
 use fabro_types::settings::interp::InterpString;
 use fabro_types::settings::run::{ApprovalMode, ResolvedGoalSource, ResolvedRunGoal, RunMode};
-use fabro_types::{DirtyStatus, GitContext, WorkflowSettings};
+use fabro_types::{DirtyStatus, GitContext, ManifestPath, WorkflowSettings};
 use fabro_workflow::git::{
     GitSyncStatus, branch_needs_push, head_sha, push_branch_noninteractive, sync_status,
 };
 use fabro_workflow::static_reference::ReferenceKind;
 
-use crate::workflow_bundle::{
-    CollectWorkflowBundleInput, CollectedDocument, CollectedFileReferenceType,
-    CollectedSourceInput, CollectedWorkflowBundle, manifest_path_from_absolute,
-    normalize_absolute_path,
-};
+use crate::workflow_bundler::WorkflowBundler;
 
 #[derive(Debug, Default)]
 pub struct ManifestBuildInput {
@@ -138,13 +134,14 @@ pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
     }
     let project_config = discover_project_config(&root_location.dir)?;
     let project_config_source = project_config
-        .as_deref()
-        .map(read_source_input)
+        .as_ref()
+        .map(|path| {
+            let source = std::fs::read_to_string(path)
+                .with_context(|| format!("Failed to read {}", path.display()))?;
+            let manifest_path = manifest_path_from_absolute(path, &input.cwd)?;
+            Ok::<_, anyhow::Error>((path.clone(), manifest_path, source))
+        })
         .transpose()?;
-    let user_settings_path = input
-        .user_settings_path
-        .as_deref()
-        .filter(|path| path.is_file());
 
     let mut workflow_settings_builder = WorkflowSettingsBuilder::new()
         .server_manifest_defaults(RunLayer::default(), input.environment_defaults.clone());
@@ -160,7 +157,11 @@ pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
     if let Some(path) = project_config.as_ref() {
         workflow_settings_builder = workflow_settings_builder.project_file(path)?;
     }
-    if let Some(path) = user_settings_path {
+    if let Some(path) = input
+        .user_settings_path
+        .as_ref()
+        .filter(|path| path.is_file())
+    {
         workflow_settings_builder = workflow_settings_builder.user_file(path)?;
     }
     let mut workflow_settings = workflow_settings_builder
@@ -168,15 +169,35 @@ pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
         .context("failed to resolve manifest settings")?;
     workflow_settings.run.inputs.extend(input.input_overrides);
     let target_path = root_location.graph.clone();
-    let user_config_source = user_settings_path.map(read_source_input).transpose()?;
-    let collected = workflow_bundle::collect_workflow_bundle(CollectWorkflowBundleInput {
-        cwd: &input.cwd,
-        root_location,
-        inputs: &workflow_settings.run.inputs,
-        project_config: project_config_source,
-        user_config: user_config_source,
-    })?;
-    let assembled = assemble_current_manifest(collected, &input.cwd)?;
+    let target_manifest_path = manifest_path_from_absolute(&target_path, &input.cwd)?;
+    let target_key = target_manifest_path.to_string();
+    let project_config_input = project_config_source
+        .as_ref()
+        .map(|(_, path, source)| (path, source.as_str()));
+    let workflows = WorkflowBundler::new(&input.cwd, &workflow_settings.run.inputs)
+        .bundle(&root_location, project_config_input)?;
+    let root_source = workflows
+        .get(&target_key)
+        .map(|workflow| workflow.source.clone())
+        .ok_or_else(|| anyhow!("root workflow missing from manifest bundle"))?;
+
+    let mut configs = Vec::new();
+    if let Some((path, _, source)) = project_config_source {
+        configs.push(types::ManifestConfig {
+            path:   Some(path.display().to_string()),
+            source: Some(source),
+            type_:  types::ManifestConfigType::Project,
+        });
+    }
+    if let Some(path) = input.user_settings_path.filter(|path| path.is_file()) {
+        let source = std::fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
+        configs.push(types::ManifestConfig {
+            path:   Some(path.display().to_string()),
+            source: Some(source),
+            type_:  types::ManifestConfigType::User,
+        });
+    }
 
     let working_directory =
         project::resolve_working_directory_from_run(&workflow_settings.run, &input.cwd);
@@ -184,7 +205,7 @@ pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
     let goal = resolve_manifest_goal(
         input.run_overrides.as_ref(),
         &workflow_settings,
-        &assembled.root_source,
+        &root_source,
         &target_path,
         &working_directory,
     )?;
@@ -196,115 +217,17 @@ pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
     Ok(BuiltManifest {
         manifest: types::RunManifest {
             args,
+            configs,
             cwd: input.cwd.display().to_string(),
             git,
             goal,
             parent_id: None,
             title: None,
-            target: types::ManifestTarget {
-                path: assembled.target_key,
-            },
+            target: types::ManifestTarget { path: target_key },
             version: 1,
-            workflows: assembled.workflows,
-            configs: assembled.configs,
+            workflows,
         },
         target_path,
-    })
-}
-
-struct AssembledCurrentManifest {
-    target_key:  String,
-    root_source: String,
-    workflows:   HashMap<String, types::ManifestWorkflow>,
-    configs:     Vec<types::ManifestConfig>,
-}
-
-fn assemble_current_manifest(
-    collected: CollectedWorkflowBundle,
-    cwd: &Path,
-) -> Result<AssembledCurrentManifest> {
-    let root = collected
-        .workflows
-        .get(&collected.entrypoint)
-        .ok_or_else(|| anyhow!("root workflow missing from collected workflow bundle"))?;
-    let target_key = manifest_path_from_absolute(&root.graph.access_path, cwd)?.to_string();
-    let root_source = root.graph.source.clone();
-
-    let mut workflows = HashMap::new();
-    for workflow in collected.workflows.into_values() {
-        let graph_key = manifest_path_from_absolute(&workflow.graph.access_path, cwd)?.to_string();
-        let config = workflow
-            .config
-            .map(|config| {
-                Ok::<_, anyhow::Error>(types::ManifestWorkflowConfig {
-                    path:   manifest_path_from_absolute(&config.access_path, cwd)?.to_string(),
-                    source: config.source,
-                })
-            })
-            .transpose()?;
-        let mut files = HashMap::new();
-        for file in workflow.files.into_values() {
-            let key = manifest_path_from_absolute(&file.document.access_path, cwd)?.to_string();
-            let from = file
-                .reference
-                .from_access_path
-                .as_deref()
-                .map(|path| manifest_path_from_absolute(path, cwd).map(|path| path.to_string()))
-                .transpose()?;
-            let type_ = match file.reference.type_ {
-                CollectedFileReferenceType::FileInline => types::ManifestFileRefType::FileInline,
-                CollectedFileReferenceType::Import => types::ManifestFileRefType::Import,
-                CollectedFileReferenceType::Dockerfile => types::ManifestFileRefType::Dockerfile,
-            };
-            files.insert(key, types::ManifestFileEntry {
-                content: file.document.source,
-                ref_:    types::ManifestFileRef {
-                    from,
-                    original: file.reference.original,
-                    type_,
-                },
-            });
-        }
-        workflows.insert(graph_key, types::ManifestWorkflow {
-            source: workflow.graph.source,
-            config,
-            files,
-        });
-    }
-
-    let mut configs = Vec::new();
-    if let Some(config) = collected.project_config {
-        configs.push(manifest_config(config, types::ManifestConfigType::Project));
-    }
-    if let Some(config) = collected.user_config {
-        configs.push(manifest_config(config, types::ManifestConfigType::User));
-    }
-
-    Ok(AssembledCurrentManifest {
-        target_key,
-        root_source,
-        workflows,
-        configs,
-    })
-}
-
-fn manifest_config(
-    document: CollectedDocument,
-    type_: types::ManifestConfigType,
-) -> types::ManifestConfig {
-    types::ManifestConfig {
-        path: Some(document.access_path.display().to_string()),
-        source: Some(document.source),
-        type_,
-    }
-}
-
-fn read_source_input(path: &Path) -> Result<CollectedSourceInput> {
-    let source = std::fs::read_to_string(path)
-        .with_context(|| format!("Failed to read {}", path.display()))?;
-    Ok(CollectedSourceInput {
-        access_path: path.to_path_buf(),
-        source,
     })
 }
 
@@ -471,6 +394,32 @@ fn push_manifest_branch_best_effort(
     }
 
     let _ = push_branch_noninteractive(repo_path, "origin", branch);
+}
+
+fn normalize_absolute_path(base_dir: &Path, reference: &str) -> Option<PathBuf> {
+    let path = Path::new(reference);
+    if path.is_absolute() || reference.starts_with('~') {
+        return None;
+    }
+
+    let mut normalized = PathBuf::new();
+    for component in base_dir.join(path).components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(part) => normalized.push(part),
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::RootDir => normalized.push(Path::new("/")),
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+        }
+    }
+    Some(normalized)
+}
+
+fn manifest_path_from_absolute(path: &Path, cwd: &Path) -> Result<ManifestPath> {
+    ManifestPath::from_absolute(path, cwd)
+        .ok_or_else(|| anyhow!("Failed to compute manifest path for {}", path.display()))
 }
 
 pub fn manifest_args_is_empty(args: &types::ManifestArgs) -> bool {
@@ -699,19 +648,19 @@ graph = "workflow.fabro"
                             ),
                             ".fabro/workflows/root/prompts/deep.md": file(
                                 "deep\n",
-                                ".fabro/workflows/root/workflow.fabro",
+                                ".fabro/workflows/root/prompts/plan.md",
                                 ".fabro/workflows/root/prompts/deep.md",
                                 "file_inline",
                             ),
                             ".fabro/workflows/root/prompts/helpers.md": file(
                                 helpers,
-                                ".fabro/workflows/root/workflow.fabro",
+                                ".fabro/workflows/root/prompts/plan.md",
                                 ".fabro/workflows/root/prompts/helpers.md",
                                 "file_inline",
                             ),
                             ".fabro/workflows/root/prompts/partial.md": file(
                                 "partial\n",
-                                ".fabro/workflows/root/workflow.fabro",
+                                ".fabro/workflows/root/prompts/plan.md",
                                 ".fabro/workflows/root/prompts/partial.md",
                                 "file_inline",
                             ),
@@ -1057,17 +1006,26 @@ graph = "workflow.fabro"
         .unwrap();
 
         let root = &built.manifest.workflows[".fabro/workflows/demo/workflow.fabro"];
-        assert!(
-            root.files
-                .contains_key(".fabro/workflows/demo/prompts/goal.tpl.md")
+        assert_eq!(
+            root.files[".fabro/workflows/demo/prompts/goal.tpl.md"]
+                .ref_
+                .from
+                .as_deref(),
+            Some(".fabro/workflows/demo/prompts/goal.md")
         );
-        assert!(
-            root.files
-                .contains_key(".fabro/workflows/demo/prompts/plan.tpl.md")
+        assert_eq!(
+            root.files[".fabro/workflows/demo/prompts/plan.tpl.md"]
+                .ref_
+                .from
+                .as_deref(),
+            Some(".fabro/workflows/demo/prompts/plan.md")
         );
-        assert!(
-            root.files
-                .contains_key(".fabro/workflows/demo/inline.tpl.md")
+        assert_eq!(
+            root.files[".fabro/workflows/demo/inline.tpl.md"]
+                .ref_
+                .from
+                .as_deref(),
+            Some(".fabro/workflows/demo/workflow.fabro")
         );
     }
 
@@ -1166,8 +1124,9 @@ graph = "workflow.fabro"
         .unwrap_err();
 
         assert!(
-            err.chain()
-                .any(|cause| cause.to_string().contains("dynamic template dependency")),
+            err.chain().any(|cause| cause
+                .downcast_ref::<fabro_template::TemplateDiscoveryError>()
+                .is_some()),
             "unexpected error: {err:#}"
         );
     }
