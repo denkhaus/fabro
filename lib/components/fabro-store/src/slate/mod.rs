@@ -740,6 +740,29 @@ mod tests {
         )
     }
 
+    fn sandbox_init_failure_payload(label: &str) -> EventPayload {
+        event_payload(
+            label,
+            "2026-03-27T12:00:04Z",
+            "run.failed",
+            &serde_json::json!({
+                "failure": {
+                    "reason": "sandbox_init_failed",
+                    "detail": {
+                        "message": "sandbox initialization failed",
+                        "category": "deterministic"
+                    }
+                },
+                "timing": {
+                    "wall_time_ms": 1,
+                    "inference_time_ms": 0,
+                    "tool_time_ms": 0,
+                    "active_time_ms": 0
+                },
+            }),
+        )
+    }
+
     async fn append_completed(run: &RunDatabase, label: &str, created_at: DateTime<Utc>) {
         append_running(run, label, created_at).await;
         run.append_event(&event_payload(
@@ -914,7 +937,7 @@ mod tests {
         let events_before = run.list_events().await.unwrap();
 
         let err = run
-            .append_event(&workflow_failure_payload("run-1"))
+            .append_event(&sandbox_init_failure_payload("run-1"))
             .await
             .unwrap_err();
 
@@ -926,7 +949,7 @@ mod tests {
             Error::InvalidTransition(fabro_types::InvalidTransition {
                 from: RunStatus::Runnable,
                 to:   RunStatus::Failed {
-                    reason: FailureReason::WorkflowError,
+                    reason: FailureReason::SandboxInitFailed,
                 },
             })
         ));
@@ -947,7 +970,7 @@ mod tests {
         append_runnable(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
 
         let err = run
-            .append_event(&workflow_failure_payload("run-1"))
+            .append_event(&sandbox_init_failure_payload("run-1"))
             .await
             .unwrap_err();
         assert!(matches!(err, Error::EventRejected { .. }));
