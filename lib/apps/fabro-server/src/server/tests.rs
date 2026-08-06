@@ -4604,6 +4604,7 @@ fn context_window_event(
             usage:           TokenCounts::default(),
             cost_usd:        None,
             cost_source:     None,
+            session_spend:   fabro_agent::SessionSpend::default(),
             tool_call_count: 0,
             context_window:  Some(context_window),
             reasoning:       None,
@@ -16430,6 +16431,7 @@ async fn attach_stream_replays_agent_message_reasoning() {
                 usage:           TokenCounts::default(),
                 cost_usd:        None,
                 cost_source:     None,
+                session_spend:   fabro_agent::SessionSpend::default(),
                 tool_call_count: 1,
                 context_window:  None,
                 reasoning:       Some(fabro_types::ReasoningOutput::new(
