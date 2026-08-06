@@ -179,8 +179,11 @@ impl<G: Graph + 'static> Executor<G> {
                 }
             }
 
-            // Check visit limits (>= matches fabro-workflow semantics)
-            let visits = state.increment_visits(node.id());
+            // Check visit limits before entry: a node with a limit of N may
+            // execute N times, matching the documented contract. The count
+            // covers completed entries only, so the refused visit is not
+            // reported as one.
+            let visits = state.visits(node.id());
             if let Some(max) = node.max_visits() {
                 if visits >= max {
                     return Err(Error::VisitLimitExceeded {
@@ -201,6 +204,7 @@ impl<G: Graph + 'static> Executor<G> {
                     });
                 }
             }
+            state.increment_visits(node.id());
 
             // before_node lifecycle
             let node_result = match self.lifecycle.before_node(&node, &state).await? {
@@ -807,7 +811,8 @@ mod tests {
 
     #[tokio::test]
     async fn executor_visit_limit_per_node() {
-        // Node with max_visits=2, loops back — fails on 2nd visit (>= semantics)
+        // Node with max_visits=2, loops back — executes exactly twice, then
+        // the third entry is refused. The error reports completed visits.
         let g = TestGraph::new(
             vec![
                 TestNode::new("loop_node").with_max_visits(2),
@@ -821,11 +826,20 @@ mod tests {
             "loop_node",
         );
         let state = ExecutionState::new(&g).unwrap();
+        let handler = Arc::new(CountingHandler::new(vec![]));
         let executor =
-            ExecutorBuilder::new(Arc::new(AlwaysSucceedHandler) as Arc<dyn NodeHandler<TestGraph>>)
-                .build();
+            ExecutorBuilder::new(Arc::clone(&handler) as Arc<dyn NodeHandler<TestGraph>>).build();
         let result = executor.run(&g, state).await;
-        assert!(matches!(result, Err(Error::VisitLimitExceeded { .. })));
+        match result {
+            Err(Error::VisitLimitExceeded { visits, limit, .. }) => {
+                assert_eq!(visits, 2);
+                assert_eq!(limit, 2);
+            }
+            Err(other) => panic!("expected VisitLimitExceeded, got {other:?}"),
+            Ok(_) => panic!("expected VisitLimitExceeded, got success"),
+        }
+        // Two full loop_node -> other iterations ran before the refusal.
+        assert_eq!(handler.calls(), 4);
     }
 
     #[tokio::test]
