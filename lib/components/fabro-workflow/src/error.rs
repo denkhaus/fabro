@@ -337,6 +337,12 @@ pub enum Error {
 
     #[error("Pipeline cancelled")]
     Cancelled,
+
+    /// The run's `[run.limits]` spend budget was exhausted. Terminal and
+    /// non-retryable: the run halts immediately and fails with
+    /// `FailureReason::BudgetExhausted`.
+    #[error("Run budget exhausted: {0}")]
+    BudgetExhausted(String),
 }
 
 impl Error {
@@ -497,7 +503,8 @@ impl Error {
             | Self::RunNotFound(_)
             | Self::Unsupported(_)
             | Self::OutputSchemaValidation(_)
-            | Self::Cancelled => false,
+            | Self::Cancelled
+            | Self::BudgetExhausted(_) => false,
         }
     }
 
@@ -506,6 +513,7 @@ impl Error {
     pub fn failure_category(&self) -> FailureCategory {
         match self {
             Self::Cancelled => FailureCategory::Canceled,
+            Self::BudgetExhausted(_) => FailureCategory::BudgetExhausted,
             Self::Llm(sdk_err) => classify_sdk_error(sdk_err),
             Self::Io(_) => FailureCategory::TransientInfra,
             Self::Parse(_)
@@ -529,6 +537,7 @@ impl Error {
     pub fn failure_reason(&self) -> FailureReason {
         match self {
             Self::Cancelled => FailureReason::Cancelled,
+            Self::BudgetExhausted(_) => FailureReason::BudgetExhausted,
             Self::Stage {
                 stage: ErrorStage::Publish,
                 ..
