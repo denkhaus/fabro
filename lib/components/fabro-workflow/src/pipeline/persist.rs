@@ -272,6 +272,50 @@ mod tests {
         assert!(loaded.diagnostics().is_empty());
     }
 
+    #[tokio::test]
+    async fn load_from_store_preserves_high_entropy_dockerfile_content() {
+        // The spec the worker executes must survive the store byte-identical.
+        // Event redaction is a storage/display concern; when it reaches the
+        // spec that `load_from_store` rehydrates, the sandbox builds a
+        // corrupted Dockerfile: `ARG NAME=<hex>` pairs come back as
+        // `ARG REDACTED`, the build's `set -eu` step fails on the unset
+        // variable, and the environment's snapshot identity silently changes.
+        let temp = tempfile::tempdir().unwrap();
+        let run_dir = temp.path().join("run");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let (graph, source) = graph_and_source();
+
+        // Two shapes that must both survive: the hex pins that triggered the
+        // production failure, and a token high-entropy enough that any
+        // detector will keep flagging it in stored events. The second keeps
+        // this test red until execution stops reading redacted content,
+        // independent of how the entropy heuristic evolves.
+        let dockerfile = "FROM buildpack-deps:noble\n\
+             ARG DOCKER_INSTALL_COMMIT=5ce20f2eef3615d08fea941eda5a109e949e8ebf\n\
+             ARG DOCKER_INSTALL_SHA256=b991f2806186f7287bb9e53362060c382e906d154599b2fb0982f34246bacfd4\n\
+             ENV CACHE_SALT=xK9mZ2vL8nQ5rT1wY4bC7dF0gH3jE6p\n\
+             RUN install-docker \"${DOCKER_INSTALL_COMMIT}\" \"${DOCKER_INSTALL_SHA256}\"\n";
+
+        let mut record = sample_record(different_graph());
+        record.graph = graph;
+        record.settings.run.environment.image.dockerfile = Some(
+            fabro_types::settings::run::DockerfileSource::Inline(dockerfile.to_string()),
+        );
+
+        let run_store = seeded_store(&record, Some(&source)).await;
+        let loaded = load_from_store(&run_store.clone().into(), &run_dir)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            loaded.run_spec().settings.run.environment.image.dockerfile,
+            Some(fabro_types::settings::run::DockerfileSource::Inline(
+                dockerfile.to_string()
+            )),
+            "the executable run spec must round-trip through the store unredacted"
+        );
+    }
+
     #[test]
     fn persist_returns_error_on_io_failure() {
         let temp = tempfile::tempdir().unwrap();
