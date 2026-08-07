@@ -1046,6 +1046,7 @@ fn projection_from_created(event: &EventEnvelope) -> Result<RunProjection> {
         provenance: props.provenance.clone(),
         manifest_blob: props.manifest_blob,
         definition_blob: None,
+        spec_blob: props.spec_blob,
         git: props.git.clone(),
         fork_source_ref: props.fork_source_ref.clone(),
     };
@@ -2292,6 +2293,7 @@ mod tests {
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
             definition_blob:  None,
+            spec_blob:        None,
             git:              None,
             fork_source_ref:  None,
         }
@@ -4098,6 +4100,7 @@ mod tests {
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
             definition_blob:  None,
+            spec_blob:        None,
             fork_source_ref:  None,
         };
 
@@ -4124,6 +4127,7 @@ mod tests {
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
             definition_blob:  None,
+            spec_blob:        None,
             fork_source_ref:  None,
         };
 

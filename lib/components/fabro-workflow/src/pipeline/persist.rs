@@ -2,6 +2,7 @@ use std::path::Path;
 
 use super::types::{PersistOptions, Persisted, Validated};
 use crate::error::Error;
+use crate::records::RunSpec;
 use crate::runtime_store::RunStoreHandle;
 
 /// PERSIST phase: create the run directory and return durable metadata for
@@ -37,7 +38,7 @@ pub(crate) async fn load_from_store(
         .state()
         .await
         .map_err(|err| Error::engine(err.to_string()))?;
-    let run_spec = state.spec;
+    let run_spec = executable_run_spec(run_store, state.spec).await?;
     let graph = run_spec.graph.clone();
     let source = run_spec.graph_source.clone().unwrap_or_default();
 
@@ -48,6 +49,40 @@ pub(crate) async fn load_from_store(
         run_dir.to_path_buf(),
         run_spec,
     ))
+}
+
+/// Replace the event-folded spec content with the exact bytes from the spec
+/// blob. Stored events pass through secret redaction, so the folded spec is
+/// display data; the blob written at creation is what execution must see.
+/// Runs created before the blob existed fall back to the folded spec.
+async fn executable_run_spec(
+    run_store: &RunStoreHandle,
+    folded: RunSpec,
+) -> Result<RunSpec, Error> {
+    let Some(blob_id) = folded.spec_blob else {
+        return Ok(folded);
+    };
+    let bytes = run_store
+        .read_blob(&blob_id)
+        .await
+        .map_err(|err| Error::engine(err.to_string()))?
+        .ok_or_else(|| {
+            Error::engine(format!(
+                "run spec blob is missing from the run store: {blob_id}"
+            ))
+        })?;
+    let mut spec: RunSpec =
+        serde_json::from_slice(&bytes).map_err(|err| Error::Parse(err.to_string()))?;
+    // The event stream stays authoritative for run identity, for provenance
+    // (a retry rewrites it), for blob ids recorded on events after the spec
+    // blob was written, and for a graph source the blob does not carry.
+    spec.run_id = folded.run_id;
+    spec.provenance = folded.provenance;
+    spec.manifest_blob = folded.manifest_blob;
+    spec.definition_blob = folded.definition_blob;
+    spec.spec_blob = folded.spec_blob;
+    spec.graph_source = spec.graph_source.or(folded.graph_source);
+    Ok(spec)
 }
 
 #[cfg(test)]
@@ -150,30 +185,52 @@ mod tests {
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
             definition_blob: None,
+            spec_blob: None,
             fork_source_ref: None,
         }
     }
 
     async fn seeded_store(record: &RunSpec, source: Option<&str>) -> RunDatabase {
+        seeded_store_with(record, source, true).await
+    }
+
+    async fn seeded_store_with(
+        record: &RunSpec,
+        source: Option<&str>,
+        write_spec_blob: bool,
+    ) -> RunDatabase {
         let store = memory_store();
         let run_store = store.create_run(&record.run_id).await.unwrap();
+        // Mirror the production producer: the unredacted spec rides a blob
+        // and the redacted event carries its id.
+        let spec_blob = if write_spec_blob {
+            Some(
+                run_store
+                    .write_blob(&serde_json::to_vec(record).unwrap())
+                    .await
+                    .unwrap(),
+            )
+        } else {
+            None
+        };
         append_event(&run_store, &record.run_id, &Event::RunCreated {
-            run_id:           record.run_id,
-            title:            None,
-            settings:         serde_json::to_value(&record.settings).unwrap(),
-            graph:            serde_json::to_value(&record.graph).unwrap(),
-            workflow_source:  source.map(ToOwned::to_owned),
-            labels:           record.labels.clone().into_iter().collect(),
+            run_id: record.run_id,
+            title: None,
+            settings: serde_json::to_value(&record.settings).unwrap(),
+            graph: serde_json::to_value(&record.graph).unwrap(),
+            workflow_source: source.map(ToOwned::to_owned),
+            labels: record.labels.clone().into_iter().collect(),
             source_directory: record.source_directory.clone(),
-            workflow_slug:    record.workflow_slug.clone(),
-            automation:       record.automation.clone(),
-            provenance:       record.provenance.clone(),
-            manifest_blob:    None,
-            git:              record.git.clone(),
-            fork_source_ref:  record.fork_source_ref.clone(),
-            retried_from:     None,
-            parent_id:        None,
-            web_url:          None,
+            workflow_slug: record.workflow_slug.clone(),
+            automation: record.automation.clone(),
+            provenance: record.provenance.clone(),
+            manifest_blob: None,
+            spec_blob,
+            git: record.git.clone(),
+            fork_source_ref: record.fork_source_ref.clone(),
+            retried_from: None,
+            parent_id: None,
+            web_url: None,
         })
         .await
         .unwrap();
@@ -314,6 +371,26 @@ mod tests {
             )),
             "the executable run spec must round-trip through the store unredacted"
         );
+    }
+
+    #[tokio::test]
+    async fn load_from_store_falls_back_to_folded_spec_without_spec_blob() {
+        // Runs created before the spec blob existed carry no spec_blob on
+        // run.created; the folded spec is their only copy.
+        let temp = tempfile::tempdir().unwrap();
+        let run_dir = temp.path().join("run");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let (graph, source) = graph_and_source();
+        let mut record = sample_record(different_graph());
+        record.graph = graph;
+
+        let run_store = seeded_store_with(&record, Some(&source), false).await;
+        let loaded = load_from_store(&run_store.clone().into(), &run_dir)
+            .await
+            .unwrap();
+
+        assert_eq!(loaded.run_spec().settings, record.settings);
+        assert_eq!(loaded.run_spec().spec_blob, None);
     }
 
     #[test]

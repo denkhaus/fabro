@@ -830,6 +830,7 @@ mod tests {
                 provenance:       test_support::test_run_provenance(),
                 manifest_blob:    None,
                 definition_blob:  None,
+                spec_blob:        None,
                 git:              None,
                 fork_source_ref:  None,
             },
@@ -1112,6 +1113,7 @@ mod tests {
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
             definition_blob:  None,
+            spec_blob:        None,
             fork_source_ref:  None,
         };
         append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
@@ -1126,6 +1128,7 @@ mod tests {
             automation:       None,
             provenance:       run_spec.provenance.clone(),
             manifest_blob:    None,
+            spec_blob:        None,
             git:              run_spec.git.clone(),
             fork_source_ref:  None,
             retried_from:     None,
@@ -1179,6 +1182,7 @@ mod tests {
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
             definition_blob:  None,
+            spec_blob:        None,
             fork_source_ref:  None,
         };
         append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
@@ -1193,6 +1197,7 @@ mod tests {
             automation:       None,
             provenance:       run_spec.provenance.clone(),
             manifest_blob:    None,
+            spec_blob:        None,
             git:              run_spec.git.clone(),
             fork_source_ref:  None,
             retried_from:     None,
@@ -1596,6 +1601,7 @@ mod tests {
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
             definition_blob:  None,
+            spec_blob:        None,
             fork_source_ref:  None,
         };
         append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
@@ -1610,6 +1616,7 @@ mod tests {
             automation:       None,
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
+            spec_blob:        None,
             git:              None,
             fork_source_ref:  None,
             retried_from:     None,
@@ -1813,6 +1820,7 @@ mod tests {
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
             definition_blob:  None,
+            spec_blob:        None,
             fork_source_ref:  None,
         };
         append_event(&run_store, &fixtures::RUN_1, &Event::RunCreated {
@@ -1827,6 +1835,7 @@ mod tests {
             automation:       None,
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
+            spec_blob:        None,
             git:              None,
             fork_source_ref:  None,
             retried_from:     None,

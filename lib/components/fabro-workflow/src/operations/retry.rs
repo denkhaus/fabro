@@ -54,6 +54,7 @@ pub async fn retry_run(
         provenance: _,
         manifest_blob,
         definition_blob,
+        spec_blob,
         git,
         fork_source_ref,
     } = source.spec;
@@ -78,6 +79,9 @@ pub async fn retry_run(
         automation,
         provenance: input.provenance.clone(),
         manifest_blob,
+        // Blobs are content-addressed, so the retried run reads the source
+        // run's unredacted spec bytes through the same id.
+        spec_blob,
         git,
         fork_source_ref,
         retried_from: Some(source_run_id),
@@ -185,6 +189,7 @@ mod tests {
             automation: None,
             provenance: provenance("source-user"),
             manifest_blob,
+            spec_blob: None,
             git: Some(git_context()),
             fork_source_ref,
             retried_from: None,

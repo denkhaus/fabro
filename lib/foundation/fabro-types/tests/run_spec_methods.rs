@@ -31,6 +31,7 @@ fn sample_run_spec() -> RunSpec {
         provenance: test_run_provenance(),
         manifest_blob: None,
         definition_blob: None,
+        spec_blob: None,
         git: Some(GitContext {
             origin_url: "https://github.com/fabro-sh/fabro.git".to_string(),
             branch:     "main".to_string(),

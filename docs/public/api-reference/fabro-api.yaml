@@ -11304,6 +11304,8 @@ components:
           type: ["string", "null"]
         definition_blob:
           type: ["string", "null"]
+        spec_blob:
+          type: ["string", "null"]
         git:
           oneOf:
             - $ref: "#/components/schemas/GitContext"

@@ -28,6 +28,11 @@ pub struct RunCreatedProps {
     pub provenance:       RunProvenance,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manifest_blob:    Option<RunBlobId>,
+    /// Unredacted copy of the run spec in the blob store. The settings and
+    /// graph on this event are redacted at the sink; execution loads the
+    /// spec from this blob instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec_blob:        Option<RunBlobId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git:              Option<GitContext>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

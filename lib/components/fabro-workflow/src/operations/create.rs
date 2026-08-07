@@ -470,6 +470,7 @@ pub async fn persist_create_run(
             provenance,
             manifest_blob: None,
             definition_blob: None,
+            spec_blob: None,
             git,
             fork_source_ref,
         };
@@ -528,6 +529,12 @@ async fn persist_created_run(
         }
         None => None,
     };
+    // The spec on the run.created event is subject to secret redaction in
+    // stored copies; the blob keeps the exact bytes execution needs.
+    let spec_blob = {
+        let bytes = serde_json::to_vec(record).map_err(|err| Error::engine(err.to_string()))?;
+        Some(run_store.write_blob(&bytes).await.map_err(store_error)?)
+    };
 
     let title = explicit_title.unwrap_or_else(|| fabro_types::infer_run_title(record.graph.goal()));
     let stored = to_run_event_at(
@@ -554,6 +561,7 @@ async fn persist_created_run(
             automation: record.automation.clone(),
             provenance: record.provenance.clone(),
             manifest_blob,
+            spec_blob,
             git: record.git.clone(),
             fork_source_ref: record.fork_source_ref.clone(),
             retried_from: None,
