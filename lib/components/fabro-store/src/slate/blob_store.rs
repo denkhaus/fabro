@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use fabro_types::RunBlobId;
+use futures::StreamExt;
 
-use crate::Result;
 use crate::record::{RawBytesCodec, Record, Repository};
+use crate::{Error, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Blob(pub Bytes);
@@ -63,6 +64,20 @@ impl BlobStore {
     pub async fn exists(&self, id: &RunBlobId) -> Result<bool> {
         self.repo.exists(id).await
     }
+
+    pub(crate) async fn list(&self) -> Result<Vec<RunBlobId>> {
+        let mut stream = self.repo.scan_ids_stream();
+        let mut ids = Vec::new();
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(id) => ids.push(id),
+                Err(Error::KeyParse(_)) => {}
+                Err(err) => return Err(err),
+            }
+        }
+        ids.sort();
+        Ok(ids)
+    }
 }
 
 #[cfg(test)]
@@ -109,6 +124,40 @@ mod tests {
         let id = store.write(b"").await.unwrap();
 
         assert_eq!(store.read(&id).await.unwrap(), Some(Bytes::new()));
+    }
+
+    #[tokio::test]
+    async fn list_returns_sorted_ids_and_handles_empty_store() {
+        let store = store().await;
+        assert!(store.list().await.unwrap().is_empty());
+
+        let first_id = store.write(br#"{"z":1}"#).await.unwrap();
+        let second_id = store.write(br#"{"a":1}"#).await.unwrap();
+        let mut expected = vec![first_id, second_id];
+        expected.sort();
+
+        assert_eq!(store.list().await.unwrap(), expected);
+    }
+
+    #[tokio::test]
+    async fn list_skips_malformed_blob_ids() {
+        let raw_db = Arc::new(
+            slatedb::Db::open("blob-store-list-tests", Arc::new(InMemory::new()))
+                .await
+                .unwrap(),
+        );
+        let store = BlobStore::new(Arc::clone(&raw_db));
+        let id = store.write(b"valid").await.unwrap();
+
+        raw_db
+            .put(
+                SlateKey::new("blobs").with("sha256").with("not-a-blob-id"),
+                b"malformed",
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(store.list().await.unwrap(), vec![id]);
     }
 
     #[tokio::test]

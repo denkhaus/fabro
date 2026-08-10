@@ -146,11 +146,13 @@ impl Database {
     pub async fn create_run(&self, run_id: &RunId) -> Result<RunDatabase> {
         self.warm_projection_cache().await?;
         let db = self.open_db().await?;
+        let blob_store = self.blobs().await?;
 
         self.catalog_index().await?.add(run_id).await?;
         let run_store = RunDatabase::open_writer(
             *run_id,
             db,
+            blob_store,
             Arc::clone(&self.projection_cache),
             Arc::clone(&self.run_summary_store),
         )
@@ -163,6 +165,7 @@ impl Database {
     pub async fn open_run(&self, run_id: &RunId) -> Result<RunDatabase> {
         self.warm_projection_cache().await?;
         let db = self.open_db().await?;
+        let blob_store = self.blobs().await?;
         // Keep the active-writer miss and insert atomic. Otherwise concurrent
         // callers can create independent writers with the same recovered seq.
         let mut active_runs = self.active_runs.lock().await;
@@ -181,6 +184,7 @@ impl Database {
         let run_store = RunDatabase::open_writer(
             *run_id,
             db,
+            blob_store,
             Arc::clone(&self.projection_cache),
             Arc::clone(&self.run_summary_store),
         )
@@ -202,9 +206,11 @@ impl Database {
         if !RunDatabase::has_any_events(&db, run_id).await? {
             return Err(Error::RunNotFound(run_id.to_string()));
         }
+        let blob_store = self.blobs().await?;
         RunDatabase::open_reader(
             *run_id,
             db,
+            blob_store,
             Arc::clone(&self.projection_cache),
             Arc::clone(&self.run_summary_store),
         )
@@ -857,8 +863,19 @@ mod tests {
         let (_object_store, store) = make_store();
         let run = store.create_run(&test_run_id("run-1")).await.unwrap();
         append_created(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
+        let blob = br#"{"summary":"readable"}"#;
+        let blob_id = run.write_blob(blob).await.unwrap();
 
         let reader = store.open_run_reader(&test_run_id("run-1")).await.unwrap();
+        assert_eq!(
+            reader.read_blob(&blob_id).await.unwrap().as_deref(),
+            Some(blob.as_slice())
+        );
+        assert_eq!(reader.list_blobs().await.unwrap(), vec![blob_id]);
+
+        let err = reader.write_blob(b"blocked").await.unwrap_err();
+        assert!(matches!(err, Error::ReadOnly));
+
         let err = reader
             .append_event(&event_payload(
                 "run-1",

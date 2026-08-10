@@ -1,7 +1,7 @@
 use std::fmt::{self, Write};
 use std::ops::Range;
 
-use fabro_types::{RunBlobId, RunId, SessionId};
+use fabro_types::{RunId, SessionId};
 
 pub(crate) const MAX_EVENT_SEQ: u32 = 999_999;
 
@@ -91,10 +91,6 @@ pub(crate) fn run_events_range(run_id: &RunId, start_seq: u32) -> Range<SlateKey
     run_event_seq_prefix(run_id, start_seq)..end
 }
 
-pub(crate) fn blobs_prefix() -> SlateKey {
-    SlateKey::new("blobs").with("sha256").into_prefix()
-}
-
 pub(crate) fn sessions_by_id_prefix() -> SlateKey {
     SlateKey::new("sessions").with("by-id").into_prefix()
 }
@@ -113,21 +109,6 @@ pub(crate) fn parse_event_seq(key: &str) -> Option<u32> {
         return None;
     }
     segments.next()?.split_once('-')?.0.parse().ok()
-}
-
-pub(crate) fn parse_blob_id(key: &str) -> Option<RunBlobId> {
-    let mut segments = SlateKey::segments(key);
-    if segments.next()? != "blobs" {
-        return None;
-    }
-    if segments.next()? != "sha256" {
-        return None;
-    }
-    let id = segments.next()?;
-    if segments.next().is_some() {
-        return None;
-    }
-    id.parse().ok()
 }
 
 #[cfg(test)]
@@ -162,14 +143,6 @@ mod tests {
     }
 
     #[test]
-    fn blob_key_segments() {
-        let blob_id = RunBlobId::new(b"summary");
-        let key = SlateKey::new("blobs").with("sha256").with(blob_id);
-        let segments: Vec<&str> = SlateKey::segments(key.as_str()).collect();
-        assert_eq!(segments, ["blobs", "sha256", &blob_id.to_string()]);
-    }
-
-    #[test]
     fn sequence_keys_are_zero_padded() {
         let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
         let key = run_event_key(&run_id, 7, 123);
@@ -196,39 +169,22 @@ mod tests {
     }
 
     #[test]
-    fn parse_helpers_roundtrip() {
+    fn parse_event_seq_roundtrips() {
         let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
         assert_eq!(
             parse_event_seq(run_event_key(&run_id, 7, 123).as_str()),
             Some(7)
         );
-
-        let blob_id = RunBlobId::new(b"summary");
-        let key = SlateKey::new("blobs").with("sha256").with(blob_id);
-        assert_eq!(parse_blob_id(key.as_str()), Some(blob_id));
     }
 
     #[test]
-    fn parse_helpers_reject_invalid_keys() {
+    fn parse_event_seq_rejects_invalid_keys() {
         assert_eq!(
             parse_event_seq(
                 SlateKey::new("runs")
                     .with("not-a-run")
                     .with("events")
                     .with("not-a-seq")
-                    .as_str()
-            ),
-            None
-        );
-        assert_eq!(
-            parse_blob_id(SlateKey::new("blobs").with("not-a-uuid").as_str()),
-            None
-        );
-        assert_eq!(
-            parse_blob_id(
-                SlateKey::new("blobs")
-                    .with("01JT56VE4Z5NZ814GZN2JZD65A")
-                    .with("not-a-blob")
                     .as_str()
             ),
             None

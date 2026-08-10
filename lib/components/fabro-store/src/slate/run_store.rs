@@ -37,7 +37,7 @@ impl std::fmt::Debug for RunDatabase {
 pub(crate) struct RunDatabaseInner {
     run_id: RunId,
     db: Db,
-    blob_store: BlobStore,
+    blob_store: Arc<BlobStore>,
     // `None` for reader-built inners: readers never append, so they carry no
     // next-write sequence and any append through them fails as read-only.
     event_seq: Option<AtomicU32>,
@@ -57,6 +57,7 @@ impl RunDatabase {
     pub(crate) async fn open_writer(
         run_id: RunId,
         db: Db,
+        blob_store: Arc<BlobStore>,
         shared_projection_cache: Arc<RunProjectionCache>,
         run_summary_store: Arc<OnceLock<Arc<RunSummaryStore>>>,
     ) -> Result<Self> {
@@ -64,6 +65,7 @@ impl RunDatabase {
             run_id,
             db,
             false,
+            blob_store,
             shared_projection_cache,
             run_summary_store,
         )
@@ -73,16 +75,26 @@ impl RunDatabase {
     pub(crate) async fn open_reader(
         run_id: RunId,
         db: Db,
+        blob_store: Arc<BlobStore>,
         shared_projection_cache: Arc<RunProjectionCache>,
         run_summary_store: Arc<OnceLock<Arc<RunSummaryStore>>>,
     ) -> Result<Self> {
-        Self::build(run_id, db, true, shared_projection_cache, run_summary_store).await
+        Self::build(
+            run_id,
+            db,
+            true,
+            blob_store,
+            shared_projection_cache,
+            run_summary_store,
+        )
+        .await
     }
 
     async fn build(
         run_id: RunId,
         db: Db,
         read_only: bool,
+        blob_store: Arc<BlobStore>,
         shared_projection_cache: Arc<RunProjectionCache>,
         run_summary_store: Arc<OnceLock<Arc<RunSummaryStore>>>,
     ) -> Result<Self> {
@@ -106,7 +118,6 @@ impl RunDatabase {
             Some(AtomicU32::new(next_seq))
         };
         let (event_tx, _) = broadcast::channel(DEFAULT_EVENT_TAIL_LIMIT.max(16));
-        let blob_store = BlobStore::new(Arc::new(db.clone()));
         Ok(Self {
             inner: Arc::new(RunDatabaseInner {
                 run_id,
@@ -591,7 +602,7 @@ impl RunDatabase {
     }
 
     pub async fn list_blobs(&self) -> Result<Vec<RunBlobId>> {
-        list_blobs(&self.inner.db).await
+        self.inner.blob_store.list().await
     }
 
     pub async fn state(&self) -> Result<RunProjection> {
@@ -904,23 +915,6 @@ where
     Ok(events)
 }
 
-async fn list_blobs<R>(db: &R) -> Result<Vec<RunBlobId>>
-where
-    R: DbRead + Sync,
-{
-    let mut iter = db.scan_prefix(keys::blobs_prefix()).await?;
-    let mut blob_ids = Vec::new();
-    while let Some(entry) = iter.next().await? {
-        let key = key_to_str(&entry.key)?;
-        let Some(blob_id) = keys::parse_blob_id(key) else {
-            continue;
-        };
-        blob_ids.push(blob_id);
-    }
-    blob_ids.sort();
-    Ok(blob_ids)
-}
-
 fn key_to_str(key: &Bytes) -> Result<&str> {
     std::str::from_utf8(key)
         .map_err(|err| Error::Other(format!("stored key is not valid UTF-8: {err}")))
@@ -937,6 +931,21 @@ mod tests {
     use serde_json::json;
 
     use crate::{Database, Error, EventPayload, keys};
+
+    #[tokio::test]
+    async fn runs_share_database_blob_store() {
+        let object_store = Arc::new(InMemory::new());
+        let store = Database::new(object_store, "", Duration::from_millis(1), None);
+        let shared = store.blobs().await.unwrap();
+        let first_run_id = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
+        let second_run_id = "01JT56VE4Z5NZ814GZN2JZD65B".parse().unwrap();
+
+        let first_run = store.create_run(&first_run_id).await.unwrap();
+        let second_run = store.create_run(&second_run_id).await.unwrap();
+
+        assert!(Arc::ptr_eq(&shared, &first_run.inner.blob_store));
+        assert!(Arc::ptr_eq(&shared, &second_run.inner.blob_store));
+    }
 
     #[tokio::test]
     async fn list_blobs_reads_global_cas_namespace() {
