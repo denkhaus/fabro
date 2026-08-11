@@ -54,43 +54,7 @@ pub(crate) struct RunDatabaseInner {
 }
 
 impl RunDatabase {
-    pub(crate) async fn open_writer(
-        run_id: RunId,
-        db: Db,
-        blob_store: Arc<BlobStore>,
-        shared_projection_cache: Arc<RunProjectionCache>,
-        run_summary_store: Arc<OnceLock<Arc<RunSummaryStore>>>,
-    ) -> Result<Self> {
-        Self::build(
-            run_id,
-            db,
-            false,
-            blob_store,
-            shared_projection_cache,
-            run_summary_store,
-        )
-        .await
-    }
-
-    pub(crate) async fn open_reader(
-        run_id: RunId,
-        db: Db,
-        blob_store: Arc<BlobStore>,
-        shared_projection_cache: Arc<RunProjectionCache>,
-        run_summary_store: Arc<OnceLock<Arc<RunSummaryStore>>>,
-    ) -> Result<Self> {
-        Self::build(
-            run_id,
-            db,
-            true,
-            blob_store,
-            shared_projection_cache,
-            run_summary_store,
-        )
-        .await
-    }
-
-    async fn build(
+    pub(crate) async fn build(
         run_id: RunId,
         db: Db,
         read_only: bool,

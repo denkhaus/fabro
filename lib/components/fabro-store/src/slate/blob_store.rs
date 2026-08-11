@@ -103,6 +103,16 @@ mod tests {
         db.blobs().await.unwrap()
     }
 
+    async fn raw_store(name: &str) -> (Arc<slatedb::Db>, BlobStore) {
+        let raw_db = Arc::new(
+            slatedb::Db::open(name, Arc::new(InMemory::new()))
+                .await
+                .unwrap(),
+        );
+        let store = BlobStore::new(Arc::clone(&raw_db));
+        (raw_db, store)
+    }
+
     #[tokio::test]
     async fn writes_reads_and_checks_existence() {
         let store = store().await;
@@ -141,12 +151,7 @@ mod tests {
 
     #[tokio::test]
     async fn list_skips_malformed_blob_ids() {
-        let raw_db = Arc::new(
-            slatedb::Db::open("blob-store-list-tests", Arc::new(InMemory::new()))
-                .await
-                .unwrap(),
-        );
-        let store = BlobStore::new(Arc::clone(&raw_db));
+        let (raw_db, store) = raw_store("blob-store-list-tests").await;
         let id = store.write(b"valid").await.unwrap();
 
         raw_db
@@ -162,12 +167,7 @@ mod tests {
 
     #[tokio::test]
     async fn raw_db_reads_exact_blob_bytes() {
-        let raw_db = Arc::new(
-            slatedb::Db::open("blob-store-tests", Arc::new(InMemory::new()))
-                .await
-                .unwrap(),
-        );
-        let store = BlobStore::new(Arc::clone(&raw_db));
+        let (raw_db, store) = raw_store("blob-store-tests").await;
         let bytes = b"{\"ok\":true}";
         let id = store.write(bytes).await.unwrap();
 

@@ -143,20 +143,23 @@ impl Database {
             .map(RunDatabase::from_inner)
     }
 
-    pub async fn create_run(&self, run_id: &RunId) -> Result<RunDatabase> {
-        self.warm_projection_cache().await?;
-        let db = self.open_db().await?;
-        let blob_store = self.blobs().await?;
-
-        self.catalog_index().await?.add(run_id).await?;
-        let run_store = RunDatabase::open_writer(
+    /// Builds a run handle wired to the Database-owned shared stores.
+    async fn open_run_database(&self, run_id: &RunId, read_only: bool) -> Result<RunDatabase> {
+        RunDatabase::build(
             *run_id,
-            db,
-            blob_store,
+            self.open_db().await?,
+            read_only,
+            self.blobs().await?,
             Arc::clone(&self.projection_cache),
             Arc::clone(&self.run_summary_store),
         )
-        .await?;
+        .await
+    }
+
+    pub async fn create_run(&self, run_id: &RunId) -> Result<RunDatabase> {
+        self.warm_projection_cache().await?;
+        self.catalog_index().await?.add(run_id).await?;
+        let run_store = self.open_run_database(run_id, false).await?;
         let mut active_runs = self.active_runs.lock().await;
         Self::cache_active_run(&mut active_runs, &run_store);
         Ok(run_store)
@@ -165,7 +168,6 @@ impl Database {
     pub async fn open_run(&self, run_id: &RunId) -> Result<RunDatabase> {
         self.warm_projection_cache().await?;
         let db = self.open_db().await?;
-        let blob_store = self.blobs().await?;
         // Keep the active-writer miss and insert atomic. Otherwise concurrent
         // callers can create independent writers with the same recovered seq.
         let mut active_runs = self.active_runs.lock().await;
@@ -181,14 +183,7 @@ impl Database {
         if !RunDatabase::has_any_events(&db, run_id).await? {
             return Err(Error::RunNotFound(run_id.to_string()));
         }
-        let run_store = RunDatabase::open_writer(
-            *run_id,
-            db,
-            blob_store,
-            Arc::clone(&self.projection_cache),
-            Arc::clone(&self.run_summary_store),
-        )
-        .await?;
+        let run_store = self.open_run_database(run_id, false).await?;
         Self::cache_active_run(&mut active_runs, &run_store);
         Ok(run_store)
     }
@@ -206,15 +201,7 @@ impl Database {
         if !RunDatabase::has_any_events(&db, run_id).await? {
             return Err(Error::RunNotFound(run_id.to_string()));
         }
-        let blob_store = self.blobs().await?;
-        RunDatabase::open_reader(
-            *run_id,
-            db,
-            blob_store,
-            Arc::clone(&self.projection_cache),
-            Arc::clone(&self.run_summary_store),
-        )
-        .await
+        self.open_run_database(run_id, true).await
     }
 
     pub async fn list_runs(&self, query: &ListRunsQuery, now: DateTime<Utc>) -> Result<Vec<Run>> {
@@ -865,6 +852,10 @@ mod tests {
         append_created(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
         let blob = br#"{"summary":"readable"}"#;
         let blob_id = run.write_blob(blob).await.unwrap();
+
+        // Evict the cached writer so the reader is built through the real
+        // `open_run_reader` construction path, not a clone of the writer.
+        let _ = store.remove_active_run(&test_run_id("run-1")).await;
 
         let reader = store.open_run_reader(&test_run_id("run-1")).await.unwrap();
         assert_eq!(
