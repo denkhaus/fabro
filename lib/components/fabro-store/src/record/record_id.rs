@@ -1,4 +1,4 @@
-use fabro_types::{RunBlobId, RunId};
+use fabro_types::{BlobHash, RunId};
 
 use super::RecordId;
 use crate::{Error, Result};
@@ -38,7 +38,7 @@ impl RecordId for String {
     }
 }
 
-impl RecordId for RunBlobId {
+impl RecordId for BlobHash {
     fn key_segments(&self) -> Vec<String> {
         vec![self.to_string()]
     }
@@ -46,13 +46,13 @@ impl RecordId for RunBlobId {
     fn from_key_segments(segs: &[&str]) -> Result<Self> {
         let [segment] = segs else {
             return Err(Error::KeyParse(format!(
-                "expected 1 segment for RunBlobId, got {}",
+                "expected 1 segment for BlobHash, got {}",
                 segs.len()
             )));
         };
         segment
             .parse()
-            .map_err(|err| Error::KeyParse(format!("invalid RunBlobId segment {segment:?}: {err}")))
+            .map_err(|err| Error::KeyParse(format!("invalid BlobHash segment {segment:?}: {err}")))
     }
 }
 

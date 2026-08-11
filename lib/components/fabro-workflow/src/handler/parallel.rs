@@ -1847,7 +1847,7 @@ mod tests {
             Some(serde_json::json!({"not": "an array"})),
             Some(serde_json::json!("ordinary string")),
             Some(serde_json::json!(format_blob_ref(
-                &fabro_types::RunBlobId::new(b"missing")
+                &fabro_types::BlobHash::new(b"missing")
             ))),
         ] {
             let (handler, calls) = ScriptedHandler::new(Scripted::Succeed);

@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use fabro_types::{AuthMethod, IdpIdentity, Principal, RunBlobId, RunId, StageId, UserPrincipal};
+use fabro_types::{AuthMethod, BlobHash, IdpIdentity, Principal, RunId, StageId, UserPrincipal};
 use jsonwebtoken::decode_header;
 use strum::IntoStaticStr;
 
@@ -61,7 +61,7 @@ pub(crate) struct RequiredRunToolActor(pub(crate) Principal);
 pub(crate) struct RequireRunScoped(pub(crate) RunId);
 pub(crate) struct RequireWorkerRunScoped(pub(crate) RunId);
 pub(crate) struct RequireRunManagementTarget(pub(crate) RunId, pub(crate) Principal);
-pub(crate) struct RequireRunBlob(pub(crate) RunId, pub(crate) RunBlobId);
+pub(crate) struct RequireRunBlob(pub(crate) RunId, pub(crate) BlobHash);
 pub(crate) struct RequireRunStageScoped(pub(crate) RunId, pub(crate) String);
 pub(crate) struct RequireStageArtifact(pub(crate) RunId, pub(crate) StageId);
 pub(crate) struct RequireCommandLog(pub(crate) RunId, pub(crate) StageId);

@@ -20,7 +20,7 @@ pub use artifact_store::{
 };
 pub use error::{Error, Result};
 pub use fabro_types::{
-    EventEnvelope, PendingInterviewRecord, Run, RunBlobId, RunProjection, StageId, StageProjection,
+    BlobHash, EventEnvelope, PendingInterviewRecord, Run, RunProjection, StageId, StageProjection,
 };
 pub use keyed_mutex::{KeyedMutex, KeyedMutexGuard};
 pub use run_sessions::{

@@ -10059,7 +10059,7 @@ async fn large_context_values_are_offloaded_to_artifact_store() {
         .expect("context should have response.big_output");
     let pointer_str = pointer_value.as_str().expect("pointer should be a string");
 
-    let expected_blob_id = fabro_types::RunBlobId::new(
+    let expected_blob_id = fabro_types::BlobHash::new(
         &serde_json::to_vec(&serde_json::json!("x".repeat(150 * 1024)))
             .expect("large value should serialize"),
     );
@@ -10258,7 +10258,7 @@ async fn artifact_pointers_rewritten_for_remote_sandbox() {
         .get("response.big_output")
         .expect("context should have response.big_output");
     let pointer_str = pointer_value.as_str().expect("pointer should be a string");
-    let expected_blob_id = fabro_types::RunBlobId::new(
+    let expected_blob_id = fabro_types::BlobHash::new(
         &serde_json::to_vec(&serde_json::json!("x".repeat(150 * 1024)))
             .expect("large value should serialize"),
     );

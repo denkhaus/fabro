@@ -5,7 +5,7 @@ use anyhow::{Context as _, Result};
 use cli_table::format::{Border, Justify, Separator};
 use cli_table::{Cell, CellStruct, Style, Table};
 use fabro_api::types;
-use fabro_types::{PullRequestLink, RunBlobId, RunId, StageId, parse_blob_ref};
+use fabro_types::{BlobHash, PullRequestLink, RunId, StageId, parse_blob_ref};
 use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
 use fabro_util::error::render_with_causes;
 use fabro_util::printer::Printer;
@@ -341,7 +341,7 @@ async fn resolve_response_string(
     }))
 }
 
-fn blob_id_from_response(response: &str) -> Option<RunBlobId> {
+fn blob_id_from_response(response: &str) -> Option<BlobHash> {
     parse_blob_ref(response)
 }
 

@@ -7,9 +7,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct RunBlobId([u8; 32]);
+pub struct BlobHash([u8; 32]);
 
-impl RunBlobId {
+impl BlobHash {
     pub fn new(content: &[u8]) -> Self {
         let hash = Sha256::digest(content);
         let mut bytes = [0_u8; 32];
@@ -18,13 +18,13 @@ impl RunBlobId {
     }
 }
 
-impl fmt::Display for RunBlobId {
+impl fmt::Display for BlobHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&hex::encode(self.0))
     }
 }
 
-impl FromStr for RunBlobId {
+impl FromStr for BlobHash {
     type Err = FromHexError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -34,7 +34,7 @@ impl FromStr for RunBlobId {
     }
 }
 
-impl Serialize for RunBlobId {
+impl Serialize for BlobHash {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -43,7 +43,7 @@ impl Serialize for RunBlobId {
     }
 }
 
-impl<'de> Deserialize<'de> for RunBlobId {
+impl<'de> Deserialize<'de> for BlobHash {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -55,44 +55,44 @@ impl<'de> Deserialize<'de> for RunBlobId {
 
 #[cfg(test)]
 mod tests {
-    use crate::RunBlobId;
+    use crate::BlobHash;
 
     #[test]
-    fn same_content_produces_same_blob_id() {
-        assert_eq!(RunBlobId::new(b"hello"), RunBlobId::new(b"hello"));
+    fn same_content_produces_same_blob_hash() {
+        assert_eq!(BlobHash::new(b"hello"), BlobHash::new(b"hello"));
     }
 
     #[test]
     fn display_is_lowercase_sha256_hex() {
         assert_eq!(
-            RunBlobId::new(b"hello").to_string(),
+            BlobHash::new(b"hello").to_string(),
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
         );
     }
 
     #[test]
-    fn different_content_produces_different_blob_ids() {
-        assert_ne!(RunBlobId::new(b"hello"), RunBlobId::new(b"world"));
+    fn different_content_produces_different_blob_hashes() {
+        assert_ne!(BlobHash::new(b"hello"), BlobHash::new(b"world"));
     }
 
     #[test]
     fn display_and_parse_round_trip() {
-        let blob_id = RunBlobId::new(b"hello");
-        let parsed: RunBlobId = blob_id.to_string().parse().unwrap();
-        assert_eq!(parsed, blob_id);
+        let blob_hash = BlobHash::new(b"hello");
+        let parsed: BlobHash = blob_hash.to_string().parse().unwrap();
+        assert_eq!(parsed, blob_hash);
     }
 
     #[test]
     fn serde_round_trip() {
-        let blob_id = RunBlobId::new(b"hello");
-        let value = serde_json::to_value(blob_id).unwrap();
-        let parsed: RunBlobId = serde_json::from_value(value).unwrap();
-        assert_eq!(parsed, blob_id);
+        let blob_hash = BlobHash::new(b"hello");
+        let value = serde_json::to_value(blob_hash).unwrap();
+        let parsed: BlobHash = serde_json::from_value(value).unwrap();
+        assert_eq!(parsed, blob_hash);
     }
 
     #[test]
-    fn parse_rejects_non_hex_blob_ids() {
-        let parsed = "not-a-blob-id".parse::<RunBlobId>();
+    fn parse_rejects_non_hex_blob_hashes() {
+        let parsed = "not-a-blob-hash".parse::<BlobHash>();
         assert!(parsed.is_err());
     }
 }

@@ -16,10 +16,10 @@ use bytes::Bytes;
 use fabro_store::{
     EventEnvelope, RunProjection, SerializableProjection, StageId, retry_storage_segment,
 };
-use fabro_types::{RunBlobId, parse_blob_ref};
+use fabro_types::{BlobHash, parse_blob_ref};
 use futures::future::BoxFuture;
 
-pub type BlobReader = Box<dyn FnMut(RunBlobId) -> BoxFuture<'static, Result<Option<Bytes>>> + Send>;
+pub type BlobReader = Box<dyn FnMut(BlobHash) -> BoxFuture<'static, Result<Option<Bytes>>> + Send>;
 
 const STAGE_RANK_WIDTH: usize = 3;
 const MAX_STAGES_IN_DUMP: usize = {
@@ -208,7 +208,7 @@ impl RunDump {
         mut read_blob: F,
     ) -> Result<()>
     where
-        F: FnMut(RunBlobId) -> BoxFuture<'a, Result<Option<Bytes>>>,
+        F: FnMut(BlobHash) -> BoxFuture<'a, Result<Option<Bytes>>>,
     {
         let mut cache = HashMap::new();
         for entry in &mut self.entries {
@@ -386,7 +386,7 @@ fn validate_relative_path(kind: &str, value: &str) -> Result<PathBuf> {
     Ok(normalized)
 }
 
-fn collect_blob_refs_in_value(value: &serde_json::Value, blob_ids: &mut Vec<RunBlobId>) {
+fn collect_blob_refs_in_value(value: &serde_json::Value, blob_ids: &mut Vec<BlobHash>) {
     match value {
         serde_json::Value::String(current) => {
             if let Some(blob_id) = parse_blob_ref(current) {
@@ -409,7 +409,7 @@ fn collect_blob_refs_in_value(value: &serde_json::Value, blob_ids: &mut Vec<RunB
 
 fn replace_blob_refs_in_value(
     value: &mut serde_json::Value,
-    cache: &HashMap<RunBlobId, serde_json::Value>,
+    cache: &HashMap<BlobHash, serde_json::Value>,
 ) -> Result<()> {
     match value {
         serde_json::Value::String(current) => {
@@ -724,7 +724,7 @@ mod tests {
     #[test]
     fn hydrate_referenced_blobs_ignores_legacy_artifact_file_refs() {
         let blob = serde_json::to_vec("hydrated legacy text").unwrap();
-        let blob_id = fabro_types::RunBlobId::new(&blob);
+        let blob_id = fabro_types::BlobHash::new(&blob);
         let legacy_ref = format!("file:///sandbox/.fabro/artifacts/{blob_id}.json");
         let mut dump = RunDump {
             entries:        vec![RunDumpEntry::json(

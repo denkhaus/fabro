@@ -354,7 +354,7 @@ mod tests {
 
     #[derive(Default)]
     struct MemoryRunStoreBackend {
-        blobs: Mutex<std::collections::HashMap<fabro_types::RunBlobId, Bytes>>,
+        blobs: Mutex<std::collections::HashMap<fabro_types::BlobHash, Bytes>>,
     }
 
     #[async_trait::async_trait]
@@ -389,8 +389,8 @@ mod tests {
             Ok(())
         }
 
-        async fn write_blob(&self, data: &[u8]) -> anyhow::Result<fabro_types::RunBlobId> {
-            let blob_id = fabro_types::RunBlobId::new(data);
+        async fn write_blob(&self, data: &[u8]) -> anyhow::Result<fabro_types::BlobHash> {
+            let blob_id = fabro_types::BlobHash::new(data);
             self.blobs
                 .lock()
                 .await
@@ -398,7 +398,7 @@ mod tests {
             Ok(blob_id)
         }
 
-        async fn read_blob(&self, id: &fabro_types::RunBlobId) -> anyhow::Result<Option<Bytes>> {
+        async fn read_blob(&self, id: &fabro_types::BlobHash) -> anyhow::Result<Option<Bytes>> {
             Ok(self.blobs.lock().await.get(id).cloned())
         }
 
