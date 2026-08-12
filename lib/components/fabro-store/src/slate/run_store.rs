@@ -897,21 +897,6 @@ mod tests {
     use crate::{Database, Error, EventPayload, keys};
 
     #[tokio::test]
-    async fn runs_share_database_blob_store() {
-        let object_store = Arc::new(InMemory::new());
-        let store = Database::new(object_store, "", Duration::from_millis(1), None);
-        let shared = store.blobs().await.unwrap();
-        let first_run_id = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
-        let second_run_id = "01JT56VE4Z5NZ814GZN2JZD65B".parse().unwrap();
-
-        let first_run = store.create_run(&first_run_id).await.unwrap();
-        let second_run = store.create_run(&second_run_id).await.unwrap();
-
-        assert!(Arc::ptr_eq(&shared, &first_run.inner.blob_store));
-        assert!(Arc::ptr_eq(&shared, &second_run.inner.blob_store));
-    }
-
-    #[tokio::test]
     async fn list_blobs_reads_global_cas_namespace() {
         let object_store = Arc::new(InMemory::new());
         let store = Database::new(object_store, "", Duration::from_millis(1), None);

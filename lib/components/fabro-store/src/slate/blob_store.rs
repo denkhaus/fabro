@@ -3,6 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use fabro_types::RunBlobId;
 use futures::StreamExt;
+use tracing::warn;
 
 use crate::record::{RawBytesCodec, Record, Repository};
 use crate::{Error, Result};
@@ -71,7 +72,9 @@ impl BlobStore {
         while let Some(result) = stream.next().await {
             match result {
                 Ok(id) => ids.push(id),
-                Err(Error::KeyParse(_)) => {}
+                Err(Error::KeyParse(err)) => {
+                    warn!(error = %err, "Skipping malformed blob key during listing");
+                }
                 Err(err) => return Err(err),
             }
         }
