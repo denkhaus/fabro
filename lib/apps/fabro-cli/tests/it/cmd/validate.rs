@@ -314,7 +314,8 @@ fn validate_reports_missing_template_dependency() {
     exit_code: 1
     ----- stdout -----
     ----- stderr -----
-      × failed to discover template dependencies: missing template dependency `missing.tpl.md` from `[FIXTURES]/templates/missing_dependency/workflow.fabro`
+      × failed to discover template dependencies
+      ╰─▶ missing template dependency `missing.tpl.md` from `[FIXTURES]/templates/missing_dependency/workflow.fabro`
     ");
 }
 
