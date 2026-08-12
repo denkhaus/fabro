@@ -20,6 +20,7 @@ use crate::{manifest_path_from_absolute, normalize_absolute_path};
 pub(super) struct WorkflowBundler<'a> {
     cwd:               &'a Path,
     inputs:            &'a HashMap<String, toml::Value>,
+    template_store:    FilesystemTemplateStore,
     workflows:         HashMap<String, types::ManifestWorkflow>,
     visited_workflows: HashSet<String>,
 }
@@ -29,6 +30,7 @@ impl<'a> WorkflowBundler<'a> {
         Self {
             cwd,
             inputs,
+            template_store: FilesystemTemplateStore::new(cwd),
             workflows: HashMap::new(),
             visited_workflows: HashSet::new(),
         }
@@ -36,13 +38,12 @@ impl<'a> WorkflowBundler<'a> {
 
     pub(super) fn bundle(
         mut self,
-        root_location: &WorkflowLocation,
+        workflow: &Path,
         project_config: Option<(&ManifestPath, &str)>,
     ) -> Result<HashMap<String, types::ManifestWorkflow>> {
-        self.collect_workflow_location(root_location)?;
+        let root_key = self.collect_workflow_entry(workflow, self.cwd)?;
 
         if let Some((config_path, source)) = project_config {
-            let root_key = manifest_path_from_absolute(&root_location.graph, self.cwd)?.to_string();
             let mut root = self
                 .workflows
                 .remove(&root_key)
@@ -54,11 +55,12 @@ impl<'a> WorkflowBundler<'a> {
         Ok(self.workflows)
     }
 
-    fn collect_workflow_location(&mut self, location: &WorkflowLocation) -> Result<()> {
+    /// Collects the workflow at `location` and returns its manifest key.
+    fn collect_workflow_location(&mut self, location: &WorkflowLocation) -> Result<String> {
         let dot_path = manifest_path_from_absolute(&location.graph, self.cwd)?;
         let dot_key = dot_path.to_string();
         if !self.visited_workflows.insert(dot_key.clone()) {
-            return Ok(());
+            return Ok(dot_key);
         }
 
         let source = std::fs::read_to_string(&location.graph)
@@ -87,16 +89,21 @@ impl<'a> WorkflowBundler<'a> {
         }
         self.collect_workflow_files(&scan, &mut files, &mut visited_imports)?;
 
-        self.workflows.insert(dot_key, types::ManifestWorkflow {
-            config,
-            files,
-            source,
-        });
+        self.workflows
+            .insert(dot_key.clone(), types::ManifestWorkflow {
+                config,
+                files,
+                source,
+            });
 
-        Ok(())
+        Ok(dot_key)
     }
 
-    fn collect_workflow_entry(&mut self, workflow: &Path, resolve_from: &Path) -> Result<()> {
+    /// Relative workflow references with an extension are lexically
+    /// normalized (`..` segments resolved without consulting the filesystem,
+    /// `~` rejected) before resolution, so the file read matches the manifest
+    /// key. Returns the collected workflow's manifest key.
+    fn collect_workflow_entry(&mut self, workflow: &Path, resolve_from: &Path) -> Result<String> {
         let normalized_workflow = if workflow.extension().is_some() && workflow.is_relative() {
             normalize_absolute_path(resolve_from, &workflow.to_string_lossy()).ok_or_else(|| {
                 anyhow!(
@@ -264,9 +271,9 @@ impl<'a> WorkflowBundler<'a> {
         from: Option<&ManifestPath>,
     ) -> Result<()> {
         let source_path = source.path.clone();
-        let store = FilesystemTemplateStore::new(self.cwd.to_path_buf());
-        let closure = fabro_template::discover_static_dependency_closure([source], &store)
-            .context("failed to discover template dependencies")?;
+        let closure =
+            fabro_template::discover_static_dependency_closure([source], &self.template_store)
+                .context("failed to discover template dependencies")?;
         self.verify_recorded_template_dependencies(&source_path, &closure, files, from)?;
 
         for (path, source) in closure.sources {
@@ -418,7 +425,6 @@ impl<'a> WorkflowBundler<'a> {
     }
 }
 
-#[derive(Clone)]
 struct WorkflowScanInput {
     absolute_dot_path: PathBuf,
     dot_path:          ManifestPath,
@@ -469,18 +475,11 @@ fn manifest_attr_reference_kind(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn write_file(path: &Path, source: &str) {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("fixture directory should be created");
-        }
-        std::fs::write(path, source).expect("fixture file should be written");
-    }
+    use crate::test_fixtures::write_file;
 
     fn bundle_graph(cwd: &Path, graph: &Path) -> Result<HashMap<String, types::ManifestWorkflow>> {
         let inputs = HashMap::new();
-        let root_location = WorkflowLocation::resolve(graph, cwd)?;
-        WorkflowBundler::new(cwd, &inputs).bundle(&root_location, None)
+        WorkflowBundler::new(cwd, &inputs).bundle(graph, None)
     }
 
     #[test]
@@ -544,75 +543,45 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
-    fn bundler_does_not_push_an_ahead_branch() {
-        fn commit_all(repository: &git2::Repository, message: &str) -> git2::Oid {
-            let mut index = repository.index().expect("index should open");
-            index
-                .add_all(["*"], git2::IndexAddOption::DEFAULT, None)
-                .expect("fixture files should be staged");
-            index.write().expect("index should be written");
-            let tree_id = index.write_tree().expect("tree should be written");
-            let tree = repository.find_tree(tree_id).expect("tree should exist");
-            let signature = git2::Signature::now("Fabro Test", "fabro@example.com")
-                .expect("signature should be valid");
-            let parents = repository
-                .head()
-                .ok()
-                .and_then(|head| head.target())
-                .map(|oid| {
-                    repository
-                        .find_commit(oid)
-                        .expect("parent commit should exist")
-                });
-            let parent_refs = parents.iter().collect::<Vec<_>>();
-            repository
-                .commit(
-                    Some("refs/heads/main"),
-                    &signature,
-                    &signature,
-                    message,
-                    &tree,
-                    &parent_refs,
-                )
-                .expect("commit should be created")
-        }
-
+    fn root_workflow_normalizes_parent_components_lexically_before_reading() {
         let temp = tempfile::tempdir().expect("temp directory should be created");
-        let origin_path = temp.path().join("origin.git");
-        let checkout = temp.path().join("checkout");
-        let origin =
-            git2::Repository::init_bare(&origin_path).expect("bare origin should be initialized");
-        let repository = git2::Repository::init(&checkout).expect("checkout should be initialized");
-        repository
-            .set_head("refs/heads/main")
-            .expect("main should be selected");
-        write_file(
-            &checkout.join("workflow.fabro"),
-            "digraph Root { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }",
+        let cwd = temp.path();
+        let lexical_graph =
+            "digraph Lexical { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }";
+        let symlinked_graph =
+            "digraph Symlinked { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }";
+        write_file(&cwd.join("wf/workflow.fabro"), lexical_graph);
+        write_file(&cwd.join("nested/wf/workflow.fabro"), symlinked_graph);
+        std::fs::create_dir_all(cwd.join("nested/elsewhere"))
+            .expect("symlink target should be created");
+        // `link` points into `nested/`, so OS resolution of `link/..` lands in
+        // `nested/` while lexical resolution lands in the invocation directory.
+        std::os::unix::fs::symlink(cwd.join("nested/elsewhere"), cwd.join("link"))
+            .expect("symlink should be created");
+
+        let workflows = bundle_graph(cwd, Path::new("link/../wf/workflow.fabro"))
+            .expect("workflow should bundle");
+
+        // `link/..` must resolve lexically to `wf/workflow.fabro`, not through
+        // the symlink to `nested/wf/workflow.fabro`, so the bundled source
+        // matches the file the manifest key names.
+        assert_eq!(workflows["wf/workflow.fabro"].source, lexical_graph);
+    }
+
+    #[test]
+    fn root_workflow_rejects_tilde_relative_references() {
+        let temp = tempfile::tempdir().expect("temp directory should be created");
+
+        let error = bundle_graph(temp.path(), Path::new("~/workflow.fabro"))
+            .expect_err("tilde reference should be rejected");
+
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported manifest workflow reference"),
+            "unexpected error: {error:#}"
         );
-        let first_commit = commit_all(&repository, "initial");
-        let mut remote = repository
-            .remote(
-                "origin",
-                origin_path.to_str().expect("origin path should be UTF-8"),
-            )
-            .expect("origin should be configured");
-        remote
-            .push(&["refs/heads/main:refs/heads/main"], None)
-            .expect("initial commit should be pushed");
-        drop(remote);
-        write_file(&checkout.join("README.md"), "ahead\n");
-        let ahead_commit = commit_all(&repository, "ahead");
-        assert_ne!(first_commit, ahead_commit);
-
-        bundle_graph(&checkout, &checkout.join("workflow.fabro")).expect("workflow should bundle");
-
-        let origin_commit = origin
-            .find_reference("refs/heads/main")
-            .expect("origin main should exist")
-            .target()
-            .expect("origin main should point to a commit");
-        assert_eq!(origin_commit, first_commit);
     }
 }

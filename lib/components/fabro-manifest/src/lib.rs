@@ -175,7 +175,7 @@ pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
         .as_ref()
         .map(|(_, path, source)| (path, source.as_str()));
     let workflows = WorkflowBundler::new(&input.cwd, &workflow_settings.run.inputs)
-        .bundle(&root_location, project_config_input)?;
+        .bundle(&input.workflow, project_config_input)?;
     let root_source = workflows
         .get(&target_key)
         .map(|workflow| workflow.source.clone())
@@ -435,6 +435,18 @@ pub fn manifest_args_is_empty(args: &types::ManifestArgs) -> bool {
 }
 
 #[cfg(test)]
+pub(crate) mod test_fixtures {
+    use std::path::Path;
+
+    pub(crate) fn write_file(path: &Path, source: &str) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("fixture directory should be created");
+        }
+        std::fs::write(path, source).expect("fixture file should be written");
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -537,12 +549,7 @@ graph = "workflow.fabro"
         let plan_prompt = "{% include \"partial.md\" %}\n{% from \"helpers.md\" import render %}";
         let helpers = "{% macro render() %}{% include \"deep.md\" %}{% endmacro %}";
         let output_schema = r#"{"type":"object"}"#;
-        let write = |path: &Path, source: &str| {
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).unwrap();
-            }
-            std::fs::write(path, source).unwrap();
-        };
+        let write = test_fixtures::write_file;
         write(&project.join(".fabro/project.toml"), project_config);
         write(&project.join(".fabro/Project.Dockerfile"), "FROM project\n");
         write(&user_config_path, user_config);
@@ -579,115 +586,29 @@ graph = "workflow.fabro"
         actual["cwd"] = serde_json::json!("<cwd>");
         actual["configs"][0]["path"] = serde_json::json!("<project-config>");
         actual["configs"][1]["path"] = serde_json::json!("<user-config>");
-        let file = |content: &str, from: &str, original: &str, type_: &str| {
-            serde_json::json!({
-                "content": content,
-                "ref": {
-                    "from": from,
-                    "original": original,
-                    "type": type_,
-                }
-            })
-        };
+        fabro_test::fabro_json_snapshot!(sorted_json(actual));
+    }
 
-        assert_eq!(
-            actual,
-            serde_json::json!({
-                "args": {
-                    "dry_run": true,
-                    "input": ["feature=true"],
-                    "label": ["suite=characterization"],
-                },
-                "configs": [
-                    {
-                        "path": "<project-config>",
-                        "source": project_config,
-                        "type": "project",
-                    },
-                    {
-                        "path": "<user-config>",
-                        "source": user_config,
-                        "type": "user",
-                    },
-                ],
-                "cwd": "<cwd>",
-                "goal": { "type": "graph", "text": "ship it\n" },
-                "target": { "path": ".fabro/workflows/root/workflow.fabro" },
-                "version": 1,
-                "workflows": {
-                    ".fabro/workflows/child/workflow.fabro": {
-                        "config": {
-                            "path": ".fabro/workflows/child/workflow.toml",
-                            "source": child_config,
-                        },
-                        "source": child_graph,
-                    },
-                    ".fabro/workflows/root/workflow.fabro": {
-                        "config": {
-                            "path": ".fabro/workflows/root/workflow.toml",
-                            "source": root_config,
-                        },
-                        "files": {
-                            ".fabro/Project.Dockerfile": file(
-                                "FROM project\n",
-                                ".fabro/project.toml",
-                                "Project.Dockerfile",
-                                "dockerfile",
-                            ),
-                            ".fabro/workflows/root/goals/goal.md": file(
-                                "ship it\n",
-                                ".fabro/workflows/root/workflow.fabro",
-                                "goals/goal.md",
-                                "file_inline",
-                            ),
-                            ".fabro/workflows/root/imports/shared.fabro": file(
-                                imported_graph,
-                                ".fabro/workflows/root/workflow.fabro",
-                                "imports/shared.fabro",
-                                "import",
-                            ),
-                            ".fabro/workflows/root/prompts/deep.md": file(
-                                "deep\n",
-                                ".fabro/workflows/root/prompts/plan.md",
-                                ".fabro/workflows/root/prompts/deep.md",
-                                "file_inline",
-                            ),
-                            ".fabro/workflows/root/prompts/helpers.md": file(
-                                helpers,
-                                ".fabro/workflows/root/prompts/plan.md",
-                                ".fabro/workflows/root/prompts/helpers.md",
-                                "file_inline",
-                            ),
-                            ".fabro/workflows/root/prompts/partial.md": file(
-                                "partial\n",
-                                ".fabro/workflows/root/prompts/plan.md",
-                                ".fabro/workflows/root/prompts/partial.md",
-                                "file_inline",
-                            ),
-                            ".fabro/workflows/root/prompts/plan.md": file(
-                                plan_prompt,
-                                ".fabro/workflows/root/workflow.fabro",
-                                "prompts/plan.md",
-                                "file_inline",
-                            ),
-                            ".fabro/workflows/root/prompts/shared.md": file(
-                                "shared\n",
-                                ".fabro/workflows/root/imports/shared.fabro",
-                                "../prompts/shared.md",
-                                "file_inline",
-                            ),
-                            ".fabro/workflows/root/schemas/output.json": file(
-                                output_schema,
-                                ".fabro/workflows/root/workflow.fabro",
-                                "schemas/output.json",
-                                "file_inline",
-                            ),
-                        },
-                        "source": root_graph,
-                    },
-                },
-            })
-        );
+    /// `serde_json` is built with `preserve_order`, so `HashMap`-backed
+    /// manifest maps serialize in nondeterministic order; sort recursively
+    /// for a stable snapshot.
+    fn sorted_json(value: serde_json::Value) -> serde_json::Value {
+        match value {
+            serde_json::Value::Object(map) => {
+                let mut entries: Vec<_> = map.into_iter().collect();
+                entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+                serde_json::Value::Object(
+                    entries
+                        .into_iter()
+                        .map(|(key, value)| (key, sorted_json(value)))
+                        .collect(),
+                )
+            }
+            serde_json::Value::Array(items) => {
+                serde_json::Value::Array(items.into_iter().map(sorted_json).collect())
+            }
+            other => other,
+        }
     }
 
     #[test]
