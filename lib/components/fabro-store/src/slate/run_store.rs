@@ -4,7 +4,7 @@ use std::sync::{Arc, OnceLock};
 
 use bytes::Bytes;
 use chrono::Utc;
-use fabro_types::{RunBlobId, RunEvent, RunId, SessionId};
+use fabro_types::{BlobHash, RunEvent, RunId, SessionId};
 use futures::Stream;
 use slatedb::{Db, DbIterator, DbRead};
 use tokio::sync::{Mutex, broadcast, mpsc};
@@ -554,18 +554,18 @@ impl RunDatabase {
         Ok(Box::pin(UnboundedReceiverStream::new(receiver)))
     }
 
-    pub async fn write_blob(&self, data: &[u8]) -> Result<RunBlobId> {
+    pub async fn write_blob(&self, data: &[u8]) -> Result<BlobHash> {
         if self.read_only {
             return Err(Error::ReadOnly);
         }
         self.inner.blob_store.write(data).await
     }
 
-    pub async fn read_blob(&self, id: &RunBlobId) -> Result<Option<Bytes>> {
+    pub async fn read_blob(&self, id: &BlobHash) -> Result<Option<Bytes>> {
         self.inner.blob_store.read(id).await
     }
 
-    pub async fn list_blobs(&self) -> Result<Vec<RunBlobId>> {
+    pub async fn list_blobs(&self) -> Result<Vec<BlobHash>> {
         self.inner.blob_store.list().await
     }
 

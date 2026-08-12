@@ -117,8 +117,8 @@ mod tests {
 
     use fabro_store::{Database, RunProjectionReducer};
     use fabro_types::{
-        AuthMethod, DirtyStatus, FailureReason, ForkSourceRef, GitContext, Graph, IdpIdentity,
-        Principal, PullRequestLink, RunBlobId, RunRunnableSource, RunServerProvenance, RunTiming,
+        AuthMethod, BlobHash, DirtyStatus, FailureReason, ForkSourceRef, GitContext, Graph,
+        IdpIdentity, Principal, PullRequestLink, RunRunnableSource, RunServerProvenance, RunTiming,
         WorkflowSettings, fixtures,
     };
     use object_store::memory::InMemory;
@@ -164,7 +164,7 @@ mod tests {
     async fn append_created(
         store: &fabro_store::RunDatabase,
         run_id: RunId,
-        manifest_blob: Option<RunBlobId>,
+        manifest_blob: Option<BlobHash>,
         fork_source_ref: Option<ForkSourceRef>,
     ) {
         let mut settings = WorkflowSettings::default();
@@ -248,7 +248,7 @@ mod tests {
     async fn seed_retryable_failed_source(
         store: &Database,
         source_run_id: RunId,
-    ) -> (Option<RunBlobId>, Option<RunBlobId>, ForkSourceRef) {
+    ) -> (Option<BlobHash>, Option<BlobHash>, ForkSourceRef) {
         let source_store = store.create_run(&source_run_id).await.unwrap();
         let manifest_blob = Some(
             source_store

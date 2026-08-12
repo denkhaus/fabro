@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use fabro_types::RunBlobId;
+use fabro_types::BlobHash;
 use futures::StreamExt;
 use tracing::warn;
 
@@ -24,13 +24,13 @@ impl From<Bytes> for Blob {
 }
 
 impl Record for Blob {
-    type Id = RunBlobId;
+    type Id = BlobHash;
     type Codec = RawBytesCodec;
 
     const PREFIX: &'static str = "blobs/sha256";
 
     fn id(&self) -> Self::Id {
-        RunBlobId::new(&self.0)
+        BlobHash::new(&self.0)
     }
 }
 
@@ -51,22 +51,22 @@ impl BlobStore {
         }
     }
 
-    pub async fn write(&self, bytes: &[u8]) -> Result<RunBlobId> {
+    pub async fn write(&self, bytes: &[u8]) -> Result<BlobHash> {
         let blob = Blob(Bytes::copy_from_slice(bytes));
         let id = blob.id();
         self.repo.put(&blob).await?;
         Ok(id)
     }
 
-    pub async fn read(&self, id: &RunBlobId) -> Result<Option<Bytes>> {
+    pub async fn read(&self, id: &BlobHash) -> Result<Option<Bytes>> {
         Ok(self.repo.get(id).await?.map(|blob| blob.0))
     }
 
-    pub async fn exists(&self, id: &RunBlobId) -> Result<bool> {
+    pub async fn exists(&self, id: &BlobHash) -> Result<bool> {
         self.repo.exists(id).await
     }
 
-    pub(crate) async fn list(&self) -> Result<Vec<RunBlobId>> {
+    pub(crate) async fn list(&self) -> Result<Vec<BlobHash>> {
         let mut stream = self.repo.scan_ids_stream();
         let mut ids = Vec::new();
         while let Some(result) = stream.next().await {
@@ -89,7 +89,7 @@ mod tests {
     use std::time::Duration;
 
     use bytes::Bytes;
-    use fabro_types::RunBlobId;
+    use fabro_types::BlobHash;
     use object_store::memory::InMemory;
 
     use super::BlobStore;
@@ -128,7 +128,7 @@ mod tests {
         );
         assert_eq!(store.write(bytes).await.unwrap(), id);
         assert!(store.exists(&id).await.unwrap());
-        assert!(!store.exists(&RunBlobId::new(b"missing")).await.unwrap());
+        assert!(!store.exists(&BlobHash::new(b"missing")).await.unwrap());
     }
 
     #[tokio::test]

@@ -937,7 +937,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        AuthMethod, CommandTermination, Edge, Graph, IdpIdentity, Node, PendingReason, RunBlobId,
+        AuthMethod, BlobHash, CommandTermination, Edge, Graph, IdpIdentity, Node, PendingReason,
         WorkflowSettings, fixtures, test_support,
     };
 
@@ -1059,7 +1059,7 @@ mod tests {
                 "labels": {},
                 "source_directory": "/tmp/run",
                 "provenance": test_support::test_run_provenance(),
-                "manifest_blob": RunBlobId::new(br#"{"version":1}"#).to_string()
+                "manifest_blob": BlobHash::new(br#"{"version":1}"#).to_string()
             }
         });
 
@@ -1337,7 +1337,7 @@ mod tests {
             "run_id": fixtures::RUN_1,
             "event": "run.submitted",
             "properties": {
-                "definition_blob": RunBlobId::new(br#"{"workflow_path":"workflow.fabro"}"#).to_string()
+                "definition_blob": BlobHash::new(br#"{"workflow_path":"workflow.fabro"}"#).to_string()
             }
         });
 

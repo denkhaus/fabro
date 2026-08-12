@@ -570,7 +570,7 @@ fn vault_token_lookup(vault: &Vault, name: &str) -> Option<String> {
 
 async fn load_accepted_run_definition(
     run_store: &RunStoreHandle,
-    blob_id: fabro_types::RunBlobId,
+    blob_id: fabro_types::BlobHash,
 ) -> Result<RunDefinition, Error> {
     let bytes = run_store
         .read_blob(&blob_id)

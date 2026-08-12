@@ -3,6 +3,7 @@ extern crate self as fabro_types;
 pub mod artifact;
 pub mod auth;
 pub mod billing;
+pub mod blob_hash;
 pub mod blob_ref;
 pub mod checkpoint;
 pub mod command_output;
@@ -26,7 +27,6 @@ pub mod pull_request;
 pub mod reasoning;
 pub mod repository;
 pub mod run;
-pub mod run_blob_id;
 pub mod run_event;
 pub mod run_failure;
 pub mod run_id;
@@ -63,6 +63,7 @@ pub use billing::{
     ModelBillingFacts, ModelBillingInput, ModelPricing, ModelPricingPolicy, ModelRef, ModelUsage,
     OpenAiBillingFacts, OpenAiModelPricing, PricePerMTok, Speed, TokenCounts, UsdMicros,
 };
+pub use blob_hash::BlobHash;
 pub use blob_ref::{format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref};
 pub use checkpoint::Checkpoint;
 pub use command_output::{CommandOutputStream, CommandTermination};
@@ -113,7 +114,6 @@ pub use run::{
     DirtyStatus, ForkSourceRef, GitContext, RunClientProvenance, RunProvenance,
     RunServerProvenance, RunSpec,
 };
-pub use run_blob_id::RunBlobId;
 pub use run_event::{
     AgentMcpToolSummary, AgentMemoryFileProps, AgentSkillActivationSource, AgentSkillSummary,
     AgentToolCategory, AgentToolSource, AgentToolSummary, AgentToolsAvailableProps, EventBody,

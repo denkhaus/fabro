@@ -544,7 +544,7 @@ async fn daytona_pipeline_artifact_offload_and_sync() {
         .get("response.big_output")
         .expect("context should have response.big_output");
     let pointer_str = pointer_value.as_str().expect("pointer should be a string");
-    let expected_blob_id = fabro_types::RunBlobId::new(
+    let expected_blob_id = fabro_types::BlobHash::new(
         &serde_json::to_vec(&serde_json::json!("x".repeat(150 * 1024)))
             .expect("large value should serialize"),
     );

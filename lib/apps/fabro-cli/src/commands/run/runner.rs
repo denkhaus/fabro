@@ -21,7 +21,7 @@ use fabro_store::{EventEnvelope, RunProjection, RunProjectionReducer};
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_types::settings::run::{RunMode, RunNamespace};
 use fabro_types::{
-    ArtifactUpload, EventBody, FailureReason, Principal, RunBlobId, RunEvent, RunId,
+    ArtifactUpload, BlobHash, EventBody, FailureReason, Principal, RunEvent, RunId,
     WorkflowSettings,
 };
 use fabro_vault::{SecretStore, Vault};
@@ -1008,7 +1008,7 @@ impl RunStoreBackend for HttpRunStore {
         self.apply_acknowledged_event(seq, event).await
     }
 
-    async fn write_blob(&self, data: &[u8]) -> Result<RunBlobId> {
+    async fn write_blob(&self, data: &[u8]) -> Result<BlobHash> {
         self.with_retries("write run blob", || {
             let client = self.client.clone_for_reuse();
             let run_id = self.run_id;
@@ -1018,7 +1018,7 @@ impl RunStoreBackend for HttpRunStore {
         .await
     }
 
-    async fn read_blob(&self, id: &RunBlobId) -> Result<Option<bytes::Bytes>> {
+    async fn read_blob(&self, id: &BlobHash) -> Result<Option<bytes::Bytes>> {
         self.with_retries("read run blob", || {
             let client = self.client.clone_for_reuse();
             let run_id = self.run_id;

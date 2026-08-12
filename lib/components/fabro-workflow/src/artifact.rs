@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use fabro_agent::Sandbox;
 use fabro_config::RunScratch;
 use fabro_types::{
-    ParallelBranchResult, RunBlobId, format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref,
+    BlobHash, ParallelBranchResult, format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref,
 };
 use futures::future::BoxFuture;
 use serde_json::Value;
@@ -413,7 +413,7 @@ fn resolve_execution_value<'a>(
 }
 
 async fn materialize_blob_ref(
-    blob_id: &RunBlobId,
+    blob_id: &BlobHash,
     run_store: &RunStoreHandle,
     env: &dyn Sandbox,
     run_dir: &Path,
@@ -457,7 +457,7 @@ async fn materialize_blob_ref(
 }
 
 async fn read_required_blob(
-    blob_id: &RunBlobId,
+    blob_id: &BlobHash,
     run_store: &RunStoreHandle,
 ) -> Result<bytes::Bytes> {
     run_store
@@ -508,7 +508,7 @@ async fn is_local_execution(env: &dyn Sandbox, run_dir: &Path) -> Result<bool> {
         .map_err(|e| Error::engine_with_source("failed to inspect sandbox locality", e))
 }
 
-fn local_materialized_blob_path(run_dir: &Path, blob_id: &RunBlobId) -> PathBuf {
+fn local_materialized_blob_path(run_dir: &Path, blob_id: &BlobHash) -> PathBuf {
     RunScratch::new(run_dir)
         .runtime_dir()
         .join("blobs")
@@ -549,7 +549,7 @@ mod tests {
 
         let large_string = "x".repeat(BLOB_OFFLOAD_THRESHOLD + 1);
         let serialized = serde_json::to_vec(&serde_json::json!(large_string.clone())).unwrap();
-        let expected_blob_id = fabro_types::RunBlobId::new(&serialized);
+        let expected_blob_id = fabro_types::BlobHash::new(&serialized);
 
         let mut updates = HashMap::new();
         updates.insert("response.plan".to_string(), serde_json::json!(large_string));
@@ -636,7 +636,7 @@ mod tests {
             Value::String("small".to_string());
             BLOB_OFFLOAD_THRESHOLD / 4
         ]);
-        let expected_report_blob = RunBlobId::new(&serde_json::to_vec(&large_report).unwrap());
+        let expected_report_blob = BlobHash::new(&serde_json::to_vec(&large_report).unwrap());
         let mut typed_results = vec![ParallelBranchResult {
             id:              "branch_a".to_string(),
             index:           Some(0),
@@ -789,7 +789,7 @@ mod tests {
 
     #[test]
     fn normalize_durable_updates_rewrites_managed_blob_file_refs_recursively() {
-        let blob_id = fabro_types::RunBlobId::new(b"hello");
+        let blob_id = fabro_types::BlobHash::new(b"hello");
         let mut updates = HashMap::from([(
             "nested".to_string(),
             serde_json::json!({
@@ -870,7 +870,7 @@ mod tests {
 
     #[test]
     fn normalize_checkpoint_for_resume_converts_managed_blob_file_refs_and_drops_preamble() {
-        let blob_id = fabro_types::RunBlobId::new(b"managed");
+        let blob_id = fabro_types::BlobHash::new(b"managed");
         let mut checkpoint = crate::records::Checkpoint {
             timestamp:                  chrono::Utc::now(),
             current_node:               "work".to_string(),

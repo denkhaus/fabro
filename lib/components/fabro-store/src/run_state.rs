@@ -1690,11 +1690,11 @@ mod tests {
     use fabro_types::settings::run::{DockerfileSource, EnvironmentProvider};
     use fabro_types::{
         AgentBackend, AgentControlState, AttrValue, AutomationRef, BilledModelUsage,
-        BilledTokenCounts, BlockedReason, Checkpoint, CheckpointRecord, CommandTermination,
-        EventBody, FailureCategory, FailureDetail, FailureReason, Graph, McpServerStatus, Node,
-        Outcome, ParallelBranchId, PendingReason, PermissionLevel, PullRequestCreationStatus,
-        PullRequestLink, QuestionType, ReasoningEffort, RunApprovalState, RunBlobId,
-        RunControlAction, RunDiff, RunEvent, RunSize, RunSpec, RunStatus, Speed,
+        BilledTokenCounts, BlobHash, BlockedReason, Checkpoint, CheckpointRecord,
+        CommandTermination, EventBody, FailureCategory, FailureDetail, FailureReason, Graph,
+        McpServerStatus, Node, Outcome, ParallelBranchId, PendingReason, PermissionLevel,
+        PullRequestCreationStatus, PullRequestLink, QuestionType, ReasoningEffort,
+        RunApprovalState, RunControlAction, RunDiff, RunEvent, RunSize, RunSpec, RunStatus, Speed,
         StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
         StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning,
         StageHandler, StageModelUsage, StageOutcome, StageState, StageTiming, SubAgentStatus,
@@ -4238,9 +4238,9 @@ mod tests {
 
     #[test]
     fn projection_serialization_includes_manifest_and_definition_blob_refs() {
-        let manifest_blob = RunBlobId::new(br#"{"version":1}"#).to_string();
+        let manifest_blob = BlobHash::new(br#"{"version":1}"#).to_string();
         let definition_blob =
-            RunBlobId::new(br#"{"version":1,"workflow_path":"workflow.fabro"}"#).to_string();
+            BlobHash::new(br#"{"version":1,"workflow_path":"workflow.fabro"}"#).to_string();
         let events = vec![
             EventEnvelope {
                 seq:   1,

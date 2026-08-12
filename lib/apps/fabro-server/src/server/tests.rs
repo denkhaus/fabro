@@ -26,12 +26,12 @@ use fabro_model::{Catalog, ModelRef, ProviderId, ReasoningEffort, Speed};
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::EnvironmentProvider;
 use fabro_types::{
-    AgentBackend, AttrValue, AuthMethod, CommandTermination, FailureCategory, FailureDetail, Graph,
-    InterviewQuestionRecord, Node, Outcome, ParallelBranchId, QuestionType, RunBlobId, RunId,
-    RunSpec, SandboxProviderKind, StageContextWindowBreakdownItem, StageContextWindowCategory,
-    StageContextWindowCountMethod, StageContextWindowProjection, StageContextWindowStaleness,
-    StageContextWindowWarning, StageModelUsage, StageTiming, SuccessReason, SystemActorKind,
-    WorkflowSettings, fixtures, test_support,
+    AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, FailureCategory,
+    FailureDetail, Graph, InterviewQuestionRecord, Node, Outcome, ParallelBranchId, QuestionType,
+    RunId, RunSpec, SandboxProviderKind, StageContextWindowBreakdownItem,
+    StageContextWindowCategory, StageContextWindowCountMethod, StageContextWindowProjection,
+    StageContextWindowStaleness, StageContextWindowWarning, StageModelUsage, StageTiming,
+    SuccessReason, SystemActorKind, WorkflowSettings, fixtures, test_support,
 };
 use fabro_util::check_report::CheckStatus;
 use fabro_workflow::records::CheckpointExt;
@@ -3890,7 +3890,7 @@ layer = "project"
     let manifest_blob = created["properties"]["manifest_blob"]
         .as_str()
         .expect("run.created should carry the submitted source blob")
-        .parse::<RunBlobId>()
+        .parse::<BlobHash>()
         .unwrap();
     let persisted_manifest = run_store
         .read_blob(&manifest_blob)
@@ -10786,12 +10786,12 @@ async fn create_run_persists_manifest_and_definition_blobs_without_bundle_file()
     let manifest_blob = created["properties"]["manifest_blob"]
         .as_str()
         .expect("run.created should carry manifest_blob")
-        .parse::<RunBlobId>()
+        .parse::<BlobHash>()
         .unwrap();
     let definition_blob = submitted["properties"]["definition_blob"]
         .as_str()
         .expect("run.submitted should carry definition_blob")
-        .parse::<RunBlobId>()
+        .parse::<BlobHash>()
         .unwrap();
 
     let submitted_manifest_bytes = run_store
@@ -12058,7 +12058,7 @@ async fn worker_token_is_rejected_on_user_only_routes() {
     let user_jwt = issue_test_user_jwt();
     let run_id = create_run_with_bearer(&app, &user_jwt).await;
     let worker_token = issue_test_worker_token(&run_id);
-    let blob_id = RunBlobId::new(b"blob");
+    let blob_id = BlobHash::new(b"blob");
     let user_only_routes = vec![
         (Method::GET, "/runs".to_string()),
         (Method::POST, "/runs".to_string()),
