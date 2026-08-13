@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -135,21 +135,25 @@ impl WorkflowVersion {
     fn validate_path_collisions(&self) -> Result<(), WorkflowVersionShapeError> {
         // Keys are unique within each map, so equality can only collide
         // across files and workflow dependencies.
-        let mut paths = self
-            .files
-            .keys()
-            .chain(self.workflow_dependencies.keys())
-            .collect::<Vec<_>>();
-        paths.sort_unstable();
-        for pair in paths.windows(2) {
-            let [first, second] = pair else {
-                unreachable!("a two-item window must contain two paths")
-            };
-            if first == second || first.is_ancestor_of(second) {
+        let mut by_text =
+            HashMap::with_capacity(self.files.len() + self.workflow_dependencies.len());
+        for path in self.files.keys().chain(self.workflow_dependencies.keys()) {
+            if let Some(existing) = by_text.insert(path.as_str(), path) {
                 return Err(WorkflowVersionShapeError::PathCollision {
-                    first:  (*first).clone(),
-                    second: (*second).clone(),
+                    first:  existing.clone(),
+                    second: path.clone(),
                 });
+            }
+        }
+        for path in self.files.keys().chain(self.workflow_dependencies.keys()) {
+            let text = path.as_str();
+            for (index, _) in text.match_indices('/') {
+                if let Some(ancestor) = by_text.get(&text[..index]) {
+                    return Err(WorkflowVersionShapeError::PathCollision {
+                        first:  (*ancestor).clone(),
+                        second: path.clone(),
+                    });
+                }
             }
         }
         Ok(())
@@ -292,6 +296,78 @@ mod tests {
         assert!(matches!(
             large,
             WorkflowVersionShapeError::FileTooLarge { .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_ancestor_collisions_hidden_by_sort_order() {
+        // `assets.txt` sorts between `assets` and `assets/item.txt` because
+        // '.' precedes '/', so an adjacent-pair scan over the sorted list
+        // would miss this collision.
+        let error = WorkflowVersion::new(
+            path("workflow.fabro"),
+            BTreeMap::from([
+                (path("workflow.fabro"), "digraph W {}".to_string()),
+                (path("assets"), "file".to_string()),
+                (path("assets.txt"), "sibling".to_string()),
+                (path("assets/item.txt"), "nested".to_string()),
+            ]),
+            BTreeMap::new(),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            WorkflowVersionShapeError::PathCollision { first, second }
+                if first.as_str() == "assets" && second.as_str() == "assets/item.txt"
+        ));
+
+        assert!(
+            WorkflowVersion::new(
+                path("workflow.fabro"),
+                BTreeMap::from([
+                    (path("workflow.fabro"), "digraph W {}".to_string()),
+                    (path("assets.txt"), "sibling".to_string()),
+                    (path("assets/item.txt"), "nested".to_string()),
+                ]),
+                BTreeMap::new(),
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn rejects_collisions_across_files_and_workflow_dependencies() {
+        let dependency_id = WorkflowVersionId::from(BlobHash::new(b"child"));
+
+        let equal = WorkflowVersion::new(
+            path("workflow.fabro"),
+            BTreeMap::from([
+                (path("workflow.fabro"), "digraph W {}".to_string()),
+                (path("child.fabro"), "digraph C {}".to_string()),
+            ]),
+            BTreeMap::from([(path("child.fabro"), dependency_id)]),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            equal,
+            WorkflowVersionShapeError::PathCollision { first, second }
+                if first == second && first.as_str() == "child.fabro"
+        ));
+
+        let ancestor = WorkflowVersion::new(
+            path("workflow.fabro"),
+            BTreeMap::from([
+                (path("workflow.fabro"), "digraph W {}".to_string()),
+                (path("libs"), "file".to_string()),
+                (path("libs.md"), "sibling".to_string()),
+            ]),
+            BTreeMap::from([(path("libs/child.fabro"), dependency_id)]),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            ancestor,
+            WorkflowVersionShapeError::PathCollision { first, second }
+                if first.as_str() == "libs" && second.as_str() == "libs/child.fabro"
         ));
     }
 
