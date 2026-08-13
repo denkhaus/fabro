@@ -49,20 +49,6 @@ impl WorkflowPath {
         &self.0
     }
 
-    #[must_use]
-    pub fn parent(&self) -> Option<Self> {
-        self.0
-            .rsplit_once('/')
-            .map(|(parent, _)| Self(parent.to_owned()))
-    }
-
-    #[must_use]
-    pub fn is_ancestor_of(&self, other: &Self) -> bool {
-        other.0.len() > self.0.len()
-            && other.0.starts_with(self.0.as_str())
-            && other.0.as_bytes()[self.0.len()] == b'/'
-    }
-
     pub fn resolve_reference(&self, reference: &str) -> Result<Self, WorkflowPathParseError> {
         validate_reference_shape(reference)?;
         let mut components = self
@@ -254,13 +240,6 @@ mod tests {
         assert!(graph.resolve_reference("../../../outside.md").is_err());
         assert!(graph.resolve_reference("prompts//plan.md").is_err());
         assert!(graph.resolve_reference("prompts/").is_err());
-    }
-
-    #[test]
-    fn ancestor_checks_component_boundaries() {
-        let parent: WorkflowPath = "dir/file".parse().unwrap();
-        assert!(parent.is_ancestor_of(&"dir/file/child".parse().unwrap()));
-        assert!(!parent.is_ancestor_of(&"dir/filename".parse().unwrap()));
     }
 
     #[test]
