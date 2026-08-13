@@ -35,18 +35,13 @@ impl From<WorkflowVersionId> for String {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
-#[error("workflow version ID must be exactly 64 lowercase hexadecimal characters")]
+#[error("workflow version ID must be exactly 64 hexadecimal characters")]
 pub struct WorkflowVersionIdParseError;
 
 impl FromStr for WorkflowVersionId {
     type Err = WorkflowVersionIdParseError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        // `BlobHash` enforces length and hex charset but accepts uppercase digits;
-        // the canonical wire form is lowercase only.
-        if value.bytes().any(|byte| byte.is_ascii_uppercase()) {
-            return Err(WorkflowVersionIdParseError);
-        }
         value
             .parse::<BlobHash>()
             .map(Self)
@@ -75,11 +70,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_and_serde_require_lowercase_hex() {
+    fn parse_accepts_any_case_and_serializes_lowercase() {
         let value = BlobHash::new(b"workflow").to_string();
         let id: WorkflowVersionId = value.parse().unwrap();
         assert_eq!(serde_json::to_value(id).unwrap(), value);
-        assert!(value.to_uppercase().parse::<WorkflowVersionId>().is_err());
+        assert_eq!(
+            value.to_uppercase().parse::<WorkflowVersionId>().unwrap(),
+            id
+        );
         for invalid in [
             String::new(),
             "0".repeat(63),
@@ -88,9 +86,11 @@ mod tests {
         ] {
             assert!(invalid.parse::<WorkflowVersionId>().is_err());
         }
-        assert!(
+        assert_eq!(
             serde_json::from_value::<WorkflowVersionId>(serde_json::json!(value.to_uppercase()))
-                .is_err()
+                .unwrap()
+                .to_string(),
+            value
         );
     }
 }
