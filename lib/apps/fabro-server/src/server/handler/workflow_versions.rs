@@ -83,20 +83,13 @@ fn json_rejection(rejection: JsonRejection) -> ApiError {
 
 fn store_error(err: WorkflowVersionStoreError) -> ApiError {
     match err {
-        err @ WorkflowVersionStoreError::DependencyNotFound { .. } => ApiError::with_code(
+        // The top-level message names the offending dependency without its
+        // internal source chain, so it is safe to surface to the caller.
+        err @ (WorkflowVersionStoreError::DependencyNotFound { .. }
+        | WorkflowVersionStoreError::DependencyInvalid { .. }) => ApiError::with_code(
             StatusCode::UNPROCESSABLE_ENTITY,
             err.to_string(),
             DEPENDENCY_NOT_FOUND_CODE,
-        ),
-        WorkflowVersionStoreError::InvalidVersion(source) => ApiError::with_code(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            source.to_string(),
-            INVALID_VERSION_CODE,
-        ),
-        WorkflowVersionStoreError::InvalidShape(source) => ApiError::with_code(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            source.to_string(),
-            INVALID_VERSION_CODE,
         ),
         err => {
             tracing::error!(
@@ -264,7 +257,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn corrupt_stored_dependency_returns_curated_internal_error() {
+    async fn invalid_stored_dependency_is_a_client_error_without_internals() {
         let state = TestAppStateBuilder::new().build();
         let app = test_support::build_test_router(Arc::clone(&state));
         let dependency_id = WorkflowVersionId::from(
@@ -289,11 +282,14 @@ mod tests {
             .oneshot(request(serde_json::to_vec(&root).unwrap()))
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         let body = response_json(response).await;
-        assert_eq!(
-            body["errors"][0]["detail"],
-            "workflow version store operation failed"
+        assert_eq!(error_code(&body), DEPENDENCY_NOT_FOUND_CODE);
+        assert!(
+            body["errors"][0]["detail"]
+                .as_str()
+                .unwrap()
+                .contains("child.fabro")
         );
         assert!(!body.to_string().contains("cannot be decoded"));
     }
