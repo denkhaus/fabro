@@ -8,12 +8,17 @@ use minijinja::value::{Object, Value};
 use minijinja::{AutoEscape, Environment, ErrorKind, UndefinedBehavior};
 
 mod dependency;
+mod static_reference;
 mod store;
 
 pub use dependency::{
     ExtractedTemplateDependencies, TemplateDependency, TemplateDependencyClosure,
     TemplateDependencyKind, TemplateDiscoveryError, discover_static_dependency_closure,
     extract_template_dependencies,
+};
+pub use static_reference::{
+    GraphReference, GraphReferenceError, StaticReferenceError, validate_static_reference,
+    visit_graph_references,
 };
 pub use store::{
     BundleTemplateStore, CachedTemplateStore, FilesystemTemplateStore, RecordingTemplateStore,

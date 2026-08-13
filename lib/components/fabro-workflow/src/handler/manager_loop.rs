@@ -6,7 +6,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use fabro_graphviz::graph::{AttrValue, Graph, Node};
 use fabro_store::{ArtifactStore, Database};
+use fabro_template::validate_static_reference;
 use fabro_types::WorkflowSettings;
+use fabro_types::graph::ReferenceKind;
 use object_store::memory::InMemory;
 use tokio::fs;
 use tokio::time::{sleep, timeout};
@@ -20,7 +22,6 @@ use crate::operations::{ValidateInput, WorkflowInput, validate_with_catalog};
 use crate::outcome::{Outcome, OutcomeExt, StageOutcome};
 use crate::pipeline::types::Initialized;
 use crate::run_options::RunOptions;
-use crate::static_reference::{ReferenceKind, validate_static_reference};
 use crate::{ManifestPath, pipeline, stage_scope};
 
 /// Orchestrates a child workflow engine, polling for completion or stop
