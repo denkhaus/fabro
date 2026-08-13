@@ -73,7 +73,8 @@ pub mod types {
         StageModelUsage, StageOutcome, StageProjection, StageState, StageToolBatchProjection,
         SubAgentProjection, SubAgentStatus, SystemActorKind, SystemIntegrationStatus,
         SystemIntegrationsResponse, TodoListProjection, TurnId, UpdateVariableRequest,
-        UserPrincipal, Variable, VariableListResponse, WorkflowSettings,
+        UserPrincipal, Variable, VariableListResponse, WorkflowPath, WorkflowSettings,
+        WorkflowVersion, WorkflowVersionId,
     };
 
     pub use crate::generated::types::*;
