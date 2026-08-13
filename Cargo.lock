@@ -3433,7 +3433,7 @@ dependencies = [
 
 [[package]]
 name = "fabro-workflow-version"
-version = "0.316.0-nightly.0"
+version = "0.324.0-nightly.0"
 dependencies = [
  "fabro-config",
  "fabro-graphviz",
