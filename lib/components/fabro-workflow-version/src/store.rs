@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use fabro_store::BlobStore;
-use fabro_types::{WorkflowPath, WorkflowVersion, WorkflowVersionId, WorkflowVersionShapeError};
+use fabro_types::{WorkflowPath, WorkflowVersion, WorkflowVersionId};
 use thiserror::Error;
 
 use crate::{ValidatedWorkflowVersion, WorkflowVersionError};
@@ -11,8 +11,6 @@ use crate::{ValidatedWorkflowVersion, WorkflowVersionError};
 pub enum WorkflowVersionStoreError {
     #[error(transparent)]
     InvalidVersion(#[from] WorkflowVersionError),
-    #[error(transparent)]
-    InvalidShape(#[from] WorkflowVersionShapeError),
     #[error("workflow-version dependency `{id}` at `{path}` is not stored")]
     DependencyNotFound {
         path: WorkflowPath,
@@ -60,11 +58,10 @@ impl WorkflowVersionStore {
         &self,
         version: &ValidatedWorkflowVersion,
     ) -> Result<WorkflowVersionId, WorkflowVersionStoreError> {
-        let canonical = version.version().canonical_bytes()?;
         self.validate_dependency_closure(version.version().workflow_dependencies())
             .await?;
         self.blobs
-            .write(&canonical)
+            .write(version.version().canonical_bytes())
             .await
             .map(WorkflowVersionId::from)
             .map_err(|source| WorkflowVersionStoreError::Storage { source })
@@ -98,8 +95,7 @@ impl WorkflowVersionStore {
         let version = serde_json::from_slice::<WorkflowVersion>(&bytes)
             .map_err(|source| WorkflowVersionStoreError::Decode { id: *id, source })?;
         let validated = ValidatedWorkflowVersion::new(version)?;
-        let canonical = validated.version().canonical_bytes()?;
-        if canonical.as_slice() != bytes.as_ref() {
+        if validated.version().canonical_bytes() != bytes.as_ref() {
             return Err(WorkflowVersionStoreError::NonCanonical { id: *id });
         }
         Ok(Some(validated))
@@ -196,7 +192,7 @@ mod tests {
     async fn put_get_reuses_exact_blob_digest() {
         let (blobs, store) = stores().await;
         let version = version("digraph W {}", BTreeMap::new());
-        let expected_bytes = version.version().canonical_bytes().unwrap();
+        let expected_bytes = version.version().canonical_bytes().to_vec();
         let expected_id = WorkflowVersionId::from(fabro_types::BlobHash::new(&expected_bytes));
 
         let id = store.put(&version).await.unwrap();
@@ -228,15 +224,14 @@ mod tests {
         let (blobs, store) = stores().await;
         let child = version("digraph Child {}", BTreeMap::new());
         let child_id = WorkflowVersionId::from(fabro_types::BlobHash::new(
-            &child.version().canonical_bytes().unwrap(),
+            child.version().canonical_bytes(),
         ));
         let root = version(
             r#"digraph Root { child [stack.child_workflow="child.fabro"] }"#,
             BTreeMap::from([(path("child.fabro"), child_id)]),
         );
-        let root_id = WorkflowVersionId::from(fabro_types::BlobHash::new(
-            &root.version().canonical_bytes().unwrap(),
-        ));
+        let root_id =
+            WorkflowVersionId::from(fabro_types::BlobHash::new(root.version().canonical_bytes()));
 
         let error = store.put(&root).await.unwrap_err();
         assert!(matches!(
@@ -256,15 +251,14 @@ mod tests {
             r#"digraph Child { grandchild [stack.child_workflow="grandchild.fabro"] }"#,
             BTreeMap::from([(path("grandchild.fabro"), missing_grandchild_id)]),
         );
-        let child_bytes = child.version().canonical_bytes().unwrap();
-        let child_id = WorkflowVersionId::from(blobs.write(&child_bytes).await.unwrap());
+        let child_bytes = child.version().canonical_bytes();
+        let child_id = WorkflowVersionId::from(blobs.write(child_bytes).await.unwrap());
         let root = version(
             r#"digraph Root { child [stack.child_workflow="child.fabro"] }"#,
             BTreeMap::from([(path("child.fabro"), child_id)]),
         );
-        let root_id = WorkflowVersionId::from(fabro_types::BlobHash::new(
-            &root.version().canonical_bytes().unwrap(),
-        ));
+        let root_id =
+            WorkflowVersionId::from(fabro_types::BlobHash::new(root.version().canonical_bytes()));
 
         assert!(matches!(
             store.put(&root).await.unwrap_err(),
