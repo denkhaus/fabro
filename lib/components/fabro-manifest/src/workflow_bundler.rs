@@ -453,6 +453,28 @@ mod tests {
     }
 
     #[test]
+    fn graph_goal_bundles_filename_with_at_prefix() {
+        let temp = tempfile::tempdir().expect("temp directory should be created");
+        let graph = temp.path().join("workflow.fabro");
+        write_file(
+            &graph,
+            r#"digraph Root {
+                graph [goal="@@goal.md"]
+                start [shape=Mdiamond]
+                exit [shape=Msquare]
+                start -> exit
+            }"#,
+        );
+        write_file(&temp.path().join("@goal.md"), "goal\n");
+
+        let workflows = bundle_graph(temp.path(), &graph).expect("workflow should bundle");
+
+        let goal = &workflows["workflow.fabro"].files["@goal.md"];
+        assert_eq!(goal.content, "goal\n");
+        assert_eq!(goal.ref_.original, "@goal.md");
+    }
+
+    #[test]
     fn parse_errors_keep_the_graphviz_error_in_the_source_chain() {
         let temp = tempfile::tempdir().expect("temp directory should be created");
         let graph = temp.path().join("workflow.fabro");
