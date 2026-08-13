@@ -4,14 +4,14 @@ use std::sync::Arc;
 
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_graphviz::parser;
-use fabro_template::TemplateContext;
+use fabro_template::{TemplateContext, validate_static_reference};
+use fabro_types::graph::ReferenceKind;
 use fabro_validate::Diagnostic;
 
 use super::file_inlining::template_render_store;
 use super::{FileInliningTransform, Transform};
 use crate::error::Error;
 use crate::file_resolver::{FileResolver, ResolvedFile};
-use crate::static_reference::{ReferenceKind, validate_static_reference};
 use crate::transforms::variable_expansion::{
     RenderMode, TemplateRenderTarget, TemplateTransform, render_template_for_target,
 };

@@ -19,13 +19,14 @@ use fabro_config::{
 };
 use fabro_graphviz::graph::AttrValue;
 use fabro_graphviz::parser;
+use fabro_template::validate_static_reference;
+use fabro_types::graph::ReferenceKind;
 use fabro_types::settings::interp::InterpString;
 use fabro_types::settings::run::{ApprovalMode, ResolvedGoalSource, ResolvedRunGoal, RunMode};
 use fabro_types::{DirtyStatus, GitContext, ManifestPath, WorkflowSettings};
 use fabro_workflow::git::{
     GitSyncStatus, branch_needs_push, head_sha, push_branch_noninteractive, sync_status,
 };
-use fabro_workflow::static_reference::ReferenceKind;
 
 use crate::workflow_bundler::WorkflowBundler;
 
@@ -265,8 +266,7 @@ fn resolve_manifest_goal(
         return Ok(None);
     };
     if let Some(reference) = goal.strip_prefix('@') {
-        ReferenceKind::GraphGoalFile
-            .validate(reference)
+        validate_static_reference(reference, ReferenceKind::GraphGoalFile)
             .map_err(anyhow::Error::new)?;
         let goal_path = normalize_absolute_path(
             root_dot_path.parent().unwrap_or_else(|| Path::new(".")),
