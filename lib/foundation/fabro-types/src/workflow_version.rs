@@ -53,8 +53,6 @@ pub struct WorkflowVersion {
     entrypoint:            WorkflowPath,
     files:                 BTreeMap<WorkflowPath, String>,
     workflow_dependencies: BTreeMap<WorkflowPath, WorkflowVersionId>,
-    #[serde(skip)]
-    canonical:             Vec<u8>,
 }
 
 impl WorkflowVersion {
@@ -63,22 +61,13 @@ impl WorkflowVersion {
         files: BTreeMap<WorkflowPath, String>,
         workflow_dependencies: BTreeMap<WorkflowPath, WorkflowVersionId>,
     ) -> Result<Self, WorkflowVersionShapeError> {
-        let mut version = Self {
+        let version = Self {
             entrypoint,
             files,
             workflow_dependencies,
-            canonical: Vec::new(),
         };
         version.validate_shape()?;
-        let canonical = serde_json::to_vec(&version)
-            .map_err(|source| WorkflowVersionShapeError::Serialization { source })?;
-        if canonical.len() > MAX_WORKFLOW_VERSION_BYTES {
-            return Err(WorkflowVersionShapeError::VersionTooLarge {
-                actual:  canonical.len(),
-                maximum: MAX_WORKFLOW_VERSION_BYTES,
-            });
-        }
-        version.canonical = canonical;
+        version.canonical_bytes()?;
         Ok(version)
     }
 
@@ -97,11 +86,20 @@ impl WorkflowVersion {
         &self.workflow_dependencies
     }
 
-    /// Canonical wire bytes, serialized and size-checked once at
-    /// construction.
-    #[must_use]
-    pub fn canonical_bytes(&self) -> &[u8] {
-        &self.canonical
+    /// Serialize to the canonical wire form.
+    ///
+    /// Structural validity is guaranteed by construction, so this only
+    /// serializes and enforces the canonical size limit.
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>, WorkflowVersionShapeError> {
+        let bytes = serde_json::to_vec(self)
+            .map_err(|source| WorkflowVersionShapeError::Serialization { source })?;
+        if bytes.len() > MAX_WORKFLOW_VERSION_BYTES {
+            return Err(WorkflowVersionShapeError::VersionTooLarge {
+                actual:  bytes.len(),
+                maximum: MAX_WORKFLOW_VERSION_BYTES,
+            });
+        }
+        Ok(bytes)
     }
 
     fn validate_shape(&self) -> Result<(), WorkflowVersionShapeError> {
@@ -252,7 +250,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            String::from_utf8(version.canonical_bytes().to_vec()).unwrap(),
+            String::from_utf8(version.canonical_bytes().unwrap()).unwrap(),
             r#"{"entrypoint":"workflow.fabro","files":{"a.txt":"A","workflow.fabro":"digraph W {}","z.txt":"Z"},"workflow_dependencies":{}}"#
         );
     }
@@ -421,7 +419,7 @@ mod tests {
             BTreeMap::new(),
         )
         .unwrap();
-        let remaining = MAX_WORKFLOW_VERSION_BYTES - empty.canonical_bytes().len();
+        let remaining = MAX_WORKFLOW_VERSION_BYTES - empty.canonical_bytes().unwrap().len();
         let per_file = remaining / 4;
         let remainder = remaining % 4;
         for index in 0..4 {
@@ -436,7 +434,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            exact_version.canonical_bytes().len(),
+            exact_version.canonical_bytes().unwrap().len(),
             MAX_WORKFLOW_VERSION_BYTES
         );
         exact_version_files
