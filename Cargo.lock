@@ -3060,6 +3060,7 @@ dependencies = [
  "fabro-variable",
  "fabro-vault",
  "fabro-workflow",
+ "fabro-workflow-version",
  "futures-util",
  "globset",
  "hex",
@@ -3428,6 +3429,22 @@ dependencies = [
  "ulid",
  "uuid",
  "walkdir",
+]
+
+[[package]]
+name = "fabro-workflow-version"
+version = "0.324.0-nightly.0"
+dependencies = [
+ "fabro-config",
+ "fabro-graphviz",
+ "fabro-store",
+ "fabro-template",
+ "fabro-types",
+ "object_store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
