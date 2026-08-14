@@ -214,30 +214,30 @@ impl RunDump {
         for entry in &mut self.entries {
             match &mut entry.contents {
                 RunDumpContents::Json(value) => {
-                    let mut blob_ids = Vec::new();
-                    collect_blob_refs_in_value(value, &mut blob_ids);
-                    for blob_id in blob_ids {
-                        if cache.contains_key(&blob_id) {
+                    let mut blob_hashes = Vec::new();
+                    collect_blob_refs_in_value(value, &mut blob_hashes);
+                    for blob_hash in blob_hashes {
+                        if cache.contains_key(&blob_hash) {
                             continue;
                         }
-                        let blob = read_blob(blob_id).await?.with_context(|| {
-                            format!("blob {blob_id:?} is missing from the store")
+                        let blob = read_blob(blob_hash).await?.with_context(|| {
+                            format!("blob {blob_hash:?} is missing from the store")
                         })?;
                         let hydrated: serde_json::Value = serde_json::from_slice(&blob)
-                            .with_context(|| format!("blob {blob_id:?} is not valid JSON"))?;
-                        cache.insert(blob_id, hydrated);
+                            .with_context(|| format!("blob {blob_hash:?} is not valid JSON"))?;
+                        cache.insert(blob_hash, hydrated);
                     }
                     replace_blob_refs_in_value(value, &cache)?;
                 }
                 RunDumpContents::Text(text) => {
-                    let Some(blob_id) = parse_blob_ref(text) else {
+                    let Some(blob_hash) = parse_blob_ref(text) else {
                         continue;
                     };
-                    let blob = read_blob(blob_id)
+                    let blob = read_blob(blob_hash)
                         .await?
-                        .with_context(|| format!("blob {blob_id:?} is missing from the store"))?;
+                        .with_context(|| format!("blob {blob_hash:?} is missing from the store"))?;
                     *text = serde_json::from_slice::<String>(&blob).with_context(|| {
-                        format!("blob {blob_id:?} is not a JSON string text log")
+                        format!("blob {blob_hash:?} is not a JSON string text log")
                     })?;
                 }
                 RunDumpContents::Bytes(_) => {}
@@ -386,21 +386,21 @@ fn validate_relative_path(kind: &str, value: &str) -> Result<PathBuf> {
     Ok(normalized)
 }
 
-fn collect_blob_refs_in_value(value: &serde_json::Value, blob_ids: &mut Vec<BlobHash>) {
+fn collect_blob_refs_in_value(value: &serde_json::Value, blob_hashes: &mut Vec<BlobHash>) {
     match value {
         serde_json::Value::String(current) => {
-            if let Some(blob_id) = parse_blob_ref(current) {
-                blob_ids.push(blob_id);
+            if let Some(blob_hash) = parse_blob_ref(current) {
+                blob_hashes.push(blob_hash);
             }
         }
         serde_json::Value::Array(items) => {
             for item in items {
-                collect_blob_refs_in_value(item, blob_ids);
+                collect_blob_refs_in_value(item, blob_hashes);
             }
         }
         serde_json::Value::Object(map) => {
             for item in map.values() {
-                collect_blob_refs_in_value(item, blob_ids);
+                collect_blob_refs_in_value(item, blob_hashes);
             }
         }
         serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
@@ -413,13 +413,12 @@ fn replace_blob_refs_in_value(
 ) -> Result<()> {
     match value {
         serde_json::Value::String(current) => {
-            let Some(blob_id) = parse_blob_ref(current) else {
+            let Some(blob_hash) = parse_blob_ref(current) else {
                 return Ok(());
             };
-            let hydrated = cache
-                .get(&blob_id)
-                .cloned()
-                .with_context(|| format!("blob {blob_id:?} is missing from the hydration cache"))?;
+            let hydrated = cache.get(&blob_hash).cloned().with_context(|| {
+                format!("blob {blob_hash:?} is missing from the hydration cache")
+            })?;
             *value = hydrated;
         }
         serde_json::Value::Array(items) => {
@@ -724,8 +723,8 @@ mod tests {
     #[test]
     fn hydrate_referenced_blobs_ignores_legacy_artifact_file_refs() {
         let blob = serde_json::to_vec("hydrated legacy text").unwrap();
-        let blob_id = fabro_types::BlobHash::new(&blob);
-        let legacy_ref = format!("file:///sandbox/.fabro/artifacts/{blob_id}.json");
+        let blob_hash = fabro_types::BlobHash::new(&blob);
+        let legacy_ref = format!("file:///sandbox/.fabro/artifacts/{blob_hash}.json");
         let mut dump = RunDump {
             entries:        vec![RunDumpEntry::json(
                 "run.json",
@@ -736,10 +735,10 @@ mod tests {
         };
 
         executor::block_on(async {
-            dump.hydrate_referenced_blobs_with_reader(|read_blob_id| {
+            dump.hydrate_referenced_blobs_with_reader(|read_blob_hash| {
                 let blob = blob.clone();
                 Box::pin(async move {
-                    assert_eq!(read_blob_id, blob_id);
+                    assert_eq!(read_blob_hash, blob_hash);
                     Ok(Some(bytes::Bytes::from(blob)))
                 })
             })

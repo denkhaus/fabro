@@ -14,7 +14,7 @@ use strum::IntoStaticStr;
 use crate::auth::{AuthErrorCode, JwtError, REFRESH_TOKEN_PREFIX};
 use crate::error::ApiError;
 use crate::jwt_auth::{self, AuthMode, ConfiguredAuth};
-use crate::server::{AppState, parse_blob_id_path, parse_run_id_path, parse_stage_id_path};
+use crate::server::{AppState, parse_blob_hash_path, parse_run_id_path, parse_stage_id_path};
 use crate::worker_token::{self, WORKER_TOKEN_KID, WorkerScopeSet};
 
 #[derive(Clone, Debug)]
@@ -295,14 +295,14 @@ impl FromRequestParts<Arc<AppState>> for RequireRunBlob {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        let Path((id, blob_id)): Path<(String, String)> = Path::from_request_parts(parts, state)
+        let Path((id, blob_hash)): Path<(String, String)> = Path::from_request_parts(parts, state)
             .await
             .map_err(IntoResponse::into_response)?;
         let run_id = parse_run_id_path(&id)?;
-        let blob_id = parse_blob_id_path(&blob_id)?;
+        let blob_hash = parse_blob_hash_path(&blob_hash)?;
         require_worker_or_user_for_run(&auth_slot_from_parts(parts), &run_id)
             .map_err(IntoResponse::into_response)?;
-        Ok(Self(run_id, blob_id))
+        Ok(Self(run_id, blob_hash))
     }
 }
 

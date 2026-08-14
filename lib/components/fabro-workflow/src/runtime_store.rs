@@ -217,8 +217,8 @@ mod tests {
         };
         handle.append_run_event(&event).await.unwrap();
 
-        let blob_id = handle.write_blob(br#"{"ok":true}"#).await.unwrap();
-        let blob = handle.read_blob(&blob_id).await.unwrap().unwrap();
+        let blob_hash = handle.write_blob(br#"{"ok":true}"#).await.unwrap();
+        let blob = handle.read_blob(&blob_hash).await.unwrap().unwrap();
         let events = handle.list_events().await.unwrap();
 
         assert_eq!(events.len(), 2);

@@ -325,11 +325,11 @@ async fn resolve_response_string(
     run_id: &RunId,
     response: &str,
 ) -> Result<Option<String>> {
-    let Some(blob_id) = blob_id_from_response(response) else {
+    let Some(blob_hash) = blob_hash_from_response(response) else {
         return Ok(Some(response.to_string()));
     };
 
-    let Some(bytes) = client.read_run_blob(run_id, &blob_id).await? else {
+    let Some(bytes) = client.read_run_blob(run_id, &blob_hash).await? else {
         return Ok(None);
     };
     let value: serde_json::Value =
@@ -341,7 +341,7 @@ async fn resolve_response_string(
     }))
 }
 
-fn blob_id_from_response(response: &str) -> Option<BlobHash> {
+fn blob_hash_from_response(response: &str) -> Option<BlobHash> {
     parse_blob_ref(response)
 }
 

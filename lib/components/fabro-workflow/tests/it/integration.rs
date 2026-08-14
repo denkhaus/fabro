@@ -233,7 +233,7 @@ fn resolve_checkpoint_text(
     let Some(current) = value.as_str() else {
         return Ok(value.to_string());
     };
-    let Some(blob_id) = parse_blob_ref(current) else {
+    let Some(blob_hash) = parse_blob_ref(current) else {
         return Ok(current.to_string());
     };
 
@@ -272,7 +272,7 @@ fn resolve_checkpoint_text(
             };
             let run = runtime.block_on(store.open_run_reader(&run_id))?;
             let bytes = runtime
-                .block_on(run.read_blob(&blob_id))?
+                .block_on(run.read_blob(&blob_hash))?
                 .ok_or("checkpoint blob should exist")?;
             Ok(serde_json::from_slice::<String>(&bytes)?)
         },
@@ -10059,13 +10059,13 @@ async fn large_context_values_are_offloaded_to_artifact_store() {
         .expect("context should have response.big_output");
     let pointer_str = pointer_value.as_str().expect("pointer should be a string");
 
-    let expected_blob_id = fabro_types::BlobHash::new(
+    let expected_blob_hash = fabro_types::BlobHash::new(
         &serde_json::to_vec(&serde_json::json!("x".repeat(150 * 1024)))
             .expect("large value should serialize"),
     );
     assert_eq!(
         pointer_str,
-        fabro_types::format_blob_ref(&expected_blob_id),
+        fabro_types::format_blob_ref(&expected_blob_hash),
         "value should be a durable blob ref"
     );
 
@@ -10258,13 +10258,13 @@ async fn artifact_pointers_rewritten_for_remote_sandbox() {
         .get("response.big_output")
         .expect("context should have response.big_output");
     let pointer_str = pointer_value.as_str().expect("pointer should be a string");
-    let expected_blob_id = fabro_types::BlobHash::new(
+    let expected_blob_hash = fabro_types::BlobHash::new(
         &serde_json::to_vec(&serde_json::json!("x".repeat(150 * 1024)))
             .expect("large value should serialize"),
     );
     assert_eq!(
         pointer_str,
-        fabro_types::format_blob_ref(&expected_blob_id),
+        fabro_types::format_blob_ref(&expected_blob_hash),
         "checkpoint should persist a blob ref"
     );
 

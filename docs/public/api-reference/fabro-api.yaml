@@ -3092,7 +3092,7 @@ paths:
       operationId: writeRunBlob
       tags: [Run Internals]
       summary: Write Run Blob
-      description: Writes an opaque binary blob and returns its content-addressed blob identifier.
+      description: Writes an opaque binary blob and returns its content-addressed blob hash.
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
@@ -3137,15 +3137,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /api/v1/runs/{id}/blobs/{blobId}:
+  /api/v1/runs/{id}/blobs/{blobHash}:
     get:
       operationId: readRunBlob
       tags: [Run Internals]
       summary: Read Run Blob
-      description: Reads a previously stored blob by identifier.
+      description: Reads a previously stored blob by hash.
       parameters:
         - $ref: "#/components/parameters/RunId"
-        - $ref: "#/components/parameters/BlobId"
+        - $ref: "#/components/parameters/BlobHash"
       responses:
         "200":
           description: Blob contents
@@ -5974,11 +5974,11 @@ components:
         default: 65536
       example: 65536
 
-    BlobId:
-      name: blobId
+    BlobHash:
+      name: blobHash
       in: path
       required: true
-      description: Content-addressed blob identifier.
+      description: Content-addressed blob hash.
       schema:
         type: string
         pattern: '^[0-9a-f]{64}$'
@@ -10284,15 +10284,15 @@ components:
           example: 42
 
     WriteBlobResponse:
-      description: Content-addressed identifier for a stored blob.
+      description: Content-addressed hash of a stored blob.
       type: object
       required:
-        - id
+        - hash
       properties:
-        id:
+        hash:
           type: string
-          description: Blob identifier.
-          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Content-addressed hash of the stored blob.
+          example: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
 
     CommandTermination:
       description: Terminal state for a command execution.

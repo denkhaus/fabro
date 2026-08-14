@@ -1022,8 +1022,8 @@ impl RunStoreBackend for HttpRunStore {
         self.with_retries("read run blob", || {
             let client = self.client.clone_for_reuse();
             let run_id = self.run_id;
-            let blob_id = *id;
-            async move { client.read_run_blob(&run_id, &blob_id).await }
+            let blob_hash = *id;
+            async move { client.read_run_blob(&run_id, &blob_hash).await }
         })
         .await
     }

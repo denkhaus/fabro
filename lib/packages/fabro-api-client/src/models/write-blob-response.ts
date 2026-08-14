@@ -15,11 +15,11 @@
 
 
 /**
- * Content-addressed identifier for a stored blob.
+ * Content-addressed hash of a stored blob.
  */
 export interface WriteBlobResponse {
     /**
-     * Blob identifier.
+     * Content-addressed hash of the stored blob.
      */
-    'id': string;
+    'hash': string;
 }

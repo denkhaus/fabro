@@ -32,7 +32,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/runs/{id}/checkpoint", get(get_checkpoint))
         .route("/runs/{id}/blobs", post(write_run_blob))
-        .route("/runs/{id}/blobs/{blobId}", get(read_run_blob))
+        .route("/runs/{id}/blobs/{blobHash}", get(read_run_blob))
         .route("/runs/{id}/artifacts", get(list_run_artifacts))
         .route("/runs/{id}/artifacts/download", get(download_run_artifacts))
         .route(
@@ -105,8 +105,8 @@ async fn write_run_blob(
     }
     match state.stores.runs.open_run(&id).await {
         Ok(run_store) => match run_store.write_blob(&body).await {
-            Ok(blob_id) => Json(WriteBlobResponse {
-                id: blob_id.to_string(),
+            Ok(blob_hash) => Json(WriteBlobResponse {
+                hash: blob_hash.to_string(),
             })
             .into_response(),
             Err(err) => {
@@ -118,11 +118,11 @@ async fn write_run_blob(
 }
 
 async fn read_run_blob(
-    RequireRunBlob(id, blob_id): RequireRunBlob,
+    RequireRunBlob(id, blob_hash): RequireRunBlob,
     State(state): State<Arc<AppState>>,
 ) -> Response {
     match state.stores.runs.open_run_reader(&id).await {
-        Ok(run_store) => match run_store.read_blob(&blob_id).await {
+        Ok(run_store) => match run_store.read_blob(&blob_hash).await {
             Ok(Some(bytes)) => octet_stream_response(bytes),
             Ok(None) => ApiError::not_found("Blob not found.").into_response(),
             Err(err) => {

@@ -70,13 +70,13 @@ fn normalize_attach_json_progress_event(mut event: Value) -> Value {
         if properties.contains_key("manifest_blob") {
             properties.insert(
                 "manifest_blob".to_string(),
-                Value::String("[BLOB_ID]".to_string()),
+                Value::String("[BLOB_HASH]".to_string()),
             );
         }
         if properties.contains_key("definition_blob") {
             properties.insert(
                 "definition_blob".to_string(),
-                Value::String("[BLOB_ID]".to_string()),
+                Value::String("[BLOB_HASH]".to_string()),
             );
         }
     }
@@ -896,7 +896,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
               }
             }
           },
-          "manifest_blob": "[BLOB_ID]",
+          "manifest_blob": "[BLOB_HASH]",
           "provenance": {
             "client": {
               "name": "fabro-cli",
@@ -1036,7 +1036,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
         "event": "run.submitted",
         "id": "[EVENT_ID]",
         "properties": {
-          "definition_blob": "[BLOB_ID]"
+          "definition_blob": "[BLOB_HASH]"
         },
         "run_id": "[ULID]",
         "ts": "[TIMESTAMP]"

@@ -836,12 +836,12 @@ mod tests {
         append_created(&run_2, "run-2", dt("2026-03-27T12:00:10Z")).await;
 
         let shared_blob = br#"{"summary":"shared"}"#;
-        let shared_blob_id = run_1.write_blob(shared_blob).await.unwrap();
+        let shared_blob_hash = run_1.write_blob(shared_blob).await.unwrap();
 
         store.delete_run(&test_run_id("run-1")).await.unwrap();
 
         let reopened = store.open_run(&test_run_id("run-2")).await.unwrap();
-        let read = reopened.read_blob(&shared_blob_id).await.unwrap();
+        let read = reopened.read_blob(&shared_blob_hash).await.unwrap();
         assert_eq!(read.as_deref(), Some(shared_blob.as_slice()));
     }
 
@@ -851,7 +851,7 @@ mod tests {
         let run = store.create_run(&test_run_id("run-1")).await.unwrap();
         append_created(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
         let blob = br#"{"summary":"readable"}"#;
-        let blob_id = run.write_blob(blob).await.unwrap();
+        let blob_hash = run.write_blob(blob).await.unwrap();
 
         // Evict the cached writer so the reader is built through the real
         // `open_run_reader` construction path, not a clone of the writer.
@@ -859,7 +859,7 @@ mod tests {
 
         let reader = store.open_run_reader(&test_run_id("run-1")).await.unwrap();
         assert_eq!(
-            reader.read_blob(&blob_id).await.unwrap().as_deref(),
+            reader.read_blob(&blob_hash).await.unwrap().as_deref(),
             Some(blob.as_slice())
         );
         let err = reader.write_blob(b"blocked").await.unwrap_err();

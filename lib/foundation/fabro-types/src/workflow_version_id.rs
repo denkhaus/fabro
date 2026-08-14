@@ -63,10 +63,10 @@ mod tests {
 
     #[test]
     fn conversion_preserves_digest_and_display() {
-        let blob_id = BlobHash::new(b"workflow");
-        let version_id = WorkflowVersionId::from(blob_id);
-        assert_eq!(version_id.to_string(), blob_id.to_string());
-        assert_eq!(BlobHash::from(version_id), blob_id);
+        let blob_hash = BlobHash::new(b"workflow");
+        let version_id = WorkflowVersionId::from(blob_hash);
+        assert_eq!(version_id.to_string(), blob_hash.to_string());
+        assert_eq!(BlobHash::from(version_id), blob_hash);
     }
 
     #[test]

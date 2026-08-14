@@ -86,10 +86,10 @@ impl WorkflowVersionStore {
         &self,
         id: &WorkflowVersionId,
     ) -> Result<Option<ValidatedWorkflowVersion>, WorkflowVersionStoreError> {
-        let blob_id = (*id).into();
+        let blob_hash = (*id).into();
         let Some(bytes) = self
             .blobs
-            .read(&blob_id)
+            .read(&blob_hash)
             .await
             .map_err(|source| WorkflowVersionStoreError::Storage { source })?
         else {
@@ -201,8 +201,11 @@ mod tests {
 
         let id = store.put(&version).await.unwrap();
         assert_eq!(id, expected_id);
-        let blob_id = id.into();
-        assert_eq!(blobs.read(&blob_id).await.unwrap().unwrap(), expected_bytes);
+        let blob_hash = id.into();
+        assert_eq!(
+            blobs.read(&blob_hash).await.unwrap().unwrap(),
+            expected_bytes
+        );
         assert_eq!(store.get(&id).await.unwrap(), Some(version));
     }
 
