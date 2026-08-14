@@ -611,12 +611,14 @@ pub enum ReferenceKind {
     Dockerfile,
     #[strum(to_string = "graph goal file reference")]
     GraphGoalFile,
+    #[strum(to_string = "run goal file reference")]
+    RunGoalFile,
 }
 
 /// Kinds of static file references that graph attributes can carry: the
 /// subset of [`ReferenceKind`] that [`reference_kind_for_attribute`] can
-/// classify. Config-sourced kinds (Dockerfiles) are unrepresentable here by
-/// construction.
+/// classify. Config-sourced kinds (Dockerfiles, run goal files) are
+/// unrepresentable here by construction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GraphReferenceKind {
     FileInline,

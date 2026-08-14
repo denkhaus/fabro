@@ -9,20 +9,23 @@
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
 use fabro_config::parse::{SettingsSource, validate_settings_source};
-use fabro_config::{EnvironmentDockerfileLayer, EnvironmentImageLayer, SettingsLayer};
+use fabro_config::{
+    EnvironmentDockerfileLayer, EnvironmentImageLayer, RunGoalLayer, SettingsLayer,
+};
 use fabro_graphviz::parser;
 use fabro_template::{
     BundleTemplateStore, GraphReference, GraphReferenceError, StaticReferenceError,
-    TemplateDiscoveryError, TemplateSource, discover_static_dependency_closure,
+    TemplateDiscoveryError, TemplateLoadError, TemplateSource, discover_static_dependency_closure,
     validate_static_reference, visit_graph_references,
 };
 use fabro_types::graph::ReferenceKind;
+use fabro_types::settings::InterpString;
 use fabro_types::{ManifestPath, WorkflowPath, WorkflowPathParseError, WorkflowVersion};
 use thiserror::Error;
 
 mod store;
 
-pub use store::{WorkflowVersionStore, WorkflowVersionStoreError};
+pub use store::{LoadedWorkflowVersionClosure, WorkflowVersionStore, WorkflowVersionStoreError};
 
 #[derive(Debug, Error)]
 pub enum WorkflowVersionError {
@@ -88,8 +91,12 @@ pub struct ValidatedWorkflowVersion(WorkflowVersion);
 
 impl ValidatedWorkflowVersion {
     pub fn new(version: WorkflowVersion) -> Result<Self, WorkflowVersionError> {
-        validate_config(&version)?;
-        validate_graph_closure(&version)?;
+        let template_root = ManifestPath::from_wire(".")
+            .expect("the template package root must be a valid manifest path");
+        let mut template_roots = Vec::new();
+        validate_config(&version, &template_root, &mut template_roots)?;
+        validate_graph_closure(&version, &template_root, &mut template_roots)?;
+        validate_template_closure(&version, template_roots)?;
         Ok(Self(version))
     }
 
@@ -104,7 +111,11 @@ impl ValidatedWorkflowVersion {
     }
 }
 
-fn validate_config(version: &WorkflowVersion) -> Result<(), WorkflowVersionError> {
+fn validate_config(
+    version: &WorkflowVersion,
+    template_root: &ManifestPath,
+    template_roots: &mut Vec<TemplateSource>,
+) -> Result<(), WorkflowVersionError> {
     let config_path =
         WorkflowPath::new("workflow.toml").expect("the static workflow config path must be valid");
     let Some(source) = version.files().get(&config_path) else {
@@ -133,7 +144,45 @@ fn validate_config(version: &WorkflowVersion) -> Result<(), WorkflowVersionError
     for image in layer.environment_images() {
         validate_dockerfile(version, &config_path, image)?;
     }
+
+    match layer.run.as_ref().and_then(|run| run.goal.as_ref()) {
+        Some(RunGoalLayer::Inline(goal)) => template_roots.push(TemplateSource::new(
+            manifest_path(&config_path),
+            template_root.clone(),
+            unresolved_source(goal),
+        )),
+        Some(RunGoalLayer::File { file }) => {
+            let reference = unresolved_source(file);
+            validate_static_reference(&reference, ReferenceKind::RunGoalFile).map_err(
+                |source| WorkflowVersionError::StaticReference {
+                    path: config_path.clone(),
+                    source,
+                },
+            )?;
+            let target = resolve_reference(&config_path, ReferenceKind::RunGoalFile, &reference)?;
+            let content = require_file(
+                version,
+                &config_path,
+                ReferenceKind::RunGoalFile,
+                target.clone(),
+            )?;
+            template_roots.push(TemplateSource::new(
+                manifest_path(&target),
+                template_root.clone(),
+                content,
+            ));
+        }
+        None => {}
+    }
     Ok(())
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "workflow-version validation preserves authored template source for dependency discovery"
+)]
+fn unresolved_source(value: &InterpString) -> String {
+    value.as_source()
 }
 
 fn validate_dockerfile(
@@ -154,10 +203,11 @@ fn validate_dockerfile(
     require_file(version, config_path, ReferenceKind::Dockerfile, target).map(|_| ())
 }
 
-fn validate_graph_closure(version: &WorkflowVersion) -> Result<(), WorkflowVersionError> {
-    let template_store = template_store(version);
-    let template_root = ManifestPath::from_wire(".")
-        .expect("the template package root must be a valid manifest path");
+fn validate_graph_closure(
+    version: &WorkflowVersion,
+    template_root: &ManifestPath,
+    template_roots: &mut Vec<TemplateSource>,
+) -> Result<(), WorkflowVersionError> {
     let mut queue = VecDeque::from([version.entrypoint().clone()]);
     let mut visited = BTreeSet::new();
     let mut child_workflows = BTreeSet::new();
@@ -185,10 +235,20 @@ fn validate_graph_closure(version: &WorkflowVersion) -> Result<(), WorkflowVersi
                 let target = resolve_reference(&path, ReferenceKind::GraphGoalFile, reference)?;
                 let content =
                     require_file(version, &path, ReferenceKind::GraphGoalFile, target.clone())?;
-                validate_template(&target, content, &template_store, &template_root)
+                template_roots.push(TemplateSource::new(
+                    manifest_path(&target),
+                    template_root.clone(),
+                    content,
+                ));
+                Ok(())
             }
             GraphReference::GoalInline { content } | GraphReference::InlinePrompt { content } => {
-                validate_template(&path, content, &template_store, &template_root)
+                template_roots.push(TemplateSource::new(
+                    manifest_path(&path),
+                    template_root.clone(),
+                    content,
+                ));
+                Ok(())
             }
             GraphReference::Import { reference } => {
                 let target = resolve_reference(&path, ReferenceKind::Import, reference)?;
@@ -206,7 +266,11 @@ fn validate_graph_closure(version: &WorkflowVersion) -> Result<(), WorkflowVersi
                 let content =
                     require_file(version, &path, ReferenceKind::FileInline, target.clone())?;
                 if key == "prompt" {
-                    validate_template(&target, content, &template_store, &template_root)?;
+                    template_roots.push(TemplateSource::new(
+                        manifest_path(&target),
+                        template_root.clone(),
+                        content,
+                    ));
                 }
                 Ok(())
             }
@@ -234,22 +298,37 @@ fn validate_graph_closure(version: &WorkflowVersion) -> Result<(), WorkflowVersi
     Ok(())
 }
 
-fn validate_template(
-    path: &WorkflowPath,
-    content: &str,
-    store: &BundleTemplateStore,
-    root: &ManifestPath,
+fn validate_template_closure(
+    version: &WorkflowVersion,
+    roots: Vec<TemplateSource>,
 ) -> Result<(), WorkflowVersionError> {
-    let manifest_path = manifest_path(path);
-    discover_static_dependency_closure(
-        [TemplateSource::new(manifest_path, root.clone(), content)],
-        store,
-    )
-    .map_err(|source| WorkflowVersionError::Template {
-        path:   path.clone(),
-        source: Box::new(source),
+    discover_static_dependency_closure(roots, &template_store(version)).map_err(|source| {
+        WorkflowVersionError::Template {
+            path:   template_discovery_path(&source),
+            source: Box::new(source),
+        }
     })?;
     Ok(())
+}
+
+fn template_discovery_path(error: &TemplateDiscoveryError) -> WorkflowPath {
+    let path = match error {
+        TemplateDiscoveryError::Parse(source) => source
+            .source_name()
+            .expect("dependency extraction must retain its source name")
+            .to_owned(),
+        TemplateDiscoveryError::Load(source) => match source {
+            TemplateLoadError::UnsafeReference { parent, .. }
+            | TemplateLoadError::EscapesRoot { parent, .. } => parent.to_string(),
+            TemplateLoadError::DynamicDependency { path } => path.to_string(),
+            TemplateLoadError::Io { .. } => {
+                unreachable!("bundle template dependency discovery cannot perform filesystem I/O")
+            }
+        },
+        TemplateDiscoveryError::Missing { parent, .. }
+        | TemplateDiscoveryError::Dynamic { parent } => parent.to_string(),
+    };
+    WorkflowPath::new(path).expect("template paths sourced from a workflow version must be valid")
 }
 
 fn template_store(version: &WorkflowVersion) -> BundleTemplateStore {
@@ -300,6 +379,10 @@ fn manifest_path(path: &WorkflowPath) -> ManifestPath {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use fabro_template::{TemplateDiscoveryError, TemplateLoadError};
+    use fabro_types::graph::ReferenceKind;
     use fabro_types::{BlobHash, WorkflowPath, WorkflowVersion, WorkflowVersionId};
 
     use super::{ValidatedWorkflowVersion, WorkflowVersionError};
@@ -330,6 +413,38 @@ mod tests {
             )
             .expect("test fixtures must be structurally valid"),
         )
+    }
+
+    fn version_with_config(
+        config: String,
+        extra_files: impl IntoIterator<Item = (&'static str, &'static str)>,
+    ) -> Result<ValidatedWorkflowVersion, WorkflowVersionError> {
+        let mut files = extra_files
+            .into_iter()
+            .map(|(path_value, content)| (path(path_value), content.to_owned()))
+            .collect::<BTreeMap<_, _>>();
+        files.insert(path("workflow.fabro"), "digraph W {}".to_owned());
+        files.insert(path("workflow.toml"), config);
+        ValidatedWorkflowVersion::new(
+            WorkflowVersion::new(path("workflow.fabro"), files, BTreeMap::default())
+                .expect("test fixtures must be structurally valid"),
+        )
+    }
+
+    fn version_with_goal_file(
+        reference: &str,
+    ) -> Result<ValidatedWorkflowVersion, WorkflowVersionError> {
+        let reference = serde_json::to_string(reference).unwrap();
+        version_with_config(format!("_version = 1\n[run.goal]\nfile = {reference}\n"), [
+        ])
+    }
+
+    fn version_with_inline_goal(
+        goal: &str,
+        extra_files: impl IntoIterator<Item = (&'static str, &'static str)>,
+    ) -> Result<ValidatedWorkflowVersion, WorkflowVersionError> {
+        let goal = serde_json::to_string(goal).unwrap();
+        version_with_config(format!("_version = 1\n[run]\ngoal = {goal}\n"), extra_files)
     }
 
     #[test]
@@ -427,6 +542,162 @@ mod tests {
         assert!(matches!(
             invalid_config,
             WorkflowVersionError::Config { .. }
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_workflow_goal_file() {
+        let error = version_with(
+            [
+                ("workflow.fabro", "digraph W {}"),
+                (
+                    "workflow.toml",
+                    "_version = 1\n[run.goal]\nfile = \"prompts/goal.md\"\n",
+                ),
+            ],
+            [],
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            WorkflowVersionError::MissingFile {
+                path: source_path,
+                kind,
+                target,
+            }
+                if source_path == path("workflow.toml")
+                    && kind == ReferenceKind::RunGoalFile
+                    && target == path("prompts/goal.md")
+        ));
+    }
+
+    #[test]
+    fn accepts_inline_workflow_goal_with_static_template_closure() {
+        let version = version_with_inline_goal(
+            r#"Review {{ vars.target }} with {{ inputs.mode }} after {{ goal }}. {% include "prompts/shared.md" %}"#,
+            [("prompts/shared.md", "Use {{ vars.detail }}")],
+        )
+        .unwrap();
+
+        assert_eq!(version.version().files().len(), 3);
+    }
+
+    #[test]
+    fn accepts_file_workflow_goal_with_transitive_template_closure() {
+        let version = version_with_config(
+            "_version = 1\n[run.goal]\nfile = \"prompts/goal.md\"\n".to_owned(),
+            [
+                ("prompts/goal.md", r#"{% include "partial.md" %}"#),
+                ("prompts/partial.md", r#"{% include "nested/detail.md" %}"#),
+                ("prompts/nested/detail.md", "Use {{ vars.detail }}"),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(version.version().files().len(), 5);
+    }
+
+    #[test]
+    fn rejects_non_static_or_nonportable_workflow_goal_file_references() {
+        for reference in ["{{ vars.NAME }}", "{% include \"goal.md\" %}"] {
+            let error = version_with_goal_file(reference).unwrap_err();
+            let WorkflowVersionError::StaticReference {
+                path: source_path,
+                source,
+            } = error
+            else {
+                panic!("expected static-reference error for {reference:?}");
+            };
+            assert_eq!(source_path, path("workflow.toml"));
+            assert_eq!(source.kind(), ReferenceKind::RunGoalFile);
+        }
+
+        for reference in [
+            "",
+            "/absolute.md",
+            "../outside.md",
+            "~/goal.md",
+            "C:/goal.md",
+            "prompts\\goal.md",
+            "prompts//goal.md",
+            "prompts/",
+            "prompts/goal\n.md",
+        ] {
+            let error = version_with_goal_file(reference).unwrap_err();
+            assert!(
+                matches!(
+                    &error,
+                    WorkflowVersionError::InvalidReference {
+                        path: source_path,
+                        kind: ReferenceKind::RunGoalFile,
+                        ..
+                    } if *source_path == path("workflow.toml")
+                ),
+                "expected invalid-reference error for {reference:?}, got {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_workflow_goal_template_closure() {
+        let missing = version_with_inline_goal(r#"{% include "missing.md" %}"#, []).unwrap_err();
+        let WorkflowVersionError::Template {
+            path: source_path,
+            source,
+        } = missing
+        else {
+            panic!("expected missing template dependency");
+        };
+        assert_eq!(source_path, path("workflow.toml"));
+        assert!(matches!(
+            source.as_ref(),
+            TemplateDiscoveryError::Missing { parent, reference }
+                if parent.to_string() == "workflow.toml" && reference == "missing.md"
+        ));
+
+        let dynamic = version_with_inline_goal(r"{% include inputs.partial %}", []).unwrap_err();
+        let WorkflowVersionError::Template { source, .. } = dynamic else {
+            panic!("expected dynamic template dependency");
+        };
+        assert!(matches!(
+            source.as_ref(),
+            TemplateDiscoveryError::Dynamic { parent }
+                if parent.to_string() == "workflow.toml"
+        ));
+
+        let escaping =
+            version_with_inline_goal(r#"{% include "../outside.md" %}"#, []).unwrap_err();
+        let WorkflowVersionError::Template { source, .. } = escaping else {
+            panic!("expected escaping template dependency");
+        };
+        assert!(matches!(
+            source.as_ref(),
+            TemplateDiscoveryError::Load(TemplateLoadError::EscapesRoot { parent, .. })
+                if parent.to_string() == "workflow.toml"
+        ));
+    }
+
+    #[test]
+    fn validates_all_inline_graph_roots_that_share_the_graph_path() {
+        let error = version_with(
+            [(
+                "workflow.fabro",
+                r#"digraph W {
+                    graph [goal="valid"]
+                    step [prompt="{% include inputs.partial %}"]
+                }"#,
+            )],
+            [],
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            WorkflowVersionError::Template {
+                source,
+                ..
+            } if matches!(source.as_ref(), TemplateDiscoveryError::Dynamic { .. })
         ));
     }
 
