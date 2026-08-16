@@ -4,6 +4,7 @@
 )]
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 #[expect(
     clippy::disallowed_types,
     reason = "in-memory Vec<u8>::write_all for jsonl serialization; no filesystem or network I/O"
@@ -233,12 +234,23 @@ impl RunDump {
                     let Some(blob_hash) = parse_blob_ref(text) else {
                         continue;
                     };
-                    let blob = read_blob(blob_hash)
-                        .await?
-                        .with_context(|| format!("blob {blob_hash:?} is missing from the store"))?;
-                    *text = serde_json::from_slice::<String>(&blob).with_context(|| {
-                        format!("blob {blob_hash:?} is not a JSON string text log")
-                    })?;
+                    let hydrated = match cache.entry(blob_hash) {
+                        Entry::Occupied(entry) => entry.into_mut(),
+                        Entry::Vacant(entry) => {
+                            let blob = read_blob(blob_hash).await?.with_context(|| {
+                                format!("blob {blob_hash:?} is missing from the store")
+                            })?;
+                            let hydrated: serde_json::Value = serde_json::from_slice(&blob)
+                                .with_context(|| format!("blob {blob_hash:?} is not valid JSON"))?;
+                            entry.insert(hydrated)
+                        }
+                    };
+                    *text = hydrated
+                        .as_str()
+                        .with_context(|| {
+                            format!("blob {blob_hash:?} is not a JSON string text log")
+                        })?
+                        .to_string();
                 }
                 RunDumpContents::Bytes(_) => {}
             }
@@ -750,5 +762,44 @@ mod tests {
             panic!("entry should be JSON");
         };
         assert_eq!(value["stdout"], legacy_ref);
+    }
+
+    #[test]
+    fn hydrate_referenced_blobs_fetches_shared_blobs_once() {
+        let blob = serde_json::to_vec("offloaded response text").unwrap();
+        let blob_hash = fabro_types::BlobHash::new(&blob);
+        let blob_ref = fabro_types::format_blob_ref(&blob_hash);
+        let mut dump = RunDump {
+            entries:        vec![
+                RunDumpEntry::json("run.json", serde_json::json!({ "response": blob_ref })),
+                RunDumpEntry::text("stages/001-demo@1/response.md", blob_ref.clone()),
+            ],
+            stage_ranks:    HashMap::new(),
+            dump_log_index: None,
+        };
+
+        let reads = std::cell::Cell::new(0);
+        executor::block_on(async {
+            dump.hydrate_referenced_blobs_with_reader(|read_blob_hash| {
+                reads.set(reads.get() + 1);
+                let blob = blob.clone();
+                Box::pin(async move {
+                    assert_eq!(read_blob_hash, blob_hash);
+                    Ok(Some(bytes::Bytes::from(blob)))
+                })
+            })
+            .await
+        })
+        .unwrap();
+
+        assert_eq!(reads.get(), 1, "shared blob should be fetched once");
+        let RunDumpContents::Json(value) = &dump.entries[0].contents else {
+            panic!("entry should be JSON");
+        };
+        assert_eq!(value["response"], "offloaded response text");
+        let RunDumpContents::Text(text) = &dump.entries[1].contents else {
+            panic!("entry should be text");
+        };
+        assert_eq!(text, "offloaded response text");
     }
 }
