@@ -105,10 +105,7 @@ async fn write_run_blob(
     }
     match state.stores.runs.open_run(&id).await {
         Ok(run_store) => match run_store.write_blob(&body).await {
-            Ok(blob_hash) => Json(WriteBlobResponse {
-                hash: blob_hash.to_string(),
-            })
-            .into_response(),
+            Ok(blob_hash) => Json(WriteBlobResponse { hash: blob_hash }).into_response(),
             Err(err) => {
                 ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
             }

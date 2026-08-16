@@ -1839,11 +1839,7 @@ impl Client {
                     .await
             })
             .await?;
-        response
-            .into_inner()
-            .hash
-            .parse()
-            .context("write_run_blob returned invalid blob hash")
+        Ok(response.into_inner().hash)
     }
 
     pub async fn read_run_blob(
@@ -1856,7 +1852,7 @@ impl Client {
             .client
             .read_run_blob()
             .id(run_id.to_string())
-            .blob_hash(blob_hash.to_string())
+            .blob_hash(*blob_hash)
             .send()
             .await;
         match response {

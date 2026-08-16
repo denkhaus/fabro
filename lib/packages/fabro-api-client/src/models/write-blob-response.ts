@@ -19,7 +19,7 @@
  */
 export interface WriteBlobResponse {
     /**
-     * Content-addressed hash of the stored blob.
+     * Content-addressed SHA-256 hash of a stored blob.
      */
     'hash': string;
 }

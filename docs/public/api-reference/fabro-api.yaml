@@ -5980,8 +5980,7 @@ components:
       required: true
       description: Content-addressed blob hash.
       schema:
-        type: string
-        pattern: '^[0-9a-f]{64}$'
+        $ref: "#/components/schemas/BlobHash"
       example: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
 
     ArtifactFilename:
@@ -10283,6 +10282,12 @@ components:
           description: Assigned event sequence number.
           example: 42
 
+    BlobHash:
+      description: Content-addressed SHA-256 hash of a stored blob.
+      type: string
+      pattern: "^[0-9a-f]{64}$"
+      example: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+
     WriteBlobResponse:
       description: Content-addressed hash of a stored blob.
       type: object
@@ -10290,9 +10295,7 @@ components:
         - hash
       properties:
         hash:
-          type: string
-          description: Content-addressed hash of the stored blob.
-          example: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+          $ref: "#/components/schemas/BlobHash"
 
     CommandTermination:
       description: Terminal state for a command execution.
