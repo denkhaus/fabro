@@ -204,8 +204,16 @@ pub async fn resolve_outcomes_for_execution(
     run_dir: &Path,
 ) -> Result<HashMap<String, Outcome>> {
     let mut resolved = node_outcomes.clone();
+    let mut locality = SandboxLocality::default();
     for outcome in resolved.values_mut() {
-        resolve_execution_values(&mut outcome.context_updates, run_store, env, run_dir).await?;
+        resolve_execution_values(
+            &mut outcome.context_updates,
+            run_store,
+            env,
+            run_dir,
+            &mut locality,
+        )
+        .await?;
     }
     Ok(resolved)
 }
@@ -217,7 +225,8 @@ pub async fn resolved_context_snapshot(
     run_dir: &Path,
 ) -> Result<HashMap<String, Value>> {
     let mut values = context.snapshot();
-    resolve_execution_values(&mut values, run_store, env, run_dir).await?;
+    let mut locality = SandboxLocality::default();
+    resolve_execution_values(&mut values, run_store, env, run_dir, &mut locality).await?;
     Ok(values)
 }
 
@@ -357,10 +366,12 @@ fn resolve_execution_values<'a>(
     run_store: &'a RunStoreHandle,
     env: &'a dyn Sandbox,
     run_dir: &'a Path,
+    locality: &'a mut SandboxLocality,
 ) -> BoxFuture<'a, Result<()>> {
     Box::pin(async move {
         for (key, value) in values.iter_mut() {
-            resolve_execution_value(Some(key.as_str()), value, run_store, env, run_dir).await?;
+            resolve_execution_value(Some(key.as_str()), value, run_store, env, run_dir, locality)
+                .await?;
         }
         Ok(())
     })
@@ -376,6 +387,7 @@ fn resolve_execution_value<'a>(
     run_store: &'a RunStoreHandle,
     env: &'a dyn Sandbox,
     run_dir: &'a Path,
+    locality: &'a mut SandboxLocality,
 ) -> BoxFuture<'a, Result<()>> {
     Box::pin(async move {
         match value {
@@ -383,7 +395,8 @@ fn resolve_execution_value<'a>(
                 if key.is_some_and(is_text_context_key) {
                     *current = resolve_text_or_blob_ref_str(current, run_store).await?;
                 } else if let Some(blob_hash) = parse_blob_ref(current) {
-                    *current = materialize_blob_ref(&blob_hash, run_store, env, run_dir).await?;
+                    *current =
+                        materialize_blob_ref(&blob_hash, run_store, env, run_dir, locality).await?;
                 } else if current.starts_with(ARTIFACT_POINTER_PREFIX)
                     && parse_managed_blob_file_ref(current).is_none()
                 {
@@ -392,7 +405,7 @@ fn resolve_execution_value<'a>(
             }
             Value::Array(items) => {
                 for item in items {
-                    resolve_execution_value(key, item, run_store, env, run_dir).await?;
+                    resolve_execution_value(key, item, run_store, env, run_dir, locality).await?;
                 }
             }
             Value::Object(map) => {
@@ -402,8 +415,15 @@ fn resolve_execution_value<'a>(
                     } else {
                         Some(child_key.as_str())
                     };
-                    resolve_execution_value(child_context_key, item, run_store, env, run_dir)
-                        .await?;
+                    resolve_execution_value(
+                        child_context_key,
+                        item,
+                        run_store,
+                        env,
+                        run_dir,
+                        locality,
+                    )
+                    .await?;
                 }
             }
             Value::Null | Value::Bool(_) | Value::Number(_) => {}
@@ -417,10 +437,11 @@ async fn materialize_blob_ref(
     run_store: &RunStoreHandle,
     env: &dyn Sandbox,
     run_dir: &Path,
+    locality: &mut SandboxLocality,
 ) -> Result<String> {
     // Blobs are content-addressed, so an existing materialized file is always
     // current — check before paying for the store read.
-    if is_local_execution(env, run_dir).await? {
+    if locality.is_local(env, run_dir).await? {
         let path = local_materialized_blob_path(run_dir, blob_hash);
         if !path.exists() {
             let bytes = read_required_blob(blob_hash, run_store).await?;
@@ -502,10 +523,26 @@ async fn resolve_explicit_file_ref(value: &str, env: &dyn Sandbox) -> Result<Str
     Ok(format!("{ARTIFACT_POINTER_PREFIX}{remote_path}"))
 }
 
-async fn is_local_execution(env: &dyn Sandbox, run_dir: &Path) -> Result<bool> {
-    env.file_exists(&run_dir.to_string_lossy())
-        .await
-        .map_err(|e| Error::engine_with_source("failed to inspect sandbox locality", e))
+/// Memoized sandbox locality for one resolution pass. The sandbox and run
+/// directory are invariant across a pass, so the (possibly remote) probe is
+/// paid at most once instead of once per blob reference.
+#[derive(Default)]
+struct SandboxLocality {
+    cached: Option<bool>,
+}
+
+impl SandboxLocality {
+    async fn is_local(&mut self, env: &dyn Sandbox, run_dir: &Path) -> Result<bool> {
+        if let Some(local) = self.cached {
+            return Ok(local);
+        }
+        let local = env
+            .file_exists(&run_dir.to_string_lossy())
+            .await
+            .map_err(|e| Error::engine_with_source("failed to inspect sandbox locality", e))?;
+        self.cached = Some(local);
+        Ok(local)
+    }
 }
 
 fn local_materialized_blob_path(run_dir: &Path, blob_hash: &BlobHash) -> PathBuf {
@@ -787,6 +824,34 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn resolve_context_probes_sandbox_locality_once_per_pass() {
+        let run_store = make_run_store("locality-probe-memoization").await;
+        let first_blob = run_store
+            .write_blob(&serde_json::to_vec(&serde_json::json!({"a": 1})).unwrap())
+            .await
+            .unwrap();
+        let second_blob = run_store
+            .write_blob(&serde_json::to_vec(&serde_json::json!({"b": 2})).unwrap())
+            .await
+            .unwrap();
+        let context = Context::new();
+        context.set("first", fabro_types::format_blob_ref(&first_blob).into());
+        context.set("second", fabro_types::format_blob_ref(&second_blob).into());
+        let env = TestSyncEnv::new(true, "/workspace");
+        let run_dir = tempfile::tempdir().unwrap();
+
+        resolved_context_snapshot(&context, &run_store.clone().into(), &env, run_dir.path())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            *env.exists_calls.lock().unwrap(),
+            1,
+            "sandbox locality should be probed once per resolution pass"
+        );
+    }
+
     #[test]
     fn normalize_durable_updates_rewrites_managed_blob_file_refs_recursively() {
         let blob_hash = fabro_types::BlobHash::new(b"hello");
@@ -928,9 +993,10 @@ mod tests {
     use std::sync::Mutex;
 
     struct TestSyncEnv {
-        accessible:  bool,
-        written:     Mutex<Vec<(String, String)>>,
-        working_dir: String,
+        accessible:   bool,
+        written:      Mutex<Vec<(String, String)>>,
+        working_dir:  String,
+        exists_calls: Mutex<usize>,
     }
 
     impl TestSyncEnv {
@@ -939,6 +1005,7 @@ mod tests {
                 accessible,
                 written: Mutex::new(Vec::new()),
                 working_dir: working_dir.to_string(),
+                exists_calls: Mutex::new(0),
             }
         }
     }
@@ -962,6 +1029,7 @@ mod tests {
         }
 
         async fn file_exists(&self, _path: &str) -> fabro_sandbox::Result<bool> {
+            *self.exists_calls.lock().unwrap() += 1;
             Ok(self.accessible)
         }
 
