@@ -66,20 +66,8 @@ fn format_output_snapshot(output: &Output, filters: &[(String, String)]) -> Stri
 }
 
 fn normalize_attach_json_progress_event(mut event: Value) -> Value {
-    if let Some(properties) = event.get_mut("properties").and_then(Value::as_object_mut) {
-        if properties.contains_key("manifest_blob") {
-            properties.insert(
-                "manifest_blob".to_string(),
-                Value::String("[BLOB_HASH]".to_string()),
-            );
-        }
-        if properties.contains_key("definition_blob") {
-            properties.insert(
-                "definition_blob".to_string(),
-                Value::String("[BLOB_HASH]".to_string()),
-            );
-        }
-    }
+    // manifest_blob/definition_blob hashes are already rewritten to
+    // [BLOB_HASH] by the shared json_snapshot_filters regexes.
     // Strip v2-shape server/version fields that the bridge emits,
     // since the test fixture's socket path is randomised per run.
     if let Some(settings) = event
