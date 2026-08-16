@@ -561,8 +561,8 @@ impl RunDatabase {
         self.inner.blob_store.write(data).await
     }
 
-    pub async fn read_blob(&self, id: &BlobHash) -> Result<Option<Bytes>> {
-        self.inner.blob_store.read(id).await
+    pub async fn read_blob(&self, blob_hash: &BlobHash) -> Result<Option<Bytes>> {
+        self.inner.blob_store.read(blob_hash).await
     }
 
     pub async fn state(&self) -> Result<RunProjection> {

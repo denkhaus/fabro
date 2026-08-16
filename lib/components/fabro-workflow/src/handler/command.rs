@@ -398,8 +398,11 @@ mod tests {
             Ok(blob_hash)
         }
 
-        async fn read_blob(&self, id: &fabro_types::BlobHash) -> anyhow::Result<Option<Bytes>> {
-            Ok(self.blobs.lock().await.get(id).cloned())
+        async fn read_blob(
+            &self,
+            blob_hash: &fabro_types::BlobHash,
+        ) -> anyhow::Result<Option<Bytes>> {
+            Ok(self.blobs.lock().await.get(blob_hash).cloned())
         }
 
         async fn read_run_log(&self) -> anyhow::Result<Option<Vec<u8>>> {
