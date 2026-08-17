@@ -7028,6 +7028,8 @@ async fn pr_test_app_with_completed_run(
     (state, app, run_id)
 }
 
+const COMPLETED_RUN_FINAL_SHA: &str = "0123456789abcdef0123456789abcdef01234567";
+
 async fn create_run_with_pull_request_record(
     state: &Arc<AppState>,
     run_id: RunId,
@@ -7134,7 +7136,7 @@ async fn create_completed_run_ready_for_pull_request(
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
             total_usd_micros:     None,
-            final_git_commit_sha: Some("final-sha".to_string()),
+            final_git_commit_sha: Some(COMPLETED_RUN_FINAL_SHA.to_string()),
             final_patch:          Some(final_patch.to_string()),
             diff_summary:         None,
             billing:              None,
@@ -9726,11 +9728,12 @@ async fn create_run_pull_request_creates_and_persists_record() {
     let github = MockServer::start();
     let branch_mock = github.mock(|when, then| {
         when.method("GET")
-            .path("/repos/acme/widgets/branches/fabro/run/42")
+            .path("/repos/acme/widgets/commits/heads%2Ffabro%2Frun%2F42")
+            .header("accept", "application/vnd.github.sha")
             .header("authorization", "Bearer ghu_test");
         then.status(200)
-            .header("content-type", "application/json")
-            .body(json!({ "commit": { "sha": "final-sha" } }).to_string());
+            .header("content-type", "application/vnd.github.sha")
+            .body(COMPLETED_RUN_FINAL_SHA);
     });
     let create_mock = github.mock(|when, then| {
         when.method("POST")
@@ -9930,11 +9933,12 @@ async fn create_run_pull_request_persists_generation_failure() {
     let github = MockServer::start();
     let branch_mock = github.mock(|when, then| {
         when.method("GET")
-            .path("/repos/acme/widgets/branches/fabro/run/42")
+            .path("/repos/acme/widgets/commits/heads%2Ffabro%2Frun%2F42")
+            .header("accept", "application/vnd.github.sha")
             .header("authorization", "Bearer ghu_test");
         then.status(200)
-            .header("content-type", "application/json")
-            .body(json!({ "commit": { "sha": "final-sha" } }).to_string());
+            .header("content-type", "application/vnd.github.sha")
+            .body(COMPLETED_RUN_FINAL_SHA);
     });
     let find_mock = github.mock(|when, then| {
         when.method("GET")
