@@ -80,15 +80,30 @@ pub fn discover_static_dependency_closure(
     store: &dyn TemplateStore,
 ) -> Result<TemplateDependencyClosure, TemplateDiscoveryError> {
     let mut sources = HashMap::new();
+    // A root and a loaded file can collide on `path` while carrying different
+    // content (an inline prompt is anchored at its graph file's path), so
+    // traversal dedup keys on the full occurrence rather than the path: a
+    // path-keyed check would leave the collided occurrence unparsed. The
+    // result map stays path-keyed, with the last distinct occurrence winning.
+    let mut parsed = HashSet::new();
     let mut queue = VecDeque::new();
 
-    for source in roots {
-        if sources
-            .insert(source.path.clone(), source.clone())
-            .is_none()
-        {
+    let mut enqueue = |source: TemplateSource,
+                       sources: &mut HashMap<ManifestPath, TemplateSource>,
+                       queue: &mut VecDeque<TemplateSource>| {
+        let occurrence = (
+            source.path.clone(),
+            source.root.clone(),
+            source.content.clone(),
+        );
+        if parsed.insert(occurrence) {
+            sources.insert(source.path.clone(), source.clone());
             queue.push_back(source);
         }
+    };
+
+    for source in roots {
+        enqueue(source, &mut sources, &mut queue);
     }
 
     while let Some(source) = queue.pop_front() {
@@ -106,12 +121,7 @@ pub fn discover_static_dependency_closure(
                     reference: dependency.reference.clone(),
                 }
             })?;
-            if sources
-                .insert(loaded.path.clone(), loaded.clone())
-                .is_none()
-            {
-                queue.push_back(loaded);
-            }
+            enqueue(loaded, &mut sources, &mut queue);
         }
     }
 
