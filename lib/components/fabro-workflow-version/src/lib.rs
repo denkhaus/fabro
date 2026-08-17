@@ -586,6 +586,28 @@ mod tests {
     }
 
     #[test]
+    fn rejects_broken_transitive_includes_under_a_workflow_goal_file() {
+        // Guards the root push for file goals: without it the goal file is
+        // never parsed and the broken include below is silently accepted.
+        let error =
+            version_with_config("_version = 1\n[run.goal]\nfile = \"prompts/goal.md\"\n", [
+                ("prompts/goal.md", r#"{% include "prompts/partial.md" %}"#),
+                ("prompts/partial.md", r#"{% include "missing.md" %}"#),
+            ])
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            WorkflowVersionError::Template { path: source_path, source }
+                if source_path == path("prompts/partial.md")
+                    && matches!(
+                        source.as_ref(),
+                        TemplateDiscoveryError::Missing { reference, .. } if reference == "missing.md"
+                    )
+        ));
+    }
+
+    #[test]
     fn anchors_workflow_goal_includes_at_the_entrypoint() {
         let version_with_entrypoint = |goal_include_target: &'static str| {
             ValidatedWorkflowVersion::new(
