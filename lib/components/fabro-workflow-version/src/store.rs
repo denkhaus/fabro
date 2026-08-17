@@ -43,7 +43,10 @@ pub enum WorkflowVersionStoreError {
 /// A fully loaded and validated workflow-version dependency graph: the
 /// requested root alongside every unique transitive dependency, keyed by
 /// canonical content ID.
-#[derive(Clone, Debug)]
+///
+/// Deliberately not `Clone`: a closure owns the full file contents of every
+/// version in the graph, so copies should be explicit and deliberate.
+#[derive(Debug)]
 pub struct LoadedWorkflowVersionClosure {
     root_id:      WorkflowVersionId,
     root:         ValidatedWorkflowVersion,
