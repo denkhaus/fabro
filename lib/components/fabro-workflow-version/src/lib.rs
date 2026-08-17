@@ -686,6 +686,37 @@ mod tests {
     }
 
     #[test]
+    fn validates_graph_files_included_from_goal_templates() {
+        // The graph file's inline prompt anchors a template root at the graph
+        // path; that root must not shadow the raw graph content when a goal
+        // template includes the graph file itself.
+        let error = version_with(
+            [
+                (
+                    "workflow.fabro",
+                    r#"digraph W {
+                        graph [goal="@goal.md"]
+                        step [prompt="hello", note="{% include 'missing.md' %}"]
+                    }"#,
+                ),
+                ("goal.md", r#"{% include "workflow.fabro" %}"#),
+            ],
+            [],
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            WorkflowVersionError::Template { path: source_path, source }
+                if source_path == path("workflow.fabro")
+                    && matches!(
+                        source.as_ref(),
+                        TemplateDiscoveryError::Missing { reference, .. } if reference == "missing.md"
+                    )
+        ));
+    }
+
+    #[test]
     fn accepts_root_config_and_all_dockerfile_path_sources() {
         let version = version_with(
             [
