@@ -19,7 +19,7 @@
  */
 export interface CreateWorkflowVersionResponse {
     /**
-     * SHA-256 identity of validated canonical workflow-version bytes.
+     * SHA-256 identity of validated canonical workflow-version bytes. Hex input is case-insensitive; Fabro emits the canonical lowercase form.
      */
     'workflow_version_id': string;
 }

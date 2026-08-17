@@ -6,6 +6,10 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 
+/// SHA-256 content identity.
+///
+/// Parsing accepts exactly 64 hexadecimal digits case-insensitively. Display
+/// and serialization emit the canonical lowercase form.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BlobHash([u8; 32]);
 
@@ -76,10 +80,17 @@ mod tests {
     }
 
     #[test]
-    fn display_and_parse_round_trip() {
+    fn parse_accepts_any_case_and_display_normalizes_to_lowercase() {
         let blob_hash = BlobHash::new(b"hello");
-        let parsed: BlobHash = blob_hash.to_string().parse().unwrap();
-        assert_eq!(parsed, blob_hash);
+        let lowercase = blob_hash.to_string();
+        let uppercase = lowercase.to_uppercase();
+        let mixed_case = alternating_hex_case(&lowercase);
+
+        for value in [&lowercase, &uppercase, &mixed_case] {
+            let parsed: BlobHash = value.parse().unwrap();
+            assert_eq!(parsed, blob_hash);
+            assert_eq!(parsed.to_string(), lowercase);
+        }
     }
 
     #[test]
@@ -91,8 +102,30 @@ mod tests {
     }
 
     #[test]
-    fn parse_rejects_non_hex_blob_hashes() {
-        let parsed = "not-a-blob-hash".parse::<BlobHash>();
-        assert!(parsed.is_err());
+    fn parse_rejects_invalid_shapes() {
+        for value in [
+            String::new(),
+            "0".repeat(63),
+            "0".repeat(65),
+            "g".repeat(64),
+            format!("0x{}", "0".repeat(64)),
+            format!(" {}", "0".repeat(64)),
+        ] {
+            assert!(value.parse::<BlobHash>().is_err(), "accepted {value:?}");
+        }
+    }
+
+    fn alternating_hex_case(value: &str) -> String {
+        value
+            .chars()
+            .enumerate()
+            .map(|(index, character)| {
+                if index % 2 == 0 {
+                    character.to_ascii_uppercase()
+                } else {
+                    character
+                }
+            })
+            .collect()
     }
 }

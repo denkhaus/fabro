@@ -20,18 +20,15 @@ fn write_blob_response_round_trips_exact_wire_shape() {
 }
 
 #[test]
-fn blob_hash_emits_the_documented_lowercase_pattern() {
-    // Serialization must match the OpenAPI schema pattern `^[0-9a-f]{64}$`.
-    let hash: ApiBlobHash = serde_json::from_value(json!(BLOB_HASH)).unwrap();
-    let emitted = serde_json::to_value(hash).unwrap();
-    assert_eq!(emitted, json!(BLOB_HASH));
-
-    let text = emitted.as_str().unwrap();
-    assert_eq!(text.len(), 64);
-    assert!(
-        text.bytes()
-            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
-    );
+fn blob_hash_accepts_any_case_and_emits_lowercase() {
+    for input in [
+        BLOB_HASH.to_string(),
+        BLOB_HASH.to_uppercase(),
+        alternating_hex_case(BLOB_HASH),
+    ] {
+        let hash: ApiBlobHash = serde_json::from_value(json!(input)).unwrap();
+        assert_eq!(serde_json::to_value(hash).unwrap(), json!(BLOB_HASH));
+    }
 }
 
 #[test]
@@ -47,4 +44,18 @@ fn assert_same_type<Api: 'static, Domain: 'static>() {
         type_name::<Api>(),
         type_name::<Domain>()
     );
+}
+
+fn alternating_hex_case(value: &str) -> String {
+    value
+        .chars()
+        .enumerate()
+        .map(|(index, character)| {
+            if index % 2 == 0 {
+                character.to_ascii_uppercase()
+            } else {
+                character
+            }
+        })
+        .collect()
 }

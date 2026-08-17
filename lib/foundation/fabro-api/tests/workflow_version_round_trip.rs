@@ -40,9 +40,7 @@ fn create_workflow_version_response_round_trips_exact_wire_shape() {
 }
 
 #[test]
-fn workflow_version_id_emits_the_documented_lowercase_pattern() {
-    // Input is accepted case-insensitively, but serialization must match the
-    // OpenAPI schema pattern `^[0-9a-f]{64}$`.
+fn workflow_version_id_accepts_any_case_and_emits_lowercase() {
     let id = serde_json::from_value::<ApiWorkflowVersionId>(json!(DEPENDENCY_ID.to_uppercase()))
         .unwrap();
     let emitted = serde_json::to_value(id).unwrap();

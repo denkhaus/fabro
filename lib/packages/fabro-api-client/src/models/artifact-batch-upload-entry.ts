@@ -27,7 +27,7 @@ export interface ArtifactBatchUploadEntry {
      */
     'path': string;
     /**
-     * Optional lowercase hex SHA-256 checksum for the file contents.
+     * Optional SHA-256 checksum for the file contents; hex input is case-insensitive.
      */
     'sha256'?: string | null;
     /**

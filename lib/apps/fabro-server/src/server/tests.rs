@@ -11034,7 +11034,7 @@ async fn get_checkpoint_returns_null_initially() {
 }
 
 #[tokio::test]
-async fn write_and_read_run_blob_round_trip() {
+async fn write_and_read_run_blob_accepts_uppercase_hash() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
 
@@ -11061,7 +11061,10 @@ async fn write_and_read_run_blob_round_trip() {
 
     let req = Request::builder()
         .method("GET")
-        .uri(api(&format!("/runs/{run_id}/blobs/{blob_hash}")))
+        .uri(api(&format!(
+            "/runs/{run_id}/blobs/{}",
+            blob_hash.to_uppercase()
+        )))
         .body(Body::empty())
         .unwrap();
     let response = app.oneshot(req).await.unwrap();

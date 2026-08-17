@@ -19,7 +19,7 @@
  */
 export interface WriteBlobResponse {
     /**
-     * Content-addressed SHA-256 hash of a stored blob.
+     * Content-addressed SHA-256 hash of a stored blob. Hex input is case-insensitive; Fabro emits the canonical lowercase form.
      */
     'hash': string;
 }

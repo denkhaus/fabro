@@ -9151,9 +9151,11 @@ components:
       example: graphs/main.fabro
 
     WorkflowVersionId:
-      description: SHA-256 identity of validated canonical workflow-version bytes.
+      description: >-
+        SHA-256 identity of validated canonical workflow-version bytes. Hex input is
+        case-insensitive; Fabro emits the canonical lowercase form.
       type: string
-      pattern: "^[0-9a-f]{64}$"
+      pattern: "^[0-9A-Fa-f]{64}$"
       example: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
     WorkflowVersion:
@@ -10283,9 +10285,11 @@ components:
           example: 42
 
     BlobHash:
-      description: Content-addressed SHA-256 hash of a stored blob.
+      description: >-
+        Content-addressed SHA-256 hash of a stored blob. Hex input is case-insensitive;
+        Fabro emits the canonical lowercase form.
       type: string
-      pattern: "^[0-9a-f]{64}$"
+      pattern: "^[0-9A-Fa-f]{64}$"
       example: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
 
     WriteBlobResponse:
@@ -10404,7 +10408,7 @@ components:
           example: src/lib.rs
         sha256:
           type: ["string", "null"]
-          description: Optional lowercase hex SHA-256 checksum for the file contents.
+          description: Optional SHA-256 checksum for the file contents; hex input is case-insensitive.
           example: 3f785df4c5b7d3f1f4c1f0ecb0f55f1d9f6f6a3d9f0a8a98f7a74f29d1f81a2c
         expected_bytes:
           type: ["integer", "null"]
