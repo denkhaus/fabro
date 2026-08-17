@@ -539,9 +539,9 @@ async fn enable_auto_merge_if_requested(
 
 /// How many times to read the remote branch head before giving up.
 ///
-/// `GET /repos/{owner}/{repo}/branches/{branch}` is replica-served, so shortly
-/// after the push that publish just made it can still report the previous
-/// commit — or 404 for a branch that is new on the remote.
+/// Remote ref visibility can lag shortly after the push that publish just
+/// made, so the exact-ref lookup can still report the previous commit — or
+/// 404 for a branch that is new on the remote.
 const BRANCH_HEAD_ATTEMPTS: u32 = 3;
 const BRANCH_HEAD_RETRY_DELAY: Duration = Duration::from_millis(500);
 
@@ -702,6 +702,9 @@ mod tests {
     use tokio::sync::RwLock as AsyncRwLock;
 
     use super::*;
+
+    const FINAL_SHA: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const STALE_SHA: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     use crate::event::{Event, append_event};
     use crate::records::StageSummary;
 
@@ -1488,14 +1491,14 @@ mod tests {
     #[tokio::test]
     async fn stale_remote_branch_is_rejected_before_pull_request_creation() {
         let payload = pr_content_json("Fix bug", "Narrative.");
-        let harness = setup_fallback_test_harness_with_branch_sha(&payload, "stale-sha").await;
+        let harness = setup_fallback_test_harness_with_branch_sha(&payload, STALE_SHA).await;
         let github_base_url = harness.github_server.url("");
         let error = open_pull_request(OpenPullRequestRequest {
             github:            fabro_github::GitHubContext::new(&harness.creds, &github_base_url),
             origin_url:        "https://github.com/owner/repo.git",
             base_branch:       "main",
             head_branch:       "fabro/run/123",
-            expected_head_sha: "final-sha",
+            expected_head_sha: FINAL_SHA,
             goal:              "Fix bug",
             diff:              "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             model:             "claude-sonnet-4-20250514",
@@ -1510,8 +1513,8 @@ mod tests {
         .await
         .expect_err("stale remote branch must prevent PR creation");
 
-        assert!(error.contains("stale-sha"));
-        assert!(error.contains("final-sha"));
+        assert!(error.contains(STALE_SHA));
+        assert!(error.contains(FINAL_SHA));
         // The branch is re-read to ride out replica lag...
         httpmock::Mock::new(harness.branch_mock_id, &harness.github_server)
             .assert_calls_async(BRANCH_HEAD_ATTEMPTS as usize)
@@ -1709,7 +1712,7 @@ mod tests {
     /// credential source, and a run store seeded with a non-empty
     /// `final_patch`.
     async fn setup_fallback_test_harness(openai_payload_text: &str) -> FallbackHarness {
-        setup_fallback_test_harness_with_branch_sha(openai_payload_text, "final-sha").await
+        setup_fallback_test_harness_with_branch_sha(openai_payload_text, FINAL_SHA).await
     }
 
     async fn setup_fallback_test_harness_with_branch_sha(
@@ -1742,13 +1745,12 @@ mod tests {
         let branch_mock = github_server
             .mock_async(move |when, then| {
                 when.method(GET)
-                    .path("/repos/owner/repo/branches/fabro/run/123")
-                    .header("authorization", "Bearer test-token");
+                    .path("/repos/owner/repo/commits/heads%2Ffabro%2Frun%2F123")
+                    .header("authorization", "Bearer test-token")
+                    .header("accept", "application/vnd.github.sha");
                 then.status(200)
-                    .header("content-type", "application/json")
-                    .json_body(serde_json::json!({
-                        "commit": { "sha": branch_sha }
-                    }));
+                    .header("content-type", "application/vnd.github.sha")
+                    .body(branch_sha);
             })
             .await;
         let github_mock = github_server
@@ -1892,13 +1894,13 @@ mod tests {
         let payload = pr_content_json("Unused", "Unused.");
         let harness = setup_fallback_test_harness_with(
             &payload,
-            "final-sha",
+            FINAL_SHA,
             serde_json::json!([{
                 "html_url": "https://github.com/owner/repo/pull/7",
                 "number": 7,
                 "node_id": "PR_existing",
                 "title": "Reconciled title",
-                "head": {"sha": "final-sha"}
+                "head": {"sha": FINAL_SHA}
             }]),
         )
         .await;
@@ -1911,7 +1913,7 @@ mod tests {
             origin_url: "https://github.com/owner/repo.git",
             base_branch: "main",
             head_branch: "fabro/run/123",
-            expected_head_sha: "final-sha",
+            expected_head_sha: FINAL_SHA,
             goal: "Fix telemetry leak",
             diff: "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             model: "gpt-5.4",
@@ -1959,7 +1961,7 @@ mod tests {
             origin_url: "https://github.com/owner/repo.git",
             base_branch: "main",
             head_branch: "fabro/run/123",
-            expected_head_sha: "final-sha",
+            expected_head_sha: FINAL_SHA,
             goal: "Fix telemetry leak\n\ndetails...",
             diff: "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             model: "gpt-5.4",
@@ -1996,7 +1998,7 @@ mod tests {
             origin_url: "https://github.com/owner/repo.git",
             base_branch: "main",
             head_branch: "fabro/run/123",
-            expected_head_sha: "final-sha",
+            expected_head_sha: FINAL_SHA,
             goal: &goal,
             diff: "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             model: "gpt-5.4",

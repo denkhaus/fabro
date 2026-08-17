@@ -13,6 +13,7 @@ pub type SharedState = Arc<RwLock<AppState>>;
 /// A running test server instance.
 pub struct TestServer {
     url:         String,
+    state:       SharedState,
     shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
     handle:      Option<tokio::task::JoinHandle<()>>,
     _git_root:   TempDir, // Kept alive for the server's lifetime; cleaned up on drop
@@ -25,7 +26,7 @@ impl TestServer {
         init_git_repos(&mut state, git_root.path()).expect("failed to initialize git repos");
 
         let shared_state: SharedState = Arc::new(RwLock::new(state));
-        let router = build_router(shared_state);
+        let router = build_router(shared_state.clone());
 
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
@@ -49,6 +50,7 @@ impl TestServer {
 
         Self {
             url,
+            state: shared_state,
             shutdown_tx: Some(shutdown_tx),
             handle: Some(handle),
             _git_root: git_root,
@@ -57,6 +59,10 @@ impl TestServer {
 
     pub fn url(&self) -> &str {
         &self.url
+    }
+
+    pub async fn active_token_count(&self) -> usize {
+        self.state.read().await.active_tokens.len()
     }
 
     pub async fn shutdown(mut self) {

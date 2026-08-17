@@ -1,5 +1,7 @@
 pub mod app;
 pub mod branches;
+pub mod commits;
+pub mod contents;
 pub mod git;
 pub mod graphql;
 pub mod installations;
@@ -35,6 +37,16 @@ pub fn build_router(state: SharedState) -> Router {
         .route(
             "/repos/{owner}/{repo}/branches/{*branch}",
             get(branches::get_branch),
+        )
+        // Repository-reader endpoints. Refs and paths may both contain `/`,
+        // so each is captured as the remainder of its route.
+        .route(
+            "/repos/{owner}/{repo}/commits/{*selector}",
+            get(commits::get_commit),
+        )
+        .route(
+            "/repos/{owner}/{repo}/contents/{*path}",
+            get(contents::get_content),
         )
         // Pull request endpoints
         .route(

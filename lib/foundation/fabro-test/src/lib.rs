@@ -2122,6 +2122,10 @@ impl TwinGitHub {
     pub async fn shutdown(self) {
         self.server.shutdown().await;
     }
+
+    pub async fn active_token_count(&self) -> usize {
+        self.server.active_token_count().await
+    }
 }
 
 impl TwinOpenAi {

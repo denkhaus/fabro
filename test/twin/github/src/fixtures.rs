@@ -213,15 +213,28 @@ impl FixtureState {
         state.repositories = self
             .repositories
             .into_iter()
-            .map(|repository| Repository {
-                owner:          repository.owner,
-                name:           repository.name,
-                branches:       repository.branches,
-                default_branch: repository
-                    .default_branch
-                    .unwrap_or_else(|| "main".to_string()),
-                private:        repository.private,
-                git_dir:        None,
+            .map(|repository| {
+                let refs = repository
+                    .branches
+                    .into_iter()
+                    .map(|branch| {
+                        (
+                            format!("heads/{branch}"),
+                            crate::state::DEFAULT_REPOSITORY_SHA.to_string(),
+                        )
+                    })
+                    .collect();
+                Repository {
+                    owner: repository.owner,
+                    name: repository.name,
+                    refs,
+                    files: HashMap::new(),
+                    default_branch: repository
+                        .default_branch
+                        .unwrap_or_else(|| "main".to_string()),
+                    private: repository.private,
+                    git_dir: None,
+                }
             })
             .collect();
 

@@ -55,16 +55,16 @@ pub async fn get_branch(
         };
     }
 
-    // Find repository and check branch
+    // Find repository and check branch.
     for repo_data in &state.repositories {
         if repo_data.owner == owner && repo_data.name == repo {
-            if repo_data.branches.contains(&branch) {
+            if let Some(sha) = repo_data.refs.get(&format!("heads/{branch}")) {
                 return (
                     StatusCode::OK,
                     Json(serde_json::json!({
                         "name": branch,
                         "commit": {
-                            "sha": "abc123def456",
+                            "sha": sha,
                         },
                         "protected": false,
                     })),
@@ -92,7 +92,7 @@ pub async fn get_branch(
 #[cfg(test)]
 mod tests {
     use crate::server::TestServer;
-    use crate::state::{AppOptions, AppState};
+    use crate::state::{AppOptions, AppState, DEFAULT_REPOSITORY_SHA};
     use crate::test_support::{sign_test_jwt, test_http_client, test_rsa_private_key};
 
     async fn get_installation_token(
@@ -168,6 +168,7 @@ mod tests {
         assert_eq!(resp.status(), 200);
         let body: serde_json::Value = resp.json().await.unwrap();
         assert_eq!(body["name"], "feature");
+        assert_eq!(body["commit"]["sha"], DEFAULT_REPOSITORY_SHA);
 
         server.shutdown().await;
     }
@@ -213,6 +214,7 @@ mod tests {
         assert_eq!(resp.status(), 200);
         let body: serde_json::Value = resp.json().await.unwrap();
         assert_eq!(body["name"], "fabro/run/123");
+        assert_eq!(body["commit"]["sha"], DEFAULT_REPOSITORY_SHA);
 
         server.shutdown().await;
     }

@@ -40,11 +40,14 @@ pub struct Installation {
 pub struct Repository {
     pub owner:          String,
     pub name:           String,
-    pub branches:       Vec<String>,
+    pub refs:           HashMap<String, String>,
+    pub files:          HashMap<(String, String), Vec<u8>>,
     pub default_branch: String,
     pub private:        bool,
     pub git_dir:        Option<std::path::PathBuf>,
 }
+
+pub const DEFAULT_REPOSITORY_SHA: &str = "0123456789abcdef0123456789abcdef01234567";
 
 /// A pull request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -390,14 +393,53 @@ impl AppState {
         branches: Vec<String>,
         private: bool,
     ) {
+        let refs = branches
+            .into_iter()
+            .map(|branch| {
+                (
+                    format!("heads/{branch}"),
+                    DEFAULT_REPOSITORY_SHA.to_string(),
+                )
+            })
+            .collect();
         self.repositories.push(Repository {
             owner: owner.to_string(),
             name: name.to_string(),
-            branches,
+            refs,
+            files: HashMap::new(),
             default_branch: "main".to_string(),
             private,
             git_dir: None,
         });
+    }
+
+    pub fn set_repository_ref(&mut self, owner: &str, name: &str, selector: &str, sha: &str) {
+        let repository = self
+            .repositories
+            .iter_mut()
+            .find(|repository| repository.owner == owner && repository.name == name)
+            .expect("repository fixture should exist before adding a ref");
+        repository
+            .refs
+            .insert(selector.to_string(), sha.to_string());
+    }
+
+    pub fn add_repository_file(
+        &mut self,
+        owner: &str,
+        name: &str,
+        sha: &str,
+        path: &str,
+        contents: impl Into<Vec<u8>>,
+    ) {
+        let repository = self
+            .repositories
+            .iter_mut()
+            .find(|repository| repository.owner == owner && repository.name == name)
+            .expect("repository fixture should exist before adding a file");
+        repository
+            .files
+            .insert((sha.to_string(), path.to_string()), contents.into());
     }
 
     pub fn find_installation(&self, owner: &str, repo: &str) -> Option<&Installation> {
