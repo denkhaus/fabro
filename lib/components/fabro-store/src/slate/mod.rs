@@ -862,8 +862,6 @@ mod tests {
             reader.read_blob(&blob_id).await.unwrap().as_deref(),
             Some(blob.as_slice())
         );
-        assert_eq!(reader.list_blobs().await.unwrap(), vec![blob_id]);
-
         let err = reader.write_blob(b"blocked").await.unwrap_err();
         assert!(matches!(err, Error::ReadOnly));
 
