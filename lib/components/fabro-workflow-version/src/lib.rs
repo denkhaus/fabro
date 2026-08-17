@@ -167,18 +167,21 @@ fn validate_config(
         validate_dockerfile(version, &config_path, image)?;
     }
 
+    // The run engine inlines the effective goal (file contents included) into
+    // the entrypoint graph and renders it under the entrypoint's template
+    // source, so goal includes anchor at the entrypoint for both goal forms.
     match layer.run.as_ref().and_then(|run| run.goal.as_ref()) {
         Some(RunGoalLayer::Inline(goal)) => {
-            template_roots.push(&config_path, unresolved_source(goal));
+            template_roots.push(version.entrypoint(), unresolved_source(goal));
         }
         Some(RunGoalLayer::File { file }) => {
-            let (target, content) = validate_config_file_reference(
+            let (_, content) = validate_config_file_reference(
                 version,
                 &config_path,
                 ReferenceKind::RunGoalFile,
                 &unresolved_source(file),
             )?;
-            template_roots.push(&target, content);
+            template_roots.push(version.entrypoint(), content);
         }
         None => {}
     }
@@ -568,15 +571,55 @@ mod tests {
 
     #[test]
     fn accepts_file_workflow_goal_with_transitive_template_closure() {
+        // The goal file's own includes anchor at the entrypoint's directory
+        // (the package root here), not at the goal file's directory; loaded
+        // dependencies then anchor at their own directories as usual.
         let version =
             version_with_config("_version = 1\n[run.goal]\nfile = \"prompts/goal.md\"\n", [
-                ("prompts/goal.md", r#"{% include "partial.md" %}"#),
+                ("prompts/goal.md", r#"{% include "prompts/partial.md" %}"#),
                 ("prompts/partial.md", r#"{% include "nested/detail.md" %}"#),
                 ("prompts/nested/detail.md", "Use {{ vars.detail }}"),
             ])
             .unwrap();
 
         assert_eq!(version.version().files().len(), 5);
+    }
+
+    #[test]
+    fn anchors_workflow_goal_includes_at_the_entrypoint() {
+        let version_with_entrypoint = |goal_include_target: &'static str| {
+            ValidatedWorkflowVersion::new(
+                WorkflowVersion::new(
+                    path("graphs/main.fabro"),
+                    BTreeMap::from([
+                        (path("graphs/main.fabro"), "digraph W {}".to_owned()),
+                        (
+                            path("workflow.toml"),
+                            "_version = 1\n[run]\ngoal = \"{% include \\\"shared.md\\\" %}\"\n"
+                                .to_owned(),
+                        ),
+                        (path(goal_include_target), "shared".to_owned()),
+                    ]),
+                    BTreeMap::default(),
+                )
+                .expect("test fixtures must be structurally valid"),
+            )
+        };
+
+        // The include resolves beside the entrypoint graph, matching where
+        // the run engine renders the inlined goal.
+        version_with_entrypoint("graphs/shared.md").unwrap();
+
+        let error = version_with_entrypoint("shared.md").unwrap_err();
+        assert!(matches!(
+            error,
+            WorkflowVersionError::Template { path: source_path, source }
+                if source_path == path("graphs/main.fabro")
+                    && matches!(
+                        source.as_ref(),
+                        TemplateDiscoveryError::Missing { reference, .. } if reference == "shared.md"
+                    )
+        ));
     }
 
     #[test]
@@ -630,11 +673,11 @@ mod tests {
         else {
             panic!("expected missing template dependency");
         };
-        assert_eq!(source_path, path("workflow.toml"));
+        assert_eq!(source_path, path("workflow.fabro"));
         assert!(matches!(
             source.as_ref(),
             TemplateDiscoveryError::Missing { parent, reference }
-                if parent.to_string() == "workflow.toml" && reference == "missing.md"
+                if parent.to_string() == "workflow.fabro" && reference == "missing.md"
         ));
 
         let dynamic = version_with_inline_goal(r"{% include inputs.partial %}", []).unwrap_err();
@@ -644,7 +687,7 @@ mod tests {
         assert!(matches!(
             source.as_ref(),
             TemplateDiscoveryError::Dynamic { parent }
-                if parent.to_string() == "workflow.toml"
+                if parent.to_string() == "workflow.fabro"
         ));
 
         let escaping =
@@ -657,8 +700,7 @@ mod tests {
             TemplateDiscoveryError::Load {
                 source: TemplateLoadError::EscapesRoot { parent, .. },
                 ..
-            }
-                if parent.to_string() == "workflow.toml"
+            } if parent.to_string() == "workflow.fabro"
         ));
     }
 
