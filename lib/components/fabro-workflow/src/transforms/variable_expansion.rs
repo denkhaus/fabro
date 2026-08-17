@@ -519,7 +519,7 @@ impl TemplateTransform {
                     continue;
                 }
                 if let Some(kind) = reference_kind_for_attribute(scope, attr_name, text) {
-                    validate_static_reference(text, kind)
+                    validate_static_reference(text, kind.into())
                         .map_err(|error| Error::Validation(error.to_string()))?;
                     continue;
                 }
