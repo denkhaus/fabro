@@ -356,10 +356,12 @@ pub fn error_from_status_code(
     let kind = match status_code {
         401 => ProviderErrorKind::Authentication,
         // A 412 is never about the request: no LLM request carries
-        // conditional-request preconditions. Fireworks uses it for
-        // account-level lockouts (suspension over a spending cap or unpaid
-        // invoices), the same family as `account_deactivated`: deterministic
-        // here, but another provider has independent billing.
+        // conditional-request preconditions. Fireworks documents it as
+        // "Account is suspended or there's an issue with account status",
+        // also emitted for a LoRA model that failed to load
+        // (https://docs.fireworks.ai/guides/inference-error-codes). The same
+        // family as `account_deactivated`: deterministic here, but another
+        // provider has independent billing and model inventory.
         403 | 412 => ProviderErrorKind::AccessDenied,
         404 => ProviderErrorKind::NotFound,
         408 => {
