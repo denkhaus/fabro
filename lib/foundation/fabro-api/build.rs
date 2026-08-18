@@ -725,6 +725,7 @@ fn main() {
         ("WorkflowVersion", "fabro_types::WorkflowVersion", &[]),
         ("WorkflowPath", "fabro_types::WorkflowPath", &[]),
         ("WorkflowVersionId", "fabro_types::WorkflowVersionId", &[]),
+        ("BlobHash", "fabro_types::BlobHash", &[]),
         ("CostSource", "fabro_model::CostSource", &[]),
     ];
     for (name, path, impls) in replacements {

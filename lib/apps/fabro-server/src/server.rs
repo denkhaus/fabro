@@ -2889,11 +2889,11 @@ pub(crate) fn parse_stage_id_path(stage_id: &str) -> Result<StageId, Response> {
 
 #[allow(
     clippy::result_large_err,
-    reason = "Blob ID parsing returns HTTP 400 responses directly."
+    reason = "Blob hash parsing returns HTTP 400 responses directly."
 )]
-pub(crate) fn parse_blob_id_path(blob_id: &str) -> Result<BlobHash, Response> {
-    BlobHash::from_str(blob_id)
-        .map_err(|_| ApiError::bad_request("Invalid blob ID.").into_response())
+pub(crate) fn parse_blob_hash_path(blob_hash: &str) -> Result<BlobHash, Response> {
+    BlobHash::from_str(blob_hash)
+        .map_err(|_| ApiError::bad_request("Invalid blob hash.").into_response())
 }
 
 #[allow(

@@ -11034,7 +11034,7 @@ async fn get_checkpoint_returns_null_initially() {
 }
 
 #[tokio::test]
-async fn write_and_read_run_blob_round_trip() {
+async fn write_and_read_run_blob_accepts_uppercase_hash() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
 
@@ -11057,11 +11057,14 @@ async fn write_and_read_run_blob_round_trip() {
         .unwrap();
     let response = app.clone().oneshot(req).await.unwrap();
     let body = response_json!(response, StatusCode::OK).await;
-    let blob_id = body["id"].as_str().unwrap();
+    let blob_hash = body["hash"].as_str().unwrap();
 
     let req = Request::builder()
         .method("GET")
-        .uri(api(&format!("/runs/{run_id}/blobs/{blob_id}")))
+        .uri(api(&format!(
+            "/runs/{run_id}/blobs/{}",
+            blob_hash.to_uppercase()
+        )))
         .body(Body::empty())
         .unwrap();
     let response = app.oneshot(req).await.unwrap();
@@ -11459,7 +11462,7 @@ async fn worker_token_accepts_run_scoped_routes_and_falls_back_to_user_jwt() {
     let worker_token = issue_test_worker_token(&run_id);
     let other_run_id = create_run_with_bearer(&app, &user_jwt).await;
     let other_worker_token = issue_test_worker_token(&other_run_id);
-    let blob_id = state
+    let blob_hash = state
         .stores
         .runs
         .open_run(&run_id)
@@ -11553,7 +11556,7 @@ async fn worker_token_accepts_run_scoped_routes_and_falls_back_to_user_jwt() {
         .clone()
         .oneshot(bearer_request(
             Method::GET,
-            &format!("/runs/{run_id}/blobs/{blob_id}"),
+            &format!("/runs/{run_id}/blobs/{blob_hash}"),
             &worker_token,
             Body::empty(),
         ))
@@ -12058,7 +12061,7 @@ async fn worker_token_is_rejected_on_user_only_routes() {
     let user_jwt = issue_test_user_jwt();
     let run_id = create_run_with_bearer(&app, &user_jwt).await;
     let worker_token = issue_test_worker_token(&run_id);
-    let blob_id = BlobHash::new(b"blob");
+    let blob_hash = BlobHash::new(b"blob");
     let user_only_routes = vec![
         (Method::GET, "/runs".to_string()),
         (Method::POST, "/runs".to_string()),
@@ -12121,7 +12124,7 @@ async fn worker_token_is_rejected_on_user_only_routes() {
         .clone()
         .oneshot(bearer_request(
             Method::GET,
-            &format!("/runs/{run_id}/blobs/{blob_id}"),
+            &format!("/runs/{run_id}/blobs/{blob_hash}"),
             &worker_token,
             Body::empty(),
         ))

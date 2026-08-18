@@ -5,7 +5,7 @@ use anyhow::{Context as _, Result};
 use cli_table::format::{Border, Justify, Separator};
 use cli_table::{Cell, CellStruct, Style, Table};
 use fabro_api::types;
-use fabro_types::{BlobHash, PullRequestLink, RunId, StageId, parse_blob_ref};
+use fabro_types::{PullRequestLink, RunId, StageId, parse_blob_ref};
 use fabro_util::check_report::{CheckDetail, CheckReport, CheckResult, CheckSection, CheckStatus};
 use fabro_util::error::render_with_causes;
 use fabro_util::printer::Printer;
@@ -325,11 +325,11 @@ async fn resolve_response_string(
     run_id: &RunId,
     response: &str,
 ) -> Result<Option<String>> {
-    let Some(blob_id) = blob_id_from_response(response) else {
+    let Some(blob_hash) = parse_blob_ref(response) else {
         return Ok(Some(response.to_string()));
     };
 
-    let Some(bytes) = client.read_run_blob(run_id, &blob_id).await? else {
+    let Some(bytes) = client.read_run_blob(run_id, &blob_hash).await? else {
         return Ok(None);
     };
     let value: serde_json::Value =
@@ -339,10 +339,6 @@ async fn resolve_response_string(
         serde_json::Value::String(text) => text,
         other => other.to_string(),
     }))
-}
-
-fn blob_id_from_response(response: &str) -> Option<BlobHash> {
-    parse_blob_ref(response)
 }
 
 async fn list_artifact_display_entries_with_client(

@@ -544,13 +544,13 @@ async fn daytona_pipeline_artifact_offload_and_sync() {
         .get("response.big_output")
         .expect("context should have response.big_output");
     let pointer_str = pointer_value.as_str().expect("pointer should be a string");
-    let expected_blob_id = fabro_types::BlobHash::new(
+    let expected_blob_hash = fabro_types::BlobHash::new(
         &serde_json::to_vec(&serde_json::json!("x".repeat(150 * 1024)))
             .expect("large value should serialize"),
     );
     assert_eq!(
         pointer_str,
-        fabro_types::format_blob_ref(&expected_blob_id),
+        fabro_types::format_blob_ref(&expected_blob_hash),
         "checkpoint should persist a blob ref"
     );
 

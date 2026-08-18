@@ -390,16 +390,19 @@ mod tests {
         }
 
         async fn write_blob(&self, data: &[u8]) -> anyhow::Result<fabro_types::BlobHash> {
-            let blob_id = fabro_types::BlobHash::new(data);
+            let blob_hash = fabro_types::BlobHash::new(data);
             self.blobs
                 .lock()
                 .await
-                .insert(blob_id, Bytes::copy_from_slice(data));
-            Ok(blob_id)
+                .insert(blob_hash, Bytes::copy_from_slice(data));
+            Ok(blob_hash)
         }
 
-        async fn read_blob(&self, id: &fabro_types::BlobHash) -> anyhow::Result<Option<Bytes>> {
-            Ok(self.blobs.lock().await.get(id).cloned())
+        async fn read_blob(
+            &self,
+            blob_hash: &fabro_types::BlobHash,
+        ) -> anyhow::Result<Option<Bytes>> {
+            Ok(self.blobs.lock().await.get(blob_hash).cloned())
         }
 
         async fn read_run_log(&self) -> anyhow::Result<Option<Vec<u8>>> {

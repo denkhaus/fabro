@@ -56,12 +56,12 @@ impl BlobStore {
         Ok(id)
     }
 
-    pub async fn read(&self, id: &BlobHash) -> Result<Option<Bytes>> {
-        Ok(self.repo.get(id).await?.map(|blob| blob.0))
+    pub async fn read(&self, blob_hash: &BlobHash) -> Result<Option<Bytes>> {
+        Ok(self.repo.get(blob_hash).await?.map(|blob| blob.0))
     }
 
-    pub async fn exists(&self, id: &BlobHash) -> Result<bool> {
-        self.repo.exists(id).await
+    pub async fn exists(&self, blob_hash: &BlobHash) -> Result<bool> {
+        self.repo.exists(blob_hash).await
     }
 }
 

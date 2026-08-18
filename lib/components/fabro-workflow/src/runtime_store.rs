@@ -14,7 +14,7 @@ pub trait RunStoreBackend: Send + Sync {
     async fn list_events(&self) -> Result<Vec<EventEnvelope>>;
     async fn append_run_event(&self, event: &RunEvent) -> Result<()>;
     async fn write_blob(&self, data: &[u8]) -> Result<BlobHash>;
-    async fn read_blob(&self, id: &BlobHash) -> Result<Option<Bytes>>;
+    async fn read_blob(&self, blob_hash: &BlobHash) -> Result<Option<Bytes>>;
     async fn read_run_log(&self) -> Result<Option<Vec<u8>>>;
 }
 
@@ -50,8 +50,8 @@ impl RunStoreHandle {
         self.backend.write_blob(data).await
     }
 
-    pub async fn read_blob(&self, id: &BlobHash) -> Result<Option<Bytes>> {
-        self.backend.read_blob(id).await
+    pub async fn read_blob(&self, blob_hash: &BlobHash) -> Result<Option<Bytes>> {
+        self.backend.read_blob(blob_hash).await
     }
 
     pub async fn read_run_log(&self) -> Result<Option<Vec<u8>>> {
@@ -98,9 +98,9 @@ impl RunStoreBackend for LocalRunStoreBackend {
             .map_err(anyhow::Error::from)
     }
 
-    async fn read_blob(&self, id: &BlobHash) -> Result<Option<Bytes>> {
+    async fn read_blob(&self, blob_hash: &BlobHash) -> Result<Option<Bytes>> {
         self.run_store
-            .read_blob(id)
+            .read_blob(blob_hash)
             .await
             .map_err(anyhow::Error::from)
     }
@@ -217,8 +217,8 @@ mod tests {
         };
         handle.append_run_event(&event).await.unwrap();
 
-        let blob_id = handle.write_blob(br#"{"ok":true}"#).await.unwrap();
-        let blob = handle.read_blob(&blob_id).await.unwrap().unwrap();
+        let blob_hash = handle.write_blob(br#"{"ok":true}"#).await.unwrap();
+        let blob = handle.read_blob(&blob_hash).await.unwrap().unwrap();
         let events = handle.list_events().await.unwrap();
 
         assert_eq!(events.len(), 2);

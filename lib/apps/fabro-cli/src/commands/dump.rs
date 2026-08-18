@@ -86,8 +86,8 @@ async fn write_run_dump(
         dump.add_file_bytes("run.log", log);
     }
 
-    dump.hydrate_referenced_blobs_with_reader(|blob_id| {
-        Box::pin(async move { client.read_run_blob(run_id, &blob_id).await })
+    dump.hydrate_referenced_blobs_with_reader(|blob_hash| {
+        Box::pin(async move { client.read_run_blob(run_id, &blob_hash).await })
     })
     .await?;
 

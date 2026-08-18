@@ -1823,7 +1823,7 @@ mod tests {
             Ok(BlobHash::new(data))
         }
 
-        async fn read_blob(&self, _id: &BlobHash) -> Result<Option<Bytes>> {
+        async fn read_blob(&self, _blob_hash: &BlobHash) -> Result<Option<Bytes>> {
             Ok(None)
         }
 
