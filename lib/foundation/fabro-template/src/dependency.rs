@@ -32,10 +32,18 @@ pub struct ExtractedTemplateDependencies {
 
 #[derive(Debug, Error)]
 pub enum TemplateDiscoveryError {
-    #[error(transparent)]
-    Parse(#[from] TemplateError),
-    #[error(transparent)]
-    Load(#[from] TemplateLoadError),
+    #[error("invalid template `{parent}`")]
+    Parse {
+        parent: ManifestPath,
+        #[source]
+        source: Box<TemplateError>,
+    },
+    #[error("failed to load a template dependency of `{parent}`")]
+    Load {
+        parent: ManifestPath,
+        #[source]
+        source: TemplateLoadError,
+    },
     #[error("missing template dependency `{reference}` from `{parent}`")]
     Missing {
         parent:    ManifestPath,
@@ -43,6 +51,19 @@ pub enum TemplateDiscoveryError {
     },
     #[error("dynamic template dependency in `{parent}` must be declared explicitly")]
     Dynamic { parent: ManifestPath },
+}
+
+impl TemplateDiscoveryError {
+    /// Path of the template source this error is attributed to.
+    #[must_use]
+    pub fn source_path(&self) -> &ManifestPath {
+        match self {
+            Self::Parse { parent, .. }
+            | Self::Load { parent, .. }
+            | Self::Missing { parent, .. }
+            | Self::Dynamic { parent } => parent,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -80,38 +101,55 @@ pub fn discover_static_dependency_closure(
     store: &dyn TemplateStore,
 ) -> Result<TemplateDependencyClosure, TemplateDiscoveryError> {
     let mut sources = HashMap::new();
+    // A root and a loaded file can collide on `path` while carrying different
+    // content (an inline prompt is anchored at its graph file's path), so
+    // traversal dedup keys on the full occurrence rather than the path: a
+    // path-keyed check would leave the collided occurrence unparsed. The
+    // result map stays path-keyed, with the last distinct occurrence winning.
+    let mut parsed = HashSet::new();
     let mut queue = VecDeque::new();
 
-    for source in roots {
-        if sources
-            .insert(source.path.clone(), source.clone())
-            .is_none()
-        {
+    let mut enqueue = |source: TemplateSource,
+                       sources: &mut HashMap<ManifestPath, TemplateSource>,
+                       queue: &mut VecDeque<TemplateSource>| {
+        let occurrence = (
+            source.path.clone(),
+            source.root.clone(),
+            source.content.clone(),
+        );
+        if parsed.insert(occurrence) {
+            sources.insert(source.path.clone(), source.clone());
             queue.push_back(source);
         }
+    };
+
+    for source in roots {
+        enqueue(source, &mut sources, &mut queue);
     }
 
     while let Some(source) = queue.pop_front() {
-        let dependencies =
-            extract_template_dependencies(&source.path.to_string(), &source.content)?;
+        let dependencies = extract_template_dependencies(&source.path.to_string(), &source.content)
+            .map_err(|error| TemplateDiscoveryError::Parse {
+                parent: source.path.clone(),
+                source: Box::new(error),
+            })?;
         if !dependencies.dynamic_references.is_empty() {
             return Err(TemplateDiscoveryError::Dynamic {
                 parent: source.path,
             });
         }
         for dependency in dependencies.static_references {
-            let loaded = store.load(&source, &dependency.reference)?.ok_or_else(|| {
-                TemplateDiscoveryError::Missing {
+            let loaded = store
+                .load(&source, &dependency.reference)
+                .map_err(|error| TemplateDiscoveryError::Load {
+                    parent: source.path.clone(),
+                    source: error,
+                })?
+                .ok_or_else(|| TemplateDiscoveryError::Missing {
                     parent:    source.path.clone(),
                     reference: dependency.reference.clone(),
-                }
-            })?;
-            if sources
-                .insert(loaded.path.clone(), loaded.clone())
-                .is_none()
-            {
-                queue.push_back(loaded);
-            }
+                })?;
+            enqueue(loaded, &mut sources, &mut queue);
         }
     }
 
