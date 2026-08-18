@@ -249,7 +249,9 @@ mod tests {
         );
         assert_eq!(store.read(&empty_hash).await?, Some(Bytes::new()));
         assert!(store.exists(&binary_hash).await?);
-        assert!(!store.exists(&BlobHash::new(b"missing")).await?);
+        let missing_hash = BlobHash::new(b"missing");
+        assert_eq!(store.read(&missing_hash).await?, None);
+        assert!(!store.exists(&missing_hash).await?);
 
         let row_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM blobs")
             .fetch_one(database.pool())
