@@ -2281,19 +2281,8 @@ mod tests {
 
     fn test_run_spec() -> RunSpec {
         RunSpec {
-            run_id:           fixtures::RUN_1,
-            settings:         WorkflowSettings::default(),
-            graph:            Graph::new("test"),
-            graph_source:     Some("digraph test {}".to_string()),
-            workflow_slug:    None,
-            automation:       None,
-            source_directory: None,
-            labels:           HashMap::new(),
-            provenance:       test_support::test_run_provenance(),
-            manifest_blob:    None,
-            definition_blob:  None,
-            git:              None,
-            fork_source_ref:  None,
+            graph_source: Some("digraph test {}".to_string()),
+            ..test_support::test_run_spec()
         }
     }
 
@@ -4086,19 +4075,9 @@ mod tests {
     fn summary_synthesizes_submitted_when_run_exists_without_status() {
         let mut state = initialized_projection();
         state.spec = fabro_types::RunSpec {
-            run_id:           fixtures::RUN_1,
-            settings:         WorkflowSettings::default(),
-            graph:            fabro_types::Graph::new("test"),
-            graph_source:     None,
-            workflow_slug:    Some("test".to_string()),
-            automation:       None,
+            workflow_slug: Some("test".to_string()),
             source_directory: Some("/tmp/repo".to_string()),
-            git:              None,
-            labels:           HashMap::new(),
-            provenance:       test_support::test_run_provenance(),
-            manifest_blob:    None,
-            definition_blob:  None,
-            fork_source_ref:  None,
+            ..test_support::test_run_spec()
         };
 
         let summary_json = serde_json::to_value(build_summary(&state, &fixtures::RUN_1)).unwrap();
@@ -4112,19 +4091,10 @@ mod tests {
     fn summary_preserves_absent_workflow_name_and_reports_graph_name() {
         let mut state = initialized_projection();
         state.spec = fabro_types::RunSpec {
-            run_id:           fixtures::RUN_1,
-            settings:         WorkflowSettings::default(),
-            graph:            fabro_types::Graph::new("GraphName"),
-            graph_source:     None,
-            workflow_slug:    Some("release-flow".to_string()),
-            automation:       None,
+            graph: fabro_types::Graph::new("GraphName"),
+            workflow_slug: Some("release-flow".to_string()),
             source_directory: Some("/tmp/repo".to_string()),
-            git:              None,
-            labels:           HashMap::new(),
-            provenance:       test_support::test_run_provenance(),
-            manifest_blob:    None,
-            definition_blob:  None,
-            fork_source_ref:  None,
+            ..test_support::test_run_spec()
         };
 
         let summary = build_summary(&state, &fixtures::RUN_1);
