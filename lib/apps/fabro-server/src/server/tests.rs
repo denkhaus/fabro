@@ -7122,7 +7122,7 @@ async fn create_completed_run_ready_for_pull_request(
             labels: run_spec.labels.clone().into_iter().collect(),
             source_directory: run_spec.source_directory.clone(),
             workflow_slug: run_spec.workflow_slug.clone(),
-            workflow_version_id: None,
+            workflow_version_id: run_spec.workflow_version_id,
             automation: None,
             provenance: run_spec.provenance.clone(),
             manifest_blob: None,

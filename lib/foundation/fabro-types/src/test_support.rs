@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    AuthMethod, Graph, IdpIdentity, Principal, RunProvenance, RunSpec, WorkflowSettings, fixtures,
+    AuthMethod, BlobHash, Graph, IdpIdentity, Principal, RunProvenance, RunSpec, WorkflowSettings,
+    WorkflowVersionId, fixtures,
 };
 
 #[must_use]
@@ -54,4 +55,9 @@ pub fn test_run_spec() -> RunSpec {
         git:                 None,
         fork_source_ref:     None,
     }
+}
+
+#[must_use]
+pub fn test_workflow_version_id() -> WorkflowVersionId {
+    WorkflowVersionId::from(BlobHash::new(b"workflow"))
 }

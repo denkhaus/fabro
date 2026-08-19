@@ -4,8 +4,8 @@ use fabro_types::graph::Graph;
 use fabro_types::run::{DirtyStatus, ForkSourceRef, GitContext, RunSpec};
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::RunGoal;
-use fabro_types::test_support::test_run_provenance;
-use fabro_types::{AutomationRef, BlobHash, WorkflowSettings, WorkflowVersionId, fixtures};
+use fabro_types::test_support::{test_run_provenance, test_workflow_version_id};
+use fabro_types::{AutomationRef, WorkflowSettings, fixtures};
 
 fn templated_settings() -> WorkflowSettings {
     let mut settings = WorkflowSettings::default();
@@ -21,7 +21,7 @@ fn run_spec_round_trips_templated_settings() {
         graph:               Graph::new("ship"),
         graph_source:        None,
         workflow_slug:       Some("demo".to_string()),
-        workflow_version_id: Some(WorkflowVersionId::from(BlobHash::new(b"workflow"))),
+        workflow_version_id: Some(test_workflow_version_id()),
         automation:          Some(AutomationRef {
             id:         "nightly".to_string(),
             name:       Some("Nightly".to_string()),
@@ -62,7 +62,7 @@ fn run_spec_round_trips_templated_settings() {
     assert_eq!(json["automation"]["trigger_id"], "schedule_1");
     assert_eq!(
         json["workflow_version_id"],
-        BlobHash::new(b"workflow").to_string()
+        test_workflow_version_id().to_string()
     );
     let round_trip: RunSpec =
         serde_json::from_value(json.clone()).expect("record should deserialize");
@@ -91,27 +91,7 @@ fn run_spec_defaults_automation_for_legacy_specs() {
 
     assert_eq!(record.automation, None);
     assert_eq!(record.workflow_version_id, None);
-}
 
-#[test]
-fn run_spec_omits_absent_workflow_version_id() {
-    let record = RunSpec {
-        run_id:              fixtures::RUN_1,
-        settings:            WorkflowSettings::default(),
-        graph:               Graph::new("ship"),
-        graph_source:        None,
-        workflow_slug:       None,
-        workflow_version_id: None,
-        automation:          None,
-        source_directory:    None,
-        labels:              HashMap::new(),
-        provenance:          test_run_provenance(),
-        manifest_blob:       None,
-        definition_blob:     None,
-        git:                 None,
-        fork_source_ref:     None,
-    };
-
-    let json = serde_json::to_value(record).expect("record should serialize");
-    assert!(json.get("workflow_version_id").is_none());
+    let round_trip = serde_json::to_value(&record).expect("record should serialize");
+    assert!(round_trip.get("workflow_version_id").is_none());
 }

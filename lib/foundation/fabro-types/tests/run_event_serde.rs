@@ -6,10 +6,8 @@ use fabro_types::run_event::run::{RunCreatedProps, RunParentLinkedProps, RunPare
 use fabro_types::run_event::{RunSessionTurnFailedCode, RunSessionTurnFailedProps};
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::RunGoal;
-use fabro_types::test_support::test_run_provenance;
-use fabro_types::{
-    AutomationRef, BlobHash, EventBody, TurnId, WorkflowSettings, WorkflowVersionId, fixtures,
-};
+use fabro_types::test_support::{test_run_provenance, test_workflow_version_id};
+use fabro_types::{AutomationRef, EventBody, TurnId, WorkflowSettings, fixtures};
 
 fn templated_settings() -> WorkflowSettings {
     let mut settings = WorkflowSettings::default();
@@ -27,7 +25,7 @@ fn run_created_props_round_trip_templated_settings() {
         labels:              BTreeMap::from([("team".to_string(), "platform".to_string())]),
         source_directory:    Some("/Users/client/project".to_string()),
         workflow_slug:       Some("demo".to_string()),
-        workflow_version_id: Some(WorkflowVersionId::from(BlobHash::new(b"workflow"))),
+        workflow_version_id: Some(test_workflow_version_id()),
         automation:          Some(AutomationRef {
             id:         "nightly".to_string(),
             name:       Some("Nightly".to_string()),
@@ -74,7 +72,7 @@ fn run_created_props_round_trip_templated_settings() {
     assert_eq!(json["automation"]["trigger_id"], "schedule_1");
     assert_eq!(
         json["workflow_version_id"],
-        BlobHash::new(b"workflow").to_string()
+        test_workflow_version_id().to_string()
     );
 
     let round_trip: RunCreatedProps =
