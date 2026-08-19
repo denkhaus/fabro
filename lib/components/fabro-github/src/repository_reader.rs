@@ -1,10 +1,6 @@
-#![expect(
-    clippy::disallowed_types,
-    reason = "Validated URL values are used only for request construction and are never logged or included in errors."
-)]
-
 use fabro_http::header::{ACCEPT, CONTENT_TYPE, RETRY_AFTER, USER_AGENT};
-use fabro_http::{HeaderMap, HttpClient, Response, StatusCode, Url};
+use fabro_http::{HeaderMap, HttpClient, Response, StatusCode};
+use fabro_redact::{DisplaySafeUrl, DisplaySafeUrlError};
 use fabro_types::{GitHubRepositorySlug, repository};
 
 use crate::GitHubContext;
@@ -13,14 +9,24 @@ const SHA_MEDIA_TYPE: &str = "application/vnd.github.sha";
 const RAW_CONTENT_MEDIA_TYPE: &str = "application/vnd.github.raw+json";
 const MAX_SHA_RESPONSE_BYTES: usize = 128;
 
+/// Which repository read a failure came from. Carried on the errors that can
+/// arise from either, so one status classification serves both.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, strum::Display)]
+#[strum(serialize_all = "lowercase")]
+pub enum Operation {
+    Revision,
+    Content,
+}
+
 /// Failures while opening or using a repository-scoped GitHub reader.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum RepositoryReadError {
     #[error("invalid GitHub API base URL ({reason})")]
     InvalidApiBaseUrl {
         reason: &'static str,
         #[source]
-        source: Option<url::ParseError>,
+        source: Option<DisplaySafeUrlError>,
     },
     #[error("invalid GitHub ref selector")]
     InvalidRefSelector,
@@ -44,28 +50,26 @@ pub enum RepositoryReadError {
     PermissionDenied,
     #[error("GitHub rate limit reached (status {status})")]
     RateLimited { status: u16 },
-    /// GitHub returned 404 while resolving a revision. GitHub may also use
-    /// 404 to hide a private resource that these credentials cannot access.
-    #[error("GitHub revision was not observable")]
-    RevisionNotFound,
-    /// GitHub returned 404 while reading content. GitHub may also use 404 to
-    /// hide a private resource that these credentials cannot access.
-    #[error("GitHub repository content was not observable")]
-    ContentNotFound,
+    /// GitHub returned 404. GitHub may also use 404 to hide a private resource
+    /// that these credentials cannot access, so this means "not observable"
+    /// rather than "does not exist".
+    #[error("GitHub {operation} was not observable")]
+    NotFound { operation: Operation },
     #[error("GitHub repository content is not a file")]
     ContentNotFile,
-    #[error("GitHub revision is unavailable (status {status})")]
-    RevisionUnavailable { status: u16 },
-    #[error("GitHub repository content is unavailable (status {status})")]
-    ContentUnavailable { status: u16 },
+    #[error("GitHub {operation} is unavailable (status {status})")]
+    Unavailable {
+        operation: Operation,
+        status:    u16,
+    },
     #[error("GitHub {operation} service is unavailable (status {status})")]
     UpstreamUnavailable {
-        operation: &'static str,
+        operation: Operation,
         status:    u16,
     },
     #[error("unexpected GitHub {operation} status {status}")]
     UnexpectedStatus {
-        operation: &'static str,
+        operation: Operation,
         status:    u16,
     },
     #[error("GitHub response exceeded the {max_bytes}-byte limit")]
@@ -80,26 +84,13 @@ pub enum RepositoryReadError {
 }
 
 /// An authenticated read session scoped to one GitHub repository.
+///
+/// Opening resolves credentials once; every read reuses that token.
 pub struct GitHubRepositoryReader {
-    client:       HttpClient,
-    api_base:     Url,
-    repository:   GitHubRepositorySlug,
-    bearer_token: String,
-}
-
-#[derive(Clone, Copy)]
-enum Operation {
-    Revision,
-    Content,
-}
-
-impl Operation {
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Revision => "revision lookup",
-            Self::Content => "content read",
-        }
-    }
+    client:          HttpClient,
+    /// `{api_base}/repos/{owner}/{repo}`, validated and built once at open.
+    repository_base: DisplaySafeUrl,
+    bearer_token:    String,
 }
 
 impl GitHubRepositoryReader {
@@ -111,14 +102,14 @@ impl GitHubRepositoryReader {
         let client = ctx
             .http_client()
             .map_err(|source| RepositoryReadError::RequestTransport { source })?;
-        let (api_base, normalized_base) = parse_api_base(ctx.base_url)?;
+        let api_base = parse_api_base(ctx.base_url)?;
         let bearer_token = ctx
             .creds
             .resolve_bearer_token(
                 &client,
                 repository.owner(),
                 repository.repo(),
-                &normalized_base,
+                api_base.as_str().trim_end_matches('/'),
                 serde_json::json!({ "contents": "read" }),
             )
             .await
@@ -126,8 +117,7 @@ impl GitHubRepositoryReader {
 
         Ok(Self {
             client,
-            api_base,
-            repository: repository.clone(),
+            repository_base: repository_base(&api_base, repository),
             bearer_token,
         })
     }
@@ -138,19 +128,9 @@ impl GitHubRepositoryReader {
             return Err(RepositoryReadError::InvalidRefSelector);
         }
 
-        let url = commit_url(&self.api_base, &self.repository, selector)?;
         let response = self
-            .client
-            .get(url)
-            .bearer_auth(&self.bearer_token)
-            .header(USER_AGENT, "fabro")
-            .header(ACCEPT, SHA_MEDIA_TYPE)
-            .send()
-            .await
-            .map_err(|source| RepositoryReadError::RequestTransport {
-                source: anyhow::Error::new(source.without_url()),
-            })?;
-
+            .send(&self.commit_url(selector), SHA_MEDIA_TYPE)
+            .await?;
         classify_status(response.status(), response.headers(), Operation::Revision)?;
         let bytes = collect_bounded(response, MAX_SHA_RESPONSE_BYTES).await?;
         parse_resolved_commit_sha(bytes)
@@ -168,24 +148,8 @@ impl GitHubRepositoryReader {
         }
         validate_repository_path(canonical_repo_path)?;
 
-        let url = content_url(
-            &self.api_base,
-            &self.repository,
-            commit_sha,
-            canonical_repo_path,
-        )?;
-        let response = self
-            .client
-            .get(url)
-            .bearer_auth(&self.bearer_token)
-            .header(USER_AGENT, "fabro")
-            .header(ACCEPT, RAW_CONTENT_MEDIA_TYPE)
-            .send()
-            .await
-            .map_err(|source| RepositoryReadError::RequestTransport {
-                source: anyhow::Error::new(source.without_url()),
-            })?;
-
+        let url = self.content_url(commit_sha, canonical_repo_path);
+        let response = self.send(&url, RAW_CONTENT_MEDIA_TYPE).await?;
         classify_status(response.status(), response.headers(), Operation::Content)?;
         if !has_raw_content_media_type(response.headers()) {
             return Err(RepositoryReadError::ContentNotFile);
@@ -195,14 +159,61 @@ impl GitHubRepositoryReader {
             source: source.utf8_error(),
         })
     }
+
+    /// `{repository_base}/commits/{selector}`, with the selector's slashes
+    /// escaped so a `heads/a/b` ref stays one path segment.
+    fn commit_url(&self, selector: &str) -> DisplaySafeUrl {
+        let mut url = self.repository_base.clone();
+        url.path_segments_mut()
+            .expect("repository base is a hierarchical URL")
+            .push("commits")
+            .push(selector);
+        url
+    }
+
+    /// `{repository_base}/contents/{path}?ref={commit_sha}`, with each path
+    /// component escaped individually so separators survive as separators.
+    fn content_url(&self, commit_sha: &str, path: &str) -> DisplaySafeUrl {
+        let mut url = self.repository_base.clone();
+        {
+            let mut segments = url
+                .path_segments_mut()
+                .expect("repository base is a hierarchical URL");
+            segments.push("contents");
+            for component in path.split('/') {
+                segments.push(component);
+            }
+        }
+        url.query_pairs_mut().append_pair("ref", commit_sha);
+        url
+    }
+
+    /// Issues one authenticated GET asking for exactly `media_type`.
+    async fn send(
+        &self,
+        url: &DisplaySafeUrl,
+        media_type: &str,
+    ) -> Result<Response, RepositoryReadError> {
+        self.client
+            .get(url.raw_string())
+            .bearer_auth(&self.bearer_token)
+            .header(USER_AGENT, "fabro")
+            .header(ACCEPT, media_type)
+            .send()
+            .await
+            .map_err(|source| RepositoryReadError::RequestTransport {
+                source: anyhow::Error::new(source.without_url()),
+            })
+    }
 }
 
-fn parse_api_base(base_url: &str) -> Result<(Url, String), RepositoryReadError> {
-    let mut url =
-        Url::parse(base_url).map_err(|source| RepositoryReadError::InvalidApiBaseUrl {
+fn parse_api_base(base_url: &str) -> Result<DisplaySafeUrl, RepositoryReadError> {
+    let mut url = DisplaySafeUrl::parse(base_url).map_err(|source| {
+        RepositoryReadError::InvalidApiBaseUrl {
             reason: "parse",
             source: Some(source),
-        })?;
+        }
+    })?;
     if url.cannot_be_a_base() {
         return Err(invalid_base("cannot be a base"));
     }
@@ -222,14 +233,10 @@ fn parse_api_base(base_url: &str) -> Result<(Url, String), RepositoryReadError> 
         return Err(invalid_base("fragment"));
     }
 
-    let mut segments = url
-        .path_segments_mut()
-        .map_err(|()| invalid_base("cannot be a base"))?;
-    segments.pop_if_empty();
-    drop(segments);
-
-    let normalized = url.as_str().trim_end_matches('/').to_string();
-    Ok((url, normalized))
+    url.path_segments_mut()
+        .map_err(|()| invalid_base("cannot be a base"))?
+        .pop_if_empty();
+    Ok(url)
 }
 
 const fn invalid_base(reason: &'static str) -> RepositoryReadError {
@@ -239,62 +246,30 @@ const fn invalid_base(reason: &'static str) -> RepositoryReadError {
     }
 }
 
-fn commit_url(
-    base: &Url,
-    repository: &GitHubRepositorySlug,
-    selector: &str,
-) -> Result<Url, RepositoryReadError> {
-    let mut url = base.clone();
-    let mut segments = url
-        .path_segments_mut()
-        .map_err(|()| invalid_base("cannot be a base"))?;
-    segments
+/// `{api_base}/repos/{owner}/{repo}`, the prefix every read extends.
+///
+/// Infallible: `parse_api_base` has already rejected cannot-be-a-base URLs.
+fn repository_base(api_base: &DisplaySafeUrl, repository: &GitHubRepositorySlug) -> DisplaySafeUrl {
+    let mut url = api_base.clone();
+    url.path_segments_mut()
+        .expect("api base is a hierarchical URL")
         .pop_if_empty()
         .push("repos")
         .push(repository.owner())
-        .push(repository.repo())
-        .push("commits")
-        .push(selector);
-    drop(segments);
-    Ok(url)
-}
-
-fn content_url(
-    base: &Url,
-    repository: &GitHubRepositorySlug,
-    commit_sha: &str,
-    path: &str,
-) -> Result<Url, RepositoryReadError> {
-    let mut url = base.clone();
-    let mut segments = url
-        .path_segments_mut()
-        .map_err(|()| invalid_base("cannot be a base"))?;
-    segments
-        .pop_if_empty()
-        .push("repos")
-        .push(repository.owner())
-        .push(repository.repo())
-        .push("contents");
-    for component in path.split('/') {
-        segments.push(component);
-    }
-    drop(segments);
-    url.query_pairs_mut().append_pair("ref", commit_sha);
-    Ok(url)
+        .push(repository.repo());
+    url
 }
 
 fn is_exact_commit_sha(bytes: &[u8]) -> bool {
     bytes.len() == 40 && bytes.iter().all(u8::is_ascii_hexdigit)
 }
 
-fn parse_resolved_commit_sha(bytes: Vec<u8>) -> Result<String, RepositoryReadError> {
+fn parse_resolved_commit_sha(mut bytes: Vec<u8>) -> Result<String, RepositoryReadError> {
     if !is_exact_commit_sha(&bytes) {
         return Err(RepositoryReadError::MalformedCommitSha);
     }
-    Ok(bytes
-        .into_iter()
-        .map(|byte| char::from(byte.to_ascii_lowercase()))
-        .collect())
+    bytes.make_ascii_lowercase();
+    String::from_utf8(bytes).map_err(|_| RepositoryReadError::MalformedCommitSha)
 }
 
 fn validate_repository_path(path: &str) -> Result<(), RepositoryReadError> {
@@ -343,31 +318,32 @@ fn classify_status(
         return Ok(());
     }
 
-    let code = status.as_u16();
-    match status {
-        StatusCode::UNAUTHORIZED => Err(RepositoryReadError::AuthenticationRejected),
-        StatusCode::FORBIDDEN if is_rate_limited(headers) => {
-            Err(RepositoryReadError::RateLimited { status: code })
+    let status_code = status.as_u16();
+    Err(match status {
+        StatusCode::UNAUTHORIZED => RepositoryReadError::AuthenticationRejected,
+        StatusCode::FORBIDDEN if is_rate_limited(headers) => RepositoryReadError::RateLimited {
+            status: status_code,
+        },
+        StatusCode::FORBIDDEN => RepositoryReadError::PermissionDenied,
+        StatusCode::TOO_MANY_REQUESTS => RepositoryReadError::RateLimited {
+            status: status_code,
+        },
+        StatusCode::NOT_FOUND => RepositoryReadError::NotFound { operation },
+        StatusCode::CONFLICT | StatusCode::UNPROCESSABLE_ENTITY => {
+            RepositoryReadError::Unavailable {
+                operation,
+                status: status_code,
+            }
         }
-        StatusCode::FORBIDDEN => Err(RepositoryReadError::PermissionDenied),
-        StatusCode::TOO_MANY_REQUESTS => Err(RepositoryReadError::RateLimited { status: code }),
-        StatusCode::NOT_FOUND => match operation {
-            Operation::Revision => Err(RepositoryReadError::RevisionNotFound),
-            Operation::Content => Err(RepositoryReadError::ContentNotFound),
+        status if status.is_server_error() => RepositoryReadError::UpstreamUnavailable {
+            operation,
+            status: status_code,
         },
-        StatusCode::CONFLICT | StatusCode::UNPROCESSABLE_ENTITY => match operation {
-            Operation::Revision => Err(RepositoryReadError::RevisionUnavailable { status: code }),
-            Operation::Content => Err(RepositoryReadError::ContentUnavailable { status: code }),
+        _ => RepositoryReadError::UnexpectedStatus {
+            operation,
+            status: status_code,
         },
-        status if status.is_server_error() => Err(RepositoryReadError::UpstreamUnavailable {
-            operation: operation.name(),
-            status:    code,
-        }),
-        _ => Err(RepositoryReadError::UnexpectedStatus {
-            operation: operation.name(),
-            status:    code,
-        }),
-    }
+    })
 }
 
 fn is_rate_limited(headers: &HeaderMap) -> bool {
@@ -400,14 +376,18 @@ async fn collect_bounded(
     mut response: Response,
     max_bytes: usize,
 ) -> Result<Vec<u8>, RepositoryReadError> {
-    if response
-        .content_length()
-        .is_some_and(|length| length > max_bytes as u64)
-    {
-        return Err(RepositoryReadError::BodyTooLarge { max_bytes });
-    }
+    // A declared length over the cap fails before any body is read; otherwise it
+    // sizes the buffer exactly. Chunked responses start empty and grow under the
+    // same bound, enforced per chunk below.
+    let capacity = match response.content_length() {
+        Some(length) => usize::try_from(length)
+            .ok()
+            .filter(|length| *length <= max_bytes)
+            .ok_or(RepositoryReadError::BodyTooLarge { max_bytes })?,
+        None => 0,
+    };
 
-    let mut bytes = Vec::new();
+    let mut bytes = Vec::with_capacity(capacity);
     while let Some(chunk) =
         response
             .chunk()
@@ -436,13 +416,19 @@ mod tests {
 
     #[test]
     fn api_base_preserves_prefix_and_normalizes_trailing_slash() {
-        let (base, normalized) = parse_api_base("https://ghe.example/api/v3/").unwrap();
+        let base = parse_api_base("https://ghe.example/api/v3/").unwrap();
         assert_eq!(base.as_str(), "https://ghe.example/api/v3");
-        assert_eq!(normalized, "https://ghe.example/api/v3");
+        assert_eq!(
+            base.as_str().trim_end_matches('/'),
+            "https://ghe.example/api/v3"
+        );
 
-        let (root, normalized) = parse_api_base("https://api.github.com/").unwrap();
+        let root = parse_api_base("https://api.github.com/").unwrap();
         assert_eq!(root.as_str(), "https://api.github.com/");
-        assert_eq!(normalized, "https://api.github.com");
+        assert_eq!(
+            root.as_str().trim_end_matches('/'),
+            "https://api.github.com"
+        );
     }
 
     #[test]
@@ -480,16 +466,26 @@ mod tests {
         assert!(error.source().is_some());
     }
 
+    /// Builds the URL a read would request without issuing it.
+    fn reader_at(base_url: &str) -> GitHubRepositoryReader {
+        let api_base = parse_api_base(base_url).unwrap();
+        GitHubRepositoryReader {
+            client:          fabro_http::test_http_client().unwrap(),
+            repository_base: repository_base(&api_base, &repository()),
+            bearer_token:    "sentinel-token".to_string(),
+        }
+    }
+
     #[test]
     fn url_builders_encode_selectors_and_paths_once() {
-        let (base, _) = parse_api_base("https://ghe.example/api/v3").unwrap();
-        let commit = commit_url(&base, &repository(), "heads/fabro/run/123").unwrap();
+        let reader = reader_at("https://ghe.example/api/v3");
+        let commit = reader.commit_url("heads/fabro/run/123");
         assert_eq!(
             commit.as_str(),
             "https://ghe.example/api/v3/repos/owner/repo/commits/heads%2Ffabro%2Frun%2F123"
         );
 
-        let content = content_url(&base, &repository(), SHA, "dir/a b/%2F/#?é.toml").unwrap();
+        let content = reader.content_url(SHA, "dir/a b/%2F/#?é.toml");
         assert_eq!(
             content.as_str(),
             "https://ghe.example/api/v3/repos/owner/repo/contents/dir/a%20b/%252F/%23%3F%C3%A9.toml?ref=0123456789abcdef0123456789abcdef01234567"
@@ -498,12 +494,7 @@ mod tests {
 
     #[tokio::test]
     async fn method_inputs_are_rejected_before_network_access() {
-        let reader = GitHubRepositoryReader {
-            client:       fabro_http::test_http_client().unwrap(),
-            api_base:     Url::parse("http://127.0.0.1:1").unwrap(),
-            repository:   repository(),
-            bearer_token: "sentinel-token".to_string(),
-        };
+        let reader = reader_at("http://127.0.0.1:1");
 
         for invalid in ["", " main", "heads//main", "tags/v1.lock"] {
             assert!(matches!(
@@ -519,10 +510,15 @@ mod tests {
 
     #[test]
     fn canonical_ref_selectors_reach_url_construction() {
-        let (base, _) = parse_api_base("https://api.github.com").unwrap();
+        let reader = reader_at("https://api.github.com");
         for selector in ["main", "heads/fabro/run/123", "tags/v1.0.0", SHA] {
             assert!(repository::is_valid_github_ref_selector(selector));
-            assert!(commit_url(&base, &repository(), selector).is_ok());
+            assert!(
+                reader
+                    .commit_url(selector)
+                    .as_str()
+                    .starts_with("https://api.github.com/repos/owner/repo/commits/")
+            );
         }
     }
 
@@ -610,11 +606,15 @@ mod tests {
         ));
         assert!(matches!(
             classify_status(StatusCode::NOT_FOUND, &empty, Operation::Revision),
-            Err(RepositoryReadError::RevisionNotFound)
+            Err(RepositoryReadError::NotFound {
+                operation: Operation::Revision,
+            })
         ));
         assert!(matches!(
             classify_status(StatusCode::NOT_FOUND, &empty, Operation::Content),
-            Err(RepositoryReadError::ContentNotFound)
+            Err(RepositoryReadError::NotFound {
+                operation: Operation::Content,
+            })
         ));
         assert!(matches!(
             classify_status(StatusCode::FORBIDDEN, &empty, Operation::Content),
@@ -638,44 +638,31 @@ mod tests {
             classify_status(StatusCode::TOO_MANY_REQUESTS, &empty, Operation::Content),
             Err(RepositoryReadError::RateLimited { status: 429 })
         ));
-        for operation in [Operation::Revision, Operation::Content] {
-            let conflict = classify_status(StatusCode::CONFLICT, &empty, operation);
-            let unprocessable =
-                classify_status(StatusCode::UNPROCESSABLE_ENTITY, &empty, operation);
-            match operation {
-                Operation::Revision => {
-                    assert!(matches!(
-                        conflict,
-                        Err(RepositoryReadError::RevisionUnavailable { status: 409 })
-                    ));
-                    assert!(matches!(
-                        unprocessable,
-                        Err(RepositoryReadError::RevisionUnavailable { status: 422 })
-                    ));
-                }
-                Operation::Content => {
-                    assert!(matches!(
-                        conflict,
-                        Err(RepositoryReadError::ContentUnavailable { status: 409 })
-                    ));
-                    assert!(matches!(
-                        unprocessable,
-                        Err(RepositoryReadError::ContentUnavailable { status: 422 })
-                    ));
-                }
-            }
-        }
+        assert!(matches!(
+            classify_status(StatusCode::CONFLICT, &empty, Operation::Revision),
+            Err(RepositoryReadError::Unavailable {
+                operation: Operation::Revision,
+                status:    409,
+            })
+        ));
+        assert!(matches!(
+            classify_status(StatusCode::UNPROCESSABLE_ENTITY, &empty, Operation::Content),
+            Err(RepositoryReadError::Unavailable {
+                operation: Operation::Content,
+                status:    422,
+            })
+        ));
         assert!(matches!(
             classify_status(StatusCode::BAD_GATEWAY, &empty, Operation::Content),
             Err(RepositoryReadError::UpstreamUnavailable {
-                operation: "content read",
+                operation: Operation::Content,
                 status:    502,
             })
         ));
         assert!(matches!(
             classify_status(StatusCode::IM_A_TEAPOT, &empty, Operation::Revision),
             Err(RepositoryReadError::UnexpectedStatus {
-                operation: "revision lookup",
+                operation: Operation::Revision,
                 status:    418,
             })
         ));

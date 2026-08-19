@@ -9,6 +9,7 @@ pub mod manifests;
 pub mod oauth;
 pub mod pulls;
 pub mod releases;
+pub mod support;
 pub mod users;
 
 use axum::Router;

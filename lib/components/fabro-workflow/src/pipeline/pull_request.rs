@@ -3,14 +3,16 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use fabro_auth::CredentialSource;
-use fabro_github::{self as github_app, ssh_url_to_https};
+use fabro_github::{
+    self as github_app, GitHubRepositoryReader, RepositoryReadError, ssh_url_to_https,
+};
 use fabro_graphviz::parser;
 use fabro_llm::client::Client;
 use fabro_llm::generate::{GenerateParams, generate_object};
 use fabro_model::{Catalog, ProviderId};
 use fabro_store::RunProjection;
-use fabro_types::PullRequestLink;
 use fabro_types::settings::run::MergeStrategy;
+use fabro_types::{GitHubRepositorySlug, PullRequestLink};
 use fabro_util::text::strip_goal_decoration;
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
@@ -548,15 +550,29 @@ const BRANCH_HEAD_RETRY_DELAY: Duration = Duration::from_millis(500);
 /// Confirm the remote branch points at the run's final commit.
 ///
 /// Publish failures are terminal, so a replica that has not caught up yet must
-/// not be mistaken for a genuinely stale branch.
+/// not be mistaken for a genuinely stale branch. Credentials are resolved once
+/// and reused across attempts; only the ref lookup is retried.
 async fn verify_remote_head(
     req: &OpenPullRequestRequest<'_>,
     owner: &str,
     repo: &str,
 ) -> Result<(), String> {
+    let repository =
+        GitHubRepositorySlug::try_new(&format!("{owner}/{repo}")).ok_or_else(|| {
+            format!("failed to verify remote branch head: invalid repository {owner}/{repo}")
+        })?;
+    let reader = GitHubRepositoryReader::open(&req.github, &repository)
+        .await
+        .map_err(|err| format!("failed to verify remote branch head: {err:#}"))?;
+    let selector = format!("heads/{}", req.head_branch);
+
     let mut last_seen = Ok(None);
     for attempt in 1..=BRANCH_HEAD_ATTEMPTS {
-        last_seen = github_app::branch_head_sha(&req.github, owner, repo, req.head_branch).await;
+        last_seen = match reader.resolve_commit(&selector).await {
+            Ok(sha) => Ok(Some(sha)),
+            Err(RepositoryReadError::NotFound { .. }) => Ok(None),
+            Err(err) => Err(err),
+        };
         match &last_seen {
             Ok(Some(head)) if head == req.expected_head_sha => return Ok(()),
             Ok(head) => debug!(
@@ -702,11 +718,11 @@ mod tests {
     use tokio::sync::RwLock as AsyncRwLock;
 
     use super::*;
+    use crate::event::{Event, append_event};
+    use crate::records::StageSummary;
 
     const FINAL_SHA: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const STALE_SHA: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    use crate::event::{Event, append_event};
-    use crate::records::StageSummary;
 
     struct MockProvider {
         name:          String,

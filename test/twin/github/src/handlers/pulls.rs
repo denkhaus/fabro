@@ -3,42 +3,10 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 
-use crate::auth::{
-    BearerTokenError, InstallationTokenAccessError, authorize_installation_token,
-    ensure_repo_permission,
-};
+use crate::auth::{authorize_installation_token, ensure_repo_permission};
+use crate::handlers::support::{bearer_token_error_response, repo_permission_error_response};
 use crate::server::SharedState;
 use crate::state::{PermissionLevel, PullRequest, TokenPermission};
-
-fn bearer_token_error_response(error: BearerTokenError) -> axum::response::Response {
-    match error {
-        BearerTokenError::Missing => (
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({"message": "Unauthorized"})),
-        )
-            .into_response(),
-        BearerTokenError::Invalid => (
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({"message": "Bad credentials"})),
-        )
-            .into_response(),
-    }
-}
-
-fn repo_permission_error_response(error: InstallationTokenAccessError) -> axum::response::Response {
-    match error {
-        InstallationTokenAccessError::RepoNotAccessible => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"message": "Not Found"})),
-        )
-            .into_response(),
-        InstallationTokenAccessError::PermissionDenied => (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({"message": "Resource not accessible by integration"})),
-        )
-            .into_response(),
-    }
-}
 
 /// POST /repos/{owner}/{repo}/pulls
 pub async fn create_pull_request(

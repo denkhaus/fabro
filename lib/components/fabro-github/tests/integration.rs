@@ -45,41 +45,36 @@ fn standard_app_state() -> GitHubAppState {
     state.set_repository_ref("acme", "widgets", "tags/release", TAG_SHA);
     state.set_repository_ref("acme", "widgets", "heads/fabro/run/123", HEAD_SHA);
     state.set_repository_ref("acme", "widgets", "heads/uppercase", UPPER_SHA);
-    state.add_repository_file(
-        "acme",
-        "widgets",
-        HEAD_SHA,
-        ".fabro/workflows/build/workflow.toml",
-        b"name = \"build\"\n".to_vec(),
-    );
-    state.add_repository_file(
-        "acme",
-        "widgets",
-        HEAD_SHA,
-        "dir/hello world#.txt",
-        b"hello\n".to_vec(),
-    );
-    state.add_repository_file("acme", "widgets", HEAD_SHA, "invalid.txt", vec![0xff, 0xfe]);
-    state.add_repository_file("acme", "widgets", HEAD_SHA, "empty.txt", Vec::new());
-    state.add_repository_file(
-        "acme",
-        "widgets",
-        HEAD_SHA,
-        "five-bytes.txt",
-        b"12345".to_vec(),
-    );
-    state.add_repository_file(
-        "acme",
-        "widgets",
-        HEAD_SHA,
-        "nested/a b/%/é.toml",
-        "unicode: 🦀\n".as_bytes().to_vec(),
-    );
+    for (path, contents) in [
+        (
+            ".fabro/workflows/build/workflow.toml",
+            b"name = \"build\"\n".to_vec(),
+        ),
+        ("dir/hello world#.txt", b"hello\n".to_vec()),
+        ("invalid.txt", vec![0xff, 0xfe]),
+        ("empty.txt", Vec::new()),
+        ("five-bytes.txt", b"12345".to_vec()),
+        ("nested/a b/%/é.toml", "unicode: 🦀\n".as_bytes().to_vec()),
+    ] {
+        state.add_repository_file("acme", "widgets", HEAD_SHA, path, contents);
+    }
     state
 }
 
 fn repository() -> GitHubRepositorySlug {
     GitHubRepositorySlug::try_new("acme/widgets").expect("test repository slug should be valid")
+}
+
+/// Open a reader for the standard repository against `base_url`.
+async fn open_reader(
+    base_url: &str,
+    credentials: &GitHubCredentials,
+) -> Result<GitHubRepositoryReader, RepositoryReadError> {
+    GitHubRepositoryReader::open(
+        &GitHubContext::with_http_client(credentials, base_url, fabro_test::test_http_client()),
+        &repository(),
+    )
+    .await
 }
 
 #[fabro_macros::e2e_test(twin)]
@@ -279,12 +274,7 @@ async fn repository_reader_reuses_one_app_token_for_ref_and_file_reads() {
     assert_eq!(twin.active_token_count().await, 0);
     let creds = github_credentials();
     let base_url = format!("{}/", twin.base_url);
-    let reader = GitHubRepositoryReader::open(
-        &GitHubContext::with_http_client(&creds, &base_url, fabro_test::test_http_client()),
-        &repository(),
-    )
-    .await
-    .unwrap();
+    let reader = open_reader(&base_url, &creds).await.unwrap();
     assert_eq!(twin.active_token_count().await, 1);
 
     assert_eq!(reader.resolve_commit("heads/main").await.unwrap(), HEAD_SHA);
@@ -325,12 +315,7 @@ async fn repository_reader_reuses_one_app_token_for_ref_and_file_reads() {
 async fn repository_reader_preserves_exact_ref_namespaces() {
     let twin = TwinGitHub::start(standard_app_state()).await;
     let creds = github_credentials();
-    let reader = GitHubRepositoryReader::open(
-        &GitHubContext::with_http_client(&creds, &twin.base_url, fabro_test::test_http_client()),
-        &repository(),
-    )
-    .await
-    .unwrap();
+    let reader = open_reader(&twin.base_url, &creds).await.unwrap();
 
     assert_eq!(
         reader.resolve_commit("heads/release").await.unwrap(),
@@ -351,7 +336,9 @@ async fn repository_reader_preserves_exact_ref_namespaces() {
     );
     assert!(matches!(
         reader.resolve_commit("heads/missing").await,
-        Err(RepositoryReadError::RevisionNotFound)
+        Err(RepositoryReadError::NotFound {
+            operation: fabro_github::Operation::Revision,
+        })
     ));
 
     twin.shutdown().await;
@@ -361,12 +348,7 @@ async fn repository_reader_preserves_exact_ref_namespaces() {
 async fn repository_reader_classifies_file_failures_without_retaining_bytes() {
     let twin = TwinGitHub::start(standard_app_state()).await;
     let creds = github_credentials();
-    let reader = GitHubRepositoryReader::open(
-        &GitHubContext::with_http_client(&creds, &twin.base_url, fabro_test::test_http_client()),
-        &repository(),
-    )
-    .await
-    .unwrap();
+    let reader = open_reader(&twin.base_url, &creds).await.unwrap();
 
     assert!(matches!(
         reader
@@ -399,7 +381,9 @@ async fn repository_reader_classifies_file_failures_without_retaining_bytes() {
         reader
             .read_utf8_file_at(HEAD_SHA, "missing.txt", 1024)
             .await,
-        Err(RepositoryReadError::ContentNotFound)
+        Err(RepositoryReadError::NotFound {
+            operation: fabro_github::Operation::Content,
+        })
     ));
     assert_eq!(
         reader
@@ -444,16 +428,7 @@ async fn static_repository_credentials_do_not_mint_tokens() {
             expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
         }),
     ] {
-        let reader = GitHubRepositoryReader::open(
-            &GitHubContext::with_http_client(
-                &credentials,
-                &twin.base_url,
-                fabro_test::test_http_client(),
-            ),
-            &repository(),
-        )
-        .await
-        .unwrap();
+        let reader = open_reader(&twin.base_url, &credentials).await.unwrap();
         assert_eq!(reader.resolve_commit("heads/main").await.unwrap(), HEAD_SHA);
         assert_eq!(
             reader
@@ -476,17 +451,10 @@ async fn expired_installation_token_keeps_credential_error_source() {
         expires_at: chrono::Utc::now() - chrono::Duration::minutes(1),
     });
 
-    let error = GitHubRepositoryReader::open(
-        &GitHubContext::with_http_client(
-            &credentials,
-            &twin.base_url,
-            fabro_test::test_http_client(),
-        ),
-        &repository(),
-    )
-    .await
-    .err()
-    .expect("expired installation token should fail");
+    let error = open_reader(&twin.base_url, &credentials)
+        .await
+        .err()
+        .expect("expired installation token should fail");
     let RepositoryReadError::CredentialResolution { source } = error else {
         panic!("expected credential resolution error");
     };
@@ -530,48 +498,25 @@ async fn repository_reader_keeps_auth_and_malformed_sha_failures_distinct() {
     let twin = TwinGitHub::start(state).await;
 
     let invalid_credentials = GitHubCredentials::Pat("invalid-token".to_string());
-    let invalid_reader = GitHubRepositoryReader::open(
-        &GitHubContext::with_http_client(
-            &invalid_credentials,
-            &twin.base_url,
-            fabro_test::test_http_client(),
-        ),
-        &repository(),
-    )
-    .await
-    .unwrap();
+    let invalid_reader = open_reader(&twin.base_url, &invalid_credentials)
+        .await
+        .unwrap();
     assert!(matches!(
         invalid_reader.resolve_commit("heads/main").await,
         Err(RepositoryReadError::AuthenticationRejected)
     ));
 
     let denied_credentials = GitHubCredentials::Pat(denied_token);
-    let denied_reader = GitHubRepositoryReader::open(
-        &GitHubContext::with_http_client(
-            &denied_credentials,
-            &twin.base_url,
-            fabro_test::test_http_client(),
-        ),
-        &repository(),
-    )
-    .await
-    .unwrap();
+    let denied_reader = open_reader(&twin.base_url, &denied_credentials)
+        .await
+        .unwrap();
     assert!(matches!(
         denied_reader.resolve_commit("heads/main").await,
         Err(RepositoryReadError::PermissionDenied)
     ));
 
     let app_credentials = github_credentials();
-    let app_reader = GitHubRepositoryReader::open(
-        &GitHubContext::with_http_client(
-            &app_credentials,
-            &twin.base_url,
-            fabro_test::test_http_client(),
-        ),
-        &repository(),
-    )
-    .await
-    .unwrap();
+    let app_reader = open_reader(&twin.base_url, &app_credentials).await.unwrap();
     assert!(matches!(
         app_reader.resolve_commit("heads/malformed").await,
         Err(RepositoryReadError::MalformedCommitSha)

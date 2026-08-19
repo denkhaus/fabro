@@ -1,17 +1,14 @@
 use axum::Json;
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::header::{ACCEPT, CONTENT_TYPE};
+use axum::http::header::CONTENT_TYPE;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
-use crate::auth::{
-    BearerTokenError, InstallationTokenAccessError, authorize_installation_token,
-    ensure_repo_permission,
-};
+use crate::handlers::support::{accepts, authorize_repo_access, is_exact_commit_sha, message};
 use crate::server::SharedState;
-use crate::state::{AppState, PermissionLevel, TokenPermission};
+use crate::state::{PermissionLevel, TokenPermission};
 
 const RAW_CONTENT_MEDIA_TYPE: &str = "application/vnd.github.raw+json";
 
@@ -32,25 +29,24 @@ pub async fn get_content(
     if !accepts(&headers, RAW_CONTENT_MEDIA_TYPE) {
         return message(StatusCode::NOT_ACCEPTABLE, "Not Acceptable");
     }
-    if let Err(error) = authorize(&headers, &state, &repo) {
-        return authorization_error(error);
+    if let Err(response) = authorize_repo_access(
+        &headers,
+        &state,
+        &repo,
+        TokenPermission::Contents,
+        PermissionLevel::Read,
+    ) {
+        return *response;
     }
     if !is_exact_commit_sha(&query.revision) {
         return message(StatusCode::NOT_FOUND, "Not Found");
     }
 
-    let Some(repository) = state
-        .repositories
-        .iter()
-        .find(|repository| repository.owner == owner && repository.name == repo)
-    else {
+    let Some(repository) = state.find_repository(&owner, &repo) else {
         return message(StatusCode::NOT_FOUND, "Not Found");
     };
 
-    if let Some(contents) = repository
-        .files
-        .get(&(query.revision.clone(), path.clone()))
-    {
+    if let Some(contents) = repository.file_at(&query.revision, &path) {
         return (
             StatusCode::OK,
             [(CONTENT_TYPE, RAW_CONTENT_MEDIA_TYPE)],
@@ -59,75 +55,19 @@ pub async fn get_content(
             .into_response();
     }
 
-    let directory_prefix = format!("{path}/");
-    if repository.files.keys().any(|(sha, stored_path)| {
-        sha == &query.revision && stored_path.starts_with(&directory_prefix)
-    }) {
+    // GitHub answers a directory path with a JSON listing rather than raw
+    // bytes, which is what lets the reader reject non-file targets.
+    if repository.has_directory_at(&query.revision, &format!("{path}/")) {
         return (StatusCode::OK, Json(serde_json::json!([]))).into_response();
     }
 
     message(StatusCode::NOT_FOUND, "Not Found")
 }
 
-#[derive(Clone, Copy)]
-enum AuthorizationError {
-    MissingCredentials,
-    InvalidCredentials,
-    RepoNotAccessible,
-    PermissionDenied,
-}
-
-fn authorize(headers: &HeaderMap, state: &AppState, repo: &str) -> Result<(), AuthorizationError> {
-    let token = authorize_installation_token(headers, state).map_err(|error| match error {
-        BearerTokenError::Missing => AuthorizationError::MissingCredentials,
-        BearerTokenError::Invalid => AuthorizationError::InvalidCredentials,
-    })?;
-    ensure_repo_permission(
-        &token,
-        repo,
-        TokenPermission::Contents,
-        PermissionLevel::Read,
-    )
-    .map_err(|error| match error {
-        InstallationTokenAccessError::RepoNotAccessible => AuthorizationError::RepoNotAccessible,
-        InstallationTokenAccessError::PermissionDenied => AuthorizationError::PermissionDenied,
-    })
-}
-
-fn authorization_error(error: AuthorizationError) -> Response {
-    match error {
-        AuthorizationError::MissingCredentials => message(StatusCode::UNAUTHORIZED, "Unauthorized"),
-        AuthorizationError::InvalidCredentials => {
-            message(StatusCode::UNAUTHORIZED, "Bad credentials")
-        }
-        AuthorizationError::RepoNotAccessible => message(StatusCode::NOT_FOUND, "Not Found"),
-        AuthorizationError::PermissionDenied => message(
-            StatusCode::FORBIDDEN,
-            "Resource not accessible by integration",
-        ),
-    }
-}
-
-fn accepts(headers: &HeaderMap, media_type: &str) -> bool {
-    headers.get_all(ACCEPT).iter().any(|value| {
-        value.to_str().is_ok_and(|value| {
-            value
-                .split(',')
-                .any(|candidate| candidate.trim() == media_type)
-        })
-    })
-}
-
-fn is_exact_commit_sha(value: &str) -> bool {
-    value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
-}
-
-fn message(status: StatusCode, body: &'static str) -> Response {
-    (status, Json(serde_json::json!({ "message": body }))).into_response()
-}
-
 #[cfg(test)]
 mod tests {
+    use axum::http::header::ACCEPT;
+
     use super::*;
     use crate::server::TestServer;
     use crate::state::AppState;

@@ -58,7 +58,7 @@ pub async fn get_branch(
     // Find repository and check branch.
     for repo_data in &state.repositories {
         if repo_data.owner == owner && repo_data.name == repo {
-            if let Some(sha) = repo_data.refs.get(&format!("heads/{branch}")) {
+            if let Some(sha) = repo_data.refs.get(&crate::state::heads_selector(&branch)) {
                 return (
                     StatusCode::OK,
                     Json(serde_json::json!({

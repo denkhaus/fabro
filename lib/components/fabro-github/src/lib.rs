@@ -11,7 +11,7 @@ use tokio::process::Command;
 
 mod repository_reader;
 
-pub use repository_reader::{GitHubRepositoryReader, RepositoryReadError};
+pub use repository_reader::{GitHubRepositoryReader, Operation, RepositoryReadError};
 
 pub const GITHUB_API_BASE_URL: &str = "https://api.github.com";
 
@@ -1011,7 +1011,7 @@ pub async fn branch_head_sha(
         .context("Failed to read remote branch head")?;
     match reader.resolve_commit(&format!("heads/{branch}")).await {
         Ok(sha) => Ok(Some(sha)),
-        Err(RepositoryReadError::RevisionNotFound) => Ok(None),
+        Err(RepositoryReadError::NotFound { .. }) => Ok(None),
         Err(error) => Err(anyhow::Error::new(error).context("Failed to read remote branch head")),
     }
 }

@@ -40,14 +40,50 @@ pub struct Installation {
 pub struct Repository {
     pub owner:          String,
     pub name:           String,
+    /// Ref selector (`heads/main`, `tags/v1.0.0`) to the commit SHA it names.
     pub refs:           HashMap<String, String>,
-    pub files:          HashMap<(String, String), Vec<u8>>,
+    /// Commit SHA to the repository paths readable at that commit.
+    pub files:          HashMap<String, HashMap<String, Vec<u8>>>,
     pub default_branch: String,
     pub private:        bool,
     pub git_dir:        Option<std::path::PathBuf>,
 }
 
+impl Repository {
+    /// Contents of `path` at `sha`, if the fixture seeded one.
+    pub fn file_at(&self, sha: &str, path: &str) -> Option<&Vec<u8>> {
+        self.files.get(sha).and_then(|paths| paths.get(path))
+    }
+
+    /// Whether any path at `sha` sits under `prefix`, i.e. `prefix` names a
+    /// directory rather than a file.
+    pub fn has_directory_at(&self, sha: &str, prefix: &str) -> bool {
+        self.files
+            .get(sha)
+            .is_some_and(|paths| paths.keys().any(|stored| stored.starts_with(prefix)))
+    }
+
+    /// Whether `sha` is a commit this repository can serve content for.
+    pub fn knows_commit(&self, sha: &str) -> bool {
+        self.files.contains_key(sha) || self.refs.values().any(|known| known == sha)
+    }
+}
+
 pub const DEFAULT_REPOSITORY_SHA: &str = "0123456789abcdef0123456789abcdef01234567";
+
+/// The ref selector GitHub uses for a branch.
+pub fn heads_selector(branch: &str) -> String {
+    format!("heads/{branch}")
+}
+
+/// Seed each branch at [`DEFAULT_REPOSITORY_SHA`], the shape every repository
+/// fixture starts in.
+pub fn head_refs(branches: Vec<String>) -> HashMap<String, String> {
+    branches
+        .into_iter()
+        .map(|branch| (heads_selector(&branch), DEFAULT_REPOSITORY_SHA.to_string()))
+        .collect()
+}
 
 /// A pull request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -393,19 +429,10 @@ impl AppState {
         branches: Vec<String>,
         private: bool,
     ) {
-        let refs = branches
-            .into_iter()
-            .map(|branch| {
-                (
-                    format!("heads/{branch}"),
-                    DEFAULT_REPOSITORY_SHA.to_string(),
-                )
-            })
-            .collect();
         self.repositories.push(Repository {
             owner: owner.to_string(),
             name: name.to_string(),
-            refs,
+            refs: head_refs(branches),
             files: HashMap::new(),
             default_branch: "main".to_string(),
             private,
@@ -413,13 +440,21 @@ impl AppState {
         });
     }
 
-    pub fn set_repository_ref(&mut self, owner: &str, name: &str, selector: &str, sha: &str) {
-        let repository = self
-            .repositories
+    pub fn find_repository(&self, owner: &str, name: &str) -> Option<&Repository> {
+        self.repositories
+            .iter()
+            .find(|repository| repository.owner == owner && repository.name == name)
+    }
+
+    fn repository_mut(&mut self, owner: &str, name: &str) -> &mut Repository {
+        self.repositories
             .iter_mut()
             .find(|repository| repository.owner == owner && repository.name == name)
-            .expect("repository fixture should exist before adding a ref");
-        repository
+            .expect("repository fixture should exist before seeding refs or files")
+    }
+
+    pub fn set_repository_ref(&mut self, owner: &str, name: &str, selector: &str, sha: &str) {
+        self.repository_mut(owner, name)
             .refs
             .insert(selector.to_string(), sha.to_string());
     }
@@ -432,14 +467,11 @@ impl AppState {
         path: &str,
         contents: impl Into<Vec<u8>>,
     ) {
-        let repository = self
-            .repositories
-            .iter_mut()
-            .find(|repository| repository.owner == owner && repository.name == name)
-            .expect("repository fixture should exist before adding a file");
-        repository
+        self.repository_mut(owner, name)
             .files
-            .insert((sha.to_string(), path.to_string()), contents.into());
+            .entry(sha.to_string())
+            .or_default()
+            .insert(path.to_string(), contents.into());
     }
 
     pub fn find_installation(&self, owner: &str, repo: &str) -> Option<&Installation> {
