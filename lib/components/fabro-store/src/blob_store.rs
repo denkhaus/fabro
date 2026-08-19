@@ -77,6 +77,13 @@ impl BlobStore {
         }
     }
 
+    pub(crate) fn sqlite_pool_for_legacy_import(&self) -> Option<&SqlitePool> {
+        match &self.backend {
+            BlobBackend::Slate(_) => None,
+            BlobBackend::Sqlite(pool) => Some(pool),
+        }
+    }
+
     pub async fn write(&self, bytes: &[u8]) -> Result<BlobHash> {
         match &self.backend {
             BlobBackend::Slate(repo) => {
