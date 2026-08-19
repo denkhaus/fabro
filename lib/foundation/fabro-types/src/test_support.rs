@@ -27,11 +27,13 @@ pub fn test_run_provenance() -> RunProvenance {
 ///
 /// Spread it so a test only spells out the fields it actually asserts on:
 ///
-/// ```ignore
+/// ```
+/// # use fabro_types::{RunSpec, test_support};
 /// let spec = RunSpec {
 ///     workflow_slug: Some("release-flow".to_string()),
-///     ..test_run_spec()
+///     ..test_support::test_run_spec()
 /// };
+/// # assert_eq!(spec.workflow_slug.as_deref(), Some("release-flow"));
 /// ```
 #[must_use]
 pub fn test_run_spec() -> RunSpec {
