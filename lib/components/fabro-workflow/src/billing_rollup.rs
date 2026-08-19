@@ -126,12 +126,10 @@ pub fn billing_rollup_from_projection(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use fabro_model::{Catalog, ModelRef, ProviderId};
     use fabro_types::{
         AttrValue, BilledTokenCounts, Graph, Node, RunProjection, RunSpec, StageCompletion,
-        StageOutcome, WorkflowSettings, first_event_seq, fixtures, test_support,
+        StageOutcome, first_event_seq, test_support,
     };
 
     use super::billing_rollup_from_projection;
@@ -311,19 +309,8 @@ mod tests {
         });
 
         RunSpec {
-            run_id: fixtures::RUN_1,
-            settings: WorkflowSettings::default(),
             graph,
-            graph_source: None,
-            workflow_slug: None,
-            automation: None,
-            source_directory: None,
-            labels: HashMap::new(),
-            provenance: test_support::test_run_provenance(),
-            manifest_blob: None,
-            definition_blob: None,
-            git: None,
-            fork_source_ref: None,
+            ..test_support::test_run_spec()
         }
     }
 }

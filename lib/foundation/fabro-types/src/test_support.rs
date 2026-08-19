@@ -1,4 +1,8 @@
-use crate::{AuthMethod, IdpIdentity, Principal, RunProvenance};
+use std::collections::HashMap;
+
+use crate::{
+    AuthMethod, Graph, IdpIdentity, Principal, RunProvenance, RunSpec, WorkflowSettings, fixtures,
+};
 
 #[must_use]
 pub fn test_principal() -> Principal {
@@ -15,5 +19,35 @@ pub fn test_run_provenance() -> RunProvenance {
         server:  None,
         client:  None,
         subject: test_principal(),
+    }
+}
+
+/// Neutral [`RunSpec`] for tests: a fixed run id, default settings, a minimal
+/// `test` graph, and every optional field unset.
+///
+/// Spread it so a test only spells out the fields it actually asserts on:
+///
+/// ```ignore
+/// let spec = RunSpec {
+///     workflow_slug: Some("release-flow".to_string()),
+///     ..test_run_spec()
+/// };
+/// ```
+#[must_use]
+pub fn test_run_spec() -> RunSpec {
+    RunSpec {
+        run_id:           fixtures::RUN_1,
+        settings:         WorkflowSettings::default(),
+        graph:            Graph::new("test"),
+        graph_source:     None,
+        workflow_slug:    None,
+        automation:       None,
+        source_directory: None,
+        labels:           HashMap::new(),
+        provenance:       test_run_provenance(),
+        manifest_blob:    None,
+        definition_blob:  None,
+        git:              None,
+        fork_source_ref:  None,
     }
 }

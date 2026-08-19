@@ -112,15 +112,13 @@ impl RunStoreBackend for LocalRunStoreBackend {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use std::sync::Arc;
     use std::time::Duration;
 
     use chrono::Utc;
-    use fabro_graphviz::graph::Graph;
     use fabro_store::Database;
     use fabro_types::run_event::RunSubmittedProps;
-    use fabro_types::{EventBody, RunEvent, WorkflowSettings, fixtures, test_support};
+    use fabro_types::{EventBody, RunEvent, fixtures, test_support};
     use object_store::memory::InMemory;
 
     use super::RunStoreHandle;
@@ -139,19 +137,9 @@ mod tests {
 
     fn test_run_spec() -> RunSpec {
         RunSpec {
-            run_id:           fixtures::RUN_1,
-            settings:         WorkflowSettings::default(),
-            graph:            Graph::new("test"),
-            graph_source:     None,
-            workflow_slug:    Some("test".to_string()),
-            automation:       None,
+            workflow_slug: Some("test".to_string()),
             source_directory: Some("/tmp/test".to_string()),
-            git:              None,
-            labels:           HashMap::new(),
-            provenance:       test_support::test_run_provenance(),
-            manifest_blob:    None,
-            definition_blob:  None,
-            fork_source_ref:  None,
+            ..test_support::test_run_spec()
         }
     }
 
