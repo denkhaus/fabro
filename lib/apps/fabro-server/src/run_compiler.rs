@@ -650,9 +650,7 @@ mod tests {
     use fabro_model::Catalog;
     use fabro_types::settings::interp::ResolveCtx;
     use fabro_types::settings::run::RunGoal;
-    use fabro_types::{
-        AutomationRef, BlobHash, Principal, RunProvenance, SystemActorKind, WorkflowVersionId,
-    };
+    use fabro_types::{AutomationRef, Principal, RunProvenance, SystemActorKind};
     use fabro_workflow::workflow_bundle::ParsedWorkflowConfig;
 
     use super::*;
@@ -988,7 +986,7 @@ include = ["reports/{{ vars.path }}/*.json"]
             trigger_id: Some("schedule".to_string()),
         };
         let submitted = b"submitted manifest".to_vec();
-        let workflow_version_id = WorkflowVersionId::from(BlobHash::new(b"workflow"));
+        let workflow_version_id = fabro_types::test_support::test_workflow_version_id();
         let mut input = raw_input(None, HashMap::new());
         input.run_id = Some(run_id);
         input.parent_id = Some(parent_id);

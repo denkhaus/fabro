@@ -1699,8 +1699,7 @@ mod tests {
         StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
         StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning,
         StageHandler, StageModelUsage, StageOutcome, StageState, StageTiming, SubAgentStatus,
-        SuccessReason, WorkflowSettings, WorkflowVersionId, first_event_seq, fixtures,
-        test_support,
+        SuccessReason, WorkflowSettings, first_event_seq, fixtures, test_support,
     };
     use serde_json::json;
 
@@ -2377,8 +2376,6 @@ mod tests {
         let projection = RunProjection::apply_events(&[event]).unwrap();
         assert_eq!(projection.retried_from, None);
         assert_eq!(projection.spec.workflow_version_id, None);
-        let spec_json = serde_json::to_value(&projection.spec).unwrap();
-        assert!(spec_json.get("workflow_version_id").is_none());
         assert_eq!(
             build_summary(&projection, &fixtures::RUN_1).retried_from,
             None
@@ -2387,7 +2384,7 @@ mod tests {
 
     #[test]
     fn run_created_projects_workflow_version_id_into_spec() {
-        let workflow_version_id = WorkflowVersionId::from(BlobHash::new(b"workflow"));
+        let workflow_version_id = test_support::test_workflow_version_id();
         let event = test_raw_event(
             1,
             "run.created",

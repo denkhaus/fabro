@@ -284,9 +284,7 @@ mod tests {
 
     use fabro_graphviz::graph::Graph;
     use fabro_store::{Database, RunProjectionReducer};
-    use fabro_types::{
-        BlobHash, StageId, WorkflowSettings, WorkflowVersionId, fixtures, test_support,
-    };
+    use fabro_types::{StageId, WorkflowSettings, fixtures, test_support};
     use object_store::memory::InMemory;
 
     use super::*;
@@ -371,7 +369,7 @@ mod tests {
         let source = store.create_run(&source_run_id).await.unwrap();
         let graph = Graph::new("fork-source");
         let settings = WorkflowSettings::default();
-        let workflow_version_id = WorkflowVersionId::from(BlobHash::new(b"workflow"));
+        let workflow_version_id = test_support::test_workflow_version_id();
 
         event::append_event(&source, &source_run_id, &Event::RunCreated {
             run_id:              source_run_id,

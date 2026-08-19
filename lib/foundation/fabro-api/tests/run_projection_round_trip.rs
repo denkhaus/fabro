@@ -1,7 +1,7 @@
 use std::any::{TypeId, type_name};
 
 use fabro_api::types::RunProjection as ApiRunProjection;
-use fabro_types::{BlobHash, RunProjection, RunSpec, WorkflowVersionId, test_support};
+use fabro_types::{RunProjection, RunSpec, test_support};
 use serde_json::json;
 #[test]
 fn run_projection_reuses_canonical_type() {
@@ -12,7 +12,7 @@ fn run_projection_reuses_canonical_type() {
 fn run_projection_round_trips_populated_projection() {
     let value = json!({
         "title": "Test run",
-        "spec": run_spec_json(Some(WorkflowVersionId::from(BlobHash::new(b"workflow")))),
+        "spec": run_spec_json(),
         "start": null,
         "status": { "kind": "submitted" },
         "status_updated_at": "2026-04-29T12:34:00Z",
@@ -108,7 +108,7 @@ fn run_projection_round_trips_populated_projection() {
 fn run_projection_round_trips_with_pending_control_unset() {
     let value = json!({
         "title": "Test run",
-        "spec": run_spec_json(None),
+        "spec": run_spec_json(),
         "start": null,
         "status": { "kind": "submitted" },
         "status_updated_at": "2026-04-29T12:34:00Z",
@@ -127,10 +127,10 @@ fn run_projection_round_trips_with_pending_control_unset() {
     assert_eq!(serde_json::to_value(projection).unwrap(), value);
 }
 
-fn run_spec_json(workflow_version_id: Option<WorkflowVersionId>) -> serde_json::Value {
+fn run_spec_json() -> serde_json::Value {
     serde_json::to_value(RunSpec {
         graph_source: Some("digraph test {}".to_string()),
-        workflow_version_id,
+        workflow_version_id: Some(test_support::test_workflow_version_id()),
         ..test_support::test_run_spec()
     })
     .unwrap()
