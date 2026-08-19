@@ -2,7 +2,7 @@ use std::error::Error as _;
 
 use fabro_github::{
     GitHubAppCredentials, GitHubContext, GitHubCredentials, GitHubRepositoryReader,
-    InstallationToken, RepositoryReadError, branch_head_sha, close_pull_request,
+    InstallationToken, RepositoryReadError, close_pull_request,
     create_installation_access_token_for_pr, create_pull_request, enable_auto_merge,
     get_pull_request, merge_pull_request, resolve_authenticated_url, sign_app_jwt,
 };
@@ -464,27 +464,23 @@ async fn expired_installation_token_keeps_credential_error_source() {
 }
 
 #[fabro_macros::e2e_test(twin)]
-async fn branch_head_compatibility_wrapper_uses_repository_reader() {
+async fn branch_head_resolution_distinguishes_missing_from_present() {
     let twin = TwinGitHub::start(standard_app_state()).await;
     let credentials = github_credentials();
-    let context = GitHubContext::with_http_client(
-        &credentials,
-        &twin.base_url,
-        fabro_test::test_http_client(),
-    );
+    let reader = open_reader(&twin.base_url, &credentials).await.unwrap();
 
     assert_eq!(
-        branch_head_sha(&context, "acme", "widgets", "release")
-            .await
-            .unwrap(),
-        Some(HEAD_SHA.to_string())
+        reader.resolve_commit("heads/release").await.unwrap(),
+        HEAD_SHA
     );
-    assert_eq!(
-        branch_head_sha(&context, "acme", "widgets", "missing")
-            .await
-            .unwrap(),
-        None
-    );
+    // GitHub answers an absent branch with 404, which the reader reports as
+    // "not observable" rather than proving the branch does not exist.
+    assert!(matches!(
+        reader.resolve_commit("heads/missing").await,
+        Err(RepositoryReadError::NotFound {
+            operation: fabro_github::Operation::Revision,
+        })
+    ));
 
     twin.shutdown().await;
 }

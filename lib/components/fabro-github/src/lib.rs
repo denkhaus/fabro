@@ -4,8 +4,8 @@ use base64::engine::general_purpose::STANDARD;
 use chrono::{DateTime, Utc};
 use fabro_redact::DisplaySafeUrl;
 use fabro_static::EnvVars;
+use fabro_types::PullRequestGithubDetail;
 use fabro_types::settings::run::MergeStrategy;
-use fabro_types::{GitHubRepositorySlug, PullRequestGithubDetail};
 use serde::Deserialize;
 use tokio::process::Command;
 
@@ -990,29 +990,6 @@ fn normalize_https_host_path(url: &str) -> String {
             format!("https://{host}/{path}")
         }
         _ => url.to_string(),
-    }
-}
-
-/// Return the commit SHA at the head of a GitHub branch.
-///
-/// Returns `None` when GitHub responds with 404. GitHub also uses 404 to hide
-/// some private resources from credentials that cannot access them, so `None`
-/// means the branch was not observable rather than proving it does not exist.
-pub async fn branch_head_sha(
-    ctx: &GitHubContext<'_>,
-    owner: &str,
-    repo: &str,
-    branch: &str,
-) -> anyhow::Result<Option<String>> {
-    let repository = GitHubRepositorySlug::try_new(&format!("{owner}/{repo}"))
-        .ok_or_else(|| anyhow!("Invalid GitHub repository coordinate"))?;
-    let reader = GitHubRepositoryReader::open(ctx, &repository)
-        .await
-        .context("Failed to read remote branch head")?;
-    match reader.resolve_commit(&format!("heads/{branch}")).await {
-        Ok(sha) => Ok(Some(sha)),
-        Err(RepositoryReadError::NotFound { .. }) => Ok(None),
-        Err(error) => Err(anyhow::Error::new(error).context("Failed to read remote branch head")),
     }
 }
 
