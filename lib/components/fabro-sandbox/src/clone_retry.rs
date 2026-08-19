@@ -50,6 +50,13 @@ impl CloneMessageClass {
     }
 }
 
+/// A failed clone or fetch attempt: the terminal error plus whether the
+/// failure is worth retrying.
+pub(crate) struct CloneAttemptFailure {
+    pub(crate) error:        crate::Error,
+    pub(crate) retry_reason: Option<CloneRetryReason>,
+}
+
 /// Message fragments that mean the clone failed on infrastructure.
 ///
 /// These are safe to retry whether or not the clone was authenticated.

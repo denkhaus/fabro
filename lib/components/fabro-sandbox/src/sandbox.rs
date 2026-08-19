@@ -18,7 +18,7 @@ use tokio::time;
 use tokio_util::sync::CancellationToken;
 
 /// Git command prefix that disables background maintenance.
-const GIT: &str = "git -c maintenance.auto=0 -c gc.auto=0";
+pub(crate) const GIT: &str = "git -c maintenance.auto=0 -c gc.auto=0";
 
 pub const DEFAULT_EXEC_OUTPUT_TAIL_BYTES: usize = 8 * 1024;
 

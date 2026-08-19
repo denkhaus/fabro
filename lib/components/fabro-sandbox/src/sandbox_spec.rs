@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-#[cfg(any(feature = "docker", feature = "daytona"))]
+#[cfg(feature = "docker")]
 use anyhow::Context as _;
 #[cfg(any(feature = "docker", feature = "daytona"))]
 use fabro_github::GitHubCredentials;
@@ -206,15 +206,6 @@ impl SandboxSpec {
                 clone_branch,
                 clone_commit_sha,
             } => {
-                if clone_commit_sha.is_some() {
-                    clone_source::decide_clone(
-                        config.skip_clone,
-                        clone_origin_url.as_deref(),
-                        clone_branch.as_deref(),
-                        clone_commit_sha.as_deref(),
-                    )
-                    .context("Invalid Docker exact-checkout request")?;
-                }
                 let mut sandbox = DockerSandbox::new(
                     config.clone(),
                     github_app.clone(),
@@ -239,16 +230,6 @@ impl SandboxSpec {
                 clone_commit_sha,
                 api_key,
             } => {
-                if clone_commit_sha.is_some() {
-                    clone_source::decide_clone(
-                        config.skip_clone,
-                        clone_origin_url.as_deref(),
-                        clone_branch.as_deref(),
-                        clone_commit_sha.as_deref(),
-                    )
-                    .map_err(anyhow::Error::new)
-                    .context("Invalid Daytona exact-checkout request")?;
-                }
                 let mut sandbox = DaytonaSandbox::new(
                     config.as_ref().clone(),
                     github_app.clone(),
@@ -350,7 +331,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("Invalid Docker exact-checkout request")
+                .contains("Failed to create Docker sandbox")
         );
         assert!(format!("{error:#}").contains("40 ASCII hexadecimal"));
         assert!(!format!("{error:#}").contains("Docker daemon"));

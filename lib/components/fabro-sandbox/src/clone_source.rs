@@ -74,10 +74,10 @@ pub(crate) fn repo_symlink_command(layout: &GitHubRepoLayout) -> String {
 
 pub(crate) fn exact_repository_init_command(clone_url: &str, checkout_path: &str) -> String {
     format!(
-        "git -c maintenance.auto=0 -c gc.auto=0 init -- {} && git -C {} remote add origin {}",
-        sandbox::shell_quote(checkout_path),
-        sandbox::shell_quote(checkout_path),
-        sandbox::shell_quote(clone_url),
+        "{git} init -- {path} && git -C {path} remote add origin {origin}",
+        git = sandbox::GIT,
+        path = sandbox::shell_quote(checkout_path),
+        origin = sandbox::shell_quote(clone_url),
     )
 }
 
@@ -87,24 +87,21 @@ pub(crate) fn exact_fetch_command(
     commit_sha: &str,
 ) -> String {
     format!(
-        "git -C {} -c maintenance.auto=0 -c gc.auto=0 fetch --depth 1 --no-tags {} -- {}",
+        "{git} -C {} fetch --depth 1 --no-tags {} -- {}",
         sandbox::shell_quote(checkout_path),
         sandbox::shell_quote(fetch_source),
         sandbox::shell_quote(commit_sha),
+        git = sandbox::GIT,
     )
 }
 
-pub(crate) fn exact_checkout_command(checkout_path: &str) -> String {
+/// Detach onto the fetched commit and print the resulting HEAD in one shell
+/// command; stdout is the `rev-parse HEAD` output for [`verify_exact_head`].
+pub(crate) fn exact_checkout_verify_command(checkout_path: &str) -> String {
     format!(
-        "git -C {} -c advice.detachedHead=false checkout --detach FETCH_HEAD",
-        sandbox::shell_quote(checkout_path),
-    )
-}
-
-pub(crate) fn head_revision_command(checkout_path: &str) -> String {
-    format!(
-        "git -C {} rev-parse HEAD",
-        sandbox::shell_quote(checkout_path),
+        "git -C {path} -c advice.detachedHead=false checkout --detach FETCH_HEAD && git -C {path} \
+         rev-parse HEAD",
+        path = sandbox::shell_quote(checkout_path),
     )
 }
 
@@ -420,8 +417,7 @@ mod tests {
             "https://token@example.com/acme/widgets.git?x=a b",
             sha,
         );
-        let checkout = exact_checkout_command("/repos/acme's widgets");
-        let verify = head_revision_command("/repos/acme's widgets");
+        let checkout = exact_checkout_verify_command("/repos/acme's widgets");
 
         assert_eq!(
             init,
@@ -429,14 +425,13 @@ mod tests {
         );
         assert_eq!(
             fetch,
-            "git -C \"/repos/acme's widgets\" -c maintenance.auto=0 -c gc.auto=0 fetch --depth 1 --no-tags 'https://token@example.com/acme/widgets.git?x=a b' -- 0123456789abcdef0123456789abcdef01234567"
+            "git -c maintenance.auto=0 -c gc.auto=0 -C \"/repos/acme's widgets\" fetch --depth 1 --no-tags 'https://token@example.com/acme/widgets.git?x=a b' -- 0123456789abcdef0123456789abcdef01234567"
         );
         assert_eq!(
             checkout,
-            "git -C \"/repos/acme's widgets\" -c advice.detachedHead=false checkout --detach FETCH_HEAD"
+            "git -C \"/repos/acme's widgets\" -c advice.detachedHead=false checkout --detach FETCH_HEAD && git -C \"/repos/acme's widgets\" rev-parse HEAD"
         );
-        assert_eq!(verify, "git -C \"/repos/acme's widgets\" rev-parse HEAD");
-        for command in [&init, &fetch, &checkout, &verify] {
+        for command in [&init, &fetch, &checkout] {
             assert!(!command.contains("moving-branch"));
         }
     }
@@ -504,8 +499,7 @@ mod tests {
             temp.path(),
             &exact_fetch_command(checkout_path, remote_path, &admitted_sha),
         );
-        run_shell(temp.path(), &exact_checkout_command(checkout_path));
-        let checked_out_sha = run_shell(temp.path(), &head_revision_command(checkout_path));
+        let checked_out_sha = run_shell(temp.path(), &exact_checkout_verify_command(checkout_path));
 
         assert_eq!(checked_out_sha.trim(), admitted_sha);
         assert_eq!(

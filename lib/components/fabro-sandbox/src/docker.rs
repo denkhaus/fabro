@@ -56,11 +56,6 @@ const EXEC_TERM_GRACE_SECONDS: &str = "0.02";
 #[cfg(not(test))]
 const EXEC_TERM_GRACE_SECONDS: &str = "0.2";
 
-struct DockerCloneFailure {
-    error:        crate::Error,
-    retry_reason: Option<clone_retry::CloneRetryReason>,
-}
-
 fn env_entry_name(entry: &str) -> &str {
     entry.split_once('=').map_or(entry, |(name, _)| name)
 }
@@ -722,14 +717,15 @@ impl DockerSandbox {
         Ok(())
     }
 
-    /// Preserve a failed `git clone` result while masking the auth URL.
+    /// Preserve a failed git transfer result while masking the auth URL.
     fn clone_failure_error(
         &self,
         result: ExecResult,
+        label: &'static str,
         auth_url: Option<&fabro_redact::DisplaySafeUrl>,
     ) -> crate::Error {
-        let error = result
-            .into_exec_error_with_redactor("git clone", |output| redact_auth_url(output, auth_url));
+        let error =
+            result.into_exec_error_with_redactor(label, |output| redact_auth_url(output, auth_url));
         let message = if self.github_app.is_none() {
             "Git clone failed. If this is a private repository, configure a GitHub App with \
              `fabro install` and install it for your organization."
@@ -748,23 +744,6 @@ impl DockerSandbox {
         err
     }
 
-    fn exact_checkout_exec_error(
-        &self,
-        result: ExecResult,
-        label: &'static str,
-        auth_url: Option<&fabro_redact::DisplaySafeUrl>,
-    ) -> crate::Error {
-        let source =
-            result.into_exec_error_with_redactor(label, |output| redact_auth_url(output, auth_url));
-        let message = if self.github_app.is_none() {
-            "Exact Git checkout failed. If this is a private repository, configure a GitHub App \
-             with `fabro install` and install it for your organization."
-        } else {
-            "Failed to check out exact commit into Docker sandbox"
-        };
-        crate::Error::context(message, source)
-    }
-
     async fn run_exact_checkout_command(
         &self,
         command: &str,
@@ -778,15 +757,69 @@ impl DockerSandbox {
         if result.is_success() {
             Ok(result)
         } else {
-            Err(self.exact_checkout_exec_error(result, label, auth_url))
+            Err(self.clone_failure_error(result, label, auth_url))
         }
     }
 
-    async fn checkout_exact_github_commit(
+    /// Run a network git command inside the container with clone retry
+    /// semantics under the shared clone deadline.
+    async fn retry_git_transfer(
+        &self,
+        command: &str,
+        label: &'static str,
+        exec_label: &'static str,
+        clone_deadline: time::Instant,
+        token_was_freshly_minted: bool,
+        auth_url: Option<&fabro_redact::DisplaySafeUrl>,
+    ) -> Result<(), clone_retry::CloneAttemptFailure> {
+        clone_retry::retry_clone(
+            SandboxProviderKind::Docker,
+            Some(clone_deadline),
+            |_attempt| async move {
+                let remaining = clone_deadline.saturating_duration_since(time::Instant::now());
+                let timeout_ms = u64::try_from(remaining.as_millis()).unwrap_or(u64::MAX);
+                if timeout_ms == 0 {
+                    return Err(clone_retry::CloneAttemptFailure {
+                        error:        crate::Error::message(format!(
+                            "{label} deadline expired before retry"
+                        )),
+                        retry_reason: None,
+                    });
+                }
+                let result = self
+                    .docker_exec_shell_streaming(ExecStreamingRequest {
+                        timeout_ms: Some(timeout_ms),
+                        working_dir: Some("/"),
+                        ..ExecStreamingRequest::new(command)
+                    })
+                    .await
+                    .map_err(|error| clone_retry::CloneAttemptFailure {
+                        error:        crate::Error::context(
+                            format!("{label} transport failed"),
+                            error,
+                        ),
+                        retry_reason: None,
+                    })?
+                    .result;
+                if result.is_success() {
+                    return Ok(());
+                }
+                let retry_reason = classify_docker_clone_result(&result, token_was_freshly_minted);
+                Err(clone_retry::CloneAttemptFailure {
+                    error: self.clone_failure_error(result, exec_label, auth_url),
+                    retry_reason,
+                })
+            },
+            |failure: &clone_retry::CloneAttemptFailure| failure.retry_reason,
+        )
+        .await
+    }
+
+    async fn clone_github_repo(
         &self,
         origin_url: String,
         branch: Option<String>,
-        expected_sha: String,
+        commit_sha: Option<String>,
     ) -> crate::Result<()> {
         self.verify_git_available().await?;
         let layout = clone_source::github_repo_layout(&origin_url, WORKING_DIRECTORY, REPOS_ROOT)?;
@@ -803,185 +836,8 @@ impl DockerSandbox {
                 )
                 .await
                 .map_err(|error| crate::Error::Context {
-                    message: "Failed to get GitHub App credentials for exact checkout".to_string(),
+                    message: "Failed to get GitHub App credentials for clone".to_string(),
                     source:  error.into_boxed_dyn_error(),
-                })?,
-            ),
-            None => None,
-        };
-        let clone_url = auth_url
-            .as_ref()
-            .map_or(origin_url.as_str(), |url| url.as_raw_url().as_str());
-
-        self.emit(SandboxEvent::GitCloneStarted {
-            url: origin_url.clone(),
-            branch,
-        });
-        let clone_start = Instant::now();
-
-        let prepare_command = format!(
-            "mkdir -p {} {}",
-            shell_quote(WORKING_DIRECTORY),
-            shell_quote(&layout.repos_owner_path),
-        );
-        if let Err(error) = self
-            .run_exact_checkout_command(
-                &prepare_command,
-                "prepare Docker exact repository checkout",
-                auth_url.as_ref(),
-            )
-            .await
-        {
-            return Err(self.report_clone_failure(&origin_url, error));
-        }
-
-        let init_command =
-            clone_source::exact_repository_init_command(clone_url, &layout.primary_repo_path);
-        if let Err(error) = self
-            .run_exact_checkout_command(
-                &init_command,
-                "initialize Docker exact repository checkout",
-                auth_url.as_ref(),
-            )
-            .await
-        {
-            return Err(self.report_clone_failure(&origin_url, error));
-        }
-
-        let fetch_command =
-            clone_source::exact_fetch_command(&layout.primary_repo_path, "origin", &expected_sha);
-        let clone_deadline = time::Instant::now() + GIT_CLONE_TIMEOUT;
-        let fetch_result = clone_retry::retry_clone(
-            SandboxProviderKind::Docker,
-            Some(clone_deadline),
-            |_attempt| {
-                let command = fetch_command.as_str();
-                let auth_url = auth_url.as_ref();
-                async move {
-                    let remaining = clone_deadline.saturating_duration_since(time::Instant::now());
-                    let timeout_ms = u64::try_from(remaining.as_millis()).unwrap_or(u64::MAX);
-                    if timeout_ms == 0 {
-                        return Err(DockerCloneFailure {
-                            error:        crate::Error::message(
-                                "Docker exact fetch deadline expired before retry",
-                            ),
-                            retry_reason: None,
-                        });
-                    }
-                    let result = self
-                        .docker_exec_shell_streaming(ExecStreamingRequest {
-                            timeout_ms: Some(timeout_ms),
-                            working_dir: Some("/"),
-                            ..ExecStreamingRequest::new(command)
-                        })
-                        .await
-                        .map_err(|error| DockerCloneFailure {
-                            error:        crate::Error::context(
-                                "Docker exact fetch transport failed",
-                                error,
-                            ),
-                            retry_reason: None,
-                        })?
-                        .result;
-                    if result.is_success() {
-                        return Ok(());
-                    }
-                    let retry_reason =
-                        classify_docker_clone_result(&result, token_was_freshly_minted);
-                    Err(DockerCloneFailure {
-                        error: self.exact_checkout_exec_error(
-                            result,
-                            "git fetch exact commit",
-                            auth_url,
-                        ),
-                        retry_reason,
-                    })
-                }
-            },
-            |failure: &DockerCloneFailure| failure.retry_reason,
-        )
-        .await;
-        if let Err(failure) = fetch_result {
-            return Err(self.report_clone_failure(&origin_url, failure.error));
-        }
-
-        let checkout_command = clone_source::exact_checkout_command(&layout.primary_repo_path);
-        if let Err(error) = self
-            .run_exact_checkout_command(
-                &checkout_command,
-                "git checkout exact commit",
-                auth_url.as_ref(),
-            )
-            .await
-        {
-            return Err(self.report_clone_failure(&origin_url, error));
-        }
-
-        let head_command = clone_source::head_revision_command(&layout.primary_repo_path);
-        let head = match self
-            .run_exact_checkout_command(
-                &head_command,
-                "verify Docker exact checkout HEAD",
-                auth_url.as_ref(),
-            )
-            .await
-        {
-            Ok(result) => result,
-            Err(error) => return Err(self.report_clone_failure(&origin_url, error)),
-        };
-        if let Err(error) = clone_source::verify_exact_head(&head.stdout, &expected_sha) {
-            return Err(self.report_clone_failure(&origin_url, error));
-        }
-
-        let symlink_command = clone_source::repo_symlink_command(&layout);
-        if let Err(error) = self
-            .run_exact_checkout_command(
-                &symlink_command,
-                "create Docker workspace repo symlink",
-                auth_url.as_ref(),
-            )
-            .await
-        {
-            return Err(self.report_clone_failure(&origin_url, error));
-        }
-
-        let _ = self.repo_cloned.set(true);
-        let _ = self.origin_url.set(origin_url.clone());
-        if let Err(error) = self.set_working_directory(layout.execution_directory) {
-            return Err(self.report_clone_failure(&origin_url, error));
-        }
-
-        let clone_duration = u64::try_from(clone_start.elapsed().as_millis()).unwrap_or(u64::MAX);
-        self.emit(SandboxEvent::GitCloneCompleted {
-            url:         origin_url,
-            duration_ms: clone_duration,
-        });
-        Ok(())
-    }
-
-    async fn clone_github_repo(
-        &self,
-        origin_url: String,
-        branch: Option<String>,
-    ) -> crate::Result<()> {
-        self.verify_git_available().await?;
-        let layout = clone_source::github_repo_layout(&origin_url, WORKING_DIRECTORY, REPOS_ROOT)?;
-        let token_was_freshly_minted = self
-            .github_app
-            .as_ref()
-            .is_some_and(GitHubCredentials::mints_installation_token);
-
-        let auth_url = match &self.github_app {
-            Some(creds) => Some(
-                fabro_github::resolve_authenticated_url(
-                    &fabro_github::GitHubContext::new(creds, &fabro_github::github_api_base_url()),
-                    &origin_url,
-                )
-                .await
-                .map_err(|e| {
-                    crate::Error::message(format!(
-                        "Failed to get GitHub App credentials for clone: {e}"
-                    ))
                 })?,
             ),
             None => None,
@@ -1015,58 +871,72 @@ impl DockerSandbox {
             }
         }
 
-        let command = git_clone_command(clone_url, branch.as_deref(), &layout.primary_repo_path);
         let clone_deadline = time::Instant::now() + GIT_CLONE_TIMEOUT;
-        let clone_result = clone_retry::retry_clone(
-            SandboxProviderKind::Docker,
-            Some(clone_deadline),
-            |_attempt| {
-                let command = command.as_str();
-                let auth_url = auth_url.as_ref();
-                async move {
-                    let remaining = clone_deadline.saturating_duration_since(time::Instant::now());
-                    let timeout_ms = u64::try_from(remaining.as_millis()).unwrap_or(u64::MAX);
-                    if timeout_ms == 0 {
-                        return Err(DockerCloneFailure {
-                            error:        crate::Error::message(
-                                "Docker git clone deadline expired before retry",
-                            ),
-                            retry_reason: None,
-                        });
-                    }
-                    let result = self
-                        .docker_exec_shell_streaming(ExecStreamingRequest {
-                            timeout_ms: Some(timeout_ms),
-                            working_dir: Some("/"),
-                            ..ExecStreamingRequest::new(command)
-                        })
-                        .await
-                        .map_err(|error| DockerCloneFailure {
-                            error:        crate::Error::context(
-                                "Docker git clone transport failed",
-                                error,
-                            ),
-                            retry_reason: None,
-                        })?
-                        .result;
-                    if result.is_success() {
-                        return Ok(());
-                    }
-                    let retry_reason =
-                        classify_docker_clone_result(&result, token_was_freshly_minted);
-                    Err(DockerCloneFailure {
-                        error: self.clone_failure_error(result, auth_url),
-                        retry_reason,
-                    })
-                }
-            },
-            |failure: &DockerCloneFailure| failure.retry_reason,
-        )
-        .await;
+        if let Some(expected_sha) = commit_sha.as_deref() {
+            let init_command =
+                clone_source::exact_repository_init_command(clone_url, &layout.primary_repo_path);
+            if let Err(error) = self
+                .run_exact_checkout_command(
+                    &init_command,
+                    "initialize Docker exact repository checkout",
+                    auth_url.as_ref(),
+                )
+                .await
+            {
+                return Err(self.report_clone_failure(&origin_url, error));
+            }
 
-        if let Err(failure) = clone_result {
-            let err = failure.error;
-            return Err(self.report_clone_failure(&origin_url, err));
+            let fetch_command = clone_source::exact_fetch_command(
+                &layout.primary_repo_path,
+                "origin",
+                expected_sha,
+            );
+            if let Err(failure) = self
+                .retry_git_transfer(
+                    &fetch_command,
+                    "Docker exact fetch",
+                    "git fetch exact commit",
+                    clone_deadline,
+                    token_was_freshly_minted,
+                    auth_url.as_ref(),
+                )
+                .await
+            {
+                return Err(self.report_clone_failure(&origin_url, failure.error));
+            }
+
+            let checkout_command =
+                clone_source::exact_checkout_verify_command(&layout.primary_repo_path);
+            let head = match self
+                .run_exact_checkout_command(
+                    &checkout_command,
+                    "git checkout exact commit",
+                    auth_url.as_ref(),
+                )
+                .await
+            {
+                Ok(result) => result,
+                Err(error) => return Err(self.report_clone_failure(&origin_url, error)),
+            };
+            if let Err(error) = clone_source::verify_exact_head(&head.stdout, expected_sha) {
+                return Err(self.report_clone_failure(&origin_url, error));
+            }
+        } else {
+            let command =
+                git_clone_command(clone_url, branch.as_deref(), &layout.primary_repo_path);
+            if let Err(failure) = self
+                .retry_git_transfer(
+                    &command,
+                    "Docker git clone",
+                    "git clone",
+                    clone_deadline,
+                    token_was_freshly_minted,
+                    auth_url.as_ref(),
+                )
+                .await
+            {
+                return Err(self.report_clone_failure(&origin_url, failure.error));
+            }
         }
 
         let symlink_command = clone_source::repo_symlink_command(&layout);
@@ -1584,7 +1454,7 @@ async fn cache_docker_stdio_completion(
 }
 
 fn git_clone_command(clone_url: &str, branch: Option<&str>, checkout_path: &str) -> String {
-    let mut command = "git -c maintenance.auto=0 -c gc.auto=0 clone".to_string();
+    let mut command = format!("{} clone", sandbox::GIT);
     if let Some(branch) = branch {
         command.push_str(" --branch ");
         command.push_str(&shell_quote(branch));
@@ -1855,13 +1725,7 @@ impl Sandbox for DockerSandbox {
                 branch,
                 commit_sha,
             } => {
-                let result = if let Some(commit_sha) = commit_sha {
-                    self.checkout_exact_github_commit(origin_url, branch, commit_sha)
-                        .await
-                } else {
-                    self.clone_github_repo(origin_url, branch).await
-                };
-                if let Err(e) = result {
+                if let Err(e) = self.clone_github_repo(origin_url, branch, commit_sha).await {
                     return Err(self.fail_init(init_start, e));
                 }
             }
@@ -2694,7 +2558,7 @@ mod tests {
         let token = "ghs_exact_checkout_secret";
         let auth_url = fabro_github::embed_token_in_url("https://github.com/acme/widgets", token)
             .expect("authenticated URL");
-        let error = sandbox.exact_checkout_exec_error(
+        let error = sandbox.clone_failure_error(
             ExecResult {
                 stdout:      String::new(),
                 stderr:      format!(
