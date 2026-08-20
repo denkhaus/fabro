@@ -1,2 +1,6 @@
 lib/apps/fabro-spa/assets/** linguist-generated=true -diff
 lib/packages/fabro-api-client/src/** linguist-generated=true
+.seeds/issues.jsonl merge=union
+.seeds/templates.jsonl merge=union
+.seeds/plans.jsonl merge=union
+.mulch/expertise/*.jsonl merge=union
