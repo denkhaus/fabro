@@ -161,6 +161,11 @@ pub(crate) fn decide_clone(
                 "Exact commit checkout requires a repository origin",
             ));
         }
+        if clone_branch.is_none_or(|branch| branch.trim().is_empty()) {
+            return Err(crate::Error::message(
+                "Exact commit checkout requires a repository branch",
+            ));
+        }
     }
 
     if skip_clone {
@@ -349,13 +354,13 @@ mod tests {
             decide_clone(
                 false,
                 Some("https://github.com/acme/widgets"),
-                None,
+                Some("main"),
                 Some(uppercase),
             )
             .unwrap(),
             CloneDecision::GitHub {
                 origin_url: "https://github.com/acme/widgets".to_string(),
-                branch:     None,
+                branch:     Some("main".to_string()),
                 commit_sha: Some(uppercase.to_ascii_lowercase()),
             }
         );
@@ -387,26 +392,37 @@ mod tests {
     }
 
     #[test]
-    fn exact_checkout_requires_clone_and_origin() {
+    fn exact_checkout_requires_clone_origin_and_branch() {
         let sha = "0123456789abcdef0123456789abcdef01234567";
         let skip_error = decide_clone(
             true,
             Some("https://github.com/acme/widgets"),
-            None,
+            Some("main"),
             Some(sha),
         )
         .expect_err("exact checkout with skip-clone should fail");
         assert!(skip_error.to_string().contains("requires cloning"));
 
         for origin in [None, Some(""), Some("   ")] {
-            let error = decide_clone(false, origin, None, Some(sha))
+            let error = decide_clone(false, origin, Some("main"), Some(sha))
                 .expect_err("exact checkout without an origin should fail");
             assert!(error.to_string().contains("requires a repository origin"));
+        }
+
+        for branch in [None, Some(""), Some("   ")] {
+            let error = decide_clone(
+                false,
+                Some("https://github.com/acme/widgets"),
+                branch,
+                Some(sha),
+            )
+            .expect_err("exact checkout without a branch should fail");
+            assert!(error.to_string().contains("requires a repository branch"));
         }
     }
 
     #[test]
-    fn exact_checkout_commands_quote_inputs_and_ignore_branch_metadata() {
+    fn docker_exact_checkout_commands_quote_inputs() {
         let sha = "0123456789abcdef0123456789abcdef01234567";
         let init = exact_repository_init_command(
             "https://token@example.com/acme/widgets.git?x=a b",
@@ -431,9 +447,6 @@ mod tests {
             checkout,
             "git -C \"/repos/acme's widgets\" -c advice.detachedHead=false checkout --detach FETCH_HEAD && git -C \"/repos/acme's widgets\" rev-parse HEAD"
         );
-        for command in [&init, &fetch, &checkout] {
-            assert!(!command.contains("moving-branch"));
-        }
     }
 
     #[test]

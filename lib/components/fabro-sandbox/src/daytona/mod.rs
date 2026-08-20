@@ -13,7 +13,7 @@ use daytona_api_client::models::SandboxState;
 use daytona_api_client::models::api_key_list::Permissions;
 use daytona_sdk::api_types::SignedPortPreviewUrl;
 use daytona_sdk::toolbox_types::Command as SessionCommandResult;
-use daytona_sdk::{DaytonaError, SessionCommandLogsResult};
+use daytona_sdk::{DaytonaError, GitCloneOptions, SessionCommandLogsResult};
 use fabro_github::GitHubCredentials;
 use fabro_static::EnvVars;
 use fabro_types::{CommandOutputStream, CommandTermination, RunId, SandboxProviderKind};
@@ -69,18 +69,17 @@ const DAYTONA_START_TIMEOUT: Duration = Duration::from_mins(1);
 /// cancellation/timeout paths indefinitely.
 const DAYTONA_CLEANUP_TIMEOUT: Duration = Duration::from_secs(10);
 
-fn daytona_process_exec_result(exit_code: i32, output: String) -> ExecResult {
-    let (stdout, stderr) = if exit_code == 0 {
-        (output, String::new())
-    } else {
-        (String::new(), output)
-    };
-    ExecResult {
-        stdout,
-        stderr,
-        exit_code: Some(exit_code),
-        termination: CommandTermination::Exited,
-        duration_ms: 0,
+fn daytona_git_clone_options(
+    branch: Option<String>,
+    commit_id: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
+) -> GitCloneOptions {
+    GitCloneOptions {
+        branch,
+        commit_id,
+        username,
+        password,
     }
 }
 
@@ -530,144 +529,6 @@ impl DaytonaSandbox {
             causes: err.causes(),
         });
         err
-    }
-
-    fn daytona_process_transport_error(label: &'static str, error: &DaytonaError) -> crate::Error {
-        let error_class = match error {
-            DaytonaError::RateLimit { .. } => "rate_limited",
-            DaytonaError::Timeout { .. } => "timeout",
-            DaytonaError::Api { status_code, .. } if (500..600).contains(status_code) => {
-                "server_error"
-            }
-            DaytonaError::Api { .. } => "api_error",
-            DaytonaError::NotFound { .. } => "not_found",
-            DaytonaError::General(_) => "transport_error",
-        };
-        crate::Error::context(
-            label,
-            crate::Error::message(format!("Daytona process command failed ({error_class})")),
-        )
-    }
-
-    async fn run_exact_checkout_command(
-        process_svc: &daytona_sdk::ProcessService,
-        command: &str,
-        working_directory: &str,
-        label: &'static str,
-        auth_url: Option<&fabro_redact::DisplaySafeUrl>,
-    ) -> crate::Result<ExecResult> {
-        let response = process_svc
-            .execute_command(
-                &wrap_bash_command(command),
-                daytona_sdk::ExecuteCommandOptions {
-                    cwd: Some(working_directory.to_string()),
-                    ..Default::default()
-                },
-            )
-            .await
-            .map_err(|error| Self::daytona_process_transport_error(label, &error))?;
-        let result = daytona_process_exec_result(response.exit_code, response.result);
-        if result.is_success() {
-            Ok(result)
-        } else {
-            Err(result
-                .into_exec_error_with_redactor(label, |output| redact_auth_url(output, auth_url)))
-        }
-    }
-
-    /// Materialize the exact admitted commit through the Daytona process
-    /// service: init an empty repository, shallow-fetch the commit with clone
-    /// retry semantics, detach onto it, and verify the resulting HEAD.
-    async fn checkout_exact_commit(
-        process_svc: &daytona_sdk::ProcessService,
-        origin_url: &str,
-        layout: &clone_source::GitHubRepoLayout,
-        password: Option<&str>,
-        expected_sha: &str,
-        token_was_freshly_minted: bool,
-    ) -> crate::Result<()> {
-        let auth_url = match password {
-            Some(token) => Some(fabro_github::embed_token_in_url(origin_url, token).map_err(
-                |error| crate::Error::Context {
-                    message:
-                        "Failed to build authenticated URL for Daytona exact checkout".to_string(),
-                    source:  error.into_boxed_dyn_error(),
-                },
-            )?),
-            None => None,
-        };
-        let clone_url = auth_url
-            .as_ref()
-            .map_or(origin_url, |url| url.as_raw_url().as_str());
-
-        let init_command =
-            clone_source::exact_repository_init_command(clone_url, &layout.primary_repo_path);
-        Self::run_exact_checkout_command(
-            process_svc,
-            &init_command,
-            "/",
-            "initialize Daytona exact repository checkout",
-            auth_url.as_ref(),
-        )
-        .await?;
-
-        let fetch_command =
-            clone_source::exact_fetch_command(&layout.primary_repo_path, "origin", expected_sha);
-        clone_retry::retry_clone(
-            SandboxProviderKind::Daytona,
-            None,
-            |_attempt| {
-                let command = fetch_command.as_str();
-                let auth_url = auth_url.as_ref();
-                async move {
-                    let response = process_svc
-                        .execute_command(
-                            &wrap_bash_command(command),
-                            daytona_sdk::ExecuteCommandOptions {
-                                cwd: Some("/".to_string()),
-                                ..Default::default()
-                            },
-                        )
-                        .await
-                        .map_err(|error| clone_retry::CloneAttemptFailure {
-                            retry_reason: classify_clone_failure(&error, token_was_freshly_minted),
-                            error:        Self::daytona_process_transport_error(
-                                "Daytona exact fetch transport failed",
-                                &error,
-                            ),
-                        })?;
-                    if response.exit_code == 0 {
-                        return Ok(());
-                    }
-                    let retry_reason =
-                        clone_retry::classify_message(&response.result, token_was_freshly_minted)
-                            .retry_reason();
-                    let result = daytona_process_exec_result(response.exit_code, response.result);
-                    Err(clone_retry::CloneAttemptFailure {
-                        retry_reason,
-                        error: result.into_exec_error_with_redactor(
-                            "git fetch exact commit in Daytona sandbox",
-                            |output| redact_auth_url(output, auth_url),
-                        ),
-                    })
-                }
-            },
-            |failure: &clone_retry::CloneAttemptFailure| failure.retry_reason,
-        )
-        .await
-        .map_err(|failure| failure.error)?;
-
-        let checkout_command =
-            clone_source::exact_checkout_verify_command(&layout.primary_repo_path);
-        let head = Self::run_exact_checkout_command(
-            process_svc,
-            &checkout_command,
-            "/",
-            "git checkout exact commit in Daytona sandbox",
-            auth_url.as_ref(),
-        )
-        .await?;
-        clone_source::verify_exact_head(&head.stdout, expected_sha)
     }
 
     fn fail_init(&self, init_start: Instant, err: crate::Error) -> crate::Error {
@@ -1316,74 +1177,55 @@ impl Sandbox for DaytonaSandbox {
                         self.fail_init(init_start, err)
                     })?;
 
+                let git_svc = sandbox.git().await.map_err(|e| {
+                    let err = crate::Error::context("Failed to get Daytona git service", e);
+                    let err = self.report_clone_failure(&origin_url, err);
+                    self.fail_init(init_start, err)
+                })?;
+
+                let clone_result = clone_retry::retry_clone(
+                    SandboxProviderKind::Daytona,
+                    None,
+                    |_attempt| {
+                        let git_svc = &git_svc;
+                        let origin = origin_url.as_str();
+                        let target = layout.primary_repo_path.as_str();
+                        let options = daytona_git_clone_options(
+                            branch.clone(),
+                            commit_sha.clone(),
+                            username.clone(),
+                            password.clone(),
+                        );
+                        async move { git_svc.clone(origin, target, options).await }
+                    },
+                    |err: &DaytonaError| classify_clone_failure(err, token_was_freshly_minted),
+                )
+                .await;
+
+                match clone_result {
+                    Ok(()) => {}
+                    Err(e) if self.github_app.is_none() => {
+                        let err = crate::Error::context(
+                            "Git clone failed. If this is a private repository, configure a \
+                             GitHub App with `fabro install` and install it for your organization.",
+                            e,
+                        );
+                        let err = self.report_clone_failure(&origin_url, err);
+                        return Err(self.fail_init(init_start, err));
+                    }
+                    Err(e) => {
+                        let err =
+                            crate::Error::context("Failed to clone repo into Daytona sandbox", e);
+                        let err = self.report_clone_failure(&origin_url, err);
+                        return Err(self.fail_init(init_start, err));
+                    }
+                }
+
                 let process_svc = sandbox.process().await.map_err(|e| {
                     let err = crate::Error::context("Failed to get Daytona process service", e);
                     let err = self.report_clone_failure(&origin_url, err);
                     self.fail_init(init_start, err)
                 })?;
-
-                if let Some(expected_sha) = commit_sha.as_deref() {
-                    Self::checkout_exact_commit(
-                        &process_svc,
-                        &origin_url,
-                        &layout,
-                        password.as_deref(),
-                        expected_sha,
-                        token_was_freshly_minted,
-                    )
-                    .await
-                    .map_err(|err| {
-                        let err = self.report_clone_failure(&origin_url, err);
-                        self.fail_init(init_start, err)
-                    })?;
-                } else {
-                    let git_svc = sandbox.git().await.map_err(|e| {
-                        let err = crate::Error::context("Failed to get Daytona git service", e);
-                        let err = self.report_clone_failure(&origin_url, err);
-                        self.fail_init(init_start, err)
-                    })?;
-
-                    let clone_result = clone_retry::retry_clone(
-                        SandboxProviderKind::Daytona,
-                        None,
-                        |_attempt| {
-                            let git_svc = &git_svc;
-                            let origin = origin_url.as_str();
-                            let target = layout.primary_repo_path.as_str();
-                            let options = daytona_sdk::GitCloneOptions {
-                                branch: branch.clone(),
-                                username: username.clone(),
-                                password: password.clone(),
-                                ..Default::default()
-                            };
-                            async move { git_svc.clone(origin, target, options).await }
-                        },
-                        |err: &DaytonaError| classify_clone_failure(err, token_was_freshly_minted),
-                    )
-                    .await;
-
-                    match clone_result {
-                        Ok(()) => {}
-                        Err(e) if self.github_app.is_none() => {
-                            let err = crate::Error::context(
-                                "Git clone failed. If this is a private repository, \
-                                 configure a GitHub App with `fabro install` and install it \
-                                 for your organization.",
-                                e,
-                            );
-                            let err = self.report_clone_failure(&origin_url, err);
-                            return Err(self.fail_init(init_start, err));
-                        }
-                        Err(e) => {
-                            let err = crate::Error::context(
-                                "Failed to clone repo into Daytona sandbox",
-                                e,
-                            );
-                            let err = self.report_clone_failure(&origin_url, err);
-                            return Err(self.fail_init(init_start, err));
-                        }
-                    }
-                }
 
                 let symlink_cmd = clone_source::repo_symlink_command(&layout);
                 let symlink_result = process_svc
@@ -2881,34 +2723,41 @@ mod tests {
         assert!(!error.to_string().contains("Daytona client"));
     }
 
-    #[test]
-    fn exact_checkout_process_failure_redacts_credentials_and_preserves_cause() {
-        let token = "ghs_daytona_exact_secret";
-        let auth_url = fabro_github::embed_token_in_url("https://github.com/acme/widgets", token)
-            .expect("authenticated URL");
-        let result = daytona_process_exec_result(
-            128,
-            format!(
-                "fatal: unable to access {}: synthetic Daytona failure",
-                auth_url.as_raw_url()
-            ),
-        );
-        let error = result
-            .into_exec_error_with_redactor("git fetch exact commit in Daytona sandbox", |output| {
-                redact_auth_url(output, Some(&auth_url))
-            });
+    #[tokio::test]
+    async fn exact_sha_without_branch_fails_before_daytona_client_construction() {
+        let error = DaytonaSandbox::new(
+            DaytonaConfig::default(),
+            None,
+            None,
+            Some("https://github.com/acme/widgets".to_string()),
+            None,
+            Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+            Some("dtn_not_used".to_string()),
+        )
+        .await
+        .err()
+        .expect("branch validation should run before building a Daytona client");
 
-        let causes = collect_chain(&error);
-        assert!(
-            causes
-                .iter()
-                .any(|cause| cause.contains("git fetch exact commit")),
-            "exec cause should remain structured: {causes:?}"
+        assert!(error.to_string().contains("requires a repository branch"));
+        assert!(!error.to_string().contains("Daytona client"));
+    }
+
+    #[test]
+    fn exact_checkout_uses_daytona_branch_and_commit_options() {
+        let options = daytona_git_clone_options(
+            Some("feature/work".to_string()),
+            Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+            Some("x-access-token".to_string()),
+            Some("secret".to_string()),
         );
-        let rendered = crate::display_for_log(&error);
-        assert!(!rendered.contains(token));
-        assert!(!rendered.contains(auth_url.as_raw_url().as_str()));
-        assert!(rendered.contains("synthetic Daytona failure"));
+
+        assert_eq!(options.branch.as_deref(), Some("feature/work"));
+        assert_eq!(
+            options.commit_id.as_deref(),
+            Some("0123456789abcdef0123456789abcdef01234567")
+        );
+        assert_eq!(options.username.as_deref(), Some("x-access-token"));
+        assert_eq!(options.password.as_deref(), Some("secret"));
     }
 
     fn api_key_body(permissions: &[&str]) -> serde_json::Value {

@@ -2551,6 +2551,23 @@ mod tests {
     }
 
     #[test]
+    fn exact_sha_without_branch_fails_before_docker_connection() {
+        let error = DockerSandbox::new(
+            DockerSandboxOptions::default(),
+            None,
+            None,
+            Some("https://github.com/acme/widgets".to_string()),
+            None,
+            Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+        )
+        .err()
+        .expect("branch validation should run before connecting to Docker");
+
+        assert!(error.to_string().contains("requires a repository branch"));
+        assert!(!error.to_string().contains("Docker daemon"));
+    }
+
+    #[test]
     fn exact_checkout_failure_preserves_safe_source_chain() {
         let docker = Docker::connect_with_http("http://127.0.0.1:2375", 5, API_DEFAULT_VERSION)
             .expect("mock Docker client should connect");
