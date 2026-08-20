@@ -181,8 +181,8 @@ impl<G: Graph + 'static> Executor<G> {
 
             // Check visit limits before entry: a node with a limit of N may
             // execute N times, matching the documented contract. The count
-            // covers completed entries only, so the refused visit is not
-            // reported as one.
+            // covers previously admitted entries, so the refused visit is
+            // not reported as one.
             let visits = state.visits(node.id());
             if let Some(max) = node.max_visits() {
                 if visits >= max {
