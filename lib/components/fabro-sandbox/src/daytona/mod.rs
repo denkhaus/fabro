@@ -63,7 +63,6 @@ pub(crate) const DAYTONA_DASHBOARD_SANDBOXES_URL: &str =
     "https://app.daytona.io/dashboard/sandboxes";
 const FABRO_SANDBOX_USER_AGENT: &str = concat!("fabro-sandbox/", env!("CARGO_PKG_VERSION"));
 const DAYTONA_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
-const DAYTONA_START_TIMEOUT: Duration = Duration::from_mins(1);
 /// Upper bound on explicit and Drop-triggered Daytona cleanup calls (session
 /// deletion, temporary stdin files) so a stalled REST call cannot block
 /// cancellation/timeout paths indefinitely.
@@ -332,6 +331,33 @@ fn command_kind(command: &str) -> &'static str {
         "rm" => "rm",
         "printf" => "printf",
         _ => "other",
+    }
+}
+
+#[derive(Clone, Copy, strum::Display)]
+#[strum(serialize_all = "lowercase")]
+enum DaytonaLifecycleAction {
+    Start,
+    Stop,
+}
+
+impl DaytonaLifecycleAction {
+    async fn execute(
+        self,
+        client: &daytona_sdk::Client,
+        sandbox_name: &str,
+    ) -> Result<(), DaytonaError> {
+        match self {
+            Self::Start => client.start(sandbox_name).await.map(drop),
+            Self::Stop => client.stop(sandbox_name).await.map(drop),
+        }
+    }
+
+    fn is_complete(self, state: Option<SandboxState>) -> bool {
+        match self {
+            Self::Start => state == Some(SandboxState::Started),
+            Self::Stop => matches!(state, Some(SandboxState::Stopped | SandboxState::Destroyed)),
+        }
     }
 }
 
@@ -859,117 +885,156 @@ impl DaytonaSandbox {
         )))
     }
 
-    /// Start the sandbox, retrying while Daytona reports a lifecycle
-    /// transition in flight, up to `deadline`.
-    ///
-    /// Daytona rejects `start` with "state change in progress" while a
-    /// transition (such as an inactivity auto-stop) is still running. The
-    /// transition finishes on its own within seconds, so the rejection is a
-    /// wait-and-retry condition, not a failure. Between attempts the state is
-    /// re-inspected: a transition that lands on `Started` (a concurrent
-    /// activation won the race) needs no further start call.
+    async fn wait_for_stable_state(
+        &self,
+        sandbox_name: &str,
+    ) -> Result<Option<SandboxState>, DaytonaError> {
+        loop {
+            time::sleep(DAYTONA_STATE_CHANGE_POLL_INTERVAL).await;
+            let state = self.client.get(sandbox_name).await?.state;
+            if !is_transitional_state(state) {
+                return Ok(state);
+            }
+        }
+    }
+
+    async fn run_lifecycle_action(
+        &self,
+        sandbox_name: &str,
+        action: DaytonaLifecycleAction,
+        deadline: time::Instant,
+    ) -> crate::Result<()> {
+        loop {
+            let request = time::timeout_at(deadline, action.execute(&self.client, sandbox_name));
+            match request.await {
+                Ok(Ok(())) => return Ok(()),
+                Ok(Err(source)) if is_state_change_in_progress(&source) => {
+                    tracing::debug!(
+                        action = %action,
+                        sandbox = sandbox_name,
+                        "Daytona lifecycle request rejected during state change"
+                    );
+                    match time::timeout_at(deadline, self.wait_for_stable_state(sandbox_name)).await
+                    {
+                        Ok(Ok(state)) if action.is_complete(state) => return Ok(()),
+                        Ok(Ok(_)) => {}
+                        Ok(Err(wait_source)) => {
+                            return Err(crate::Error::context(
+                                format!(
+                                    "Failed to inspect Daytona sandbox while waiting to {action}"
+                                ),
+                                wait_source,
+                            ));
+                        }
+                        Err(_) => {
+                            return Err(crate::Error::context(
+                                format!("Timed out waiting to {action} Daytona sandbox"),
+                                source,
+                            ));
+                        }
+                    }
+                }
+                Ok(Err(source)) => {
+                    return Err(crate::Error::context(
+                        format!("Failed to {action} Daytona sandbox"),
+                        source,
+                    ));
+                }
+                Err(_) => {
+                    return Err(crate::Error::message(format!(
+                        "Timed out waiting to {action} Daytona sandbox"
+                    )));
+                }
+            }
+        }
+    }
+
+    fn start_error(&self, error: crate::Error) -> crate::Result<()> {
+        self.emit(SandboxEvent::StartFailed {
+            provider: "daytona".into(),
+            error:    error.to_string(),
+            causes:   error.causes(),
+        });
+        Err(error)
+    }
+
+    fn stop_error(&self, error: crate::Error) -> crate::Result<()> {
+        self.emit(SandboxEvent::StopFailed {
+            provider: "daytona".into(),
+            error:    error.to_string(),
+            causes:   error.causes(),
+        });
+        Err(error)
+    }
+
     async fn start_with_deadline(&self, deadline: time::Instant) -> crate::Result<()> {
         self.emit(SandboxEvent::StartStarted {
             provider: "daytona".into(),
         });
         let start = Instant::now();
-        let sandbox = self.sandbox()?;
-        loop {
-            match self.client.start(&sandbox.name).await {
-                Ok(_) => break,
-                Err(e) if is_state_change_in_progress(&e) && time::Instant::now() < deadline => {
-                    tracing::debug!(
-                        "Daytona start rejected while a state change is in progress; retrying"
-                    );
-                    time::sleep(DAYTONA_STATE_CHANGE_POLL_INTERVAL).await;
-                    if let Ok(current) = self.client.get(&sandbox.name).await {
-                        if current.state == Some(SandboxState::Started) {
-                            break;
-                        }
-                    }
-                }
-                Err(e) => {
-                    let err = crate::Error::context("Failed to start Daytona sandbox", e);
-                    self.emit(SandboxEvent::StartFailed {
-                        provider: "daytona".into(),
-                        error:    err.to_string(),
-                        causes:   err.causes(),
-                    });
-                    return Err(err);
-                }
-            }
+        let result = async {
+            let sandbox = self.sandbox()?;
+            self.run_lifecycle_action(&sandbox.name, DaytonaLifecycleAction::Start, deadline)
+                .await?;
+            Self::probe_bash(sandbox).await
         }
-        if let Err(err) = Self::probe_bash(sandbox).await {
-            self.emit(SandboxEvent::StartFailed {
-                provider: "daytona".into(),
-                error:    err.to_string(),
-                causes:   err.causes(),
-            });
-            return Err(err);
+        .await;
+        if let Err(error) = result {
+            return self.start_error(error);
         }
-        let duration_ms = elapsed_ms(start);
         self.emit(SandboxEvent::StartCompleted {
-            provider: "daytona".into(),
-            duration_ms,
+            provider:    "daytona".into(),
+            duration_ms: elapsed_ms(start),
         });
         Ok(())
     }
 
-    /// Stop the sandbox, retrying while Daytona reports a lifecycle
-    /// transition in flight, up to `deadline`.
-    ///
-    /// The in-flight transition may be the stop itself (an inactivity
-    /// auto-stop): between attempts the state is re-inspected, and a sandbox
-    /// that landed on `Stopped` or `Destroyed` needs no further stop call.
     async fn stop_with_deadline(&self, deadline: time::Instant) -> crate::Result<()> {
         self.emit(SandboxEvent::StopStarted {
             provider: "daytona".into(),
         });
         let start = Instant::now();
-        let sandbox = self.sandbox()?;
-        loop {
-            match self.client.stop(&sandbox.name).await {
-                Ok(_) => break,
-                Err(e) if is_state_change_in_progress(&e) && time::Instant::now() < deadline => {
-                    tracing::debug!(
-                        "Daytona stop rejected while a state change is in progress; retrying"
-                    );
-                    time::sleep(DAYTONA_STATE_CHANGE_POLL_INTERVAL).await;
-                    if let Ok(current) = self.client.get(&sandbox.name).await {
-                        if matches!(
-                            current.state,
-                            Some(SandboxState::Stopped | SandboxState::Destroyed)
-                        ) {
-                            break;
-                        }
-                    }
-                }
-                Err(e) => {
-                    let err = crate::Error::context("Failed to stop Daytona sandbox", e);
-                    self.emit(SandboxEvent::StopFailed {
-                        provider: "daytona".into(),
-                        error:    err.to_string(),
-                        causes:   err.causes(),
-                    });
-                    return Err(err);
-                }
-            }
+        let result = async {
+            let sandbox = self.sandbox()?;
+            self.run_lifecycle_action(&sandbox.name, DaytonaLifecycleAction::Stop, deadline)
+                .await
         }
-        let duration_ms = elapsed_ms(start);
+        .await;
+        if let Err(error) = result {
+            return self.stop_error(error);
+        }
         self.emit(SandboxEvent::StopCompleted {
-            provider: "daytona".into(),
-            duration_ms,
+            provider:    "daytona".into(),
+            duration_ms: elapsed_ms(start),
         });
         Ok(())
     }
 }
 
-/// Whether a Daytona API error reports a lifecycle transition in flight
-/// (HTTP 400 "State change in progress" on start/stop).
 fn is_state_change_in_progress(err: &DaytonaError) -> bool {
-    err.to_string()
-        .to_ascii_lowercase()
-        .contains("state change in progress")
+    err.status_code() == Some(400)
+        && err
+            .message()
+            .to_ascii_lowercase()
+            .contains("state change in progress")
+}
+
+fn is_transitional_state(state: Option<SandboxState>) -> bool {
+    matches!(
+        state,
+        Some(
+            SandboxState::Creating
+                | SandboxState::Restoring
+                | SandboxState::Destroying
+                | SandboxState::Starting
+                | SandboxState::Stopping
+                | SandboxState::PendingBuild
+                | SandboxState::BuildingSnapshot
+                | SandboxState::PullingSnapshot
+                | SandboxState::Archiving
+                | SandboxState::Resizing
+        )
+    )
 }
 
 /// Detect the git remote URL and current branch from a local repository.
@@ -1461,39 +1526,35 @@ impl Sandbox for DaytonaSandbox {
     async fn activate(&self) -> crate::Result<()> {
         let sandbox = self.sandbox()?;
         let deadline = time::Instant::now() + DAYTONA_STATE_CHANGE_TIMEOUT;
-        loop {
-            let current = self.client.get(&sandbox.name).await.map_err(|e| {
+        let current = time::timeout_at(deadline, self.client.get(&sandbox.name))
+            .await
+            .map_err(|_| {
+                crate::Error::message("Timed out inspecting Daytona sandbox before activation")
+            })?
+            .map_err(|e| {
                 crate::Error::context("Failed to inspect Daytona sandbox before activation", e)
             })?;
-            match current.state {
-                Some(SandboxState::Started) => return Ok(()),
-                Some(SandboxState::Starting) => {
-                    return current
-                        .wait_for_start(Some(DAYTONA_START_TIMEOUT))
-                        .await
-                        .map_err(|e| {
-                            crate::Error::context(
-                                "Failed to wait for Daytona sandbox activation",
-                                e,
-                            )
-                        });
-                }
-                // An inactivity auto-stop can be in flight when a stage
-                // returns after a long period with no sandbox traffic (LLM
-                // inference generates none). Wait out the transition and
-                // dispatch on whatever state it lands on.
-                Some(SandboxState::Stopping) => {
-                    if time::Instant::now() >= deadline {
-                        return Err(crate::Error::message(format!(
-                            "Daytona sandbox stop still in progress after {}s",
-                            DAYTONA_STATE_CHANGE_TIMEOUT.as_secs()
-                        )));
-                    }
-                    time::sleep(DAYTONA_STATE_CHANGE_POLL_INTERVAL).await;
-                }
-                _ => return self.start_with_deadline(deadline).await,
-            }
+        let state = if is_transitional_state(current.state) {
+            time::timeout_at(deadline, self.wait_for_stable_state(&sandbox.name))
+                .await
+                .map_err(|_| {
+                    crate::Error::message(
+                        "Timed out waiting for Daytona sandbox state change before activation",
+                    )
+                })?
+                .map_err(|e| {
+                    crate::Error::context(
+                        "Failed to wait for Daytona sandbox state change before activation",
+                        e,
+                    )
+                })?
+        } else {
+            current.state
+        };
+        if state == Some(SandboxState::Started) {
+            return Ok(());
         }
+        self.start_with_deadline(deadline).await
     }
 
     async fn stop(&self) -> crate::Result<()> {
@@ -3316,14 +3377,15 @@ mod tests {
             .await
             .expect_err("a state change that outlives the deadline should fail");
 
-        assert!(
-            start_sandbox.calls_async().await >= 2,
-            "start should be retried while the deadline allows"
+        assert_eq!(
+            start_sandbox.calls_async().await,
+            1,
+            "start should not be retried while the current transition is in flight"
         );
         assert!(
-            err.causes()
-                .iter()
-                .any(|cause| cause.to_ascii_lowercase().contains("state change in progress")),
+            err.causes().iter().any(|cause| cause
+                .to_ascii_lowercase()
+                .contains("state change in progress")),
             "error should carry the Daytona rejection: {err}"
         );
     }
@@ -3341,6 +3403,13 @@ mod tests {
         assert!(!is_state_change_in_progress(&DaytonaError::api(
             400,
             "Sandbox already started"
+        )));
+        assert!(!is_state_change_in_progress(&DaytonaError::api(
+            500,
+            "Sandbox state change in progress"
+        )));
+        assert!(!is_state_change_in_progress(&DaytonaError::general(
+            "Sandbox state change in progress"
         )));
     }
 
