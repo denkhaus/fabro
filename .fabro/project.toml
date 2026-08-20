@@ -4,8 +4,25 @@ _version = 1
 enabled = true
 draft = false
 
+# Pin the canonical GitHub origin for sandbox clones and PRs. Without this,
+# local URL rewrites (url.<alias>.insteadOf for per-account SSH keys) leak the
+# SSH alias into the run manifest and clone-based sandboxes reject the origin.
+[run.scm]
+provider = "github"
+owner = "denkhaus"
+repository = "fabro"
+
 [run.environment]
 id = "fabro-dev"
+
+# Local feature testing: keep checkpoint/metadata branches local-only.
+# The sandbox still creates checkpoint commits; remote pushes are skipped so
+# runs do not depend on GitHub write access for the origin repo.
+[run.run_branch]
+push = false
+
+[run.meta_branch]
+push = false
 
 [environments.fabro-dev]
 provider = "daytona"
