@@ -27,6 +27,7 @@ use tokio::{fs, time};
 use tokio_util::sync::CancellationToken;
 
 use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason};
+use crate::git_retry::{self, CredentialContext};
 use crate::managed_labels::{self, MANAGED_LABEL, RUN_ID_LABEL};
 use crate::push_credentials::{self, PushCredentialState};
 use crate::redact::redact_auth_url;
@@ -39,7 +40,7 @@ use crate::{
     CommandOutputCallback, DEFAULT_EXEC_OUTPUT_TAIL_BYTES, DirEntry, ExecResult,
     ExecStreamingRequest, ExecStreamingResult, GrepOptions, Sandbox, SandboxEvent,
     SandboxEventCallback, SandboxFile, StderrCollector, StdioProcess, StdioProcessHandle,
-    StdioProcessTermination, WalkOptions, clone_retry, format_lines_numbered, shell_quote,
+    StdioProcessTermination, WalkOptions, format_lines_numbered, shell_quote,
 };
 
 const DOCKER_BASH_REQUIREMENT: &str = "Docker sandboxes require /bin/bash for every command, with no `sh` fallback; use an \
@@ -60,7 +61,7 @@ const EXEC_TERM_GRACE_SECONDS: &str = "0.2";
 
 struct DockerCloneFailure {
     error:        crate::Error,
-    retry_reason: Option<clone_retry::CloneRetryReason>,
+    retry_reason: Option<git_retry::GitRetryReason>,
 }
 
 fn env_entry_name(entry: &str) -> &str {
@@ -760,9 +761,14 @@ impl DockerSandbox {
             })?),
             None => None,
         };
-        let token_was_freshly_minted = resolved_token
-            .as_ref()
-            .is_some_and(|token| !token.snapshot.is_static());
+        // The clone call site maps its mint knowledge onto the credential
+        // context: a token minted for this clone is FreshApp; a static
+        // credential cannot become valid by waiting.
+        let clone_credential_context = match &resolved_token {
+            Some(token) if !token.snapshot.is_static() => CredentialContext::FreshApp,
+            Some(_) => CredentialContext::Static,
+            None => CredentialContext::None,
+        };
 
         let auth_url = match &resolved_token {
             Some(token) => Some(
@@ -807,9 +813,11 @@ impl DockerSandbox {
 
         let command = git_clone_command(clone_url, branch.as_deref(), &layout.primary_repo_path);
         let clone_deadline = time::Instant::now() + GIT_CLONE_TIMEOUT;
-        let clone_result = clone_retry::retry_clone(
+        let clone_plan = git_retry::RetryPlan::clone_default(Some(clone_deadline));
+        let clone_result = git_retry::retry_git(
             SandboxProviderKind::Docker,
-            Some(clone_deadline),
+            "clone",
+            &clone_plan,
             |_attempt| {
                 let command = command.as_str();
                 let auth_url = auth_url.as_ref();
@@ -843,7 +851,7 @@ impl DockerSandbox {
                         return Ok(());
                     }
                     let retry_reason =
-                        classify_docker_clone_result(&result, token_was_freshly_minted);
+                        classify_docker_clone_result(&result, clone_credential_context);
                     Err(DockerCloneFailure {
                         error: self.clone_failure_error(result, auth_url),
                         retry_reason,
@@ -1397,12 +1405,12 @@ fn git_clone_command(clone_url: &str, branch: Option<&str>, checkout_path: &str)
 
 fn classify_docker_clone_result(
     result: &ExecResult,
-    token_was_freshly_minted: bool,
-) -> Option<clone_retry::CloneRetryReason> {
-    let stderr = clone_retry::classify_message(&result.stderr, token_was_freshly_minted);
+    cred: CredentialContext,
+) -> Option<git_retry::GitRetryReason> {
+    let stderr = git_retry::classify_message(&result.stderr, cred);
     match stderr {
-        clone_retry::CloneMessageClass::Unknown => {
-            clone_retry::classify_message(&result.stdout, token_was_freshly_minted).retry_reason()
+        git_retry::GitMessageClass::Unknown => {
+            git_retry::classify_message(&result.stdout, cred).retry_reason()
         }
         class => class.retry_reason(),
     }
@@ -2186,11 +2194,19 @@ impl Sandbox for DockerSandbox {
         )]
     }
 
-    async fn git_push_ref(&self, refspec: &str) -> crate::Result<()> {
+    async fn git_push_ref(
+        &self,
+        refspec: &str,
+        plan: &crate::RetryPlan,
+    ) -> Result<crate::PushReport, crate::PushError> {
         if !self.repo_cloned() {
-            return Ok(());
+            return Ok(crate::PushReport::default());
         }
-        crate::git_push_via_exec(self, refspec).await
+        let credentials = self
+            .origin_url
+            .get()
+            .map(|origin_url| (&self.push_credentials, origin_url.as_str()));
+        sandbox::git_push_via_exec(self, credentials, refspec, plan).await
     }
 
     fn origin_url(&self) -> Option<&str> {
@@ -2436,7 +2452,10 @@ mod tests {
             duration_ms: 1,
         };
 
-        assert_eq!(classify_docker_clone_result(&result, true), None);
+        assert_eq!(
+            classify_docker_clone_result(&result, CredentialContext::FreshApp),
+            None
+        );
     }
 
     #[test]
