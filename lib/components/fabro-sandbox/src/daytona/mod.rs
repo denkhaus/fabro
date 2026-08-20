@@ -517,6 +517,19 @@ impl DaytonaSandbox {
         resolve_path(path, self.working_directory())
     }
 
+    async fn upload_file_content(&self, resolved_path: &str, content: &str) -> crate::Result<()> {
+        let sandbox = self.sandbox()?;
+        let fs_svc = sandbox
+            .fs()
+            .await
+            .map_err(|e| crate::Error::context("Failed to get fs service", e))?;
+
+        fs_svc
+            .upload_file_bytes(resolved_path, content.as_bytes())
+            .await
+            .map_err(|e| crate::Error::context(format!("Failed to write file {resolved_path}"), e))
+    }
+
     /// Verify a Daytona sandbox evaluates commands as non-login Bash.
     ///
     /// Runs on a freshly created sandbox before any Fabro-owned setup, and
@@ -1622,17 +1635,12 @@ impl Sandbox for DaytonaSandbox {
             }
         }
 
-        let fs_svc = sandbox
-            .fs()
-            .await
-            .map_err(|e| crate::Error::context("Failed to get fs service", e))?;
+        self.upload_file_content(&resolved, content).await
+    }
 
-        fs_svc
-            .upload_file_bytes(&resolved, content.as_bytes())
-            .await
-            .map_err(|e| crate::Error::context(format!("Failed to write file {resolved}"), e))?;
-
-        Ok(())
+    async fn write_existing_file(&self, path: &str, content: &str) -> crate::Result<()> {
+        let resolved = self.resolve_path(path);
+        self.upload_file_content(&resolved, content).await
     }
 
     async fn delete_file(&self, path: &str) -> crate::Result<()> {
@@ -3464,6 +3472,62 @@ mod tests {
         toolbox_response.assert_async().await;
         upload.assert_async().await;
         delete.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn write_existing_file_skips_parent_directory_creation() {
+        let server = MockServer::start_async().await;
+        let server_url = server.base_url();
+        let sandbox_response = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/sandbox/sandbox-edit");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(sandbox_body("sandbox-edit", SandboxState::Started));
+            })
+            .await;
+        let toolbox_response = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/sandbox/sandbox-edit/toolbox-proxy-url");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(serde_json::json!({"url": server_url}));
+            })
+            .await;
+        let folder = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/sandbox-edit/files/folder");
+                then.status(200);
+            })
+            .await;
+        let upload = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/sandbox-edit/files/upload")
+                    .query_param("path", "/home/daytona/workspace/src/lib.rs")
+                    .body_includes("updated contents");
+                then.status(200);
+            })
+            .await;
+
+        let sandbox = mock_daytona_sandbox(&server, "dtn_test", DaytonaConfig::default()).await;
+        let sdk_sandbox = sandbox
+            .client
+            .get("sandbox-edit")
+            .await
+            .expect("get mock sandbox");
+        assert!(sandbox.sandbox.set(sdk_sandbox).is_ok());
+
+        sandbox
+            .write_existing_file("src/lib.rs", "updated contents")
+            .await
+            .expect("write existing file");
+
+        sandbox_response.assert_async().await;
+        toolbox_response.assert_async().await;
+        upload.assert_async().await;
+        folder.assert_calls_async(0).await;
     }
 
     /// Recover the inner command a wrapper carries, proving it survives the
