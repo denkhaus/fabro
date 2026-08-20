@@ -184,6 +184,7 @@ impl RunMetadataWriterHandle {
         .unwrap()
     }
 
+    #[tracing::instrument(name = "git_op", skip_all, fields(op = "metadata-push"))]
     pub(crate) async fn write_snapshot(
         &self,
         dump: &RunDump,
