@@ -1542,6 +1542,7 @@ impl Sandbox for DaytonaSandbox {
         Ok(Some((preview.url, headers)))
     }
 
+    #[tracing::instrument(name = "git_op", skip_all, fields(op = "refresh-credentials"))]
     async fn refresh_push_credentials(&self) -> crate::Result<RefreshOutcome> {
         if !self.repo_cloned() {
             return Ok(RefreshOutcome::Skipped);

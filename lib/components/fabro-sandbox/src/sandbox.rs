@@ -1465,6 +1465,7 @@ pub async fn setup_git_via_exec(
     })
 }
 
+#[tracing::instrument(name = "git_op", skip_all, fields(op = "fetch"))]
 pub(crate) async fn fetch_source_run_ref(
     sandbox: &dyn Sandbox,
     source_run_id: &str,
@@ -1513,6 +1514,7 @@ pub(crate) async fn fetch_source_run_ref(
 
 /// Helper for sandbox implementations that manage git internally.
 /// Pushes a refspec to origin via exec_command inside the sandbox.
+#[tracing::instrument(name = "git_op", skip_all, fields(op = "push"))]
 pub async fn git_push_via_exec(sandbox: &dyn Sandbox, refspec: &str) -> crate::Result<()> {
     if let Err(e) = sandbox.refresh_push_credentials().await {
         tracing::warn!(
