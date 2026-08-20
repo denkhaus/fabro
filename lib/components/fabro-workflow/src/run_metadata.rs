@@ -1,12 +1,11 @@
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, Mutex};
 
-use anyhow::Context as _;
 use async_trait::async_trait;
 use fabro_checkpoint::git::{FileMode, Store, TreeEntries};
 use fabro_dump::RunDump;
+use fabro_github::token_source::InstallationTokenSource;
 use git2::{
     Cred, Direction, ErrorClass, ErrorCode, FetchOptions, Oid, PushOptions, RemoteCallbacks,
     Repository, Signature,
@@ -15,13 +14,6 @@ use tokio::task::{self, JoinError};
 
 use crate::git::{GitAuthor, META_BRANCH_PREFIX};
 use crate::run_options::RunOptions;
-
-static METADATA_PERMISSIONS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
-    [("contents", "write")]
-        .into_iter()
-        .map(|(key, value)| (key.to_string(), value.to_string()))
-        .collect()
-});
 
 pub(crate) fn metadata_branch_name(run_id: &str) -> String {
     format!("{META_BRANCH_PREFIX}{run_id}")
@@ -92,22 +84,22 @@ pub(crate) trait AuthProvider: Send + Sync {
 }
 
 struct GitHubAuthProvider {
-    creds:      fabro_github::GitHubCredentials,
-    origin_url: String,
+    source: Arc<InstallationTokenSource>,
 }
 
 impl GitHubAuthProvider {
-    fn new(creds: fabro_github::GitHubCredentials, origin_url: String) -> Self {
-        Self { creds, origin_url }
+    fn new(source: Arc<InstallationTokenSource>) -> Self {
+        Self { source }
     }
 }
 
 #[async_trait]
 impl AuthProvider for GitHubAuthProvider {
     async fn token(&self) -> Result<Option<String>, RunMetadataError> {
-        mint_token(&self.creds, &self.origin_url, &METADATA_PERMISSIONS)
+        self.source
+            .resolve()
             .await
-            .map(Some)
+            .map(|resolved| Some(resolved.token.expose().to_owned()))
             .map_err(RunMetadataError::TokenMint)
     }
 }
@@ -207,6 +199,7 @@ impl RunMetadataWriterHandle {
 
 pub(crate) fn build_metadata_writer(
     run_options: &RunOptions,
+    token_source: Option<Arc<InstallationTokenSource>>,
 ) -> Result<Option<RunMetadataWriterHandle>, RunMetadataError> {
     if !run_options.settings.run.meta_branch.enabled {
         return Ok(None);
@@ -233,10 +226,20 @@ pub(crate) fn build_metadata_writer(
         return Ok(None);
     }
 
-    let auth = Arc::new(GitHubAuthProvider::new(
-        creds.clone(),
-        normalized_url.clone(),
-    ));
+    // Share the sandbox's token source so the metadata writer reuses the
+    // same cached token as every other consumer for this origin. Resumed
+    // runs reconnect the sandbox without one; they build their own cached
+    // source from the run's credentials.
+    let source = match token_source {
+        Some(source) => source,
+        None => InstallationTokenSource::for_origin(
+            creds,
+            &normalized_url,
+            serde_json::json!({ "contents": "write" }),
+        )
+        .map_err(RunMetadataError::TokenMint)?,
+    };
+    let auth = Arc::new(GitHubAuthProvider::new(source));
     let writer = RunMetadataWriter::new(
         normalized_url,
         meta_branch.clone(),
@@ -245,28 +248,6 @@ pub(crate) fn build_metadata_writer(
         run_options.settings.run.meta_branch.push,
     )?;
     Ok(Some(RunMetadataWriterHandle::new(writer, auth)))
-}
-
-pub(crate) async fn mint_token(
-    creds: &fabro_github::GitHubCredentials,
-    origin_url: &str,
-    permissions: &HashMap<String, String>,
-) -> anyhow::Result<String> {
-    let normalized_url = fabro_github::normalize_repo_origin_url(origin_url);
-    let (owner, repo) =
-        fabro_github::parse_github_owner_repo(&normalized_url).context("parsing GitHub origin")?;
-    let client = fabro_http::http_client().map_err(anyhow::Error::new)?;
-    let permissions =
-        serde_json::to_value(permissions).context("serializing GitHub permissions")?;
-    creds
-        .resolve_bearer_token(
-            &client,
-            &owner,
-            &repo,
-            &fabro_github::github_api_base_url(),
-            permissions,
-        )
-        .await
 }
 
 pub(crate) struct RunMetadataWriter {
@@ -1010,16 +991,19 @@ mod tests {
 
         for (origin, expected) in cases {
             let options = run_options_for_origin(origin);
-            let handle = build_metadata_writer(&options).unwrap().unwrap();
+            let handle = build_metadata_writer(&options, None).unwrap().unwrap();
             assert_eq!(handle.remote_url_for_test(), expected);
             assert!(!handle.remote_url_for_test().contains("ghs_aaaaaa"));
             assert!(!handle.remote_url_for_test().contains('@'));
         }
 
         assert!(
-            build_metadata_writer(&run_options_for_origin("https://gitlab.com/owner/repo.git"))
-                .unwrap()
-                .is_none()
+            build_metadata_writer(
+                &run_options_for_origin("https://gitlab.com/owner/repo.git"),
+                None
+            )
+            .unwrap()
+            .is_none()
         );
     }
 
@@ -1028,6 +1012,6 @@ mod tests {
         let mut options = run_options_for_origin("https://github.com/owner/repo.git");
         options.settings.run.meta_branch.enabled = false;
 
-        assert!(build_metadata_writer(&options).unwrap().is_none());
+        assert!(build_metadata_writer(&options, None).unwrap().is_none());
     }
 }
