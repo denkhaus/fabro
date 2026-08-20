@@ -531,6 +531,63 @@ impl DaytonaSandbox {
         err
     }
 
+    /// Point the admitted branch at the exact commit and verify the resulting
+    /// HEAD.
+    ///
+    /// Daytona's native clone honors `commit_id`, but leaves the workspace on
+    /// whatever ref its own checkout produced. Re-pointing the branch keeps the
+    /// admitted branch name readable back out of the workspace, matching what
+    /// the Docker provider produces for the same inputs.
+    async fn attach_exact_commit_branch(
+        process_svc: &daytona_sdk::ProcessService,
+        checkout_path: &str,
+        branch: &str,
+        expected_sha: &str,
+    ) -> crate::Result<()> {
+        Self::run_clone_step(
+            process_svc,
+            &clone_source::exact_branch_checkout_command(checkout_path, branch, expected_sha),
+            "git checkout exact commit",
+        )
+        .await?;
+        let head = Self::run_clone_step(
+            process_svc,
+            &clone_source::exact_head_revision_command(checkout_path),
+            "git rev-parse HEAD after exact checkout",
+        )
+        .await?;
+        clone_source::verify_exact_head(&head, expected_sha)
+    }
+
+    /// Run one local git step of the clone in the sandbox and return its
+    /// output.
+    async fn run_clone_step(
+        process_svc: &daytona_sdk::ProcessService,
+        command: &str,
+        label: &'static str,
+    ) -> crate::Result<String> {
+        let result = process_svc
+            .execute_command(
+                &wrap_bash_command(command),
+                daytona_sdk::ExecuteCommandOptions {
+                    cwd: Some("/".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| crate::Error::context(format!("Failed to run {label}"), e))?;
+        if result.exit_code != 0 {
+            return Err(crate::Error::exec(label, ExecResult {
+                stdout:      result.result,
+                stderr:      String::new(),
+                exit_code:   Some(result.exit_code),
+                termination: CommandTermination::Exited,
+                duration_ms: 0,
+            }));
+        }
+        Ok(result.result)
+    }
+
     fn fail_init(&self, init_start: Instant, err: crate::Error) -> crate::Error {
         let duration_ms = u64::try_from(init_start.elapsed().as_millis()).unwrap_or(u64::MAX);
         self.emit(SandboxEvent::InitializeFailed {
@@ -1226,6 +1283,28 @@ impl Sandbox for DaytonaSandbox {
                     let err = self.report_clone_failure(&origin_url, err);
                     self.fail_init(init_start, err)
                 })?;
+
+                if let Some(expected_sha) = commit_sha.as_deref() {
+                    let Some(branch) = branch.as_deref().filter(|branch| !branch.trim().is_empty())
+                    else {
+                        let err = crate::Error::message(
+                            "Exact commit checkout requires a repository branch",
+                        );
+                        let err = self.report_clone_failure(&origin_url, err);
+                        return Err(self.fail_init(init_start, err));
+                    };
+                    if let Err(err) = Self::attach_exact_commit_branch(
+                        &process_svc,
+                        &layout.primary_repo_path,
+                        branch,
+                        expected_sha,
+                    )
+                    .await
+                    {
+                        let err = self.report_clone_failure(&origin_url, err);
+                        return Err(self.fail_init(init_start, err));
+                    }
+                }
 
                 let symlink_cmd = clone_source::repo_symlink_command(&layout);
                 let symlink_result = process_svc

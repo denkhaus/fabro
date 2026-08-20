@@ -56,6 +56,14 @@ const EXEC_TERM_GRACE_SECONDS: &str = "0.02";
 #[cfg(not(test))]
 const EXEC_TERM_GRACE_SECONDS: &str = "0.2";
 
+/// Whether a failing git step talked to the remote. Local steps cannot fail on
+/// credentials, so they must not suggest reconfiguring the GitHub App.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CloneStep {
+    Network,
+    Local,
+}
+
 fn env_entry_name(entry: &str) -> &str {
     entry.split_once('=').map_or(entry, |(name, _)| name)
 }
@@ -717,20 +725,23 @@ impl DockerSandbox {
         Ok(())
     }
 
-    /// Preserve a failed git transfer result while masking the auth URL.
+    /// Preserve a failed git step result while masking the auth URL.
     fn clone_failure_error(
         &self,
         result: ExecResult,
         label: &'static str,
         auth_url: Option<&fabro_redact::DisplaySafeUrl>,
+        step: CloneStep,
     ) -> crate::Error {
         let error =
             result.into_exec_error_with_redactor(label, |output| redact_auth_url(output, auth_url));
-        let message = if self.github_app.is_none() {
-            "Git clone failed. If this is a private repository, configure a GitHub App with \
-             `fabro install` and install it for your organization."
-        } else {
-            "Failed to clone repository into Docker sandbox"
+        let message = match step {
+            CloneStep::Network if self.github_app.is_none() => {
+                "Git clone failed. If this is a private repository, configure a GitHub App with \
+                 `fabro install` and install it for your organization."
+            }
+            CloneStep::Network => "Failed to clone repository into Docker sandbox",
+            CloneStep::Local => "Failed to prepare the cloned repository in the Docker sandbox",
         };
         crate::Error::context(message, error)
     }
@@ -744,20 +755,34 @@ impl DockerSandbox {
         err
     }
 
-    async fn run_exact_checkout_command(
+    /// Run a local (non-network) step of the exact checkout under the shared
+    /// clone deadline.
+    ///
+    /// Materializing a large working tree takes far longer than the short fixed
+    /// timeout used for trivial container commands, so these steps get the same
+    /// budget the branch clone path gives its fetch and checkout.
+    async fn run_exact_local_git_command(
         &self,
         command: &str,
         label: &'static str,
+        clone_deadline: time::Instant,
         auth_url: Option<&fabro_redact::DisplaySafeUrl>,
     ) -> crate::Result<ExecResult> {
+        let remaining = clone_deadline.saturating_duration_since(time::Instant::now());
+        let timeout_ms = u64::try_from(remaining.as_millis()).unwrap_or(u64::MAX);
+        if timeout_ms == 0 {
+            return Err(crate::Error::message(format!(
+                "{label} deadline expired before the step could run"
+            )));
+        }
         let result = self
-            .docker_exec_shell(command, 10_000, Some("/"), None, None)
+            .docker_exec_shell(command, timeout_ms, Some("/"), None, None)
             .await
             .map_err(|error| crate::Error::context(format!("{label} transport failed"), error))?;
         if result.is_success() {
             Ok(result)
         } else {
-            Err(self.clone_failure_error(result, label, auth_url))
+            Err(self.clone_failure_error(result, label, auth_url, CloneStep::Local))
         }
     }
 
@@ -806,7 +831,12 @@ impl DockerSandbox {
                 }
                 let retry_reason = classify_docker_clone_result(&result, token_was_freshly_minted);
                 Err(clone_retry::CloneAttemptFailure {
-                    error: self.clone_failure_error(result, exec_label, auth_url),
+                    error: self.clone_failure_error(
+                        result,
+                        exec_label,
+                        auth_url,
+                        CloneStep::Network,
+                    ),
                     retry_reason,
                 })
             },
@@ -873,12 +903,22 @@ impl DockerSandbox {
 
         let clone_deadline = time::Instant::now() + GIT_CLONE_TIMEOUT;
         if let Some(expected_sha) = commit_sha.as_deref() {
+            // `decide_clone` already rejects an exact commit without a branch;
+            // re-check here so the checkout can never silently drop the branch
+            // name callers read back out of the workspace.
+            let Some(branch) = branch.as_deref().filter(|branch| !branch.trim().is_empty()) else {
+                let error =
+                    crate::Error::message("Exact commit checkout requires a repository branch");
+                return Err(self.report_clone_failure(&origin_url, error));
+            };
+
             let init_command =
                 clone_source::exact_repository_init_command(clone_url, &layout.primary_repo_path);
             if let Err(error) = self
-                .run_exact_checkout_command(
+                .run_exact_local_git_command(
                     &init_command,
                     "initialize Docker exact repository checkout",
+                    clone_deadline,
                     auth_url.as_ref(),
                 )
                 .await
@@ -890,6 +930,7 @@ impl DockerSandbox {
                 &layout.primary_repo_path,
                 "origin",
                 expected_sha,
+                GIT_CLONE_DEPTH,
             );
             if let Err(failure) = self
                 .retry_git_transfer(
@@ -905,12 +946,16 @@ impl DockerSandbox {
                 return Err(self.report_clone_failure(&origin_url, failure.error));
             }
 
-            let checkout_command =
-                clone_source::exact_checkout_verify_command(&layout.primary_repo_path);
+            let checkout_command = clone_source::exact_checkout_verify_command(
+                &layout.primary_repo_path,
+                branch,
+                "FETCH_HEAD",
+            );
             let head = match self
-                .run_exact_checkout_command(
+                .run_exact_local_git_command(
                     &checkout_command,
                     "git checkout exact commit",
+                    clone_deadline,
                     auth_url.as_ref(),
                 )
                 .await
@@ -2588,6 +2633,7 @@ mod tests {
             },
             "git fetch exact commit",
             Some(&auth_url),
+            CloneStep::Network,
         );
 
         let causes = error.causes();
@@ -2601,6 +2647,37 @@ mod tests {
         assert!(!rendered.contains(token));
         assert!(!rendered.contains(auth_url.as_raw_url().as_str()));
         assert!(rendered.contains("synthetic low-level failure"));
+    }
+
+    #[test]
+    fn local_checkout_failure_does_not_blame_github_credentials() {
+        let docker = Docker::connect_with_http("http://127.0.0.1:2375", 5, API_DEFAULT_VERSION)
+            .expect("mock Docker client should connect");
+        let sandbox = test_docker_sandbox(docker, "test-container");
+        let failure = ExecResult {
+            stdout:      String::new(),
+            stderr:      "error: pathspec 'FETCH_HEAD' did not match".to_string(),
+            exit_code:   Some(1),
+            termination: CommandTermination::Exited,
+            duration_ms: 1,
+        };
+
+        let local = crate::display_for_log(&sandbox.clone_failure_error(
+            failure.clone(),
+            "git checkout exact commit",
+            None,
+            CloneStep::Local,
+        ));
+        assert!(!local.contains("fabro install"), "{local}");
+        assert!(local.contains("prepare the cloned repository"), "{local}");
+
+        let network = crate::display_for_log(&sandbox.clone_failure_error(
+            failure,
+            "git fetch exact commit",
+            None,
+            CloneStep::Network,
+        ));
+        assert!(network.contains("fabro install"), "{network}");
     }
 
     #[test]

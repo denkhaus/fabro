@@ -81,13 +81,20 @@ pub(crate) fn exact_repository_init_command(clone_url: &str, checkout_path: &str
     )
 }
 
+/// Fetch a single admitted commit with the same history depth a branch clone
+/// gets, so both paths can reach the same number of parent commits.
+///
+/// The fetch names the commit directly rather than the branch: reachability of
+/// the commit from the admitted branch is an admission-time invariant, not
+/// something this layer re-verifies.
 pub(crate) fn exact_fetch_command(
     checkout_path: &str,
     fetch_source: &str,
     commit_sha: &str,
+    depth: usize,
 ) -> String {
     format!(
-        "{git} -C {} fetch --depth 1 --no-tags {} -- {}",
+        "{git} -C {} fetch --depth {depth} --no-tags {} -- {}",
         sandbox::shell_quote(checkout_path),
         sandbox::shell_quote(fetch_source),
         sandbox::shell_quote(commit_sha),
@@ -95,13 +102,45 @@ pub(crate) fn exact_fetch_command(
     )
 }
 
-/// Detach onto the fetched commit and print the resulting HEAD in one shell
-/// command; stdout is the `rev-parse HEAD` output for [`verify_exact_head`].
-pub(crate) fn exact_checkout_verify_command(checkout_path: &str) -> String {
+/// Point the admitted branch at `revision` and attach HEAD to it.
+///
+/// The checkout attaches to a real branch instead of detaching so callers that
+/// read the current branch back out of the workspace still see the admitted
+/// branch name.
+pub(crate) fn exact_branch_checkout_command(
+    checkout_path: &str,
+    branch: &str,
+    revision: &str,
+) -> String {
     format!(
-        "git -C {path} -c advice.detachedHead=false checkout --detach FETCH_HEAD && git -C {path} \
-         rev-parse HEAD",
+        "{git} -C {path} checkout -B {branch} {revision}",
         path = sandbox::shell_quote(checkout_path),
+        branch = sandbox::shell_quote(branch),
+        revision = sandbox::shell_quote(revision),
+        git = sandbox::GIT,
+    )
+}
+
+/// Print the current HEAD commit and nothing else, for [`verify_exact_head`].
+pub(crate) fn exact_head_revision_command(checkout_path: &str) -> String {
+    format!(
+        "{git} -C {path} rev-parse HEAD",
+        path = sandbox::shell_quote(checkout_path),
+        git = sandbox::GIT,
+    )
+}
+
+/// Check out the admitted branch and print the resulting HEAD in one shell
+/// command; stdout is the `rev-parse HEAD` output for [`verify_exact_head`].
+pub(crate) fn exact_checkout_verify_command(
+    checkout_path: &str,
+    branch: &str,
+    revision: &str,
+) -> String {
+    format!(
+        "{} && {}",
+        exact_branch_checkout_command(checkout_path, branch, revision),
+        exact_head_revision_command(checkout_path),
     )
 }
 
@@ -161,6 +200,9 @@ pub(crate) fn decide_clone(
                 "Exact commit checkout requires a repository origin",
             ));
         }
+        // The branch names the checkout the run works on; it is not used to
+        // constrain which commits may be fetched. Admission is responsible for
+        // proving the commit belongs to the branch before it reaches here.
         if clone_branch.is_none_or(|branch| branch.trim().is_empty()) {
             return Err(crate::Error::message(
                 "Exact commit checkout requires a repository branch",
@@ -432,8 +474,10 @@ mod tests {
             "/repos/acme's widgets",
             "https://token@example.com/acme/widgets.git?x=a b",
             sha,
+            10,
         );
-        let checkout = exact_checkout_verify_command("/repos/acme's widgets");
+        let checkout =
+            exact_checkout_verify_command("/repos/acme's widgets", "feature/a b", "FETCH_HEAD");
 
         assert_eq!(
             init,
@@ -441,11 +485,11 @@ mod tests {
         );
         assert_eq!(
             fetch,
-            "git -c maintenance.auto=0 -c gc.auto=0 -C \"/repos/acme's widgets\" fetch --depth 1 --no-tags 'https://token@example.com/acme/widgets.git?x=a b' -- 0123456789abcdef0123456789abcdef01234567"
+            "git -c maintenance.auto=0 -c gc.auto=0 -C \"/repos/acme's widgets\" fetch --depth 10 --no-tags 'https://token@example.com/acme/widgets.git?x=a b' -- 0123456789abcdef0123456789abcdef01234567"
         );
         assert_eq!(
             checkout,
-            "git -C \"/repos/acme's widgets\" -c advice.detachedHead=false checkout --detach FETCH_HEAD && git -C \"/repos/acme's widgets\" rev-parse HEAD"
+            "git -c maintenance.auto=0 -c gc.auto=0 -C \"/repos/acme's widgets\" checkout -B 'feature/a b' FETCH_HEAD && git -c maintenance.auto=0 -c gc.auto=0 -C \"/repos/acme's widgets\" rev-parse HEAD"
         );
     }
 
@@ -510,23 +554,27 @@ mod tests {
         );
         run_shell(
             temp.path(),
-            &exact_fetch_command(checkout_path, remote_path, &admitted_sha),
+            &exact_fetch_command(checkout_path, remote_path, &admitted_sha, 10),
         );
-        let checked_out_sha = run_shell(temp.path(), &exact_checkout_verify_command(checkout_path));
+        let checked_out_sha = run_shell(
+            temp.path(),
+            &exact_checkout_verify_command(checkout_path, "main", "FETCH_HEAD"),
+        );
 
         assert_eq!(checked_out_sha.trim(), admitted_sha);
         assert_eq!(
             fs::read_to_string(checkout.join("revision.txt")).expect("checked-out contents"),
             "A\n"
         );
-        let symbolic_head = isolated_command(Command::new("git").args([
-            "-C",
-            checkout_path,
-            "symbolic-ref",
-            "-q",
-            "HEAD",
-        ]));
-        assert!(!symbolic_head.status.success(), "HEAD should be detached");
+        assert_eq!(
+            run_git(&checkout, &["symbolic-ref", "HEAD"]).trim(),
+            "refs/heads/main",
+            "HEAD should stay attached to the admitted branch"
+        );
+        assert_eq!(
+            run_git(&checkout, &["rev-parse", "--abbrev-ref", "HEAD"]).trim(),
+            "main"
+        );
         assert_eq!(
             run_git(temp.path(), &[
                 "--git-dir",
