@@ -1,8 +1,9 @@
 _version = 1
 
+# PR creation requires GitHub write access (run_branch push); disabled for
+# local feature testing.
 [run.pull_request]
-enabled = true
-draft = false
+enabled = false
 
 # Pin the canonical GitHub origin for sandbox clones and PRs. Without this,
 # local URL rewrites (url.<alias>.insteadOf for per-account SSH keys) leak the
