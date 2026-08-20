@@ -2216,6 +2216,7 @@ impl Sandbox for DockerSandbox {
         self.origin_url.get().map(String::as_str)
     }
 
+    #[tracing::instrument(name = "git_op", skip_all, fields(op = "refresh-credentials"))]
     async fn refresh_push_credentials(&self) -> crate::Result<RefreshOutcome> {
         if !self.repo_cloned() {
             return Ok(RefreshOutcome::none());

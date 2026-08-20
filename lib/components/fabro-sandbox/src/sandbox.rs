@@ -1513,6 +1513,7 @@ pub async fn setup_git_via_exec(
     })
 }
 
+#[tracing::instrument(name = "git_op", skip_all, fields(op = "fetch"))]
 pub(crate) async fn fetch_source_run_ref(
     sandbox: &dyn Sandbox,
     source_run_id: &str,
@@ -1643,6 +1644,11 @@ fn push_failure_looks_auth_shaped(error: &crate::Error) -> bool {
 /// operation. `credentials` is the provider's push-credential state plus the
 /// origin URL; `None` pushes with whatever the remote already carries (the
 /// local sandbox, or a workspace without managed credentials).
+// Async-safe by construction: the span is attached to the future, so it
+// follows the task across worker threads, and the providers' `exec_command:
+// entered` lines inherit it — the log renders as
+// `git_op{op=push}: exec_command: entered ...`.
+#[tracing::instrument(name = "git_op", skip_all, fields(op = "push"))]
 pub(crate) async fn git_push_via_exec(
     sandbox: &dyn Sandbox,
     credentials: Option<(&PushCredentialState, &str)>,
