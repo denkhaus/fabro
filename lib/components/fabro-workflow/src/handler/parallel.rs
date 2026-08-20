@@ -1847,7 +1847,7 @@ mod tests {
             Some(serde_json::json!({"not": "an array"})),
             Some(serde_json::json!("ordinary string")),
             Some(serde_json::json!(format_blob_ref(
-                &fabro_types::RunBlobId::new(b"missing")
+                &fabro_types::BlobHash::new(b"missing")
             ))),
         ] {
             let (handler, calls) = ScriptedHandler::new(Scripted::Succeed);
@@ -1917,7 +1917,7 @@ mod tests {
             "name": "large-item",
             "body": "x".repeat(101 * 1024)
         }]);
-        let blob_id = run_store
+        let blob_hash = run_store
             .write_blob(&serde_json::to_vec(&items).unwrap())
             .await
             .unwrap();
@@ -1933,7 +1933,7 @@ mod tests {
             )));
         let (node, graph) = for_each_graph("items", 1);
         let context = test_context();
-        context.set("items", serde_json::json!(format_blob_ref(&blob_id)));
+        context.set("items", serde_json::json!(format_blob_ref(&blob_hash)));
 
         let outcome = ParallelHandler
             .execute(&node, &context, &graph, sandbox_dir.path(), &services)

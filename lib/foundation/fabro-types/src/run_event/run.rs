@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::{BilledTokenCounts, ExecOutputTail, RunNoticeLevel};
 use crate::status::{BlockedReason, PendingReason, SuccessReason};
 use crate::{
-    AutomationRef, DiffSummary, ForkSourceRef, GitContext, Graph, PairId, PairTarget, RunBlobId,
+    AutomationRef, BlobHash, DiffSummary, ForkSourceRef, GitContext, Graph, PairId, PairTarget,
     RunControlAction, RunFailure, RunId, RunProvenance, RunTiming, WorkflowSettings,
 };
 
@@ -27,7 +27,7 @@ pub struct RunCreatedProps {
     pub automation:       Option<AutomationRef>,
     pub provenance:       RunProvenance,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manifest_blob:    Option<RunBlobId>,
+    pub manifest_blob:    Option<BlobHash>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git:              Option<GitContext>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -132,7 +132,7 @@ pub struct RunPairFailedProps {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunSubmittedProps {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub definition_blob: Option<RunBlobId>,
+    pub definition_blob: Option<BlobHash>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

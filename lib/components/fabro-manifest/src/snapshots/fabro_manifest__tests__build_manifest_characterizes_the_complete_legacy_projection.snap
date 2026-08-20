@@ -1,0 +1,126 @@
+---
+source: lib/components/fabro-manifest/src/lib.rs
+expression: rendered
+---
+{
+  "args": {
+    "dry_run": true,
+    "input": [
+      "feature=true"
+    ],
+    "label": [
+      "suite=characterization"
+    ]
+  },
+  "configs": [
+    {
+      "path": "<project-config>",
+      "source": "_version = 1/n/n[environments.project]/nprovider = \"docker\"/n/n[environments.project.image]/ndockerfile = { path = \"Project.Dockerfile\" }/n",
+      "type": "project"
+    },
+    {
+      "path": "<user-config>",
+      "source": "_version = 1/n",
+      "type": "user"
+    }
+  ],
+  "cwd": "<cwd>",
+  "goal": {
+    "text": "ship it/n",
+    "type": "graph"
+  },
+  "target": {
+    "path": ".fabro/workflows/root/workflow.fabro"
+  },
+  "version": 1,
+  "workflows": {
+    ".fabro/workflows/child/workflow.fabro": {
+      "config": {
+        "path": ".fabro/workflows/child/workflow.toml",
+        "source": "_version = 1/n/n[workflow]/ngraph = \"workflow.fabro\"/n"
+      },
+      "source": "digraph Child { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }"
+    },
+    ".fabro/workflows/root/workflow.fabro": {
+      "config": {
+        "path": ".fabro/workflows/root/workflow.toml",
+        "source": "_version = 1/n/n[workflow]/ngraph = \"workflow.fabro\"/n"
+      },
+      "files": {
+        ".fabro/Project.Dockerfile": {
+          "content": "FROM project/n",
+          "ref": {
+            "from": ".fabro/project.toml",
+            "original": "Project.Dockerfile",
+            "type": "dockerfile"
+          }
+        },
+        ".fabro/workflows/root/goals/goal.md": {
+          "content": "ship it/n",
+          "ref": {
+            "from": ".fabro/workflows/root/workflow.fabro",
+            "original": "goals/goal.md",
+            "type": "file_inline"
+          }
+        },
+        ".fabro/workflows/root/imports/shared.fabro": {
+          "content": "digraph Shared {/n            start [shape=Mdiamond]/n            shared [prompt=\"@../prompts/shared.md\"]/n            exit [shape=Msquare]/n            start -> shared -> exit/n        }",
+          "ref": {
+            "from": ".fabro/workflows/root/workflow.fabro",
+            "original": "imports/shared.fabro",
+            "type": "import"
+          }
+        },
+        ".fabro/workflows/root/prompts/deep.md": {
+          "content": "deep/n",
+          "ref": {
+            "from": ".fabro/workflows/root/prompts/plan.md",
+            "original": ".fabro/workflows/root/prompts/deep.md",
+            "type": "file_inline"
+          }
+        },
+        ".fabro/workflows/root/prompts/helpers.md": {
+          "content": "{% macro render() %}{% include \"deep.md\" %}{% endmacro %}",
+          "ref": {
+            "from": ".fabro/workflows/root/prompts/plan.md",
+            "original": ".fabro/workflows/root/prompts/helpers.md",
+            "type": "file_inline"
+          }
+        },
+        ".fabro/workflows/root/prompts/partial.md": {
+          "content": "partial/n",
+          "ref": {
+            "from": ".fabro/workflows/root/prompts/plan.md",
+            "original": ".fabro/workflows/root/prompts/partial.md",
+            "type": "file_inline"
+          }
+        },
+        ".fabro/workflows/root/prompts/plan.md": {
+          "content": "{% include \"partial.md\" %}/n{% from \"helpers.md\" import render %}",
+          "ref": {
+            "from": ".fabro/workflows/root/workflow.fabro",
+            "original": "prompts/plan.md",
+            "type": "file_inline"
+          }
+        },
+        ".fabro/workflows/root/prompts/shared.md": {
+          "content": "shared/n",
+          "ref": {
+            "from": ".fabro/workflows/root/imports/shared.fabro",
+            "original": "../prompts/shared.md",
+            "type": "file_inline"
+          }
+        },
+        ".fabro/workflows/root/schemas/output.json": {
+          "content": "{\"type\":\"object\"}",
+          "ref": {
+            "from": ".fabro/workflows/root/workflow.fabro",
+            "original": "schemas/output.json",
+            "type": "file_inline"
+          }
+        }
+      },
+      "source": "digraph Root {/n            graph [goal=\"@goals/goal.md\"]/n            start [shape=Mdiamond]/n            prompt [prompt=\"@prompts/plan.md\"]/n            schema [type=\"agent\", prompt=\"schema\", output_schema=\"@schemas/output.json\"]/n            imported [import=\"imports/shared.fabro\"]/n            child [shape=house, stack.child_workflow=\"../child/workflow.fabro\"]/n            exit [shape=Msquare]/n            start -> prompt -> schema -> imported -> child -> exit/n        }"
+    }
+  }
+}
