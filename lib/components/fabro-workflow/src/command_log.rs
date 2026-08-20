@@ -109,14 +109,14 @@ pub async fn read_json_string_blob(
     run_store: &RunStoreHandle,
     blob_ref: &str,
 ) -> Result<Option<String>> {
-    let Some(blob_id) = fabro_types::parse_blob_ref(blob_ref) else {
+    let Some(blob_hash) = fabro_types::parse_blob_ref(blob_ref) else {
         return Ok(None);
     };
     let bytes = run_store
-        .read_blob(&blob_id)
+        .read_blob(&blob_hash)
         .await
         .map_err(|err| Error::engine_with_anyhow("command log blob read failed", err))?
-        .ok_or_else(|| Error::engine(format!("command log blob missing: {blob_id}")))?;
+        .ok_or_else(|| Error::engine(format!("command log blob missing: {blob_hash}")))?;
     let text = serde_json::from_slice::<String>(&bytes)
         .map_err(|err| Error::engine_with_source("command log blob was not a JSON string", err))?;
     Ok(Some(text))
@@ -155,9 +155,9 @@ async fn write_json_string_blob(run_store: &RunStoreHandle, text: &str) -> Resul
     let value = Value::String(text.to_string());
     let bytes = serde_json::to_vec(&value)
         .map_err(|err| Error::engine_with_source("command log JSON serialization failed", err))?;
-    let blob_id = run_store
+    let blob_hash = run_store
         .write_blob(&bytes)
         .await
         .map_err(|err| Error::engine_with_anyhow("command log blob write failed", err))?;
-    Ok(format_blob_ref(&blob_id))
+    Ok(format_blob_ref(&blob_hash))
 }

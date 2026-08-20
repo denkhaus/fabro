@@ -116,10 +116,8 @@ impl Combine for RunIntegrationsGithubLayer {
 ///
 /// Relative paths inside the `file` variant are resolved against the
 /// directory of the config file that declared them at load time (see
-/// `fabro_config::resolve_goal_file_paths`). `{{ env.NAME }}` interpolation is
-/// supported inside the `file` path; env-tokenized relative paths stay
-/// unresolved until consume time and are then resolved against the run's
-/// effective working directory.
+/// `fabro_config::resolve_goal_file_paths`). Interpolation tokens are not
+/// supported inside the `file` path; a tokenized path fails to resolve.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum RunGoalLayer {
