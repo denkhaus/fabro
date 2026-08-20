@@ -13,7 +13,7 @@ when does it resolve** — see [Which process resolves what](#which-process-reso
 - Resolution is snapshot-based: env and file are read once at construction, then treated as immutable for the life of the process.
 - `process env` wins over `server.env` on conflicts.
 - Optional integration secrets are vault-only in the **server process**. Do not add optional server integrations to `ServerSecrets`, and do not add bespoke env fallback paths to it.
-- Not every credential is a `ServerSecrets` or vault lookup. A third mechanism exists: **settings-declared credentials** in `InterpString` fields, resolved at consumption time from `{{ env.NAME }}` or `{{ secrets.NAME }}`. See [Settings-declared credentials](#settings-declared-credentials).
+- Not every credential is a `ServerSecrets` or vault lookup. A third mechanism exists: **settings-declared credentials** in `InterpString` fields, resolved at consumption time from `{{ secrets.NAME }}`. See [Settings-declared credentials](#settings-declared-credentials).
 - `fabro server start` never generates secrets. Missing required secrets are a startup error.
 - `std::env::set_var` and `std::env::remove_var` are banned workspace-wide. Tests are not exempt. Enforced by clippy via `disallowed_methods` in `clippy.toml`; intentional exceptions must be annotated with a scoped `#[expect(clippy::disallowed_methods, reason = "...")]` at the call site.
 
@@ -70,7 +70,6 @@ than saying "server runtime", which is ambiguous.
 | Bootstrap server secret | Server process, via `ServerSecrets` | Once at construction, then immutable |
 | Optional integration secret | Server process or worker, via the vault | At use |
 | `{{ vars.NAME }}` | Server process | When the run is created, from that run's variable snapshot |
-| `{{ env.NAME }}` | The process that owns the value (usually the worker) | At consumption time |
 | `{{ secrets.NAME }}` | The process that owns the value, against the server vault | At consumption time |
 
 `docs/public/agents/mcp.mdx` documents the same split for MCP server configuration and is a good
@@ -80,18 +79,17 @@ worked example of the shape.
 
 Some credentials are declared in settings rather than looked up by name. Those fields are
 `InterpString` (`lib/foundation/fabro-types/src/settings/interp.rs`), which supports narrow
-`{{ namespace.NAME }}` tokens with no template logic. Three namespaces resolve: `env` (process
-environment, consumption time), `secrets` (vault, consumption time), and `vars` (non-sensitive run
-variables, substituted early at run creation). A token whose namespace is unavailable in the
-resolution context fails loudly.
+`{{ namespace.NAME }}` tokens with no template logic. Two namespaces resolve: `secrets` (vault,
+consumption time) and `vars` (non-sensitive run variables, substituted early at run creation).
+`{{ env.NAME }}` tokens still parse but never resolve; they fail loudly with a migration message. A
+token whose namespace is unavailable in the resolution context also fails loudly.
 
-The reference implementation is LLM provider `extra_headers`, resolved against env plus vault at
+The reference implementation is LLM provider `extra_headers`, resolved against the vault at
 `lib/foundation/fabro-auth/src/resolve.rs:376-378`:
 
 ```toml
 [llm.providers.example.extra_headers]
 authorization = "Bearer {{ secrets.EXAMPLE_TOKEN }}"
-x-tenant      = "{{ env.EXAMPLE_TENANT }}"
 ```
 
 Use this mechanism when the credential belongs to an operator-configured integration declared in
@@ -149,7 +147,7 @@ First pick the mechanism. These are the only three:
 |---|---|---|
 | Bootstrap server secret | Platform env or install-written `server.env` | `state.server_secret(...)` |
 | Optional integration secret | Vault (`fabro secret set`, `fabro install`) | `state.vault_secret(...)` |
-| Settings-declared credential | `{{ secrets.* }}` or `{{ env.* }}` in an `InterpString` settings field | Resolved at consumption time by the owning process |
+| Settings-declared credential | `{{ secrets.* }}` in an `InterpString` settings field | Resolved at consumption time by the owning process |
 
 Then:
 

@@ -96,10 +96,10 @@ use fabro_types::settings::server::{
     GithubIntegrationSettings, GithubIntegrationStrategy, LogDestination,
 };
 use fabro_types::{
-    AgentBackend, AskFabro, AskFabroUnavailableReason, EventBody, InterviewQuestionRecord, PairId,
-    PairMessageId, PairTarget, PendingReason, Principal, PullRequestLink, QuestionType, RunBlobId,
-    RunControlAction, RunEvent, RunId, RunRunnableSource, SandboxProviderKind, ServerSettings,
-    SessionCapability,
+    AgentBackend, AskFabro, AskFabroUnavailableReason, BlobHash, EventBody,
+    InterviewQuestionRecord, PairId, PairMessageId, PairTarget, PendingReason, Principal,
+    PullRequestLink, QuestionType, RunControlAction, RunEvent, RunId, RunRunnableSource,
+    SandboxProviderKind, ServerSettings, SessionCapability,
 };
 use fabro_util::error::{
     SharedError, collect_causes, render_compact_with_causes, render_with_causes,
@@ -2889,11 +2889,11 @@ pub(crate) fn parse_stage_id_path(stage_id: &str) -> Result<StageId, Response> {
 
 #[allow(
     clippy::result_large_err,
-    reason = "Blob ID parsing returns HTTP 400 responses directly."
+    reason = "Blob hash parsing returns HTTP 400 responses directly."
 )]
-pub(crate) fn parse_blob_id_path(blob_id: &str) -> Result<RunBlobId, Response> {
-    RunBlobId::from_str(blob_id)
-        .map_err(|_| ApiError::bad_request("Invalid blob ID.").into_response())
+pub(crate) fn parse_blob_hash_path(blob_hash: &str) -> Result<BlobHash, Response> {
+    BlobHash::from_str(blob_hash)
+        .map_err(|_| ApiError::bad_request("Invalid blob hash.").into_response())
 }
 
 #[allow(

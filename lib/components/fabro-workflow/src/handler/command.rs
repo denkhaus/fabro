@@ -354,7 +354,7 @@ mod tests {
 
     #[derive(Default)]
     struct MemoryRunStoreBackend {
-        blobs: Mutex<std::collections::HashMap<fabro_types::RunBlobId, Bytes>>,
+        blobs: Mutex<std::collections::HashMap<fabro_types::BlobHash, Bytes>>,
     }
 
     #[async_trait::async_trait]
@@ -389,17 +389,20 @@ mod tests {
             Ok(())
         }
 
-        async fn write_blob(&self, data: &[u8]) -> anyhow::Result<fabro_types::RunBlobId> {
-            let blob_id = fabro_types::RunBlobId::new(data);
+        async fn write_blob(&self, data: &[u8]) -> anyhow::Result<fabro_types::BlobHash> {
+            let blob_hash = fabro_types::BlobHash::new(data);
             self.blobs
                 .lock()
                 .await
-                .insert(blob_id, Bytes::copy_from_slice(data));
-            Ok(blob_id)
+                .insert(blob_hash, Bytes::copy_from_slice(data));
+            Ok(blob_hash)
         }
 
-        async fn read_blob(&self, id: &fabro_types::RunBlobId) -> anyhow::Result<Option<Bytes>> {
-            Ok(self.blobs.lock().await.get(id).cloned())
+        async fn read_blob(
+            &self,
+            blob_hash: &fabro_types::BlobHash,
+        ) -> anyhow::Result<Option<Bytes>> {
+            Ok(self.blobs.lock().await.get(blob_hash).cloned())
         }
 
         async fn read_run_log(&self) -> anyhow::Result<Option<Vec<u8>>> {

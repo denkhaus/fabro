@@ -590,6 +590,78 @@ impl Graph {
     }
 }
 
+/// Where an attribute appears in a workflow graph.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AttributeScope {
+    Graph,
+    Node,
+    Edge,
+}
+
+/// Kinds of static (non-templated) workflow-owned file references.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, strum::Display)]
+pub enum ReferenceKind {
+    #[strum(to_string = "file inline reference")]
+    FileInline,
+    #[strum(to_string = "import reference")]
+    Import,
+    #[strum(to_string = "child workflow reference")]
+    ChildWorkflow,
+    #[strum(to_string = "Dockerfile reference")]
+    Dockerfile,
+    #[strum(to_string = "graph goal file reference")]
+    GraphGoalFile,
+    #[strum(to_string = "run goal file reference")]
+    RunGoalFile,
+}
+
+/// Kinds of static file references that graph attributes can carry: the
+/// subset of [`ReferenceKind`] that [`reference_kind_for_attribute`] can
+/// classify. Config-sourced kinds (Dockerfiles, run goal files) are
+/// unrepresentable here by construction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GraphReferenceKind {
+    FileInline,
+    Import,
+    ChildWorkflow,
+    GraphGoalFile,
+}
+
+impl From<GraphReferenceKind> for ReferenceKind {
+    fn from(kind: GraphReferenceKind) -> Self {
+        match kind {
+            GraphReferenceKind::FileInline => Self::FileInline,
+            GraphReferenceKind::Import => Self::Import,
+            GraphReferenceKind::ChildWorkflow => Self::ChildWorkflow,
+            GraphReferenceKind::GraphGoalFile => Self::GraphGoalFile,
+        }
+    }
+}
+
+/// Classify a graph attribute as a static file reference, if it is one.
+#[must_use]
+pub fn reference_kind_for_attribute(
+    scope: AttributeScope,
+    key: &str,
+    value: &str,
+) -> Option<GraphReferenceKind> {
+    match key {
+        "import" if matches!(scope, AttributeScope::Node) => Some(GraphReferenceKind::Import),
+        "stack.child_workflow" if matches!(scope, AttributeScope::Node) => {
+            Some(GraphReferenceKind::ChildWorkflow)
+        }
+        "goal" if matches!(scope, AttributeScope::Graph) && value.starts_with('@') => {
+            Some(GraphReferenceKind::GraphGoalFile)
+        }
+        "prompt" | "output_schema"
+            if matches!(scope, AttributeScope::Node) && value.starts_with('@') =>
+        {
+            Some(GraphReferenceKind::FileInline)
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1110,5 +1182,25 @@ mod tests {
             AttrValue::Integer(-1),
         );
         assert_eq!(g.loop_restart_signature_limit(), 3);
+    }
+
+    #[test]
+    fn output_schema_at_value_is_file_inline_reference() {
+        assert_eq!(
+            reference_kind_for_attribute(
+                AttributeScope::Node,
+                "output_schema",
+                "@schemas/result.schema.json",
+            ),
+            Some(GraphReferenceKind::FileInline),
+        );
+    }
+
+    #[test]
+    fn output_schema_builtin_keyword_is_not_file_inline_reference() {
+        assert_eq!(
+            reference_kind_for_attribute(AttributeScope::Node, "output_schema", "routing"),
+            None,
+        );
     }
 }

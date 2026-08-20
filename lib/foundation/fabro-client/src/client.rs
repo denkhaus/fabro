@@ -13,8 +13,8 @@ use fabro_http::multipart::{Form, Part};
 use fabro_model::{Model, ModelTestMode, ProviderId};
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{
-    ArtifactUpload, EventEnvelope, PairId, PairMessageRecord, PairMessageRequest, PairRecord,
-    PairStartRequest, PairTranscriptResponse, Run, RunBlobId, RunEvent, RunEventDetailResponse,
+    ArtifactUpload, BlobHash, EventEnvelope, PairId, PairMessageRecord, PairMessageRequest,
+    PairRecord, PairStartRequest, PairTranscriptResponse, Run, RunEvent, RunEventDetailResponse,
     RunId, RunPairStatusResponse, RunProjection, SessionId, SessionRecord, StageId,
 };
 use fabro_util::exit::{ErrorExt, ExitClass};
@@ -1828,7 +1828,7 @@ impl Client {
         u32::try_from(response.into_inner().seq).context("append_run_event returned invalid seq")
     }
 
-    pub async fn write_run_blob(&self, run_id: &RunId, data: &[u8]) -> Result<RunBlobId> {
+    pub async fn write_run_blob(&self, run_id: &RunId, data: &[u8]) -> Result<BlobHash> {
         let response = self
             .send_api(|client| async move {
                 client
@@ -1839,24 +1839,20 @@ impl Client {
                     .await
             })
             .await?;
-        response
-            .into_inner()
-            .id
-            .parse()
-            .context("write_run_blob returned invalid blob id")
+        Ok(response.into_inner().hash)
     }
 
     pub async fn read_run_blob(
         &self,
         run_id: &RunId,
-        blob_id: &RunBlobId,
+        blob_hash: &BlobHash,
     ) -> Result<Option<Bytes>> {
         let response = self
             .current_state()
             .client
             .read_run_blob()
             .id(run_id.to_string())
-            .blob_id(blob_id.to_string())
+            .blob_hash(*blob_hash)
             .send()
             .await;
         match response {

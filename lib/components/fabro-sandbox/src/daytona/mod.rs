@@ -68,6 +68,12 @@ const DAYTONA_START_TIMEOUT: Duration = Duration::from_mins(1);
 /// deletion, temporary stdin files) so a stalled REST call cannot block
 /// cancellation/timeout paths indefinitely.
 const DAYTONA_CLEANUP_TIMEOUT: Duration = Duration::from_secs(10);
+/// Auto-stop applied when `lifecycle.auto_stop` is unset. Omitting the field
+/// would inherit Daytona's server-side default of 15 idle minutes, which is
+/// shorter than a single long inference call and stops the sandbox mid-run;
+/// 120 minutes clears any realistic call while still reclaiming sandboxes
+/// leaked by a dead worker. An explicit `0` disables auto-stop entirely.
+const DEFAULT_AUTO_STOP_INTERVAL_MINUTES: i32 = 120;
 
 /// Permissions a Daytona API key needs for Fabro's snapshot and sandbox flow.
 pub const REQUIRED_DAYTONA_PERMISSIONS: &[Permissions] = &[
@@ -727,7 +733,10 @@ impl DaytonaSandbox {
         daytona_sdk::SandboxBaseParams {
             name: Some(name),
             env_vars: Some(clean_bash_env(None)),
-            auto_stop_interval: self.config.auto_stop_interval,
+            auto_stop_interval: self
+                .config
+                .auto_stop_interval
+                .or(Some(DEFAULT_AUTO_STOP_INTERVAL_MINUTES)),
             labels: Some(managed_labels::merge_for_run(
                 self.config.labels.as_ref(),
                 self.run_id.as_ref(),
@@ -2951,6 +2960,10 @@ mod tests {
         assert_eq!(params.ephemeral, Some(false));
         assert_eq!(params.auto_delete_interval, Some(-1));
         assert_eq!(
+            params.auto_stop_interval,
+            Some(DEFAULT_AUTO_STOP_INTERVAL_MINUTES)
+        );
+        assert_eq!(
             params.env_vars,
             Some(HashMap::from([(BASH_ENV_VAR.to_string(), String::new())]))
         );
@@ -2961,6 +2974,27 @@ mod tests {
                 "true".to_string(),
             )]))
         );
+    }
+
+    #[tokio::test]
+    async fn base_params_passes_explicit_auto_stop_through() {
+        for interval in [0, 45] {
+            let sandbox = DaytonaSandbox::new(
+                DaytonaConfig {
+                    auto_stop_interval: Some(interval),
+                    ..DaytonaConfig::default()
+                },
+                None,
+                None,
+                None,
+                None,
+                Some("dtn_test".to_string()),
+            )
+            .await
+            .expect("sandbox config should be valid");
+
+            assert_eq!(sandbox.base_params().auto_stop_interval, Some(interval));
+        }
     }
 
     #[tokio::test]
