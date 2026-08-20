@@ -64,6 +64,7 @@ futures-util = { workspace = true, optional = true }
 rustls = { version = "0.23", default-features = false, features = ["std", "ring"], optional = true }
 
 [dev-dependencies]
+fabro-github = { path = "../fabro-github", features = ["test-support"] }
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
 serde_json.workspace = true

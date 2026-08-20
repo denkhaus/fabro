@@ -336,7 +336,6 @@ pub struct DaytonaSandbox {
     config:            DaytonaConfig,
     client:            daytona_sdk::Client,
     api_key:           Option<String>,
-    github_app:        Option<GitHubCredentials>,
     push_credentials:  PushCredentialState,
     sandbox:           OnceCell<daytona_sdk::Sandbox>,
     snapshot_name:     OnceCell<String>,
@@ -379,7 +378,6 @@ impl DaytonaSandbox {
             config,
             client,
             api_key,
-            github_app,
             push_credentials,
             sandbox: OnceCell::new(),
             snapshot_name: OnceCell::new(),
@@ -432,7 +430,6 @@ impl DaytonaSandbox {
             config: DaytonaConfig::default(),
             client,
             api_key,
-            github_app: None,
             push_credentials: PushCredentialState::new(None),
             sandbox: sandbox_cell,
             snapshot_name: OnceCell::new(),
@@ -1072,10 +1069,11 @@ impl Sandbox for DaytonaSandbox {
                 // against the clone token instead of believing nothing was
                 // ever embedded.
                 let resolved_token = match self.push_credentials.source() {
-                    Some(source) => Some(source.mint_for_clone().await.map_err(|e| {
-                        let err = crate::Error::message(format!(
-                            "Failed to get GitHub App credentials for clone: {e}"
-                        ));
+                    Some(source) => Some(source.mint_for_clone().await.map_err(|source| {
+                        let err = crate::Error::context_anyhow(
+                            "Failed to get GitHub App credentials for clone",
+                            source,
+                        );
                         self.emit(SandboxEvent::GitCloneFailed {
                             url:    origin_url.clone(),
                             error:  err.to_string(),
@@ -1295,7 +1293,7 @@ impl Sandbox for DaytonaSandbox {
                                 }
                                 Err(e) => {
                                     tracing::warn!(
-                                        origin = %origin_url,
+                                        origin = %fabro_redact::redacted_url_for_log(&origin_url),
                                         error = %e,
                                         "Failed to build authenticated origin URL — \
                                          subsequent git push from this sandbox will fail"
@@ -1304,7 +1302,7 @@ impl Sandbox for DaytonaSandbox {
                             }
                         }
                     }
-                    Err(e) if self.github_app.is_none() => {
+                    Err(e) if self.push_credentials.source().is_none() => {
                         let err = crate::Error::context(
                             "Git clone failed. If this is a private repository, \
                              configure a GitHub App with `fabro install` and install it \
@@ -1554,9 +1552,10 @@ impl Sandbox for DaytonaSandbox {
                 let result = self
                     .exec_command(&cmd, 10_000, None, None, None)
                     .await
-                    .map_err(|_| {
-                        crate::Error::message(
-                            "Failed to refresh push credentials: set_url_exec_failed",
+                    .map_err(|err| {
+                        crate::Error::context(
+                            "Failed to refresh push credentials: set origin URL",
+                            err,
                         )
                     })?;
                 if !result.is_success() {
@@ -2762,7 +2761,6 @@ mod tests {
             config,
             client,
             api_key: Some(api_key.to_string()),
-            github_app: None,
             push_credentials: PushCredentialState::new(None),
             sandbox: OnceCell::new(),
             snapshot_name: OnceCell::new(),

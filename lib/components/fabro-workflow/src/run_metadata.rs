@@ -222,19 +222,16 @@ pub(crate) fn build_metadata_writer(
     if !normalized_url.starts_with("https://") {
         return Ok(None);
     }
-    if fabro_github::parse_github_owner_repo(&normalized_url).is_err() {
+    let Ok((owner, repo)) = fabro_github::parse_github_owner_repo(&normalized_url) else {
         return Ok(None);
-    }
+    };
 
-    // Share the sandbox's token source so the metadata writer reuses the
-    // same cached token as every other consumer for this origin. Resumed
-    // runs reconnect the sandbox without one; they build their own cached
-    // source from the run's credentials.
     let source = match token_source {
         Some(source) => source,
-        None => InstallationTokenSource::for_origin(
+        None => InstallationTokenSource::for_repository(
             creds,
-            &normalized_url,
+            owner,
+            repo,
             serde_json::json!({ "contents": "write" }),
         )
         .map_err(RunMetadataError::TokenMint)?,

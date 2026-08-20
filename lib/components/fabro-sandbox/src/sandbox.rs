@@ -1038,22 +1038,48 @@ pub enum RemoteCredentialAction {
     None,
 }
 
-/// Outcome of [`Sandbox::refresh_push_credentials`]: what this call did to the
-/// remote, and the non-secret description of the token embedded in it.
-/// `token` is `None` only when `action` is [`RemoteCredentialAction::None`].
+/// Outcome of [`Sandbox::refresh_push_credentials`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RefreshOutcome {
-    pub action: RemoteCredentialAction,
-    pub token:  Option<TokenSnapshot>,
+pub enum RefreshOutcome {
+    /// No managed credentials exist for this sandbox.
+    None,
+    /// The remote already carried this token generation.
+    Unchanged(TokenSnapshot),
+    /// The remote was updated to carry this token generation.
+    Embedded(TokenSnapshot),
 }
 
 impl RefreshOutcome {
     /// No managed credentials to refresh.
     #[must_use]
-    pub fn none() -> Self {
-        Self {
-            action: RemoteCredentialAction::None,
-            token:  None,
+    pub const fn none() -> Self {
+        Self::None
+    }
+
+    #[must_use]
+    pub const fn unchanged(token: TokenSnapshot) -> Self {
+        Self::Unchanged(token)
+    }
+
+    #[must_use]
+    pub const fn embedded(token: TokenSnapshot) -> Self {
+        Self::Embedded(token)
+    }
+
+    #[must_use]
+    pub const fn action(self) -> RemoteCredentialAction {
+        match self {
+            Self::None => RemoteCredentialAction::None,
+            Self::Unchanged(_) => RemoteCredentialAction::Unchanged,
+            Self::Embedded(_) => RemoteCredentialAction::Embedded,
+        }
+    }
+
+    #[must_use]
+    pub const fn token(self) -> Option<TokenSnapshot> {
+        match self {
+            Self::None => None,
+            Self::Unchanged(token) | Self::Embedded(token) => Some(token),
         }
     }
 }
@@ -1550,17 +1576,17 @@ pub(crate) async fn fetch_source_run_ref(
 pub async fn git_push_via_exec(sandbox: &dyn Sandbox, refspec: &str) -> crate::Result<()> {
     let token = match sandbox.refresh_push_credentials().await {
         Ok(outcome) => {
-            if let Some(token) = outcome.token {
+            if let Some(token) = outcome.token() {
                 tracing::debug!(
                     refspec = %refspec,
-                    action = %outcome.action,
+                    action = %outcome.action(),
                     generation = token.generation,
                     provenance = %token.provenance,
                     token_age_ms = token.age_ms(),
                     "Resolved push credentials before git push"
                 );
             }
-            outcome.token
+            outcome.token()
         }
         Err(e) => {
             // The provider logged which token stays embedded; the push

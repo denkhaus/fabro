@@ -15,7 +15,7 @@ use fabro_github::token_source::{InstallationTokenSource, ResolvedToken};
 use fabro_redact::DisplaySafeUrl;
 use tokio::sync::Mutex;
 
-use crate::sandbox::{RefreshOutcome, RemoteCredentialAction};
+use crate::sandbox::RefreshOutcome;
 
 /// Build the shared installation-token source for a clone-based sandbox.
 ///
@@ -33,18 +33,19 @@ pub(crate) fn build_token_source(
         return Ok(None);
     };
     let normalized = fabro_github::normalize_repo_origin_url(origin_url);
-    if fabro_github::parse_github_owner_repo(&normalized).is_err() {
+    let Ok((owner, repo)) = fabro_github::parse_github_owner_repo(&normalized) else {
         // Non-GitHub origins never clone in these providers, so there is no
         // remote to keep credentials fresh for.
         return Ok(None);
-    }
-    InstallationTokenSource::for_origin(
+    };
+    InstallationTokenSource::for_repository(
         creds,
-        &normalized,
+        owner,
+        repo,
         serde_json::json!({ "contents": "write" }),
     )
     .map(Some)
-    .map_err(|err| crate::Error::message(format!("Failed to build GitHub token source: {err:#}")))
+    .map_err(|err| crate::Error::context_anyhow("Failed to build GitHub token source", err))
 }
 
 /// Push-credential state one provider instance tracks for its `origin`
@@ -122,8 +123,9 @@ impl PushCredentialState {
                         "GitHub token refresh failed and no credentials were ever embedded"
                     );
                 }
-                return Err(crate::Error::message(
-                    "Failed to refresh push credentials: token_mint_failed",
+                return Err(crate::Error::context_anyhow(
+                    "Failed to refresh push credentials",
+                    err,
                 ));
             }
         };
@@ -131,22 +133,16 @@ impl PushCredentialState {
             .as_ref()
             .is_some_and(|prev| prev.snapshot.generation == resolved.snapshot.generation)
         {
-            return Ok(RefreshOutcome {
-                action: RemoteCredentialAction::Unchanged,
-                token:  Some(resolved.snapshot),
-            });
+            return Ok(RefreshOutcome::unchanged(resolved.snapshot));
         }
         let auth_url = fabro_github::embed_token_in_url(origin_url, resolved.token.expose())
             .map_err(|err| {
-                crate::Error::message(format!("Failed to build authenticated origin URL: {err:#}"))
+                crate::Error::context_anyhow("Failed to build authenticated origin URL", err)
             })?;
         set_url(auth_url).await?;
         let snapshot = resolved.snapshot;
         *embedded = Some(resolved);
-        Ok(RefreshOutcome {
-            action: RemoteCredentialAction::Embedded,
-            token:  Some(snapshot),
-        })
+        Ok(RefreshOutcome::embedded(snapshot))
     }
 }
 
@@ -156,9 +152,10 @@ mod tests {
 
     use chrono::Utc;
     use fabro_github::InstallationToken;
-    use fabro_github::token_source::InstallationTokenMinter;
+    use fabro_github::test_support::{InstallationTokenMinter, installation_token_source};
 
     use super::*;
+    use crate::sandbox::RemoteCredentialAction;
 
     struct FixedMinter {
         calls: AtomicUsize,
@@ -186,9 +183,9 @@ mod tests {
     }
 
     fn minting_state(ttl: chrono::Duration) -> PushCredentialState {
-        PushCredentialState::new(Some(InstallationTokenSource::with_minter(
-            "owner/repo".to_string(),
-            Box::new(FixedMinter {
+        PushCredentialState::new(Some(installation_token_source(
+            "owner/repo",
+            Arc::new(FixedMinter {
                 calls: AtomicUsize::new(0),
                 ttl,
             }),
@@ -204,8 +201,7 @@ mod tests {
             .refresh(ORIGIN, |_| async { panic!("set-url must not run") })
             .await
             .unwrap();
-        assert_eq!(outcome.action, RemoteCredentialAction::None);
-        assert_eq!(outcome.token, None);
+        assert_eq!(outcome, RefreshOutcome::none());
     }
 
     #[tokio::test]
@@ -221,8 +217,8 @@ mod tests {
             })
             .await
             .unwrap();
-        assert_eq!(first.action, RemoteCredentialAction::Embedded);
-        assert_eq!(first.token.unwrap().generation, 1);
+        assert_eq!(first.action(), RemoteCredentialAction::Embedded);
+        assert_eq!(first.token().unwrap().generation, 1);
 
         // The cached token is fresh, so the second refresh must skip set-url.
         let second = state
@@ -232,8 +228,8 @@ mod tests {
             })
             .await
             .unwrap();
-        assert_eq!(second.action, RemoteCredentialAction::Unchanged);
-        assert_eq!(second.token.unwrap().generation, 1);
+        assert_eq!(second.action(), RemoteCredentialAction::Unchanged);
+        assert_eq!(second.token().unwrap().generation, 1);
         assert_eq!(set_url_calls.load(Ordering::SeqCst), 1);
     }
 
@@ -258,9 +254,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(first.token.unwrap().generation, 1);
-        assert_eq!(second.action, RemoteCredentialAction::Embedded);
-        assert_eq!(second.token.unwrap().generation, 2);
+        assert_eq!(first.token().unwrap().generation, 1);
+        assert_eq!(second.action(), RemoteCredentialAction::Embedded);
+        assert_eq!(second.token().unwrap().generation, 2);
         assert_eq!(set_url_calls.load(Ordering::SeqCst), 2);
     }
 
@@ -274,8 +270,8 @@ mod tests {
             .refresh(ORIGIN, |_| async { panic!("set-url must not run") })
             .await
             .unwrap();
-        assert_eq!(outcome.action, RemoteCredentialAction::Unchanged);
-        assert_eq!(outcome.token.unwrap().generation, 1);
+        assert_eq!(outcome.action(), RemoteCredentialAction::Unchanged);
+        assert_eq!(outcome.token().unwrap().generation, 1);
     }
 
     #[tokio::test]
@@ -293,8 +289,8 @@ mod tests {
         // The generation was not recorded, so the retry embeds again instead
         // of wrongly skipping.
         let retried = state.refresh(ORIGIN, |_| async { Ok(()) }).await.unwrap();
-        assert_eq!(retried.action, RemoteCredentialAction::Embedded);
-        assert_eq!(retried.token.unwrap().generation, 1);
+        assert_eq!(retried.action(), RemoteCredentialAction::Embedded);
+        assert_eq!(retried.token().unwrap().generation, 1);
     }
 
     #[tokio::test]
@@ -313,22 +309,25 @@ mod tests {
             .refresh(ORIGIN, |_| async { panic!("set-url must not run") })
             .await
             .unwrap();
-        assert_eq!(outcome.action, RemoteCredentialAction::Unchanged);
-        assert!(outcome.token.unwrap().is_static());
+        assert_eq!(outcome.action(), RemoteCredentialAction::Unchanged);
+        assert!(outcome.token().unwrap().is_static());
     }
 
     #[tokio::test]
-    async fn mint_failure_maps_to_the_token_mint_failed_error() {
-        let state = PushCredentialState::new(Some(InstallationTokenSource::with_minter(
-            "owner/repo".to_string(),
-            Box::new(FailingMinter),
+    async fn mint_failure_preserves_the_mint_error_chain() {
+        let state = PushCredentialState::new(Some(installation_token_source(
+            "owner/repo",
+            Arc::new(FailingMinter),
         )));
 
         let err = state
             .refresh(ORIGIN, |_| async { panic!("set-url must not run") })
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("token_mint_failed"), "{err}");
+        assert_eq!(err.causes(), vec![
+            "minting GitHub installation access token",
+            "mint failed"
+        ]);
     }
 
     #[test]
