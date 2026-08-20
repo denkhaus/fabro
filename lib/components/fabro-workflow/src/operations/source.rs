@@ -109,8 +109,8 @@ pub(crate) fn resolve_workflow(request: ResolveWorkflowInput) -> anyhow::Result<
 
 /// Resolve the `run.goal` override for a direct (non-manifest) workflow
 /// run. Reads the file from disk if the goal layer is the `file` variant.
-/// Relative paths that survived config load (e.g. env-interpolated ones)
-/// are anchored at `working_directory`.
+/// Relative paths that survived config load are anchored at
+/// `working_directory`.
 fn resolve_goal_override(
     settings: &WorkflowSettings,
     working_directory: &Path,

@@ -8,12 +8,17 @@ use minijinja::value::{Object, Value};
 use minijinja::{AutoEscape, Environment, ErrorKind, UndefinedBehavior};
 
 mod dependency;
+mod static_reference;
 mod store;
 
 pub use dependency::{
     ExtractedTemplateDependencies, TemplateDependency, TemplateDependencyClosure,
     TemplateDependencyKind, TemplateDiscoveryError, discover_static_dependency_closure,
     extract_template_dependencies,
+};
+pub use static_reference::{
+    GraphReference, GraphReferenceError, StaticReferenceError, validate_static_reference,
+    visit_graph_references,
 };
 pub use store::{
     BundleTemplateStore, CachedTemplateStore, FilesystemTemplateStore, RecordingTemplateStore,
@@ -1381,6 +1386,123 @@ mod tests {
             discover_static_dependency_closure([source], bundle_store(&[]).as_ref()).unwrap_err();
 
         assert!(matches!(err, TemplateDiscoveryError::Dynamic { .. }));
+    }
+
+    #[test]
+    fn static_dependency_closure_visits_colliding_root_occurrences() {
+        let roots = [
+            TemplateSource::new(manifest_path("workflow.fabro"), manifest_path("."), "valid"),
+            TemplateSource::new(
+                manifest_path("workflow.fabro"),
+                manifest_path("."),
+                r"{% include inputs.partial %}",
+            ),
+        ];
+
+        let error =
+            discover_static_dependency_closure(roots, bundle_store(&[]).as_ref()).unwrap_err();
+
+        assert!(matches!(
+            error,
+            TemplateDiscoveryError::Dynamic { parent }
+                if parent == manifest_path("workflow.fabro")
+        ));
+    }
+
+    #[test]
+    fn static_dependency_closure_parses_dependencies_shadowed_by_root_paths() {
+        // An inline root anchored at its graph file's path must not shadow the
+        // file itself when another template includes it: the loaded file
+        // content still gets parsed.
+        let roots = [
+            TemplateSource::new(manifest_path("workflow.fabro"), manifest_path("."), "valid"),
+            TemplateSource::new(
+                manifest_path("goal.md"),
+                manifest_path("."),
+                r#"{% include "workflow.fabro" %}"#,
+            ),
+        ];
+
+        let error = discover_static_dependency_closure(
+            roots,
+            bundle_store(&[("workflow.fabro", r#"{% include "missing.md" %}"#)]).as_ref(),
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            TemplateDiscoveryError::Missing { parent, reference }
+                if parent == manifest_path("workflow.fabro") && reference == "missing.md"
+        ));
+    }
+
+    #[test]
+    fn static_dependency_closure_parses_identical_root_occurrences_once() {
+        struct CountingStore {
+            inner: Arc<dyn TemplateStore>,
+            loads: std::sync::atomic::AtomicUsize,
+        }
+
+        impl TemplateStore for CountingStore {
+            fn load(
+                &self,
+                parent: &TemplateSource,
+                reference: &str,
+            ) -> Result<Option<TemplateSource>, TemplateLoadError> {
+                self.loads
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.inner.load(parent, reference)
+            }
+        }
+
+        let root = TemplateSource::new(
+            manifest_path("main.md"),
+            manifest_path("."),
+            r#"{% include "shared.md" %}"#,
+        );
+        let store = CountingStore {
+            inner: bundle_store(&[("shared.md", "shared")]),
+            loads: std::sync::atomic::AtomicUsize::new(0),
+        };
+
+        let closure = discover_static_dependency_closure([root.clone(), root], &store).unwrap();
+
+        assert!(closure.sources.contains_key(&manifest_path("shared.md")));
+        assert_eq!(store.loads.load(std::sync::atomic::Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn static_dependency_closure_deduplicates_loaded_dependencies_across_roots() {
+        let roots = [
+            TemplateSource::new(
+                manifest_path("first.md"),
+                manifest_path("."),
+                r#"{% include "shared.md" %}"#,
+            ),
+            TemplateSource::new(
+                manifest_path("second.md"),
+                manifest_path("."),
+                r#"{% include "shared.md" %}"#,
+            ),
+        ];
+
+        let closure = discover_static_dependency_closure(
+            roots,
+            bundle_store(&[
+                ("shared.md", r#"{% include "nested.md" %}"#),
+                ("nested.md", "nested"),
+            ])
+            .as_ref(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            closure.paths(),
+            ["first.md", "second.md", "shared.md", "nested.md"]
+                .into_iter()
+                .map(manifest_path)
+                .collect()
+        );
     }
 
     #[test]

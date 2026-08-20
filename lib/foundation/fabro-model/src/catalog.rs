@@ -61,8 +61,8 @@ pub struct ProviderCatalogSettings {
     pub api_key_url:    Option<String>,
     #[serde(default)]
     pub base_url:       Option<String>,
-    /// Unresolved interpolation source strings (literal text, `{{ env.NAME }}`,
-    /// or `{{ secrets.NAME }}` tokens), resolved at the credential boundary in
+    /// Unresolved interpolation source strings (literal text or
+    /// `{{ secrets.NAME }}` tokens), resolved at the credential boundary in
     /// `fabro-auth`.
     #[serde(default)]
     pub extra_headers:  Option<HashMap<String, String>>,
@@ -438,8 +438,8 @@ pub struct CatalogProvider {
     pub billing_policy: BillingPolicy,
     pub api_key_url:    Option<String>,
     pub base_url:       Option<String>,
-    /// Unresolved interpolation source strings (literal text, `{{ env.NAME }}`,
-    /// or `{{ secrets.NAME }}` tokens), resolved at the credential boundary in
+    /// Unresolved interpolation source strings (literal text or
+    /// `{{ secrets.NAME }}` tokens), resolved at the credential boundary in
     /// `fabro-auth`.
     pub extra_headers:  HashMap<String, String>,
     pub priority:       i32,
