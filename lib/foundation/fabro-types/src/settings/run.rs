@@ -961,12 +961,30 @@ impl Default for RunCheckpointSettings {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunCloneSettings {
     pub enabled: bool,
+    #[serde(default = "default_clone_depth")]
+    pub depth:   i32,
+}
+
+impl RunCloneSettings {
+    pub const DEFAULT_DEPTH: i32 = 100;
+
+    /// Git history depth to fetch, or `None` to fetch full history.
+    pub fn depth_limit(&self) -> Option<i32> {
+        (self.depth > 0).then_some(self.depth)
+    }
 }
 
 impl Default for RunCloneSettings {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            depth:   Self::DEFAULT_DEPTH,
+        }
     }
+}
+
+fn default_clone_depth() -> i32 {
+    RunCloneSettings::DEFAULT_DEPTH
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

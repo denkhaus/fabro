@@ -18,6 +18,9 @@ pub struct DaytonaSettings {
     pub labels:             Option<HashMap<String, String>>,
     pub snapshot:           Option<DaytonaSnapshotSettings>,
     pub network:            Option<DaytonaNetwork>,
+    /// Git history depth for the repository clone; `None` clones full
+    /// history.
+    pub clone_depth:        Option<i32>,
     #[serde(default)]
     pub skip_clone:         bool,
 }

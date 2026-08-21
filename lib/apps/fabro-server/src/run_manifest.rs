@@ -669,11 +669,11 @@ pub(crate) fn effective_sandbox_provider(settings: &RunNamespace) -> SandboxProv
 }
 
 fn resolve_daytona_config(settings: &RunNamespace) -> DaytonaConfig {
-    daytona_config_from_environment(&settings.environment, !settings.clone.enabled)
+    daytona_config_from_environment(&settings.environment, &settings.clone)
 }
 
 fn resolve_docker_config(settings: &RunNamespace) -> DockerSandboxOptions {
-    docker_config_from_environment(&settings.environment, !settings.clone.enabled)
+    docker_config_from_environment(&settings.environment, &settings.clone)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

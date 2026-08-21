@@ -303,6 +303,8 @@ pub struct RunCheckpointLayer {
 pub struct RunCloneLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depth:   Option<i32>,
 }
 
 /// `[run.run_branch]` — Fabro-managed checkpoint branch policy.

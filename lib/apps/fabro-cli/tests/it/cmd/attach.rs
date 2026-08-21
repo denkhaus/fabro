@@ -924,6 +924,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
                 "skip_git_hooks": false
               },
               "clone": {
+                "depth": 100,
                 "enabled": true
               },
               "environment": {
