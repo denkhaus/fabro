@@ -6,6 +6,7 @@ domains:
   workflows: {}
   git: {}
   environments: {}
+  testing: {}
 governance:
   max_entries: 100
   warn_entries: 150
