@@ -1955,18 +1955,12 @@ pub fn json_snapshot_filters(mut filters: Vec<(String, String)>) -> Vec<(String,
         r#""id": "[EVENT_ID]""#.to_string(),
     ));
     filters = json_elapsed_ms_snapshot_filters(filters);
-    filters.push((
-        r#""manifest_blob":\s*"[0-9a-f]{64}""#.to_string(),
-        r#""manifest_blob": "[BLOB_ID]""#.to_string(),
-    ));
-    filters.push((
-        r#""definition_blob":\s*"[0-9a-f]{64}""#.to_string(),
-        r#""definition_blob": "[BLOB_ID]""#.to_string(),
-    ));
-    filters.push((
-        r#""spec_blob":\s*"[0-9a-f]{64}""#.to_string(),
-        r#""spec_blob": "[BLOB_ID]""#.to_string(),
-    ));
+    for field in ["manifest_blob", "definition_blob", "spec_blob"] {
+        filters.push((
+            format!(r#""{field}":\s*"[0-9a-f]{{64}}""#),
+            format!(r#""{field}": "[BLOB_ID]""#),
+        ));
+    }
     filters.push((
         r#""run_dir":\s*"\[STORAGE_DIR\]/scratch/\d{8}-\[ULID\]""#.to_string(),
         r#""run_dir": "[RUN_DIR]""#.to_string(),

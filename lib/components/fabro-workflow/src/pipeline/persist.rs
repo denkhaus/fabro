@@ -65,22 +65,23 @@ async fn executable_run_spec(
     let bytes = run_store
         .read_blob(&blob_id)
         .await
-        .map_err(|err| Error::engine(err.to_string()))?
+        .map_err(|err| Error::engine_with_anyhow("failed to read run spec blob", err))?
         .ok_or_else(|| {
             Error::engine(format!(
                 "run spec blob is missing from the run store: {blob_id}"
             ))
         })?;
-    let mut spec: RunSpec =
-        serde_json::from_slice(&bytes).map_err(|err| Error::Parse(err.to_string()))?;
-    // The event stream stays authoritative for run identity, for provenance
-    // (a retry rewrites it), for blob ids recorded on events after the spec
-    // blob was written, and for a graph source the blob does not carry.
+    let mut spec: RunSpec = serde_json::from_slice(&bytes)
+        .map_err(|err| Error::engine_with_source("run spec blob was not valid JSON", err))?;
+    // The event stream stays authoritative for run identity, provenance, and
+    // blob ids. Prefer the unredacted graph source from the blob, with the
+    // folded source as a compatibility fallback.
     spec.run_id = folded.run_id;
     spec.provenance = folded.provenance;
     spec.manifest_blob = folded.manifest_blob;
     spec.definition_blob = folded.definition_blob;
     spec.spec_blob = folded.spec_blob;
+    spec.fork_source_ref = folded.fork_source_ref;
     spec.graph_source = spec.graph_source.or(folded.graph_source);
     Ok(spec)
 }
@@ -191,27 +192,24 @@ mod tests {
     }
 
     async fn seeded_store(record: &RunSpec, source: Option<&str>) -> RunDatabase {
-        seeded_store_with(record, source, true).await
+        seeded_store_with(record, source, Some(record)).await
     }
 
     async fn seeded_store_with(
         record: &RunSpec,
         source: Option<&str>,
-        write_spec_blob: bool,
+        blob_record: Option<&RunSpec>,
     ) -> RunDatabase {
         let store = memory_store();
         let run_store = store.create_run(&record.run_id).await.unwrap();
-        // Mirror the production producer: the unredacted spec rides a blob
-        // and the redacted event carries its id.
-        let spec_blob = if write_spec_blob {
-            Some(
+        let spec_blob = match blob_record {
+            Some(blob_record) => Some(
                 run_store
-                    .write_blob(&serde_json::to_vec(record).unwrap())
+                    .write_blob(&serde_json::to_vec(blob_record).unwrap())
                     .await
                     .unwrap(),
-            )
-        } else {
-            None
+            ),
+            None => None,
         };
         append_event(&run_store, &record.run_id, &Event::RunCreated {
             run_id: record.run_id,
@@ -384,13 +382,39 @@ mod tests {
         let mut record = sample_record(different_graph());
         record.graph = graph;
 
-        let run_store = seeded_store_with(&record, Some(&source), false).await;
+        let run_store = seeded_store_with(&record, Some(&source), None).await;
         let loaded = load_from_store(&run_store.clone().into(), &run_dir)
             .await
             .unwrap();
 
         assert_eq!(loaded.run_spec().settings, record.settings);
         assert_eq!(loaded.run_spec().spec_blob, None);
+    }
+
+    #[tokio::test]
+    async fn load_from_store_uses_fork_reference_from_event_fold() {
+        let temp = tempfile::tempdir().unwrap();
+        let run_dir = temp.path().join("run");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let (graph, source) = graph_and_source();
+        let source_record = sample_record(graph.clone());
+        let mut fork_record = source_record.clone();
+        fork_record.run_id = fixtures::RUN_7;
+        fork_record.fork_source_ref = Some(fabro_types::ForkSourceRef {
+            source_run_id:  source_record.run_id,
+            checkpoint_sha: "checkpoint-sha".to_string(),
+        });
+
+        let run_store = seeded_store_with(&fork_record, Some(&source), Some(&source_record)).await;
+        let loaded = load_from_store(&run_store.clone().into(), &run_dir)
+            .await
+            .unwrap();
+
+        assert_eq!(loaded.run_spec().run_id, fork_record.run_id);
+        assert_eq!(
+            loaded.run_spec().fork_source_ref,
+            fork_record.fork_source_ref
+        );
     }
 
     #[test]

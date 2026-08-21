@@ -81,6 +81,10 @@ pub(super) fn find_entropy_regions(s: &str) -> Vec<Region> {
 /// qualify simply measures under the threshold; no length guard is needed.
 fn assignment_value_offset(token: &str) -> Option<usize> {
     let eq = token.find('=')?;
+    let value = &token[eq + 1..];
+    if value.is_empty() || value.starts_with('=') {
+        return None;
+    }
     let name = &token[..eq];
     let mut chars = name.chars();
     let first = chars.next()?;
@@ -133,6 +137,19 @@ mod tests {
         assert_eq!(regions.len(), 1);
         assert_eq!(regions[0].start, "key=".len());
         assert_eq!(regions[0].end, input.len());
+    }
+
+    #[test]
+    fn regions_find_padded_base64_tokens() {
+        for input in [
+            "WxFhjC5EAnh30M0JIe0Wa58Xb1BYf8kedTTdKUbbd9Y=",
+            "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789ABCDEF==",
+        ] {
+            assert_eq!(find_entropy_regions(input), vec![Region {
+                start: 0,
+                end:   input.len(),
+            }]);
+        }
     }
 
     #[test]
