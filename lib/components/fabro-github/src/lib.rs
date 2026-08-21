@@ -9,10 +9,15 @@ use fabro_types::settings::run::MergeStrategy;
 use serde::Deserialize;
 use tokio::process::Command;
 
+pub mod access;
 pub mod token_source;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
+#[cfg(test)]
+pub(crate) mod tests_mock;
+
+pub use access::GitHubRepositoryAccess;
 
 pub const GITHUB_API_BASE_URL: &str = "https://api.github.com";
 
@@ -152,6 +157,29 @@ impl GitHubAppCredentials {
         permissions: serde_json::Value,
         install_url: Option<&str>,
     ) -> anyhow::Result<InstallationToken> {
+        self.mint_installation_token_for_repositories(
+            client,
+            owner,
+            &[repo.to_string()],
+            base_url,
+            permissions,
+            install_url,
+        )
+        .await
+    }
+
+    /// Mint one installation token scoped to every repository in
+    /// `repository_names` (names within `owner`'s installation, primary
+    /// first) with the shared `permissions`.
+    pub async fn mint_installation_token_for_repositories(
+        &self,
+        client: &impl HttpClient,
+        owner: &str,
+        repository_names: &[String],
+        base_url: &str,
+        permissions: serde_json::Value,
+        install_url: Option<&str>,
+    ) -> anyhow::Result<InstallationToken> {
         let jwt = sign_app_jwt(&self.app_id, &self.private_key_pem)?;
         let default_install_url = self.installation_url(owner);
         let install_url = install_url.or(default_install_url.as_deref());
@@ -159,7 +187,7 @@ impl GitHubAppCredentials {
             client,
             &jwt,
             owner,
-            repo,
+            repository_names,
             base_url,
             permissions,
             install_url,
@@ -475,16 +503,24 @@ pub async fn create_installation_access_token_with_permissions_and_install_url(
     permissions: serde_json::Value,
     install_url: Option<&str>,
 ) -> anyhow::Result<String> {
-    mint_installation_token_with_jwt(client, jwt, owner, repo, base_url, permissions, install_url)
-        .await
-        .map(|token| token.token)
+    mint_installation_token_with_jwt(
+        client,
+        jwt,
+        owner,
+        &[repo.to_string()],
+        base_url,
+        permissions,
+        install_url,
+    )
+    .await
+    .map(|token| token.token)
 }
 
 async fn mint_installation_token_with_jwt(
     client: &impl HttpClient,
     jwt: &str,
     owner: &str,
-    repo: &str,
+    repos: &[String],
     base_url: &str,
     permissions: serde_json::Value,
     install_url: Option<&str>,
@@ -500,8 +536,15 @@ async fn mint_installation_token_with_jwt(
         expires_at: DateTime<Utc>,
     }
 
-    // Step 1: Find the installation for this repo
-    let installation_endpoint = format!("{base_url}/repos/{owner}/{repo}/installation");
+    let Some(primary_repo) = repos.first() else {
+        bail!("installation token mint requires at least one repository");
+    };
+
+    // Step 1: Find the installation via the primary repository. Multi-
+    // repository callers resolve every repository's installation up front
+    // (`GitHubRepositoryAccess::resolve_shared_installation`), so the
+    // primary stands for the whole set here.
+    let installation_endpoint = format!("{base_url}/repos/{owner}/{primary_repo}/installation");
     let auth = format!("Bearer {jwt}");
     let resp = client
         .request(
@@ -555,7 +598,7 @@ async fn mint_installation_token_with_jwt(
         installation.id
     );
     let body = serde_json::json!({
-        "repositories": [repo],
+        "repositories": repos,
         "permissions": permissions,
     });
 
@@ -573,8 +616,9 @@ async fn mint_installation_token_with_jwt(
         201 => {}
         422 => {
             bail!(
-                "GitHub App does not have access to repository {repo}. \
-                 Update the installation's repository permissions to include it."
+                "GitHub App does not have access to every requested repository ({}). \
+                 Update the installation's repository permissions to include them.",
+                repos.join(", ")
             );
         }
         401 => {
@@ -1715,7 +1759,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn test_rsa_key() -> &'static str {
-        include_str!("testdata/rsa_private.pem")
+        tests_mock::test_rsa_key()
     }
 
     #[test]
@@ -1769,89 +1813,7 @@ mod tests {
     // MockHttpClient
     // -----------------------------------------------------------------------
 
-    struct MockRoute {
-        method:           HttpMethod,
-        path:             String,
-        status:           u16,
-        response_body:    String,
-        assert_header:    Option<(String, MockHeaderCheck)>,
-        assert_body_json: Option<serde_json::Value>,
-    }
-
-    enum MockHeaderCheck {
-        Equals(String),
-    }
-
-    struct MockHttpClient {
-        routes: Vec<MockRoute>,
-    }
-
-    impl MockHttpClient {
-        fn new() -> Self {
-            Self { routes: vec![] }
-        }
-
-        fn on(mut self, method: HttpMethod, path: &str, status: u16, body: &str) -> Self {
-            self.routes.push(MockRoute {
-                method,
-                path: path.to_string(),
-                status,
-                response_body: body.to_string(),
-                assert_header: None,
-                assert_body_json: None,
-            });
-            self
-        }
-
-        fn with_req_header(mut self, name: &str, value: &str) -> Self {
-            self.routes.last_mut().unwrap().assert_header =
-                Some((name.to_string(), MockHeaderCheck::Equals(value.to_string())));
-            self
-        }
-
-        fn with_req_body(mut self, json_str: &str) -> Self {
-            self.routes.last_mut().unwrap().assert_body_json =
-                Some(serde_json::from_str(json_str).unwrap());
-            self
-        }
-    }
-
-    impl HttpClient for MockHttpClient {
-        async fn request(
-            &self,
-            method: HttpMethod,
-            url: &str,
-            headers: &[(&str, &str)],
-            body: Option<&serde_json::Value>,
-        ) -> anyhow::Result<HttpResponse> {
-            for route in &self.routes {
-                if method == route.method && url.ends_with(&route.path) {
-                    if let Some((name, MockHeaderCheck::Equals(expected))) = &route.assert_header {
-                        let (_, v) = headers
-                            .iter()
-                            .find(|(k, _)| *k == name.as_str())
-                            .unwrap_or_else(|| {
-                                panic!("Expected header '{name}' not found in request to {url}")
-                            });
-                        assert_eq!(*v, expected.as_str(), "Header '{name}' mismatch for {url}");
-                    }
-                    if let Some(expected_body) = &route.assert_body_json {
-                        let actual = body.expect("Expected request body");
-                        assert_eq!(actual, expected_body, "Request body mismatch for {url}");
-                    }
-                    return Ok(HttpResponse::new(route.status, route.response_body.clone()));
-                }
-            }
-            panic!(
-                "No mock route for {:?} {url}\nRegistered routes: {:?}",
-                method,
-                self.routes
-                    .iter()
-                    .map(|r| format!("{:?} {}", r.method, r.path))
-                    .collect::<Vec<_>>()
-            );
-        }
-    }
+    use crate::tests_mock::{self, MockHttpClient};
 
     // -----------------------------------------------------------------------
     // create_installation_access_token — success
@@ -1899,6 +1861,62 @@ mod tests {
                 .parse::<chrono::DateTime<chrono::Utc>>()
                 .unwrap()
         );
+    }
+
+    /// The multi-repository mint sends one request listing every projected
+    /// repository name exactly once, primary first, with the shared
+    /// permissions; the installation lookup uses the primary repository.
+    #[tokio::test]
+    async fn multi_repository_mint_lists_every_repository_name_once() {
+        let access = GitHubRepositoryAccess::new(
+            Some("git@github.com:owner/repo.git"),
+            &[
+                "owner/keystone".parse().unwrap(),
+                "owner/arc".parse().unwrap(),
+            ]
+            .into_iter()
+            .collect(),
+            std::collections::HashMap::from([("contents".to_string(), "read".to_string())]),
+        )
+        .unwrap()
+        .expect("origin should produce an access value");
+
+        let mock = MockHttpClient::new()
+            .on(
+                HttpMethod::Get,
+                "/repos/owner/repo/installation",
+                200,
+                r#"{"id": 123}"#,
+            )
+            .on(
+                HttpMethod::Post,
+                "/app/installations/123/access_tokens",
+                201,
+                r#"{"token": "ghs_multi", "expires_at": "2026-01-01T12:00:00Z"}"#,
+            )
+            .with_req_body(
+                r#"{"permissions":{"contents":"read"},"repositories":["repo","arc","keystone"]}"#,
+            );
+
+        let creds = GitHubAppCredentials {
+            app_id:          "test".to_string(),
+            private_key_pem: test_rsa_key().to_string(),
+            slug:            None,
+        };
+
+        let token = creds
+            .mint_installation_token_for_repositories(
+                &mock,
+                access.owner(),
+                &access.repository_names(),
+                "",
+                access.permissions_json().unwrap(),
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(token.token, "ghs_multi");
     }
 
     #[tokio::test]

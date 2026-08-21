@@ -15,7 +15,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Context as _;
+use anyhow::{Context as _, bail};
 use chrono::{DateTime, Utc};
 use tokio::sync::Mutex;
 
@@ -146,12 +146,14 @@ pub(crate) trait InstallationTokenMinter: Send + Sync {
     async fn mint(&self) -> anyhow::Result<InstallationToken>;
 }
 
-/// Real minter backed by GitHub App credentials.
+/// Real minter backed by GitHub App credentials. `repos` lists repository
+/// names within the owner's installation, primary first; the minted token is
+/// scoped to exactly that set.
 struct AppTokenMinter {
     creds:       GitHubAppCredentials,
     http:        fabro_http::HttpClient,
     owner:       String,
-    repo:        String,
+    repos:       Vec<String>,
     base_url:    String,
     permissions: serde_json::Value,
 }
@@ -160,10 +162,10 @@ struct AppTokenMinter {
 impl InstallationTokenMinter for AppTokenMinter {
     async fn mint(&self) -> anyhow::Result<InstallationToken> {
         self.creds
-            .mint_installation_token(
+            .mint_installation_token_for_repositories(
                 &self.http,
                 &self.owner,
-                &self.repo,
+                &self.repos,
                 &self.base_url,
                 self.permissions.clone(),
                 None,
@@ -243,7 +245,38 @@ impl InstallationTokenSource {
         repo: String,
         permissions: serde_json::Value,
     ) -> anyhow::Result<Arc<Self>> {
-        let repo_display = format!("{owner}/{repo}");
+        Self::for_repositories(creds, owner, vec![repo], permissions)
+    }
+
+    /// Build a source for a validated effective repository set. Minted
+    /// tokens are scoped to every repository in the set with the shared
+    /// permissions; caching, refresh margin, and single-flight behavior are
+    /// identical to the single-repository source.
+    pub fn for_access(
+        creds: &GitHubCredentials,
+        access: &crate::GitHubRepositoryAccess,
+    ) -> anyhow::Result<Arc<Self>> {
+        Self::for_repositories(
+            creds,
+            access.owner().to_string(),
+            access.repository_names(),
+            access.permissions_json()?,
+        )
+    }
+
+    fn for_repositories(
+        creds: &GitHubCredentials,
+        owner: String,
+        repos: Vec<String>,
+        permissions: serde_json::Value,
+    ) -> anyhow::Result<Arc<Self>> {
+        let repo_display = match repos.as_slice() {
+            [primary] => format!("{owner}/{primary}"),
+            [primary, additional @ ..] => {
+                format!("{owner}/{primary} (+{} additional)", additional.len())
+            }
+            [] => bail!("token source requires at least one repository"),
+        };
         let state = match creds {
             GitHubCredentials::Pat(token) => SourceState::Pat(SecretString::new(token.clone())),
             GitHubCredentials::Installation(token) => SourceState::Installation(token.clone()),
@@ -256,7 +289,7 @@ impl InstallationTokenSource {
                         creds: app.clone(),
                         http,
                         owner,
-                        repo,
+                        repos,
                         base_url: crate::github_api_base_url(),
                         permissions,
                     }),
@@ -500,6 +533,31 @@ mod tests {
         assert_eq!(resolved.snapshot.generation, 0);
         assert!(resolved.snapshot.is_static());
         assert!(!source.mints_installation_tokens());
+    }
+
+    /// A source built from a validated multi-repository access value uses the
+    /// same state machine as the single-repository constructor: static
+    /// credentials pass through, and App credentials share the cache
+    /// machinery exercised by the `with_minter` tests below.
+    #[tokio::test]
+    async fn for_access_source_resolves_like_the_single_repository_source() {
+        let access = crate::GitHubRepositoryAccess::new(
+            Some("https://github.com/owner/repo.git"),
+            &["owner/keystone".parse().unwrap()].into_iter().collect(),
+            std::collections::HashMap::from([("contents".to_string(), "read".to_string())]),
+        )
+        .unwrap()
+        .expect("origin should produce an access value");
+
+        let source = InstallationTokenSource::for_access(
+            &GitHubCredentials::Pat("ghp_pat".to_string()),
+            &access,
+        )
+        .unwrap();
+
+        let resolved = source.resolve().await.unwrap();
+        assert_eq!(resolved.token.expose(), "ghp_pat");
+        assert!(resolved.snapshot.is_static());
     }
 
     #[tokio::test]
