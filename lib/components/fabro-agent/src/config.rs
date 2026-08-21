@@ -104,8 +104,8 @@ impl ToolHookCallback for ToolApprovalAdapter {
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct ToolSecrets {
     pub brave_search_api_key: Option<String>,
-    pub venice_api_key: Option<String>,
-    pub search: SearchIntegrationSettings,
+    pub venice_api_key:       Option<String>,
+    pub search:               SearchIntegrationSettings,
 }
 
 impl std::fmt::Debug for ToolSecrets {
@@ -125,8 +125,8 @@ impl std::fmt::Debug for ToolSecrets {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NativeToolOptions {
     pub default_command_timeout_ms: u64,
-    pub max_command_timeout_ms: u64,
-    pub secrets: ToolSecrets,
+    pub max_command_timeout_ms:     u64,
+    pub secrets:                    ToolSecrets,
 }
 
 impl NativeToolOptions {
@@ -157,8 +157,8 @@ impl Default for NativeToolOptions {
     fn default() -> Self {
         Self {
             default_command_timeout_ms: 10_000,
-            max_command_timeout_ms: 600_000,
-            secrets: ToolSecrets::default(),
+            max_command_timeout_ms:     600_000,
+            secrets:                    ToolSecrets::default(),
         }
     }
 }
@@ -447,12 +447,9 @@ mod tests {
         let approval: ToolApprovalFn = Arc::new(|_name, _args| Err("denied".to_string()));
         let adapter = ToolApprovalAdapter(approval);
         let decision = adapter.pre_tool_use("shell", &serde_json::json!({})).await;
-        assert_eq!(
-            decision,
-            ToolHookDecision::Block {
-                reason: "denied".to_string(),
-            }
-        );
+        assert_eq!(decision, ToolHookDecision::Block {
+            reason: "denied".to_string(),
+        });
     }
 
     #[tokio::test]

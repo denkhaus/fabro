@@ -99,7 +99,7 @@ pub(crate) fn make_bash_tool(options: &NativeToolOptions) -> RegisteredTool {
                 "additionalProperties": false
             }),
         ),
-        executor: Arc::new(move |args, ctx| {
+        executor:   Arc::new(move |args, ctx| {
             Box::pin(async move {
                 let command = tools::required_str(&args, "command")?;
                 let timeout_ms = args
@@ -110,7 +110,7 @@ pub(crate) fn make_bash_tool(options: &NativeToolOptions) -> RegisteredTool {
                 tools::run_shell_command(&ctx, command, timeout_ms, None).await
             })
         }),
-        source: ToolSource::Native,
+        source:     ToolSource::Native,
     }
 }
 
@@ -221,7 +221,7 @@ pub(crate) fn make_agent_tool(
                 "additionalProperties": false
             }),
         ),
-        executor: Arc::new(move |args, ctx| {
+        executor:   Arc::new(move |args, ctx| {
             let supervisor = supervisor.clone();
             let session_factory = session_factory.clone();
             Box::pin(async move {
@@ -259,7 +259,7 @@ pub(crate) fn make_agent_tool(
                 }
             })
         }),
-        source: ToolSource::Native,
+        source:     ToolSource::Native,
     }
 }
 
@@ -330,7 +330,7 @@ pub(crate) fn make_task_output_tool(supervisor: SubAgentSupervisor) -> Registere
                 "additionalProperties": false
             }),
         ),
-        executor: Arc::new(move |args, ctx| {
+        executor:   Arc::new(move |args, ctx| {
             let supervisor = supervisor.clone();
             Box::pin(async move {
                 let task_id = tools::required_str(&args, "task_id")?;
@@ -384,7 +384,7 @@ pub(crate) fn make_task_output_tool(supervisor: SubAgentSupervisor) -> Registere
                 }
             })
         }),
-        source: ToolSource::Native,
+        source:     ToolSource::Native,
     }
 }
 
@@ -406,7 +406,7 @@ pub(crate) fn make_task_stop_tool(supervisor: SubAgentSupervisor) -> RegisteredT
                 "additionalProperties": false
             }),
         ),
-        executor: Arc::new(move |args, _ctx| {
+        executor:   Arc::new(move |args, _ctx| {
             let supervisor = supervisor.clone();
             Box::pin(async move {
                 let task_id = tools::required_str(&args, "task_id")?;
@@ -417,7 +417,7 @@ pub(crate) fn make_task_stop_tool(supervisor: SubAgentSupervisor) -> RegisteredT
                 Ok(format!("Agent {task_id} stopped."))
             })
         }),
-        source: ToolSource::Native,
+        source:     ToolSource::Native,
     }
 }
 
@@ -448,7 +448,7 @@ pub(crate) fn make_send_message_tool(supervisor: SubAgentSupervisor) -> Register
                 "additionalProperties": false
             }),
         ),
-        executor: Arc::new(move |args, _ctx| {
+        executor:   Arc::new(move |args, _ctx| {
             let supervisor = supervisor.clone();
             Box::pin(async move {
                 let recipient = tools::required_str(&args, "to")?;
@@ -459,7 +459,7 @@ pub(crate) fn make_send_message_tool(supervisor: SubAgentSupervisor) -> Register
                 Ok(format!("Message sent to agent {recipient}."))
             })
         }),
-        source: ToolSource::Native,
+        source:     ToolSource::Native,
     }
 }
 
@@ -468,6 +468,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Mutex;
 
+    use fabro_types::settings::VeniceSearchEngine;
     use serde_json::json;
     use tokio_util::sync::CancellationToken;
 
@@ -478,7 +479,6 @@ mod tests {
     use crate::todo_tools::{
         make_task_create_tool, make_task_get_tool, make_task_list_tool, make_task_update_tool,
     };
-    use fabro_types::settings::VeniceSearchEngine;
 
     fn property_names(tool: &RegisteredTool) -> BTreeSet<&str> {
         tool.definition.parameters["properties"]
@@ -513,12 +513,12 @@ mod tests {
 
     fn context() -> ToolContext {
         ToolContext {
-            env: Arc::new(MockSandbox::default()) as Arc<dyn Sandbox>,
-            cancel: CancellationToken::new(),
-            tool_env_provider: None,
-            session_id: Some("root".to_string()),
-            root_session_id: Some("root".to_string()),
-            tool_call_id: Some("call".to_string()),
+            env:                 Arc::new(MockSandbox::default()) as Arc<dyn Sandbox>,
+            cancel:              CancellationToken::new(),
+            tool_env_provider:   None,
+            session_id:          Some("root".to_string()),
+            root_session_id:     Some("root".to_string()),
+            tool_call_id:        Some("call".to_string()),
             agent_event_emitter: None,
         }
     }
@@ -526,16 +526,13 @@ mod tests {
     #[test]
     fn core_adapter_schemas_match_the_claude5_contract() {
         let options = NativeToolOptions::for_profile(fabro_model::AgentProfileKind::Claude5);
-        assert_schema(
-            &make_read_tool(),
-            &["file_path", "limit", "offset"],
-            &["file_path"],
-        );
-        assert_schema(
-            &make_write_tool(),
-            &["content", "file_path"],
-            &["content", "file_path"],
-        );
+        assert_schema(&make_read_tool(), &["file_path", "limit", "offset"], &[
+            "file_path",
+        ]);
+        assert_schema(&make_write_tool(), &["content", "file_path"], &[
+            "content",
+            "file_path",
+        ]);
         assert_schema(
             &make_edit_tool(),
             &["file_path", "new_string", "old_string", "replace_all"],
@@ -547,11 +544,9 @@ mod tests {
             bash.definition.parameters["properties"]["timeout"]["maximum"],
             600_000
         );
-        assert_schema(
-            &make_web_fetch_tool(None),
-            &["prompt", "url"],
-            &["prompt", "url"],
-        );
+        assert_schema(&make_web_fetch_tool(None), &["prompt", "url"], &[
+            "prompt", "url",
+        ]);
         assert_schema(
             &make_web_search_tool(SearchBackend::brave("key".to_string())),
             &["query"],
@@ -613,17 +608,13 @@ mod tests {
             &["block", "task_id", "timeout"],
             &["block", "task_id", "timeout"],
         );
-        assert_schema(
-            &make_task_stop_tool(supervisor.clone()),
-            &["task_id"],
-            &["task_id"],
-        );
+        assert_schema(&make_task_stop_tool(supervisor.clone()), &["task_id"], &[
+            "task_id",
+        ]);
         let send_message = make_send_message_tool(supervisor);
-        assert_schema(
-            &send_message,
-            &["message", "summary", "to"],
-            &["message", "to"],
-        );
+        assert_schema(&send_message, &["message", "summary", "to"], &[
+            "message", "to",
+        ]);
         assert!(
             send_message
                 .definition

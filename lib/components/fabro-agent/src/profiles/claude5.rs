@@ -174,20 +174,17 @@ mod tests {
         let profile = Claude5Profile::new("claude-sonnet-5");
         let mut names = profile.tool_registry().names();
         names.sort();
-        assert_eq!(
-            names,
-            vec![
-                "Bash",
-                "Edit",
-                "Read",
-                "TaskCreate",
-                "TaskGet",
-                "TaskList",
-                "TaskUpdate",
-                "WebFetch",
-                "Write",
-            ]
-        );
+        assert_eq!(names, vec![
+            "Bash",
+            "Edit",
+            "Read",
+            "TaskCreate",
+            "TaskGet",
+            "TaskList",
+            "TaskUpdate",
+            "WebFetch",
+            "Write",
+        ]);
         assert!(!names.iter().any(|name| name == "Grep" || name == "Glob"));
     }
 

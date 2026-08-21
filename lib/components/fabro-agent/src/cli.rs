@@ -44,8 +44,8 @@ use crate::{
 fn cli_tool_secrets() -> ToolSecrets {
     ToolSecrets {
         brave_search_api_key: std::env::var(EnvVars::BRAVE_SEARCH_API_KEY).ok(),
-        venice_api_key: std::env::var(EnvVars::VENICE_API_KEY).ok(),
-        search: search_settings_from_disk(),
+        venice_api_key:       std::env::var(EnvVars::VENICE_API_KEY).ok(),
+        search:               search_settings_from_disk(),
     }
 }
 

@@ -24,12 +24,12 @@ const MAX_RESULTS: u64 = 20;
 #[derive(Clone, Debug)]
 pub(crate) enum SearchBackend {
     Brave {
-        api_key: String,
+        api_key:    String,
         search_url: String,
     },
     Venice {
-        api_key: String,
-        engine: VeniceSearchEngine,
+        api_key:    String,
+        engine:     VeniceSearchEngine,
         search_url: String,
     },
 }
@@ -207,10 +207,10 @@ fn format_brave_results(body: &serde_json::Value) -> String {
         results
             .iter()
             .map(|result| SearchHit {
-                title: json_str(result, "title"),
-                url: json_str(result, "url"),
+                title:       json_str(result, "title"),
+                url:         json_str(result, "url"),
                 description: json_str(result, "description"),
-                date: None,
+                date:        None,
             })
             .collect()
     }))
@@ -222,20 +222,20 @@ fn format_venice_results(body: &serde_json::Value) -> String {
         results
             .iter()
             .map(|result| SearchHit {
-                title: json_str(result, "title"),
-                url: json_str(result, "url"),
+                title:       json_str(result, "title"),
+                url:         json_str(result, "url"),
                 description: json_str(result, "content"),
-                date: optional_json_str(result, "date"),
+                date:        optional_json_str(result, "date"),
             })
             .collect()
     }))
 }
 
 struct SearchHit {
-    title: String,
-    url: String,
+    title:       String,
+    url:         String,
     description: String,
-    date: Option<String>,
+    date:        Option<String>,
 }
 
 fn format_hits(hits: Option<Vec<SearchHit>>) -> String {
@@ -364,8 +364,8 @@ mod tests {
     fn secrets(brave: Option<&str>, venice: Option<&str>, provider: SearchProvider) -> ToolSecrets {
         ToolSecrets {
             brave_search_api_key: brave.map(str::to_string),
-            venice_api_key: venice.map(str::to_string),
-            search: SearchIntegrationSettings {
+            venice_api_key:       venice.map(str::to_string),
+            search:               SearchIntegrationSettings {
                 provider,
                 venice_engine: VeniceSearchEngine::Brave,
             },
@@ -374,18 +374,15 @@ mod tests {
 
     async fn execute(tool: &RegisteredTool, args: serde_json::Value) -> Result<String, String> {
         let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
-        (tool.executor)(
-            args,
-            ToolContext {
-                env,
-                cancel: CancellationToken::new(),
-                tool_env_provider: None,
-                session_id: None,
-                root_session_id: None,
-                tool_call_id: None,
-                agent_event_emitter: None,
-            },
-        )
+        (tool.executor)(args, ToolContext {
+            env,
+            cancel: CancellationToken::new(),
+            tool_env_provider: None,
+            session_id: None,
+            root_session_id: None,
+            tool_call_id: None,
+            agent_event_emitter: None,
+        })
         .await
     }
 
