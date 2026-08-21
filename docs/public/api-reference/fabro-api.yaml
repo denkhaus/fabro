@@ -14447,6 +14447,17 @@ components:
           type: object
           additionalProperties:
             type: string
+        additional_repositories:
+          type: array
+          description: |
+            Additional GitHub repositories, beyond the implicit run origin,
+            that the minted GITHUB_TOKEN must cover. Each entry is a full
+            `owner/repository` slug; every repository must share one owner
+            with the run origin. Omitted when empty; settings persisted
+            before this field existed deserialize to an empty set.
+          items:
+            type: string
+          uniqueItems: true
 
     RunGoal:
       oneOf:
