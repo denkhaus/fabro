@@ -1762,7 +1762,10 @@ mod tests {
                 .parse::<EnvironmentProvider>()
                 .expect("test provider should parse");
             run.integrations = RunIntegrationsSettings {
-                github: RunIntegrationsGithubSettings { permissions },
+                github: RunIntegrationsGithubSettings {
+                    permissions,
+                    ..RunIntegrationsGithubSettings::default()
+                },
             };
             run
         }

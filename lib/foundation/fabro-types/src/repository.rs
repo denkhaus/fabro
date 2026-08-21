@@ -1,3 +1,8 @@
+use std::cmp::Ordering;
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,8 +30,10 @@ impl RepositoryRef {
 ///
 /// Construction enforces GitHub's owner and repository name syntax on the
 /// exact submitted bytes; no trimming, case folding, or other normalization
-/// is performed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// is performed. The original spelling is preserved for `Display` and
+/// serialization, while identity (`Eq`, `Ord`, `Hash`) is case-insensitive
+/// to match GitHub's treatment of owner and repository names.
+#[derive(Debug, Clone)]
 pub struct GitHubRepositorySlug {
     owner: String,
     repo:  String,
@@ -56,6 +63,90 @@ impl GitHubRepositorySlug {
     #[must_use]
     pub fn repo(&self) -> &str {
         &self.repo
+    }
+
+    /// Whether `other` names the same repository owner, ignoring ASCII case.
+    /// Owner and repository names are validated ASCII, so ASCII folding is
+    /// exact.
+    #[must_use]
+    pub fn same_owner(&self, other: &Self) -> bool {
+        self.owner.eq_ignore_ascii_case(&other.owner)
+    }
+
+    fn canonical_key(&self) -> (String, String) {
+        (
+            self.owner.to_ascii_lowercase(),
+            self.repo.to_ascii_lowercase(),
+        )
+    }
+}
+
+impl PartialEq for GitHubRepositorySlug {
+    fn eq(&self, other: &Self) -> bool {
+        self.owner.eq_ignore_ascii_case(&other.owner) && self.repo.eq_ignore_ascii_case(&other.repo)
+    }
+}
+
+impl Eq for GitHubRepositorySlug {}
+
+impl PartialOrd for GitHubRepositorySlug {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for GitHubRepositorySlug {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.canonical_key().cmp(&other.canonical_key())
+    }
+}
+
+impl Hash for GitHubRepositorySlug {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.canonical_key().hash(state);
+    }
+}
+
+impl fmt::Display for GitHubRepositorySlug {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.owner, self.repo)
+    }
+}
+
+/// Parse failure for [`GitHubRepositorySlug`]. The offending input is not
+/// echoed back because config surfaces already attach the value and its path.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "expected a GitHub `owner/repository` slug with no scheme, host, ref, or extra path component"
+)]
+pub struct GitHubRepositorySlugError;
+
+impl FromStr for GitHubRepositorySlug {
+    type Err = GitHubRepositorySlugError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::try_new(value).ok_or(GitHubRepositorySlugError)
+    }
+}
+
+impl Serialize for GitHubRepositorySlug {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for GitHubRepositorySlug {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error as _;
+
+        let value = String::deserialize(deserializer)?;
+        value.parse().map_err(D::Error::custom)
     }
 }
 
@@ -232,6 +323,69 @@ mod tests {
         let over_repo = format!("owner/{}", "b".repeat(101));
         assert!(GitHubRepositorySlug::try_new(&over_owner).is_none());
         assert!(GitHubRepositorySlug::try_new(&over_repo).is_none());
+    }
+
+    #[test]
+    fn slug_identity_is_case_insensitive_but_display_preserves_case() {
+        let mixed: GitHubRepositorySlug = "Fabro-SH/Keystone".parse().unwrap();
+        let lower: GitHubRepositorySlug = "fabro-sh/keystone".parse().unwrap();
+
+        assert_eq!(mixed, lower);
+        assert_eq!(mixed.cmp(&lower), std::cmp::Ordering::Equal);
+        assert!(mixed.same_owner(&lower));
+        assert_eq!(mixed.to_string(), "Fabro-SH/Keystone");
+
+        let mut hashes = std::collections::HashSet::new();
+        hashes.insert(mixed.clone());
+        assert!(
+            !hashes.insert(lower.clone()),
+            "case variants share identity"
+        );
+
+        let mut ordered = std::collections::BTreeSet::new();
+        ordered.insert(mixed);
+        assert!(!ordered.insert(lower), "case variants share ordering");
+    }
+
+    #[test]
+    fn slug_ordering_sorts_by_canonical_form() {
+        let mut slugs: Vec<GitHubRepositorySlug> = ["owner/Zeta", "Owner/alpha", "owner/Beta"]
+            .iter()
+            .map(|value| value.parse().unwrap())
+            .collect();
+        slugs.sort();
+        let rendered: Vec<String> = slugs.iter().map(ToString::to_string).collect();
+        assert_eq!(rendered, ["Owner/alpha", "owner/Beta", "owner/Zeta"]);
+    }
+
+    #[test]
+    fn slug_from_str_rejects_urls_and_hosts() {
+        let cases = [
+            "https://github.com/owner/repo",
+            "git@github.com:owner/repo.git",
+            "ssh://git@github.com/owner/repo",
+            "github.com/owner/repo",
+            "owner/repo@main",
+            "owner/repo#ref",
+            " owner/repo",
+            "owner/repo ",
+        ];
+        for input in cases {
+            assert!(input.parse::<GitHubRepositorySlug>().is_err(), "{input}");
+        }
+    }
+
+    #[test]
+    fn slug_serde_round_trips_as_a_string() {
+        let slug: GitHubRepositorySlug = "Fabro-SH/Keystone".parse().unwrap();
+        let json = serde_json::to_string(&slug).unwrap();
+        assert_eq!(json, "\"Fabro-SH/Keystone\"");
+
+        let parsed: GitHubRepositorySlug = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, slug);
+
+        let err = serde_json::from_str::<GitHubRepositorySlug>("\"not a slug\"").unwrap_err();
+        assert!(err.to_string().contains("owner/repository"), "{err}");
     }
 
     #[test]
