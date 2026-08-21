@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    AuthMethod, Graph, IdpIdentity, Principal, RunProvenance, RunSpec, WorkflowSettings, fixtures,
+    AuthMethod, BlobHash, Graph, IdpIdentity, Principal, RunProvenance, RunSpec, WorkflowSettings,
+    WorkflowVersionId, fixtures,
 };
 
 #[must_use]
@@ -38,19 +39,25 @@ pub fn test_run_provenance() -> RunProvenance {
 #[must_use]
 pub fn test_run_spec() -> RunSpec {
     RunSpec {
-        run_id:           fixtures::RUN_1,
-        settings:         WorkflowSettings::default(),
-        graph:            Graph::new("test"),
-        graph_source:     None,
-        workflow_slug:    None,
-        automation:       None,
-        source_directory: None,
-        labels:           HashMap::new(),
-        provenance:       test_run_provenance(),
-        manifest_blob:    None,
-        definition_blob:  None,
-        spec_blob:        None,
-        git:              None,
-        fork_source_ref:  None,
+        run_id:              fixtures::RUN_1,
+        settings:            WorkflowSettings::default(),
+        graph:               Graph::new("test"),
+        graph_source:        None,
+        workflow_slug:       None,
+        workflow_version_id: None,
+        automation:          None,
+        source_directory:    None,
+        labels:              HashMap::new(),
+        provenance:          test_run_provenance(),
+        manifest_blob:       None,
+        definition_blob:     None,
+        spec_blob:           None,
+        git:                 None,
+        fork_source_ref:     None,
     }
+}
+
+#[must_use]
+pub fn test_workflow_version_id() -> WorkflowVersionId {
+    WorkflowVersionId::from(BlobHash::new(b"workflow"))
 }

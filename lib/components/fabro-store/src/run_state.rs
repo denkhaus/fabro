@@ -1040,6 +1040,7 @@ fn projection_from_created(event: &EventEnvelope) -> Result<RunProjection> {
         graph: props.graph.clone(),
         graph_source: props.workflow_source.clone(),
         workflow_slug: props.workflow_slug.clone(),
+        workflow_version_id: props.workflow_version_id,
         automation: props.automation.clone(),
         source_directory: props.source_directory.clone(),
         labels,
@@ -2367,9 +2368,34 @@ mod tests {
 
         let projection = RunProjection::apply_events(&[event]).unwrap();
         assert_eq!(projection.retried_from, None);
+        assert_eq!(projection.spec.workflow_version_id, None);
         assert_eq!(
             build_summary(&projection, &fixtures::RUN_1).retried_from,
             None
+        );
+    }
+
+    #[test]
+    fn run_created_projects_workflow_version_id_into_spec() {
+        let workflow_version_id = test_support::test_workflow_version_id();
+        let event = test_raw_event(
+            1,
+            "run.created",
+            &json!({
+                "settings": WorkflowSettings::default(),
+                "graph": Graph::new("test"),
+                "workflow_version_id": workflow_version_id,
+                "labels": {},
+                "provenance": test_support::test_run_provenance()
+            }),
+            None,
+        );
+
+        let projection = RunProjection::apply_events(&[event]).unwrap();
+
+        assert_eq!(
+            projection.spec.workflow_version_id,
+            Some(workflow_version_id)
         );
     }
 
