@@ -1,0 +1,13 @@
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000..c1c2eb2
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,7 @@
++# Fabro
++
++A basic workflow demo.
++
++> Fabro workflows flow —
++> small steps compose, git records,
++> hello, then commit.
