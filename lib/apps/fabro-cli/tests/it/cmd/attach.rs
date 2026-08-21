@@ -15,9 +15,10 @@ use fabro_test::{
 use serde_json::Value;
 
 use super::support::{
-    output_stdout, resolve_run, server_endpoint, wait_for_status, write_gated_workflow,
+    created_run_id, output_stdout, resolve_run, server_endpoint, wait_for_status,
+    write_gated_workflow,
 };
-use crate::support::{run_output_filters, unique_run_id};
+use crate::support::run_output_filters;
 
 const SHARED_DAEMON_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -65,20 +66,8 @@ fn format_output_snapshot(output: &Output, filters: &[(String, String)]) -> Stri
 }
 
 fn normalize_attach_json_progress_event(mut event: Value) -> Value {
-    if let Some(properties) = event.get_mut("properties").and_then(Value::as_object_mut) {
-        if properties.contains_key("manifest_blob") {
-            properties.insert(
-                "manifest_blob".to_string(),
-                Value::String("[BLOB_ID]".to_string()),
-            );
-        }
-        if properties.contains_key("definition_blob") {
-            properties.insert(
-                "definition_blob".to_string(),
-                Value::String("[BLOB_ID]".to_string()),
-            );
-        }
-    }
+    // manifest_blob/definition_blob hashes are already rewritten to
+    // [BLOB_HASH] by the shared json_snapshot_filters regexes.
     // Strip v2-shape server/version fields that the bridge emits,
     // since the test fixture's socket path is randomised per run.
     if let Some(settings) = event
@@ -366,22 +355,20 @@ fn attach_reprompts_invalid_choice_then_accepts_valid_answer() {
 fn attach_replays_completed_detached_run() {
     let context = test_context!();
     context.ensure_home_server_auth_methods();
-    let run_id = unique_run_id();
     let workflow = context.install_fixture("simple.fabro");
 
-    context
+    let run = context
         .command()
         .args([
             "run",
             "--dry-run",
             "--auto-approve",
             "--detach",
-            "--run-id",
-            run_id.as_str(),
             workflow.to_str().unwrap(),
         ])
         .assert()
         .success();
+    let run_id = created_run_id(run.get_output());
 
     context
         .command()
@@ -897,7 +884,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
               }
             }
           },
-          "manifest_blob": "[BLOB_ID]",
+          "manifest_blob": "[BLOB_HASH]",
           "provenance": {
             "client": {
               "name": "fabro-cli",
@@ -917,7 +904,6 @@ fn attach_json_errors_without_prompting_for_human_input() {
               "login": "dev"
             }
           },
-          "run_dir": "[RUN_DIR]",
           "settings": {
             "project": {
               "description": null,
@@ -927,8 +913,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
             "run": {
               "agent": {
                 "fabro_tools": false,
-                "mcps": {},
-                "permissions": null
+                "mcps": {}
               },
               "artifacts": {
                 "include": []
@@ -997,7 +982,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
                   "reasoning_effort": null,
                   "speed": null
                 },
-                "fallbacks": [],
+                "fallbacks": {},
                 "name": "[DEFAULT_MODEL]",
                 "provider": "openai"
               },
@@ -1027,6 +1012,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
             }
           },
           "source_directory": "[TEMP_DIR]",
+          "spec_blob": "[BLOB_HASH]",
           "title": "Wait for approval",
           "web_url": "http://localhost:3000/runs/[ULID]",
           "workflow_slug": "human-gate",
@@ -1039,7 +1025,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
         "event": "run.submitted",
         "id": "[EVENT_ID]",
         "properties": {
-          "definition_blob": "[BLOB_ID]"
+          "definition_blob": "[BLOB_HASH]"
         },
         "run_id": "[ULID]",
         "ts": "[TIMESTAMP]"
@@ -1190,7 +1176,6 @@ fn attach_json_errors_without_prompting_for_human_input() {
         "properties": {
           "attempt": 1,
           "context_values": {
-            "current.preamble": "Goal: Wait for approval/n",
             "current_node": "start",
             "graph.goal": "Wait for approval",
             "internal.fidelity": "compact",

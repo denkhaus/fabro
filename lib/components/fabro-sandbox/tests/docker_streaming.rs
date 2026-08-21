@@ -3,7 +3,9 @@
 use std::sync::Arc;
 
 use bollard::Docker;
-use fabro_sandbox::{CommandOutputCallback, DockerSandbox, DockerSandboxOptions, Sandbox};
+use fabro_sandbox::{
+    CommandOutputCallback, DockerSandbox, DockerSandboxOptions, ExecStreamingRequest, Sandbox,
+};
 use tokio::sync::Mutex;
 
 fn capture_bytes(chunks: Arc<Mutex<Vec<u8>>>) -> CommandOutputCallback {
@@ -38,6 +40,7 @@ async fn streaming_timeout_terminates_docker_exec_before_returning() {
         None,
         None,
         None,
+        None,
     )
     .expect("docker sandbox should construct");
     sandbox
@@ -48,15 +51,13 @@ async fn streaming_timeout_terminates_docker_exec_before_returning() {
     let chunks = Arc::new(Mutex::new(Vec::new()));
 
     let marker = "fabro_streaming_timeout_sentinel";
+    let command = format!("trap '' HUP TERM; echo start; sleep 5 # {marker}");
     let result = sandbox
-        .exec_command_streaming(
-            &format!("trap '' HUP TERM; echo start; sleep 5 # {marker}"),
-            Some(200),
-            None,
-            None,
-            None,
-            Some(capture_bytes(Arc::clone(&chunks))),
-        )
+        .exec_command_streaming(ExecStreamingRequest {
+            timeout_ms: Some(200),
+            output_callback: Some(capture_bytes(Arc::clone(&chunks))),
+            ..ExecStreamingRequest::new(&command)
+        })
         .await
         .expect("streaming command should return a timeout result");
 
@@ -91,6 +92,68 @@ async fn streaming_timeout_terminates_docker_exec_before_returning() {
 }
 
 #[tokio::test]
+#[ignore = "requires real Docker container lifecycle; run explicitly when changing Docker exec integration"]
+async fn streaming_command_receives_exact_stdin_and_eof() {
+    let image = "buildpack-deps:noble";
+    let Ok(docker) = Docker::connect_with_local_defaults() else {
+        return;
+    };
+    if docker.inspect_image(image).await.is_err() {
+        return;
+    }
+
+    let sandbox = DockerSandbox::new(
+        DockerSandboxOptions {
+            image: image.to_string(),
+            auto_pull: false,
+            skip_clone: true,
+            ..DockerSandboxOptions::default()
+        },
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .expect("docker sandbox should construct");
+    sandbox
+        .initialize()
+        .await
+        .expect("docker sandbox should initialize");
+
+    let stdin = b"first line\n$(touch /tmp/must-not-run)\nlast line".to_vec();
+    let result = sandbox
+        .exec_command_streaming(ExecStreamingRequest {
+            timeout_ms: Some(10_000),
+            stdin: Some(stdin.clone()),
+            ..ExecStreamingRequest::new("cat")
+        })
+        .await
+        .expect("streaming command should read stdin and finish at EOF");
+    let injection_probe = sandbox
+        .exec_command("test ! -e /tmp/must-not-run", 10_000, None, None, None)
+        .await
+        .expect("injection probe should run");
+
+    sandbox
+        .cleanup()
+        .await
+        .expect("docker cleanup should succeed");
+
+    assert!(
+        result.result.is_success(),
+        "stdin command failed: stdout={} stderr={}",
+        result.result.stdout,
+        result.result.stderr
+    );
+    assert_eq!(result.result.stdout.as_bytes(), stdin);
+    assert!(
+        injection_probe.is_success(),
+        "stdin bytes must not be evaluated as shell source"
+    );
+}
+
+#[tokio::test]
 #[ignore = "requires real Docker container lifecycle, image, network, and a public GitHub clone"]
 async fn cloned_docker_sandbox_uses_repos_checkout_and_workspace_symlink() {
     let image = "buildpack-deps:noble";
@@ -111,6 +174,7 @@ async fn cloned_docker_sandbox_uses_repos_checkout_and_workspace_symlink() {
         None,
         None,
         Some("https://github.com/brynary/rack-test".to_string()),
+        None,
         None,
     )
     .expect("docker sandbox should construct");
@@ -178,6 +242,7 @@ async fn docker_runs_clean_bash_through_both_command_paths() {
         None,
         None,
         None,
+        None,
     )
     .expect("docker sandbox should construct");
     sandbox
@@ -212,14 +277,11 @@ async fn docker_runs_clean_bash_through_both_command_paths() {
 
     let chunks = Arc::new(Mutex::new(Vec::new()));
     let streaming = sandbox
-        .exec_command_streaming(
-            command,
-            Some(10_000),
-            None,
-            None,
-            None,
-            Some(capture_bytes(Arc::clone(&chunks))),
-        )
+        .exec_command_streaming(ExecStreamingRequest {
+            timeout_ms: Some(10_000),
+            output_callback: Some(capture_bytes(Arc::clone(&chunks))),
+            ..ExecStreamingRequest::new(command)
+        })
         .await
         .expect("streaming command should run");
 
@@ -270,6 +332,7 @@ async fn docker_glob_matches_patterns_containing_a_path_separator() {
             skip_clone: true,
             ..DockerSandboxOptions::default()
         },
+        None,
         None,
         None,
         None,

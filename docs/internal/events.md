@@ -44,18 +44,12 @@ Emitted when the run record is created.
   "event": "run.created",
   "properties": {
     "workflow_slug": "my-workflow",
-    "run_dir": "/home/user/.fabro/storage/scratch/20260428-01JQXYZ",
     "source_directory": "/home/user/src/my-project",
-    "repo_origin_url": "https://github.com/acme/my-project.git",
-    "base_branch": "main",
-    "pre_run_git": {
-      "display_base_sha": "abc123",
-      "local_dirty": "clean",
-      "push_outcome": {
-        "type": "succeeded",
-        "remote": "origin",
-        "branch": "main"
-      }
+    "git": {
+      "origin_url": "https://github.com/acme/my-project",
+      "branch": "main",
+      "sha": "abc123",
+      "dirty": "clean"
     },
     "fork_source_ref": null,
     "in_place": false,
@@ -79,19 +73,19 @@ Emitted when the run record is created.
 | `settings` | object | Workflow settings snapshot |
 | `graph` | object | Parsed workflow graph |
 | `workflow_source` | string? | Workflow source text |
-| `workflow_config` | string? | Workflow config text |
 | `labels` | object | Run labels |
-| `run_dir` | string | Local scratch directory for the run |
 | `source_directory` | string? | Submitter-side source directory |
-| `repo_origin_url` | string? | Normalized repository origin URL used by clone-based sandboxes |
-| `base_branch` | string? | Submitter-side base branch |
 | `workflow_slug` | string? | Workflow slug |
-| `db_prefix` | string? | Store prefix used for the run |
 | `provenance` | object | Actor and request provenance |
-| `manifest_blob` | string? | Blob id for the submitted manifest |
-| `pre_run_git` | object? | Submitter-side pre-run git context and push outcome |
+| `manifest_blob` | string? | Blob hash for the submitted manifest |
+| `git` | object? | Git provenance observed before the run: normalized `origin_url`, `branch`, optional `sha`, and `dirty` status |
 | `fork_source_ref` | object? | Source run/checkpoint reference when this run was forked |
 | `in_place` | boolean | Whether the run was created with `--in-place` (no git checkpoints) |
+
+Readers remain tolerant of the legacy `workflow_config`, `run_dir`, and
+`db_prefix` properties, and of a legacy `push_outcome` object nested inside
+`git`, when replaying historical events; newly emitted `run.created` events
+omit them.
 
 ### `run.started`
 
@@ -424,7 +418,7 @@ Emitted when a workflow node finishes execution.
 | `failure_signature` | string? | Dedup key for repeated failures |
 | `context_updates` | object? | Context delta written by this stage |
 | `jump_to_node` | string? | Non-edge jump target |
-| `context_values` | object? | Full context snapshot after the stage |
+| `context_values` | object? | Context snapshot after the stage, minus runtime-only keys such as `current.preamble`. Artifact pointers are not normalized to blob refs — use `checkpoint.completed` for the durable projection |
 | `node_visits` | object? | Node visit counts after the stage |
 | `loop_failure_signatures` | object? | Loop failure signature counts |
 | `restart_failure_signatures` | object? | Restart failure signature counts |
@@ -2107,6 +2101,26 @@ These legacy events may appear in older run logs. Current CLI backend runs do no
 
 ## Pull request events
 
+### `pull_request.creation_requested`
+
+```json
+{
+  "id": "...", "ts": "...", "run_id": "...",
+  "event": "pull_request.creation_requested",
+  "properties": {
+    "creation_id": "01KYYK70WTZT2E551P3H5P0059",
+    "model": "gpt-5.4",
+    "force": false
+  }
+}
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `creation_id` | string | Stable identifier for this pull request creation request |
+| `model` | string | Resolved model identifier used to generate the pull request content |
+| `force` | boolean | Whether creation is allowed for a run without a successful conclusion |
+
 ### `pull_request.created`
 
 ```json
@@ -2116,6 +2130,7 @@ These legacy events may appear in older run logs. Current CLI backend runs do no
   "properties": {
     "pr_url": "https://github.com/org/repo/pull/42",
     "pr_number": 42,
+    "head_sha": "d34db33f",
     "draft": true
   }
 }
@@ -2125,6 +2140,7 @@ These legacy events may appear in older run logs. Current CLI backend runs do no
 |----------|------|-------------|
 | `pr_url` | string | Pull request URL |
 | `pr_number` | number | Pull request number |
+| `head_sha` | string (optional) | Verified commit SHA at the remote PR head; absent on older events |
 | `draft` | boolean | Whether the PR is a draft |
 
 ### `pull_request.linked`
@@ -2177,6 +2193,7 @@ These legacy events may appear in older run logs. Current CLI backend runs do no
   "id": "...", "ts": "...", "run_id": "...",
   "event": "pull_request.failed",
   "properties": {
+    "creation_id": "01KYYK70WTZT2E551P3H5P0059",
     "error": "insufficient permissions"
   }
 }
@@ -2184,7 +2201,12 @@ These legacy events may appear in older run logs. Current CLI backend runs do no
 
 | Property | Type | Description |
 |----------|------|-------------|
+| `creation_id` | string (optional) | Explicit pull request creation this failure resolves. Absent for publish-stage failures. |
 | `error` | string | Error message |
+
+When `creation_id` names the run's pending pull request creation, the run
+projection marks that creation `failed`. A `pull_request.failed` event without
+a `creation_id` (the workflow publish stage) does not change creation state.
 
 ## Artifact events
 

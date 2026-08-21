@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 
 use ::fabro_types::{
-    AutomationRef, BilledTokenCounts, BlockedReason, CommandTermination, DiffSummary,
+    AutomationRef, BilledTokenCounts, BlobHash, BlockedReason, CommandTermination, DiffSummary,
     FailureReason, ForkSourceRef, GitContext, PairId, PairMessageId, PairSystemMessageKind,
     PairTarget, ParallelBranchId, ParallelBranchResult, PendingReason, PermissionLevel, Principal,
-    PullRequestLink, RunBlobId, RunFailure, RunId, RunNoticeLevel, RunPairEndedReason,
-    RunPairFailedReason, RunProvenance, RunRunnableSource, RunTiming, SandboxProviderKind, StageId,
-    StageOutcome, StageTiming, SuccessReason, run_event as fabro_types,
+    PullRequestCreationId, PullRequestLink, ReviewTarget, RunFailure, RunId, RunNoticeLevel,
+    RunPairEndedReason, RunPairFailedReason, RunProvenance, RunRunnableSource, RunTiming,
+    SandboxProviderKind, StageId, StageOutcome, StageTiming, SuccessReason, WorkflowVersionId,
+    run_event as fabro_types,
 };
 use fabro_agent::{AgentEvent, SandboxEvent};
 use fabro_model::{ReasoningEffort, Speed};
@@ -23,37 +24,36 @@ use crate::outcome::{BilledModelUsage, FailureDetail, Outcome};
 )]
 pub enum Event {
     RunCreated {
-        run_id:           RunId,
-        title:            Option<String>,
-        settings:         serde_json::Value,
-        graph:            serde_json::Value,
+        run_id:              RunId,
+        title:               Option<String>,
+        settings:            serde_json::Value,
+        graph:               serde_json::Value,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        workflow_source:  Option<String>,
+        workflow_source:     Option<String>,
+        labels:              BTreeMap<String, String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        workflow_config:  Option<String>,
-        labels:           BTreeMap<String, String>,
-        run_dir:          String,
+        source_directory:    Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        source_directory: Option<String>,
+        workflow_slug:       Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        workflow_slug:    Option<String>,
+        workflow_version_id: Option<WorkflowVersionId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        automation:       Option<AutomationRef>,
+        automation:          Option<AutomationRef>,
+        provenance:          RunProvenance,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        db_prefix:        Option<String>,
-        provenance:       RunProvenance,
+        manifest_blob:       Option<BlobHash>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        manifest_blob:    Option<RunBlobId>,
+        spec_blob:           Option<BlobHash>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        git:              Option<GitContext>,
+        git:                 Option<GitContext>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        fork_source_ref:  Option<ForkSourceRef>,
+        fork_source_ref:     Option<ForkSourceRef>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        retried_from:     Option<RunId>,
+        retried_from:        Option<RunId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        parent_id:        Option<RunId>,
+        parent_id:           Option<RunId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        web_url:          Option<String>,
+        web_url:             Option<String>,
     },
     WorkflowRunStarted {
         name:         String,
@@ -71,7 +71,7 @@ pub enum Event {
     },
     RunSubmitted {
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        definition_blob: Option<RunBlobId>,
+        definition_blob: Option<BlobHash>,
     },
     RunStartRequested {
         resume: bool,
@@ -321,6 +321,8 @@ pub enum Event {
         branch:                String,
         index:                 usize,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        item_label:            Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         graph_visit:           Option<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resumed_from_stage_id: Option<StageId>,
@@ -330,6 +332,8 @@ pub enum Event {
         parallel_branch_id: ParallelBranchId,
         branch:             String,
         index:              usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        item_label:         Option<String>,
         duration_ms:        u64,
         status:             StageOutcome,
     },
@@ -355,6 +359,8 @@ pub enum Event {
         timeout_seconds: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         context_display: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        review_target:   Option<ReviewTarget>,
     },
     InterviewCompleted {
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -430,6 +436,9 @@ pub enum Event {
         success:          bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         exec_output_tail: Option<fabro_types::ExecOutputTail>,
+        /// Per-attempt history of the push operation.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        attempts:         Vec<fabro_sandbox::PushAttempt>,
     },
     GitFetch {
         branch:  String,
@@ -576,12 +585,8 @@ pub enum Event {
         ssh_command: String,
     },
     Failover {
-        stage:         String,
-        from_provider: String,
-        from_model:    String,
-        to_provider:   String,
-        to_model:      String,
-        error:         String,
+        stage: String,
+        props: fabro_types::FailoverProps,
     },
     CommandStarted {
         node_id:    String,
@@ -723,6 +728,11 @@ pub enum Event {
         stderr:      String,
         duration_ms: u64,
     },
+    PullRequestCreationRequested {
+        creation_id: PullRequestCreationId,
+        model:       String,
+        force:       bool,
+    },
     PullRequestCreated {
         pr_url:      String,
         pr_number:   u64,
@@ -730,6 +740,9 @@ pub enum Event {
         repo:        String,
         base_branch: String,
         head_branch: String,
+        /// Absent on events written before the head SHA was recorded.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        head_sha:    Option<String>,
         title:       String,
         draft:       bool,
     },
@@ -740,7 +753,10 @@ pub enum Event {
         pull_request: PullRequestLink,
     },
     PullRequestFailed {
-        error: String,
+        /// Set when the failure resolves an explicitly requested creation;
+        /// `None` for pull request failures in the workflow publish stage.
+        creation_id: Option<PullRequestCreationId>,
+        error:       String,
     },
 }
 
@@ -769,6 +785,7 @@ impl Event {
         record: &PullRequestLink,
         base_branch: &str,
         head_branch: &str,
+        head_sha: &str,
         title: &str,
         draft: bool,
     ) -> Self {
@@ -779,6 +796,7 @@ impl Event {
             repo: record.repo.clone(),
             base_branch: base_branch.to_string(),
             head_branch: head_branch.to_string(),
+            head_sha: Some(head_sha.to_string()),
             title: title.to_string(),
             draft,
         }
@@ -787,10 +805,8 @@ impl Event {
     pub fn trace(&self) {
         use tracing::{debug, error, info, warn};
         match self {
-            Self::RunCreated {
-                run_id, run_dir, ..
-            } => {
-                info!(run_id = %run_id, run_dir, "Run created");
+            Self::RunCreated { run_id, .. } => {
+                info!(run_id = %run_id, "Run created");
             }
             Self::WorkflowRunStarted { name, run_id, .. } => {
                 info!(workflow = name.as_str(), run_id = %run_id, "Workflow run started");
@@ -1221,14 +1237,16 @@ impl Event {
                 branch,
                 success,
                 exec_output_tail,
+                attempts,
             } => {
                 if *success {
-                    debug!(branch, "Git push succeeded");
+                    debug!(branch, attempts = attempts.len(), "Git push succeeded");
                 } else {
                     let tail =
                         fabro_types::ExecOutputTail::trace_summary(exec_output_tail.as_ref());
                     warn!(
                         branch,
+                        attempts = attempts.len(),
                         exec_output_tail_present = tail.present,
                         exec_stdout_tail_bytes = tail.stdout_bytes,
                         exec_stderr_tail_bytes = tail.stderr_bytes,
@@ -1381,21 +1399,19 @@ impl Event {
             Self::SshAccessReady { ssh_command } => {
                 info!(ssh_command, "SSH access ready");
             }
-            Self::Failover {
-                stage,
-                from_provider,
-                from_model,
-                to_provider,
-                to_model,
-                error,
-            } => {
+            Self::Failover { stage, props } => {
                 warn!(
                     stage,
-                    from_provider,
-                    from_model,
-                    to_provider,
-                    to_model,
-                    error,
+                    original_provider = ?props.original_provider,
+                    original_model = ?props.original_model,
+                    attempt = ?props.attempt,
+                    from_provider = %props.from_provider,
+                    from_model = %props.from_model,
+                    to_provider = %props.to_provider,
+                    to_model = %props.to_model,
+                    requested_reasoning_effort = ?props.requested_reasoning_effort,
+                    effective_reasoning_effort = ?props.effective_reasoning_effort,
+                    error = %props.error,
                     "LLM provider failover"
                 );
             }
@@ -1527,6 +1543,13 @@ impl Event {
                 ..
             } => {
                 debug!(node_id, duration_ms, "Agent ACP timed out");
+            }
+            Self::PullRequestCreationRequested {
+                creation_id,
+                model,
+                force,
+            } => {
+                info!(creation_id = %creation_id, model, force, "Pull request creation requested");
             }
             Self::PullRequestCreated {
                 pr_url,

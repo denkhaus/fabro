@@ -9,6 +9,11 @@ use fabro_types::settings::run::MergeStrategy;
 use serde::Deserialize;
 use tokio::process::Command;
 
+pub mod token_source;
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 pub const GITHUB_API_BASE_URL: &str = "https://api.github.com";
 
 /// Returns the GitHub API base URL, allowing override via `GITHUB_BASE_URL` env
@@ -194,6 +199,12 @@ pub enum GitHubCredentials {
 }
 
 impl GitHubCredentials {
+    /// Whether resolving these credentials mints a new installation token.
+    #[must_use]
+    pub fn mints_installation_token(&self) -> bool {
+        matches!(self, Self::App(_))
+    }
+
     pub fn from_env(app_id: Option<&str>) -> Result<Option<Self>, String> {
         Ok(GitHubAppCredentials::from_env(app_id)?.map(Self::App))
     }
@@ -372,7 +383,7 @@ pub fn parse_github_owner_repo(url: &str) -> anyhow::Result<(String, String)> {
     let path = path.trim_end_matches('/');
     let path = path.strip_suffix(".git").unwrap_or(path);
 
-    let mut parts = path.splitn(3, '/');
+    let mut parts = path.split('/');
     let owner = parts
         .next()
         .filter(|s| !s.is_empty())
@@ -381,6 +392,9 @@ pub fn parse_github_owner_repo(url: &str) -> anyhow::Result<(String, String)> {
         .next()
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow!("Missing repo in GitHub URL: {display_url}"))?;
+    if parts.next().is_some() {
+        bail!("GitHub URL must identify one repository: {display_url}");
+    }
 
     Ok((owner.to_string(), repo.to_string()))
 }
@@ -626,11 +640,105 @@ pub async fn create_installation_access_token_for_pr(
     .await
 }
 
-/// Result of a successful pull request creation.
+/// Pull request created on, or reconciled from, GitHub.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreatedPullRequest {
     pub html_url: String,
     pub number:   u64,
     pub node_id:  String,
+    pub title:    String,
+}
+
+/// Find an open pull request that already carries the expected head commit.
+///
+/// This supports recovery when GitHub created a pull request but the caller
+/// stopped before it could persist the result locally.
+pub async fn find_open_pull_request(
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    base: &str,
+    head: &str,
+    expected_head_sha: &str,
+) -> anyhow::Result<Option<CreatedPullRequest>> {
+    let client = ctx.http_client()?;
+    find_open_pull_request_with_client(&client, ctx, owner, repo, base, head, expected_head_sha)
+        .await
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Pull request reconciliation needs explicit repo, branch, and commit coordinates."
+)]
+pub async fn find_open_pull_request_with_client(
+    client: &impl HttpClient,
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    base: &str,
+    head: &str,
+    expected_head_sha: &str,
+) -> anyhow::Result<Option<CreatedPullRequest>> {
+    #[derive(Deserialize)]
+    struct PullRequestHead {
+        sha: String,
+    }
+
+    #[derive(Deserialize)]
+    struct PullRequestListItem {
+        html_url: String,
+        number:   u64,
+        node_id:  String,
+        title:    String,
+        head:     PullRequestHead,
+    }
+
+    let token = ctx
+        .creds
+        .resolve_bearer_token(
+            client,
+            owner,
+            repo,
+            ctx.base_url,
+            serde_json::json!({ "contents": "write", "pull_requests": "write" }),
+        )
+        .await?;
+    let mut url = DisplaySafeUrl::parse(&format!("{}/repos/{owner}/{repo}/pulls", ctx.base_url))
+        .context("Failed to build pull request reconciliation URL")?;
+    url.query_pairs_mut()
+        .append_pair("state", "open")
+        .append_pair("base", base)
+        .append_pair("head", &format!("{owner}:{head}"));
+    let auth = format!("Bearer {token}");
+    let resp = client
+        .request(
+            HttpMethod::Get,
+            &url.raw_string(),
+            &github_headers(&auth),
+            None,
+        )
+        .await
+        .context("Failed to find an existing pull request")?;
+    if resp.status != 200 {
+        bail!(
+            "Unexpected status {} finding an existing pull request: {}",
+            resp.status,
+            resp.text()
+        );
+    }
+
+    let pull_requests = resp
+        .json::<Vec<PullRequestListItem>>()
+        .context("Failed to parse existing pull request response")?;
+    Ok(pull_requests
+        .into_iter()
+        .find(|pull_request| pull_request.head.sha == expected_head_sha)
+        .map(|pull_request| CreatedPullRequest {
+            html_url: pull_request.html_url,
+            number:   pull_request.number,
+            node_id:  pull_request.node_id,
+            title:    pull_request.title,
+        }))
 }
 
 /// Create a pull request on GitHub.
@@ -738,6 +846,7 @@ pub async fn create_pull_request_with_client(
         html_url: pr.html_url,
         number:   pr.number,
         node_id:  pr.node_id,
+        title:    title.to_string(),
     })
 }
 
@@ -885,27 +994,36 @@ fn normalize_https_host_path(url: &str) -> String {
     }
 }
 
-/// Check whether a branch exists in a GitHub repository.
+/// Return the commit SHA at the head of a GitHub branch.
 ///
-/// Uses a GitHub App installation token to query the branches API.
-/// Returns `true` if the branch exists, `false` if it doesn't (404).
-pub async fn branch_exists(
+/// Returns `None` when the branch does not exist.
+pub async fn branch_head_sha(
     ctx: &GitHubContext<'_>,
     owner: &str,
     repo: &str,
     branch: &str,
-) -> anyhow::Result<bool> {
+) -> anyhow::Result<Option<String>> {
     let client = ctx.http_client()?;
-    branch_exists_with_client(&client, ctx, owner, repo, branch).await
+    branch_head_sha_with_client(&client, ctx, owner, repo, branch).await
 }
 
-async fn branch_exists_with_client(
+async fn branch_head_sha_with_client(
     client: &impl HttpClient,
     ctx: &GitHubContext<'_>,
     owner: &str,
     repo: &str,
     branch: &str,
-) -> anyhow::Result<bool> {
+) -> anyhow::Result<Option<String>> {
+    #[derive(Deserialize)]
+    struct BranchResponse {
+        commit: BranchCommit,
+    }
+
+    #[derive(Deserialize)]
+    struct BranchCommit {
+        sha: String,
+    }
+
     let token = ctx
         .creds
         .resolve_bearer_token(
@@ -913,7 +1031,7 @@ async fn branch_exists_with_client(
             owner,
             repo,
             ctx.base_url,
-            serde_json::json!({ "contents": "write" }),
+            serde_json::json!({ "contents": "read" }),
         )
         .await?;
 
@@ -922,12 +1040,17 @@ async fn branch_exists_with_client(
     let resp = client
         .request(HttpMethod::Get, &url, &github_headers(&auth), None)
         .await
-        .context("Failed to check branch existence")?;
+        .context("Failed to read remote branch head")?;
 
     match resp.status {
-        200 => Ok(true),
-        404 => Ok(false),
-        status => bail!("Unexpected status {status} checking branch '{branch}'"),
+        200 => {
+            let branch: BranchResponse = resp
+                .json()
+                .context("Failed to parse remote branch response")?;
+            Ok(Some(branch.commit.sha))
+        }
+        404 => Ok(None),
+        status => bail!("Unexpected status {status} reading branch '{branch}'"),
     }
 }
 
@@ -1032,7 +1155,7 @@ pub async fn update_app_webhook_config(
 
 /// Resolve git clone credentials for a GitHub repository.
 ///
-/// Returns `(username, password)` for authenticated cloning.
+/// Returns `(username, password)` for authenticated cloning and pushing.
 /// Always generates a token regardless of repo visibility, since the token
 /// is needed for pushing from the sandbox.
 pub async fn resolve_clone_credentials(
@@ -1045,18 +1168,28 @@ pub async fn resolve_clone_credentials(
         GitHubCredentials::Installation(token) => token.valid_token()?.to_string(),
         GitHubCredentials::App(_) => {
             let client = ctx.http_client()?;
-            ctx.creds
-                .resolve_bearer_token(
-                    &client,
-                    owner,
-                    repo,
-                    ctx.base_url,
-                    serde_json::json!({ "contents": "write" }),
-                )
-                .await?
+            mint_git_contents_write_token(&client, ctx, owner, repo).await?
         }
     };
     Ok((Some("x-access-token".to_string()), Some(token)))
+}
+
+/// Mint an installation token scoped to repository contents writes.
+async fn mint_git_contents_write_token(
+    client: &impl HttpClient,
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+) -> anyhow::Result<String> {
+    ctx.creds
+        .resolve_bearer_token(
+            client,
+            owner,
+            repo,
+            ctx.base_url,
+            serde_json::json!({ "contents": "write" }),
+        )
+        .await
 }
 
 /// Embed a token into an HTTPS URL for authenticated git operations.
@@ -1386,6 +1519,16 @@ mod tests {
         let (owner, repo) = parse_github_owner_repo("https://github.com/owner/repo/").unwrap();
         assert_eq!(owner, "owner");
         assert_eq!(repo, "repo");
+    }
+
+    #[test]
+    fn parse_rejects_extra_path_components() {
+        let error = parse_github_owner_repo("https://github.com/owner/repo/issues").unwrap_err();
+
+        assert!(
+            error.to_string().contains("must identify one repository"),
+            "got: {error}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1759,7 +1902,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_iat_success() {
+    async fn create_iat_requests_only_contents_write() {
         let mock = MockHttpClient::new()
             .on(
                 HttpMethod::Get,
@@ -1865,6 +2008,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn find_open_pull_request_matches_the_expected_head_commit() {
+        let mock = MockHttpClient::new()
+            .on(
+                HttpMethod::Get,
+                "/repos/owner/repo/pulls?state=open&base=main&head=owner%3Afabro%2Frun%2F1",
+                200,
+                r#"[
+                    {
+                        "html_url": "https://github.com/owner/repo/pull/40",
+                        "number": 40,
+                        "node_id": "PR_wrong",
+                        "title": "Old head",
+                        "head": {"sha": "old-sha"}
+                    },
+                    {
+                        "html_url": "https://github.com/owner/repo/pull/42",
+                        "number": 42,
+                        "node_id": "PR_expected",
+                        "title": "Expected head",
+                        "head": {"sha": "final-sha"}
+                    }
+                ]"#,
+            )
+            .with_req_header("Authorization", "Bearer ghu_test");
+        let creds = GitHubCredentials::Pat("ghu_test".to_string());
+        let ctx = GitHubContext::new(&creds, "https://api.test");
+
+        let found = find_open_pull_request_with_client(
+            &mock,
+            &ctx,
+            "owner",
+            "repo",
+            "main",
+            "fabro/run/1",
+            "final-sha",
+        )
+        .await
+        .unwrap()
+        .expect("matching pull request should be found");
+
+        assert_eq!(found.number, 42);
+        assert_eq!(found.node_id, "PR_expected");
+        assert_eq!(found.title, "Expected head");
+    }
+
+    #[tokio::test]
     async fn create_iat_auth_failed() {
         let mock =
             MockHttpClient::new().on(HttpMethod::Get, "/repos/owner/repo/installation", 401, "");
@@ -1908,12 +2097,21 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // branch_exists
+    // branch_head_sha
     // -----------------------------------------------------------------------
 
-    #[tokio::test]
-    async fn branch_exists_returns_true_on_200() {
-        let mock = MockHttpClient::new()
+    fn app_creds() -> GitHubCredentials {
+        GitHubCredentials::App(GitHubAppCredentials {
+            app_id:          "test".to_string(),
+            private_key_pem: test_rsa_key().to_string(),
+            slug:            None,
+        })
+    }
+
+    /// Mock the installation-token exchange every App-credentialed call makes
+    /// before it reaches the endpoint under test.
+    fn mock_with_installation_token() -> MockHttpClient {
+        MockHttpClient::new()
             .on(
                 HttpMethod::Get,
                 "/repos/owner/repo/installation",
@@ -1926,20 +2124,19 @@ mod tests {
                 201,
                 r#"{"token": "ghs_test", "expires_at": "2099-01-01T00:00:00Z"}"#,
             )
-            .on(
-                HttpMethod::Get,
-                "/repos/owner/repo/branches/my-branch",
-                200,
-                r#"{"name": "my-branch"}"#,
-            );
+    }
 
-        let pem = test_rsa_key();
-        let creds = GitHubCredentials::App(GitHubAppCredentials {
-            app_id:          "test".to_string(),
-            private_key_pem: pem.to_string(),
-            slug:            None,
-        });
-        let result = branch_exists_with_client(
+    #[tokio::test]
+    async fn branch_head_sha_returns_commit_on_200() {
+        let mock = mock_with_installation_token().on(
+            HttpMethod::Get,
+            "/repos/owner/repo/branches/my-branch",
+            200,
+            r#"{"name": "my-branch", "commit": {"sha": "abc123"}}"#,
+        );
+
+        let creds = app_creds();
+        let result = branch_head_sha_with_client(
             &mock,
             &GitHubContext::new(&creds, ""),
             "owner",
@@ -1947,38 +2144,21 @@ mod tests {
             "my-branch",
         )
         .await;
-        assert!(result.unwrap());
+
+        assert_eq!(result.unwrap(), Some("abc123".to_string()));
     }
 
     #[tokio::test]
-    async fn branch_exists_returns_false_on_404() {
-        let mock = MockHttpClient::new()
-            .on(
-                HttpMethod::Get,
-                "/repos/owner/repo/installation",
-                200,
-                r#"{"id": 1}"#,
-            )
-            .on(
-                HttpMethod::Post,
-                "/app/installations/1/access_tokens",
-                201,
-                r#"{"token": "ghs_test", "expires_at": "2099-01-01T00:00:00Z"}"#,
-            )
-            .on(
-                HttpMethod::Get,
-                "/repos/owner/repo/branches/no-such-branch",
-                404,
-                "",
-            );
+    async fn branch_head_sha_returns_none_on_404() {
+        let mock = mock_with_installation_token().on(
+            HttpMethod::Get,
+            "/repos/owner/repo/branches/no-such-branch",
+            404,
+            "",
+        );
 
-        let pem = test_rsa_key();
-        let creds = GitHubCredentials::App(GitHubAppCredentials {
-            app_id:          "test".to_string(),
-            private_key_pem: pem.to_string(),
-            slug:            None,
-        });
-        let result = branch_exists_with_client(
+        let creds = app_creds();
+        let result = branch_head_sha_with_client(
             &mock,
             &GitHubContext::new(&creds, ""),
             "owner",
@@ -1986,38 +2166,21 @@ mod tests {
             "no-such-branch",
         )
         .await;
-        assert!(!result.unwrap());
+
+        assert_eq!(result.unwrap(), None);
     }
 
     #[tokio::test]
-    async fn branch_exists_returns_error_on_500() {
-        let mock = MockHttpClient::new()
-            .on(
-                HttpMethod::Get,
-                "/repos/owner/repo/installation",
-                200,
-                r#"{"id": 1}"#,
-            )
-            .on(
-                HttpMethod::Post,
-                "/app/installations/1/access_tokens",
-                201,
-                r#"{"token": "ghs_test", "expires_at": "2099-01-01T00:00:00Z"}"#,
-            )
-            .on(
-                HttpMethod::Get,
-                "/repos/owner/repo/branches/broken",
-                500,
-                "",
-            );
+    async fn branch_head_sha_returns_error_on_500() {
+        let mock = mock_with_installation_token().on(
+            HttpMethod::Get,
+            "/repos/owner/repo/branches/broken",
+            500,
+            "",
+        );
 
-        let pem = test_rsa_key();
-        let creds = GitHubCredentials::App(GitHubAppCredentials {
-            app_id:          "test".to_string(),
-            private_key_pem: pem.to_string(),
-            slug:            None,
-        });
-        let result = branch_exists_with_client(
+        let creds = app_creds();
+        let result = branch_head_sha_with_client(
             &mock,
             &GitHubContext::new(&creds, ""),
             "owner",
@@ -2025,22 +2188,23 @@ mod tests {
             "broken",
         )
         .await;
+
         assert!(result.is_err());
     }
 
     #[tokio::test]
-    async fn branch_exists_with_token_uses_direct_bearer_token() {
+    async fn branch_head_sha_with_token_uses_direct_bearer_token() {
         let mock = MockHttpClient::new()
             .on(
                 HttpMethod::Get,
                 "/repos/owner/repo/branches/my-branch",
                 200,
-                r#"{"name": "my-branch"}"#,
+                r#"{"name": "my-branch", "commit": {"sha": "abc123"}}"#,
             )
             .with_req_header("Authorization", "Bearer ghu_test");
 
         let creds = GitHubCredentials::Pat("ghu_test".to_string());
-        let result = branch_exists_with_client(
+        let result = branch_head_sha_with_client(
             &mock,
             &GitHubContext::new(&creds, ""),
             "owner",
@@ -2049,7 +2213,7 @@ mod tests {
         )
         .await;
 
-        assert!(result.unwrap());
+        assert_eq!(result.unwrap(), Some("abc123".to_string()));
     }
 
     // -----------------------------------------------------------------------
@@ -2296,6 +2460,35 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn clone_token_requests_only_contents_write() {
+        let mock = MockHttpClient::new()
+            .on(
+                HttpMethod::Get,
+                "/repos/owner/repo/installation",
+                200,
+                r#"{"id": 123}"#,
+            )
+            .on(
+                HttpMethod::Post,
+                "/app/installations/123/access_tokens",
+                201,
+                r#"{"token": "ghs_xxx", "expires_at": "2099-01-01T00:00:00Z"}"#,
+            )
+            .with_req_body(r#"{"permissions":{"contents":"write"},"repositories":["repo"]}"#);
+        let credentials = GitHubCredentials::App(GitHubAppCredentials {
+            app_id:          "test".to_string(),
+            private_key_pem: test_rsa_key().to_string(),
+            slug:            None,
+        });
+        let context = GitHubContext::new(&credentials, "");
+        let token = mint_git_contents_write_token(&mock, &context, "owner", "repo")
+            .await
+            .unwrap();
+
+        assert_eq!(token, "ghs_xxx");
+    }
+
     #[test]
     fn installation_token_valid_token_rejects_expired_tokens() {
         let expired = InstallationToken {
@@ -2310,6 +2503,24 @@ mod tests {
         };
         assert_eq!(fresh.valid_token().unwrap(), "ghs_fresh");
         assert!(!fresh.near_expiry(std::time::Duration::from_mins(15)));
+    }
+
+    #[test]
+    fn only_app_credentials_mint_installation_tokens() {
+        let app = GitHubCredentials::App(GitHubAppCredentials {
+            app_id:          "test".to_string(),
+            private_key_pem: test_rsa_key().to_string(),
+            slug:            None,
+        });
+        let pat = GitHubCredentials::Pat("ghp_personal".to_string());
+        let installation = GitHubCredentials::Installation(InstallationToken {
+            token:      "ghs_installation".to_string(),
+            expires_at: chrono::Utc::now() + chrono::Duration::minutes(30),
+        });
+
+        assert!(app.mints_installation_token());
+        assert!(!pat.mints_installation_token());
+        assert!(!installation.mints_installation_token());
     }
 
     #[test]

@@ -25,7 +25,7 @@ pub mod types {
         ReasoningEffortFeature, Speed as BillingSpeed, TokenCounts as CompletionUsage,
     };
     pub use fabro_types::run_event::AgentSessionActivatedProps;
-    pub use fabro_types::settings::run::McpHttpProtocol;
+    pub use fabro_types::settings::run::{McpHttpProtocol, RunModelControls, RunModelSettings};
     pub use fabro_types::settings::server::{
         GithubIntegrationSettings, GithubIntegrationStrategy, IntegrationWebhooksSettings,
         LogDestination, ObjectStoreSettings, ServerApiSettings, ServerArtifactsSettings,
@@ -42,7 +42,7 @@ pub mod types {
     pub use fabro_types::{
         ActivatedSkill, AgentControlState, AgentMcpToolSummary, AgentSkillActivationSource,
         AgentSkillSummary, AgentToolCategory, AgentToolSource, AgentToolSummary,
-        AgentToolsAvailableProps, AskFabro, AuthMethod, AutomationRef, BilledTokenCounts,
+        AgentToolsAvailableProps, AskFabro, AuthMethod, AutomationRef, BilledTokenCounts, BlobHash,
         CommandTermination, Conclusion, ContentPart, CreateVariableRequest, DiffStats, DiffSummary,
         DirtyStatus, EventEnvelope, ExecOutputTail, FailureCategory, FailureDetail,
         FailureSignature, GitContext, IdpIdentity, IntegrationConnectionKind,
@@ -52,15 +52,16 @@ pub mod types {
         McpServerReplace as ReplaceMcpServerRequest, McpServerStatus, McpServerView as McpServer,
         McpTransportView, Message, PairId, PairMessageId, PairMessageRecord, PairMessageRequest,
         PairRecord, PairStartRequest, PairStatus, PairTarget, PairTranscriptEntry,
-        PairTranscriptResponse, ParallelBranchResult, PendingInterviewRecord, PermissionLevel,
-        PreRunPushOutcome, Principal, PullRequest, PullRequestDetails, PullRequestDetailsStatus,
+        PairTranscriptResponse, ParallelBranchId, ParallelBranchResult, PendingInterviewRecord,
+        PermissionLevel, Principal, PullRequest, PullRequestCreation, PullRequestCreationId,
+        PullRequestCreationStatus, PullRequestDetails, PullRequestDetailsStatus,
         PullRequestDetailsUnavailableReason, PullRequestLink, PullRequestMeta, PullRequestResponse,
-        QuestionType, ReasoningOutput, RepositoryRef, Role, Run, RunApproval, RunApprovalState,
-        RunClientProvenance, RunEvent, RunEventDetailContentKind, RunEventDetailResponse,
-        RunFailure, RunPairStatusResponse, RunProjection, RunProvenance, RunRunnableSource,
-        RunSandbox, RunSandboxFailure, RunSandboxInstance, RunSandboxKind, RunSandboxPlan,
-        RunSandboxRuntime, RunServerProvenance, RunSize, SandboxDetails, SandboxInfo,
-        SandboxListMeta, SandboxListResponse, SandboxNetwork, SandboxNetworkPolicy,
+        QuestionType, ReasoningOutput, RepositoryRef, ReviewTarget, ReviewTargetKind, Role, Run,
+        RunApproval, RunApprovalState, RunClientProvenance, RunEvent, RunEventDetailContentKind,
+        RunEventDetailResponse, RunFailure, RunPairStatusResponse, RunProjection, RunProvenance,
+        RunRunnableSource, RunSandbox, RunSandboxFailure, RunSandboxInstance, RunSandboxKind,
+        RunSandboxPlan, RunSandboxRuntime, RunServerProvenance, RunSize, SandboxDetails,
+        SandboxInfo, SandboxListMeta, SandboxListResponse, SandboxNetwork, SandboxNetworkPolicy,
         SandboxNetworkPolicyMode, SandboxProviderKind, SandboxProviderLookupError,
         SandboxResources, SandboxService, SandboxServiceListResponse, SandboxState,
         SandboxTimestamps, SecretMetadata, SecretType, ServerSettings, SessionDetail, SessionId,
@@ -69,10 +70,11 @@ pub mod types {
         StageContextWindowCategory, StageContextWindowCountMethod, StageContextWindowProjection,
         StageContextWindowStaleness, StageContextWindowUnavailableReason,
         StageContextWindowWarning, StageHandler, StageId, StageInferenceProjection,
-        StageModelUsage, StageOutcome, StageProjection, StageState, SubAgentProjection,
-        SubAgentStatus, SystemActorKind, SystemIntegrationStatus, SystemIntegrationsResponse,
-        TodoListProjection, TurnId, UpdateVariableRequest, UserPrincipal, Variable,
-        VariableListResponse, WorkflowSettings,
+        StageModelUsage, StageOutcome, StageProjection, StageState, StageToolBatchProjection,
+        SubAgentProjection, SubAgentStatus, SystemActorKind, SystemIntegrationStatus,
+        SystemIntegrationsResponse, TodoListProjection, TurnId, UpdateVariableRequest,
+        UserPrincipal, Variable, VariableListResponse, WorkflowPath, WorkflowSettings,
+        WorkflowVersion, WorkflowVersionId,
     };
 
     pub use crate::generated::types::*;

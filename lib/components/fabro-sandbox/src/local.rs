@@ -13,13 +13,14 @@ use tokio::{fs, time};
 use tokio_util::sync::CancellationToken;
 
 use crate::sandbox::{
-    BASH_ENV_VAR, BASH_PROBE_SCRIPT, BASH_PROBE_TIMEOUT_MS, StdioProcessControl, optional_timeout,
-    validate_bash_probe,
+    self, BASH_ENV_VAR, BASH_PROBE_SCRIPT, BASH_PROBE_TIMEOUT_MS, StdioProcessControl,
+    optional_timeout, validate_bash_probe, write_process_stdin,
 };
 use crate::{
     CommandOutputCallback, DEFAULT_EXEC_OUTPUT_TAIL_BYTES, DirEntry, ExecResult,
-    ExecStreamingResult, GrepOptions, Sandbox, SandboxEvent, SandboxEventCallback, SandboxFile,
-    StderrCollector, StdioProcess, StdioProcessHandle, StdioProcessTermination, WalkOptions,
+    ExecStreamingRequest, ExecStreamingResult, GrepOptions, Sandbox, SandboxEvent,
+    SandboxEventCallback, SandboxFile, StderrCollector, StdioProcess, StdioProcessHandle,
+    StdioProcessTermination, WalkOptions,
 };
 
 /// Remediation shown when the worker has no usable Bash.
@@ -514,13 +515,17 @@ impl Sandbox for LocalSandbox {
 
     async fn exec_command_streaming(
         &self,
-        command: &str,
-        timeout_ms: Option<u64>,
-        working_dir: Option<&str>,
-        env_vars: Option<&std::collections::HashMap<String, String>>,
-        cancel_token: Option<CancellationToken>,
-        output_callback: Option<CommandOutputCallback>,
+        request: ExecStreamingRequest<'_>,
     ) -> crate::Result<ExecStreamingResult> {
+        let ExecStreamingRequest {
+            command,
+            timeout_ms,
+            working_dir,
+            env_vars,
+            cancel_token,
+            stdin,
+            output_callback,
+        } = request;
         let start = Instant::now();
 
         let filtered_env = filtered_env_vars(env_vars, ExplicitEnvPolicy::FilterSensitive);
@@ -537,6 +542,9 @@ impl Sandbox for LocalSandbox {
             .kill_on_drop(true)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
+        if stdin.is_some() {
+            cmd.stdin(std::process::Stdio::piped());
+        }
 
         #[cfg(unix)]
         fabro_proc::pre_exec_setpgid(cmd.as_std_mut());
@@ -551,6 +559,17 @@ impl Sandbox for LocalSandbox {
 
         let stdout_pipe = child.stdout.take();
         let stderr_pipe = child.stderr.take();
+        let stdin_task = match stdin {
+            Some(stdin) => {
+                let stdin_pipe = child.stdin.take().ok_or_else(|| {
+                    crate::Error::message("Failed to open command standard input")
+                })?;
+                Some(tokio::spawn(async move {
+                    write_process_stdin(stdin_pipe, &stdin).await
+                }))
+            }
+            None => None,
+        };
         let stdout_callback = output_callback.clone();
         let stderr_callback = output_callback;
         let stdout_task = tokio::spawn(async move {
@@ -577,6 +596,23 @@ impl Sandbox for LocalSandbox {
         };
 
         let duration_ms = elapsed_ms(start);
+        if let Some(stdin_task) = stdin_task {
+            // The process is gone, so unwritten stdin bytes are unwanted.
+            // Abort instead of joining unbounded: a backgrounded grandchild
+            // that inherited the pipe could otherwise block the writer
+            // forever.
+            stdin_task.abort();
+            match stdin_task.await {
+                Ok(result) => result?,
+                Err(join_error) if join_error.is_cancelled() => {}
+                Err(join_error) => {
+                    return Err(crate::Error::context(
+                        "stdin stream task failed",
+                        join_error,
+                    ));
+                }
+            }
+        }
         let stdout_bytes = stdout_task
             .await
             .map_err(|e| crate::Error::context("stdout stream task failed", e))??;
@@ -835,20 +871,38 @@ impl Sandbox for LocalSandbox {
         result
     }
 
-    async fn git_push_ref(&self, refspec: &str) -> crate::Result<()> {
+    async fn activate(&self) -> crate::Result<()> {
+        // Local sandboxes have no provider resource that can stop or pause.
+        // Resume paths still call `start()` to recreate the directory and
+        // verify Bash.
+        Ok(())
+    }
+
+    async fn git_push_ref(
+        &self,
+        refspec: &str,
+        plan: &crate::RetryPlan,
+    ) -> Result<crate::PushReport, crate::PushError> {
         let has_origin = match self
             .exec_command("git remote get-url origin", 10_000, None, None, None)
             .await
         {
             Ok(result) if result.is_success() => true,
             Ok(_) => false,
-            Err(err) => return Err(crate::Error::context("git remote get-url origin", err)),
+            Err(err) => {
+                return Err(crate::PushError {
+                    report: crate::PushReport::default(),
+                    error:  crate::Error::context("git remote get-url origin", err),
+                });
+            }
         };
         if !has_origin {
-            return Ok(());
+            return Ok(crate::PushReport::default());
         }
 
-        crate::git_push_via_exec(self, refspec).await
+        // Local pushes use whatever credentials the host repository already
+        // carries; there is no managed credential state to lease.
+        sandbox::git_push_via_exec(self, None, refspec, plan).await
     }
 
     async fn cleanup(&self) -> crate::Result<()> {
@@ -1336,14 +1390,11 @@ mod tests {
         let sandbox = LocalSandbox::new(dir.clone());
 
         let result = sandbox
-            .exec_command_streaming(
-                BASH_ONLY_COMMAND,
-                Some(5000),
-                None,
-                None,
-                None,
-                Some(Arc::new(|_, _| Box::pin(async { Ok(()) }))),
-            )
+            .exec_command_streaming(ExecStreamingRequest {
+                timeout_ms: Some(5000),
+                output_callback: Some(Arc::new(|_, _| Box::pin(async { Ok(()) }))),
+                ..ExecStreamingRequest::new(BASH_ONLY_COMMAND)
+            })
             .await
             .unwrap();
 
@@ -1354,6 +1405,27 @@ mod tests {
             result.result.stderr
         );
         assert_eq!(result.result.stdout.trim(), "two");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn exec_command_streaming_writes_exact_stdin_and_closes_it() {
+        let dir = temp_dir();
+        let sandbox = LocalSandbox::new(dir.clone());
+        let stdin = b"first line\n$(touch must-not-run)\nlast line".to_vec();
+
+        let result = sandbox
+            .exec_command_streaming(ExecStreamingRequest {
+                timeout_ms: Some(5000),
+                stdin: Some(stdin.clone()),
+                ..ExecStreamingRequest::new("cat")
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.result.exit_code, Some(0));
+        assert_eq!(result.result.stdout.as_bytes(), stdin);
+        assert!(!dir.join("must-not-run").exists());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -1407,14 +1479,12 @@ mod tests {
         assert_eq!(non_streaming.stdout.trim(), "nonlogin");
 
         let streaming = sandbox
-            .exec_command_streaming(
-                LOGIN_SHELL_REPORT,
-                Some(5000),
-                None,
-                Some(&env_vars),
-                None,
-                Some(Arc::new(|_, _| Box::pin(async { Ok(()) }))),
-            )
+            .exec_command_streaming(ExecStreamingRequest {
+                timeout_ms: Some(5000),
+                env_vars: Some(&env_vars),
+                output_callback: Some(Arc::new(|_, _| Box::pin(async { Ok(()) }))),
+                ..ExecStreamingRequest::new(LOGIN_SHELL_REPORT)
+            })
             .await
             .unwrap();
         assert_eq!(streaming.result.stdout.trim(), "nonlogin");

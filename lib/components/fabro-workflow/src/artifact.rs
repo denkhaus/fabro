@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use fabro_agent::Sandbox;
 use fabro_config::RunScratch;
 use fabro_types::{
-    ParallelBranchResult, RunBlobId, format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref,
+    BlobHash, ParallelBranchResult, format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref,
 };
 use futures::future::BoxFuture;
 use serde_json::Value;
@@ -26,7 +26,7 @@ const ARTIFACT_POINTER_PREFIX: &str = "file://";
 ///
 /// For each entry in `updates` whose serialized JSON exceeds
 /// `BLOB_OFFLOAD_THRESHOLD`, the value is persisted as a blob in `run_store`
-/// and replaced with a `"blob://sha256/{blob_id}"` reference.
+/// and replaced with a `"blob://sha256/{blob_hash}"` reference.
 /// Small values are left untouched.
 ///
 /// `parallel.results` is offloaded at each branch context-update boundary
@@ -102,11 +102,11 @@ async fn offload_value(value: &mut Value, run_store: &RunStoreHandle) -> Result<
         .map_err(|e| Error::engine_with_source("artifact serialize failed", e))?;
 
     if bytes.len() > BLOB_OFFLOAD_THRESHOLD {
-        let blob_id = run_store
+        let blob_hash = run_store
             .write_blob(&bytes)
             .await
             .map_err(|e| Error::engine_with_anyhow("artifact blob write failed", e))?;
-        *value = Value::String(format_blob_ref(&blob_id));
+        *value = Value::String(format_blob_ref(&blob_hash));
     }
     Ok(())
 }
@@ -204,8 +204,16 @@ pub async fn resolve_outcomes_for_execution(
     run_dir: &Path,
 ) -> Result<HashMap<String, Outcome>> {
     let mut resolved = node_outcomes.clone();
+    let mut locality = SandboxLocality::default();
     for outcome in resolved.values_mut() {
-        resolve_execution_values(&mut outcome.context_updates, run_store, env, run_dir).await?;
+        resolve_execution_values(
+            &mut outcome.context_updates,
+            run_store,
+            env,
+            run_dir,
+            &mut locality,
+        )
+        .await?;
     }
     Ok(resolved)
 }
@@ -217,7 +225,8 @@ pub async fn resolved_context_snapshot(
     run_dir: &Path,
 ) -> Result<HashMap<String, Value>> {
     let mut values = context.snapshot();
-    resolve_execution_values(&mut values, run_store, env, run_dir).await?;
+    let mut locality = SandboxLocality::default();
+    resolve_execution_values(&mut values, run_store, env, run_dir, &mut locality).await?;
     Ok(values)
 }
 
@@ -228,18 +237,53 @@ pub async fn resolve_text_or_blob_ref(value: &Value, run_store: &RunStoreHandle)
     }
 }
 
+/// Resolve a structured JSON value from inline context or a Fabro-managed
+/// blob reference.
+///
+/// Managed `file://` references are normalized through their content-addressed
+/// blob hash instead of reading an execution-local path. Ordinary strings and
+/// ordinary file references remain unchanged for the caller to validate.
+pub(crate) async fn resolve_json_value(value: Value, run_store: &RunStoreHandle) -> Result<Value> {
+    let blob_hash = value.as_str().and_then(|reference| {
+        parse_blob_ref(reference).or_else(|| parse_managed_blob_file_ref(reference))
+    });
+    let Some(blob_hash) = blob_hash else {
+        return Ok(value);
+    };
+
+    let bytes = read_required_blob(&blob_hash, run_store).await?;
+    serde_json::from_slice(&bytes)
+        .map_err(|err| Error::engine_with_source("artifact blob was not valid JSON", err))
+}
+
+/// Resolve a flat workflow context key (`context.NAME` or `NAME`) to a
+/// hydrated JSON value.
+///
+/// Returns `Ok(None)` when the key is absent from the context, and `Err` when
+/// the value exists but its blob reference could not be hydrated.
+pub(crate) async fn resolve_flat_context_value(
+    context: &Context,
+    key: &str,
+    run_store: &RunStoreHandle,
+) -> Result<Option<Value>> {
+    let Some(value) = context::lookup_flat(context, key) else {
+        return Ok(None);
+    };
+    resolve_json_value(value, run_store).await.map(Some)
+}
+
 pub async fn resolve_text_or_blob_ref_str(
     current: &str,
     run_store: &RunStoreHandle,
 ) -> Result<String> {
-    let Some(blob_id) = parse_blob_ref(current) else {
+    let Some(blob_hash) = parse_blob_ref(current) else {
         return Ok(current.to_string());
     };
     let bytes = run_store
-        .read_blob(&blob_id)
+        .read_blob(&blob_hash)
         .await
         .map_err(|e| Error::engine_with_anyhow("text blob read failed", e))?
-        .ok_or_else(|| Error::engine(format!("text blob missing: {blob_id}")))?;
+        .ok_or_else(|| Error::engine(format!("text blob missing: {blob_hash}")))?;
     serde_json::from_slice::<String>(&bytes)
         .map_err(|e| Error::engine_with_source("text blob was not a JSON string", e))
 }
@@ -299,8 +343,8 @@ pub async fn sync_artifacts_to_env(
 fn normalize_durable_value(value: &mut Value) {
     match value {
         Value::String(current) => {
-            if let Some(blob_id) = parse_managed_blob_file_ref(current) {
-                *current = format_blob_ref(&blob_id);
+            if let Some(blob_hash) = parse_managed_blob_file_ref(current) {
+                *current = format_blob_ref(&blob_hash);
             }
         }
         Value::Array(items) => {
@@ -322,10 +366,12 @@ fn resolve_execution_values<'a>(
     run_store: &'a RunStoreHandle,
     env: &'a dyn Sandbox,
     run_dir: &'a Path,
+    locality: &'a mut SandboxLocality,
 ) -> BoxFuture<'a, Result<()>> {
     Box::pin(async move {
         for (key, value) in values.iter_mut() {
-            resolve_execution_value(Some(key.as_str()), value, run_store, env, run_dir).await?;
+            resolve_execution_value(Some(key.as_str()), value, run_store, env, run_dir, locality)
+                .await?;
         }
         Ok(())
     })
@@ -341,14 +387,16 @@ fn resolve_execution_value<'a>(
     run_store: &'a RunStoreHandle,
     env: &'a dyn Sandbox,
     run_dir: &'a Path,
+    locality: &'a mut SandboxLocality,
 ) -> BoxFuture<'a, Result<()>> {
     Box::pin(async move {
         match value {
             Value::String(current) => {
                 if key.is_some_and(is_text_context_key) {
                     *current = resolve_text_or_blob_ref_str(current, run_store).await?;
-                } else if let Some(blob_id) = parse_blob_ref(current) {
-                    *current = materialize_blob_ref(&blob_id, run_store, env, run_dir).await?;
+                } else if let Some(blob_hash) = parse_blob_ref(current) {
+                    *current =
+                        materialize_blob_ref(&blob_hash, run_store, env, run_dir, locality).await?;
                 } else if current.starts_with(ARTIFACT_POINTER_PREFIX)
                     && parse_managed_blob_file_ref(current).is_none()
                 {
@@ -357,7 +405,7 @@ fn resolve_execution_value<'a>(
             }
             Value::Array(items) => {
                 for item in items {
-                    resolve_execution_value(key, item, run_store, env, run_dir).await?;
+                    resolve_execution_value(key, item, run_store, env, run_dir, locality).await?;
                 }
             }
             Value::Object(map) => {
@@ -367,8 +415,15 @@ fn resolve_execution_value<'a>(
                     } else {
                         Some(child_key.as_str())
                     };
-                    resolve_execution_value(child_context_key, item, run_store, env, run_dir)
-                        .await?;
+                    resolve_execution_value(
+                        child_context_key,
+                        item,
+                        run_store,
+                        env,
+                        run_dir,
+                        locality,
+                    )
+                    .await?;
                 }
             }
             Value::Null | Value::Bool(_) | Value::Number(_) => {}
@@ -378,17 +433,18 @@ fn resolve_execution_value<'a>(
 }
 
 async fn materialize_blob_ref(
-    blob_id: &RunBlobId,
+    blob_hash: &BlobHash,
     run_store: &RunStoreHandle,
     env: &dyn Sandbox,
     run_dir: &Path,
+    locality: &mut SandboxLocality,
 ) -> Result<String> {
     // Blobs are content-addressed, so an existing materialized file is always
     // current — check before paying for the store read.
-    if is_local_execution(env, run_dir).await? {
-        let path = local_materialized_blob_path(run_dir, blob_id);
+    if locality.is_local(env, run_dir).await? {
+        let path = local_materialized_blob_path(run_dir, blob_hash);
         if !path.exists() {
-            let bytes = read_required_blob(blob_id, run_store).await?;
+            let bytes = read_required_blob(blob_hash, run_store).await?;
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).await.map_err(|err| {
                     Error::Io(format!(
@@ -404,13 +460,13 @@ async fn materialize_blob_ref(
         return Ok(format!("{ARTIFACT_POINTER_PREFIX}{}", path.display()));
     }
 
-    let remote_path = format!("{}/.fabro/blobs/{blob_id}.json", env.working_directory());
+    let remote_path = format!("{}/.fabro/blobs/{blob_hash}.json", env.working_directory());
     if !env
         .file_exists(&remote_path)
         .await
         .map_err(|e| Error::engine_with_source("failed to check blob existence", e))?
     {
-        let bytes = read_required_blob(blob_id, run_store).await?;
+        let bytes = read_required_blob(blob_hash, run_store).await?;
         let content = String::from_utf8(bytes.to_vec())
             .map_err(|e| Error::engine_with_source("artifact blob was not valid UTF-8 JSON", e))?;
         env.write_file(&remote_path, &content).await.map_err(|e| {
@@ -422,14 +478,14 @@ async fn materialize_blob_ref(
 }
 
 async fn read_required_blob(
-    blob_id: &RunBlobId,
+    blob_hash: &BlobHash,
     run_store: &RunStoreHandle,
 ) -> Result<bytes::Bytes> {
     run_store
-        .read_blob(blob_id)
+        .read_blob(blob_hash)
         .await
         .map_err(|e| Error::engine_with_anyhow("artifact blob read failed", e))?
-        .ok_or_else(|| Error::engine(format!("artifact blob missing: {blob_id}")))
+        .ok_or_else(|| Error::engine(format!("artifact blob missing: {blob_hash}")))
 }
 
 async fn resolve_explicit_file_ref(value: &str, env: &dyn Sandbox) -> Result<String> {
@@ -467,17 +523,33 @@ async fn resolve_explicit_file_ref(value: &str, env: &dyn Sandbox) -> Result<Str
     Ok(format!("{ARTIFACT_POINTER_PREFIX}{remote_path}"))
 }
 
-async fn is_local_execution(env: &dyn Sandbox, run_dir: &Path) -> Result<bool> {
-    env.file_exists(&run_dir.to_string_lossy())
-        .await
-        .map_err(|e| Error::engine_with_source("failed to inspect sandbox locality", e))
+/// Memoized sandbox locality for one resolution pass. The sandbox and run
+/// directory are invariant across a pass, so the (possibly remote) probe is
+/// paid at most once instead of once per blob reference.
+#[derive(Default)]
+struct SandboxLocality {
+    cached: Option<bool>,
 }
 
-fn local_materialized_blob_path(run_dir: &Path, blob_id: &RunBlobId) -> PathBuf {
+impl SandboxLocality {
+    async fn is_local(&mut self, env: &dyn Sandbox, run_dir: &Path) -> Result<bool> {
+        if let Some(local) = self.cached {
+            return Ok(local);
+        }
+        let local = env
+            .file_exists(&run_dir.to_string_lossy())
+            .await
+            .map_err(|e| Error::engine_with_source("failed to inspect sandbox locality", e))?;
+        self.cached = Some(local);
+        Ok(local)
+    }
+}
+
+fn local_materialized_blob_path(run_dir: &Path, blob_hash: &BlobHash) -> PathBuf {
     RunScratch::new(run_dir)
         .runtime_dir()
         .join("blobs")
-        .join(format!("{blob_id}.json"))
+        .join(format!("{blob_hash}.json"))
 }
 
 #[cfg(test)]
@@ -514,7 +586,7 @@ mod tests {
 
         let large_string = "x".repeat(BLOB_OFFLOAD_THRESHOLD + 1);
         let serialized = serde_json::to_vec(&serde_json::json!(large_string.clone())).unwrap();
-        let expected_blob_id = fabro_types::RunBlobId::new(&serialized);
+        let expected_blob_hash = fabro_types::BlobHash::new(&serialized);
 
         let mut updates = HashMap::new();
         updates.insert("response.plan".to_string(), serde_json::json!(large_string));
@@ -526,11 +598,11 @@ mod tests {
         let pointer = updates.get("response.plan").unwrap();
         assert_eq!(
             pointer,
-            &serde_json::json!(fabro_types::format_blob_ref(&expected_blob_id))
+            &serde_json::json!(fabro_types::format_blob_ref(&expected_blob_hash))
         );
 
         let blob = run_store
-            .read_blob(&expected_blob_id)
+            .read_blob(&expected_blob_hash)
             .await
             .unwrap()
             .expect("blob should exist");
@@ -553,6 +625,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resolve_json_value_hydrates_blob_and_managed_file_references() {
+        let run_store = make_run_store("structured-json-resolution").await;
+        let value = serde_json::json!([{"name": "api"}, {"name": "web"}]);
+        let blob_hash = run_store
+            .write_blob(&serde_json::to_vec(&value).unwrap())
+            .await
+            .unwrap();
+        let handle = run_store.clone().into();
+
+        assert_eq!(
+            resolve_json_value(serde_json::json!(format_blob_ref(&blob_hash)), &handle)
+                .await
+                .unwrap(),
+            value
+        );
+        assert_eq!(
+            resolve_json_value(
+                serde_json::json!(format!("file:///sandbox/.fabro/blobs/{blob_hash}.json")),
+                &handle,
+            )
+            .await
+            .unwrap(),
+            value
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_json_value_preserves_inline_json() {
+        let run_store = make_run_store("inline-json-resolution").await;
+        let value = serde_json::json!([1, 2, 3]);
+
+        assert_eq!(
+            resolve_json_value(value.clone(), &run_store.into())
+                .await
+                .unwrap(),
+            value
+        );
+    }
+
+    #[tokio::test]
     async fn offload_preserves_parallel_results_and_replaces_large_context_updates() {
         let run_store = make_run_store("parallel-result-artifact-offload").await;
         let large_response = "r".repeat(BLOB_OFFLOAD_THRESHOLD + 1);
@@ -561,9 +673,11 @@ mod tests {
             Value::String("small".to_string());
             BLOB_OFFLOAD_THRESHOLD / 4
         ]);
-        let expected_report_blob = RunBlobId::new(&serde_json::to_vec(&large_report).unwrap());
+        let expected_report_blob = BlobHash::new(&serde_json::to_vec(&large_report).unwrap());
         let mut typed_results = vec![ParallelBranchResult {
             id:              "branch_a".to_string(),
+            index:           Some(0),
+            item_label:      None,
             status:          fabro_types::StageOutcome::Succeeded,
             context_updates: std::collections::BTreeMap::from([
                 (
@@ -710,15 +824,43 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn resolve_context_probes_sandbox_locality_once_per_pass() {
+        let run_store = make_run_store("locality-probe-memoization").await;
+        let first_blob = run_store
+            .write_blob(&serde_json::to_vec(&serde_json::json!({"a": 1})).unwrap())
+            .await
+            .unwrap();
+        let second_blob = run_store
+            .write_blob(&serde_json::to_vec(&serde_json::json!({"b": 2})).unwrap())
+            .await
+            .unwrap();
+        let context = Context::new();
+        context.set("first", fabro_types::format_blob_ref(&first_blob).into());
+        context.set("second", fabro_types::format_blob_ref(&second_blob).into());
+        let env = TestSyncEnv::new(true, "/workspace");
+        let run_dir = tempfile::tempdir().unwrap();
+
+        resolved_context_snapshot(&context, &run_store.clone().into(), &env, run_dir.path())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            *env.exists_calls.lock().unwrap(),
+            1,
+            "sandbox locality should be probed once per resolution pass"
+        );
+    }
+
     #[test]
     fn normalize_durable_updates_rewrites_managed_blob_file_refs_recursively() {
-        let blob_id = fabro_types::RunBlobId::new(b"hello");
+        let blob_hash = fabro_types::BlobHash::new(b"hello");
         let mut updates = HashMap::from([(
             "nested".to_string(),
             serde_json::json!({
                 "items": [
-                    format!("file:///tmp/run/runtime/blobs/{blob_id}.json"),
-                    format!("file:///sandbox/.fabro/blobs/{blob_id}.json"),
+                    format!("file:///tmp/run/runtime/blobs/{blob_hash}.json"),
+                    format!("file:///sandbox/.fabro/blobs/{blob_hash}.json"),
                     "file:///tmp/report.json",
                 ]
             }),
@@ -730,8 +872,8 @@ mod tests {
             updates["nested"],
             serde_json::json!({
                 "items": [
-                    fabro_types::format_blob_ref(&blob_id),
-                    fabro_types::format_blob_ref(&blob_id),
+                    fabro_types::format_blob_ref(&blob_hash),
+                    fabro_types::format_blob_ref(&blob_hash),
                     "file:///tmp/report.json",
                 ]
             })
@@ -793,7 +935,7 @@ mod tests {
 
     #[test]
     fn normalize_checkpoint_for_resume_converts_managed_blob_file_refs_and_drops_preamble() {
-        let blob_id = fabro_types::RunBlobId::new(b"managed");
+        let blob_hash = fabro_types::BlobHash::new(b"managed");
         let mut checkpoint = crate::records::Checkpoint {
             timestamp:                  chrono::Utc::now(),
             current_node:               "work".to_string(),
@@ -806,7 +948,7 @@ mod tests {
                 ),
                 (
                     "response.work".to_string(),
-                    serde_json::json!(format!("file:///sandbox/.fabro/blobs/{blob_id}.json")),
+                    serde_json::json!(format!("file:///sandbox/.fabro/blobs/{blob_hash}.json")),
                 ),
             ]),
             node_outcomes:              HashMap::from([(
@@ -814,7 +956,7 @@ mod tests {
                 crate::outcome::Outcome {
                     context_updates: HashMap::from([(
                         "response.work".to_string(),
-                        serde_json::json!(format!("file:///sandbox/.fabro/blobs/{blob_id}.json")),
+                        serde_json::json!(format!("file:///sandbox/.fabro/blobs/{blob_hash}.json")),
                     )]),
                     ..crate::outcome::Outcome::success()
                 },
@@ -835,14 +977,14 @@ mod tests {
         );
         assert_eq!(
             checkpoint.context_values.get("response.work"),
-            Some(&serde_json::json!(fabro_types::format_blob_ref(&blob_id)))
+            Some(&serde_json::json!(fabro_types::format_blob_ref(&blob_hash)))
         );
         assert_eq!(
             checkpoint
                 .node_outcomes
                 .get("work")
                 .and_then(|outcome| outcome.context_updates.get("response.work")),
-            Some(&serde_json::json!(fabro_types::format_blob_ref(&blob_id)))
+            Some(&serde_json::json!(fabro_types::format_blob_ref(&blob_hash)))
         );
     }
 
@@ -851,9 +993,10 @@ mod tests {
     use std::sync::Mutex;
 
     struct TestSyncEnv {
-        accessible:  bool,
-        written:     Mutex<Vec<(String, String)>>,
-        working_dir: String,
+        accessible:   bool,
+        written:      Mutex<Vec<(String, String)>>,
+        working_dir:  String,
+        exists_calls: Mutex<usize>,
     }
 
     impl TestSyncEnv {
@@ -862,6 +1005,7 @@ mod tests {
                 accessible,
                 written: Mutex::new(Vec::new()),
                 working_dir: working_dir.to_string(),
+                exists_calls: Mutex::new(0),
             }
         }
     }
@@ -885,6 +1029,7 @@ mod tests {
         }
 
         async fn file_exists(&self, _path: &str) -> fabro_sandbox::Result<bool> {
+            *self.exists_calls.lock().unwrap() += 1;
             Ok(self.accessible)
         }
 

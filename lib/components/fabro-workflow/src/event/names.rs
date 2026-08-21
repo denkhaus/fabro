@@ -86,6 +86,7 @@ pub fn event_name(event: &Event) -> &'static str {
             AgentEvent::CompactionCompleted { .. } => "agent.compaction.completed",
             AgentEvent::LlmRetry { .. } => "agent.llm.retry",
             AgentEvent::SubAgentSpawned { .. } => "agent.sub.spawned",
+            AgentEvent::SubAgentTurnStarted { .. } => "agent.sub.turn.started",
             AgentEvent::SubAgentCompleted { .. } => "agent.sub.completed",
             AgentEvent::SubAgentFailed { .. } => "agent.sub.failed",
             AgentEvent::SubAgentClosed { .. } => "agent.sub.closed",
@@ -150,6 +151,7 @@ pub fn event_name(event: &Event) -> &'static str {
         Event::AgentAcpCompleted { .. } => "agent.acp.completed",
         Event::AgentAcpCancelled { .. } => "agent.acp.cancelled",
         Event::AgentAcpTimedOut { .. } => "agent.acp.timed_out",
+        Event::PullRequestCreationRequested { .. } => "pull_request.creation_requested",
         Event::PullRequestCreated { .. } => "pull_request.created",
         Event::PullRequestLinked { .. } => "pull_request.linked",
         Event::PullRequestUnlinked { .. } => "pull_request.unlinked",
@@ -175,6 +177,7 @@ mod tests {
                 parallel_branch_id:    ParallelBranchId::new(StageId::new("plan", 1), 0),
                 branch:                "fork".to_string(),
                 index:                 0,
+                item_label:            None,
             }),
             "parallel.branch.started"
         );
@@ -183,15 +186,32 @@ mod tests {
                 stage:             "code".to_string(),
                 visit:             1,
                 event:             AgentEvent::SubAgentSpawned {
-                    agent_id: "a1".to_string(),
-                    depth:    1,
-                    task:     "do it".to_string(),
+                    agent_id:   "a1".to_string(),
+                    depth:      1,
+                    task:       "do it".to_string(),
+                    generation: 1,
                 },
                 session_id:        None,
                 parent_session_id: None,
                 tool_call_id:      None,
             }),
             "agent.sub.spawned"
+        );
+        assert_eq!(
+            event_name(&Event::Agent {
+                stage:             "code".to_string(),
+                visit:             1,
+                event:             AgentEvent::SubAgentTurnStarted {
+                    agent_id:   "a1".to_string(),
+                    depth:      1,
+                    task:       "fix it".to_string(),
+                    generation: 2,
+                },
+                session_id:        None,
+                parent_session_id: None,
+                tool_call_id:      None,
+            }),
+            "agent.sub.turn.started"
         );
         assert_eq!(
             event_name(&Event::Agent {

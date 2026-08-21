@@ -6,30 +6,40 @@ use super::EnvContext;
 use crate::agent_profile::AgentProfile;
 use crate::config::NativeToolOptions;
 use crate::native_tool::{NativeTool, ToolVocabulary};
-use crate::profiles::{self, BaseProfile, EmbeddedPrompt, kimi_tools};
+use crate::profiles::{
+    self, BaseProfile, EmbeddedPrompt, ProfileDeps, impl_base_profile_accessors, kimi_tools,
+};
 use crate::sandbox::Sandbox;
 use crate::skills::Skill;
 use crate::todo_runtime::TodoRuntime;
 use crate::todo_tools::make_todo_list_tool;
 use crate::tool_registry::ToolRegistry;
-use crate::tools::{WebFetchSummarizer, register_discovery_and_web_tools};
+use crate::tools::register_discovery_and_web_tools;
 
 const CORE_PROMPT: &str = include_str!("prompts/kimi.md.j2");
 
-/// Kimi models repeatedly fail the workspace's read-before-write guard: across
-/// two observed K3 implementation stages, 32 of 35 tool failures were writes to
-/// files the model had not read, or `old_string` values reconstructed from
-/// memory. Kimi Code's own tool descriptions drill this rule directly, so the
-/// Kimi profile restates it where the model is most likely to act on it — in
-/// the description of the tool being called — rather than relying only on the
-/// system prompt.
-const EDIT_FILE_DESCRIPTION: &str = "Edit a file by replacing an exact string. \
-Read the file with Read before EVERY edit — this workspace refuses writes to files that \
-have not been read, and the call will fail. Take old_string verbatim from the Read output; \
-never reconstruct it from memory or from an earlier version of the file. old_string must be an \
-exact match and unique unless replace_all is true. If the edit fails with 'old_string not found', \
-re-read the file and take the exact text from the fresh output rather than guessing again. \
-Preserve existing indentation.";
+/// Kimi models repeatedly reconstruct `old_string` from memory rather than from
+/// a fresh read: across two observed K3 implementation stages, 32 of 35 tool
+/// failures were edits against a file the model had not read, or `old_string`
+/// values recalled from an earlier version. Kimi Code carries this guidance in
+/// its tool descriptions and nowhere in its system prompt, so this profile does
+/// the same — the rule lands in the description of the tool being called.
+const EDIT_FILE_DESCRIPTION: &str = "Perform exact replacements in existing files.
+
+- Edit is mandatory for every incremental change, especially small edits. DO NOT use Write or \
+Bash `sed`.
+- Read the target file before every Edit. DO NOT call Edit from memory, stale context, or a \
+guessed `old_string`.
+- Take `old_string` and `new_string` from the Read output view, dropping the line-number prefix \
+and separator; match only file content.
+- `old_string` must be unique unless `replace_all` is set. If it is ambiguous, add surrounding \
+context. Use `replace_all` only when every occurrence should change — for example, renaming a \
+symbol throughout the file.
+- DO NOT issue consecutive Edit calls on the same file. A previous Edit can invalidate a later \
+Edit's `old_string`, causing `old_string not found`. Read the file again before the next Edit.
+- If an Edit fails with `old_string not found`, re-read the file and take the exact text from the \
+fresh output rather than guessing again.
+- Preserve existing indentation.";
 
 const GLOB_DESCRIPTION: &str = "Find files by search-root-relative path using a glob pattern. \
 Results are sorted lexicographically by relative path.
@@ -56,15 +66,12 @@ pub struct KimiProfile {
 impl KimiProfile {
     #[must_use]
     pub fn new(model: impl Into<String>) -> Self {
-        let options = NativeToolOptions::for_profile(AgentProfileKind::Kimi);
-        Self::with_native_tools(model, &options, None)
+        let deps = ProfileDeps::standalone(NativeToolOptions::for_profile(AgentProfileKind::Kimi));
+        Self::with_native_tools(model, &deps)
     }
 
-    pub(crate) fn with_native_tools(
-        model: impl Into<String>,
-        options: &NativeToolOptions,
-        summarizer: Option<WebFetchSummarizer>,
-    ) -> Self {
+    pub(crate) fn with_native_tools(model: impl Into<String>, deps: &ProfileDeps) -> Self {
+        let options = &deps.options;
         // The registry carries the vocabulary, so tools registered later
         // (subagent tools, skills) are renamed too.
         let mut registry = ToolRegistry::with_vocabulary(ToolVocabulary::KimiCode);
@@ -72,7 +79,7 @@ impl KimiProfile {
         // Glob and the web tools have the same contract in both vocabularies.
         // The remaining Kimi tools use adapters for their different schemas,
         // while reusing shared execution helpers where their behavior agrees.
-        register_discovery_and_web_tools(&mut registry, options, summarizer);
+        register_discovery_and_web_tools(&mut registry, options, deps.summarizer.clone());
         registry.register(kimi_tools::make_kimi_read_tool());
         registry.register(kimi_tools::make_kimi_write_tool());
         registry.register(kimi_tools::make_kimi_edit_tool(EDIT_FILE_DESCRIPTION));
@@ -93,7 +100,7 @@ impl KimiProfile {
         Self {
             base: BaseProfile {
                 profile_kind: AgentProfileKind::Kimi,
-                provider_id: ProviderId::new("kimi"),
+                provider_id: ProviderId::new("moonshot"),
                 model: model.into(),
                 catalog: None,
                 registry,
@@ -119,29 +126,7 @@ impl KimiProfile {
 }
 
 impl AgentProfile for KimiProfile {
-    fn profile_kind(&self) -> AgentProfileKind {
-        self.base.profile_kind
-    }
-
-    fn provider_id(&self) -> ProviderId {
-        self.base.provider_id.clone()
-    }
-
-    fn model(&self) -> &str {
-        &self.base.model
-    }
-
-    fn catalog(&self) -> Option<&Catalog> {
-        self.base.catalog.as_deref()
-    }
-
-    fn tool_registry(&self) -> &ToolRegistry {
-        &self.base.registry
-    }
-
-    fn tool_registry_mut(&mut self) -> &mut ToolRegistry {
-        &mut self.base.registry
-    }
+    impl_base_profile_accessors!();
 
     fn build_system_prompt(
         &self,
@@ -193,8 +178,8 @@ mod tests {
     #[test]
     fn kimi_models_select_the_kimi_profile_on_every_provider() {
         for (catalog, provider, model) in [
-            (catalog(), "kimi", "kimi-k3"),
-            (catalog(), "kimi", "kimi-k2.5"),
+            (catalog(), "moonshot", "kimi-k3"),
+            (catalog(), "moonshot", "kimi-k2.5"),
             (catalog_with_openrouter(), "openrouter", "kimi-k3"),
             (catalog_with_openrouter(), "openrouter", "kimi-k2.6"),
         ] {
@@ -298,7 +283,7 @@ mod tests {
     }
 
     #[test]
-    fn edit_and_write_descriptions_drill_read_before_write() {
+    fn edit_and_write_descriptions_drill_reading_first() {
         let profile = KimiProfile::new("kimi-k3");
         let describe = |name: &str| {
             profile
@@ -310,14 +295,22 @@ mod tests {
                 .clone()
         };
 
+        // Kimi Code carries read-before-edit guidance in the tool descriptions
+        // and nowhere in its system prompt, so this is where it must land.
         for name in ["Edit", "Write"] {
             let text = describe(name);
             assert!(
-                text.contains("have not been read") || text.contains("has not been read"),
-                "{name} should warn about the read-before-write guard"
+                text.contains("Read"),
+                "{name} should steer the model to read the file first"
             );
         }
-        assert!(describe("Edit").contains("never reconstruct it from memory"));
+        assert!(
+            describe("Edit").contains("DO NOT call Edit from memory, stale context, or a guessed")
+        );
+        assert!(describe("Edit").contains("DO NOT issue consecutive Edit calls on the same file"));
+        assert!(describe("Write").contains("Read before overwriting an existing file"));
+        // Re-reading only to confirm a write landed is waste, not diligence.
+        assert!(describe("Read").contains("do not re-read solely to prove the write landed"));
 
         // Bash steers shell usage toward the dedicated tools, under the names
         // this profile actually exposes.
@@ -342,8 +335,8 @@ mod tests {
         // Fabro has no background shell; promising one would be a lie.
         assert!(!bash.contains("run_in_background"), "{bash}");
 
-        // Read explains that reading is what clears a file for writing.
-        assert!(describe("Read").contains("refuse a file that has not been read"));
+        // Read tells the model how to turn its output into an Edit old_string.
+        assert!(describe("Read").contains("Drop the number and separator"));
         // Grep must not promise ripgrep syntax: fabro falls back to POSIX grep.
         let grep = describe("Grep");
         assert!(grep.contains("POSIX"), "{grep}");
@@ -380,7 +373,10 @@ mod tests {
         let env = MockSandbox::linux();
         let prompt = profile.build_system_prompt(&env, &EnvContext::default(), &[], None, &[]);
         assert!(prompt.contains("You are Kimi"));
-        assert!(prompt.contains("# Reading Before Writing"));
+        assert!(prompt.contains("# Tracking Multi-Step Work"));
         assert!(prompt.contains("<environment>"));
+        // Kimi Code keeps read-before-edit mechanics out of its system prompt
+        // and in the tool descriptions; the profile follows that split.
+        assert!(!prompt.contains("Reading Before Writing"));
     }
 }

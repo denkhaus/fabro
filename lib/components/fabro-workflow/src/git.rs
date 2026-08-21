@@ -352,26 +352,25 @@ mod tests {
         let store = test_store();
         let run = store.create_run(&fixtures::RUN_1).await.unwrap();
         append_event(&run, &fixtures::RUN_1, &Event::RunCreated {
-            run_id:           fixtures::RUN_1,
-            title:            None,
-            settings:         serde_json::to_value(fabro_types::WorkflowSettings::default())
+            run_id:              fixtures::RUN_1,
+            title:               None,
+            settings:            serde_json::to_value(fabro_types::WorkflowSettings::default())
                 .unwrap(),
-            graph:            serde_json::to_value(fabro_types::Graph::new("test")).unwrap(),
-            workflow_source:  None,
-            workflow_config:  None,
-            labels:           std::collections::BTreeMap::default(),
-            run_dir:          "/tmp".to_string(),
-            source_directory: None,
-            workflow_slug:    None,
-            automation:       None,
-            db_prefix:        None,
-            provenance:       test_support::test_run_provenance(),
-            manifest_blob:    None,
-            git:              None,
-            fork_source_ref:  None,
-            retried_from:     None,
-            parent_id:        None,
-            web_url:          None,
+            graph:               serde_json::to_value(fabro_types::Graph::new("test")).unwrap(),
+            workflow_source:     None,
+            labels:              std::collections::BTreeMap::default(),
+            source_directory:    None,
+            workflow_slug:       None,
+            workflow_version_id: None,
+            automation:          None,
+            provenance:          test_support::test_run_provenance(),
+            manifest_blob:       None,
+            spec_blob:           None,
+            git:                 None,
+            fork_source_ref:     None,
+            retried_from:        None,
+            parent_id:           None,
+            web_url:             None,
         })
         .await
         .unwrap();
@@ -448,6 +447,8 @@ mod tests {
             failure_count: 0,
             results:       vec![fabro_types::ParallelBranchResult {
                 id:              "a".to_string(),
+                index:           Some(0),
+                item_label:      None,
                 status:          fabro_types::StageOutcome::Succeeded,
                 context_updates: std::collections::BTreeMap::new(),
             }],

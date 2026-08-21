@@ -163,14 +163,45 @@ impl RunEventLogger {
         let (tx, mut rx) = mpsc::unbounded_channel();
 
         tokio::spawn(async move {
+            // A dropped run event is unrecoverable history loss, so the first
+            // one is an ERROR worth investigating. A broken sink fails for
+            // every event that follows, so report the rest as a count at flush
+            // instead of one ERROR per event. Flush runs per stage and per
+            // agent turn, so only losses since the last summary are reported.
+            let mut write_failures: u64 = 0;
+            let mut summarized_failures: u64 = 0;
             while let Some(command) = rx.recv().await {
                 match command {
                     RunEventCommand::Event(event) => {
                         if let Err(err) = sink.write_run_event(&event).await {
-                            tracing::warn!(error = %err, "Failed to write run event");
+                            write_failures += 1;
+                            if write_failures == 1 {
+                                tracing::error!(
+                                    run_id = %event.run_id,
+                                    event = %event.body.event_name(),
+                                    error = %err,
+                                    "Failed to write run event",
+                                );
+                            } else {
+                                tracing::debug!(
+                                    run_id = %event.run_id,
+                                    event = %event.body.event_name(),
+                                    failures = write_failures,
+                                    error = %err,
+                                    "Failed to write run event",
+                                );
+                            }
                         }
                     }
                     RunEventCommand::Flush(tx) => {
+                        if write_failures > summarized_failures {
+                            tracing::error!(
+                                lost = write_failures - summarized_failures,
+                                total = write_failures,
+                                "Run events were lost to write failures",
+                            );
+                            summarized_failures = write_failures;
+                        }
                         let _ = tx.send(());
                     }
                 }
@@ -248,25 +279,24 @@ mod tests {
         );
         let run_store = store.create_run(&fixtures::RUN_7).await.unwrap();
         append_event(&run_store, &fixtures::RUN_7, &Event::RunCreated {
-            run_id:           fixtures::RUN_7,
-            title:            None,
-            settings:         serde_json::to_value(WorkflowSettings::default()).unwrap(),
-            graph:            serde_json::to_value(Graph::new("test")).unwrap(),
-            workflow_source:  None,
-            workflow_config:  None,
-            labels:           std::collections::BTreeMap::new(),
-            run_dir:          "/tmp/test".to_string(),
-            source_directory: None,
-            workflow_slug:    None,
-            automation:       None,
-            db_prefix:        None,
-            provenance:       test_support::test_run_provenance(),
-            manifest_blob:    None,
-            git:              None,
-            fork_source_ref:  None,
-            retried_from:     None,
-            parent_id:        None,
-            web_url:          None,
+            run_id:              fixtures::RUN_7,
+            title:               None,
+            settings:            serde_json::to_value(WorkflowSettings::default()).unwrap(),
+            graph:               serde_json::to_value(Graph::new("test")).unwrap(),
+            workflow_source:     None,
+            labels:              std::collections::BTreeMap::new(),
+            source_directory:    None,
+            workflow_slug:       None,
+            workflow_version_id: None,
+            automation:          None,
+            provenance:          test_support::test_run_provenance(),
+            manifest_blob:       None,
+            spec_blob:           None,
+            git:                 None,
+            fork_source_ref:     None,
+            retried_from:        None,
+            parent_id:           None,
+            web_url:             None,
         })
         .await
         .unwrap();

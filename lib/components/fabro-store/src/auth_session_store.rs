@@ -396,7 +396,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::{AuthSessionRecord, AuthSessionStore, RefreshToken, RotateOutcome};
-    use crate::test_util::sqlite_auth_session_store;
+    use crate::test_support::sqlite_auth_session_store;
 
     fn identity(subject: &str) -> IdpIdentity {
         IdpIdentity::new("https://github.com", subject).unwrap()

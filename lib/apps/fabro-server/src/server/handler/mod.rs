@@ -20,7 +20,7 @@ mod mcp_servers;
 mod models;
 mod pair;
 mod playground;
-mod pull_requests;
+pub(in crate::server) mod pull_requests;
 pub(in crate::server) mod runs;
 mod sandbox;
 mod sandboxes;
@@ -30,6 +30,7 @@ mod steer;
 pub(in crate::server) mod system;
 mod variables;
 mod worker_control;
+mod workflow_versions;
 
 pub(super) use system::{health, openapi_spec};
 
@@ -100,7 +101,7 @@ pub(super) fn demo_routes() -> Router<Arc<AppState>> {
         )
         .route("/runs/{id}/attach", get(demo::run_events_stub))
         .route("/runs/{id}/blobs", post(not_implemented))
-        .route("/runs/{id}/blobs/{blobId}", get(not_implemented))
+        .route("/runs/{id}/blobs/{blobHash}", get(not_implemented))
         .route(
             "/runs/{id}/stages/{stageId}/logs/output",
             get(not_implemented),
@@ -116,6 +117,7 @@ pub(super) fn demo_routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/graph/source", get(demo::get_run_graph_source))
         .route("/runs/{id}/stages", get(demo::get_run_stages))
         .route("/runs/{id}/artifacts", get(demo::list_run_artifacts_stub))
+        .route("/runs/{id}/artifacts/download", get(not_implemented))
         .route("/runs/{id}/files", get(demo::list_run_files_stub))
         .route("/runs/{id}/commits", get(demo::list_run_commits_stub))
         .route(
@@ -225,6 +227,7 @@ pub(super) fn real_routes() -> Router<Arc<AppState>> {
         .merge(secrets::routes())
         .merge(variables::routes())
         .merge(worker_control::routes())
+        .merge(workflow_versions::routes())
         .merge(sessions::routes())
         .merge(system::routes())
         .merge(completions::routes())

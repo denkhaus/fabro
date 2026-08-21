@@ -8,31 +8,23 @@ use fabro_types::{
     BilledModelUsage, BilledTokenCounts, Checkpoint, CheckpointRecord, InterviewQuestionRecord,
     ParallelBranchResult, QuestionType, RunDiff, RunSandbox, RunSandboxInstance, RunSandboxPlan,
     RunSandboxRuntime, RunStatus, SandboxProviderKind, StageCompletion, StageModelUsage,
-    StageOutcome, StartRecord, WorkflowSettings, first_event_seq, fixtures, test_support,
+    StageOutcome, StartRecord, first_event_seq, fixtures, test_support,
 };
 use serde_json::json;
 
 fn sample_run_spec() -> RunSpec {
     RunSpec {
-        run_id:           fixtures::RUN_1,
-        settings:         WorkflowSettings::default(),
-        graph:            Graph::new("ship"),
-        graph_source:     None,
-        workflow_slug:    Some("demo".to_string()),
-        automation:       None,
+        graph: Graph::new("ship"),
+        workflow_slug: Some("demo".to_string()),
         source_directory: Some("/tmp/project".to_string()),
-        labels:           HashMap::from([("team".to_string(), "platform".to_string())]),
-        provenance:       test_support::test_run_provenance(),
-        manifest_blob:    None,
-        definition_blob:  None,
-        git:              Some(fabro_types::GitContext {
-            origin_url:   "https://github.com/fabro-sh/fabro.git".to_string(),
-            branch:       "main".to_string(),
-            sha:          None,
-            dirty:        fabro_types::DirtyStatus::Clean,
-            push_outcome: fabro_types::PreRunPushOutcome::NotAttempted,
+        labels: HashMap::from([("team".to_string(), "platform".to_string())]),
+        git: Some(fabro_types::GitContext {
+            origin_url: "https://github.com/fabro-sh/fabro.git".to_string(),
+            branch:     "main".to_string(),
+            sha:        None,
+            dirty:      fabro_types::DirtyStatus::Clean,
         }),
-        fork_source_ref:  None,
+        ..test_support::test_run_spec()
     }
 }
 
@@ -145,6 +137,8 @@ fn serializable_projection_round_trips_and_trims_bulky_node_fields() {
     stage.script_timing = Some(json!({ "duration_ms": 10 }));
     let parallel_results = vec![ParallelBranchResult {
         id:              "review".to_string(),
+        index:           Some(0),
+        item_label:      None,
         status:          StageOutcome::Succeeded,
         context_updates: BTreeMap::from([("response.review".to_string(), json!("looks good"))]),
     }];
@@ -235,6 +229,7 @@ fn projection_query_methods_expose_common_state() {
                 allow_freeform:  true,
                 timeout_seconds: None,
                 context_display: None,
+                review_target:   None,
             },
             started_at: Utc::now(),
         })]);

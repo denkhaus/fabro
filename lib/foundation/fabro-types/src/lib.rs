@@ -3,6 +3,7 @@ extern crate self as fabro_types;
 pub mod artifact;
 pub mod auth;
 pub mod billing;
+pub mod blob_hash;
 pub mod blob_ref;
 pub mod checkpoint;
 pub mod command_output;
@@ -13,6 +14,7 @@ pub mod event_envelope;
 pub mod failure_signature;
 pub mod graph;
 mod id;
+mod input_scalar;
 pub mod interview;
 pub mod llm_backend;
 pub mod manifest_path;
@@ -25,7 +27,6 @@ pub mod pull_request;
 pub mod reasoning;
 pub mod repository;
 pub mod run;
-pub mod run_blob_id;
 pub mod run_event;
 pub mod run_failure;
 pub mod run_id;
@@ -53,6 +54,9 @@ pub mod timing;
 pub mod todo;
 pub mod transcript;
 pub mod variable;
+pub mod workflow_path;
+pub mod workflow_version;
+pub mod workflow_version_id;
 
 pub use artifact::ArtifactUpload;
 pub use auth::{IdpIdentity, IdpIdentityError};
@@ -62,6 +66,7 @@ pub use billing::{
     ModelBillingFacts, ModelBillingInput, ModelPricing, ModelPricingPolicy, ModelRef, ModelUsage,
     OpenAiBillingFacts, OpenAiModelPricing, PricePerMTok, Speed, TokenCounts, UsdMicros,
 };
+pub use blob_hash::BlobHash;
 pub use blob_ref::{format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref};
 pub use checkpoint::Checkpoint;
 pub use command_output::{CommandOutputStream, CommandTermination};
@@ -72,10 +77,13 @@ pub use event_envelope::EventEnvelope;
 pub use fabro_model::ReasoningEffort;
 pub use failure_signature::FailureSignature;
 pub use graph::{
-    AttrValue, Edge, Graph, KNOWN_HANDLER_TYPES, Node, is_known_handler_type, is_llm_handler_type,
-    shape_to_handler_type,
+    AttrValue, ContextKeyAttr, Edge, Graph, KNOWN_HANDLER_TYPES, Node, is_known_handler_type,
+    is_llm_handler_type, shape_to_handler_type,
 };
-pub use interview::{InterviewQuestionRecord, QuestionType};
+pub use input_scalar::{JsonScalarToTomlError, json_scalar_to_toml_value};
+pub use interview::{
+    InterviewQuestionRecord, QuestionType, ReviewTarget, ReviewTargetError, ReviewTargetKind,
+};
 pub use llm_backend::AgentBackend;
 pub use manifest_path::{ManifestPath, ManifestPathParseError};
 pub use mcp_store::{
@@ -98,24 +106,24 @@ pub use pair::{
 pub use parallel::ParallelBranchResult;
 pub use principal::{AuthMethod, Principal, SystemActorKind, UserPrincipal};
 pub use pull_request::{
-    CheckRun, CheckRunStatus, PullRequest, PullRequestDetails, PullRequestDetailsStatus,
+    CheckRun, CheckRunStatus, PullRequest, PullRequestCreation, PullRequestCreationId,
+    PullRequestCreationStatus, PullRequestDetails, PullRequestDetailsStatus,
     PullRequestDetailsUnavailableReason, PullRequestGithubDetail, PullRequestLink, PullRequestMeta,
     PullRequestRef, PullRequestResponse, PullRequestTimestamps, PullRequestUser,
 };
 pub use reasoning::ReasoningOutput;
-pub use repository::{RepositoryProvider, RepositoryRef};
+pub use repository::{GitHubRepositorySlug, RepositoryProvider, RepositoryRef};
 pub use run::{
-    DirtyStatus, ForkSourceRef, GitContext, PreRunPushOutcome, RunClientProvenance, RunProvenance,
+    DirtyStatus, ForkSourceRef, GitContext, RunClientProvenance, RunProvenance,
     RunServerProvenance, RunSpec,
 };
-pub use run_blob_id::RunBlobId;
 pub use run_event::{
     AgentMcpToolSummary, AgentMemoryFileProps, AgentSkillActivationSource, AgentSkillSummary,
     AgentToolCategory, AgentToolSource, AgentToolSummary, AgentToolsAvailableProps, EventBody,
-    ExecOutputTail, InterviewOption, LlmOutputKind, LlmRetryPhase, MetadataSnapshotFailureKind,
-    MetadataSnapshotPhase, RunEvent, RunNoticeCode, RunNoticeLevel, RunPairEndedReason,
-    RunPairFailedReason, RunRunnableSource, SessionCapability, TodoCreatedProps, TodoDeletedProps,
-    TodoUpdatedProps,
+    ExecOutputTail, FailoverProps, INITIAL_SUBAGENT_GENERATION, InterviewOption, LlmOutputKind,
+    LlmRetryPhase, MetadataSnapshotFailureKind, MetadataSnapshotPhase, RunEvent, RunNoticeCode,
+    RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunRunnableSource, SessionCapability,
+    TodoCreatedProps, TodoDeletedProps, TodoUpdatedProps, initial_subagent_generation,
 };
 pub use run_failure::RunFailure;
 pub use run_id::{RunId, fixtures};
@@ -125,7 +133,7 @@ pub use run_projection::{
     StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
     StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowUnavailableReason,
     StageContextWindowWarning, StageInferenceProjection, StageModelUsage, StageProjection,
-    SubAgentProjection, SubAgentStatus, first_event_seq,
+    StageToolBatchProjection, SubAgentProjection, SubAgentStatus, first_event_seq,
 };
 pub use run_sandbox::{
     RunSandbox, RunSandboxFailure, RunSandboxInstance, RunSandboxKind, RunSandboxPlan,
@@ -178,3 +186,11 @@ pub use transcript::{
 pub use variable::{
     CreateVariableRequest, UpdateVariableRequest, Variable, VariableListResponse, is_env_style_name,
 };
+pub use workflow_path::{
+    MAX_WORKFLOW_PATH_BYTES, MAX_WORKFLOW_PATH_COMPONENTS, WorkflowPath, WorkflowPathParseError,
+};
+pub use workflow_version::{
+    MAX_WORKFLOW_VERSION_BYTES, MAX_WORKFLOW_VERSION_DEPENDENCIES, MAX_WORKFLOW_VERSION_FILE_BYTES,
+    MAX_WORKFLOW_VERSION_FILES, WorkflowVersion, WorkflowVersionShapeError,
+};
+pub use workflow_version_id::{WorkflowVersionId, WorkflowVersionIdParseError};

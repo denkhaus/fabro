@@ -56,26 +56,26 @@ async fn append_completed_run_with_final_patch(
 ) {
     let run_store = store.create_run(run_id).await.expect("create run store");
     workflow_event::append_event(&run_store, run_id, &workflow_event::Event::RunCreated {
-        run_id:           *run_id,
-        title:            None,
-        settings:         serde_json::to_value(WorkflowSettings::default())
+        run_id:              *run_id,
+        title:               None,
+        settings:            serde_json::to_value(WorkflowSettings::default())
             .expect("workflow settings should serialize"),
-        graph:            serde_json::to_value(Graph::new("test")).expect("graph should serialize"),
-        workflow_source:  None,
-        workflow_config:  None,
-        labels:           std::collections::BTreeMap::default(),
-        run_dir:          "/tmp".to_string(),
-        source_directory: None,
-        workflow_slug:    None,
-        automation:       None,
-        db_prefix:        None,
-        provenance:       test_support::test_run_provenance(),
-        manifest_blob:    None,
-        git:              None,
-        fork_source_ref:  None,
-        retried_from:     None,
-        parent_id:        None,
-        web_url:          None,
+        graph:               serde_json::to_value(Graph::new("test"))
+            .expect("graph should serialize"),
+        workflow_source:     None,
+        labels:              std::collections::BTreeMap::default(),
+        source_directory:    None,
+        workflow_slug:       None,
+        workflow_version_id: None,
+        automation:          None,
+        provenance:          test_support::test_run_provenance(),
+        manifest_blob:       None,
+        spec_blob:           None,
+        git:                 None,
+        fork_source_ref:     None,
+        retried_from:        None,
+        parent_id:           None,
+        web_url:             None,
     })
     .await
     .expect("append RunCreated");

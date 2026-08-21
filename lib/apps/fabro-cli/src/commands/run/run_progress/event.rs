@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use chrono::{DateTime, Utc};
 use fabro_agent::Error as AgentError;
 use fabro_types::{BilledModelUsage, EventBody, LlmOutputKind, RunEvent};
-use fabro_util::error;
+use fabro_util::{error, text};
 use fabro_workflow::event::RunNoticeLevel;
 use serde_json::Value;
 
@@ -189,10 +189,13 @@ pub(super) enum ProgressEvent {
     LlmRequestFinished {
         stage_node_id: String,
     },
-    SubagentSpawned {
+    /// A subagent started work. Generation 1 is the spawn; later generations
+    /// are further turns in the same child session.
+    SubagentStarted {
         stage_node_id: String,
         agent_id:      String,
         task:          String,
+        generation:    u64,
     },
     SubagentCompleted {
         stage_node_id: String,
@@ -330,11 +333,15 @@ pub(super) fn from_run_event(stored: &RunEvent) -> Option<ProgressEvent> {
             delay_ms:     props.delay_ms,
         }),
         EventBody::ParallelStarted(_) => Some(ProgressEvent::ParallelStarted),
-        EventBody::ParallelBranchStarted(_) => {
-            Some(ProgressEvent::ParallelBranchStarted { branch: node_id })
-        }
+        EventBody::ParallelBranchStarted(props) => Some(ProgressEvent::ParallelBranchStarted {
+            branch: parallel_branch_display(&node_id, props.index, props.item_label.as_deref()),
+        }),
         EventBody::ParallelBranchCompleted(props) => Some(ProgressEvent::ParallelBranchCompleted {
-            branch:      node_id,
+            branch:      parallel_branch_display(
+                &node_id,
+                props.index,
+                props.item_label.as_deref(),
+            ),
             duration_ms: props.duration_ms,
             status:      props.status,
         }),
@@ -422,10 +429,17 @@ pub(super) fn from_run_event(stored: &RunEvent) -> Option<ProgressEvent> {
                 stage_node_id: node_id,
             })
         }
-        EventBody::AgentSubSpawned(props) => Some(ProgressEvent::SubagentSpawned {
+        EventBody::AgentSubSpawned(props) => Some(ProgressEvent::SubagentStarted {
             stage_node_id: node_id,
             agent_id:      props.agent_id.clone(),
             task:          props.task.clone(),
+            generation:    props.generation,
+        }),
+        EventBody::AgentSubTurnStarted(props) => Some(ProgressEvent::SubagentStarted {
+            stage_node_id: node_id,
+            agent_id:      props.agent_id.clone(),
+            task:          props.task.clone(),
+            generation:    props.generation,
         }),
         EventBody::AgentSubCompleted(props) => Some(ProgressEvent::SubagentCompleted {
             stage_node_id: node_id,
@@ -462,6 +476,21 @@ pub(super) fn from_run_event(stored: &RunEvent) -> Option<ProgressEvent> {
         }),
         _ => None,
     }
+}
+
+/// Name a parallel branch for the terminal.
+///
+/// `item_label` is sanitized where it is created, but events replayed from a
+/// run recorded before that are not, and this string goes straight to the
+/// terminal. Sanitizing again is cheap and keeps the guarantee local.
+fn parallel_branch_display(node_id: &str, index: usize, item_label: Option<&str>) -> String {
+    item_label
+        .map(text::sanitize_display_label)
+        .filter(|label| !label.is_empty())
+        .map_or_else(
+            || node_id.to_string(),
+            |label| format!("{label} ({node_id} #{index})"),
+        )
 }
 
 pub(super) fn from_json_line(line: &str) -> Option<ProgressEvent> {
@@ -512,6 +541,30 @@ mod tests {
     use fabro_workflow::event::{Event, RunNoticeCode, to_run_event};
 
     use super::*;
+
+    #[test]
+    fn parallel_branch_display_neutralizes_runtime_labels() {
+        assert_eq!(
+            parallel_branch_display("reviewer", 0, Some("auth")),
+            "auth (reviewer #0)"
+        );
+        assert_eq!(parallel_branch_display("reviewer", 0, None), "reviewer");
+        // A label recorded before sanitizing moved to the source must not
+        // reach the terminal with escapes or newlines intact.
+        assert_eq!(
+            parallel_branch_display("reviewer", 1, Some("\u{1b}[31mauth\u{1b}[0m")),
+            "auth (reviewer #1)"
+        );
+        assert_eq!(
+            parallel_branch_display("reviewer", 2, Some("auth\nSUCCESS")),
+            "authSUCCESS (reviewer #2)"
+        );
+        // Nothing printable left, so fall back to the node id we control.
+        assert_eq!(
+            parallel_branch_display("reviewer", 3, Some("\u{1b}[0m  ")),
+            "reviewer"
+        );
+    }
 
     #[test]
     fn parse_edge_selected() {
@@ -614,6 +667,7 @@ mod tests {
             repo:        "widgets".into(),
             base_branch: "main".into(),
             head_branch: "fabro/run/42".into(),
+            head_sha:    Some("final-sha".to_string()),
             title:       "Ship the server-side PR".into(),
             draft:       true,
         };

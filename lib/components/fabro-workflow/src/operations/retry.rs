@@ -48,12 +48,14 @@ pub async fn retry_run(
         graph,
         graph_source,
         workflow_slug,
+        workflow_version_id,
         automation,
         source_directory,
         labels,
         provenance: _,
         manifest_blob,
         definition_blob,
+        spec_blob,
         git,
         fork_source_ref,
     } = source.spec;
@@ -72,15 +74,16 @@ pub async fn retry_run(
         settings,
         graph,
         workflow_source: graph_source,
-        workflow_config: None,
         labels: labels.into_iter().collect::<BTreeMap<_, _>>(),
-        run_dir: String::new(),
         source_directory,
         workflow_slug,
+        workflow_version_id,
         automation,
-        db_prefix: None,
         provenance: input.provenance.clone(),
         manifest_blob,
+        // Blobs are content-addressed, so the retried run reads the source
+        // run's unredacted spec bytes through the same id.
+        spec_blob,
         git,
         fork_source_ref,
         retried_from: Some(source_run_id),
@@ -120,9 +123,9 @@ mod tests {
 
     use fabro_store::{Database, RunProjectionReducer};
     use fabro_types::{
-        AuthMethod, DirtyStatus, FailureReason, ForkSourceRef, GitContext, Graph, IdpIdentity,
-        PreRunPushOutcome, Principal, PullRequestLink, RunBlobId, RunRunnableSource,
-        RunServerProvenance, RunTiming, WorkflowSettings, fixtures,
+        AuthMethod, BlobHash, DirtyStatus, FailureReason, ForkSourceRef, GitContext, Graph,
+        IdpIdentity, Principal, PullRequestLink, RunRunnableSource, RunServerProvenance, RunTiming,
+        WorkflowSettings, fixtures, test_support,
     };
     use object_store::memory::InMemory;
 
@@ -157,18 +160,17 @@ mod tests {
 
     fn git_context() -> GitContext {
         GitContext {
-            origin_url:   "https://github.com/fabro-sh/fabro.git".to_string(),
-            branch:       "main".to_string(),
-            sha:          Some("abc123".to_string()),
-            dirty:        DirtyStatus::Clean,
-            push_outcome: PreRunPushOutcome::NotAttempted,
+            origin_url: "https://github.com/fabro-sh/fabro.git".to_string(),
+            branch:     "main".to_string(),
+            sha:        Some("abc123".to_string()),
+            dirty:      DirtyStatus::Clean,
         }
     }
 
     async fn append_created(
         store: &fabro_store::RunDatabase,
         run_id: RunId,
-        manifest_blob: Option<RunBlobId>,
+        manifest_blob: Option<BlobHash>,
         fork_source_ref: Option<ForkSourceRef>,
     ) {
         let mut settings = WorkflowSettings::default();
@@ -183,15 +185,14 @@ mod tests {
             settings: serde_json::to_value(&settings).unwrap(),
             graph: serde_json::to_value(Graph::new("retry_source")).unwrap(),
             workflow_source: Some("digraph retry_source { start -> exit }".to_string()),
-            workflow_config: None,
             labels: labels.into_iter().collect(),
-            run_dir: "/tmp/source".to_string(),
             source_directory: Some("/workspace/source".to_string()),
             workflow_slug: Some("retry-source".to_string()),
+            workflow_version_id: Some(test_support::test_workflow_version_id()),
             automation: None,
-            db_prefix: None,
             provenance: provenance("source-user"),
             manifest_blob,
+            spec_blob: None,
             git: Some(git_context()),
             fork_source_ref,
             retried_from: None,
@@ -255,7 +256,7 @@ mod tests {
     async fn seed_retryable_failed_source(
         store: &Database,
         source_run_id: RunId,
-    ) -> (Option<RunBlobId>, Option<RunBlobId>, ForkSourceRef) {
+    ) -> (Option<BlobHash>, Option<BlobHash>, ForkSourceRef) {
         let source_store = store.create_run(&source_run_id).await.unwrap();
         let manifest_blob = Some(
             source_store
@@ -395,6 +396,10 @@ mod tests {
             Some(&"test".to_string())
         );
         assert_eq!(retry_state.spec.graph.name, "retry_source");
+        assert_eq!(
+            retry_state.spec.workflow_version_id,
+            Some(test_support::test_workflow_version_id())
+        );
         assert_eq!(
             retry_state.spec.graph_source.as_deref(),
             Some("digraph retry_source { start -> exit }")

@@ -56,10 +56,7 @@ impl Handler for PromptHandler {
         services: &EngineServices,
     ) -> Result<Outcome, Error> {
         // 1. Build prompt (prepend fidelity preamble if present)
-        let raw_prompt = node
-            .prompt()
-            .filter(|p| !p.is_empty())
-            .unwrap_or_else(|| node.label());
+        let raw_prompt = node.prompt_or_label();
         let preamble = context.preamble();
         let prompt = if preamble.is_empty() {
             raw_prompt.to_string()
@@ -270,26 +267,25 @@ mod tests {
             run_store,
             &fixtures::RUN_1,
             &crate::event::Event::RunCreated {
-                run_id:           fixtures::RUN_1,
-                title:            None,
-                settings:         serde_json::to_value(fabro_types::WorkflowSettings::default())
+                run_id:              fixtures::RUN_1,
+                title:               None,
+                settings:            serde_json::to_value(fabro_types::WorkflowSettings::default())
                     .unwrap(),
-                graph:            serde_json::to_value(fabro_types::Graph::new("test")).unwrap(),
-                workflow_source:  None,
-                workflow_config:  None,
-                labels:           std::collections::BTreeMap::default(),
-                run_dir:          "/tmp".to_string(),
-                source_directory: None,
-                workflow_slug:    None,
-                automation:       None,
-                db_prefix:        None,
-                provenance:       test_support::test_run_provenance(),
-                manifest_blob:    None,
-                git:              None,
-                fork_source_ref:  None,
-                retried_from:     None,
-                parent_id:        None,
-                web_url:          None,
+                graph:               serde_json::to_value(fabro_types::Graph::new("test")).unwrap(),
+                workflow_source:     None,
+                labels:              std::collections::BTreeMap::default(),
+                source_directory:    None,
+                workflow_slug:       None,
+                workflow_version_id: None,
+                automation:          None,
+                provenance:          test_support::test_run_provenance(),
+                manifest_blob:       None,
+                spec_blob:           None,
+                git:                 None,
+                fork_source_ref:     None,
+                retried_from:        None,
+                parent_id:           None,
+                web_url:             None,
             },
         )
         .await

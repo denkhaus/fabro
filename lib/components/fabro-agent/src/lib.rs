@@ -18,7 +18,6 @@ pub mod memory;
 pub mod native_tool;
 pub mod profiles;
 pub mod question_tools;
-pub mod read_before_write_sandbox;
 pub mod sandbox;
 pub mod session;
 pub mod skills;
@@ -50,18 +49,19 @@ pub use loop_detection::detect_loop;
 pub use memory::{MemoryDocument, discover_memory};
 pub use native_tool::{NativeTool, ToolVocabulary};
 pub use profiles::{
-    AgentProfileBuilder, AnthropicProfile, EnvContext, GeminiProfile, KimiProfile, OpenAiProfile,
+    AgentProfileBuilder, AnthropicProfile, Claude5Profile, EnvContext, GeminiProfile, KimiProfile,
+    OpenAiProfile,
 };
 pub use question_tools::{
     ANTHROPIC_ASK_USER_QUESTION_TOOL, AgentQuestion, AgentQuestionAnswer,
     AgentQuestionAnswerStatus, AgentQuestionRuntime, AgentToolRuntime,
     OPENAI_REQUEST_USER_INPUT_TOOL, register_question_tools,
 };
-pub use read_before_write_sandbox::ReadBeforeWriteSandbox;
 pub use sandbox::{
-    CommandOutputCallback, DirEntry, ExecResult, ExecStreamingResult, GrepOptions, RefreshOutcome,
-    Sandbox, SandboxEvent, SandboxEventCallback, StderrCollector, StdioProcess, StdioProcessHandle,
-    format_lines_numbered, shell_quote,
+    CommandOutputCallback, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult,
+    GrepOptions, RefreshOutcome, RemoteCredentialAction, Sandbox, SandboxEvent,
+    SandboxEventCallback, StderrCollector, StdioProcess, StdioProcessHandle, TokenProvenance,
+    TokenSnapshot, format_lines_numbered, shell_quote,
 };
 pub use session::{
     CompletionCoordinator, Session, SessionControlHandle, SessionInputTiming,

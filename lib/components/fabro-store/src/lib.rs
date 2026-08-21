@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 
 mod artifact_store;
 pub mod auth_session_store;
+mod blob_store;
 mod error;
 mod keyed_mutex;
 mod keys;
@@ -11,8 +12,8 @@ mod run_state;
 mod run_summary_store;
 mod serializable_projection;
 mod slate;
-#[cfg(test)]
-mod test_util;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 mod types;
 
 pub use artifact_store::{
@@ -22,9 +23,10 @@ pub use artifact_store::{
 pub use auth_session_store::{
     ActiveCliSession, AuthSessionRecord, AuthSessionStore, RefreshToken, RotateOutcome,
 };
+pub use blob_store::{Blob, BlobStore};
 pub use error::{Error, Result};
 pub use fabro_types::{
-    EventEnvelope, PendingInterviewRecord, Run, RunBlobId, RunProjection, StageId, StageProjection,
+    BlobHash, EventEnvelope, PendingInterviewRecord, Run, RunProjection, StageId, StageProjection,
 };
 pub use keyed_mutex::{KeyedMutex, KeyedMutexGuard};
 pub use run_sessions::{
@@ -38,8 +40,8 @@ pub use run_summary_store::{
 };
 pub use serializable_projection::SerializableProjection;
 pub use slate::{
-    AuthCode, AuthCodeStore, Blob, BlobStore, CachedRunProjection, Database, RunCatalogIndex,
-    RunDatabase, Runs, UnreadableRun,
+    AuthCode, AuthCodeStore, CachedRunProjection, Database, RunCatalogIndex, RunDatabase, Runs,
+    UnreadableRun,
 };
 pub use types::EventPayload;
 

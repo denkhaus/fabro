@@ -136,6 +136,8 @@ audit [
 
 `output_schema="@path/to/schema.json"` uses the same workflow file-reference rules as prompt files: the schema is loaded relative to the workflow file and inlined before execution. The final JSON object in the LLM response, or in a successful command's merged stdout and stderr, is validated with `jsonschema`.
 
+For API-backed agent nodes, Fabro adds the resolved output contract to the task instructions. The contract applies only to the final response. It does not restrict intermediate tool calls or progress messages.
+
 Custom schema validation only reads response or command output text. It does not fall back to `status.json` or the last file touched by the agent.
 
 When custom schema validation succeeds, Fabro stores the parsed JSON value in context at:
@@ -217,10 +219,10 @@ When Fabro builds a [preamble](/execution/context#preamble-construction) for a d
 - **plan**: success
   - Model: claude-sonnet-4-5, 12.4k tokens in / 3.2k out
   - Files: src/main.rs, tests/api_test.rs
-  - Response: See: /path/to/runtime/blobs/<blob_id>.json
+  - Response: See: /path/to/runtime/blobs/<blob_hash>.json
 - **test**: success
   - Script: `cargo test 2>&1 || true`
-  - Stdout: See: /path/to/runtime/blobs/<blob_id>.json
+  - Stdout: See: /path/to/runtime/blobs/<blob_hash>.json
 ```
 
 This keeps preambles concise while still giving agents a path to read the full output if needed.
@@ -235,7 +237,7 @@ Captured stage artifacts such as screenshots, videos, reports, and traces still 
 
 For remote sandboxes (Docker, Daytona), execution-time file access happens inside the sandbox filesystem.
 
-- Blob refs are materialized into `{working_directory}/.fabro/blobs/{blob_id}.json`
+- Blob refs are materialized into `{working_directory}/.fabro/blobs/{blob_hash}.json`
 - Explicit non-blob `file://` refs keep the existing copy-on-demand behavior and are copied into `{working_directory}/.fabro/artifacts/{filename}` when needed
 
 In both cases, downstream handlers and agents continue to consume ordinary `file://` pointers during execution.

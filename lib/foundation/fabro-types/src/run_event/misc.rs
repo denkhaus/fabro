@@ -1,7 +1,11 @@
+use fabro_model::ReasoningEffort;
 use serde::{Deserialize, Serialize};
 
 use super::ExecOutputTail;
-use crate::{CommandTermination, ParallelBranchResult, PullRequestLink, StageId, StageOutcome};
+use crate::{
+    CommandTermination, ParallelBranchResult, PullRequestCreationId, PullRequestLink, ReviewTarget,
+    StageId, StageOutcome,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct InterviewOption {
@@ -22,6 +26,8 @@ pub struct ParallelStartedProps {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ParallelBranchStartedProps {
     pub index:                 usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_label:            Option<String>,
     /// Graph visit of the branch target for this dispatch. The envelope
     /// `stage_id` ordinal counts executions, so a resumed fan-out's branches
     /// keep visit metadata even though their ordinals advanced.
@@ -35,6 +41,8 @@ pub struct ParallelBranchStartedProps {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ParallelBranchCompletedProps {
     pub index:       usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_label:  Option<String>,
     pub duration_ms: u64,
     pub status:      StageOutcome,
 }
@@ -65,6 +73,8 @@ pub struct InterviewStartedProps {
     pub timeout_seconds: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_display: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_target:   Option<ReviewTarget>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -102,12 +112,104 @@ pub struct GitCommitProps {
     pub sha: String,
 }
 
+/// Why a failed git push attempt is safe to retry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum GitPushRetryReason {
+    /// A recently minted token may not have reached every GitHub git endpoint.
+    TokenReplication,
+    /// The failure came from transient network or service infrastructure.
+    TransientInfra,
+}
+
+/// Non-secret origin of the token used by a git push attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum GitTokenProvenance {
+    /// The token source minted the token for this resolve.
+    Minted,
+    /// The token source reused an earlier mint.
+    Reused,
+    /// The credential cannot be refreshed by Fabro.
+    Static,
+}
+
+/// What credential preparation changed before a git push attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum GitCredentialAction {
+    /// Fabro wrote a token generation into the remote URL.
+    Embedded,
+    /// The remote already tracked the selected token generation.
+    Unchanged,
+    /// No managed credential was available.
+    None,
+}
+
+/// Which credential preparation step failed before a git push attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum GitCredentialRefreshError {
+    /// Token resolution or minting failed.
+    Mint,
+    /// Rewriting the remote URL failed.
+    SetUrl,
+}
+
+/// One attempt of a retried git push, nested inside [`GitPushProps`].
+///
+/// The durable projection of the sandbox layer's runtime attempt record.
+/// Token identity is flattened into the three `token_*` fields — a nested
+/// provenance enum never appears in stored events. `classified_reason` is the
+/// retry classifier's verdict for a failed attempt (the terminal attempt
+/// carries its classification too); whether an attempt was actually retried
+/// is positional — every entry except the last.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GitPushAttemptProps {
+    /// 1-based attempt number within this push operation.
+    pub attempt:           u32,
+    pub started_at:        chrono::DateTime<chrono::Utc>,
+    pub success:           bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classified_reason: Option<GitPushRetryReason>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exec_output_tail:  Option<ExecOutputTail>,
+    /// Generation of the token embedded during this attempt (0 for static
+    /// credentials).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_generation:  Option<u64>,
+    /// `minted`, `reused`, or `static`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_provenance:  Option<GitTokenProvenance>,
+    /// Token age at the attempt; absent for static credentials.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_age_ms:      Option<u64>,
+    /// What the credential refresh did to the remote this attempt:
+    /// `embedded`, `unchanged`, or `none`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_action: Option<GitCredentialAction>,
+    /// A credential `mint` or `set_url` failure this attempt pushed through.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_error:     Option<GitCredentialRefreshError>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GitPushProps {
     pub branch:           String,
+    /// Final outcome of the whole push operation — one `git.push` event per
+    /// high-level push, so finality is unambiguous.
     pub success:          bool,
+    /// The final attempt's output tail, unchanged for existing consumers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exec_output_tail: Option<ExecOutputTail>,
+    /// Per-attempt history. Absent on events stored before attempts were
+    /// recorded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attempts:         Vec<GitPushAttemptProps>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -179,11 +281,24 @@ pub struct SshAccessReadyProps {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FailoverProps {
+    /// `original_*` and `attempt` are `Option` only because failover events
+    /// recorded before model-keyed fallbacks lack them. New events always set
+    /// them; stored events are immutable, so absence stays a supported input.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt: Option<u32>,
     pub from_provider: String,
-    pub from_model:    String,
-    pub to_provider:   String,
-    pub to_model:      String,
-    pub error:         String,
+    pub from_model: String,
+    pub to_provider: String,
+    pub to_model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_reasoning_effort: Option<ReasoningEffort>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_reasoning_effort: Option<ReasoningEffort>,
+    pub error: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -240,6 +355,13 @@ pub struct AgentAcpTimedOutProps {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PullRequestCreationRequestedProps {
+    pub creation_id: PullRequestCreationId,
+    pub model:       String,
+    pub force:       bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PullRequestCreatedProps {
     pub pr_url:      String,
     pub pr_number:   u64,
@@ -247,6 +369,8 @@ pub struct PullRequestCreatedProps {
     pub repo:        String,
     pub base_branch: String,
     pub head_branch: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_sha:    Option<String>,
     pub title:       String,
     pub draft:       bool,
 }
@@ -263,5 +387,9 @@ pub struct PullRequestUnlinkedProps {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PullRequestFailedProps {
-    pub error: String,
+    /// Set when the failure resolves an explicitly requested creation; absent
+    /// for pull request failures in the workflow publish stage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creation_id: Option<PullRequestCreationId>,
+    pub error:       String,
 }

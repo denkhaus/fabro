@@ -1170,6 +1170,123 @@ output_cost_per_mtok = 20.0
     }
 
     #[tokio::test]
+    async fn modal_routes_kimi_k3_with_proxy_headers_and_no_bearer_auth() {
+        let upstream = httpmock::MockServer::start_async().await;
+        let completion = upstream
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path("/v1/chat/completions")
+                    .header("Modal-Key", "wk-test")
+                    .header("Modal-Secret", "ws-test")
+                    .header_missing("Authorization")
+                    .json_body_includes(r#"{"model":"moonshotai/Kimi-K3"}"#);
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(serde_json::json!({
+                        "id": "chatcmpl-modal",
+                        "model": "moonshotai/Kimi-K3",
+                        "choices": [{
+                            "message": {"role": "assistant", "content": "OK"},
+                            "finish_reason": "stop"
+                        }],
+                        "usage": {
+                            "prompt_tokens": 1,
+                            "completion_tokens": 1,
+                            "total_tokens": 2
+                        }
+                    }));
+            })
+            .await;
+        let catalog = catalog_with(&format!(
+            r#"
+[providers.modal]
+enabled = true
+base_url = "{}/v1"
+"#,
+            upstream.base_url()
+        ));
+        let modal = ProviderId::new("modal");
+        let client = Client::from_credentials(
+            vec![ApiCredential::with_extra_headers(
+                modal.clone(),
+                HashMap::from([
+                    ("Modal-Key".to_string(), "wk-test".to_string()),
+                    ("Modal-Secret".to_string(), "ws-test".to_string()),
+                ]),
+            )],
+            catalog,
+        )
+        .await
+        .unwrap();
+        let mut request = test_request();
+        request.model = "kimi-k3".to_string();
+        request.provider = Some(modal.to_string());
+
+        let response = client.complete(&request).await.unwrap();
+
+        assert_eq!(response.text(), "OK");
+        assert_eq!(response.model, "kimi-k3");
+        assert_eq!(response.provider, "modal");
+        completion.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn fireworks_routes_kimi_k3_fast_to_router_model_id() {
+        let upstream = httpmock::MockServer::start_async().await;
+        let completion = upstream
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path("/inference/v1/chat/completions")
+                    .header("Authorization", "Bearer test-key")
+                    .json_body_includes(r#"{"model":"accounts/fireworks/routers/kimi-k3-fast"}"#);
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(serde_json::json!({
+                        "id": "chatcmpl-fireworks",
+                        "model": "accounts/fireworks/routers/kimi-k3-fast",
+                        "choices": [{
+                            "message": {"role": "assistant", "content": "OK"},
+                            "finish_reason": "stop"
+                        }],
+                        "usage": {
+                            "prompt_tokens": 1,
+                            "completion_tokens": 1,
+                            "total_tokens": 2
+                        }
+                    }));
+            })
+            .await;
+        let catalog = catalog_with(&format!(
+            r#"
+[providers.fireworks]
+enabled = true
+base_url = "{}/inference/v1"
+"#,
+            upstream.base_url()
+        ));
+        let fireworks = ProviderId::new("fireworks");
+        let client = Client::from_credentials(
+            vec![
+                ApiCredential::from_api_key(fireworks.clone(), "test-key".to_string(), &catalog)
+                    .unwrap(),
+            ],
+            catalog,
+        )
+        .await
+        .unwrap();
+        let mut request = test_request();
+        request.model = "kimi-k3-fast".to_string();
+        request.provider = Some(fireworks.to_string());
+
+        let response = client.complete(&request).await.unwrap();
+
+        assert_eq!(response.text(), "OK");
+        assert_eq!(response.model, "kimi-k3-fast");
+        assert_eq!(response.provider, "fireworks");
+        completion.assert_async().await;
+    }
+
+    #[tokio::test]
     async fn complete_stamps_estimated_cost_from_catalog() {
         let mut client = Client::new(HashMap::new(), None, vec![]);
         client
@@ -1468,13 +1585,16 @@ output_cost_per_mtok = 20.0
         let mut client = Client::new(HashMap::new(), None, vec![]);
         client.catalog = Some(Arc::clone(&catalog));
         client
-            .register_provider(Arc::new(MockProvider::new("kimi", "should not dispatch")))
+            .register_provider(Arc::new(MockProvider::new(
+                "moonshot",
+                "should not dispatch",
+            )))
             .await
             .unwrap();
 
         let mut request = test_request();
         request.model = "kimi-k2.5".to_string();
-        request.provider = Some("kimi".to_string());
+        request.provider = Some("moonshot".to_string());
         request.reasoning_effort = Some(ReasoningEffort::High);
 
         let err = client.complete(&request).await.unwrap_err();
@@ -1493,13 +1613,13 @@ output_cost_per_mtok = 20.0
         let mut client = Client::new(HashMap::new(), None, vec![]);
         client.catalog = Some(Arc::clone(&catalog));
         client
-            .register_provider(Arc::new(MockProvider::new("kimi", "accepted")))
+            .register_provider(Arc::new(MockProvider::new("moonshot", "accepted")))
             .await
             .unwrap();
 
         let mut request = test_request();
         request.model = "kimi-k3".to_string();
-        request.provider = Some("kimi".to_string());
+        request.provider = Some("moonshot".to_string());
         request.reasoning_effort = Some(ReasoningEffort::High);
 
         let response = client.complete(&request).await.unwrap();
@@ -1663,7 +1783,7 @@ output_cost_per_mtok = 20.0
         let catalog = catalog_with("");
         let client = Client::from_credentials(
             vec![ApiCredential {
-                provider:      ProviderId::new("kimi"),
+                provider:      ProviderId::new("moonshot"),
                 auth_header:   Some(ApiKeyHeader::Bearer("kimi-key".to_string())),
                 extra_headers: HashMap::new(),
                 base_url:      None,
@@ -1676,8 +1796,8 @@ output_cost_per_mtok = 20.0
         .await
         .unwrap();
 
-        assert_eq!(client.provider_names(), vec!["kimi"]);
-        assert_eq!(client.default_provider(), Some("kimi"));
+        assert_eq!(client.provider_names(), vec!["moonshot"]);
+        assert_eq!(client.default_provider(), Some("moonshot"));
     }
 
     #[tokio::test]
@@ -1917,17 +2037,20 @@ reasoning = false
         client
     }
 
-    /// Live-dispatch counterpart of the adapter_registry route-equivalence
-    /// table: for every built-in model, `resolve_provider` lands on the same
-    /// provider the resolved route names.
+    /// For every built-in model selector, live dispatch and catalog selection
+    /// choose the same provider from the same ready-provider set.
     #[tokio::test]
     async fn dispatch_agrees_with_resolve_route_for_every_builtin_model() {
         let catalog = catalog_with("");
         let client = client_with_all_catalog_providers(&catalog).await;
+        let ready_providers = catalog.all_provider_ids();
 
         for model in catalog.list(None) {
-            let route = adapter_registry::resolve_route(&catalog, model)
-                .expect("built-in model should resolve to a route");
+            let selected = catalog
+                .select(model.id.as_str(), None, &ready_providers)
+                .expect("built-in model should be selectable");
+            let route = adapter_registry::resolve_route(&catalog, selected)
+                .expect("selected built-in model should resolve to a route");
             let mut request = test_request();
             request.model = model.id.to_string();
 

@@ -13,8 +13,8 @@ use fabro_http::multipart::{Form, Part};
 use fabro_model::{Model, ModelTestMode, ProviderId};
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{
-    ArtifactUpload, EventEnvelope, PairId, PairMessageRecord, PairMessageRequest, PairRecord,
-    PairStartRequest, PairTranscriptResponse, Run, RunBlobId, RunEvent, RunEventDetailResponse,
+    ArtifactUpload, BlobHash, EventEnvelope, PairId, PairMessageRecord, PairMessageRequest,
+    PairRecord, PairStartRequest, PairTranscriptResponse, Run, RunEvent, RunEventDetailResponse,
     RunId, RunPairStatusResponse, RunProjection, SessionId, SessionRecord, StageId,
 };
 use fabro_util::exit::{ErrorExt, ExitClass};
@@ -37,7 +37,14 @@ use crate::{AuthEntry, OAuthEntry, StoredSubject, sse};
 
 const DEFAULT_CONTROL_PLANE_REQUEST_TIMEOUT: std::time::Duration =
     std::time::Duration::from_secs(30);
-const DEFAULT_HEALTH_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
+const DEFAULT_HEALTH_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
+/// Matches the `Retry-After` the server sends on the 202
+/// (`PULL_REQUEST_CREATION_RETRY_AFTER` in `fabro-server`).
+const PULL_REQUEST_CREATION_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+/// Overall polling deadline. The server abandons a creation attempt after 10
+/// minutes, but a creation can also sit pending behind the server's worker
+/// pool (or a dead server), so the client needs its own bound.
+const PULL_REQUEST_CREATION_POLL_DEADLINE: std::time::Duration = std::time::Duration::from_mins(15);
 
 type TransportFuture = BoxFuture<'static, Result<(fabro_http::HttpClient, String)>>;
 
@@ -77,7 +84,9 @@ struct ClientState {
 pub struct Client {
     state:               Arc<RwLock<ClientState>>,
     oauth_session:       Option<OAuthSession>,
-    refresh_lock:        Arc<Mutex<()>>,
+    /// Serializes rotation between this client's own tasks. The cross-process
+    /// half lives in `AuthStore::acquire_refresh_lock`.
+    local_refresh_lock:  Arc<Mutex<()>>,
     transport_connector: Option<TransportConnector>,
     request_timeout:     Option<std::time::Duration>,
 }
@@ -304,7 +313,7 @@ impl ClientBuilder {
         Ok(Client {
             state: Arc::new(RwLock::new(state)),
             oauth_session: self.oauth_session,
-            refresh_lock: Arc::new(Mutex::new(())),
+            local_refresh_lock: Arc::new(Mutex::new(())),
             transport_connector,
             request_timeout,
         })
@@ -329,7 +338,7 @@ impl Client {
                 None,
             ))),
             oauth_session:       None,
-            refresh_lock:        Arc::new(Mutex::new(())),
+            local_refresh_lock:  Arc::new(Mutex::new(())),
             transport_connector: None,
             request_timeout:     None,
         }
@@ -443,12 +452,17 @@ impl Client {
             return Err(session_expired());
         };
 
-        let _guard = self.refresh_lock.lock().await;
+        let _guard = self.local_refresh_lock.lock().await;
         let current_state = self.current_state();
         if current_state.bearer_token.as_deref() != Some(failed_access_token) {
             return Ok(());
         }
 
+        // Refresh tokens are single-use, so rotation has to be serialized
+        // across processes too, not just across this client's tasks. The
+        // AuthStore calls below take the shorter auth-file lock inside this
+        // guard; nothing takes the two in the other order.
+        let _refresh_guard = oauth_session.auth_store.acquire_refresh_lock().await?;
         let Some(entry) = oauth_session.auth_store.get(&oauth_session.target)? else {
             self.rebuild_with_fallback(oauth_session).await?;
             return Err(session_expired());
@@ -460,6 +474,16 @@ impl Client {
             }
             AuthEntry::OAuth(entry) => entry,
         };
+        // Adopt a token another process already rotated, but only while it is
+        // still usable. The caller retries once and does not refresh again, so
+        // installing an expired token here would surface a 401. An expired one
+        // falls through and rotates with the refresh token just read.
+        if oauth_entry.access_token != failed_access_token
+            && oauth_entry.access_token_expires_at > chrono::Utc::now()
+        {
+            self.rebuild_client(Some(oauth_entry.access_token)).await?;
+            return Ok(());
+        }
         if oauth_entry.refresh_token_expires_at <= chrono::Utc::now() {
             oauth_session.auth_store.remove(&oauth_session.target)?;
             self.rebuild_with_fallback(oauth_session).await?;
@@ -1418,6 +1442,57 @@ impl Client {
         force: bool,
         model: Option<String>,
     ) -> Result<fabro_types::PullRequestLink> {
+        let mut creation = self
+            .request_run_pull_request_creation(run_id, force, model)
+            .await?;
+        let creation_id = creation.id;
+        let deadline = std::time::Instant::now() + PULL_REQUEST_CREATION_POLL_DEADLINE;
+        loop {
+            match creation.status {
+                fabro_types::PullRequestCreationStatus::Pending => {
+                    if std::time::Instant::now() >= deadline {
+                        bail!(
+                            "Pull request creation {creation_id} is still pending after {} \
+                             minutes. Check its status with: fabro pr create {run_id}",
+                            PULL_REQUEST_CREATION_POLL_DEADLINE.as_secs() / 60
+                        );
+                    }
+                    time::sleep(PULL_REQUEST_CREATION_POLL_INTERVAL).await;
+                    creation = self.get_run_pull_request_creation(run_id).await?;
+                    if creation.id != creation_id {
+                        bail!(
+                            "Pull request creation {creation_id} was superseded by {}",
+                            creation.id
+                        );
+                    }
+                }
+                fabro_types::PullRequestCreationStatus::Succeeded => {
+                    return creation.pull_request.ok_or_else(|| {
+                        anyhow!(
+                            "Pull request creation {} succeeded without a pull request record",
+                            creation.id
+                        )
+                    });
+                }
+                fabro_types::PullRequestCreationStatus::Failed => {
+                    bail!(
+                        "Pull request creation failed: {}",
+                        creation
+                            .error
+                            .as_deref()
+                            .unwrap_or("the server did not provide an error")
+                    );
+                }
+            }
+        }
+    }
+
+    pub async fn request_run_pull_request_creation(
+        &self,
+        run_id: &RunId,
+        force: bool,
+        model: Option<String>,
+    ) -> Result<fabro_types::PullRequestCreation> {
         let body = types::CreateRunPullRequestRequest { force, model };
         let response = self
             .send_api(|client| async move {
@@ -1430,7 +1505,24 @@ impl Client {
             })
             .await
             .map_err(add_pr_upgrade_hint)?;
-        convert_type(response.into_inner())
+        Ok(response.into_inner())
+    }
+
+    pub async fn get_run_pull_request_creation(
+        &self,
+        run_id: &RunId,
+    ) -> Result<fabro_types::PullRequestCreation> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .get_run_pull_request_creation()
+                    .id(run_id.to_string())
+                    .send()
+                    .await
+            })
+            .await
+            .map_err(add_pr_upgrade_hint)?;
+        Ok(response.into_inner())
     }
 
     pub async fn get_run_pull_request(
@@ -1736,7 +1828,7 @@ impl Client {
         u32::try_from(response.into_inner().seq).context("append_run_event returned invalid seq")
     }
 
-    pub async fn write_run_blob(&self, run_id: &RunId, data: &[u8]) -> Result<RunBlobId> {
+    pub async fn write_run_blob(&self, run_id: &RunId, data: &[u8]) -> Result<BlobHash> {
         let response = self
             .send_api(|client| async move {
                 client
@@ -1747,24 +1839,20 @@ impl Client {
                     .await
             })
             .await?;
-        response
-            .into_inner()
-            .id
-            .parse()
-            .context("write_run_blob returned invalid blob id")
+        Ok(response.into_inner().hash)
     }
 
     pub async fn read_run_blob(
         &self,
         run_id: &RunId,
-        blob_id: &RunBlobId,
+        blob_hash: &BlobHash,
     ) -> Result<Option<Bytes>> {
         let response = self
             .current_state()
             .client
             .read_run_blob()
             .id(run_id.to_string())
-            .blob_id(blob_id.to_string())
+            .blob_hash(*blob_hash)
             .send()
             .await;
         match response {
@@ -2571,6 +2659,160 @@ mod tests {
             Some(old_token.to_string()),
             Some(stored_token.to_string()),
         ]);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn concurrent_clients_refresh_a_rotating_token_once() {
+        let server = MockServer::start_async().await;
+        let refresh_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/auth/cli/refresh")
+                    .header("authorization", "Bearer refresh-octocat");
+                then.status(200)
+                    .delay(Duration::from_millis(100))
+                    .header("Content-Type", "application/json")
+                    .json_body(json!({
+                        "access_token": "access-refreshed",
+                        "access_token_expires_at": (chrono::Utc::now()
+                            + ChronoDuration::minutes(10))
+                            .to_rfc3339(),
+                        "refresh_token": "refresh-refreshed",
+                        "refresh_token_expires_at": (chrono::Utc::now()
+                            + ChronoDuration::days(30))
+                            .to_rfc3339(),
+                        "subject": {
+                            "idp_issuer": "https://github.com",
+                            "idp_subject": "12345",
+                            "login": "octocat",
+                            "name": "Name octocat",
+                            "email": "octocat@example.com"
+                        }
+                    }));
+            })
+            .await;
+        let temp = tempfile::tempdir().unwrap();
+        let auth_store = AuthStore::new(temp.path().join("auth.json"));
+        let target = ServerTarget::http_url(server.base_url()).unwrap();
+        let entry = oauth_entry("octocat");
+        auth_store
+            .put(&target, AuthEntry::OAuth(entry.clone()))
+            .unwrap();
+
+        // Two separately built clients hold separate in-process mutexes, so the
+        // only thing serializing them is the lock file. That works in one
+        // process because flock conflicts across distinct descriptors.
+        let no_proxy_connector = || {
+            let base_url = server.base_url();
+            TransportConnector::new(move |_bearer_token| {
+                let base_url = base_url.clone();
+                async move { Ok((fabro_http::test_http_client().unwrap(), base_url)) }
+            })
+        };
+        let first = Client::builder()
+            .target(target.clone())
+            .credential(Credential::OAuth(entry.clone()))
+            .oauth_session(OAuthSession::new(target.clone(), auth_store.clone()))
+            .transport_connector(no_proxy_connector())
+            .connect()
+            .await
+            .unwrap();
+        let second = Client::builder()
+            .target(target.clone())
+            .credential(Credential::OAuth(entry))
+            .oauth_session(OAuthSession::new(target.clone(), auth_store.clone()))
+            .transport_connector(no_proxy_connector())
+            .connect()
+            .await
+            .unwrap();
+
+        let (first_result, second_result) = tokio::join!(
+            first.refresh_access_token("access-octocat"),
+            second.refresh_access_token("access-octocat"),
+        );
+
+        first_result.unwrap();
+        second_result.unwrap();
+        refresh_mock.assert_calls_async(1).await;
+        assert_eq!(
+            first.current_state().bearer_token.as_deref(),
+            Some("access-refreshed")
+        );
+        assert_eq!(
+            second.current_state().bearer_token.as_deref(),
+            Some("access-refreshed")
+        );
+        // The rotated refresh token must be what landed in the store, or the
+        // next rotation would replay a spent one.
+        let stored = match auth_store.get(&target).unwrap().unwrap() {
+            AuthEntry::OAuth(stored) => stored,
+            AuthEntry::DevToken(_) => panic!("expected an OAuth entry"),
+        };
+        assert_eq!(stored.access_token, "access-refreshed");
+        assert_eq!(stored.refresh_token, "refresh-refreshed");
+    }
+
+    #[tokio::test]
+    async fn refresh_access_token_rotates_when_the_stored_token_is_also_expired() {
+        let server = MockServer::start_async().await;
+        let refresh_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/auth/cli/refresh")
+                    .header("authorization", "Bearer refresh-octocat");
+                then.status(200)
+                    .header("Content-Type", "application/json")
+                    .json_body(json!({
+                        "access_token": "access-refreshed",
+                        "access_token_expires_at": (chrono::Utc::now()
+                            + ChronoDuration::minutes(10))
+                            .to_rfc3339(),
+                        "refresh_token": "refresh-refreshed",
+                        "refresh_token_expires_at": (chrono::Utc::now()
+                            + ChronoDuration::days(30))
+                            .to_rfc3339(),
+                        "subject": {
+                            "idp_issuer": "https://github.com",
+                            "idp_subject": "12345",
+                            "login": "octocat",
+                            "name": "Name octocat",
+                            "email": "octocat@example.com"
+                        }
+                    }));
+            })
+            .await;
+        let temp = tempfile::tempdir().unwrap();
+        let auth_store = AuthStore::new(temp.path().join("auth.json"));
+        let target = ServerTarget::http_url(server.base_url()).unwrap();
+
+        // A sibling process rotated the store a while ago, and that token has
+        // since expired too. Adopting it would 401 on the caller's single retry.
+        let mut stored = oauth_entry("octocat");
+        stored.access_token = "access-stale".to_string();
+        stored.access_token_expires_at = chrono::Utc::now() - ChronoDuration::minutes(1);
+        auth_store.put(&target, AuthEntry::OAuth(stored)).unwrap();
+
+        let base_url = server.base_url();
+        let client = Client::builder()
+            .target(target.clone())
+            .credential(Credential::OAuth(oauth_entry("octocat")))
+            .oauth_session(OAuthSession::new(target, auth_store))
+            .transport_connector(TransportConnector::new(move |_bearer_token| {
+                let base_url = base_url.clone();
+                async move { Ok((fabro_http::test_http_client().unwrap(), base_url)) }
+            }))
+            .connect()
+            .await
+            .unwrap();
+
+        client.refresh_access_token("access-octocat").await.unwrap();
+
+        refresh_mock.assert_calls_async(1).await;
+        assert_eq!(
+            client.current_state().bearer_token.as_deref(),
+            Some("access-refreshed")
+        );
     }
 
     #[tokio::test]

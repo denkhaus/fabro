@@ -149,27 +149,28 @@ async fn persist_forked_run(
         .map_err(|err| Error::engine(err.to_string()))?;
 
     event::append_event(&run_store, &spec.run_id, &Event::RunCreated {
-        run_id:           spec.run_id,
-        title:            None,
-        settings:         serde_json::to_value(&spec.settings)
+        run_id:              spec.run_id,
+        title:               None,
+        settings:            serde_json::to_value(&spec.settings)
             .map_err(|err| Error::engine(err.to_string()))?,
-        graph:            serde_json::to_value(&spec.graph)
+        graph:               serde_json::to_value(&spec.graph)
             .map_err(|err| Error::engine(err.to_string()))?,
-        workflow_source:  projection.spec.graph_source.clone(),
-        workflow_config:  None,
-        labels:           spec.labels.clone().into_iter().collect(),
-        run_dir:          String::new(),
-        source_directory: spec.source_directory.clone(),
-        workflow_slug:    spec.workflow_slug.clone(),
-        automation:       spec.automation.clone(),
-        db_prefix:        None,
-        provenance:       spec.provenance.clone(),
-        manifest_blob:    spec.manifest_blob,
-        git:              spec.git.clone(),
-        fork_source_ref:  spec.fork_source_ref.clone(),
-        retried_from:     None,
-        parent_id:        None,
-        web_url:          None,
+        workflow_source:     projection.spec.graph_source.clone(),
+        labels:              spec.labels.clone().into_iter().collect(),
+        source_directory:    spec.source_directory.clone(),
+        workflow_slug:       spec.workflow_slug.clone(),
+        workflow_version_id: spec.workflow_version_id,
+        automation:          spec.automation.clone(),
+        provenance:          spec.provenance.clone(),
+        manifest_blob:       spec.manifest_blob,
+        // Content-addressed, so the forked run reads the source run's
+        // unredacted spec bytes through the same id.
+        spec_blob:           spec.spec_blob,
+        git:                 spec.git.clone(),
+        fork_source_ref:     spec.fork_source_ref.clone(),
+        retried_from:        None,
+        parent_id:           None,
+        web_url:             None,
     })
     .await
     .map_err(|err| Error::engine(err.to_string()))?;
@@ -371,33 +372,32 @@ mod tests {
         let source = store.create_run(&source_run_id).await.unwrap();
         let graph = Graph::new("fork-source");
         let settings = WorkflowSettings::default();
+        let workflow_version_id = test_support::test_workflow_version_id();
 
         event::append_event(&source, &source_run_id, &Event::RunCreated {
-            run_id:           source_run_id,
-            title:            None,
-            settings:         serde_json::to_value(&settings).unwrap(),
-            graph:            serde_json::to_value(&graph).unwrap(),
-            workflow_source:  Some("digraph fork_source {}".to_string()),
-            workflow_config:  None,
-            labels:           BTreeMap::new(),
-            run_dir:          "/tmp/source".to_string(),
-            source_directory: Some("/client/source".to_string()),
-            workflow_slug:    Some("fork-source".to_string()),
-            automation:       None,
-            db_prefix:        None,
-            provenance:       test_support::test_run_provenance(),
-            manifest_blob:    None,
-            git:              Some(fabro_types::GitContext {
-                origin_url:   "https://github.com/example/repo.git".to_string(),
-                branch:       "main".to_string(),
-                sha:          None,
-                dirty:        fabro_types::DirtyStatus::Clean,
-                push_outcome: fabro_types::PreRunPushOutcome::NotAttempted,
+            run_id:              source_run_id,
+            title:               None,
+            settings:            serde_json::to_value(&settings).unwrap(),
+            graph:               serde_json::to_value(&graph).unwrap(),
+            workflow_source:     Some("digraph fork_source {}".to_string()),
+            labels:              BTreeMap::new(),
+            source_directory:    Some("/client/source".to_string()),
+            workflow_slug:       Some("fork-source".to_string()),
+            workflow_version_id: Some(workflow_version_id),
+            automation:          None,
+            provenance:          test_support::test_run_provenance(),
+            manifest_blob:       None,
+            spec_blob:           None,
+            git:                 Some(fabro_types::GitContext {
+                origin_url: "https://github.com/example/repo.git".to_string(),
+                branch:     "main".to_string(),
+                sha:        None,
+                dirty:      fabro_types::DirtyStatus::Clean,
             }),
-            fork_source_ref:  None,
-            retried_from:     None,
-            parent_id:        None,
-            web_url:          None,
+            fork_source_ref:     None,
+            retried_from:        None,
+            parent_id:           None,
+            web_url:             None,
         })
         .await
         .unwrap();
@@ -466,6 +466,10 @@ mod tests {
 
         assert_eq!(node.response.as_deref(), Some("historical response"));
         assert_eq!(forked_state.checkpoints.len(), 1);
+        assert_eq!(
+            forked_state.spec.workflow_version_id,
+            Some(workflow_version_id)
+        );
         assert_eq!(
             forked_state.spec.fork_source_ref.unwrap().source_run_id,
             source_run_id

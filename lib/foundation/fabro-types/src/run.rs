@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::WorkflowSettings;
+use crate::blob_hash::BlobHash;
 use crate::graph::Graph;
 use crate::principal::Principal;
-use crate::run_blob_id::RunBlobId;
 use crate::run_id::RunId;
 use crate::run_summary::AutomationRef;
+use crate::workflow_version_id::WorkflowVersionId;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunServerProvenance {
@@ -42,33 +43,12 @@ pub enum DirtyStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum PreRunPushOutcome {
-    NotAttempted,
-    Succeeded {
-        remote: String,
-        branch: String,
-    },
-    Failed {
-        remote:  String,
-        branch:  String,
-        message: String,
-    },
-    SkippedNoRemote,
-    SkippedRemoteMismatch {
-        remote:          String,
-        repo_origin_url: String,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GitContext {
-    pub origin_url:   String,
-    pub branch:       String,
+    pub origin_url: String,
+    pub branch:     String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sha:          Option<String>,
-    pub dirty:        DirtyStatus,
-    pub push_outcome: PreRunPushOutcome,
+    pub sha:        Option<String>,
+    pub dirty:      DirtyStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -79,28 +59,35 @@ pub struct ForkSourceRef {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunSpec {
-    pub run_id:           RunId,
-    pub settings:         WorkflowSettings,
-    pub graph:            Graph,
+    pub run_id:              RunId,
+    pub settings:            WorkflowSettings,
+    pub graph:               Graph,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub graph_source:     Option<String>,
+    pub graph_source:        Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workflow_slug:    Option<String>,
+    pub workflow_slug:       Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub automation:       Option<AutomationRef>,
+    pub workflow_version_id: Option<WorkflowVersionId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_directory: Option<String>,
+    pub automation:          Option<AutomationRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_directory:    Option<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub labels:           HashMap<String, String>,
-    pub provenance:       RunProvenance,
+    pub labels:              HashMap<String, String>,
+    pub provenance:          RunProvenance,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manifest_blob:    Option<RunBlobId>,
+    pub manifest_blob:       Option<BlobHash>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub definition_blob:  Option<RunBlobId>,
+    pub definition_blob:     Option<BlobHash>,
+    /// Unredacted copy of this spec in the blob store. Stored events pass
+    /// through secret redaction, so the spec folded from them is display
+    /// data; execution must load the spec from this blob.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub git:              Option<GitContext>,
+    pub spec_blob:           Option<BlobHash>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fork_source_ref:  Option<ForkSourceRef>,
+    pub git:                 Option<GitContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fork_source_ref:     Option<ForkSourceRef>,
 }
 
 impl RunSpec {

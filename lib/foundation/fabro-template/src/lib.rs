@@ -8,12 +8,17 @@ use minijinja::value::{Object, Value};
 use minijinja::{AutoEscape, Environment, ErrorKind, UndefinedBehavior};
 
 mod dependency;
+mod static_reference;
 mod store;
 
 pub use dependency::{
     ExtractedTemplateDependencies, TemplateDependency, TemplateDependencyClosure,
     TemplateDependencyKind, TemplateDiscoveryError, discover_static_dependency_closure,
     extract_template_dependencies,
+};
+pub use static_reference::{
+    GraphReference, GraphReferenceError, StaticReferenceError, validate_static_reference,
+    visit_graph_references,
 };
 pub use store::{
     BundleTemplateStore, CachedTemplateStore, FilesystemTemplateStore, RecordingTemplateStore,
@@ -95,6 +100,35 @@ impl TemplateContext {
     #[must_use]
     pub fn for_input_scan(inputs: HashMap<String, toml::Value>) -> Self {
         Self::new().with_goal("{{ goal }}").with_inputs(inputs)
+    }
+
+    /// The rendered goal `{{ goal }}` resolves to, or `None` before the goal
+    /// is known.
+    #[must_use]
+    pub fn goal(&self) -> Option<&str> {
+        self.goal.as_deref()
+    }
+
+    /// The text `{{ inputs.NAME }}` renders to, or `None` when unbound.
+    ///
+    /// Non-template consumers — currently command node `script` interpolation,
+    /// which uses `InterpString` tokens rather than MiniJinja — read values
+    /// through here so an input produces the same text in a script as it does
+    /// in a prompt.
+    #[must_use]
+    pub fn input(&self, name: &str) -> Option<String> {
+        Self::rendered_member(&self.inputs, name)
+    }
+
+    /// The text `{{ vars.NAME }}` renders to, or `None` when unset.
+    #[must_use]
+    pub fn var(&self, name: &str) -> Option<String> {
+        Self::rendered_member(&self.vars, name)
+    }
+
+    fn rendered_member(container: &Value, name: &str) -> Option<String> {
+        let member = container.get_attr(name).ok()?;
+        (!member.is_undefined()).then(|| member.to_string())
     }
 
     fn into_value(self) -> Value {
@@ -787,6 +821,53 @@ mod tests {
     }
 
     #[test]
+    fn workflow_values_return_none_when_unbound() {
+        let ctx = TemplateContext::new();
+
+        assert_eq!(ctx.goal(), None);
+        assert_eq!(ctx.input("missing"), None);
+        assert_eq!(ctx.var("MISSING"), None);
+    }
+
+    #[test]
+    fn goal_returns_the_rendered_value() {
+        let ctx = TemplateContext::new().with_goal("Ship it");
+
+        assert_eq!(ctx.goal(), Some("Ship it"));
+    }
+
+    /// `input`/`var` exist so non-template consumers render a value the same
+    /// way a prompt does. Pin that equivalence across the scalar TOML types.
+    #[test]
+    fn input_matches_what_a_template_renders() {
+        let ctx = TemplateContext::new().with_inputs(HashMap::from([
+            ("name".to_string(), toml::Value::String("fabro".into())),
+            ("attempts".to_string(), toml::Value::Integer(3)),
+            ("ratio".to_string(), toml::Value::Float(1.5)),
+            ("fast".to_string(), toml::Value::Boolean(true)),
+        ]));
+
+        for name in ["name", "attempts", "ratio", "fast"] {
+            let rendered = render(&format!("{{{{ inputs.{name} }}}}"), &ctx).unwrap();
+            assert_eq!(ctx.input(name), Some(rendered), "mismatch for `{name}`");
+        }
+    }
+
+    #[test]
+    fn var_matches_what_a_template_renders() {
+        let ctx = TemplateContext::new().with_vars(HashMap::from([(
+            "STAGE".to_string(),
+            "staging".to_string(),
+        )]));
+
+        assert_eq!(ctx.var("STAGE").as_deref(), Some("staging"));
+        assert_eq!(
+            ctx.var("STAGE"),
+            Some(render("{{ vars.STAGE }}", &ctx).unwrap())
+        );
+    }
+
+    #[test]
     fn references_top_level_variable_detects_goal_self_reference() {
         assert!(references_top_level_variable("Do {{ goal }} now", "goal"));
         assert!(references_top_level_variable("{{ goal.title }}", "goal"));
@@ -1305,6 +1386,123 @@ mod tests {
             discover_static_dependency_closure([source], bundle_store(&[]).as_ref()).unwrap_err();
 
         assert!(matches!(err, TemplateDiscoveryError::Dynamic { .. }));
+    }
+
+    #[test]
+    fn static_dependency_closure_visits_colliding_root_occurrences() {
+        let roots = [
+            TemplateSource::new(manifest_path("workflow.fabro"), manifest_path("."), "valid"),
+            TemplateSource::new(
+                manifest_path("workflow.fabro"),
+                manifest_path("."),
+                r"{% include inputs.partial %}",
+            ),
+        ];
+
+        let error =
+            discover_static_dependency_closure(roots, bundle_store(&[]).as_ref()).unwrap_err();
+
+        assert!(matches!(
+            error,
+            TemplateDiscoveryError::Dynamic { parent }
+                if parent == manifest_path("workflow.fabro")
+        ));
+    }
+
+    #[test]
+    fn static_dependency_closure_parses_dependencies_shadowed_by_root_paths() {
+        // An inline root anchored at its graph file's path must not shadow the
+        // file itself when another template includes it: the loaded file
+        // content still gets parsed.
+        let roots = [
+            TemplateSource::new(manifest_path("workflow.fabro"), manifest_path("."), "valid"),
+            TemplateSource::new(
+                manifest_path("goal.md"),
+                manifest_path("."),
+                r#"{% include "workflow.fabro" %}"#,
+            ),
+        ];
+
+        let error = discover_static_dependency_closure(
+            roots,
+            bundle_store(&[("workflow.fabro", r#"{% include "missing.md" %}"#)]).as_ref(),
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            TemplateDiscoveryError::Missing { parent, reference }
+                if parent == manifest_path("workflow.fabro") && reference == "missing.md"
+        ));
+    }
+
+    #[test]
+    fn static_dependency_closure_parses_identical_root_occurrences_once() {
+        struct CountingStore {
+            inner: Arc<dyn TemplateStore>,
+            loads: std::sync::atomic::AtomicUsize,
+        }
+
+        impl TemplateStore for CountingStore {
+            fn load(
+                &self,
+                parent: &TemplateSource,
+                reference: &str,
+            ) -> Result<Option<TemplateSource>, TemplateLoadError> {
+                self.loads
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.inner.load(parent, reference)
+            }
+        }
+
+        let root = TemplateSource::new(
+            manifest_path("main.md"),
+            manifest_path("."),
+            r#"{% include "shared.md" %}"#,
+        );
+        let store = CountingStore {
+            inner: bundle_store(&[("shared.md", "shared")]),
+            loads: std::sync::atomic::AtomicUsize::new(0),
+        };
+
+        let closure = discover_static_dependency_closure([root.clone(), root], &store).unwrap();
+
+        assert!(closure.sources.contains_key(&manifest_path("shared.md")));
+        assert_eq!(store.loads.load(std::sync::atomic::Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn static_dependency_closure_deduplicates_loaded_dependencies_across_roots() {
+        let roots = [
+            TemplateSource::new(
+                manifest_path("first.md"),
+                manifest_path("."),
+                r#"{% include "shared.md" %}"#,
+            ),
+            TemplateSource::new(
+                manifest_path("second.md"),
+                manifest_path("."),
+                r#"{% include "shared.md" %}"#,
+            ),
+        ];
+
+        let closure = discover_static_dependency_closure(
+            roots,
+            bundle_store(&[
+                ("shared.md", r#"{% include "nested.md" %}"#),
+                ("nested.md", "nested"),
+            ])
+            .as_ref(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            closure.paths(),
+            ["first.md", "second.md", "shared.md", "nested.md"]
+                .into_iter()
+                .map(manifest_path)
+                .collect()
+        );
     }
 
     #[test]

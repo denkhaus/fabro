@@ -363,13 +363,19 @@ impl ProgressUI {
             ProgressEvent::LlmRequestFinished { stage_node_id } => {
                 self.stage.on_llm_request_finished(&stage_node_id);
             }
-            ProgressEvent::SubagentSpawned {
+            ProgressEvent::SubagentStarted {
                 stage_node_id,
                 agent_id,
                 task,
+                generation,
             } => {
-                self.stage
-                    .on_subagent_spawned(renderer, &stage_node_id, &agent_id, &task);
+                self.stage.on_subagent_started(
+                    renderer,
+                    &stage_node_id,
+                    &agent_id,
+                    &task,
+                    generation,
+                );
             }
             ProgressEvent::SubagentCompleted {
                 stage_node_id,
@@ -660,10 +666,11 @@ mod tests {
             parallel_branch_id:    ParallelBranchId::new(StageId::new("fork1", 1), 0),
             branch:                "security".into(),
             index:                 0,
+            item_label:            Some("auth".into()),
         });
         let stage = &ui.stage.active_stages["fork1"];
         assert_eq!(stage.tool_calls.len(), 1);
-        assert_eq!(stage.tool_calls[0].tool_call_id, "security");
+        assert_eq!(stage.tool_calls[0].tool_call_id, "auth (security #0)");
         assert!(matches!(
             stage.tool_calls[0].status,
             ToolCallStatus::Running
@@ -674,6 +681,7 @@ mod tests {
             parallel_branch_id: ParallelBranchId::new(StageId::new("fork1", 1), 0),
             branch:             "security".into(),
             index:              0,
+            item_label:         Some("auth".into()),
             duration_ms:        2000,
             status:             fabro_workflow::outcome::StageOutcome::Succeeded,
         });
@@ -701,6 +709,7 @@ mod tests {
             parallel_branch_id:    ParallelBranchId::new(StageId::new("fork1", 1), 0),
             branch:                "security".into(),
             index:                 0,
+            item_label:            None,
         });
 
         let stage = &ui.stage.active_stages["fork1"];
@@ -967,13 +976,15 @@ mod tests {
                 },
             }),
             agent_event("code", AgentEvent::SubAgentSpawned {
-                agent_id: "a1".into(),
-                depth:    1,
-                task:     "review recent changes".into(),
+                agent_id:   "a1".into(),
+                depth:      1,
+                task:       "review recent changes".into(),
+                generation: 1,
             }),
             agent_event("code", AgentEvent::SubAgentCompleted {
                 agent_id:   "a1".into(),
                 depth:      1,
+                generation: 1,
                 success:    true,
                 turns_used: 3,
             }),
@@ -1329,9 +1340,10 @@ mod tests {
         emit(
             &mut ui,
             agent_event("code", AgentEvent::SubAgentSpawned {
-                agent_id: "a1".into(),
-                depth:    1,
-                task:     "review recent changes".into(),
+                agent_id:   "a1".into(),
+                depth:      1,
+                task:       "review recent changes".into(),
+                generation: 1,
             }),
         );
         emit(
@@ -1339,8 +1351,28 @@ mod tests {
             agent_event("code", AgentEvent::SubAgentCompleted {
                 agent_id:   "a1".into(),
                 depth:      1,
+                generation: 1,
                 success:    true,
                 turns_used: 3,
+            }),
+        );
+        emit(
+            &mut ui,
+            agent_event("code", AgentEvent::SubAgentTurnStarted {
+                agent_id:   "a1".into(),
+                depth:      1,
+                task:       "fix the review findings".into(),
+                generation: 2,
+            }),
+        );
+        emit(
+            &mut ui,
+            agent_event("code", AgentEvent::SubAgentCompleted {
+                agent_id:   "a1".into(),
+                depth:      1,
+                generation: 2,
+                success:    true,
+                turns_used: 2,
             }),
         );
         emit(&mut ui, Event::SetupStarted { command_count: 1 });
@@ -1360,6 +1392,8 @@ mod tests {
           ⚠ retry: gpt-5-mini attempt 2 (busy, delay 1s)
             ▸ subagent[a1] "review recent changes"
             ✓ subagent[a1] (3 turns)
+            ↻ subagent[a1] turn 2 "fix the review findings"
+            ✓ subagent[a1] (2 turns)
           ✓ [1/1] bun install  2s
         Setup: 1 command (2s)
         ✓ Code  5s  (1 turns, 0 tools, 1.5k toks)
@@ -1383,11 +1417,13 @@ mod tests {
             repo:        "fabro".into(),
             base_branch: "main".into(),
             head_branch: "fabro/run/42".into(),
+            head_sha:    Some("final-sha".to_string()),
             title:       "Ship the change".into(),
             draft:       true,
         });
         emit(&mut ui, Event::PullRequestFailed {
-            error: "auth token expired".into(),
+            creation_id: None,
+            error:       "auth token expired".into(),
         });
 
         insta::assert_snapshot!(rendered(&buffer), @r"
@@ -1477,12 +1513,14 @@ mod tests {
             parallel_branch_id:    ParallelBranchId::new(StageId::new("fork1", 1), 0),
             branch:                "security".into(),
             index:                 0,
+            item_label:            None,
         });
         emit(&mut ui, Event::ParallelBranchCompleted {
             parallel_group_id:  StageId::new("fork1", 1),
             parallel_branch_id: ParallelBranchId::new(StageId::new("fork1", 1), 0),
             branch:             "security".into(),
             index:              0,
+            item_label:         None,
             duration_ms:        500,
             status:             fabro_workflow::outcome::StageOutcome::Succeeded,
         });

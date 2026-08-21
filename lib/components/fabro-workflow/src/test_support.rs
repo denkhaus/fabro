@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fabro_agent::Sandbox;
-use fabro_auth::{CredentialSource, EnvCredentialSource};
+use fabro_auth::{CredentialSource, test_support as auth_test_support};
 use fabro_graphviz::graph::Graph as GvGraph;
 use fabro_interview::AutoApproveInterviewer;
 use fabro_model::Catalog;
@@ -119,6 +119,14 @@ pub async fn mark_run_running(run_store: &fabro_store::RunDatabase, run_id: &fab
         .expect("seed run.running");
 }
 
+/// Record every event the emitter publishes, for assertions after a run.
+pub fn collect_events(emitter: &Emitter) -> Arc<std::sync::Mutex<Vec<fabro_types::RunEvent>>> {
+    let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let captured = Arc::clone(&events);
+    emitter.on_event(move |event| captured.lock().unwrap().push(event.clone()));
+    events
+}
+
 pub fn test_store_dir(run_dir: &std::path::Path) -> PathBuf {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     std::process::id().hash(&mut hasher);
@@ -174,36 +182,35 @@ async fn initialized(
         .expect("failed to create slate-backed test run store");
     let run_store = inner_store;
     append_event(&run_store, &run_options.run_id, &Event::RunCreated {
-        run_id:           run_options.run_id,
-        title:            None,
-        settings:         serde_json::to_value(&run_options.settings)
+        run_id:              run_options.run_id,
+        title:               None,
+        settings:            serde_json::to_value(&run_options.settings)
             .expect("failed to serialize settings"),
-        graph:            serde_json::to_value(graph).expect("failed to serialize graph"),
-        workflow_source:  None,
-        workflow_config:  None,
-        labels:           run_options
+        graph:               serde_json::to_value(graph).expect("failed to serialize graph"),
+        workflow_source:     None,
+        labels:              run_options
             .labels
             .clone()
             .into_iter()
             .collect::<BTreeMap<_, _>>(),
-        run_dir:          run_options.run_dir.display().to_string(),
-        source_directory: Some(sandbox.working_directory().to_string()),
-        workflow_slug:    run_options.workflow_slug.clone(),
-        automation:       None,
-        db_prefix:        None,
-        provenance:       fabro_types::RunProvenance {
+        source_directory:    Some(sandbox.working_directory().to_string()),
+        workflow_slug:       run_options.workflow_slug.clone(),
+        workflow_version_id: None,
+        automation:          None,
+        provenance:          fabro_types::RunProvenance {
             server:  None,
             client:  None,
             subject: fabro_types::Principal::System {
                 system_kind: fabro_types::SystemActorKind::Engine,
             },
         },
-        manifest_blob:    None,
-        git:              run_options.pre_run_git.clone(),
-        fork_source_ref:  run_options.fork_source_ref.clone(),
-        retried_from:     None,
-        parent_id:        None,
-        web_url:          None,
+        manifest_blob:       None,
+        spec_blob:           None,
+        git:                 run_options.pre_run_git.clone(),
+        fork_source_ref:     run_options.fork_source_ref.clone(),
+        retried_from:        None,
+        parent_id:           None,
+        web_url:             None,
     })
     .await
     .expect("failed to seed run.created event in run store");
@@ -249,7 +256,7 @@ async fn initialized(
                     "claude-sonnet-4-6".to_string(),
                     options
                         .llm_source
-                        .unwrap_or_else(|| Arc::new(EnvCredentialSource::new())),
+                        .unwrap_or_else(auth_test_support::vault_only_credential_source),
                     Arc::new(Catalog::from_builtin().expect("default catalog should build")),
                     Arc::new(SandboxGitRuntime::new()),
                     Arc::new(RunMetadataRuntime::new()),

@@ -33,13 +33,6 @@ pub(crate) async fn create_run(
         .ok_or_else(|| anyhow::anyhow!("--workflow is required"))?;
     let cli_args_config = run_args_overrides(args)?;
     let cwd = ctx.cwd().to_path_buf();
-    let run_id = args
-        .run_id
-        .as_deref()
-        .map(str::parse::<RunId>)
-        .transpose()
-        .context("invalid run ID")?;
-
     let mut built = build_run_manifest(ManifestBuildInput {
         workflow: workflow_path.clone(),
         cwd,
@@ -47,7 +40,6 @@ pub(crate) async fn create_run(
         cli_overrides: cli_args_config.cli,
         input_overrides: cli_args_config.input_overrides,
         args: run_manifest_args(args),
-        run_id,
         environment_defaults: fabro_environment::seeded_catalog_layer(),
         user_settings_path: Some(active_settings_path(None)),
     })?;
@@ -61,11 +53,8 @@ pub(crate) async fn create_run(
         None
     };
 
-    let mut validation = manifest_validation::validate_manifest(
-        &RunLayer::default(),
-        &built.manifest,
-        ctx.catalog()?,
-    )?;
+    let mut validation =
+        manifest_validation::validate_manifest(&RunLayer::default(), &built.manifest)?;
     manifest_validation::promote_template_undefined_variables_to_errors(&mut validation);
     let diagnostics = api_diagnostics_to_local(&validation.workflow.diagnostics);
     if !quiet {

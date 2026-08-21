@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -64,21 +65,37 @@ pub async fn run_basic_model_probe(
     provider: impl ToString,
     client: Arc<Client>,
 ) -> ModelTestOutcome {
+    run_basic_model_probe_with_timeout(
+        model_id,
+        provider,
+        client,
+        Duration::from_secs(ModelTestMode::Basic.timeout_secs()),
+    )
+    .await
+}
+
+pub async fn run_basic_model_probe_with_timeout(
+    model_id: &str,
+    provider: impl ToString,
+    client: Arc<Client>,
+    probe_timeout: Duration,
+) -> ModelTestOutcome {
     let params = GenerateParams::new(model_id, client)
         .provider(provider.to_string())
         .prompt("Say OK")
         .max_tokens(16);
 
-    let result = time::timeout(
-        Duration::from_secs(ModelTestMode::Basic.timeout_secs()),
-        generate::generate(params),
-    )
-    .await;
+    basic_model_probe_outcome(generate::generate(params), probe_timeout).await
+}
 
-    match result {
+async fn basic_model_probe_outcome<F>(probe: F, probe_timeout: Duration) -> ModelTestOutcome
+where
+    F: Future<Output = Result<GenerateResult, crate::Error>>,
+{
+    match time::timeout(probe_timeout, probe).await {
         Ok(Ok(_)) => ModelTestOutcome::ok(),
         Ok(Err(err)) => ModelTestOutcome::error(err.to_string()),
-        Err(_) => ModelTestOutcome::error("timeout (30s)"),
+        Err(_) => ModelTestOutcome::error(format!("timeout ({probe_timeout:?})")),
     }
 }
 
@@ -242,6 +259,18 @@ mod tests {
             outcome.error_message.as_deref(),
             Some("model does not support tools")
         );
+    }
+
+    #[tokio::test]
+    async fn basic_model_probe_reports_configured_timeout() {
+        let outcome = basic_model_probe_outcome(
+            std::future::pending::<Result<GenerateResult, crate::Error>>(),
+            Duration::from_millis(1),
+        )
+        .await;
+
+        assert_eq!(outcome.status, ModelTestStatus::Error);
+        assert_eq!(outcome.error_message.as_deref(), Some("timeout (1ms)"));
     }
 
     #[test]

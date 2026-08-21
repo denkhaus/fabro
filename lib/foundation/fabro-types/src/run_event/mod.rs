@@ -242,6 +242,8 @@ pub enum EventBody {
     AgentLlmRetry(AgentLlmRetryProps),
     #[serde(rename = "agent.sub.spawned")]
     AgentSubSpawned(AgentSubSpawnedProps),
+    #[serde(rename = "agent.sub.turn.started")]
+    AgentSubTurnStarted(AgentSubTurnStartedProps),
     #[serde(rename = "agent.sub.completed")]
     AgentSubCompleted(AgentSubCompletedProps),
     #[serde(rename = "agent.sub.failed")]
@@ -350,6 +352,8 @@ pub enum EventBody {
     AgentAcpCancelled(AgentAcpCancelledProps),
     #[serde(rename = "agent.acp.timed_out")]
     AgentAcpTimedOut(AgentAcpTimedOutProps),
+    #[serde(rename = "pull_request.creation_requested")]
+    PullRequestCreationRequested(PullRequestCreationRequestedProps),
     #[serde(rename = "pull_request.created")]
     PullRequestCreated(PullRequestCreatedProps),
     #[serde(rename = "pull_request.linked")]
@@ -510,6 +514,7 @@ impl EventBody {
             Self::AgentLlmFirstOutput(_) => "agent.llm.first_output",
             Self::AgentLlmRetry(_) => "agent.llm.retry",
             Self::AgentSubSpawned(_) => "agent.sub.spawned",
+            Self::AgentSubTurnStarted(_) => "agent.sub.turn.started",
             Self::AgentSubCompleted(_) => "agent.sub.completed",
             Self::AgentSubFailed(_) => "agent.sub.failed",
             Self::AgentSubClosed(_) => "agent.sub.closed",
@@ -564,6 +569,7 @@ impl EventBody {
             Self::AgentAcpCompleted(_) => "agent.acp.completed",
             Self::AgentAcpCancelled(_) => "agent.acp.cancelled",
             Self::AgentAcpTimedOut(_) => "agent.acp.timed_out",
+            Self::PullRequestCreationRequested(_) => "pull_request.creation_requested",
             Self::PullRequestCreated(_) => "pull_request.created",
             Self::PullRequestLinked(_) => "pull_request.linked",
             Self::PullRequestUnlinked(_) => "pull_request.unlinked",
@@ -682,6 +688,7 @@ fn is_known_event_name(event: &str) -> bool {
             | "agent.llm.first_output"
             | "agent.llm.retry"
             | "agent.sub.spawned"
+            | "agent.sub.turn.started"
             | "agent.sub.completed"
             | "agent.sub.failed"
             | "agent.sub.closed"
@@ -926,13 +933,11 @@ impl<'de> Deserialize<'de> for RunEvent {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use serde_json::json;
 
     use super::*;
     use crate::{
-        AuthMethod, CommandTermination, Edge, Graph, IdpIdentity, Node, PendingReason, RunBlobId,
+        AuthMethod, BlobHash, CommandTermination, Edge, Graph, IdpIdentity, Node, PendingReason,
         WorkflowSettings, fixtures, test_support,
     };
 
@@ -992,20 +997,9 @@ mod tests {
     #[test]
     fn run_event_deserializes_adjacent_layout() {
         let settings = WorkflowSettings::default();
-        let graph = Graph {
-            name:  "test".to_string(),
-            nodes: HashMap::from([("start".to_string(), Node {
-                id:      "start".to_string(),
-                attrs:   HashMap::new(),
-                classes: Vec::new(),
-            })]),
-            edges: vec![Edge {
-                from:  "start".to_string(),
-                to:    "done".to_string(),
-                attrs: HashMap::new(),
-            }],
-            attrs: HashMap::new(),
-        };
+        let mut graph = Graph::new("test");
+        graph.nodes.insert("start".to_string(), Node::new("start"));
+        graph.edges.push(Edge::new("start", "done"));
 
         let line = json!({
             "id": "evt_2",
@@ -1016,7 +1010,6 @@ mod tests {
                 "settings": settings,
                 "graph": graph,
                 "labels": {},
-                "run_dir": "/tmp/run",
                 "source_directory": "/tmp/run",
                 "provenance": test_support::test_run_provenance()
             }
@@ -1024,6 +1017,33 @@ mod tests {
 
         let parsed = RunEvent::from_value(line).unwrap();
         assert!(matches!(parsed.body, EventBody::RunCreated(_)));
+    }
+
+    #[test]
+    fn historical_failover_event_defaults_new_route_context() {
+        let line = json!({
+            "id": "evt_failover",
+            "ts": "2026-04-04T12:00:00.000Z",
+            "run_id": fixtures::RUN_1,
+            "event": "agent.failover",
+            "properties": {
+                "from_provider": "anthropic",
+                "from_model": "claude-fable-5",
+                "to_provider": "openai",
+                "to_model": "gpt-5.6-sol",
+                "error": "provider unavailable"
+            }
+        });
+
+        let parsed = RunEvent::from_value(line).unwrap();
+        let EventBody::Failover(props) = parsed.body else {
+            panic!("expected agent.failover");
+        };
+        assert_eq!(props.original_provider, None);
+        assert_eq!(props.original_model, None);
+        assert_eq!(props.attempt, None);
+        assert_eq!(props.requested_reasoning_effort, None);
+        assert_eq!(props.effective_reasoning_effort, None);
     }
 
     #[test]
@@ -1037,10 +1057,9 @@ mod tests {
                 "settings": WorkflowSettings::default(),
                 "graph": Graph::new("test"),
                 "labels": {},
-                "run_dir": "/tmp/run",
                 "source_directory": "/tmp/run",
                 "provenance": test_support::test_run_provenance(),
-                "manifest_blob": RunBlobId::new(br#"{"version":1}"#).to_string()
+                "manifest_blob": BlobHash::new(br#"{"version":1}"#).to_string()
             }
         });
 
@@ -1318,7 +1337,7 @@ mod tests {
             "run_id": fixtures::RUN_1,
             "event": "run.submitted",
             "properties": {
-                "definition_blob": RunBlobId::new(br#"{"workflow_path":"workflow.fabro"}"#).to_string()
+                "definition_blob": BlobHash::new(br#"{"workflow_path":"workflow.fabro"}"#).to_string()
             }
         });
 
@@ -1935,6 +1954,7 @@ mod tests {
                 branch:           "refs/heads/run:refs/heads/run".to_string(),
                 success:          false,
                 exec_output_tail: Some(tail.clone()),
+                attempts:         Vec::new(),
             }),
         ] {
             let value = serde_json::to_value(&body).unwrap();
@@ -1966,6 +1986,7 @@ mod tests {
                 branch:           "refs/heads/run:refs/heads/run".to_string(),
                 success:          false,
                 exec_output_tail: None,
+                attempts:         Vec::new(),
             }),
         ] {
             let value = serde_json::to_value(&body).unwrap();
@@ -2481,6 +2502,37 @@ mod tests {
 
         let parsed: EventBody = serde_json::from_value(value).unwrap();
         assert_eq!(parsed, body);
+    }
+
+    #[test]
+    fn subagent_generations_are_typed_and_legacy_events_default_to_one() {
+        let started = EventBody::AgentSubTurnStarted(AgentSubTurnStartedProps {
+            agent_id:   "sub-1".to_string(),
+            depth:      1,
+            task:       "fix the review findings".to_string(),
+            generation: 2,
+            visit:      1,
+        });
+        let value = serde_json::to_value(&started).unwrap();
+        assert_eq!(value["event"], "agent.sub.turn.started");
+        assert_eq!(value["properties"]["generation"], 2);
+        assert_eq!(serde_json::from_value::<EventBody>(value).unwrap(), started);
+
+        let legacy: EventBody = serde_json::from_value(json!({
+            "event": "agent.sub.completed",
+            "properties": {
+                "agent_id": "sub-1",
+                "depth": 1,
+                "success": true,
+                "turns_used": 3,
+                "visit": 1
+            }
+        }))
+        .unwrap();
+        let EventBody::AgentSubCompleted(props) = legacy else {
+            panic!("expected subagent completion");
+        };
+        assert_eq!(props.generation, 1);
     }
 
     #[test]

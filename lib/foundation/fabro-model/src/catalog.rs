@@ -61,8 +61,8 @@ pub struct ProviderCatalogSettings {
     pub api_key_url:    Option<String>,
     #[serde(default)]
     pub base_url:       Option<String>,
-    /// Unresolved interpolation source strings (literal text, `{{ env.NAME }}`,
-    /// or `{{ secrets.NAME }}` tokens), resolved at the credential boundary in
+    /// Unresolved interpolation source strings (literal text or
+    /// `{{ secrets.NAME }}` tokens), resolved at the credential boundary in
     /// `fabro-auth`.
     #[serde(default)]
     pub extra_headers:  Option<HashMap<String, String>>,
@@ -401,8 +401,28 @@ static GLOBAL_CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
 /// A resolved fallback target: provider name + model ID.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FallbackTarget {
-    pub provider: String,
-    pub model:    String,
+    pub provider: ProviderId,
+    pub model:    ModelId,
+}
+
+impl FallbackTarget {
+    /// Build a target from anything that renders as a provider name and model
+    /// ID, so callers holding [`ProviderId`]/[`ModelId`] or bare passthrough
+    /// selectors all use one constructor.
+    pub fn new(provider: impl std::fmt::Display, model: impl std::fmt::Display) -> Self {
+        Self {
+            provider: ProviderId::new(provider.to_string()),
+            model:    ModelId::new(model.to_string()),
+        }
+    }
+}
+
+impl std::fmt::Display for FallbackTarget {
+    /// Renders as `provider:model`, matching the qualified form accepted by
+    /// model references.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.provider, self.model)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -418,8 +438,8 @@ pub struct CatalogProvider {
     pub billing_policy: BillingPolicy,
     pub api_key_url:    Option<String>,
     pub base_url:       Option<String>,
-    /// Unresolved interpolation source strings (literal text, `{{ env.NAME }}`,
-    /// or `{{ secrets.NAME }}` tokens), resolved at the credential boundary in
+    /// Unresolved interpolation source strings (literal text or
+    /// `{{ secrets.NAME }}` tokens), resolved at the credential boundary in
     /// `fabro-auth`.
     pub extra_headers:  HashMap<String, String>,
     pub priority:       i32,
@@ -747,6 +767,12 @@ impl Catalog {
                         &model.provider,
                     )?;
                 }
+                register_model_identifier(
+                    identifiers,
+                    resolved_settings.api_id.clone(),
+                    model.id.clone(),
+                    &model.provider,
+                )?;
 
                 if model.default {
                     defaults_by_provider
@@ -793,14 +819,14 @@ impl Catalog {
                 .then_with(|| left.id.cmp(&right.id))
         });
         warn_multiple_probe_models(&models_with_settings);
+        let (offering_index, provider_selector_index, canonical_candidates, alias_candidates) =
+            build_model_indexes(&models_with_settings);
         let mut model_settings_by_offering = HashMap::new();
         let mut models = Vec::new();
         for (model, settings) in models_with_settings {
             model_settings_by_offering.insert((model.provider.clone(), model.id.clone()), settings);
             models.push(model);
         }
-        let (offering_index, provider_selector_index, canonical_candidates, alias_candidates) =
-            build_model_indexes(&models);
 
         Ok(Self {
             models,
@@ -879,16 +905,20 @@ impl Catalog {
             .and_then(|idx| self.models.get(*idx))
     }
 
-    /// Look up a selector on exactly one provider, without considering
-    /// provider availability. Historical built-in API identifiers normalize
-    /// to their canonical model slug before lookup.
+    /// Look up a canonical ID, alias, or API ID on exactly one provider,
+    /// without considering provider availability. Exact provider-scoped
+    /// identifiers win before historical built-in API identifiers normalize
+    /// to their canonical model slug.
     #[must_use]
     pub fn get_on_provider(&self, provider: &ProviderId, selector: &str) -> Option<&Model> {
         let provider = self.provider(provider)?;
-        let selector = normalize_legacy_builtin_selector(selector);
-        self.provider_selector_index
-            .get(&(provider.id.clone(), selector.into_owned()))
-            .and_then(|idx| self.models.get(*idx))
+        let lookup = |selector: &str| {
+            self.provider_selector_index
+                .get(&(provider.id.clone(), selector.to_string()))
+        };
+        let index =
+            lookup(selector).or_else(|| lookup(&normalize_legacy_builtin_selector(selector)))?;
+        self.models.get(*index)
     }
 
     /// Look up a canonical offering by its composite identity.
@@ -900,17 +930,30 @@ impl Catalog {
             .and_then(|idx| self.models.get(*idx))
     }
 
-    /// Resolve a selector on exactly one provider.
+    /// Look up a provider by ID or alias, failing when the catalog has no such
+    /// provider.
+    pub fn require_provider(
+        &self,
+        provider: &ProviderId,
+    ) -> Result<&CatalogProvider, ModelSelectionError> {
+        self.provider(provider)
+            .ok_or_else(|| ModelSelectionError::UnknownProvider {
+                provider: provider.clone(),
+            })
+    }
+
+    /// Canonicalize a provider name or alias to its catalog ID.
+    pub fn provider_id(&self, name: &str) -> Result<ProviderId, ModelSelectionError> {
+        Ok(self.require_provider(&ProviderId::from(name))?.id.clone())
+    }
+
+    /// Resolve a canonical ID, alias, or API ID on exactly one provider.
     pub fn resolve_on_provider(
         &self,
         provider: &ProviderId,
         selector: &str,
     ) -> Result<&Model, ModelSelectionError> {
-        let provider =
-            self.provider(provider)
-                .ok_or_else(|| ModelSelectionError::UnknownProvider {
-                    provider: provider.clone(),
-                })?;
+        let provider = self.require_provider(provider)?;
         if let Some(model) = self.get_on_provider(&provider.id, selector) {
             return Ok(model);
         }
@@ -926,8 +969,9 @@ impl Catalog {
     /// Historical built-in API identifiers normalize to their canonical model
     /// slug before selection.
     ///
-    /// An explicit provider is a pin. Unqualified selection checks canonical
-    /// IDs before aliases and uses the catalog's provider priority ordering.
+    /// An explicit provider is a pin and also permits that provider's API IDs.
+    /// Unqualified selection checks canonical IDs before aliases and uses the
+    /// catalog's provider priority ordering.
     pub fn select<'a>(
         &'a self,
         selector: &str,
@@ -940,11 +984,7 @@ impl Catalog {
             .collect::<HashSet<_>>();
 
         if let Some(explicit_provider) = explicit_provider {
-            let provider = self.provider(explicit_provider).ok_or_else(|| {
-                ModelSelectionError::UnknownProvider {
-                    provider: explicit_provider.clone(),
-                }
-            })?;
+            let provider = self.require_provider(explicit_provider)?;
             if !eligible.contains(&provider.id) {
                 return Err(ModelSelectionError::ProviderUnavailable {
                     provider: provider.id.clone(),
@@ -1011,6 +1051,23 @@ impl Catalog {
             .collect()
     }
 
+    /// Canonicalize a model selector to its catalog model ID, preferring the
+    /// given provider's offering. Unknown selectors pass through verbatim.
+    ///
+    /// Model-keyed fallback chains are written and read through this one
+    /// function so a configured chain key and a dispatch-time lookup cannot
+    /// silently disagree.
+    #[must_use]
+    pub fn canonical_model_id(&self, provider: &ProviderId, selector: &str) -> String {
+        self.get_on_provider(provider, selector).map_or_else(
+            || {
+                self.select(selector, None, &self.all_provider_ids())
+                    .map_or_else(|_| selector.to_string(), |offering| offering.id.to_string())
+            },
+            |offering| offering.id.to_string(),
+        )
+    }
+
     /// Select the highest-priority default model on an eligible provider.
     pub fn select_default(
         &self,
@@ -1045,11 +1102,7 @@ impl Catalog {
         provider: &ProviderId,
         eligible_providers: &HashSet<ProviderId>,
     ) -> Result<ProviderId, ModelSelectionError> {
-        let provider =
-            self.provider(provider)
-                .ok_or_else(|| ModelSelectionError::UnknownProvider {
-                    provider: provider.clone(),
-                })?;
+        let provider = self.require_provider(provider)?;
         let ready = eligible_providers.iter().any(|eligible| {
             self.provider(eligible)
                 .is_some_and(|eligible| eligible.id == provider.id)
@@ -1316,15 +1369,17 @@ impl Catalog {
     }
 
     /// Small default model for a provider — the small/cheap utility model used
-    /// for metadata enrichment. Falls back to the provider's normal default
-    /// when no explicit small default is configured.
+    /// for metadata enrichment. `None` when the provider marks no small
+    /// default. Deliberately does not substitute the provider's normal
+    /// default, which is typically a large reasoning model: callers asking for
+    /// a small model give it a small token budget and a short timeout, and a
+    /// flagship model silently exceeds both.
     #[must_use]
     pub fn small_default_for_provider(&self, p: &ProviderId) -> Option<&Model> {
         let provider_id = self.provider(p).map_or(p, |provider| &provider.id);
         self.models
             .iter()
             .find(|m| &m.provider == provider_id && m.small_default)
-            .or_else(|| self.default_for_provider(provider_id))
     }
 
     /// Default model for the best-available provider (based on API keys),
@@ -1357,10 +1412,7 @@ impl Catalog {
         if configured.is_empty() {
             return self.default_model();
         }
-        let configured = configured
-            .iter()
-            .filter_map(|id| self.provider(id).map(|provider| provider.id.clone()))
-            .collect::<HashSet<_>>();
+        let configured = self.canonical_provider_ids(configured);
         self.providers
             .iter()
             .filter(|provider| configured.contains(&provider.id))
@@ -1368,22 +1420,38 @@ impl Catalog {
             .unwrap_or_else(|| self.default_model())
     }
 
-    /// Small default model for the best-available built-in provider IDs,
-    /// falling back to the global catalog default.
+    /// Small default model for the best-available built-in provider IDs.
+    ///
+    /// Configured providers that mark no small default are skipped in favour
+    /// of a lower-priority provider that has one. Only when none of them does
+    /// is the ordinary default used.
     #[must_use]
     pub fn small_default_for_configured_ids(&self, configured: &[ProviderId]) -> &Model {
         if configured.is_empty() {
             return self.default_model();
         }
-        let configured = configured
+        let configured = self.canonical_provider_ids(configured);
+        let mut fallback = None;
+        for model in self
+            .models
+            .iter()
+            .filter(|model| configured.contains(&model.provider))
+        {
+            if model.small_default {
+                return model;
+            }
+            if model.default && fallback.is_none() {
+                fallback = Some(model);
+            }
+        }
+        fallback.unwrap_or_else(|| self.default_model())
+    }
+
+    fn canonical_provider_ids(&self, provider_ids: &[ProviderId]) -> HashSet<ProviderId> {
+        provider_ids
             .iter()
             .filter_map(|id| self.provider(id).map(|provider| provider.id.clone()))
-            .collect::<HashSet<_>>();
-        self.providers
-            .iter()
-            .filter(|provider| configured.contains(&provider.id))
-            .find_map(|provider| self.small_default_for_provider(&provider.id))
-            .unwrap_or_else(|| self.default_model())
+            .collect()
     }
 
     /// Probe model for a provider — the cheapest model suitable for
@@ -1431,38 +1499,6 @@ impl Catalog {
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
     }
-
-    /// Build an ordered fallback chain for a primary provider/model.
-    ///
-    /// For each fallback provider, finds the closest matching model. Providers
-    /// where no capability match exists (or the provider string doesn't
-    /// parse) are skipped.
-    #[must_use]
-    pub fn build_fallback_chain(
-        &self,
-        primary: &ProviderId,
-        model: &str,
-        fallbacks: &HashMap<String, Vec<String>>,
-    ) -> Vec<FallbackTarget> {
-        let Some(reference) = self.get_on_provider(primary, model) else {
-            return Vec::new();
-        };
-
-        let Some(fallback_providers) = fallbacks.get(primary.as_str()) else {
-            return Vec::new();
-        };
-
-        fallback_providers
-            .iter()
-            .filter_map(|provider_str| {
-                let provider = ProviderId::from(provider_str.clone());
-                self.closest(&provider, reference).map(|m| FallbackTarget {
-                    provider: provider_str.clone(),
-                    model:    m.id.to_string(),
-                })
-            })
-            .collect()
-    }
 }
 
 type ModelIndexes = (
@@ -1472,12 +1508,12 @@ type ModelIndexes = (
     HashMap<String, Vec<usize>>,
 );
 
-fn build_model_indexes(models: &[Model]) -> ModelIndexes {
+fn build_model_indexes(models: &[(Model, CatalogModelSettings)]) -> ModelIndexes {
     let mut offering_index = HashMap::new();
     let mut provider_selector_index = HashMap::new();
     let mut canonical_candidates = HashMap::<ModelId, Vec<usize>>::new();
     let mut alias_candidates = HashMap::<String, Vec<usize>>::new();
-    for (idx, model) in models.iter().enumerate() {
+    for (idx, (model, settings)) in models.iter().enumerate() {
         offering_index.insert((model.provider.clone(), model.id.clone()), idx);
         provider_selector_index
             .insert((model.provider.clone(), model.id.as_str().to_string()), idx);
@@ -1489,6 +1525,7 @@ fn build_model_indexes(models: &[Model]) -> ModelIndexes {
             provider_selector_index.insert((model.provider.clone(), alias.clone()), idx);
             alias_candidates.entry(alias.clone()).or_default().push(idx);
         }
+        provider_selector_index.insert((model.provider.clone(), settings.api_id.clone()), idx);
     }
     (
         offering_index,
@@ -2846,7 +2883,7 @@ enabled = true
             catalog
                 .default_for_provider(&bedrock)
                 .map(|model| model.id.as_str()),
-            Some("claude-sonnet-4-6")
+            Some("claude-sonnet-5")
         );
         // Fable 5 ships with sampling params pinned off (the Converse
         // encoder drops temperature/top_p for it).
@@ -2854,18 +2891,27 @@ enabled = true
             .get_on_provider(&bedrock, "claude-fable-5")
             .expect("fable row should be present");
         assert!(!fable.features.sampling_params);
-        assert!(
-            catalog
-                .settings_for(fable)
-                .expect("fable settings should be present")
-                .reasoning_by_default
-        );
+        let fable_settings = catalog
+            .settings_for(fable)
+            .expect("fable settings should be present");
+        assert!(fable_settings.reasoning_by_default);
+        assert_eq!(fable_settings.agent_profile, AgentProfileKind::Claude5);
         assert_eq!(
             catalog
                 .model_settings_on_provider(&bedrock, "claude-fable-5")
                 .unwrap()
                 .billing_policy,
             BillingPolicy::Anthropic
+        );
+        let sonnet = catalog
+            .get_on_provider(&bedrock, "claude-sonnet-5")
+            .expect("Sonnet 5 row should be present");
+        assert_eq!(sonnet.limits.context_window, 1_000_000);
+        assert_eq!(sonnet.limits.max_output, Some(128_000));
+        assert!(!sonnet.features.sampling_params);
+        assert_eq!(
+            catalog.settings_for(sonnet).unwrap().agent_profile,
+            AgentProfileKind::Claude5
         );
     }
 
@@ -2983,6 +3029,148 @@ enabled = true
     }
 
     #[test]
+    fn builtin_deepseek_provider_routes_v4_models() {
+        let deepseek = ProviderId::new("deepseek");
+        let catalog = Catalog::builtin();
+        let provider = catalog
+            .provider(&deepseek)
+            .expect("DeepSeek provider should be active");
+
+        assert_eq!(provider.adapter, AdapterKind::OpenAiCompatible);
+        assert_eq!(provider.codec, CodecKind::OpenAiCompatible);
+        assert_eq!(provider.billing_policy, BillingPolicy::OpenAi);
+        assert_eq!(
+            provider.base_url.as_deref(),
+            Some("https://api.deepseek.com")
+        );
+        assert_eq!(provider.priority, 75);
+        assert_eq!(provider.auth.as_ref().unwrap().credentials, vec![
+            CredentialRef::Env("DEEPSEEK_API_KEY".to_string()),
+            CredentialRef::Vault("DEEPSEEK_API_KEY".to_string()),
+        ]);
+        assert_eq!(
+            catalog
+                .default_for_provider(&deepseek)
+                .map(|model| model.id.as_str()),
+            Some("deepseek-v4-flash")
+        );
+        assert_eq!(
+            catalog
+                .small_default_for_provider(&deepseek)
+                .map(|model| model.id.as_str()),
+            Some("deepseek-v4-flash")
+        );
+        assert_eq!(
+            catalog
+                .probe_for_provider(&deepseek)
+                .map(|model| model.id.as_str()),
+            Some("deepseek-v4-flash")
+        );
+
+        let expected = [
+            ("deepseek-v4-flash", 0.14, 0.28, 0.0028),
+            ("deepseek-v4-pro", 0.435, 0.87, 0.003_625),
+        ];
+        for (id, input, output, cache_read) in expected {
+            let model = catalog
+                .get_on_provider(&deepseek, id)
+                .unwrap_or_else(|| panic!("DeepSeek model '{id}' should be present"));
+            assert_eq!(model.family, "deepseek-v4", "{id}");
+            assert_eq!(model.limits.context_window, 1_048_576, "{id}");
+            assert_eq!(model.limits.max_output, Some(384_000), "{id}");
+            assert!(model.features.tools, "{id}");
+            assert!(!model.features.vision, "{id}");
+            assert!(model.features.reasoning, "{id}");
+            assert!(model.features.prompt_cache, "{id}");
+            assert!(!model.features.sampling_params, "{id}");
+            assert_eq!(model.costs.input_cost_per_mtok, Some(input), "{id}");
+            assert_eq!(model.costs.output_cost_per_mtok, Some(output), "{id}");
+            assert_eq!(
+                model.costs.cache_input_cost_per_mtok,
+                Some(cache_read),
+                "{id}"
+            );
+
+            let settings = catalog
+                .model_settings_on_provider(&deepseek, id)
+                .unwrap_or_else(|| panic!("DeepSeek settings for '{id}' should be present"));
+            assert_eq!(settings.api_id, id, "{id}");
+            assert!(settings.reasoning_by_default, "{id}");
+        }
+    }
+
+    #[test]
+    fn builtin_deepseek_reasoning_controls_match_provider_dialects() {
+        let catalog = Catalog::from_builtin_with_overrides(&minimal_settings(
+            r"
+[providers.fireworks]
+enabled = true
+
+[providers.openrouter]
+enabled = true
+",
+        ))
+        .expect("DeepSeek gateway providers should build when enabled");
+
+        let expected = [
+            (ProviderId::new("deepseek"), "deepseek-v4-flash", vec![
+                ReasoningEffort::Low,
+                ReasoningEffort::High,
+                ReasoningEffort::Max,
+            ]),
+            (ProviderId::new("deepseek"), "deepseek-v4-pro", vec![
+                ReasoningEffort::High,
+                ReasoningEffort::Max,
+            ]),
+            (ProviderId::new("fireworks"), "deepseek-v4-flash", vec![
+                ReasoningEffort::High,
+                ReasoningEffort::Max,
+            ]),
+            (ProviderId::new("fireworks"), "deepseek-v4-pro", vec![
+                ReasoningEffort::High,
+                ReasoningEffort::Max,
+            ]),
+            (ProviderId::new("openrouter"), "deepseek-v4-flash", vec![
+                ReasoningEffort::Low,
+                ReasoningEffort::High,
+                ReasoningEffort::Max,
+            ]),
+            (ProviderId::new("openrouter"), "deepseek-v4-pro", vec![
+                ReasoningEffort::High,
+                ReasoningEffort::XHigh,
+            ]),
+        ];
+
+        for (provider, id, efforts) in expected {
+            let model = catalog
+                .get_on_provider(&provider, id)
+                .unwrap_or_else(|| panic!("{provider}/{id} should be present"));
+            assert!(model.features.reasoning, "{provider}/{id}");
+            assert_eq!(
+                model.features.reasoning_effort,
+                ReasoningEffortFeature::Levels,
+                "{provider}/{id}"
+            );
+            assert_eq!(model.controls.reasoning_effort, efforts, "{provider}/{id}");
+            assert!(!model.features.sampling_params, "{provider}/{id}");
+
+            let settings = catalog
+                .model_settings_on_provider(&provider, id)
+                .unwrap_or_else(|| panic!("{provider}/{id} settings should be present"));
+            assert_eq!(
+                settings.agent_profile,
+                AgentProfileKind::OpenAi,
+                "{provider}/{id}"
+            );
+            assert!(settings.reasoning_by_default, "{provider}/{id}");
+            assert_eq!(
+                settings.controls.reasoning_effort, efforts,
+                "{provider}/{id}"
+            );
+        }
+    }
+
+    #[test]
     fn builtin_openrouter_provider_is_opt_in() {
         let openrouter = ProviderId::new("openrouter");
         let builtin = Catalog::builtin();
@@ -3013,7 +3201,7 @@ enabled = true
         // open-weights rows inherit it.
         assert_eq!(
             catalog
-                .model_settings_on_provider(&openrouter, "claude-sonnet-4-6")
+                .model_settings_on_provider(&openrouter, "claude-sonnet-5")
                 .unwrap()
                 .billing_policy,
             BillingPolicy::Anthropic
@@ -3025,11 +3213,32 @@ enabled = true
                 .billing_policy,
             BillingPolicy::OpenAi
         );
+        let deepseek = catalog
+            .get_on_provider(&openrouter, "deepseek-v4-flash")
+            .expect("DeepSeek V4 Flash should be present on OpenRouter");
+        assert_eq!(deepseek.limits.max_output, Some(384_000));
+        assert!(deepseek.features.prompt_cache);
+        assert_eq!(deepseek.costs.input_cost_per_mtok, Some(0.14));
+        assert_eq!(deepseek.costs.output_cost_per_mtok, Some(0.28));
+        assert_eq!(deepseek.costs.cache_input_cost_per_mtok, Some(0.0028));
+        assert_eq!(
+            catalog.settings_for(deepseek).unwrap().api_id,
+            "deepseek/deepseek-v4-flash-0731"
+        );
+        let deepseek_pro = catalog
+            .get_on_provider(&openrouter, "deepseek-v4-pro")
+            .expect("DeepSeek V4 Pro should be present on OpenRouter");
+        assert_eq!(deepseek_pro.limits.max_output, Some(384_000));
+        assert!(deepseek_pro.features.prompt_cache);
+        assert_eq!(
+            deepseek_pro.costs.cache_input_cost_per_mtok,
+            Some(0.003_625)
+        );
         assert_eq!(
             catalog
                 .default_for_provider(&openrouter)
                 .map(|model| model.id.as_str()),
-            Some("claude-sonnet-4-6")
+            Some("claude-sonnet-5")
         );
     }
 
@@ -3122,6 +3331,19 @@ enabled = true
                 true,
                 BillingPolicy::Anthropic,
             ),
+            (
+                "claude-sonnet-5",
+                "anthropic/claude-sonnet-5",
+                "claude-5",
+                1_000_000,
+                2.0,
+                10.0,
+                0.2,
+                ReasoningEffortFeature::Levels,
+                false,
+                true,
+                BillingPolicy::Anthropic,
+            ),
         ];
 
         for (
@@ -3173,13 +3395,21 @@ enabled = true
                 ReasoningEffort::VARIANTS,
                 "{id}"
             );
+            if family == "claude-5" {
+                assert_eq!(settings.agent_profile, AgentProfileKind::Claude5, "{id}");
+            }
         }
 
-        for alias in ["opus", "claude-opus"] {
+        for (alias, expected) in [
+            ("opus", "claude-opus-5"),
+            ("claude-opus", "claude-opus-5"),
+            ("sonnet", "claude-sonnet-5"),
+            ("claude-sonnet", "claude-sonnet-5"),
+        ] {
             let model = catalog
                 .resolve_on_provider(&ProviderId::new("openrouter"), alias)
                 .unwrap_or_else(|error| panic!("{alias} should resolve on OpenRouter: {error}"));
-            assert_eq!(model.id, "claude-opus-5", "{alias}");
+            assert_eq!(model.id, expected, "{alias}");
         }
     }
 
@@ -3249,8 +3479,8 @@ enabled = true
 
         for (selector, canonical_id) in [
             ("deepseek-v4-pro", "deepseek-v4-pro"),
-            ("deepseek-v4", "deepseek-v4-pro"),
-            ("deepseek", "deepseek-v4-pro"),
+            ("deepseek-v4", "deepseek-v4-flash"),
+            ("deepseek", "deepseek-v4-flash"),
             ("deepseek-v4-flash", "deepseek-v4-flash"),
             ("deepseek-flash", "deepseek-v4-flash"),
         ] {
@@ -3491,6 +3721,292 @@ enabled = true
     }
 
     #[test]
+    fn builtin_openrouter_includes_qwen3_8_max_when_enabled() {
+        let catalog = Catalog::from_builtin_with_overrides(&minimal_settings(
+            r"
+[providers.openrouter]
+enabled = true
+",
+        ))
+        .expect("enabled OpenRouter override should build from the built-in provider settings");
+
+        let model = catalog
+            .get_on_provider(&ProviderId::new("openrouter"), "qwen3.8-max")
+            .expect("OpenRouter Qwen3.8 Max should be present");
+        insta::assert_debug_snapshot!(model, @r#"
+        Model {
+            id: "qwen3.8-max",
+            provider: openrouter,
+            family: "qwen3",
+            display_name: "Qwen3.8 Max",
+            limits: ModelLimits {
+                context_window: 1000000,
+                max_output: Some(
+                    131072,
+                ),
+            },
+            training: None,
+            knowledge_cutoff: None,
+            features: ModelFeatures {
+                tools: true,
+                vision: true,
+                reasoning: true,
+                reasoning_effort: Levels,
+                prompt_cache: true,
+                cache_control_breakpoints: false,
+                sampling_params: true,
+            },
+            controls: ModelControls {
+                reasoning_effort: [
+                    Low,
+                    Medium,
+                    High,
+                    XHigh,
+                ],
+            },
+            costs: ModelCosts {
+                input_cost_per_mtok: Some(
+                    2.0,
+                ),
+                output_cost_per_mtok: Some(
+                    6.0,
+                ),
+                cache_input_cost_per_mtok: Some(
+                    0.25,
+                ),
+            },
+            estimated_output_tps: None,
+            aliases: [],
+            default: false,
+            small_default: false,
+            configured: false,
+        }
+        "#);
+
+        let settings = catalog
+            .model_settings_on_provider(&ProviderId::new("openrouter"), "qwen3.8-max")
+            .expect("OpenRouter Qwen3.8 Max settings should be present");
+        assert_eq!(settings.api_id, "qwen/qwen3.8-max");
+        assert!(settings.reasoning_by_default);
+        assert_eq!(settings.controls.reasoning_effort, vec![
+            ReasoningEffort::Low,
+            ReasoningEffort::Medium,
+            ReasoningEffort::High,
+            ReasoningEffort::XHigh,
+        ]);
+    }
+
+    #[test]
+    fn builtin_modal_provider_is_opt_in() {
+        let modal = ProviderId::new("modal");
+        let builtin = Catalog::builtin();
+
+        assert!(builtin.provider(&modal).is_none());
+        assert!(builtin.list(Some(&modal)).is_empty());
+
+        let catalog = Catalog::from_builtin_with_overrides(&minimal_settings(
+            r"
+[providers.modal]
+enabled = true
+",
+        ))
+        .expect("enabled Modal override should build from the built-in provider settings");
+
+        let provider = catalog
+            .provider(&modal)
+            .expect("enabled Modal provider should be present");
+        assert_eq!(provider.adapter, AdapterKind::OpenAiCompatible);
+        assert_eq!(provider.codec, CodecKind::OpenAiCompatible);
+        assert_eq!(provider.agent_profile, AgentProfileKind::Kimi);
+        assert_eq!(provider.billing_policy, BillingPolicy::OpenAi);
+        assert_eq!(provider.priority, 75);
+        assert!(provider.auth.is_none());
+        assert_eq!(
+            provider.extra_headers,
+            HashMap::from([
+                (
+                    "Modal-Key".to_string(),
+                    "{{ secrets.MODAL_TOKEN_ID }}".to_string(),
+                ),
+                (
+                    "Modal-Secret".to_string(),
+                    "{{ secrets.MODAL_TOKEN_SECRET }}".to_string(),
+                ),
+            ])
+        );
+
+        // Modal assigns the endpoint URL per deployment, so the built-in entry
+        // ships without one and the operator supplies it through settings.
+        assert!(provider.base_url.is_none());
+        let catalog = Catalog::from_builtin_with_overrides(&minimal_settings(
+            r#"
+[providers.modal]
+enabled = true
+base_url = "https://example--kimi-k3.modal.run/v1"
+"#,
+        ))
+        .expect("Modal base URL override should build");
+        assert_eq!(
+            catalog
+                .provider(&modal)
+                .and_then(|provider| provider.base_url.as_deref()),
+            Some("https://example--kimi-k3.modal.run/v1")
+        );
+    }
+
+    #[test]
+    fn builtin_modal_includes_kimi_k3_when_enabled() {
+        let modal = ProviderId::new("modal");
+        let catalog = Catalog::from_builtin_with_overrides(&minimal_settings(
+            r"
+[providers.modal]
+enabled = true
+",
+        ))
+        .expect("enabled Modal override should build from the built-in provider settings");
+
+        assert_eq!(catalog.list(Some(&modal)).len(), 1);
+        let model = catalog
+            .get_on_provider(&modal, "kimi-k3")
+            .expect("Modal Kimi K3 should be present");
+        insta::assert_debug_snapshot!(model, @r#"
+        Model {
+            id: "kimi-k3",
+            provider: modal,
+            family: "kimi-k3",
+            display_name: "Kimi K3 (via Modal)",
+            limits: ModelLimits {
+                context_window: 1048576,
+                max_output: Some(
+                    131072,
+                ),
+            },
+            training: None,
+            knowledge_cutoff: None,
+            features: ModelFeatures {
+                tools: true,
+                vision: true,
+                reasoning: true,
+                reasoning_effort: AlwaysAdaptive,
+                prompt_cache: true,
+                cache_control_breakpoints: false,
+                sampling_params: false,
+            },
+            controls: ModelControls {
+                reasoning_effort: [
+                    Low,
+                    High,
+                    Max,
+                ],
+            },
+            costs: ModelCosts {
+                input_cost_per_mtok: Some(
+                    3.0,
+                ),
+                output_cost_per_mtok: Some(
+                    15.0,
+                ),
+                cache_input_cost_per_mtok: Some(
+                    0.3,
+                ),
+            },
+            estimated_output_tps: Some(
+                460.0,
+            ),
+            aliases: [],
+            default: true,
+            small_default: false,
+            configured: false,
+        }
+        "#);
+
+        let settings = catalog
+            .model_settings_on_provider(&modal, "kimi-k3")
+            .expect("Modal Kimi K3 settings should be present");
+        assert_eq!(settings.api_id, "moonshotai/Kimi-K3");
+        assert_eq!(settings.agent_profile, AgentProfileKind::Kimi);
+        assert_eq!(settings.billing_policy, BillingPolicy::OpenAi);
+        assert_eq!(settings.controls.reasoning_effort, vec![
+            ReasoningEffort::Low,
+            ReasoningEffort::High,
+            ReasoningEffort::Max,
+        ]);
+    }
+
+    #[test]
+    fn builtin_moonshot_provider_prefers_moonshot_api_key() {
+        let moonshot = ProviderId::new("moonshot");
+        let catalog = Catalog::builtin();
+        let provider = catalog
+            .provider(&moonshot)
+            .expect("Moonshot provider should be present");
+
+        assert_eq!(provider.auth.as_ref().unwrap().credentials, vec![
+            CredentialRef::Env("MOONSHOT_API_KEY".to_string()),
+            CredentialRef::Env("KIMI_API_KEY".to_string()),
+            CredentialRef::Vault("MOONSHOT_API_KEY".to_string()),
+            CredentialRef::Vault("KIMI_API_KEY".to_string()),
+        ]);
+        assert_eq!(
+            catalog.provider_vault_secret_name(&moonshot),
+            Some("MOONSHOT_API_KEY")
+        );
+    }
+
+    #[test]
+    fn builtin_kimi_k3_selection_follows_provider_priority() {
+        let moonshot = ProviderId::new("moonshot");
+        let modal = ProviderId::new("modal");
+        let fireworks = ProviderId::new("fireworks");
+        let openrouter = ProviderId::new("openrouter");
+        let catalog = Catalog::from_builtin_with_overrides(&minimal_settings(
+            r"
+[providers.modal]
+enabled = true
+
+[providers.fireworks]
+enabled = true
+
+[providers.openrouter]
+enabled = true
+",
+        ))
+        .expect("enabled Kimi K3 provider overrides should build");
+
+        let selected = catalog
+            .select(
+                "kimi-k3",
+                None,
+                &HashSet::from([
+                    moonshot.clone(),
+                    modal.clone(),
+                    fireworks.clone(),
+                    openrouter.clone(),
+                ]),
+            )
+            .expect("Modal should win portable Kimi K3 selection");
+        assert_eq!(selected.provider, modal);
+
+        let selected = catalog
+            .select(
+                "kimi-k3",
+                None,
+                &HashSet::from([moonshot.clone(), fireworks.clone(), openrouter.clone()]),
+            )
+            .expect("Moonshot should win when Modal is unavailable");
+        assert_eq!(selected.provider, moonshot);
+
+        let selected = catalog
+            .select(
+                "kimi-k3",
+                None,
+                &HashSet::from([fireworks.clone(), openrouter]),
+            )
+            .expect("Fireworks should win when only gateway routes are available");
+        assert_eq!(selected.provider, fireworks);
+    }
+
+    #[test]
     fn builtin_openrouter_includes_poolside_laguna_when_enabled() {
         let catalog = Catalog::from_builtin_with_overrides(&minimal_settings(
             r"
@@ -3602,6 +4118,30 @@ enabled = true
         //  input, output, cache_read)
         let expected = [
             (
+                "kimi-k3",
+                "accounts/fireworks/models/kimi-k3",
+                "kimi-k3",
+                1_048_576,
+                131_072,
+                true,
+                true,
+                3.0,
+                15.0,
+                0.3,
+            ),
+            (
+                "kimi-k3-fast",
+                "accounts/fireworks/routers/kimi-k3-fast",
+                "kimi-k3",
+                1_048_576,
+                131_072,
+                true,
+                true,
+                4.5,
+                22.5,
+                0.45,
+            ),
+            (
                 "kimi-k2.7-code",
                 "accounts/fireworks/models/kimi-k2p7-code",
                 "kimi-k2",
@@ -3642,9 +4182,9 @@ enabled = true
                 "accounts/fireworks/models/deepseek-v4-flash",
                 "deepseek-v4",
                 1_048_576,
-                16_384,
+                384_000,
                 false,
-                false,
+                true,
                 0.14,
                 0.28,
                 0.028,
@@ -3761,10 +4301,36 @@ enabled = true
             assert_eq!(settings.api_id, api_id, "{id}");
             assert_eq!(settings.billing_policy, BillingPolicy::OpenAi, "{id}");
         }
+
+        for id in ["kimi-k3", "kimi-k3-fast"] {
+            let model = catalog
+                .get_on_provider(&fireworks, id)
+                .unwrap_or_else(|| panic!("Fireworks model '{id}' should be present"));
+            assert_eq!(
+                model.features.reasoning_effort,
+                ReasoningEffortFeature::AlwaysAdaptive,
+                "{id}"
+            );
+            assert!(!model.features.sampling_params, "{id}");
+
+            let settings = catalog
+                .model_settings_on_provider(&fireworks, id)
+                .unwrap_or_else(|| panic!("Fireworks settings for '{id}' should be present"));
+            assert_eq!(settings.agent_profile, AgentProfileKind::Kimi, "{id}");
+            assert_eq!(
+                settings.controls.reasoning_effort,
+                [
+                    ReasoningEffort::Low,
+                    ReasoningEffort::Medium,
+                    ReasoningEffort::High,
+                ],
+                "{id}"
+            );
+        }
     }
 
     #[test]
-    fn builtin_fireworks_shared_slugs_are_portable_with_openrouter() {
+    fn builtin_deepseek_shared_slugs_are_portable_across_providers() {
         let catalog = Catalog::from_builtin_with_overrides(&minimal_settings(
             r"
 [providers.fireworks]
@@ -3778,6 +4344,7 @@ enabled = true
 
         for provider in [ProviderId::new("fireworks"), ProviderId::new("openrouter")] {
             for id in [
+                "kimi-k3",
                 "kimi-k2.6",
                 "deepseek-v4-pro",
                 "deepseek-v4-flash",
@@ -3791,6 +4358,43 @@ enabled = true
                 assert_eq!(model.provider, provider, "{provider}/{id}");
             }
         }
+
+        for provider in [
+            ProviderId::new("deepseek"),
+            ProviderId::new("fireworks"),
+            ProviderId::new("openrouter"),
+        ] {
+            for id in ["deepseek-v4-pro", "deepseek-v4-flash"] {
+                let model = catalog
+                    .get_on_provider(&provider, id)
+                    .unwrap_or_else(|| panic!("'{id}' should resolve on provider '{provider}'"));
+                assert_eq!(model.id, id, "{provider}/{id}");
+                assert_eq!(model.provider, provider, "{provider}/{id}");
+                assert_eq!(model.limits.context_window, 1_048_576, "{provider}/{id}");
+            }
+            for alias in ["deepseek", "deepseek-v4", "deepseek-flash"] {
+                let model = catalog
+                    .resolve_on_provider(&provider, alias)
+                    .unwrap_or_else(|error| {
+                        panic!("'{alias}' should resolve on provider '{provider}': {error}")
+                    });
+                assert_eq!(model.id, "deepseek-v4-flash", "{provider}/{alias}");
+                assert_eq!(model.provider, provider, "{provider}/{alias}");
+            }
+        }
+
+        let selected = catalog
+            .select(
+                "deepseek",
+                None,
+                &HashSet::from([
+                    ProviderId::new("deepseek"),
+                    ProviderId::new("fireworks"),
+                    ProviderId::new("openrouter"),
+                ]),
+            )
+            .expect("direct DeepSeek should win portable DeepSeek selection");
+        assert_eq!(selected.provider, ProviderId::new("deepseek"));
     }
 
     #[test]
@@ -3868,7 +4472,7 @@ enabled = true
         let m = Catalog::builtin()
             .default_for_provider(&ProviderId::anthropic())
             .unwrap();
-        assert_eq!(m.id, "claude-sonnet-4-6");
+        assert_eq!(m.id, "claude-sonnet-5");
         assert!(m.default);
 
         let m = Catalog::builtin()
@@ -3953,71 +4557,6 @@ enabled = true
     }
 
     #[test]
-    fn builtin_build_fallback_chain() {
-        let fallbacks = HashMap::from([("anthropic".to_string(), vec![
-            "gemini".to_string(),
-            "openai".to_string(),
-        ])]);
-        let chain = Catalog::builtin().build_fallback_chain(
-            &ProviderId::anthropic(),
-            "claude-opus-4-6",
-            &fallbacks,
-        );
-        assert_eq!(chain.len(), 2);
-        assert_eq!(chain[0].provider, "gemini");
-        assert_eq!(chain[0].model, "gemini-3.1-pro-preview");
-        assert_eq!(chain[1].provider, "openai");
-        assert_eq!(chain[1].model, "gpt-5.5");
-    }
-
-    #[test]
-    fn builtin_build_fallback_chain_unknown_model() {
-        let fallbacks = HashMap::from([("anthropic".to_string(), vec!["gemini".to_string()])]);
-        let chain = Catalog::builtin().build_fallback_chain(
-            &ProviderId::anthropic(),
-            "unknown-xyz",
-            &fallbacks,
-        );
-        assert!(chain.is_empty());
-    }
-
-    #[test]
-    fn builtin_build_fallback_chain_provider_not_in_map() {
-        let fallbacks = HashMap::from([("openai".to_string(), vec!["anthropic".to_string()])]);
-        let chain = Catalog::builtin().build_fallback_chain(
-            &ProviderId::anthropic(),
-            "claude-opus-4-6",
-            &fallbacks,
-        );
-        assert!(chain.is_empty());
-    }
-
-    #[test]
-    fn builtin_build_fallback_chain_skips_no_capability_match() {
-        let fallbacks = HashMap::from([("anthropic".to_string(), vec![
-            "openai".to_string(),
-            "kimi".to_string(),
-        ])]);
-        let chain = Catalog::builtin().build_fallback_chain(
-            &ProviderId::anthropic(),
-            "claude-haiku-4-5",
-            &fallbacks,
-        );
-        assert!(chain.is_empty());
-    }
-
-    #[test]
-    fn builtin_build_fallback_chain_empty_map() {
-        let fallbacks = HashMap::new();
-        let chain = Catalog::builtin().build_fallback_chain(
-            &ProviderId::anthropic(),
-            "claude-opus-4-6",
-            &fallbacks,
-        );
-        assert!(chain.is_empty());
-    }
-
-    #[test]
     fn builtin_catalog_is_loaded_from_provider_toml_settings() {
         let catalog = Catalog::builtin();
 
@@ -4035,7 +4574,7 @@ enabled = true
         );
         assert_eq!(
             catalog
-                .provider(&ProviderId::new("kimi"))
+                .provider(&ProviderId::new("moonshot"))
                 .unwrap()
                 .base_url
                 .as_deref(),
@@ -4094,7 +4633,7 @@ enabled = true
             ("anthropic", CodecKind::AnthropicMessages),
             ("openai", CodecKind::OpenAiResponses),
             ("gemini", CodecKind::GeminiGenerate),
-            ("kimi", CodecKind::OpenAiCompatible),
+            ("moonshot", CodecKind::OpenAiCompatible),
         ] {
             let provider_id = ProviderId::new(provider);
             assert_eq!(catalog.provider(&provider_id).unwrap().codec, expected);
@@ -4241,9 +4780,15 @@ codec = "anthropic_messages"
     }
 
     #[test]
-    fn catalog_from_settings_rejects_duplicate_model_aliases() {
-        let layer = minimal_settings(
-            r#"
+    /// Canonical IDs, aliases, and API IDs share one identifier namespace per
+    /// provider, so a collision in any of them is rejected the same way.
+    fn catalog_from_settings_rejects_duplicate_provider_model_selectors() {
+        for (declaration, expected) in [
+            (r#"aliases = ["shared"]"#, "shared"),
+            (r#"api_id = "vendor/shared""#, "vendor/shared"),
+        ] {
+            let layer = minimal_settings(&format!(
+                r#"
 [providers.test]
 display_name = "Test"
 adapter = "openai"
@@ -4253,7 +4798,7 @@ enabled = true
 [providers.test.models.one]
 display_name = "One"
 family = "test"
-aliases = ["shared"]
+{declaration}
 
 [providers.test.models.one.limits]
 context_window = 1000
@@ -4266,7 +4811,7 @@ reasoning = false
 [providers.test.models.two]
 display_name = "Two"
 family = "test"
-aliases = ["shared"]
+{declaration}
 
 [providers.test.models.two.limits]
 context_window = 1000
@@ -4275,22 +4820,75 @@ context_window = 1000
 tools = false
 vision = false
 reasoning = false
-"#,
-        );
+"#
+            ));
 
-        let err = Catalog::from_settings(&layer).unwrap_err();
+            let err = Catalog::from_settings(&layer).unwrap_err();
+
+            assert!(
+                matches!(
+                    &err,
+                    CatalogBuildError::DuplicateProviderModelSelector {
+                        provider,
+                        selector,
+                        first,
+                        second,
+                    } if provider == &ProviderId::new("test")
+                        && selector == expected
+                        && first == "one"
+                        && second == "two"
+                ),
+                "{declaration}: {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn provider_scoped_lookup_accepts_canonical_alias_and_api_id_selectors() {
+        let catalog = Catalog::from_settings(&minimal_settings(
+            r#"
+[providers.test]
+display_name = "Test"
+adapter = "openai"
+agent_profile = "openai"
+aliases = ["test-alias"]
+
+[providers.test.models.one]
+api_id = "vendor/models/one:latest"
+display_name = "One"
+family = "test"
+aliases = ["one-alias"]
+default = true
+
+[providers.test.models.one.limits]
+context_window = 1000
+
+[providers.test.models.one.features]
+tools = false
+vision = false
+reasoning = false
+"#,
+        ))
+        .expect("provider-scoped selector fixture should build");
+
+        for selector in ["one", "one-alias", "vendor/models/one:latest"] {
+            let model = catalog
+                .resolve_on_provider(&ProviderId::new("test-alias"), selector)
+                .unwrap_or_else(|error| {
+                    panic!("selector '{selector}' should resolve on provider alias: {error}")
+                });
+            assert_eq!(model.provider, ProviderId::new("test"), "{selector}");
+            assert_eq!(model.id, "one", "{selector}");
+        }
 
         assert!(matches!(
-            err,
-            CatalogBuildError::DuplicateProviderModelSelector {
-                provider,
-                selector,
-                first,
-                second,
-            } if provider == ProviderId::new("test")
-                && selector == "shared"
-                && first == "one"
-                && second == "two"
+            catalog.select(
+                "vendor/models/one:latest",
+                None,
+                &HashSet::from([ProviderId::new("test")]),
+            ),
+            Err(ModelSelectionError::UnknownSelector { selector })
+                if selector == "vendor/models/one:latest"
         ));
     }
 
@@ -5064,7 +5662,7 @@ reasoning = false
     }
 
     #[test]
-    fn small_default_for_provider_falls_back_to_provider_default_when_no_small_default_marked() {
+    fn small_default_for_provider_returns_none_when_no_small_default_marked() {
         let layer = minimal_settings(
             r#"
 [providers.test]
@@ -5102,12 +5700,10 @@ reasoning = false
         );
         let catalog = Catalog::from_settings(&layer).unwrap();
 
-        assert_eq!(
+        assert!(
             catalog
                 .small_default_for_provider(&ProviderId::new("test"))
-                .unwrap()
-                .id,
-            "default_model"
+                .is_none()
         );
     }
 
@@ -5258,6 +5854,66 @@ reasoning = false
     }
 
     #[test]
+    fn small_default_for_configured_ids_skips_provider_without_a_small_model() {
+        let layer = minimal_settings(
+            r#"
+[providers.low]
+display_name = "Low"
+adapter = "openai"
+agent_profile = "openai"
+priority = 10
+
+[providers.high]
+display_name = "High"
+adapter = "openai"
+agent_profile = "openai"
+priority = 20
+
+[models.low_small]
+provider = "low"
+display_name = "Low Small"
+family = "test"
+small_default = true
+
+[models.low_small.limits]
+context_window = 1000
+
+[models.low_small.features]
+tools = false
+vision = false
+reasoning = false
+
+[models.high_default]
+provider = "high"
+display_name = "High Default"
+family = "test"
+default = true
+
+[models.high_default.limits]
+context_window = 1000
+
+[models.high_default.features]
+tools = false
+vision = false
+reasoning = false
+"#,
+        );
+        let catalog = Catalog::from_settings(&layer).unwrap();
+
+        // `high` outranks `low` but marks no small default, so selection moves
+        // on rather than substituting `high_default`.
+        assert_eq!(
+            catalog
+                .small_default_for_configured_ids(&[
+                    ProviderId::new("low"),
+                    ProviderId::new("high")
+                ])
+                .id,
+            "low_small"
+        );
+    }
+
+    #[test]
     fn small_default_for_configured_ids_falls_back_to_provider_default() {
         let layer = minimal_settings(
             r#"
@@ -5365,10 +6021,7 @@ small_default = false
         .expect("sparse built-in model override should build");
 
         let openai = ProviderId::openai();
-        assert_eq!(
-            catalog.small_default_for_provider(&openai).unwrap().id,
-            catalog.default_for_provider(&openai).unwrap().id
-        );
+        assert!(catalog.small_default_for_provider(&openai).is_none());
     }
 
     #[test]
@@ -6436,7 +7089,7 @@ sampling_params = false
         insta::assert_debug_snapshot!(m, @r#"
         Model {
             id: "kimi-k2.5",
-            provider: kimi,
+            provider: moonshot,
             family: "kimi-k2",
             display_name: "Kimi K2.5",
             limits: ModelLimits {
@@ -6492,7 +7145,7 @@ sampling_params = false
         insta::assert_debug_snapshot!(m, @r#"
         Model {
             id: "kimi-k3",
-            provider: kimi,
+            provider: moonshot,
             family: "kimi-k3",
             display_name: "Kimi K3",
             limits: ModelLimits {
@@ -6843,11 +7496,11 @@ context_window = 1050000
     }
 
     #[test]
-    fn closest_model_haiku_to_kimi() {
+    fn closest_model_haiku_to_moonshot() {
         let haiku = Catalog::builtin().get("claude-haiku-4-5").unwrap();
         assert!(
             Catalog::builtin()
-                .closest(&ProviderId::new("kimi"), haiku)
+                .closest(&ProviderId::new("moonshot"), haiku)
                 .is_none()
         );
     }

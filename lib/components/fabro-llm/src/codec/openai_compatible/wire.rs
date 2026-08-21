@@ -44,7 +44,7 @@ pub(super) struct ChatMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content:           Option<ChatContent>,
     /// Reasoning/thinking content echoed back for providers that require it
-    /// (Kimi).
+    /// during tool-call continuations (including Kimi and DeepSeek).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -300,8 +300,16 @@ pub(super) struct ApiUsage {
     pub cost: Option<f64>,
     #[serde(default)]
     pub prompt_tokens_details: Option<PromptTokensDetails>,
+    /// DeepSeek-specific top-level count of prompt tokens served from its
+    /// automatic context cache.
+    #[serde(default)]
+    pub prompt_cache_hit_tokens: Option<i64>,
     #[serde(default)]
     pub completion_tokens_details: Option<CompletionTokensDetails>,
+    /// Modal reports reasoning tokens directly on `usage` instead of nesting
+    /// them under `completion_tokens_details`.
+    #[serde(default)]
+    pub reasoning_tokens: Option<i64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -324,11 +332,15 @@ impl ApiUsage {
     /// cache-write detail tokens are subtracted out of `input_tokens`, and
     /// reasoning tokens out of `output_tokens`, mirroring the
     /// `openai_responses` convention.
+    ///
+    /// Nested detail fields win over the flat `prompt_cache_hit_tokens` and
+    /// `reasoning_tokens` spellings that some providers send instead.
     pub(super) fn token_counts(&self) -> TokenCounts {
         let cached_detail = self
             .prompt_tokens_details
             .as_ref()
             .and_then(|d| d.cached_tokens)
+            .or(self.prompt_cache_hit_tokens)
             .unwrap_or(0);
         let cache_write_detail = self
             .prompt_tokens_details
@@ -339,6 +351,7 @@ impl ApiUsage {
             .completion_tokens_details
             .as_ref()
             .and_then(|d| d.reasoning_tokens)
+            .or(self.reasoning_tokens)
             .unwrap_or(0);
         let (uncached_input, cached) =
             split_inclusive_token_total(self.prompt_tokens, cached_detail);
@@ -536,6 +549,61 @@ mod tests {
             reasoning_tokens: 59,
             ..TokenCounts::default()
         });
+    }
+
+    #[test]
+    fn token_counts_accept_deepseek_cache_hit_field() {
+        let usage: ApiUsage = serde_json::from_value(serde_json::json!({
+            "prompt_tokens": 53,
+            "completion_tokens": 11,
+            "prompt_cache_hit_tokens": 41
+        }))
+        .unwrap();
+
+        assert_eq!(usage.token_counts(), TokenCounts {
+            input_tokens: 12,
+            output_tokens: 11,
+            cache_read_tokens: 41,
+            ..TokenCounts::default()
+        });
+    }
+
+    #[test]
+    fn token_counts_accept_modal_reasoning_tokens_field() {
+        let usage: ApiUsage = serde_json::from_value(serde_json::json!({
+            "prompt_tokens": 116,
+            "completion_tokens": 66,
+            "reasoning_tokens": 54
+        }))
+        .unwrap();
+
+        assert_eq!(usage.token_counts(), TokenCounts {
+            input_tokens: 116,
+            output_tokens: 12,
+            reasoning_tokens: 54,
+            ..TokenCounts::default()
+        });
+    }
+
+    #[test]
+    fn token_counts_prefer_nested_reasoning_detail_over_top_level() {
+        let both_spellings: ApiUsage = serde_json::from_value(serde_json::json!({
+            "prompt_tokens": 10,
+            "completion_tokens": 66,
+            "completion_tokens_details": {"reasoning_tokens": 20},
+            "reasoning_tokens": 54
+        }))
+        .unwrap();
+        assert_eq!(both_spellings.token_counts().reasoning_tokens, 20);
+
+        let empty_detail: ApiUsage = serde_json::from_value(serde_json::json!({
+            "prompt_tokens": 10,
+            "completion_tokens": 66,
+            "completion_tokens_details": {},
+            "reasoning_tokens": 54
+        }))
+        .unwrap();
+        assert_eq!(empty_detail.token_counts().reasoning_tokens, 54);
     }
 
     #[test]

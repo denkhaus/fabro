@@ -1,7 +1,7 @@
 openapi: "3.1.0"
 info:
   title: Fabro Run API
-  version: "0.1.0"
+  version: "0.2.0"
   description: HTTP API for managing Fabro workflow run executions.
 
 tags:
@@ -33,6 +33,8 @@ tags:
     description: Internal run details (stages, turns, context, configuration)
   - name: Workflows
     description: Workflow definitions and execution
+  - name: Workflow Versions
+    description: Immutable, content-addressed workflow packages
   - name: Billing
     description: Token counts and billed totals
   - name: Insights
@@ -594,6 +596,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DiagnosticsReport"
+        "504":
+          description: Diagnostics operation timed out
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/openapi.json:
     get:
@@ -1057,6 +1068,69 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Turn is not active for this session
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Workflow Versions ─────────────────────────────────────────────────
+
+  /api/v1/workflow-versions:
+    post:
+      operationId: createWorkflowVersion
+      tags: [Workflow Versions]
+      summary: Create Workflow Version
+      description: >-
+        Validates and stores an immutable workflow package in content-addressed
+        storage. Repeating the same canonical content returns the same identifier.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowVersion"
+      responses:
+        "201":
+          description: Workflow version stored or already present
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateWorkflowVersionResponse"
+        "400":
+          description: Malformed JSON (`invalid_json`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request body exceeds 2 MiB (`workflow_version_too_large`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: >-
+            Invalid workflow content (`workflow_version_invalid`) or an absent,
+            invalid, or non-canonical dependency
+            (`workflow_version_dependency_not_found`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Workflow version storage failed
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -2575,7 +2649,15 @@ paths:
       operationId: createRunPullRequest
       tags: [Runs]
       summary: Create Run Pull Request
-      description: Creates a pull request for a completed run on GitHub and persists the record on the server.
+      description: |
+        Durably requests creation of a pull request for a completed run. The
+        server generates the pull request content and creates the GitHub pull
+        request after this request returns. Poll the URL in the Location
+        response header until the creation succeeds or fails.
+
+        If a creation is already pending for the run, the response returns
+        that creation unchanged; any different `model` or `force` values in
+        the new request are ignored.
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
@@ -2585,12 +2667,23 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateRunPullRequestRequest"
       responses:
-        "200":
-          description: Pull request created
+        "202":
+          description: Pull request creation was durably accepted
+          headers:
+            Location:
+              description: URL for the latest pull request creation on this run.
+              schema:
+                type: string
+                format: uri-reference
+            Retry-After:
+              description: Suggested number of seconds before polling the creation status.
+              schema:
+                type: integer
+                minimum: 0
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PullRequestLink"
+                $ref: "#/components/schemas/PullRequestCreation"
         "400":
           description: Pull request creation does not apply to this run
           headers:
@@ -2613,15 +2706,6 @@ paths:
           description: >-
             Pull request already exists for this run. Clients can GET
             /runs/{id}/pull_request to retrieve the stored record.
-          headers:
-            x-request-id:
-              $ref: "#/components/headers/XRequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "502":
-          description: GitHub rejected the pull request creation request
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -2715,6 +2799,31 @@ paths:
                 $ref: "#/components/schemas/PullRequestResponse"
         "404":
           description: Run or stored pull request record not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/runs/{id}/pull_request/creation:
+    get:
+      operationId: getRunPullRequestCreation
+      tags: [Runs]
+      summary: Get Run Pull Request Creation
+      description: Returns the latest explicit pull request creation requested for this run.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Latest pull request creation state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullRequestCreation"
+        "404":
+          description: Run or pull request creation not found
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -2992,7 +3101,7 @@ paths:
       operationId: writeRunBlob
       tags: [Run Internals]
       summary: Write Run Blob
-      description: Writes an opaque binary blob and returns its content-addressed blob identifier.
+      description: Writes an opaque binary blob and returns its content-addressed blob hash.
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
@@ -3037,15 +3146,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /api/v1/runs/{id}/blobs/{blobId}:
+  /api/v1/runs/{id}/blobs/{blobHash}:
     get:
       operationId: readRunBlob
       tags: [Run Internals]
       summary: Read Run Blob
-      description: Reads a previously stored blob by identifier.
+      description: Reads a previously stored blob by hash.
       parameters:
         - $ref: "#/components/parameters/RunId"
-        - $ref: "#/components/parameters/BlobId"
+        - $ref: "#/components/parameters/BlobHash"
       responses:
         "200":
           description: Blob contents
@@ -3274,6 +3383,53 @@ paths:
                 $ref: "#/components/schemas/RunArtifactListResponse"
         "404":
           description: Run not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/runs/{id}/artifacts/download:
+    get:
+      operationId: downloadRunArtifacts
+      tags: [Run Internals]
+      summary: Download Run Artifacts
+      description: |
+        Streams a ZIP archive with the latest captured version of each artifact path.
+        Stage order, retry number, and then stage ID determine the latest version, matching the artifacts page.
+        Captures from the graph's boundary nodes are excluded, identified by their `start` and `exit` handler type rather than by node name.
+
+        The archive streams, so the response status is sent before the first artifact is read.
+        A failure after that point aborts the transfer rather than returning `500`.
+        The ZIP central directory is written last, so a truncated download does not open as a valid archive.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: ZIP archive containing the latest artifact files
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the ZIP archive
+              schema:
+                type: string
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Run not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Artifact archive could not be prepared
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -5827,14 +5983,13 @@ components:
         default: 65536
       example: 65536
 
-    BlobId:
-      name: blobId
+    BlobHash:
+      name: blobHash
       in: path
       required: true
-      description: Content-addressed blob identifier.
+      description: Content-addressed blob hash.
       schema:
-        type: string
-        pattern: '^[0-9a-f]{64}$'
+        $ref: "#/components/schemas/BlobHash"
       example: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
 
     ArtifactFilename:
@@ -7941,8 +8096,13 @@ components:
         model:
           type: string
           description: |
-            Catalog model ID or alias. The server selects among ready
-            providers and stores the canonical model ID.
+            Catalog model ID or alias, optionally qualified as
+            `provider:selector`. A provider-qualified selector may be a
+            canonical model ID, alias, or provider API ID. A value counts as
+            qualified only when the text before the first `:` names a known
+            provider, so model IDs containing a colon stay whole. Legacy
+            `provider/model` references remain accepted. The server stores the
+            canonical model ID.
         provider:
           $ref: "#/components/schemas/ProviderId"
           description: Optional provider pin. Provider-qualified model references remain accepted for compatibility.
@@ -8894,6 +9054,7 @@ components:
       type: string
       enum:
         - workflow_error
+        - publish_failed
         - cancelled
         - approval_denied
         - terminated
@@ -8986,6 +9147,73 @@ components:
         detail:
           $ref: "#/components/schemas/FailureDetail"
 
+    WorkflowPath:
+      description: >-
+        Canonical portable path inside one workflow version. Paths are UTF-8,
+        relative, at most 240 bytes and 16 components, and cannot contain empty,
+        dot, parent, backslash, control, tilde-root, or drive-letter segments.
+        Map keys receive stricter byte and structural validation in the domain
+        model than OpenAPI can express.
+      type: string
+      minLength: 1
+      maxLength: 240
+      example: graphs/main.fabro
+
+    WorkflowVersionId:
+      description: >-
+        SHA-256 identity of validated canonical workflow-version bytes. Hex input is
+        case-insensitive; Fabro emits the canonical lowercase form.
+      type: string
+      pattern: "^[0-9A-Fa-f]{64}$"
+      example: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+    WorkflowVersion:
+      description: >-
+        Complete immutable package for one rooted workflow. It contains at most
+        512 files and 512 workflow dependencies, each file is at most 512 KiB
+        of UTF-8 content, and its compact canonical JSON representation is at
+        most 2 MiB.
+      type: object
+      additionalProperties: false
+      required:
+        - entrypoint
+        - files
+        - workflow_dependencies
+      properties:
+        entrypoint:
+          $ref: "#/components/schemas/WorkflowPath"
+        files:
+          type: object
+          description: >-
+            Workflow-local text files keyed by canonical path. Keys receive
+            stricter domain validation than OpenAPI can express; each value is
+            limited to 512 KiB of UTF-8 bytes.
+          maxProperties: 512
+          propertyNames:
+            $ref: "#/components/schemas/WorkflowPath"
+          additionalProperties:
+            type: string
+        workflow_dependencies:
+          type: object
+          description: >-
+            Exact stored workflow-version IDs keyed by resolved child-workflow
+            path. Keys receive stricter domain validation than OpenAPI can express.
+          maxProperties: 512
+          propertyNames:
+            $ref: "#/components/schemas/WorkflowPath"
+          additionalProperties:
+            $ref: "#/components/schemas/WorkflowVersionId"
+
+    CreateWorkflowVersionResponse:
+      description: Identity of the stored immutable workflow version.
+      type: object
+      additionalProperties: false
+      required:
+        - workflow_version_id
+      properties:
+        workflow_version_id:
+          $ref: "#/components/schemas/WorkflowVersionId"
+
     RunManifest:
       description: Self-contained workflow run manifest.
       type: object
@@ -8999,10 +9227,6 @@ components:
           type: integer
           description: Manifest schema version.
           example: 1
-        run_id:
-          type: ["string", "null"]
-          description: Optional pre-generated run ID to use instead of allocating a new ULID.
-          example: "01HV6D7S5YF4Z4B2M7K4N0Q6T9"
         parent_id:
           type: ["string", "null"]
           description: Optional orchestration parent run ID. Fork and rewind lineage use separate fields and should not set this value.
@@ -9040,7 +9264,6 @@ components:
         - origin_url
         - branch
         - dirty
-        - push_outcome
       properties:
         origin_url:
           type: string
@@ -9056,99 +9279,9 @@ components:
           example: abc123def
         dirty:
           $ref: "#/components/schemas/DirtyStatus"
-        push_outcome:
-          $ref: "#/components/schemas/PreRunPushOutcome"
-
-    PreRunPushOutcome:
-      description: Outcome of the CLI's best-effort pre-run push.
-      oneOf:
-        - $ref: "#/components/schemas/PreRunPushOutcomeNotAttempted"
-        - $ref: "#/components/schemas/PreRunPushOutcomeSucceeded"
-        - $ref: "#/components/schemas/PreRunPushOutcomeFailed"
-        - $ref: "#/components/schemas/PreRunPushOutcomeSkippedNoRemote"
-        - $ref: "#/components/schemas/PreRunPushOutcomeSkippedRemoteMismatch"
-      discriminator:
-        propertyName: type
-        mapping:
-          not_attempted: "#/components/schemas/PreRunPushOutcomeNotAttempted"
-          succeeded: "#/components/schemas/PreRunPushOutcomeSucceeded"
-          failed: "#/components/schemas/PreRunPushOutcomeFailed"
-          skipped_no_remote: "#/components/schemas/PreRunPushOutcomeSkippedNoRemote"
-          skipped_remote_mismatch: "#/components/schemas/PreRunPushOutcomeSkippedRemoteMismatch"
-
-    PreRunPushOutcomeNotAttempted:
-      type: object
-      required:
-        - type
-      properties:
-        type:
-          type: string
-          enum:
-            - not_attempted
-
-    PreRunPushOutcomeSucceeded:
-      type: object
-      required:
-        - type
-        - remote
-        - branch
-      properties:
-        type:
-          type: string
-          enum:
-            - succeeded
-        remote:
-          type: string
-        branch:
-          type: string
-
-    PreRunPushOutcomeFailed:
-      type: object
-      required:
-        - type
-        - remote
-        - branch
-        - message
-      properties:
-        type:
-          type: string
-          enum:
-            - failed
-        remote:
-          type: string
-        branch:
-          type: string
-        message:
-          type: string
-
-    PreRunPushOutcomeSkippedNoRemote:
-      type: object
-      required:
-        - type
-      properties:
-        type:
-          type: string
-          enum:
-            - skipped_no_remote
-
-    PreRunPushOutcomeSkippedRemoteMismatch:
-      type: object
-      required:
-        - type
-        - remote
-        - repo_origin_url
-      properties:
-        type:
-          type: string
-          enum:
-            - skipped_remote_mismatch
-        remote:
-          type: string
-        repo_origin_url:
-          type: string
 
     ManifestGoal:
-      description: Resolved goal with provenance.
+      description: Resolved goal kind and content.
       type: object
       required:
         - type
@@ -9163,9 +9296,6 @@ components:
         text:
           type: string
           description: Resolved goal content.
-        path:
-          type: ["string", "null"]
-          description: Original goal file path when the goal came from a file.
 
     ManifestArgs:
       description: Sparse command-local args that affect run settings.
@@ -9178,9 +9308,6 @@ components:
         environment:
           type: string
           description: Named environment slug to select for the run.
-        docker_image:
-          type: string
-          description: Per-run environment image override.
         verbose:
           type: boolean
         dry_run:
@@ -9202,13 +9329,8 @@ components:
     ManifestTarget:
       type: object
       required:
-        - identifier
         - path
       properties:
-        identifier:
-          type: string
-          description: What the user typed.
-          example: smoke
         path:
           type: string
           description: Resolved path that keys into the workflows map.
@@ -9597,6 +9719,11 @@ components:
           type: ["string", "null"]
           description: Optional contextual text shown alongside the question.
           example: Latest draft
+        review_target:
+          description: Optional validated external resource that is the primary subject of this review question.
+          oneOf:
+            - $ref: "#/components/schemas/ReviewTarget"
+            - type: "null"
 
     QuestionType:
       description: The interaction type of a human-in-the-loop question.
@@ -9951,10 +10078,9 @@ components:
             Durable identity of one execution of a parallel node, formatted as
             "{node_id}@{visit}".
         parallel_branch_id:
-          type: ["string", "null"]
-          description: >
-            Durable identity of one branch within a parallel execution,
-            formatted as "{parallel_group_id}:{index}".
+          oneOf:
+            - $ref: "#/components/schemas/ParallelBranchId"
+            - type: "null"
         session_id:
           type: ["string", "null"]
         parent_session_id:
@@ -10167,16 +10293,22 @@ components:
           description: Assigned event sequence number.
           example: 42
 
+    BlobHash:
+      description: >-
+        Content-addressed SHA-256 hash of a stored blob. Hex input is case-insensitive;
+        Fabro emits the canonical lowercase form.
+      type: string
+      pattern: "^[0-9A-Fa-f]{64}$"
+      example: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+
     WriteBlobResponse:
-      description: Content-addressed identifier for a stored blob.
+      description: Content-addressed hash of a stored blob.
       type: object
       required:
-        - id
+        - hash
       properties:
-        id:
-          type: string
-          description: Blob identifier.
-          example: 550e8400-e29b-41d4-a716-446655440000
+        hash:
+          $ref: "#/components/schemas/BlobHash"
 
     CommandTermination:
       description: Terminal state for a command execution.
@@ -10285,7 +10417,7 @@ components:
           example: src/lib.rs
         sha256:
           type: ["string", "null"]
-          description: Optional lowercase hex SHA-256 checksum for the file contents.
+          description: Optional SHA-256 checksum for the file contents; hex input is case-insensitive.
           example: 3f785df4c5b7d3f1f4c1f0ecb0f55f1d9f6f6a3d9f0a8a98f7a74f29d1f81a2c
         expected_bytes:
           type: ["integer", "null"]
@@ -10607,6 +10739,17 @@ components:
       properties:
         id:
           type: string
+        index:
+          type: integer
+          minimum: 0
+          description: >-
+            Zero-based input item or outgoing-edge position. Absent only on
+            parallel results written before indexed branch identity was added.
+        item_label:
+          type: string
+          description: >-
+            Human-readable for_each item identity, derived from name, then
+            label, then the zero-based input index.
         status:
           $ref: "#/components/schemas/StageOutcome"
         context_updates:
@@ -10652,6 +10795,10 @@ components:
           items:
             $ref: "#/components/schemas/ParallelBranchResult"
           description: Ordered per-branch results produced by a parallel stage.
+        parallel_branch_id:
+          oneOf:
+            - $ref: "#/components/schemas/ParallelBranchId"
+            - type: "null"
         output:
           type: ["string", "null"]
         output_bytes:
@@ -10673,7 +10820,38 @@ components:
             - type: "null"
           description: |
             Per-attempt timing breakdown for the latest terminal attempt:
-            wall time plus the active inference/tool breakdown.
+            wall time plus the active inference/tool breakdown. Null while the
+            stage is still in flight; the live estimate is derived from
+            `live_inference_ms`, `live_tool_ms`, and any open bracket.
+        live_inference_ms:
+          type: integer
+          format: uint64
+          minimum: 0
+          default: 0
+          description: |
+            Inference time accumulated from closed brackets during the current
+            attempt. Live estimate only — the authoritative value arrives with
+            the terminal event and lands in `timing`. Excludes the currently
+            open bracket, whose span is measured from `inference.started_at`.
+          example: 78230
+        live_tool_ms:
+          type: integer
+          format: uint64
+          minimum: 0
+          default: 0
+          description: |
+            Tool time accumulated from closed tool batches during the current
+            attempt. A batch spans the first dispatched call through the
+            completion that drains the last outstanding one, so tools running
+            concurrently within a turn are counted once.
+          example: 7588
+        tool_batch:
+          oneOf:
+            - $ref: "#/components/schemas/StageToolBatchProjection"
+            - type: "null"
+          description: |
+            Open tool batch: when the batch started and which calls have not
+            yet reported completion.
         usage:
           $ref: "#/components/schemas/BilledTokenCounts"
         model:
@@ -10727,12 +10905,50 @@ components:
             Open inference bracket, if the event log contains one. Present means
             a model request was dispatched and no closing event has been seen —
             not that the model is computing right now.
+        acp_started_at:
+          type: ["string", "null"]
+          format: date-time
+          description: >
+            Start of an external ACP agent process, if one is running. ACP
+            agents do not expose Fabro's internal LLM brackets, so the process
+            lifetime supplies their live inference estimate.
         agent_control:
           $ref: "#/components/schemas/AgentControlState"
           description: Whether the agent is executing normally or waiting for steering after an interrupt.
         state:
           $ref: "#/components/schemas/StageState"
           description: Lifecycle state of the stage projection.
+
+    StageToolBatchProjection:
+      description: >
+        One open tool batch: tool calls dispatched together that have not all
+        reported completion. `open_call_ids` is a set rather than a count so a
+        duplicated completion in a replayed log cannot drain the batch early.
+      type: object
+      required:
+        - session_id
+        - started_at
+        - open_call_ids
+      properties:
+        session_id:
+          type: string
+          description: >
+            Root agent session that dispatched the batch. Transitions are
+            gated on it so delayed events from a replaced session cannot
+            mutate the current batch.
+        started_at:
+          type: string
+          format: date-time
+          description: >
+            When the batch opened — the first dispatched call observed while no
+            other calls were outstanding.
+        open_call_ids:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+          description: Calls dispatched but not yet completed, by tool call id.
 
     StageInferenceProjection:
       description: >
@@ -11102,6 +11318,36 @@ components:
           type: ["string", "null"]
           description: Optional untrusted model-authored option preview captured for clients.
 
+    ReviewTargetKind:
+      description: The type of resource presented for human review.
+      type: string
+      enum:
+        - document
+
+    ReviewTarget:
+      description: A validated external resource presented as the primary subject of a human review question.
+      type: object
+      required:
+        - label
+        - url
+        - kind
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Human-readable link label.
+          example: Quarry review exercise
+        url:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 2048
+          description: Absolute HTTP or HTTPS URL opened by the reviewer.
+          example: https://quarry.lithos.computer/tmp/0123456789abcdef0123456789abcdef
+        kind:
+          $ref: "#/components/schemas/ReviewTargetKind"
+
     InterviewQuestionRecord:
       description: Storage shape of an interview question recorded in the event log.
       type: object
@@ -11131,6 +11377,10 @@ components:
           format: double
         context_display:
           type: ["string", "null"]
+        review_target:
+          oneOf:
+            - $ref: "#/components/schemas/ReviewTarget"
+            - type: "null"
 
     PendingInterviewRecord:
       description: Pending interview question plus the time it entered the unresolved set.
@@ -11184,6 +11434,11 @@ components:
           type: ["string", "null"]
         workflow_slug:
           type: ["string", "null"]
+        workflow_version_id:
+          description: Exact immutable root workflow version from which the run was admitted, when applicable.
+          oneOf:
+            - $ref: "#/components/schemas/WorkflowVersionId"
+            - type: "null"
         automation:
           oneOf:
             - $ref: "#/components/schemas/AutomationRef"
@@ -11199,6 +11454,8 @@ components:
         manifest_blob:
           type: ["string", "null"]
         definition_blob:
+          type: ["string", "null"]
+        spec_blob:
           type: ["string", "null"]
         git:
           oneOf:
@@ -11368,6 +11625,10 @@ components:
         pull_request:
           oneOf:
             - $ref: "#/components/schemas/PullRequestLink"
+            - type: "null"
+        pull_request_creation:
+          oneOf:
+            - $ref: "#/components/schemas/PullRequestCreation"
             - type: "null"
         superseded_by:
           type: ["string", "null"]
@@ -12175,6 +12436,53 @@ components:
           description: Optional model override for generating the pull request description.
           example: claude-sonnet-4-6
 
+    PullRequestCreationId:
+      description: Stable identifier for one explicit pull request creation request.
+      type: string
+      example: 01KYYK70WTZT2E551P3H5P0059
+
+    PullRequestCreationStatus:
+      description: Durable state of a pull request creation request.
+      type: string
+      enum:
+        - pending
+        - succeeded
+        - failed
+
+    PullRequestCreation:
+      description: Durable status for the latest explicit pull request creation requested for a run.
+      type: object
+      required:
+        - id
+        - status
+        - model
+        - force
+        - requested_at
+        - updated_at
+      properties:
+        id:
+          $ref: "#/components/schemas/PullRequestCreationId"
+        status:
+          $ref: "#/components/schemas/PullRequestCreationStatus"
+        model:
+          type: string
+          description: Resolved model identifier used to generate the pull request content.
+        force:
+          type: boolean
+          description: Whether creation was allowed for a run without a successful conclusion.
+        requested_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        pull_request:
+          oneOf:
+            - $ref: "#/components/schemas/PullRequestLink"
+            - type: "null"
+        error:
+          type: ["string", "null"]
+
     LinkRunPullRequestRequest:
       description: Request body for linking an existing GitHub pull request to a run.
       type: object
@@ -12244,9 +12552,17 @@ components:
         observed LLM request/stream elapsed time; `tool_time_ms` is tool or
         command execution elapsed time; `active_time_ms` equals
         `inference_time_ms + tool_time_ms`.
+
+        For a terminal stage these come from the worker's own stopwatch and are
+        authoritative. For a stage still in flight they are a live estimate
+        reconstructed from the event log, and `active_time_ms` is clamped to
+        `wall_time_ms`. The estimate is replaced by the authoritative
+        breakdown when the stage reaches a terminal event.
       type: object
       required:
         - wall_time_ms
+        - inference_time_ms
+        - tool_time_ms
         - active_time_ms
       properties:
         wall_time_ms:
@@ -12278,9 +12594,16 @@ components:
         Timing rollup for an entire run. Active fields sum work across stage
         visits, so `active_time_ms` can exceed `wall_time_ms` when parallel
         branches run concurrently.
+
+        For a running run, stages still in flight contribute a live estimate
+        rather than nothing, so wall and active both advance continuously.
+        Unlike `StageTiming`, active is not clamped to wall here — concurrent
+        branches can legitimately sum past run wall time.
       type: object
       required:
         - wall_time_ms
+        - inference_time_ms
+        - tool_time_ms
         - active_time_ms
       properties:
         wall_time_ms:
@@ -12570,6 +12893,13 @@ components:
       type: string
       example: verify@2
 
+    ParallelBranchId:
+      description: >-
+        Durable identity of one branch within a parallel execution, in
+        `{parallel_group_id}:{index}` form.
+      type: string
+      example: review_fork@3:1
+
     StageState:
       description: Lifecycle projection state of a workflow stage.
       type: string
@@ -12609,6 +12939,7 @@ components:
         - status
         - node_id
         - visit
+        - billing
       properties:
         id:
           $ref: "#/components/schemas/StageId"
@@ -12658,6 +12989,22 @@ components:
             StageId of the prior post-checkpoint execution superseded by this
             replay after the run was resumed.
           example: verify@1
+        parallel_group_id:
+          allOf:
+            - $ref: "#/components/schemas/StageId"
+          description: >-
+            Exact StageId of the parent parallel execution. Clients can compare
+            this directly with the `id` of a parallel stage. Omitted for stages
+            that are not parallel branches.
+          example: review_fork@1
+        parallel_branch_index:
+          type: integer
+          format: uint32
+          minimum: 0
+          description: >-
+            Zero-based outgoing-edge index within the parent parallel
+            execution. Omitted for stages that are not parallel branches.
+          example: 1
         provider_used:
           oneOf:
             - $ref: "#/components/schemas/StageModelUsage"
@@ -12668,6 +13015,15 @@ components:
           format: date-time
           description: Wall-clock time the latest attempt of this stage started, if known.
           example: "2026-04-29T12:34:56Z"
+        billing:
+          $ref: "#/components/schemas/BilledTokenCounts"
+          description: >-
+            Token counts for this stage execution alone. `total_usd_micros` is
+            the provider-reported cost when there is one, otherwise the server
+            catalog's price for these tokens — the same pricing the
+            `/runs/{id}/billing` rows use. All-zero counts mean the stage made
+            no model calls. Unlike the billing rows, which sum every visit of a
+            node, this covers only this visit.
 
     # ── File Diff Schemas ──────────────────────────────────────────────
 
@@ -13961,7 +14317,7 @@ components:
           $ref: "#/components/schemas/RunNamespace"
 
     InterpString:
-      description: Resolved config string that may contain env interpolation tokens.
+      description: Config string that can contain typed interpolation tokens.
       type: string
 
     StringMap:
@@ -14119,6 +14475,16 @@ components:
 
     ModelRef:
       type: string
+      description: |
+        A fallback model reference. Bare values name a provider, canonical
+        model ID, or alias. Provider-qualified values use
+        `provider:selector`; the selector may be a canonical model ID, alias,
+        or provider API ID and may contain `/` or additional colons. A value
+        is treated as qualified only when the text before the first `:` names
+        a known provider, so model IDs that contain a colon — ollama
+        `name:tag` values, Bedrock inference-profile IDs — stay whole. Legacy
+        `provider/model` references remain accepted.
+      example: openrouter:moonshotai/kimi-k3
 
     RunModelSettings:
       type: object
@@ -14129,9 +14495,29 @@ components:
         name:
           type: ["string", "null"]
         fallbacks:
-          type: array
-          items:
-            $ref: "#/components/schemas/ModelRef"
+          type: object
+          description: >
+            Ordered fallback targets keyed by the originally requested model.
+            Each chain is independent; selecting a fallback target does not
+            activate that target model's own chain.
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/ModelRef"
+        controls:
+          $ref: "#/components/schemas/RunModelControls"
+
+    RunModelControls:
+      type: object
+      description: >
+        Run-level default values for typed model controls. Node and style
+        attributes still win over these defaults.
+      required: [reasoning_effort, speed]
+      properties:
+        reasoning_effort:
+          type: ["string", "null"]
+        speed:
+          type: ["string", "null"]
 
     RunGitSettings:
       type: object
@@ -14169,7 +14555,7 @@ components:
         script-vs-argv distinction via the `type` discriminator: a `script`
         is a raw shell snippet kept verbatim, while a `command` is an argv
         whose elements are shell-quoted and joined at the run boundary (after
-        `{{ env.* }}` resolution) so an interpolated value cannot inject shell
+        `{{ secrets.* }}` resolution) so an interpolated value cannot inject shell
         syntax. Optional per-step `env` is shared by both shapes.
       type: object
       required: [type]
@@ -14441,20 +14827,14 @@ components:
 
     RunAgentSettings:
       type: object
-      required: [permissions, mcps]
+      required: [fabro_tools, mcps]
       properties:
-        permissions:
-          oneOf:
-            - $ref: "#/components/schemas/AgentPermissions"
-            - type: "null"
+        fabro_tools:
+          type: boolean
         mcps:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/McpServerSettings"
-
-    AgentPermissions:
-      type: string
-      enum: [read-only, read-write, full]
 
     McpServerSettings:
       type: object
@@ -14574,17 +14954,9 @@ components:
             - type: "null"
           description: >-
             Optional HTTP headers for an http hook. Values support
-            `{{ env.NAME }}` interpolation, scoped to the names listed in
-            `allowed_env_vars`; a token for any other env var fails to resolve
-            and the hook blocks (fail-closed).
-        allowed_env_vars:
-          type: array
-          items:
-            type: string
-          description: >-
-            Allowlist of environment variable names that an http hook header may
-            read via `{{ env.NAME }}`. An empty list (the default) permits no env
-            vars in headers.
+            `{{ vars.NAME }}` interpolation, substituted when the run is
+            created; a token left unresolved at fire time blocks the hook
+            (fail-closed).
         tls:
           $ref: "#/components/schemas/TlsMode"
         prompt:

@@ -2,7 +2,9 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
 use fabro_llm::Error as LlmError;
-use fabro_llm::types::{ContentPart, ThinkingData, TokenCounts, ToolCall, ToolResult};
+use fabro_llm::types::{
+    ContentPart, Message as LlmMessage, Role, ThinkingData, TokenCounts, ToolCall, ToolResult,
+};
 use fabro_model::{CostSource, ModelRef};
 use fabro_types::{
     CommandTermination, ExecOutputTail, LlmOutputKind, LlmRetryPhase, ReasoningOutput,
@@ -91,6 +93,61 @@ impl Message {
             }) => Some(text.as_str()),
             _ => None,
         })
+    }
+
+    /// Convert this turn into the wire message sent to the provider. Durable
+    /// history and round-staged turns must share this conversion so a staged
+    /// turn produces the same wire shape it will have once committed.
+    #[must_use]
+    pub fn to_llm_message(&self) -> LlmMessage {
+        match self {
+            Self::User { content, .. } => LlmMessage::user(content),
+            Self::Assistant {
+                content,
+                tool_calls,
+                provider_parts,
+                ..
+            } => {
+                let mut parts: Vec<ContentPart> = Vec::new();
+                // Provider-specific opaque parts (e.g. OpenAI reasoning items,
+                // Anthropic thinking blocks with signatures) must precede
+                // function calls for correct round-tripping.
+                parts.extend(provider_parts.iter().cloned());
+                if !content.is_empty() {
+                    parts.push(ContentPart::text(content));
+                }
+                for tc in tool_calls {
+                    parts.push(ContentPart::ToolCall(tc.clone()));
+                }
+                LlmMessage {
+                    role:         Role::Assistant,
+                    content:      parts,
+                    name:         None,
+                    tool_call_id: None,
+                }
+            }
+            Self::ToolResults { results, .. } => {
+                let content: Vec<ContentPart> = results
+                    .iter()
+                    .map(|r| ContentPart::ToolResult(r.clone()))
+                    .collect();
+                // Use the first result's tool_call_id if available
+                let tool_call_id = results.first().map(|r| r.tool_call_id.clone());
+                LlmMessage {
+                    role: Role::Tool,
+                    content,
+                    name: None,
+                    tool_call_id,
+                }
+            }
+            Self::System { content, .. } => LlmMessage::system(content),
+            Self::Steering { content, .. } => LlmMessage {
+                role:         Role::User,
+                content:      vec![ContentPart::text(content)],
+                name:         None,
+                tool_call_id: None,
+            },
+        }
     }
 
     #[must_use]
@@ -352,24 +409,38 @@ pub enum AgentEvent {
         phase:      LlmRetryPhase,
     },
     SubAgentSpawned {
-        agent_id: String,
-        depth:    usize,
-        task:     String,
+        agent_id:   String,
+        depth:      usize,
+        task:       String,
+        #[serde(default = "fabro_types::initial_subagent_generation")]
+        generation: u64,
+    },
+    SubAgentTurnStarted {
+        agent_id:   String,
+        depth:      usize,
+        task:       String,
+        generation: u64,
     },
     SubAgentCompleted {
         agent_id:   String,
         depth:      usize,
+        #[serde(default = "fabro_types::initial_subagent_generation")]
+        generation: u64,
         success:    bool,
         turns_used: usize,
     },
     SubAgentFailed {
-        agent_id: String,
-        depth:    usize,
-        error:    Error,
+        agent_id:   String,
+        depth:      usize,
+        #[serde(default = "fabro_types::initial_subagent_generation")]
+        generation: u64,
+        error:      Error,
     },
     SubAgentClosed {
-        agent_id: String,
-        depth:    usize,
+        agent_id:   String,
+        depth:      usize,
+        #[serde(default = "fabro_types::initial_subagent_generation")]
+        generation: u64,
     },
     McpServerReady {
         server_name: String,
@@ -586,35 +657,57 @@ impl AgentEvent {
                 agent_id,
                 depth,
                 task,
+                generation,
             } => {
-                debug!(session_id, agent_id, depth, task, "Sub-agent spawned");
+                debug!(
+                    session_id,
+                    agent_id, depth, generation, task, "Sub-agent spawned"
+                );
+            }
+            Self::SubAgentTurnStarted {
+                agent_id,
+                depth,
+                task,
+                generation,
+            } => {
+                debug!(
+                    session_id,
+                    agent_id, depth, generation, task, "Sub-agent turn started"
+                );
             }
             Self::SubAgentCompleted {
                 agent_id,
                 depth,
+                generation,
                 success,
                 turns_used,
             } => {
                 debug!(
                     session_id,
-                    agent_id, depth, success, turns_used, "Sub-agent completed"
+                    agent_id, depth, generation, success, turns_used, "Sub-agent completed"
                 );
             }
             Self::SubAgentFailed {
                 agent_id,
                 depth,
+                generation,
                 error,
             } => {
                 warn!(
                     session_id,
                     agent_id,
                     depth,
+                    generation,
                     error = %error,
                     "Sub-agent failed"
                 );
             }
-            Self::SubAgentClosed { agent_id, depth } => {
-                debug!(session_id, agent_id, depth, "Sub-agent closed");
+            Self::SubAgentClosed {
+                agent_id,
+                depth,
+                generation,
+            } => {
+                debug!(session_id, agent_id, depth, generation, "Sub-agent closed");
             }
             Self::McpServerReady {
                 server_name,
@@ -765,9 +858,10 @@ mod tests {
     #[test]
     fn subagent_spawned_constructible() {
         let event = AgentEvent::SubAgentSpawned {
-            agent_id: "sa-1".into(),
-            depth:    1,
-            task:     "list files".into(),
+            agent_id:   "sa-1".into(),
+            depth:      1,
+            task:       "list files".into(),
+            generation: 1,
         };
         assert!(matches!(event, AgentEvent::SubAgentSpawned {
             depth: 1,
@@ -780,6 +874,7 @@ mod tests {
         let event = AgentEvent::SubAgentCompleted {
             agent_id:   "sa-1".into(),
             depth:      1,
+            generation: 1,
             success:    true,
             turns_used: 5,
         };
@@ -793,9 +888,10 @@ mod tests {
     #[test]
     fn subagent_failed_constructible() {
         let event = AgentEvent::SubAgentFailed {
-            agent_id: "sa-1".into(),
-            depth:    0,
-            error:    Error::ToolExecution("timeout".into()),
+            agent_id:   "sa-1".into(),
+            depth:      0,
+            generation: 1,
+            error:      Error::ToolExecution("timeout".into()),
         };
         assert!(matches!(event, AgentEvent::SubAgentFailed { depth: 0, .. }));
     }
@@ -803,8 +899,9 @@ mod tests {
     #[test]
     fn subagent_closed_constructible() {
         let event = AgentEvent::SubAgentClosed {
-            agent_id: "sa-1".into(),
-            depth:    2,
+            agent_id:   "sa-1".into(),
+            depth:      2,
+            generation: 1,
         };
         assert!(matches!(event, AgentEvent::SubAgentClosed { depth: 2, .. }));
     }
@@ -813,29 +910,52 @@ mod tests {
     fn subagent_events_serde_round_trip() {
         let events = vec![
             AgentEvent::SubAgentSpawned {
-                agent_id: "sa-1".into(),
-                depth:    0,
-                task:     "test".into(),
+                agent_id:   "sa-1".into(),
+                depth:      0,
+                task:       "test".into(),
+                generation: 1,
+            },
+            AgentEvent::SubAgentTurnStarted {
+                agent_id:   "sa-1".into(),
+                depth:      0,
+                task:       "fix it".into(),
+                generation: 2,
             },
             AgentEvent::SubAgentCompleted {
                 agent_id:   "sa-1".into(),
                 depth:      0,
+                generation: 2,
                 success:    true,
                 turns_used: 3,
             },
             AgentEvent::SubAgentFailed {
-                agent_id: "sa-1".into(),
-                depth:    0,
-                error:    Error::ToolExecution("oops".into()),
+                agent_id:   "sa-1".into(),
+                depth:      0,
+                generation: 2,
+                error:      Error::ToolExecution("oops".into()),
             },
             AgentEvent::SubAgentClosed {
-                agent_id: "sa-1".into(),
-                depth:    0,
+                agent_id:   "sa-1".into(),
+                depth:      0,
+                generation: 2,
             },
         ];
         let json = serde_json::to_string(&events).unwrap();
         let deserialized: Vec<AgentEvent> = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.len(), 4);
+        assert_eq!(deserialized.len(), 5);
+    }
+
+    #[test]
+    fn legacy_subagent_event_defaults_to_the_initial_generation() {
+        let event: AgentEvent = serde_json::from_str(
+            r#"{"SubAgentSpawned":{"agent_id":"sa-1","depth":0,"task":"test"}}"#,
+        )
+        .unwrap();
+
+        assert!(matches!(event, AgentEvent::SubAgentSpawned {
+            generation: 1,
+            ..
+        }));
     }
 
     #[test]
@@ -1054,9 +1174,10 @@ mod tests {
     #[test]
     fn subagent_failed_carries_agent_error() {
         let event = AgentEvent::SubAgentFailed {
-            agent_id: "sa-1".into(),
-            depth:    0,
-            error:    Error::ToolExecution("cmd failed".into()),
+            agent_id:   "sa-1".into(),
+            depth:      0,
+            generation: 1,
+            error:      Error::ToolExecution("cmd failed".into()),
         };
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: AgentEvent = serde_json::from_str(&json).unwrap();

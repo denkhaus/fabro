@@ -7,9 +7,10 @@ use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc as StdArc, Mutex as StdMutex};
 
+use async_zip::base::read::mem::ZipFileReader;
 use axum::body::Body;
 use axum::http::{Method, Request, header};
-use chrono::{Duration as ChronoDuration, Utc};
+use chrono::{Duration as ChronoDuration, SubsecRound as _, Utc};
 use fabro_automation::{AutomationId, AutomationTarget};
 use fabro_config::bind::Bind;
 use fabro_config::{
@@ -25,12 +26,12 @@ use fabro_model::{Catalog, ModelRef, ProviderId, ReasoningEffort, Speed};
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::EnvironmentProvider;
 use fabro_types::{
-    AgentBackend, AttrValue, AuthMethod, CommandTermination, FailureCategory, FailureDetail, Graph,
-    InterviewQuestionRecord, Node, Outcome, QuestionType, RunBlobId, RunId, RunSpec,
-    SandboxProviderKind, StageContextWindowBreakdownItem, StageContextWindowCategory,
-    StageContextWindowCountMethod, StageContextWindowProjection, StageContextWindowStaleness,
-    StageContextWindowWarning, StageModelUsage, StageTiming, SuccessReason, SystemActorKind,
-    WorkflowSettings, fixtures, test_support,
+    AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, FailureCategory,
+    FailureDetail, Graph, InterviewQuestionRecord, Node, Outcome, ParallelBranchId, QuestionType,
+    RunId, RunSpec, SandboxProviderKind, StageContextWindowBreakdownItem,
+    StageContextWindowCategory, StageContextWindowCountMethod, StageContextWindowProjection,
+    StageContextWindowStaleness, StageContextWindowWarning, StageModelUsage, StageTiming,
+    SuccessReason, SystemActorKind, WorkflowSettings, fixtures, test_support,
 };
 use fabro_util::check_report::CheckStatus;
 use fabro_workflow::records::CheckpointExt;
@@ -3189,7 +3190,6 @@ fn manifest_json(target_path: &str, dot_source: &str) -> serde_json::Value {
         "version": 1,
         "cwd": "/tmp",
         "target": {
-            "identifier": target_path,
             "path": target_path,
         },
         "workflows": {
@@ -3545,6 +3545,77 @@ async fn post_run_manifest(app: &Router, manifest: serde_json::Value) -> serde_j
 }
 
 #[tokio::test]
+async fn post_runs_ignores_removed_run_id_input() {
+    let app = crate::test_support::build_test_router(test_app_state());
+    let submitted_run_id = RunId::new();
+    let mut manifest = minimal_manifest_json(MINIMAL_DOT);
+    manifest["run_id"] = json!(submitted_run_id.to_string());
+
+    let created = post_run_manifest(&app, manifest).await;
+    let allocated_run_id = created["id"]
+        .as_str()
+        .expect("create response should contain an id")
+        .parse::<RunId>()
+        .expect("create response id should be valid");
+
+    assert_ne!(allocated_run_id, submitted_run_id);
+}
+
+/// Old clients may still send the removed `target.identifier` and
+/// `goal.path` manifest properties. The server must keep accepting such
+/// bodies as unknown fields: the workflow is selected by `target.path`
+/// and the goal comes from the resolved `goal.text`.
+#[tokio::test]
+async fn post_runs_accepts_legacy_manifest_metadata_properties() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let picked_dot = r"digraph PickedFlow {
+        start [shape=Mdiamond]
+        exit [shape=Msquare]
+        start -> exit
+    }";
+    let decoy_dot = r"digraph DecoyFlow {
+        start [shape=Mdiamond]
+        exit [shape=Msquare]
+        start -> exit
+    }";
+    let manifest = serde_json::json!({
+        "version": 1,
+        "cwd": "/tmp",
+        "target": {
+            // Legacy display metadata: deliberately names the decoy entry
+            // to prove selection never reads it.
+            "identifier": "decoy.fabro",
+            "path": "picked.fabro",
+        },
+        "goal": {
+            "type": "file",
+            "text": "Goal text from the legacy body",
+            "path": "/tmp/original/goal.md",
+        },
+        "workflows": {
+            "picked.fabro": { "source": picked_dot, "files": {} },
+            "decoy.fabro": { "source": decoy_dot, "files": {} },
+        },
+    });
+
+    let created = post_run_manifest(&app, manifest).await;
+    let run_id = created["id"]
+        .as_str()
+        .expect("create response should contain an id")
+        .parse::<RunId>()
+        .expect("create response id should be valid");
+
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    let run_state = run_store.state().await.unwrap();
+    assert_eq!(run_state.spec.graph.name, "PickedFlow");
+    assert_eq!(
+        run_state.spec.graph.goal(),
+        "Goal text from the legacy body"
+    );
+}
+
+#[tokio::test]
 async fn post_runs_create_regression_keeps_api_behavior_without_automation_metadata() {
     let state = TestAppStateBuilder::new()
         .env_lookup(|_| None)
@@ -3661,6 +3732,349 @@ async fn create_run_from_manifest_helper_persists_automation_metadata() {
 }
 
 #[tokio::test]
+async fn create_run_from_manifest_pins_compiled_and_persisted_behavior() {
+    let state = TestAppStateBuilder::new()
+        .runtime_settings(
+            default_test_server_settings(),
+            manifest_run_defaults_from_toml(
+                r#"
+[run.metadata]
+server-label = "server"
+layer = "server"
+"#,
+            ),
+        )
+        .env_lookup(|_| None)
+        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .build();
+    let run_id = RunId::new();
+    let dot = r#"digraph CompilePin {
+        graph [goal="Graph goal", target="{{ inputs.target }}"]
+        start [shape=Mdiamond]
+        work [prompt="Ship {{ inputs.target }}", model="gpt-5.4"]
+        exit [shape=Msquare]
+        start -> work -> exit
+    }"#;
+    let mut manifest_json = minimal_manifest_json(dot);
+    manifest_json["title"] = json!("  Pinned create  ");
+    manifest_json["goal"] = json!({
+        "type": "value",
+        "text": "Inline release goal"
+    });
+    manifest_json["args"] = json!({
+        "model": "gpt-5.4",
+        "input": ["target=payments"]
+    });
+    manifest_json["configs"] = json!([{
+        "type": "project",
+        "path": "/tmp/project/.fabro/project.toml",
+        "source": r#"
+_version = 1
+
+[project]
+name = "payments-project"
+
+[run.metadata]
+project-label = "project"
+layer = "project"
+"#
+    }]);
+    manifest_json["cwd"] = json!("/tmp/project");
+    manifest_json["git"] = json!({
+        "origin_url": "https://github.com/acme/payments.git",
+        "branch": "feature/compiler",
+        "sha": "0123456789abcdef",
+        "dirty": "clean"
+    });
+    let manifest: RunManifest = serde_json::from_value(manifest_json).unwrap();
+    let submitted_manifest_bytes = serde_json::to_vec(&manifest).unwrap();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::USER_AGENT,
+        "fabro-cli/9.8.7".parse().expect("user agent should parse"),
+    );
+
+    let response = Box::pin(handler::runs::create_run_from_manifest(
+        Arc::clone(&state),
+        handler::runs::CreateRunFromManifestRequest {
+            manifest,
+            submitted_manifest_bytes: submitted_manifest_bytes.clone(),
+            explicit_run_id: Some(run_id),
+            explicit_title_supplied: true,
+            actor: Principal::System {
+                system_kind: SystemActorKind::Engine,
+            },
+            headers,
+            automation: None,
+        },
+    ))
+    .await;
+
+    let body = response_json!(response, StatusCode::CREATED).await;
+    assert_eq!(body["id"], run_id.to_string());
+    assert_eq!(body["title"], "Pinned create");
+    assert_eq!(body["lifecycle"]["status"]["kind"], "submitted");
+
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    let events = run_store.list_events().await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .map(|envelope| envelope.event.event_name())
+            .collect::<Vec<_>>(),
+        vec!["run.created", "run.submitted"]
+    );
+    let run_state = run_store.state().await.unwrap();
+    let spec = &run_state.spec;
+    assert_eq!(spec.run_id, run_id);
+    assert_eq!(spec.graph.goal(), "Inline release goal");
+    assert_eq!(
+        spec.graph.attrs.get("target").and_then(AttrValue::as_str),
+        Some("{{ inputs.target }}")
+    );
+    assert_eq!(
+        spec.graph.nodes["work"]
+            .attrs
+            .get("prompt")
+            .and_then(AttrValue::as_str),
+        Some("Ship payments")
+    );
+    assert_eq!(
+        spec.graph.nodes["work"]
+            .attrs
+            .get("model")
+            .and_then(AttrValue::as_str),
+        Some("gpt-5.4")
+    );
+    assert_eq!(
+        spec.graph.nodes["work"]
+            .attrs
+            .get("provider")
+            .and_then(AttrValue::as_str),
+        Some("openai")
+    );
+    assert_eq!(spec.settings.run.model.name.as_deref(), Some("gpt-5.4"));
+    assert_eq!(spec.settings.run.model.provider.as_deref(), Some("openai"));
+    assert_eq!(
+        spec.settings.run.inputs.get("target"),
+        Some(&toml::Value::String("payments".to_string()))
+    );
+    assert_eq!(
+        spec.settings.project.name.as_deref(),
+        Some("payments-project")
+    );
+    assert_eq!(
+        spec.labels.get("project-label").map(String::as_str),
+        Some("project")
+    );
+    assert_eq!(
+        spec.labels.get("layer").map(String::as_str),
+        Some("project")
+    );
+    assert_eq!(
+        spec.git.as_ref().map(|git| git.origin_url.as_str()),
+        Some("https://github.com/acme/payments.git")
+    );
+
+    let created = events[0].event.to_value().unwrap();
+    assert_eq!(created["properties"]["title"], "Pinned create");
+    assert_eq!(created["properties"]["labels"]["project-label"], "project");
+    assert_eq!(
+        created["properties"]["provenance"]["client"]["user_agent"],
+        "fabro-cli/9.8.7"
+    );
+    assert_eq!(
+        created["properties"]["provenance"]["subject"]["kind"],
+        "system"
+    );
+    let manifest_blob = created["properties"]["manifest_blob"]
+        .as_str()
+        .expect("run.created should carry the submitted source blob")
+        .parse::<BlobHash>()
+        .unwrap();
+    let persisted_manifest = run_store
+        .read_blob(&manifest_blob)
+        .await
+        .unwrap()
+        .expect("submitted source blob should exist");
+    assert_eq!(persisted_manifest.as_ref(), submitted_manifest_bytes);
+}
+
+#[tokio::test]
+async fn create_run_from_manifest_pins_compiler_http_error_mappings() {
+    let cases = [
+        (
+            {
+                let mut manifest = minimal_manifest_json(MINIMAL_DOT);
+                manifest["version"] = json!(2);
+                manifest
+            },
+            "unsupported manifest version 2",
+        ),
+        (
+            minimal_manifest_json(
+                r#"digraph Test {
+                    graph [goal="Test"]
+                    start [shape=Mdiamond]
+                    work [prompt="Use {{ vars.MISSING }}"]
+                    exit [shape=Msquare]
+                    start -> work -> exit
+                }"#,
+            ),
+            "Validation failed",
+        ),
+        (
+            {
+                let mut manifest = minimal_manifest_json(
+                    r#"digraph Test {
+                        graph [goal="Test"]
+                        start [shape=Mdiamond]
+                        work [prompt="Do work", model="gpt-5.4", provider="missing-provider"]
+                        exit [shape=Msquare]
+                        start -> work -> exit
+                    }"#,
+                );
+                manifest["args"] = json!({
+                    "model": "gpt-5.4",
+                    "provider": "missing-provider"
+                });
+                manifest
+            },
+            "Model selection failed: unknown model provider 'missing-provider'",
+        ),
+    ];
+
+    for (manifest_json, expected_detail) in cases {
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .build();
+        let manifest: RunManifest = serde_json::from_value(manifest_json).unwrap();
+        let submitted_manifest_bytes = serde_json::to_vec(&manifest).unwrap();
+
+        let response = Box::pin(handler::runs::create_run_from_manifest(
+            state,
+            handler::runs::CreateRunFromManifestRequest {
+                manifest,
+                submitted_manifest_bytes,
+                explicit_run_id: Some(RunId::new()),
+                explicit_title_supplied: true,
+                actor: Principal::System {
+                    system_kind: SystemActorKind::Engine,
+                },
+                headers: HeaderMap::new(),
+                automation: None,
+            },
+        ))
+        .await;
+
+        let body = response_json!(response, StatusCode::BAD_REQUEST).await;
+        assert_eq!(body["errors"][0]["detail"], expected_detail);
+    }
+}
+
+#[tokio::test]
+async fn create_run_from_manifest_preserves_competing_preparation_error_precedence() {
+    let mut workflow_before_title = minimal_manifest_json(MINIMAL_DOT);
+    workflow_before_title["workflows"]["workflow.fabro"]["config"] = json!({
+        "path": "workflow.toml",
+        "source": "_version = 1\n[run.unknown]\nvalue = true\n",
+    });
+    workflow_before_title["title"] = json!("   ");
+
+    let mut project_parse_before_later_path = minimal_manifest_json(MINIMAL_DOT);
+    project_parse_before_later_path["configs"] = json!([
+        {
+            "type": "project",
+            "path": "/tmp/.fabro/project.toml",
+            "source": "_version = 1\n[run.unknown]\nvalue = true\n",
+        },
+        {
+            "type": "project",
+            "source": "_version = 1\n",
+        },
+    ]);
+
+    for (manifest_json, expected_detail) in [
+        (workflow_before_title, "Failed to parse run config TOML"),
+        (
+            project_parse_before_later_path,
+            "Failed to parse run config TOML",
+        ),
+    ] {
+        let state = TestAppStateBuilder::new().build();
+        let manifest: RunManifest = serde_json::from_value(manifest_json).unwrap();
+        let submitted_manifest_bytes = serde_json::to_vec(&manifest).unwrap();
+
+        let response = Box::pin(handler::runs::create_run_from_manifest(
+            state,
+            handler::runs::CreateRunFromManifestRequest {
+                manifest,
+                submitted_manifest_bytes,
+                explicit_run_id: None,
+                explicit_title_supplied: true,
+                actor: Principal::System {
+                    system_kind: SystemActorKind::Engine,
+                },
+                headers: HeaderMap::new(),
+                automation: None,
+            },
+        ))
+        .await;
+
+        let body = response_json!(response, StatusCode::BAD_REQUEST).await;
+        assert_eq!(body["errors"][0]["detail"], expected_detail);
+    }
+}
+
+#[tokio::test]
+async fn create_run_from_manifest_resolves_generated_id_after_variable_snapshot() {
+    let state = TestAppStateBuilder::new()
+        .env_lookup(|_| None)
+        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .build();
+    let variable = state
+        .stores
+        .variables
+        .set("OWNER", "payments", None)
+        .await
+        .expect("test variable should persist");
+    let manifest: RunManifest = serde_json::from_value(minimal_manifest_json(
+        r#"digraph Test {
+            graph [goal="Test"]
+            start [shape=Mdiamond]
+            work [prompt="Ship {{ vars.OWNER }}"]
+            exit [shape=Msquare]
+            start -> work -> exit
+        }"#,
+    ))
+    .unwrap();
+    let submitted_manifest_bytes = serde_json::to_vec(&manifest).unwrap();
+
+    let response = Box::pin(handler::runs::create_run_from_manifest(
+        state,
+        handler::runs::CreateRunFromManifestRequest {
+            manifest,
+            submitted_manifest_bytes,
+            explicit_run_id: None,
+            explicit_title_supplied: false,
+            actor: Principal::System {
+                system_kind: SystemActorKind::Engine,
+            },
+            headers: HeaderMap::new(),
+            automation: None,
+        },
+    ))
+    .await;
+
+    let body = response_json!(response, StatusCode::CREATED).await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+    // RunId is a ULID whose timestamp only has millisecond precision, so
+    // truncate the variable timestamp to milliseconds before comparing.
+    assert!(run_id.created_at() >= variable.updated_at.trunc_subsecs(3));
+}
+
+#[tokio::test]
 async fn fake_automation_materializer_injection_captures_input_and_returns_manifest() {
     let materialized_manifest: RunManifest =
         serde_json::from_value(minimal_manifest_json(MINIMAL_DOT)).unwrap();
@@ -3753,6 +4167,30 @@ async fn wait_for_mock_hits(mock: &httpmock::Mock<'_>, expected: usize) {
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
     panic!("mock did not receive {expected} request(s)");
+}
+
+/// Poll `GET /runs/{id}/pull_request/creation` until the creation leaves
+/// `pending`, returning the terminal creation body.
+async fn wait_for_pull_request_creation(app: &Router, run_id: RunId) -> serde_json::Value {
+    for _ in 0..150 {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(api(&format!("/runs/{run_id}/pull_request/creation")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::OK).await;
+        if body["status"] != "pending" {
+            return body;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("pull request creation for run {run_id} did not finish");
 }
 
 async fn title_update_event_count(state: &AppState, run_id: RunId) -> usize {
@@ -3865,7 +4303,6 @@ async fn validate_endpoint_returns_template_source_coordinates() {
         "version": 1,
         "cwd": "/tmp",
         "target": {
-            "identifier": "workflow.fabro",
             "path": "workflow.fabro",
         },
         "workflows": {
@@ -4209,15 +4646,14 @@ async fn append_default_run_created(run_store: &fabro_store::RunDatabase, run_id
         settings: serde_json::to_value(WorkflowSettings::default()).unwrap(),
         graph: serde_json::to_value(Graph::new("test")).unwrap(),
         workflow_source: None,
-        workflow_config: None,
         labels: std::collections::BTreeMap::default(),
-        run_dir: "/tmp".to_string(),
         source_directory: None,
         workflow_slug: None,
+        workflow_version_id: None,
         automation: None,
-        db_prefix: None,
         provenance: test_support::test_run_provenance(),
         manifest_blob: None,
+        spec_blob: None,
         git: None,
         fork_source_ref: None,
         retried_from: None,
@@ -4263,15 +4699,14 @@ async fn create_slack_notification_run(
         settings: serde_json::to_value(settings).unwrap(),
         graph: serde_json::to_value(Graph::new(graph_name)).unwrap(),
         workflow_source: None,
-        workflow_config: None,
         labels: std::collections::BTreeMap::default(),
-        run_dir: "/tmp".to_string(),
         source_directory: None,
         workflow_slug: workflow_slug.map(str::to_string),
+        workflow_version_id: None,
         automation: None,
-        db_prefix: None,
         provenance: test_support::test_run_provenance(),
         manifest_blob: None,
+        spec_blob: None,
         git: None,
         fork_source_ref: None,
         retried_from: None,
@@ -4587,19 +5022,11 @@ async fn slack_lifecycle_missing_channel_is_skipped_without_blocking_other_route
         "100.5",
     )
     .await;
-    let state = test_app_state_with_env_lookup(
-        default_test_server_settings(),
-        fabro_config::RunLayer::default(),
-        5,
-        |name| match name {
-            "SLACK_ROUTE_CHANNEL" => Some("#ops".to_string()),
-            _ => None,
-        },
-    );
+    let state = test_app_state();
     let service = slack_lifecycle_service(server.base_url(), None);
     let run_id = fixtures::RUN_1;
     let settings = workflow_settings_with_run_notifications(
-        r#"
+        r##"
 [run.notifications.missing]
 enabled = true
 provider = "slack"
@@ -4619,8 +5046,8 @@ provider = "slack"
 events = ["run.started"]
 
 [run.notifications.valid.slack]
-channel = "{{ env.SLACK_ROUTE_CHANNEL }}"
-"#,
+channel = "#ops"
+"##,
         Some("Deploy workflow"),
     );
     let run_store = create_slack_notification_run(&state, run_id, settings, "deploy", None).await;
@@ -4685,6 +5112,7 @@ channel = "#deploys"
             repo:        "fabro".to_string(),
             base_branch: "main".to_string(),
             head_branch: "fabro/run/test".to_string(),
+            head_sha:    Some("final-sha".to_string()),
             title:       "Ship <prod> & notify".to_string(),
             draft:       false,
         },
@@ -4765,6 +5193,7 @@ channel = "#deploys"
             allow_freeform:  true,
             timeout_seconds: None,
             context_display: None,
+            review_target:   None,
         },
     )
     .await;
@@ -4905,7 +5334,16 @@ async fn append_scoped_stage_event(
         parallel_group_id: None,
         parallel_branch_id: None,
     };
-    let stored = fabro_workflow::event::to_run_event_at(&run_id, event, Utc::now(), Some(&scope));
+    append_event_with_scope(state, run_id, event, &scope).await;
+}
+
+async fn append_event_with_scope(
+    state: &Arc<AppState>,
+    run_id: RunId,
+    event: &workflow_event::Event,
+    scope: &fabro_workflow::event::StageScope,
+) {
+    let stored = fabro_workflow::event::to_run_event_at(&run_id, event, Utc::now(), Some(scope));
     let payload = fabro_workflow::event::build_redacted_event_payload(&stored, &run_id).unwrap();
     let run_store = state.stores.runs.open_run(&run_id).await.unwrap();
     run_store.append_event(&payload).await.unwrap();
@@ -5259,6 +5697,64 @@ fn test_billed_usage(
     .unwrap()
 }
 
+async fn create_billed_retry_run(state: &Arc<AppState>, run_id: RunId) {
+    create_durable_run_with_events(state, run_id, &[
+        workflow_event::Event::RunSubmitted {
+            definition_blob: None,
+        },
+        workflow_event::Event::RunStarting,
+        workflow_event::Event::RunRunning,
+    ])
+    .await;
+
+    append_scoped_stage_event(
+        state,
+        run_id,
+        "verify",
+        1,
+        &workflow_event::Event::StageFailed {
+            node_id:    "verify".to_string(),
+            name:       "Verify".to_string(),
+            index:      1,
+            failure:    FailureDetail::new("try again", FailureCategory::TransientInfra),
+            will_retry: true,
+            timing:     fabro_types::StageTiming::wall_only(1200),
+            billing:    Some(test_billed_usage("gpt-old", 100, 10)),
+            actor:      None,
+        },
+    )
+    .await;
+    append_scoped_stage_event(
+        state,
+        run_id,
+        "verify",
+        2,
+        &workflow_event::Event::StageCompleted {
+            node_id: "verify".to_string(),
+            name: "Verify".to_string(),
+            index: 1,
+            timing: fabro_types::StageTiming::wall_only(800),
+            status: "succeeded".to_string(),
+            preferred_label: None,
+            suggested_next_ids: Vec::new(),
+            billing: Some(test_billed_usage("gpt-new", 200, 20)),
+            failure: None,
+            notes: None,
+            files_touched: Vec::new(),
+            context_updates: None,
+            jump_to_node: None,
+            context_values: None,
+            node_visits: None,
+            loop_failure_signatures: None,
+            restart_failure_signatures: None,
+            response: None,
+            attempt: 2,
+            max_attempts: 2,
+        },
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn list_run_stages_distinguishes_visits() {
     let state = test_app_state_with_isolated_storage();
@@ -5278,15 +5774,14 @@ async fn list_run_stages_distinguishes_visits() {
             settings: serde_json::to_value(fabro_types::WorkflowSettings::default()).unwrap(),
             graph: serde_json::to_value(&graph).unwrap(),
             workflow_source: None,
-            workflow_config: None,
             labels: std::collections::BTreeMap::default(),
-            run_dir: String::new(),
             source_directory: None,
             workflow_slug: Some("test".to_string()),
+            workflow_version_id: None,
             automation: None,
-            db_prefix: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
+            spec_blob: None,
             git: None,
             fork_source_ref: None,
             retried_from: None,
@@ -5417,15 +5912,14 @@ async fn list_run_stages_exposes_execution_identity_for_resumed_stage() {
             settings: serde_json::to_value(fabro_types::WorkflowSettings::default()).unwrap(),
             graph: serde_json::to_value(&graph).unwrap(),
             workflow_source: None,
-            workflow_config: None,
             labels: std::collections::BTreeMap::default(),
-            run_dir: String::new(),
             source_directory: None,
             workflow_slug: Some("test".to_string()),
+            workflow_version_id: None,
             automation: None,
-            db_prefix: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
+            spec_blob: None,
             git: None,
             fork_source_ref: None,
             retried_from: None,
@@ -5501,6 +5995,122 @@ async fn list_run_stages_exposes_execution_identity_for_resumed_stage() {
     assert_eq!(second["visit"], 2);
     assert_eq!(second["graph_visit"], 1);
     assert_eq!(second["resumed_from_stage_id"], "work@1");
+}
+
+#[tokio::test]
+async fn list_run_stages_exposes_parallel_branch_identity() {
+    let state = test_app_state_with_isolated_storage();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = RunId::new();
+
+    create_durable_run_with_events(&state, run_id, &[
+        workflow_event::Event::RunSubmitted {
+            definition_blob: None,
+        },
+        workflow_event::Event::RunStarting,
+        workflow_event::Event::RunRunning,
+    ])
+    .await;
+    append_scoped_stage_event(
+        &state,
+        run_id,
+        "ordinary",
+        1,
+        &workflow_event::Event::StageStarted {
+            graph_visit:           Some(1),
+            resumed_from_stage_id: None,
+            node_id:               "ordinary".to_string(),
+            name:                  "Ordinary".to_string(),
+            index:                 0,
+            handler_type:          "agent".to_string(),
+            attempt:               1,
+            max_attempts:          1,
+        },
+    )
+    .await;
+
+    let parallel_group_id = StageId::new("review_fork", 2);
+    let parallel_branch_id = ParallelBranchId::new(parallel_group_id.clone(), 4);
+    let branch_event = workflow_event::Event::ParallelBranchStarted {
+        parallel_group_id:     parallel_group_id.clone(),
+        parallel_branch_id:    parallel_branch_id.clone(),
+        branch:                "review_glm".to_string(),
+        index:                 4,
+        item_label:            None,
+        graph_visit:           Some(3),
+        resumed_from_stage_id: None,
+    };
+    let branch_scope = workflow_event::StageScope::for_parallel_branch(
+        "review_glm",
+        3,
+        parallel_group_id,
+        parallel_branch_id,
+    );
+    append_event_with_scope(&state, run_id, &branch_event, &branch_scope).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{run_id}/stages")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+
+    let branch = stage_entry(&body, "review_glm@3");
+    assert_eq!(branch["parallel_group_id"], "review_fork@2");
+    assert_eq!(branch["parallel_branch_index"], 4);
+
+    let ordinary = stage_entry(&body, "ordinary@1");
+    assert!(ordinary.get("parallel_group_id").is_none());
+    assert!(ordinary.get("parallel_branch_index").is_none());
+}
+
+#[tokio::test]
+async fn run_billing_includes_live_stage_timing_in_rows_and_totals() {
+    let state = test_app_state_with_isolated_storage();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = RunId::new();
+    create_durable_run_with_events(&state, run_id, &[
+        workflow_event::Event::RunSubmitted {
+            definition_blob: None,
+        },
+        workflow_event::Event::RunStarting,
+        workflow_event::Event::RunRunning,
+        workflow_run_started_event(run_id),
+    ])
+    .await;
+    append_scoped_stage_event(
+        &state,
+        run_id,
+        "work",
+        1,
+        &stage_started_event("work", "command"),
+    )
+    .await;
+
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{run_id}/billing")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+    let stages = body["stages"].as_array().unwrap();
+
+    assert_eq!(stages.len(), 1);
+    let row_timing = &stages[0]["timing"];
+    assert!(row_timing["active_time_ms"].as_u64().unwrap() > 0);
+    assert_eq!(row_timing["tool_time_ms"], row_timing["active_time_ms"]);
+    assert_eq!(&body["totals"]["timing"], row_timing);
 }
 
 /// `checkpoint.completed_nodes` records every visit, so a looped node appears
@@ -5654,65 +6264,9 @@ async fn run_billing_sums_usage_across_retry_visits_and_uses_latest_model() {
     let state = test_app_state_with_isolated_storage();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = RunId::new();
-    let failed_usage = test_billed_usage("gpt-old", 100, 10);
+
+    create_billed_retry_run(&state, run_id).await;
     let success_usage = test_billed_usage("gpt-new", 200, 20);
-
-    create_durable_run_with_events(&state, run_id, &[
-        workflow_event::Event::RunSubmitted {
-            definition_blob: None,
-        },
-        workflow_event::Event::RunStarting,
-        workflow_event::Event::RunRunning,
-    ])
-    .await;
-
-    append_scoped_stage_event(
-        &state,
-        run_id,
-        "verify",
-        1,
-        &workflow_event::Event::StageFailed {
-            node_id:    "verify".to_string(),
-            name:       "Verify".to_string(),
-            index:      1,
-            failure:    FailureDetail::new("try again", FailureCategory::TransientInfra),
-            will_retry: true,
-            timing:     fabro_types::StageTiming::wall_only(1200),
-            billing:    Some(failed_usage),
-            actor:      None,
-        },
-    )
-    .await;
-    append_scoped_stage_event(
-        &state,
-        run_id,
-        "verify",
-        2,
-        &workflow_event::Event::StageCompleted {
-            node_id: "verify".to_string(),
-            name: "Verify".to_string(),
-            index: 1,
-            timing: fabro_types::StageTiming::wall_only(800),
-            status: "succeeded".to_string(),
-            preferred_label: None,
-            suggested_next_ids: Vec::new(),
-            billing: Some(success_usage.clone()),
-            failure: None,
-            notes: None,
-            files_touched: Vec::new(),
-            context_updates: None,
-            jump_to_node: None,
-            context_values: None,
-            node_visits: None,
-            loop_failure_signatures: None,
-            restart_failure_signatures: None,
-            response: None,
-            attempt: 2,
-            max_attempts: 2,
-        },
-    )
-    .await;
-
     let mut latest_outcome: Outcome<Option<fabro_model::BilledModelUsage>> = Outcome::success();
     latest_outcome.usage = Some(success_usage);
     latest_outcome.timing = Some(fabro_types::StageTiming::wall_only(800));
@@ -5746,7 +6300,6 @@ async fn run_billing_sums_usage_across_retry_visits_and_uses_latest_model() {
     .unwrap();
 
     let response = app
-        .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
@@ -5789,6 +6342,76 @@ async fn run_billing_sums_usage_across_retry_visits_and_uses_latest_model() {
     assert_eq!(old_model["billing"]["input_tokens"], 100);
     assert_eq!(new_model["stages"], 1);
     assert_eq!(new_model["billing"]["input_tokens"], 200);
+}
+
+/// The stage popover reads `billing` off the stages list, so it must be scoped
+/// to one visit — unlike the Billing tab's rows, which sum every visit of a
+/// node.
+#[tokio::test]
+async fn list_run_stages_reports_billing_per_visit() {
+    let state = test_app_state_with_isolated_storage();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = RunId::new();
+
+    create_billed_retry_run(&state, run_id).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{run_id}/stages")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+
+    let first = stage_entry(&body, "verify@1");
+    assert_eq!(first["billing"]["input_tokens"], 100);
+    assert_eq!(first["billing"]["output_tokens"], 10);
+    assert_eq!(first["billing"]["total_usd_micros"], 110);
+
+    let second = stage_entry(&body, "verify@2");
+    assert_eq!(second["billing"]["input_tokens"], 200);
+    assert_eq!(second["billing"]["output_tokens"], 20);
+    assert_eq!(second["billing"]["total_usd_micros"], 220);
+}
+
+#[tokio::test]
+async fn list_run_stages_reports_zero_billing_for_a_stage_that_called_no_model() {
+    let state = test_app_state_with_isolated_storage();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = RunId::new();
+
+    create_durable_run_with_events(&state, run_id, &[
+        workflow_event::Event::RunSubmitted {
+            definition_blob: None,
+        },
+        workflow_event::Event::RunStarting,
+        workflow_event::Event::RunRunning,
+    ])
+    .await;
+    let started = stage_started_event("script", "command");
+    append_scoped_stage_event(&state, run_id, "script", 1, &started).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{run_id}/stages")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+
+    let billing = &stage_entry(&body, "script@1")["billing"];
+    assert_eq!(billing["input_tokens"], 0);
+    assert_eq!(billing["output_tokens"], 0);
+    // No model ran, so there is nothing to price — not a $0.00 cost.
+    assert!(billing.get("total_usd_micros").is_none());
 }
 
 #[tokio::test]
@@ -6176,31 +6799,36 @@ async fn create_unreadable_durable_run(state: &Arc<AppState>, run_id: RunId) {
     workflow_event::append_event(&run_store, &run_id, &workflow_event::Event::RunRunning)
         .await
         .unwrap();
-    let payload = fabro_store::EventPayload::new(
-        json!({
-            "id": "evt-unreadable-run-completed",
-            "ts": "2026-05-05T20:46:33Z",
-            "run_id": run_id,
-            "event": "run.completed",
-            "properties": {
-                "timing": {
-                    "wall_time_ms": 1,
-                    "inference_time_ms": 0,
-                    "tool_time_ms": 0,
-                    "active_time_ms": 0
-                },
-                "artifact_count": 0,
-                "status": "legacy-status",
-                "reason": "completed",
-            },
-        }),
+    let seq = run_store.last_event_seq().await.unwrap().unwrap() + 1;
+    let completed = workflow_event::to_run_event_at(
         &run_id,
+        &workflow_event::Event::WorkflowRunCompleted {
+            timing:               fabro_types::RunTiming::wall_only(1),
+            artifact_count:       0,
+            status:               "legacy-status".to_string(),
+            reason:               SuccessReason::Completed,
+            total_usd_micros:     None,
+            final_git_commit_sha: None,
+            final_patch:          None,
+            diff_summary:         None,
+            billing:              None,
+        },
+        "2026-05-05T20:46:33Z".parse().unwrap(),
+        None,
+    );
+    let payload = workflow_event::build_redacted_event_payload(&completed, &run_id).unwrap();
+    fabro_store::test_support::put_unvalidated_run_event(
+        &state.stores.runs,
+        &run_id,
+        seq,
+        payload.as_value(),
     )
+    .await
     .unwrap();
     let err = run_store
-        .append_event(&payload)
+        .state()
         .await
-        .expect_err("invalid projection event should be persisted but rejected by projection");
+        .expect_err("poison event should make the run projection unreadable");
     assert!(
         err.to_string().contains("invalid completed stage status"),
         "unexpected projection error: {err}"
@@ -6425,6 +7053,7 @@ async fn create_run_with_pull_request_record(
             repo: "widgets".to_string(),
             base_branch: "main".to_string(),
             head_branch: "feature".to_string(),
+            head_sha: Some("final-sha".to_string()),
             title: title.to_string(),
             draft: false,
         },
@@ -6458,11 +7087,10 @@ async fn create_completed_run_ready_for_pull_request(
     );
     let git = match (repo_origin_url, base_branch) {
         (Some(origin), Some(branch)) => Some(fabro_types::GitContext {
-            origin_url:   origin.to_string(),
-            branch:       branch.to_string(),
-            sha:          None,
-            dirty:        fabro_types::DirtyStatus::Clean,
-            push_outcome: fabro_types::PreRunPushOutcome::NotAttempted,
+            origin_url: origin.to_string(),
+            branch:     branch.to_string(),
+            sha:        None,
+            dirty:      fabro_types::DirtyStatus::Clean,
         }),
         _ => None,
     };
@@ -6472,6 +7100,7 @@ async fn create_completed_run_ready_for_pull_request(
         graph,
         graph_source: None,
         workflow_slug: Some("test".to_string()),
+        workflow_version_id: None,
         automation: None,
         source_directory: Some("/tmp/project".to_string()),
         git: git.clone(),
@@ -6479,6 +7108,7 @@ async fn create_completed_run_ready_for_pull_request(
         provenance: test_support::test_run_provenance(),
         manifest_blob: None,
         definition_blob: None,
+        spec_blob: None,
         fork_source_ref: None,
     };
 
@@ -6489,15 +7119,14 @@ async fn create_completed_run_ready_for_pull_request(
             settings: serde_json::to_value(&run_spec.settings).unwrap(),
             graph: serde_json::to_value(&run_spec.graph).unwrap(),
             workflow_source: None,
-            workflow_config: None,
             labels: run_spec.labels.clone().into_iter().collect(),
-            run_dir: run_spec.source_directory.clone().unwrap_or_default(),
             source_directory: run_spec.source_directory.clone(),
             workflow_slug: run_spec.workflow_slug.clone(),
+            workflow_version_id: run_spec.workflow_version_id,
             automation: None,
-            db_prefix: None,
             provenance: run_spec.provenance.clone(),
             manifest_blob: None,
+            spec_blob: None,
             git,
             fork_source_ref: None,
             retried_from: None,
@@ -6519,7 +7148,7 @@ async fn create_completed_run_ready_for_pull_request(
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
             total_usd_micros:     None,
-            final_git_commit_sha: None,
+            final_git_commit_sha: Some("final-sha".to_string()),
             final_patch:          Some(final_patch.to_string()),
             diff_summary:         None,
             billing:              None,
@@ -6583,7 +7212,7 @@ async fn test_model_explicit_provider_alias_returns_canonical_model_id_when_unav
 
     let response = app.oneshot(req).await.unwrap();
     let body = response_json!(response, StatusCode::OK).await;
-    assert_eq!(body["model_id"], "claude-sonnet-4-6");
+    assert_eq!(body["model_id"], "claude-sonnet-5");
     assert_eq!(body["provider"], "anthropic");
     assert_eq!(body["status"], "skip");
 }
@@ -6907,7 +7536,7 @@ async fn list_models_exposes_reasoning_effort_controls() {
 
     let req = Request::builder()
         .method("GET")
-        .uri(api("/models?provider=kimi"))
+        .uri(api("/models?provider=moonshot"))
         .body(Body::empty())
         .unwrap();
 
@@ -7801,6 +8430,51 @@ async fn get_run_status_returns_status() {
 }
 
 #[tokio::test]
+async fn get_run_status_advances_live_active_timing_between_events() {
+    let state = test_app_state_with_isolated_storage();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = RunId::new();
+    create_durable_run_with_events(&state, run_id, &[
+        workflow_event::Event::RunSubmitted {
+            definition_blob: None,
+        },
+        workflow_event::Event::RunStarting,
+        workflow_event::Event::RunRunning,
+        workflow_run_started_event(run_id),
+    ])
+    .await;
+    append_scoped_stage_event(
+        &state,
+        run_id,
+        "work",
+        1,
+        &stage_started_event("work", "command"),
+    )
+    .await;
+
+    // The SQLite summary stores timing at the StageStarted event. A later
+    // detail read must overlay the in-flight command's active time from the
+    // projection even though no newer event has arrived.
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{run_id}")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+    let timing = &body["timing"];
+
+    assert!(timing["active_time_ms"].as_u64().unwrap() > 0);
+    assert_eq!(timing["tool_time_ms"], timing["active_time_ms"]);
+    assert!(timing["wall_time_ms"].as_u64().unwrap() >= timing["active_time_ms"].as_u64().unwrap());
+}
+
+#[tokio::test]
 async fn get_run_status_not_found() {
     let app = test_app_with();
     let missing_run_id = fixtures::RUN_64;
@@ -8031,6 +8705,7 @@ async fn submit_pending_interview_answer_rejects_invalid_answer_shape() {
             allow_freeform:  false,
             timeout_seconds: None,
             context_display: None,
+            review_target:   None,
         },
     };
 
@@ -8059,6 +8734,7 @@ fn validate_answer_for_question_accepts_no_for_confirmation() {
         allow_freeform:  false,
         timeout_seconds: None,
         context_display: None,
+        review_target:   None,
     };
 
     let result = validate_answer_for_question(&question, &Answer::no());
@@ -8077,6 +8753,7 @@ fn answer_from_typed_yes_request_maps_to_yes_answer() {
         allow_freeform:  false,
         timeout_seconds: None,
         context_display: None,
+        review_target:   None,
     };
     let req: SubmitAnswerRequest = serde_json::from_value(json!({ "kind": "yes" })).unwrap();
 
@@ -8096,6 +8773,7 @@ fn answer_from_typed_no_request_maps_to_no_answer() {
         allow_freeform:  false,
         timeout_seconds: None,
         context_display: None,
+        review_target:   None,
     };
     let req: SubmitAnswerRequest = serde_json::from_value(json!({ "kind": "no" })).unwrap();
 
@@ -8120,6 +8798,7 @@ fn answer_from_typed_selected_request_validates_and_attaches_option() {
         allow_freeform:  false,
         timeout_seconds: None,
         context_display: None,
+        review_target:   None,
     };
     let req: SubmitAnswerRequest =
         serde_json::from_value(json!({ "kind": "selected", "option_key": "approve" })).unwrap();
@@ -8160,6 +8839,7 @@ fn answer_from_typed_multi_selected_request_validates_option_keys() {
         allow_freeform:  false,
         timeout_seconds: None,
         context_display: None,
+        review_target:   None,
     };
     let req: SubmitAnswerRequest = serde_json::from_value(json!({
         "kind": "multi_selected",
@@ -9058,6 +9738,14 @@ async fn get_run_pull_request_returns_stored_github_association_when_github_pr_i
 #[tokio::test]
 async fn create_run_pull_request_creates_and_persists_record() {
     let github = MockServer::start();
+    let branch_mock = github.mock(|when, then| {
+        when.method("GET")
+            .path("/repos/acme/widgets/branches/fabro/run/42")
+            .header("authorization", "Bearer ghu_test");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(json!({ "commit": { "sha": "final-sha" } }).to_string());
+    });
     let create_mock = github.mock(|when, then| {
         when.method("POST")
             .path("/repos/acme/widgets/pulls")
@@ -9072,6 +9760,17 @@ async fn create_run_pull_request_creates_and_persists_record() {
                 })
                 .to_string(),
             );
+    });
+    let find_mock = github.mock(|when, then| {
+        when.method("GET")
+            .path("/repos/acme/widgets/pulls")
+            .query_param("state", "open")
+            .query_param("base", "main")
+            .query_param("head", "acme:fabro/run/42")
+            .header("authorization", "Bearer ghu_test");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body("[]");
     });
     let llm = MockServer::start_async().await;
     let response_mock = llm
@@ -9132,12 +9831,29 @@ async fn create_run_pull_request_creates_and_persists_record() {
         )
         .await
         .unwrap();
-    let body = response_json!(response, StatusCode::OK).await;
+    assert_eq!(
+        response.headers().get(header::LOCATION).unwrap(),
+        &format!("/api/v1/runs/{run_id}/pull_request/creation")
+    );
+    let body = response_json!(response, StatusCode::ACCEPTED).await;
 
-    assert_eq!(body["number"], 42);
-    assert_eq!(body["owner"], "acme");
-    assert_eq!(body["repo"], "widgets");
-    assert_eq!(body["html_url"], "https://github.com/acme/widgets/pull/42");
+    assert_eq!(body["status"], "pending");
+    assert_eq!(body["model"], "gpt-5.4");
+
+    // Starting the supervisor after the request simulates server recovery:
+    // the durable pending event is enough to resume the operation.
+    let supervisor = spawn_pull_request_creation_supervisor(Arc::clone(&state));
+
+    let creation_body = wait_for_pull_request_creation(&app, run_id).await;
+
+    assert_eq!(creation_body["status"], "succeeded");
+    assert_eq!(creation_body["pull_request"]["number"], 42);
+    assert_eq!(creation_body["pull_request"]["owner"], "acme");
+    assert_eq!(creation_body["pull_request"]["repo"], "widgets");
+    assert_eq!(
+        creation_body["pull_request"]["html_url"],
+        "https://github.com/acme/widgets/pull/42"
+    );
 
     let state_response = app
         .oneshot(
@@ -9155,7 +9871,137 @@ async fn create_run_pull_request_creates_and_persists_record() {
     assert_eq!(state_body["pull_request"]["repo"], "widgets");
 
     response_mock.assert_async().await;
+    branch_mock.assert();
+    find_mock.assert();
     create_mock.assert();
+    state.shutdown_token().cancel();
+    supervisor.await.unwrap();
+}
+
+#[tokio::test]
+async fn create_run_pull_request_returns_the_active_durable_request() {
+    let github = MockServer::start();
+    let (state, app, run_id) = Box::pin(pr_test_app_with_completed_run(
+        Some("ghu_test"),
+        Some(github.base_url()),
+        Some("https://github.com/acme/widgets.git"),
+    ))
+    .await;
+
+    let configured_provider_ids = state.ready_llm_provider_ids().await;
+    let expected_default_model = state
+        .catalog()
+        .default_for_configured_ids(&configured_provider_ids)
+        .id
+        .to_string();
+    let request_body = json!({
+        "force": false,
+        "model": null
+    })
+    .to_string();
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/pull_request")))
+                .header("content-type", "application/json")
+                .body(Body::from(request_body.clone()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let first_body = response_json!(first, StatusCode::ACCEPTED).await;
+
+    let second = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/pull_request")))
+                .header("content-type", "application/json")
+                .body(Body::from(request_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let second_body = response_json!(second, StatusCode::ACCEPTED).await;
+
+    assert_eq!(first_body["id"], second_body["id"]);
+    assert_eq!(first_body["model"], expected_default_model);
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    let events = run_store.list_events().await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.event.event_name() == "pull_request.creation_requested")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn create_run_pull_request_persists_generation_failure() {
+    let github = MockServer::start();
+    let branch_mock = github.mock(|when, then| {
+        when.method("GET")
+            .path("/repos/acme/widgets/branches/fabro/run/42")
+            .header("authorization", "Bearer ghu_test");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(json!({ "commit": { "sha": "final-sha" } }).to_string());
+    });
+    let find_mock = github.mock(|when, then| {
+        when.method("GET")
+            .path("/repos/acme/widgets/pulls")
+            .query_param("state", "open")
+            .query_param("base", "main")
+            .query_param("head", "acme:fabro/run/42")
+            .header("authorization", "Bearer ghu_test");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body("[]");
+    });
+    let (state, app, run_id) = Box::pin(pr_test_app_with_completed_run(
+        Some("ghu_test"),
+        Some(github.base_url()),
+        Some("https://github.com/acme/widgets.git"),
+    ))
+    .await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/pull_request")))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "force": false, "model": "gpt-5.4" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    response_json!(response, StatusCode::ACCEPTED).await;
+    let supervisor = spawn_pull_request_creation_supervisor(Arc::clone(&state));
+
+    let creation = wait_for_pull_request_creation(&app, run_id).await;
+
+    assert_eq!(creation["status"], "failed");
+    // The unconfigured LLM is what fails this fixture; pin the error to the
+    // generation step so the test cannot pass on an earlier validation error.
+    assert!(
+        creation["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("LLM generation failed")),
+        "unexpected error: {:?}",
+        creation["error"]
+    );
+    assert!(creation["pull_request"].is_null());
+    branch_mock.assert();
+    find_mock.assert();
+    state.shutdown_token().cancel();
+    supervisor.await.unwrap();
 }
 
 #[tokio::test]
@@ -9577,6 +10423,11 @@ async fn get_run_state_exposes_pending_interviews() {
             "allow_freeform": false,
             "context_display": null,
             "timeout_seconds": null,
+            "review_target": {
+                "label": "Quarry review exercise",
+                "url": "https://quarry.lithos.computer/tmp/0123456789abcdef0123456789abcdef",
+                "kind": "document"
+            },
         }),
         Some("gate"),
     )
@@ -9656,6 +10507,11 @@ async fn cache_backed_run_endpoints_reflect_events_appended_after_warmup() {
             "allow_freeform": false,
             "context_display": null,
             "timeout_seconds": null,
+            "review_target": {
+                "label": "Quarry review exercise",
+                "url": "https://quarry.lithos.computer/tmp/0123456789abcdef0123456789abcdef",
+                "kind": "document"
+            },
         }),
         Some("review"),
     )
@@ -9713,6 +10569,10 @@ async fn cache_backed_run_endpoints_reflect_events_appended_after_warmup() {
         state_body["pending_interviews"]["q-cache"]["question"]["text"].as_str(),
         Some("Approve cached deploy?")
     );
+    assert_eq!(
+        state_body["pending_interviews"]["q-cache"]["question"]["review_target"]["url"].as_str(),
+        Some("https://quarry.lithos.computer/tmp/0123456789abcdef0123456789abcdef")
+    );
 
     let stages = app
         .clone()
@@ -9743,6 +10603,10 @@ async fn cache_backed_run_endpoints_reflect_events_appended_after_warmup() {
     assert_eq!(
         questions["data"][0]["text"].as_str(),
         Some("Approve cached deploy?")
+    );
+    assert_eq!(
+        questions["data"][0]["review_target"]["label"].as_str(),
+        Some("Quarry review exercise")
     );
 
     let settings = app
@@ -9936,12 +10800,12 @@ async fn create_run_persists_manifest_and_definition_blobs_without_bundle_file()
     let manifest_blob = created["properties"]["manifest_blob"]
         .as_str()
         .expect("run.created should carry manifest_blob")
-        .parse::<RunBlobId>()
+        .parse::<BlobHash>()
         .unwrap();
     let definition_blob = submitted["properties"]["definition_blob"]
         .as_str()
         .expect("run.submitted should carry definition_blob")
-        .parse::<RunBlobId>()
+        .parse::<BlobHash>()
         .unwrap();
 
     let submitted_manifest_bytes = run_store
@@ -9964,10 +10828,6 @@ async fn create_run_persists_manifest_and_definition_blobs_without_bundle_file()
     );
     assert_eq!(accepted_definition["workflow_path"], "workflow.fabro");
     assert!(accepted_definition["workflows"]["workflow.fabro"].is_object());
-
-    created["properties"]["run_dir"]
-        .as_str()
-        .expect("run.created should include run_dir");
 }
 
 #[tokio::test]
@@ -10188,7 +11048,7 @@ async fn get_checkpoint_returns_null_initially() {
 }
 
 #[tokio::test]
-async fn write_and_read_run_blob_round_trip() {
+async fn write_and_read_run_blob_accepts_uppercase_hash() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
 
@@ -10211,11 +11071,14 @@ async fn write_and_read_run_blob_round_trip() {
         .unwrap();
     let response = app.clone().oneshot(req).await.unwrap();
     let body = response_json!(response, StatusCode::OK).await;
-    let blob_id = body["id"].as_str().unwrap();
+    let blob_hash = body["hash"].as_str().unwrap();
 
     let req = Request::builder()
         .method("GET")
-        .uri(api(&format!("/runs/{run_id}/blobs/{blob_id}")))
+        .uri(api(&format!(
+            "/runs/{run_id}/blobs/{}",
+            blob_hash.to_uppercase()
+        )))
         .body(Body::empty())
         .unwrap();
     let response = app.oneshot(req).await.unwrap();
@@ -10321,6 +11184,190 @@ async fn stage_artifacts_keep_same_filename_per_retry() {
 }
 
 #[tokio::test]
+async fn run_artifacts_download_streams_latest_files_as_zip() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_run(&app, MINIMAL_DOT)
+        .await
+        .parse::<RunId>()
+        .unwrap();
+
+    let run_store = state.stores.runs.open_run(&run_id).await.unwrap();
+    for event in [
+        workflow_event::Event::RunRunnable {
+            source: fabro_types::RunRunnableSource::StartRequested,
+            actor:  None,
+        },
+        workflow_event::Event::RunStarting,
+        workflow_event::Event::RunRunning,
+    ] {
+        workflow_event::append_event(&run_store, &run_id, &event)
+            .await
+            .unwrap();
+    }
+    append_scoped_stage_event(
+        &state,
+        run_id,
+        "build",
+        1,
+        &stage_started_event("build", "command"),
+    )
+    .await;
+    append_scoped_stage_event(
+        &state,
+        run_id,
+        "verify",
+        1,
+        &stage_started_event("verify", "command"),
+    )
+    .await;
+
+    for (stage_id, retry, path, contents) in [
+        (
+            StageId::new("unknown", 1),
+            99,
+            "reports/result.txt",
+            &b"unknown stage"[..],
+        ),
+        (
+            StageId::new("build", 1),
+            1,
+            "reports/result.txt",
+            &b"build result"[..],
+        ),
+        (
+            StageId::new("verify", 1),
+            1,
+            "reports/result.txt",
+            &b"first verify"[..],
+        ),
+        (
+            StageId::new("verify", 1),
+            2,
+            "reports/result.txt",
+            &b"latest verify"[..],
+        ),
+        (
+            StageId::new("build", 1),
+            1,
+            "logs/run.txt",
+            &b"build log"[..],
+        ),
+        (
+            StageId::new("start", 1),
+            1,
+            "control-start.txt",
+            &b"excluded"[..],
+        ),
+        (
+            StageId::new("exit", 1),
+            1,
+            "control-exit.txt",
+            &b"excluded"[..],
+        ),
+        // Neither stage reached the projection, so both rank equally on stage
+        // order and retry. The serialized stage ID breaks the tie the same way
+        // the artifacts page does: "unknown@2" sorts above "unknown@10".
+        (
+            StageId::new("unknown", 10),
+            1,
+            "orphan.txt",
+            &b"visit ten"[..],
+        ),
+        (
+            StageId::new("unknown", 2),
+            1,
+            "orphan.txt",
+            &b"visit two"[..],
+        ),
+    ] {
+        state
+            .artifact_store
+            .put(&run_id, &ArtifactKey::new(stage_id, retry, path), contents)
+            .await
+            .unwrap();
+    }
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{run_id}/artifacts/download")))
+                .header(header::ACCEPT_ENCODING, "gzip")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("application/zip")
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get(header::CONTENT_DISPOSITION)
+            .and_then(|value| value.to_str().ok()),
+        Some(format!("attachment; filename=\"fabro-artifacts-{run_id}.zip\"").as_str())
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .and_then(|value| value.to_str().ok()),
+        Some("private, no-store")
+    );
+    assert!(response.headers().get(header::CONTENT_ENCODING).is_none());
+
+    let bytes = response_bytes!(response, StatusCode::OK).await;
+    let archive = ZipFileReader::new(bytes).await.unwrap();
+    let names = archive
+        .file()
+        .entries()
+        .iter()
+        .map(|entry| entry.filename().as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(names, vec![
+        "logs/run.txt",
+        "orphan.txt",
+        "reports/result.txt"
+    ]);
+
+    let mut contents_by_name = HashMap::new();
+    for (index, name) in names.into_iter().enumerate() {
+        let mut entry = archive.reader_with_entry(index).await.unwrap();
+        let mut contents = Vec::new();
+        entry.read_to_end_checked(&mut contents).await.unwrap();
+        contents_by_name.insert(name, contents);
+    }
+    assert_eq!(contents_by_name["logs/run.txt"], b"build log");
+    assert_eq!(contents_by_name["reports/result.txt"], b"latest verify");
+    assert_eq!(contents_by_name["orphan.txt"], b"visit two");
+}
+
+#[tokio::test]
+async fn run_artifacts_download_returns_not_found_for_unknown_run() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{}/artifacts/download", RunId::new())))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::NOT_FOUND).await;
+}
+
+#[tokio::test]
 async fn create_run_persists_run_spec() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
@@ -10351,7 +11398,6 @@ async fn create_run_keeps_missing_project_and_workflow_names_absent() {
         "version": 1,
         "cwd": "/tmp/project",
         "target": {
-            "identifier": "workflow.fabro",
             "path": "workflow.fabro",
         },
         "configs": [
@@ -10430,7 +11476,7 @@ async fn worker_token_accepts_run_scoped_routes_and_falls_back_to_user_jwt() {
     let worker_token = issue_test_worker_token(&run_id);
     let other_run_id = create_run_with_bearer(&app, &user_jwt).await;
     let other_worker_token = issue_test_worker_token(&other_run_id);
-    let blob_id = state
+    let blob_hash = state
         .stores
         .runs
         .open_run(&run_id)
@@ -10524,7 +11570,7 @@ async fn worker_token_accepts_run_scoped_routes_and_falls_back_to_user_jwt() {
         .clone()
         .oneshot(bearer_request(
             Method::GET,
-            &format!("/runs/{run_id}/blobs/{blob_id}"),
+            &format!("/runs/{run_id}/blobs/{blob_hash}"),
             &worker_token,
             Body::empty(),
         ))
@@ -11029,7 +12075,7 @@ async fn worker_token_is_rejected_on_user_only_routes() {
     let user_jwt = issue_test_user_jwt();
     let run_id = create_run_with_bearer(&app, &user_jwt).await;
     let worker_token = issue_test_worker_token(&run_id);
-    let blob_id = RunBlobId::new(b"blob");
+    let blob_hash = BlobHash::new(b"blob");
     let user_only_routes = vec![
         (Method::GET, "/runs".to_string()),
         (Method::POST, "/runs".to_string()),
@@ -11047,6 +12093,7 @@ async fn worker_token_is_rejected_on_user_only_routes() {
         (Method::GET, format!("/runs/{run_id}/graph/source")),
         (Method::GET, format!("/runs/{run_id}/stages")),
         (Method::GET, format!("/runs/{run_id}/artifacts")),
+        (Method::GET, format!("/runs/{run_id}/artifacts/download")),
         (Method::GET, format!("/runs/{run_id}/files")),
         (
             Method::GET,
@@ -11091,7 +12138,7 @@ async fn worker_token_is_rejected_on_user_only_routes() {
         .clone()
         .oneshot(bearer_request(
             Method::GET,
-            &format!("/runs/{run_id}/blobs/{blob_id}"),
+            &format!("/runs/{run_id}/blobs/{blob_hash}"),
             &worker_token,
             Body::empty(),
         ))
@@ -12547,7 +13594,6 @@ async fn get_graph_returns_svg() {
                 "version": 1,
                 "cwd": "/tmp",
                 "target": {
-                    "identifier": "workflow.fabro",
                     "path": "workflow.fabro",
                 },
                 "workflows": {
@@ -12607,7 +13653,6 @@ async fn get_graph_source_returns_dot() {
                 "version": 1,
                 "cwd": "/tmp",
                 "target": {
-                    "identifier": "workflow.fabro",
                     "path": "workflow.fabro",
                 },
                 "workflows": {
@@ -12661,7 +13706,6 @@ async fn render_graph_from_manifest_returns_svg() {
                     "version": 1,
                     "cwd": "/tmp",
                     "target": {
-                        "identifier": "workflow.fabro",
                         "path": "workflow.fabro",
                     },
                     "workflows": {
@@ -12719,7 +13763,6 @@ async fn render_graph_from_manifest_accepts_fabro_dotted_attributes() {
                     "version": 1,
                     "cwd": "/tmp",
                     "target": {
-                        "identifier": "workflow.fabro",
                         "path": "workflow.fabro",
                     },
                     "workflows": {
@@ -13050,15 +14093,14 @@ async fn create_preserved_local_sandbox_run(state: &Arc<AppState>, run_id: RunId
             settings: serde_json::to_value(settings).unwrap(),
             graph: serde_json::to_value(graph).unwrap(),
             workflow_source: None,
-            workflow_config: None,
             labels: std::collections::BTreeMap::default(),
-            run_dir: "/tmp/fabro-run".to_string(),
             source_directory: Some("/tmp/fabro-run".to_string()),
             workflow_slug: Some("test".to_string()),
+            workflow_version_id: None,
             automation: None,
-            db_prefix: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
+            spec_blob: None,
             git: None,
             fork_source_ref: None,
             retried_from: None,
@@ -13802,15 +14844,14 @@ async fn delete_run_retry_after_missing_provider_resource_removes_metadata() {
             settings: serde_json::to_value(fabro_types::WorkflowSettings::default()).unwrap(),
             graph: serde_json::to_value(graph).unwrap(),
             workflow_source: None,
-            workflow_config: None,
             labels: std::collections::BTreeMap::default(),
-            run_dir: "/tmp/fabro-run".to_string(),
             source_directory: Some("/tmp/fabro-run".to_string()),
             workflow_slug: Some("test".to_string()),
+            workflow_version_id: None,
             automation: None,
-            db_prefix: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
+            spec_blob: None,
             git: None,
             fork_source_ref: None,
             retried_from: None,
@@ -15641,7 +16682,7 @@ async fn create_completion_unsupported_reasoning_efforts_return_bad_request() {
         then.status(500);
     });
     let state = TestAppStateBuilder::new()
-        .provider_base_url("kimi", upstream.url("/v1"))
+        .provider_base_url("moonshot", upstream.url("/v1"))
         .vault_entries([(EnvVars::KIMI_API_KEY, "test-kimi-api-key")])
         .build();
     let app = crate::test_support::build_test_router(state);
@@ -15654,7 +16695,7 @@ async fn create_completion_unsupported_reasoning_efforts_return_bad_request() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     serde_json::json!({
-                        "provider": "kimi",
+                        "provider": "moonshot",
                         "model": "kimi-k3",
                         "reasoning_effort": effort,
                         "stream": stream,
@@ -15713,7 +16754,7 @@ async fn create_completion_returns_disjoint_usage_buckets() {
             }));
     });
     let state = TestAppStateBuilder::new()
-        .provider_base_url("kimi", upstream.base_url())
+        .provider_base_url("moonshot", upstream.base_url())
         .vault_entries([(EnvVars::KIMI_API_KEY, "test-kimi-api-key")])
         .build();
     let app = crate::test_support::build_test_router(state);
@@ -15724,7 +16765,7 @@ async fn create_completion_returns_disjoint_usage_buckets() {
         .header("content-type", "application/json")
         .body(Body::from(
             json!({
-                "provider": "kimi",
+                "provider": "moonshot",
                 "model": "kimi-k3",
                 "stream": false,
                 "messages": [{
@@ -15853,7 +16894,7 @@ async fn create_completion_structured_output_forwards_reasoning_effort() {
             }));
     });
     let state = TestAppStateBuilder::new()
-        .provider_base_url("kimi", upstream.base_url())
+        .provider_base_url("moonshot", upstream.base_url())
         .vault_entries([(EnvVars::KIMI_API_KEY, "test-kimi-api-key")])
         .build();
     let app = crate::test_support::build_test_router(state);
@@ -15864,7 +16905,7 @@ async fn create_completion_structured_output_forwards_reasoning_effort() {
         .header("content-type", "application/json")
         .body(Body::from(
             serde_json::json!({
-                "provider": "kimi",
+                "provider": "moonshot",
                 "model": "kimi-k3",
                 "reasoning_effort": "high",
                 "stream": false,
@@ -16477,6 +17518,7 @@ async fn list_runs_includes_live_metadata_from_run_state() {
             repo:        "repo".to_string(),
             base_branch: "main".to_string(),
             head_branch: "fabro/run".to_string(),
+            head_sha:    Some("final-sha".to_string()),
             title:       "Fix board metadata".to_string(),
             draft:       false,
         },
@@ -16489,6 +17531,7 @@ async fn list_runs_includes_live_metadata_from_run_state() {
             allow_freeform:  false,
             timeout_seconds: None,
             context_display: None,
+            review_target:   None,
         },
     ] {
         workflow_event::append_event(&run_store, &run_id, &event)

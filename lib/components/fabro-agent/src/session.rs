@@ -368,6 +368,18 @@ struct BuiltRequest {
     context_window: StageContextWindowProjection,
 }
 
+/// Whether an input's `/name` tokens should be treated as skill references.
+///
+/// Only text the user actually typed can invoke a skill. Harness-synthesized
+/// input carries whatever a child agent wrote, where `/tmp` is a path rather
+/// than an invocation: expanding it would either fail the parent turn on an
+/// unknown name or splice a skill template in place of the envelope.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SkillExpansion {
+    Apply,
+    Skip,
+}
+
 pub struct Session {
     id: String,
     /// Root agent session ID for this session's agent tree. A root session
@@ -1318,10 +1330,14 @@ impl Session {
             })
         });
 
-        // Process the initial input, then drain any followups
+        // Process the initial input, then drain followups. Claude-compatible
+        // background-agent results join this same boundary queue: they never
+        // interrupt inference or a tool call, and all results already ready at
+        // a boundary are delivered in one additional parent turn.
         let mut result = self
             .run_single_input(
                 input,
+                SkillExpansion::Apply,
                 &agent_tool_runtime,
                 &mut timing,
                 &mut usage,
@@ -1336,10 +1352,34 @@ impl Session {
                     .lock()
                     .expect("followup queue lock poisoned")
                     .pop_front();
-                let Some(followup) = followup else { break };
+                let next_input = if let Some(followup) = followup {
+                    Some((followup, SkillExpansion::Apply))
+                } else if let Some(supervisor) = self.subagent_supervisor.clone() {
+                    match supervisor
+                        .next_parent_notification_turn(&self.cancel_token)
+                        .await
+                    {
+                        Ok(Some(turn)) => Some((turn, SkillExpansion::Skip)),
+                        Ok(None) => None,
+                        Err(Error::Interrupted(InterruptReason::Cancelled)) => {
+                            result = Err(self.interrupted_error());
+                            None
+                        }
+                        Err(error) => {
+                            result = Err(error);
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+                let Some((next_input, skill_expansion)) = next_input else {
+                    break;
+                };
                 result = self
                     .run_single_input(
-                        &followup,
+                        &next_input,
+                        skill_expansion,
                         &agent_tool_runtime,
                         &mut timing,
                         &mut usage,
@@ -1377,6 +1417,7 @@ impl Session {
     async fn run_single_input(
         &mut self,
         input: &str,
+        skill_expansion: SkillExpansion,
         agent_tool_runtime: &AgentToolRuntime,
         timing: &mut SessionInputTiming,
         usage_accumulator: &mut TokenCounts,
@@ -1391,7 +1432,7 @@ impl Session {
         self.transition(SessionState::Thinking);
 
         // Expand skill references in input
-        let expanded = if self.skills.is_empty() {
+        let expanded = if self.skills.is_empty() || skill_expansion == SkillExpansion::Skip {
             ExpandedInput {
                 text:       input.to_string(),
                 skill_name: None,
@@ -1491,10 +1532,13 @@ impl Session {
                 compaction_failed = self.compact_if_needed().await;
             }
 
-            self.inject_task_reminder_if_needed();
+            // Keep generated directives local to the round until its assistant
+            // response commits. An interrupted round must not leave a system
+            // message behind for later steering to follow.
+            let pending_task_reminder = self.task_reminder_if_needed();
 
             // Build request
-            let built_request = self.build_request();
+            let built_request = self.build_request(pending_task_reminder.as_ref());
             let local_context_window = built_request.context_window.clone();
             let request = built_request.request;
 
@@ -1846,6 +1890,9 @@ impl Session {
             *usage_accumulator += usage.clone();
             UsdMicros::accumulate(cost_accumulator, response.cost_usd.map(UsdMicros::from_usd));
 
+            if let Some(reminder) = pending_task_reminder {
+                self.history.push(reminder);
+            }
             self.history.push(Message::Assistant {
                 content: text.clone(),
                 tool_calls: tool_calls.clone(),
@@ -2082,12 +2129,15 @@ impl Session {
         }
     }
 
-    fn build_request(&self) -> BuiltRequest {
+    fn build_request(&self, pending_task_reminder: Option<&Message>) -> BuiltRequest {
         let mut messages = Vec::new();
         if !self.system_prompt.trim().is_empty() {
             messages.push(LlmMessage::system(self.system_prompt.clone()));
         }
         messages.extend(self.history.convert_to_messages());
+        if let Some(reminder) = pending_task_reminder {
+            messages.push(reminder.to_llm_message());
+        }
 
         let tools_with_source = self.effective_tools();
         let tools: Vec<_> = tools_with_source
@@ -2139,19 +2189,16 @@ impl Session {
         }
     }
 
-    fn inject_task_reminder_if_needed(&mut self) {
-        let tools: Vec<_> = self
-            .effective_tools()
-            .into_iter()
-            .map(|tool| tool.definition)
+    fn task_reminder_if_needed(&self) -> Option<Message> {
+        let tools = self.effective_tools();
+        let tool_names: Vec<&str> = tools
+            .iter()
+            .map(|tool| tool.definition.name.as_str())
             .collect();
-        let tool_names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
-        if let Some(reminder) = task_reminder::maybe_reminder(&self.history, &tool_names) {
-            self.history.push(Message::System {
-                content:   reminder,
-                timestamp: SystemTime::now(),
-            });
-        }
+        task_reminder::maybe_reminder(&self.history, &tool_names).map(|content| Message::System {
+            content,
+            timestamp: SystemTime::now(),
+        })
     }
 }
 
@@ -2348,11 +2395,14 @@ mod tests {
     enum ScriptedStreamCall {
         Response(Box<Response>),
         Events(Vec<Result<StreamEvent, LlmError>>),
+        /// Emit the events, then hang until the round is cancelled.
+        EventsThenPending(Vec<Result<StreamEvent, LlmError>>),
         Error(LlmError),
     }
 
     struct ScriptedStreamProvider {
         calls:      Vec<ScriptedStreamCall>,
+        requests:   Mutex<Vec<Request>>,
         call_index: AtomicUsize,
     }
 
@@ -2364,6 +2414,7 @@ mod tests {
             );
             Self {
                 calls,
+                requests: Mutex::new(Vec::new()),
                 call_index: AtomicUsize::new(0),
             }
         }
@@ -2405,7 +2456,11 @@ mod tests {
             })
         }
 
-        async fn stream(&self, _request: &Request) -> Result<StreamEventStream, LlmError> {
+        async fn stream(&self, request: &Request) -> Result<StreamEventStream, LlmError> {
+            self.requests
+                .lock()
+                .expect("request capture lock poisoned")
+                .push(request.clone());
             let idx = self.call_index.fetch_add(1, Ordering::SeqCst);
             let scripted = if idx < self.calls.len() {
                 self.calls[idx].clone()
@@ -2418,6 +2473,9 @@ mod tests {
                     Ok(Box::pin(stream::iter(Self::events_for_response(*response))))
                 }
                 ScriptedStreamCall::Events(events) => Ok(Box::pin(stream::iter(events))),
+                ScriptedStreamCall::EventsThenPending(events) => {
+                    Ok(Box::pin(stream::iter(events).chain(stream::pending())))
+                }
                 ScriptedStreamCall::Error(err) => Err(err),
             }
         }
@@ -2882,6 +2940,106 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn interrupted_round_does_not_commit_task_reminder() {
+        let provider = Arc::new(ScriptedStreamProvider::new(vec![
+            ScriptedStreamCall::EventsThenPending(vec![Ok(StreamEvent::ToolCallStart {
+                tool_call: ToolCall::new(
+                    "call_1",
+                    "TaskUpdate",
+                    serde_json::json!({"taskId": "1", "status": "completed"}),
+                ),
+            })]),
+            ScriptedStreamCall::Response(Box::new(text_response("resumed"))),
+        ]));
+        let mut registry = ToolRegistry::new();
+        registry.register(make_named_noop_tool("TaskCreate"));
+        registry.register(make_named_noop_tool("TaskUpdate"));
+        let mut session = make_session_with_provider_and_tools(provider.clone(), registry).await;
+        for index in 0..10 {
+            session.history.push(Message::User {
+                content:   format!("turn {index}"),
+                timestamp: SystemTime::now(),
+            });
+            session.history.push(Message::Assistant {
+                content:        "done".into(),
+                tool_calls:     Vec::new(),
+                provider_parts: Vec::new(),
+                usage:          Box::<TokenCounts>::default(),
+                response_id:    format!("response_{index}"),
+                timestamp:      SystemTime::now(),
+            });
+        }
+
+        let control = session.control_handle();
+        let mut events = session.subscribe();
+        let control_for_controller = control.clone();
+        let controller = tokio::spawn(async move {
+            wait_for_agent_event(&mut events, |event| {
+                matches!(event, AgentEvent::LlmFirstOutput {
+                    kind: LlmOutputKind::ToolCall,
+                })
+            })
+            .await;
+            control_for_controller.interrupt(None);
+            wait_for_agent_event(&mut events, |event| {
+                matches!(event, AgentEvent::RoundInterrupted { generation: 1 })
+            })
+            .await;
+            control_for_controller.steer("wrap up now".into(), None);
+        });
+
+        timeout(Duration::from_secs(1), session.process_input("continue"))
+            .await
+            .expect("interrupted session should resume after steering")
+            .unwrap();
+        controller.await.unwrap();
+
+        let requests = provider
+            .requests
+            .lock()
+            .expect("request capture lock poisoned");
+        let interrupted = requests
+            .first()
+            .expect("the interrupted request should be captured");
+        let staged = interrupted
+            .messages
+            .last()
+            .expect("the interrupted request should not be empty");
+        assert_eq!(staged.role, Role::System);
+        assert_eq!(staged.text(), task_reminder::TASK_REMINDER_TEXT);
+
+        let resumed = requests
+            .get(1)
+            .expect("steering should trigger a second provider request");
+        let [.., steering, reminder] = resumed.messages.as_slice() else {
+            panic!(
+                "the resumed request should end with steering and a restaged reminder: {:?}",
+                resumed.messages
+            );
+        };
+        assert_eq!(steering.role, Role::User);
+        assert_eq!(steering.text(), "wrap up now");
+        assert_eq!(reminder.role, Role::System);
+        assert_eq!(reminder.text(), task_reminder::TASK_REMINDER_TEXT);
+
+        let [
+            ..,
+            Message::System {
+                content: committed, ..
+            },
+            Message::Assistant { content, .. },
+        ] = session.history.turns()
+        else {
+            panic!(
+                "the reminder should commit with the successful assistant turn: {:?}",
+                session.history.turns()
+            );
+        };
+        assert_eq!(committed, task_reminder::TASK_REMINDER_TEXT);
+        assert_eq!(content, "resumed");
+    }
+
+    #[tokio::test]
     async fn interrupt_during_tool_settles_once_after_balancing_tool_result() {
         let blocking_tool = RegisteredTool {
             definition: ToolDefinition {
@@ -3038,6 +3196,121 @@ mod tests {
         assert!(
             matches!(&turns[3], Message::Assistant { content, .. } if content == "Followup response")
         );
+    }
+
+    #[tokio::test]
+    async fn background_agent_notifications_are_batched_into_one_parent_turn() {
+        let supervisor = SubAgentSupervisor::new(3);
+        let first = make_session(vec![text_response("first result")]).await;
+        let second = make_session(vec![text_response("second result")]).await;
+        let first_id = supervisor
+            .spawn_with_parent_notification(
+                first,
+                "first task".to_string(),
+                "Inspect first".to_string(),
+                0,
+            )
+            .unwrap();
+        let second_id = supervisor
+            .spawn_with_parent_notification(
+                second,
+                "second task".to_string(),
+                "Inspect second".to_string(),
+                0,
+            )
+            .unwrap();
+
+        // Make both results ready before the parent reaches its safe turn
+        // boundary so batching is deterministic.
+        supervisor
+            .wait_with_cancel(&first_id, &CancellationToken::new())
+            .await
+            .unwrap();
+        supervisor
+            .wait_with_cancel(&second_id, &CancellationToken::new())
+            .await
+            .unwrap();
+
+        let provider = Arc::new(ScriptedStreamProvider::new(vec![
+            ScriptedStreamCall::Response(Box::new(text_response("Parent is waiting"))),
+            ScriptedStreamCall::Response(Box::new(text_response("Synthesized both results"))),
+        ]));
+        let mut parent =
+            make_session_with_provider_and_manager(provider, Some(supervisor.clone())).await;
+
+        let output = parent
+            .process_input_with_output("Delegate both tasks")
+            .await
+            .unwrap();
+
+        assert_eq!(output.as_deref(), Some("Synthesized both results"));
+        let turns = parent.history().turns();
+        assert_eq!(turns.len(), 4);
+        let Message::User {
+            content: notification,
+            ..
+        } = &turns[2]
+        else {
+            panic!("third turn should deliver the background results");
+        };
+        assert_eq!(notification.matches("<task-notification>").count(), 2);
+        assert!(notification.contains(&first_id));
+        assert!(notification.contains(&second_id));
+        assert!(notification.contains("first result"));
+        assert!(notification.contains("second result"));
+
+        supervisor.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn background_agent_output_is_not_parsed_for_skill_references() {
+        let supervisor = SubAgentSupervisor::new(3);
+        let child = make_session(vec![text_response("Cleaned up /tmp and exited")]).await;
+        let child_id = supervisor
+            .spawn_with_parent_notification(
+                child,
+                "clean up".to_string(),
+                "Clean scratch files".to_string(),
+                0,
+            )
+            .unwrap();
+        supervisor
+            .wait_with_cancel(&child_id, &CancellationToken::new())
+            .await
+            .unwrap();
+
+        let provider = Arc::new(ScriptedStreamProvider::new(vec![
+            ScriptedStreamCall::Response(Box::new(text_response("Delegated"))),
+            ScriptedStreamCall::Response(Box::new(text_response("Acknowledged"))),
+        ]));
+        let mut parent =
+            make_session_with_provider_and_manager(provider, Some(supervisor.clone())).await;
+        parent.skills = vec![Skill {
+            name:        "commit".to_string(),
+            description: "Make a commit".to_string(),
+            template:    "Review changes and commit.".to_string(),
+        }];
+
+        // A child that mentions a bare path must not fail the parent turn on
+        // `Unknown skill: /tmp`, nor have its report replaced by a skill body.
+        let output = parent
+            .process_input_with_output("Delegate the cleanup")
+            .await
+            .unwrap();
+
+        assert_eq!(output.as_deref(), Some("Acknowledged"));
+        let turns = parent.history().turns();
+        let Message::User {
+            content: notification,
+            ..
+        } = &turns[2]
+        else {
+            panic!("third turn should deliver the background result");
+        };
+        assert!(notification.contains("Cleaned up /tmp and exited"));
+        assert!(!notification.contains("Review changes and commit."));
+
+        supervisor.shutdown_all().await;
     }
 
     #[tokio::test]
@@ -3735,13 +4008,10 @@ mod tests {
     async fn request_injects_task_reminder_after_ten_unused_assistant_turns() {
         let provider = Arc::new(CapturingLlmProvider::new());
         let provider_ref = provider.clone();
-        let client = make_client(provider as Arc<dyn ProviderAdapter>).await;
         let mut registry = ToolRegistry::new();
         registry.register(make_named_noop_tool("TaskCreate"));
         registry.register(make_named_noop_tool("TaskUpdate"));
-        let profile = Arc::new(TestProfile::with_tools(registry));
-        let env = Arc::new(MockSandbox::default());
-        let mut session = Session::new(client, profile, env, SessionOptions::default(), None);
+        let mut session = make_session_with_provider_and_tools(provider, registry).await;
 
         for index in 0..10 {
             session
@@ -3757,10 +4027,7 @@ mod tests {
             .expect("request should have been captured");
         assert!(
             request.messages.iter().any(|message| {
-                message.role == Role::System
-                    && message.text().contains("<system-reminder>")
-                    && message.text().contains("TaskCreate")
-                    && message.text().contains("TaskUpdate")
+                message.role == Role::System && message.text() == task_reminder::TASK_REMINDER_TEXT
             }),
             "request should include task reminder system message"
         );

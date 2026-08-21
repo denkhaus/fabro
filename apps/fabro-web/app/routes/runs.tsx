@@ -26,6 +26,7 @@ import { ciConfig, columnForRun, columnStatusDisplay, columnStatuses, deriveCiSt
 import type { CiStatus, CheckRun, CheckStatus, RunItem } from "../data/runs";
 import { EmptyState } from "../components/state";
 import { PullRequestChip } from "../components/pull-request-chip";
+import { SizeChip } from "../components/size-chip";
 import {
   summarizeBatchLifecycleAction,
 } from "../components/runs-list/batch-lifecycle";
@@ -137,6 +138,18 @@ export function buildBoardColumns(
       items: grouped.get(id) ?? [],
     };
   });
+}
+
+export function buildFilterOptions(
+  items: RunItem[],
+  pick: (item: RunItem) => string,
+  selected: string,
+): string[] {
+  const values = new Set(items.map(pick));
+  // Keep the active selection visible even when no loaded run matches it,
+  // e.g. a stored repo filter while paginating the list view.
+  if (selected !== "all") values.add(selected);
+  return Array.from(values).sort();
 }
 
 export function placeArchivedColumnLast(columns: Column[], includeArchived: boolean): Column[] {
@@ -345,7 +358,7 @@ function PrCard({
 
 // All inline footer metadata on PrCard belongs in this one row. Adding a new
 // piece as a sibling `<div>` below the card body recreates a recurring bug
-// where stats stack onto separate lines instead of sitting next to elapsed/actions.
+// where stats stack onto separate lines instead of sitting next to size/actions.
 function PrCardFooter({ pr, actions }: { pr: RunItem; actions?: string[] }) {
   const hasActions = actions != null && actions.length > 0;
   const hasStats =
@@ -354,7 +367,7 @@ function PrCardFooter({ pr, actions }: { pr: RunItem; actions?: string[] }) {
     (pr.additions != null && pr.additions !== 0) ||
     (pr.deletions != null && pr.deletions !== 0);
 
-  if (!hasStats && !hasActions && pr.elapsed == null) return null;
+  if (!hasStats && !hasActions && pr.size == null) return null;
 
   return (
     <div className="mt-3 flex items-center gap-3 font-mono text-xs">
@@ -416,9 +429,9 @@ function PrCardFooter({ pr, actions }: { pr: RunItem; actions?: string[] }) {
           ))}
         </div>
       )}
-      {pr.elapsed != null && (
-        <span className={`text-fg-muted ${hasActions ? "" : "ml-auto"}`}>
-          {pr.elapsed}
+      {pr.size != null && (
+        <span className={hasActions ? "inline-flex" : "ml-auto inline-flex"}>
+          <SizeChip size={pr.size} totalUsdMicros={pr.totalUsdMicros} />
         </span>
       )}
     </div>
@@ -770,18 +783,18 @@ export default function Runs() {
   );
   const hasGitHubAuth = authConfig.data?.methods.includes("github") === true;
   const serverUrl = systemInfo.data?.server_url;
-  const allRepos = Array.from(
-    new Set(
-      initialColumns.flatMap((col: Column) => col.items.map((item: RunItem) => String(item.repo))),
-    ),
+  // Filter options come from the loaded runs: all runs in columns view, the
+  // current page in list view (until a facets endpoint provides the full set).
+  const filterSourceItems: RunItem[] =
+    view === "list"
+      ? (listRunsPage.data?.data ?? []).map(mapRunListItem)
+      : initialColumns.flatMap((col: Column) => col.items);
+  const allRepos = buildFilterOptions(filterSourceItems, (item) => item.repo, repoFilter);
+  const allWorkflows = buildFilterOptions(
+    filterSourceItems,
+    (item) => item.workflow,
+    workflowFilter,
   );
-  allRepos.sort();
-  const allWorkflows = Array.from(
-    new Set(
-      initialColumns.flatMap((col: Column) => col.items.map((item: RunItem) => String(item.workflow))),
-    ),
-  );
-  allWorkflows.sort();
   const [columnsState, setColumnsState] = useState(() => ({
     base:    initialColumns,
     columns: initialColumns,

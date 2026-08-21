@@ -245,6 +245,16 @@ fn main() {
             &[],
         ),
         (
+            "RunModelSettings",
+            "fabro_types::settings::run::RunModelSettings",
+            &[],
+        ),
+        (
+            "RunModelControls",
+            "fabro_types::settings::run::RunModelControls",
+            &[],
+        ),
+        (
             "ServerSandboxSettings",
             "fabro_types::settings::server::ServerSandboxSettings",
             &[],
@@ -345,6 +355,7 @@ fn main() {
         ("Conclusion", "fabro_types::Conclusion", &[]),
         ("StageOutcome", "fabro_types::StageOutcome", &[]),
         ("StageId", "fabro_types::StageId", &[]),
+        ("ParallelBranchId", "fabro_types::ParallelBranchId", &[]),
         ("StageHandler", "fabro_types::StageHandler", &[]),
         ("StageState", "fabro_types::StageState", &[]),
         ("AgentControlState", "fabro_types::AgentControlState", &[]),
@@ -359,6 +370,11 @@ fn main() {
         (
             "StageInferenceProjection",
             "fabro_types::StageInferenceProjection",
+            &[],
+        ),
+        (
+            "StageToolBatchProjection",
+            "fabro_types::StageToolBatchProjection",
             &[],
         ),
         ("LlmOutputKind", "fabro_types::LlmOutputKind", &[]),
@@ -463,6 +479,8 @@ fn main() {
             &[],
         ),
         ("InterviewOption", "fabro_types::InterviewOption", &[]),
+        ("ReviewTarget", "fabro_types::ReviewTarget", &[]),
+        ("ReviewTargetKind", "fabro_types::ReviewTargetKind", &[]),
         (
             "InterviewQuestionRecord",
             "fabro_types::InterviewQuestionRecord",
@@ -527,6 +545,21 @@ fn main() {
         ("EventEnvelope", "fabro_types::EventEnvelope", &[]),
         ("PullRequest", "fabro_types::PullRequest", &[]),
         ("PullRequestLink", "fabro_types::PullRequestLink", &[]),
+        (
+            "PullRequestCreationId",
+            "fabro_types::PullRequestCreationId",
+            &[],
+        ),
+        (
+            "PullRequestCreationStatus",
+            "fabro_types::PullRequestCreationStatus",
+            &[],
+        ),
+        (
+            "PullRequestCreation",
+            "fabro_types::PullRequestCreation",
+            &[],
+        ),
         ("PullRequestDetails", "fabro_types::PullRequestDetails", &[]),
         ("PullRequestMeta", "fabro_types::PullRequestMeta", &[]),
         (
@@ -558,7 +591,6 @@ fn main() {
         ),
         ("SecretType", "fabro_types::SecretType", &[]),
         ("DiffStats", "fabro_types::DiffStats", &[]),
-        ("PreRunPushOutcome", "fabro_types::PreRunPushOutcome", &[]),
         ("DirtyStatus", "fabro_types::DirtyStatus", &[]),
         ("GitContext", "fabro_types::GitContext", &[]),
         (
@@ -690,6 +722,10 @@ fn main() {
         ("CompletionMessage", "fabro_types::Message", &[]),
         ("CompletionMessageRole", "fabro_types::Role", &[]),
         ("CompletionContentPart", "fabro_types::ContentPart", &[]),
+        ("WorkflowVersion", "fabro_types::WorkflowVersion", &[]),
+        ("WorkflowPath", "fabro_types::WorkflowPath", &[]),
+        ("WorkflowVersionId", "fabro_types::WorkflowVersionId", &[]),
+        ("BlobHash", "fabro_types::BlobHash", &[]),
         ("CostSource", "fabro_model::CostSource", &[]),
     ];
     for (name, path, impls) in replacements {

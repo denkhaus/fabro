@@ -86,8 +86,8 @@ use fabro_slack::{blocks as slack_blocks, connection as slack_connection};
 use fabro_static::EnvVars;
 use fabro_store::{
     ArtifactKey, ArtifactStore, AuthSessionStore, CachedRunProjection, Database, EventEnvelope,
-    EventPayload, NodeArtifact, PendingInterviewRecord, RunSummaryStore, StageArtifactEntry,
-    StageId,
+    EventPayload, KeyedMutex, NodeArtifact, PendingInterviewRecord, RunSummaryStore,
+    StageArtifactEntry, StageId,
 };
 #[cfg(test)]
 use fabro_types::BlockedReason;
@@ -97,10 +97,10 @@ use fabro_types::settings::server::{
     GithubIntegrationSettings, GithubIntegrationStrategy, LogDestination,
 };
 use fabro_types::{
-    AgentBackend, AskFabro, AskFabroUnavailableReason, EventBody, InterviewQuestionRecord, PairId,
-    PairMessageId, PairTarget, PendingReason, Principal, PullRequestLink, QuestionType, RunBlobId,
-    RunControlAction, RunEvent, RunId, RunRunnableSource, SandboxProviderKind, ServerSettings,
-    SessionCapability,
+    AgentBackend, AskFabro, AskFabroUnavailableReason, BlobHash, EventBody,
+    InterviewQuestionRecord, PairId, PairMessageId, PairTarget, PendingReason, Principal,
+    PullRequestLink, QuestionType, RunControlAction, RunEvent, RunId, RunRunnableSource,
+    SandboxProviderKind, ServerSettings, SessionCapability,
 };
 use fabro_util::error::{
     SharedError, collect_causes, render_compact_with_causes, render_with_causes,
@@ -129,8 +129,7 @@ use tokio::process::Command;
 use tokio::runtime::Builder as TokioRuntimeBuilder;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{
-    Mutex as AsyncMutex, Notify, OwnedMutexGuard, RwLock as AsyncRwLock, Semaphore, broadcast,
-    mpsc, oneshot,
+    Mutex as AsyncMutex, Notify, RwLock as AsyncRwLock, Semaphore, broadcast, mpsc, oneshot,
 };
 use tokio::task::spawn_blocking;
 use tokio::time::{sleep, timeout};
@@ -138,6 +137,7 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::{BroadcastStream, UnboundedReceiverStream};
 use tokio_util::sync::CancellationToken;
 use tower::{ServiceExt, service_fn};
+use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
 use tower_http::compression::{CompressionLayer, CompressionLevel};
 use tracing::{Instrument, debug, error, info, warn};
 use ulid::Ulid;
@@ -153,7 +153,6 @@ use crate::git_checkout::GitRepoCache;
 use crate::github_webhooks::{
     WEBHOOK_ROUTE, WEBHOOK_SECRET_ENV, parse_event_metadata, verify_signature,
 };
-use crate::interp::process_env_var;
 use crate::jwt_auth::{self, AuthMode};
 use crate::principal_middleware::{
     AuthContextSlot, RequestAuth, RequestAuthContext, RequireRunBlob, RequireRunManagementTarget,
@@ -175,6 +174,7 @@ use crate::{
 
 mod automation_scheduler;
 mod handler;
+mod pull_request_supervisor;
 mod resource_sampler;
 mod session_runtime;
 
@@ -189,6 +189,7 @@ pub(in crate::server) use handler::graph::{
 };
 #[cfg(test)]
 pub(in crate::server) use handler::system::validate_github_slug;
+pub(crate) use pull_request_supervisor::spawn_pull_request_creation_supervisor;
 use session_runtime::SessionRuntimeManager;
 
 pub(crate) type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -720,6 +721,7 @@ impl SlackService {
                     allow_freeform:  props.allow_freeform,
                     timeout_seconds: props.timeout_seconds,
                     context_display: props.context_display.clone(),
+                    review_target:   props.review_target.clone(),
                 });
                 let blocks = slack_blocks::question_to_blocks(
                     &event.run_id.to_string(),
@@ -874,13 +876,8 @@ impl SlackService {
 
         let blocks = &blocks;
         let posts = routes.into_iter().filter_map(|(route_name, route)| {
-            let channel = resolve_slack_lifecycle_route_channel(
-                state,
-                event.run_id,
-                route_name,
-                route,
-                event_name,
-            )?;
+            let channel =
+                resolve_slack_lifecycle_route_channel(event.run_id, route_name, route, event_name)?;
             Some(async move {
                 if let Err(err) = self.client.post_message(&channel, blocks, None).await {
                     warn!(
@@ -1060,7 +1057,6 @@ fn slack_lifecycle_pull_request_from_link(link: &PullRequestLink) -> SlackLifecy
 }
 
 fn resolve_slack_lifecycle_route_channel(
-    state: &AppState,
     run_id: RunId,
     route_name: &str,
     route: &NotificationRouteSettings,
@@ -1080,7 +1076,10 @@ fn resolve_slack_lifecycle_route_channel(
         return None;
     };
 
-    let resolved = match channel.resolve(|name| (state.env_lookup)(name)) {
+    // `{{ vars.* }}` is substituted at run creation, so the channel is literal
+    // here; anything still unresolved skips the route rather than sending to a
+    // half-rendered channel name.
+    let resolved = match channel.resolve_with(&mut fabro_types::settings::ResolveCtx::new()) {
         Ok(resolved) => resolved,
         Err(err) => {
             warn!(
@@ -1123,12 +1122,13 @@ pub struct AppState {
     pub(crate) worker_runtime: Arc<dyn WorkerRuntime>,
     scheduler_notify: Notify,
     automation_scheduler_notify: Notify,
+    pull_request_scheduler_notify: Notify,
     global_event_tx: broadcast::Sender<EventEnvelope>,
     /// Per-run coalescing registry for `GET /runs/{id}/files`. Concurrent
     /// callers for the same run share one materialization; different runs
     /// proceed in parallel. See `crate::run_files` for semantics.
     pub(crate) files_in_flight: FilesInFlight,
-    pull_request_create_locks: PullRequestCreateLocks,
+    pull_request_create_locks: KeyedMutex<RunId>,
     parent_link_lock: AsyncMutex<()>,
 
     pub(super) server_secrets: ServerSecrets,
@@ -1161,8 +1161,6 @@ pub(crate) struct AppStores {
     pub(crate) vault:         Arc<SecretStore>,
     pub(crate) variables:     Arc<VariableStore>,
 }
-
-type PullRequestCreateLocks = Arc<Mutex<HashMap<RunId, Arc<AsyncMutex<()>>>>>;
 
 #[cfg(any(test, feature = "test-support"))]
 impl AppState {
@@ -1221,6 +1219,16 @@ impl AppState {
     ) -> impl std::future::Future<Output = ()> + '_ {
         self.automation_scheduler_notify.notified()
     }
+
+    pub(crate) fn notify_pull_request_scheduler(&self) {
+        self.pull_request_scheduler_notify.notify_one();
+    }
+
+    pub(crate) fn pull_request_scheduler_notified(
+        &self,
+    ) -> impl std::future::Future<Output = ()> + '_ {
+        self.pull_request_scheduler_notify.notified()
+    }
 }
 
 pub(crate) struct AskFabroReadiness {
@@ -1254,50 +1262,6 @@ impl AskFabroReadiness {
             unavailable_reason,
             default_model: self.default_model.clone(),
         }
-    }
-}
-
-struct PullRequestCreateGuard {
-    locks:  PullRequestCreateLocks,
-    run_id: RunId,
-    mutex:  Arc<AsyncMutex<()>>,
-    guard:  Option<OwnedMutexGuard<()>>,
-}
-
-impl Drop for PullRequestCreateGuard {
-    fn drop(&mut self) {
-        self.guard.take();
-
-        let mut locks = self
-            .locks
-            .lock()
-            .expect("pull request create locks poisoned");
-        if locks.get(&self.run_id).is_some_and(|mutex| {
-            Arc::ptr_eq(mutex, &self.mutex) && Arc::strong_count(&self.mutex) == 2
-        }) {
-            locks.remove(&self.run_id);
-        }
-    }
-}
-
-async fn lock_pull_request_create(
-    locks: &PullRequestCreateLocks,
-    run_id: &RunId,
-) -> PullRequestCreateGuard {
-    let mutex = {
-        let mut locks = locks.lock().expect("pull request create locks poisoned");
-        Arc::clone(
-            locks
-                .entry(*run_id)
-                .or_insert_with(|| Arc::new(AsyncMutex::new(()))),
-        )
-    };
-    let guard = mutex.clone().lock_owned().await;
-    PullRequestCreateGuard {
-        locks: Arc::clone(locks),
-        run_id: *run_id,
-        mutex,
-        guard: Some(guard),
     }
 }
 
@@ -1504,6 +1468,15 @@ impl AppState {
         &self,
         api_key: String,
     ) -> anyhow::Result<daytona::DaytonaKeyCheck> {
+        self.check_daytona_api_key_with_timeout(api_key, daytona::DAYTONA_CREDENTIAL_PROBE_TIMEOUT)
+            .await
+    }
+
+    pub(crate) async fn check_daytona_api_key_with_timeout(
+        &self,
+        api_key: String,
+        probe_timeout: Duration,
+    ) -> anyhow::Result<daytona::DaytonaKeyCheck> {
         let base_url = self
             .config_env_lookup(EnvVars::DAYTONA_API_URL)
             .or_else(|| self.config_env_lookup(EnvVars::DAYTONA_SERVER_URL))
@@ -1511,8 +1484,14 @@ impl AppState {
         let org_id = self.config_env_lookup(EnvVars::DAYTONA_ORGANIZATION_ID);
 
         let http_client = fabro_http::http_client().context("failed to build HTTP client")?;
-        daytona::check_daytona_api_key_with(&base_url, org_id.as_deref(), api_key, http_client)
-            .await
+        daytona::check_daytona_api_key_with_timeout(
+            &base_url,
+            org_id.as_deref(),
+            api_key,
+            http_client,
+            probe_timeout,
+        )
+        .await
     }
 
     /// Borrow the persistent store so sibling modules can open run readers
@@ -1528,6 +1507,20 @@ impl AppState {
         self.stores
             .runs
             .get_cached_run(run_id)
+            .await
+            .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?
+            .ok_or_else(|| ApiError::not_found("Run not found."))
+    }
+
+    /// Like [`Self::cached_run`], but returns only the shared projection —
+    /// no run summary clone or children count under the cache mutex.
+    pub(crate) async fn cached_run_projection(
+        &self,
+        run_id: &RunId,
+    ) -> Result<Arc<fabro_store::RunProjection>, ApiError> {
+        self.stores
+            .runs
+            .get_cached_projection(run_id)
             .await
             .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?
             .ok_or_else(|| ApiError::not_found("Run not found."))
@@ -1635,6 +1628,7 @@ impl AppState {
         self.shutting_down.store(true, Ordering::Relaxed);
         self.scheduler_notify.notify_waiters();
         self.automation_scheduler_notify.notify_waiters();
+        self.pull_request_scheduler_notify.notify_waiters();
     }
 
     pub(crate) fn shutdown_token(&self) -> CancellationToken {
@@ -1937,12 +1931,14 @@ pub fn build_router_with_options(
 /// Response-compression layer shared by the main and install-mode routers.
 ///
 /// The default predicate skips streaming SSE (`text/event-stream`), gRPC,
-/// images, and tiny bodies. The quality is pinned because tower-http's
-/// default defers to each codec's own default, and brotli's is quality 11 —
-/// seconds of CPU on a multi-megabyte asset. Level 4 keeps both codecs fast
-/// at a near-optimal ratio.
-pub(crate) fn compression_layer() -> CompressionLayer {
-    CompressionLayer::new().quality(CompressionLevel::Precise(4))
+/// images, ZIP archives, and tiny bodies. The quality is pinned because
+/// tower-http's default defers to each codec's own default, and brotli's is
+/// quality 11 — seconds of CPU on a multi-megabyte asset. Level 4 keeps both
+/// codecs fast at a near-optimal ratio.
+pub(crate) fn compression_layer() -> CompressionLayer<impl Predicate> {
+    CompressionLayer::new()
+        .quality(CompressionLevel::Precise(4))
+        .compress_when(DefaultPredicate::new().and(NotForContentType::const_new("application/zip")))
 }
 
 async fn http_log_middleware(mut req: axum_extract::Request, next: Next) -> Response {
@@ -2573,9 +2569,10 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         worker_runtime,
         scheduler_notify: Notify::new(),
         automation_scheduler_notify: Notify::new(),
+        pull_request_scheduler_notify: Notify::new(),
         global_event_tx,
         files_in_flight: new_files_in_flight(),
-        pull_request_create_locks: Arc::new(Mutex::new(HashMap::new())),
+        pull_request_create_locks: KeyedMutex::new(),
         parent_link_lock: AsyncMutex::new(()),
         server_secrets,
         llm_source,
@@ -2921,11 +2918,11 @@ pub(crate) fn parse_stage_id_path(stage_id: &str) -> Result<StageId, Response> {
 
 #[allow(
     clippy::result_large_err,
-    reason = "Blob ID parsing returns HTTP 400 responses directly."
+    reason = "Blob hash parsing returns HTTP 400 responses directly."
 )]
-pub(crate) fn parse_blob_id_path(blob_id: &str) -> Result<RunBlobId, Response> {
-    RunBlobId::from_str(blob_id)
-        .map_err(|_| ApiError::bad_request("Invalid blob ID.").into_response())
+pub(crate) fn parse_blob_hash_path(blob_hash: &str) -> Result<BlobHash, Response> {
+    BlobHash::from_str(blob_hash)
+        .map_err(|_| ApiError::bad_request("Invalid blob hash.").into_response())
 }
 
 #[allow(
@@ -3722,6 +3719,7 @@ fn runtime_question_from_interview_record(question: &InterviewQuestionRecord) ->
         stage:           question.stage.clone(),
         metadata:        HashMap::new(),
         context_display: question.context_display.clone(),
+        review_target:   question.review_target.clone(),
     }
 }
 
@@ -3735,6 +3733,7 @@ fn api_question_from_interview_record(question: &InterviewQuestionRecord) -> Api
         allow_freeform:  question.allow_freeform,
         timeout_seconds: question.timeout_seconds,
         context_display: question.context_display.clone(),
+        review_target:   question.review_target.clone(),
     }
 }
 
@@ -4096,13 +4095,31 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
             return;
         }
     };
-    let github_permissions = persisted
+    let github_permissions = match persisted
         .run_spec()
         .settings
         .run
         .integrations
         .github
-        .resolve_permissions(process_env_var);
+        .resolve_permissions()
+    {
+        Ok(permissions) => permissions,
+        Err(err) => {
+            tracing::error!(
+                run_id = %run_id,
+                error = %err,
+                "GitHub permission interpolation failed"
+            );
+            fail_run_before_execution(
+                &state,
+                run_id,
+                FailureReason::WorkflowError,
+                format!("Failed to resolve GitHub permissions: {err}"),
+            )
+            .await;
+            return;
+        }
+    };
     let vault = match state.stores.vault.snapshot().await {
         Ok(vault) => vault,
         Err(err) => {
@@ -4129,7 +4146,7 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
         run_control: None,
         github_app,
         github_permissions,
-        vault: Some(Arc::new(AsyncRwLock::new(vault.into_vault()))),
+        vault: Arc::new(AsyncRwLock::new(vault.into_vault())),
         catalog: state.catalog(),
         on_node: None,
         registry_override,
@@ -4183,9 +4200,15 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
     let mut runs = state.runs.lock().expect("runs lock poisoned");
     if let Some(managed_run) = runs.get_mut(&run_id) {
         match &result {
-            ExecutionResult::Completed(result) => match result.as_ref() {
-                Ok(started) => match &started.finalized.outcome {
-                    Ok(_) => {
+            ExecutionResult::Completed(result) => {
+                // A run can fail either before it produces a `Started` or in
+                // its own outcome; both carry the same `WorkflowError`.
+                let outcome = match result.as_ref() {
+                    Ok(started) => started.finalized.outcome.as_ref().map(|_| ()),
+                    Err(e) => Err(e),
+                };
+                match outcome {
+                    Ok(()) => {
                         info!(run_id = %run_id, "Run completed");
                         managed_run.status = RunStatus::Succeeded {
                             reason: SuccessReason::Completed,
@@ -4198,27 +4221,15 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
                         };
                     }
                     Err(e) => {
-                        error!(run_id = %run_id, error = %e, "Run failed");
+                        let detail = e.display_with_causes();
+                        error!(run_id = %run_id, error = %detail, "Run failed");
                         managed_run.status = RunStatus::Failed {
-                            reason: FailureReason::WorkflowError,
+                            reason: e.failure_reason(),
                         };
-                        managed_run.error = Some(e.to_string());
+                        managed_run.error = Some(detail);
                     }
-                },
-                Err(WorkflowError::Cancelled) => {
-                    info!(run_id = %run_id, "Run cancelled");
-                    managed_run.status = RunStatus::Failed {
-                        reason: FailureReason::Cancelled,
-                    };
                 }
-                Err(e) => {
-                    error!(run_id = %run_id, error = %e, "Run failed");
-                    managed_run.status = RunStatus::Failed {
-                        reason: FailureReason::WorkflowError,
-                    };
-                    managed_run.error = Some(e.to_string());
-                }
-            },
+            }
             ExecutionResult::CancelledBySignal => {
                 info!(run_id = %run_id, "Run cancelled");
                 managed_run.status = RunStatus::Failed {

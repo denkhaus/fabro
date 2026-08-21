@@ -138,7 +138,6 @@ pub fn make_read_file_tool() -> RegisteredTool {
                     .read_file(file_path, offset_usize, limit_usize)
                     .await
                     .map_err(|e| e.display_with_causes())?;
-                ctx.env.mark_agent_read(file_path);
                 Ok(content)
             })
         }),
@@ -227,7 +226,7 @@ pub fn make_edit_file_tool() -> RegisteredTool {
                 };
 
                 ctx.env
-                    .write_file(file_path, &new_content)
+                    .write_existing_file(file_path, &new_content)
                     .await
                     .map_err(|e| e.display_with_causes())?;
                 Ok(format!("Successfully edited {file_path}"))
@@ -298,14 +297,13 @@ pub(crate) async fn execute_shell_command(
         "Injecting sandbox env vars into tool execution"
     );
     ctx.env
-        .exec_command_streaming(
-            command,
-            Some(timeout_ms),
-            cwd,
-            tool_env.as_ref(),
-            Some(ctx.cancel.clone()),
-            None,
-        )
+        .exec_command_streaming(crate::ExecStreamingRequest {
+            timeout_ms: Some(timeout_ms),
+            working_dir: cwd,
+            env_vars: tool_env.as_ref(),
+            cancel_token: Some(ctx.cancel.clone()),
+            ..crate::ExecStreamingRequest::new(command)
+        })
         .await
         .map_err(|e| format!("{SHELL_NO_PROCESS_RESULT}: {}", e.display_with_causes()))
 }
@@ -441,27 +439,20 @@ pub fn make_grep_tool() -> RegisteredTool {
     }
 }
 
-/// Run a content search and mark every returned file as observed by the
-/// agent's read-before-write guard.
+/// Run a content search, rendering sandbox failures as tool-result strings.
+///
+/// Shared by the canonical `grep` tool and the Kimi profile's `Grep`, which
+/// group the same result lines differently.
 pub(crate) async fn execute_grep(
     ctx: &ToolContext,
     pattern: &str,
     path: &str,
     options: &GrepOptions,
 ) -> Result<Vec<String>, String> {
-    let results = ctx
-        .env
+    ctx.env
         .grep(pattern, path, options)
         .await
-        .map_err(|e| e.display_with_causes())?;
-    let mut seen_files = std::collections::HashSet::new();
-    for line in &results {
-        let file_path = grep_result_path(line, path);
-        if !file_path.is_empty() && seen_files.insert(file_path) {
-            ctx.env.mark_agent_read(file_path);
-        }
-    }
-    Ok(results)
+        .map_err(|e| e.display_with_causes())
 }
 
 /// Extract the file path from `<path>:<line>:<content>` grep output.
@@ -563,7 +554,6 @@ pub(crate) fn make_read_many_files_tool() -> RegisteredTool {
                 for (path, result) in results {
                     match result {
                         Ok(content) => {
-                            ctx.env.mark_agent_read(&path);
                             let _ = write!(output, "=== {path} ===\n{content}\n\n");
                         }
                         Err(err) => {
@@ -656,7 +646,7 @@ fn format_brave_results(body: &serde_json::Value) -> String {
     output
 }
 
-fn make_web_search_tool_with_api_key(api_key: String) -> RegisteredTool {
+pub(crate) fn make_web_search_tool_with_api_key(api_key: String) -> RegisteredTool {
     use std::sync::OnceLock;
     static CLIENT: OnceLock<fabro_http::HttpClient> = OnceLock::new();
 
@@ -1012,6 +1002,7 @@ mod tests {
         )
         .await;
         assert_eq!(result.unwrap(), "Successfully wrote to /out.txt");
+        assert_eq!(env.existing_file_write_count(), 0);
         let written = env.written_files.lock().unwrap();
         assert_eq!(written.len(), 1);
         assert_eq!(written[0].0, "/out.txt");
@@ -1046,6 +1037,7 @@ mod tests {
         )
         .await;
         assert_eq!(result.unwrap(), "Successfully edited /f.txt");
+        assert_eq!(env.existing_file_write_count(), 1);
         let written = env.written_files.lock().unwrap();
         assert_eq!(written.len(), 1);
         assert_eq!(written[0].1, "goodbye world");
@@ -2284,71 +2276,6 @@ mod tests {
         assert!(
             output.to_lowercase().contains("rust"),
             "results should mention rust, got: {output}"
-        );
-    }
-
-    #[tokio::test]
-    async fn read_file_tool_marks_agent_read() {
-        use crate::read_before_write_sandbox::ReadBeforeWriteSandbox;
-
-        let mock = MockSandbox {
-            files: HashMap::from([("a.ts".into(), "content".into())]),
-            ..Default::default()
-        };
-        let env: Arc<dyn Sandbox> = Arc::new(ReadBeforeWriteSandbox::new(Arc::new(mock)));
-
-        // read_file tool should mark the file as agent-read
-        let tool = make_read_file_tool();
-        (tool.executor)(serde_json::json!({"file_path": "a.ts"}), ToolContext {
-            env:                 Arc::clone(&env),
-            cancel:              CancellationToken::new(),
-            tool_env_provider:   None,
-            session_id:          None,
-            root_session_id:     None,
-            tool_call_id:        None,
-            agent_event_emitter: None,
-        })
-        .await
-        .unwrap();
-
-        // write_file should succeed because read_file tool marked it
-        let result = env.write_file("a.ts", "new content").await;
-        assert!(
-            result.is_ok(),
-            "write should succeed after read_file tool marks agent-read"
-        );
-    }
-
-    #[tokio::test]
-    async fn grep_tool_marks_agent_read() {
-        use crate::read_before_write_sandbox::ReadBeforeWriteSandbox;
-
-        let mock = MockSandbox {
-            files: HashMap::from([("b.ts".into(), "content".into())]),
-            grep_results: vec!["b.ts:1:content".into()],
-            ..Default::default()
-        };
-        let env: Arc<dyn Sandbox> = Arc::new(ReadBeforeWriteSandbox::new(Arc::new(mock)));
-
-        // grep tool should mark matched files as agent-read
-        let tool = make_grep_tool();
-        (tool.executor)(serde_json::json!({"pattern": "content"}), ToolContext {
-            env:                 Arc::clone(&env),
-            cancel:              CancellationToken::new(),
-            tool_env_provider:   None,
-            session_id:          None,
-            root_session_id:     None,
-            tool_call_id:        None,
-            agent_event_emitter: None,
-        })
-        .await
-        .unwrap();
-
-        // write_file should succeed because grep tool marked it
-        let result = env.write_file("b.ts", "new content").await;
-        assert!(
-            result.is_ok(),
-            "write should succeed after grep tool marks agent-read"
         );
     }
 }

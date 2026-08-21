@@ -5,44 +5,47 @@ use serde::{Deserialize, Serialize};
 use super::{BilledTokenCounts, ExecOutputTail, RunNoticeLevel};
 use crate::status::{BlockedReason, PendingReason, SuccessReason};
 use crate::{
-    AutomationRef, DiffSummary, ForkSourceRef, GitContext, Graph, PairId, PairTarget, RunBlobId,
+    AutomationRef, BlobHash, DiffSummary, ForkSourceRef, GitContext, Graph, PairId, PairTarget,
     RunControlAction, RunFailure, RunId, RunProvenance, RunTiming, WorkflowSettings,
+    WorkflowVersionId,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunCreatedProps {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title:            Option<String>,
-    pub settings:         WorkflowSettings,
-    pub graph:            Graph,
+    pub title:               Option<String>,
+    pub settings:            WorkflowSettings,
+    pub graph:               Graph,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workflow_source:  Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workflow_config:  Option<String>,
+    pub workflow_source:     Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub labels:           BTreeMap<String, String>,
-    pub run_dir:          String,
+    pub labels:              BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_directory: Option<String>,
+    pub source_directory:    Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workflow_slug:    Option<String>,
+    pub workflow_slug:       Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub automation:       Option<AutomationRef>,
+    pub workflow_version_id: Option<WorkflowVersionId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub db_prefix:        Option<String>,
-    pub provenance:       RunProvenance,
+    pub automation:          Option<AutomationRef>,
+    pub provenance:          RunProvenance,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manifest_blob:    Option<RunBlobId>,
+    pub manifest_blob:       Option<BlobHash>,
+    /// Unredacted copy of the run spec in the blob store. The settings and
+    /// graph on this event are redacted at the sink; execution loads the
+    /// spec from this blob instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub git:              Option<GitContext>,
+    pub spec_blob:           Option<BlobHash>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fork_source_ref:  Option<ForkSourceRef>,
+    pub git:                 Option<GitContext>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub retried_from:     Option<RunId>,
+    pub fork_source_ref:     Option<ForkSourceRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent_id:        Option<RunId>,
+    pub retried_from:        Option<RunId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub web_url:          Option<String>,
+    pub parent_id:           Option<RunId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_url:             Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -137,7 +140,7 @@ pub struct RunPairFailedProps {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunSubmittedProps {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub definition_blob: Option<RunBlobId>,
+    pub definition_blob: Option<BlobHash>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
