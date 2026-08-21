@@ -1,0 +1,6 @@
+# Workspace toolset for the lab branch. Bootstrapped by the [run.prepare]
+# step via mise (image: fabro-runner:mise — lean base, no baked-in tools).
+# npm-distributed CLIs are installed through bun -g because mise's npm
+# backend requires interactive confirmation in 2026.8.10.
+[tools]
+bun = "1.4.0"

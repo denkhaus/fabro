@@ -2,6 +2,43 @@ _version = 1
 
 # Lab branch: workflows only, no repo code, no AGENTS.md — clean conditions
 # for exercising the run -> push -> pull dev cycle.
+
+# Lean mise-based environment: ubuntu:24.04 + mise only (no baked-in toolchain).
+[run.environment]
+id = "mise"
+
+[environments.mise]
+provider = "docker"
+
+[environments.mise.image]
+docker = "fabro-runner:mise"
+
+[environments.mise.resources]
+cpu = 8
+memory = "16GB"
+
+[environments.mise.network]
+mode = "allow_all"
+
+[environments.mise.lifecycle]
+stop_on_terminal = true
+
+# Bootstrap workspace tooling BEFORE any stage runs: mise reads .mise.toml,
+# bun -g installs the npm CLIs into BUN_INSTALL (already on the image PATH).
+[run.prepare]
+timeout = "5m"
+
+[[run.prepare.steps]]
+script = "mise install && bun install -g @os-eco/seeds-cli@0.5.15 @os-eco/mulch-cli@0.10.7 && sd --version && ml --version"
+
+# Default model for all project runs.
 [run.model]
 provider = "zai"
 name = "glm-5.3"
+
+# Dev-cycle test: push checkpoint branches to the fork.
+[run.run_branch]
+push = true
+
+[run.meta_branch]
+push = true
