@@ -140,6 +140,19 @@ impl GitHubRepositoryAccess {
         !self.additional.is_empty()
     }
 
+    /// [`Self::resolve_shared_installation`] against the production GitHub
+    /// API with a fresh HTTP client.
+    pub async fn resolve_shared_installation_via_api(
+        &self,
+        creds: &GitHubAppCredentials,
+    ) -> anyhow::Result<u64> {
+        let client = fabro_http::http_client()
+            .map_err(anyhow::Error::new)
+            .context("building HTTP client for installation resolution")?;
+        self.resolve_shared_installation(creds, &client, &crate::github_api_base_url())
+            .await
+    }
+
     /// Resolve every target's App installation and require one shared
     /// installation ID, so a repository the App cannot see — or one that
     /// resolves to a different installation — is named before any token is

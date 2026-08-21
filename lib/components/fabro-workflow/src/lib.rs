@@ -293,6 +293,7 @@ pub mod error;
 pub mod event;
 pub mod file_resolver;
 pub mod git;
+pub(crate) mod git_bridge;
 pub(crate) mod graph;
 pub mod handler;
 mod hook_context;
