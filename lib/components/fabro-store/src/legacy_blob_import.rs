@@ -10,6 +10,8 @@ use bytes::Bytes;
 use fabro_types::BlobHash;
 use sqlx::pool::PoolConnection;
 use sqlx::{Acquire as _, Sqlite};
+#[cfg(test)]
+use tokio::sync::Barrier;
 use tracing::debug;
 
 use crate::keys::SlateKey;
@@ -56,6 +58,18 @@ impl LegacyBlobImportError {
     pub fn report(&self) -> &LegacyBlobImportReport {
         &self.report
     }
+
+    /// Returns secondary errors encountered while cleaning up the failed
+    /// import.
+    ///
+    /// The standard error source chain preserves the failure that interrupted
+    /// the import. Because that chain is linear, rollback, connection-setting
+    /// restoration, and connection-retirement errors are exposed separately.
+    pub fn cleanup_errors(&self) -> impl Iterator<Item = &(dyn StdError + 'static)> {
+        let mut errors = Vec::new();
+        self.failure.collect_cleanup_errors(&mut errors);
+        errors.into_iter()
+    }
 }
 
 impl fmt::Debug for LegacyBlobImportError {
@@ -80,11 +94,12 @@ impl fmt::Display for LegacyBlobImportError {
 
 impl StdError for LegacyBlobImportError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        Some(&self.failure)
+        Some(self.failure.primary_failure())
     }
 }
 
-#[derive(thiserror::Error)]
+#[derive(strum::IntoStaticStr, thiserror::Error)]
+#[strum(serialize_all = "snake_case")]
 enum LegacyBlobImportFailure {
     #[error("the legacy blob import target is not backed by SQLite")]
     WrongTargetBackend,
@@ -161,28 +176,39 @@ enum LegacyBlobImportFailure {
 
 impl LegacyBlobImportFailure {
     fn kind(&self) -> &'static str {
+        self.into()
+    }
+
+    fn primary_failure(&self) -> &Self {
         match self {
-            Self::WrongTargetBackend => "wrong_target_backend",
-            Self::OpenSource(_) => "open_source",
-            Self::OpenSourceScan(_) => "open_source_scan",
-            Self::ReadSourceScan(_) => "read_source_scan",
-            Self::InvalidSourceKey => "invalid_source_key",
-            Self::SourceDigestMismatch => "source_digest_mismatch",
-            Self::CounterOverflow => "counter_overflow",
-            Self::AcquireConnection(_) => "acquire_connection",
-            Self::ReadAutomaticCheckpoint(_) => "read_automatic_checkpoint",
-            Self::DisableAutomaticCheckpoint(_) => "disable_automatic_checkpoint",
-            Self::BeginTransaction(_) => "begin_transaction",
-            Self::InsertDestination(_) => "insert_destination",
-            Self::ReadDestination(_) => "read_destination",
-            Self::DestinationConflict => "destination_conflict",
-            Self::CommitTransaction(_) => "commit_transaction",
-            Self::RollbackTransaction { .. } => "rollback_transaction",
-            Self::PassiveCheckpoint(_) => "passive_checkpoint",
-            Self::PassiveCheckpointBusy => "passive_checkpoint_busy",
-            Self::FinalCheckpoint(_) => "final_checkpoint",
-            Self::FinalCheckpointBusy => "final_checkpoint_busy",
-            Self::RestoreAutomaticCheckpoint { .. } => "restore_automatic_checkpoint",
+            Self::RollbackTransaction { prior, .. }
+            | Self::RestoreAutomaticCheckpoint {
+                prior: Some(prior), ..
+            } => prior.primary_failure(),
+            _ => self,
+        }
+    }
+
+    fn collect_cleanup_errors<'a>(&'a self, errors: &mut Vec<&'a (dyn StdError + 'static)>) {
+        match self {
+            Self::RollbackTransaction { source, prior } => {
+                errors.push(source);
+                prior.collect_cleanup_errors(errors);
+            }
+            Self::RestoreAutomaticCheckpoint {
+                source,
+                prior,
+                retirement_error,
+            } => {
+                errors.push(source);
+                if let Some(retirement_error) = retirement_error {
+                    errors.push(retirement_error);
+                }
+                if let Some(prior) = prior {
+                    prior.collect_cleanup_errors(errors);
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -213,16 +239,26 @@ impl fmt::Debug for LegacyBlobImportFailure {
 #[derive(Default)]
 struct ImportControls {
     #[cfg(test)]
-    source_after_rows:            Option<u64>,
+    after_automatic_checkpoint_disabled: Option<std::sync::Arc<Barrier>>,
     #[cfg(test)]
-    passive_checkpoint:           bool,
+    source_after_rows:                   Option<u64>,
     #[cfg(test)]
-    final_checkpoint:             bool,
+    passive_checkpoint:                  bool,
     #[cfg(test)]
-    restore_automatic_checkpoint: bool,
+    final_checkpoint:                    bool,
+    #[cfg(test)]
+    restore_automatic_checkpoint:        bool,
 }
 
 impl ImportControls {
+    #[cfg(test)]
+    async fn after_automatic_checkpoint_disabled(&self) {
+        if let Some(barrier) = &self.after_automatic_checkpoint_disabled {
+            barrier.wait().await;
+            barrier.wait().await;
+        }
+    }
+
     fn source_scan_error(&self, scanned_rows: u64) -> Option<slatedb::Error> {
         #[cfg(test)]
         if self.source_after_rows == Some(scanned_rows) {
@@ -265,6 +301,52 @@ impl ImportControls {
         }
         let _ = self;
         None
+    }
+}
+
+struct ImportConnection {
+    connection:     Option<PoolConnection<Sqlite>>,
+    retire_on_drop: bool,
+}
+
+impl ImportConnection {
+    fn new(connection: PoolConnection<Sqlite>) -> Self {
+        Self {
+            connection:     Some(connection),
+            retire_on_drop: false,
+        }
+    }
+
+    fn get_mut(&mut self) -> &mut PoolConnection<Sqlite> {
+        self.connection
+            .as_mut()
+            .expect("import connection exists until explicit retirement")
+    }
+
+    fn retire_if_dropped(&mut self) {
+        self.retire_on_drop = true;
+    }
+
+    fn checkpoint_setting_restored(&mut self) {
+        self.retire_on_drop = false;
+    }
+
+    async fn retire(mut self) -> Result<(), sqlx::Error> {
+        let Some(mut connection) = self.connection.take() else {
+            return Ok(());
+        };
+        connection.close_on_drop();
+        connection.close().await
+    }
+}
+
+impl Drop for ImportConnection {
+    fn drop(&mut self) {
+        if self.retire_on_drop {
+            if let Some(connection) = &mut self.connection {
+                connection.close_on_drop();
+            }
+        }
     }
 }
 
@@ -337,10 +419,17 @@ impl Database {
             .fetch_one(&mut *connection)
             .await
             .map_err(LegacyBlobImportFailure::ReadAutomaticCheckpoint)?;
+        let mut connection = ImportConnection::new(connection);
+        // A cancelled PRAGMA future may already have changed connection-local
+        // state. Arm retirement before the first mutating await so an altered
+        // connection can never return to the pool without restoration.
+        connection.retire_if_dropped();
 
-        let import_result = match set_automatic_checkpoint(&mut connection, 0).await {
+        let import_result = match set_automatic_checkpoint(connection.get_mut(), 0).await {
             Ok(()) => {
-                self.copy_legacy_blobs(&mut connection, controls, report)
+                #[cfg(test)]
+                controls.after_automatic_checkpoint_disabled().await;
+                self.copy_legacy_blobs(connection.get_mut(), controls, report)
                     .await
             }
             Err(source) => Err(LegacyBlobImportFailure::DisableAutomaticCheckpoint(source)),
@@ -349,11 +438,11 @@ impl Database {
         let restore_result = if let Some(error) = controls.restore_automatic_checkpoint_error() {
             Err(error)
         } else {
-            set_automatic_checkpoint(&mut connection, previous_automatic_checkpoint).await
+            set_automatic_checkpoint(connection.get_mut(), previous_automatic_checkpoint).await
         };
 
         if let Err(source) = restore_result {
-            let retirement_error = connection.close().await.err();
+            let retirement_error = connection.retire().await.err();
             return Err(LegacyBlobImportFailure::RestoreAutomaticCheckpoint {
                 source,
                 prior: import_result.err().map(Box::new),
@@ -361,6 +450,7 @@ impl Database {
             });
         }
 
+        connection.checkpoint_setting_restored();
         import_result
     }
 
@@ -683,6 +773,8 @@ mod tests {
     use bytes::Bytes;
     use fabro_types::BlobHash;
     use object_store::memory::InMemory;
+    use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+    use tokio::sync::Barrier;
     use tracing::field::{Field, Visit};
     use tracing::instrument::WithSubscriber as _;
     use tracing::span::{Attributes, Id, Record};
@@ -690,7 +782,7 @@ mod tests {
 
     use super::{
         ImportControls, LegacyBlobImportFailure, LegacyBlobImportReport, MAX_BATCH_BYTES,
-        PASSIVE_CHECKPOINT_BYTES,
+        PASSIVE_CHECKPOINT_BYTES, set_automatic_checkpoint,
     };
     use crate::keys::SlateKey;
     use crate::{BlobStore, Database};
@@ -1216,6 +1308,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn restoration_failure_preserves_the_prior_source_chain() -> TestResult<()> {
+        let context = TestContext::new().await?;
+        let controls = ImportControls {
+            source_after_rows: Some(0),
+            restore_automatic_checkpoint: true,
+            ..ImportControls::default()
+        };
+
+        let error = context
+            .source
+            .import_legacy_blobs_with_controls(&context.target, &controls)
+            .await
+            .expect_err("both injected failures should fail import");
+
+        let mut current: Option<&(dyn std::error::Error + 'static)> = Some(&error);
+        let mut saw_slate_source = false;
+        while let Some(source) = current {
+            saw_slate_source |= source.downcast_ref::<slatedb::Error>().is_some();
+            current = source.source();
+        }
+        assert!(saw_slate_source, "prior source was absent from the chain");
+        assert!(
+            error
+                .cleanup_errors()
+                .any(|source| source.downcast_ref::<sqlx::Error>().is_some()),
+            "restoration source was absent from cleanup errors"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn automatic_checkpoint_setting_is_restored_after_success_and_failure() -> TestResult<()>
     {
         let success = TestContext::new().await?;
@@ -1235,6 +1358,61 @@ mod tests {
             .await
             .expect_err("invalid source should fail import");
         assert_eq!(failure.automatic_checkpoint().await?, 41);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cancellation_retires_a_connection_with_disabled_checkpointing() -> TestResult<()> {
+        let source = Database::new(
+            Arc::new(InMemory::new()),
+            "legacy-blob-import-cancellation-test",
+            Duration::from_millis(1),
+            None,
+        );
+        let dir = tempfile::tempdir()?;
+        let options = SqliteConnectOptions::new()
+            .filename(dir.path().join("fabro.sqlite3"))
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await?;
+        sqlx::query("CREATE TABLE blobs (hash TEXT PRIMARY KEY NOT NULL, data BLOB NOT NULL)")
+            .execute(&pool)
+            .await?;
+        let target = Arc::new(BlobStore::new(pool.clone()));
+
+        let mut connection = pool.acquire().await?;
+        set_automatic_checkpoint(&mut connection, 73).await?;
+        drop(connection);
+
+        let barrier = Arc::new(Barrier::new(2));
+        let controls = ImportControls {
+            after_automatic_checkpoint_disabled: Some(Arc::clone(&barrier)),
+            ..ImportControls::default()
+        };
+        let task = tokio::spawn({
+            let source = source.clone();
+            let target = Arc::clone(&target);
+            async move {
+                let mut report = LegacyBlobImportReport::default();
+                source
+                    .run_legacy_blob_import(&target, &controls, &mut report)
+                    .await
+            }
+        });
+
+        barrier.wait().await;
+        task.abort();
+        let join_error = task.await.expect_err("aborted import should be cancelled");
+        assert!(join_error.is_cancelled());
+
+        let mut connection = pool.acquire().await?;
+        let observed: i64 = sqlx::query_scalar("PRAGMA wal_autocheckpoint")
+            .fetch_one(&mut *connection)
+            .await?;
+        assert_ne!(observed, 0);
         Ok(())
     }
 
