@@ -5,6 +5,11 @@ _version = 1
 [run.pull_request]
 enabled = false
 
+# Default model for all project runs.
+[run.model]
+provider = "zai"
+name = "glm-5.3"
+
 # [run.scm] is intentionally NOT pinned: origin detection resolves
 # url.<replacement>.insteadOf rewrites to the canonical URL
 # (fabro-manifest detect_manifest_repo_info + fabro_github::canonicalize_repo_origin_url),

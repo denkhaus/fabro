@@ -3454,14 +3454,21 @@ enabled = true
         .expect("enabled OpenRouter override should build from the built-in provider settings");
 
         for provider in [ProviderId::new("zai"), ProviderId::new("openrouter")] {
-            for alias in ["glm", "glm5", "glm52", "glm5.2"] {
+            for (alias, expected) in [
+                ("glm", "glm-5.3"),
+                ("glm5", "glm-5.3"),
+                ("glm53", "glm-5.3"),
+                ("glm5.3", "glm-5.3"),
+                ("glm52", "glm-5.2"),
+                ("glm5.2", "glm-5.2"),
+            ] {
                 let model = catalog
                     .resolve_on_provider(&provider, alias)
                     .unwrap_or_else(|error| {
                         panic!("{alias} should resolve on {provider}: {error}")
                     });
                 assert_eq!(model.provider, provider, "{alias}");
-                assert_eq!(model.id, "glm-5.2", "{alias}");
+                assert_eq!(model.id, expected, "{alias}");
             }
         }
     }
@@ -3626,8 +3633,6 @@ enabled = true
             },
             estimated_output_tps: None,
             aliases: [
-                "glm",
-                "glm5",
                 "glm52",
                 "glm5.2",
             ],
@@ -7264,12 +7269,10 @@ sampling_params = false
             },
             estimated_output_tps: None,
             aliases: [
-                "glm",
-                "glm5",
                 "glm52",
                 "glm5.2",
             ],
-            default: true,
+            default: false,
             small_default: false,
             configured: false,
         }
@@ -7283,10 +7286,82 @@ sampling_params = false
             ReasoningEffort::High,
             ReasoningEffort::Max
         ]);
-        assert_eq!(catalog.get("glm").unwrap().id, "glm-5.2");
-        assert_eq!(catalog.get("glm5").unwrap().id, "glm-5.2");
         assert_eq!(catalog.get("glm52").unwrap().id, "glm-5.2");
         assert_eq!(catalog.get("glm5.2").unwrap().id, "glm-5.2");
+    }
+
+    #[test]
+    fn glm_5_3_in_catalog() {
+        let catalog = Catalog::builtin();
+        let model = catalog.get("glm-5.3").expect("GLM 5.3 should be present");
+        insta::assert_debug_snapshot!(model, @r#"
+        Model {
+            id: "glm-5.3",
+            provider: zai,
+            family: "glm-5",
+            display_name: "GLM 5.3",
+            limits: ModelLimits {
+                context_window: 1048576,
+                max_output: Some(
+                    131072,
+                ),
+            },
+            training: None,
+            knowledge_cutoff: None,
+            features: ModelFeatures {
+                tools: true,
+                vision: false,
+                reasoning: true,
+                reasoning_effort: Levels,
+                prompt_cache: true,
+                cache_control_breakpoints: false,
+                sampling_params: true,
+            },
+            controls: ModelControls {
+                reasoning_effort: [
+                    Low,
+                    High,
+                    Max,
+                ],
+            },
+            costs: ModelCosts {
+                input_cost_per_mtok: Some(
+                    1.4,
+                ),
+                output_cost_per_mtok: Some(
+                    4.4,
+                ),
+                cache_input_cost_per_mtok: Some(
+                    0.26,
+                ),
+            },
+            estimated_output_tps: None,
+            aliases: [
+                "glm",
+                "glm5",
+                "glm53",
+                "glm5.3",
+            ],
+            default: true,
+            small_default: false,
+            configured: false,
+        }
+        "#);
+
+        let settings = catalog
+            .model_settings("glm-5.3")
+            .expect("GLM 5.3 settings should be present");
+        assert_eq!(settings.api_id, "glm-5.3");
+        assert_eq!(settings.controls.reasoning_effort, vec![
+            ReasoningEffort::Low,
+            ReasoningEffort::High,
+            ReasoningEffort::Max
+        ]);
+        // Flagship aliases resolve to the newest GLM.
+        assert_eq!(catalog.get("glm").unwrap().id, "glm-5.3");
+        assert_eq!(catalog.get("glm5").unwrap().id, "glm-5.3");
+        assert_eq!(catalog.get("glm53").unwrap().id, "glm-5.3");
+        assert_eq!(catalog.get("glm5.3").unwrap().id, "glm-5.3");
     }
 
     #[test]
