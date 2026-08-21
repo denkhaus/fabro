@@ -14,6 +14,7 @@ use fabro_validate::Diagnostic;
 use regex::Regex;
 use thiserror::Error as ThisError;
 
+use crate::event::RunEventPersistenceError;
 use crate::outcome::{FailureDetail, Outcome, StageOutcome};
 
 /// Classify an LLM error into a `FailureCategory` based on its structure.
@@ -718,6 +719,12 @@ impl From<fabro_template::TemplateError> for Error {
 impl From<fabro_validate::ValidationError> for Error {
     fn from(e: fabro_validate::ValidationError) -> Self {
         Self::Validation(e.0)
+    }
+}
+
+impl From<RunEventPersistenceError> for Error {
+    fn from(err: RunEventPersistenceError) -> Self {
+        Self::engine_with_source("run event persistence failed", err)
     }
 }
 

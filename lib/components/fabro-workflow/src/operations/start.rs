@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -159,10 +160,7 @@ pub async fn start(run_dir: &Path, services: StartServices) -> Result<Started, E
                 actor:  None,
             },
         )
-        .await
-        .map_err(|err| {
-            Error::engine_with_source("failed to persist run.start_requested event", err)
-        })?;
+        .await?;
         append_event_to_sink(
             &services.event_sink,
             &services.run_id,
@@ -171,8 +169,7 @@ pub async fn start(run_dir: &Path, services: StartServices) -> Result<Started, E
                 actor:  None,
             },
         )
-        .await
-        .map_err(|err| Error::engine_with_source("failed to persist run.runnable event", err))?;
+        .await?;
     }
 
     Box::pin(execute_persisted_run(run_dir, None, services)).await
@@ -202,7 +199,7 @@ pub(super) async fn execute_persisted_run(
         return Err(error);
     }
     if let Err(err) = append_event_to_sink(&event_sink, &run_id, &Event::RunStarting).await {
-        let error = Error::engine_with_source("failed to persist run.starting event", err);
+        let error = Error::from(err);
         let _ = persist_detached_failure(
             run_id,
             &run_store,
@@ -322,7 +319,7 @@ async fn emit_workflow_run_failed(
         conclusion.billing,
     );
     if let Err(err) = append_event_to_sink(event_sink, &run_id, &failure_event).await {
-        let rendered_error = collect_chain(err.as_ref()).join(": ");
+        let rendered_error = collect_chain(&err).join(": ");
         tracing::error!(
             run_id = %run_id,
             event = "run.failed",
@@ -362,7 +359,33 @@ fn stop_for_run_event_persistence_failure(
     error: RunEventPersistenceError,
 ) -> Error {
     cancel_token.cancel();
-    Error::engine_with_source("run event persistence failed", error)
+    error.into()
+}
+
+/// Race a pipeline step against the first latched run-event persistence
+/// failure. When the failure wins, the step future is dropped mid-flight and
+/// the run token is cancelled.
+async fn race_persistence<T>(
+    logger: &RunEventLogger,
+    cancel_token: &CancellationToken,
+    step: impl Future<Output = T>,
+) -> Result<T, Error> {
+    tokio::select! {
+        result = step => Ok(result),
+        failure = logger.wait_for_failure() => {
+            Err(stop_for_run_event_persistence_failure(cancel_token, failure))
+        }
+    }
+}
+
+async fn flush_or_stop(
+    logger: &RunEventLogger,
+    cancel_token: &CancellationToken,
+) -> Result<(), Error> {
+    logger
+        .flush()
+        .await
+        .map_err(|failure| stop_for_run_event_persistence_failure(cancel_token, failure))
 }
 
 impl RunSession {
@@ -798,25 +821,16 @@ impl RunSession {
             seed_context: self.seed_context,
             fabro_run_tools: self.fabro_run_tools,
         };
-        let mut initializing = Box::pin(pipeline::initialize(persisted, init_options));
-        let initialized = tokio::select! {
-            result = &mut initializing => result,
-            failure = store_progress_logger.wait_for_failure() => {
-                return Err(stop_for_run_event_persistence_failure(
-                    &run_cancel_token,
-                    failure,
-                ));
-            }
-        };
-        let mut initialized = match initialized {
+        let mut initialized = match race_persistence(
+            &store_progress_logger,
+            &run_cancel_token,
+            Box::pin(pipeline::initialize(persisted, init_options)),
+        )
+        .await?
+        {
             Ok(initialized) => initialized,
             Err(err) => {
-                if let Err(failure) = store_progress_logger.flush().await {
-                    return Err(stop_for_run_event_persistence_failure(
-                        &run_cancel_token,
-                        failure,
-                    ));
-                }
+                flush_or_stop(&store_progress_logger, &run_cancel_token).await?;
                 return Err(err);
             }
         };
@@ -843,23 +857,15 @@ impl RunSession {
             steering_hub_for_drain.drain_pending_at_run_end();
         });
 
-        store_progress_logger.flush().await.map_err(|failure| {
-            stop_for_run_event_persistence_failure(&run_cancel_token, failure)
-        })?;
+        flush_or_stop(&store_progress_logger, &run_cancel_token).await?;
 
-        let mut executing = Box::pin(pipeline::execute(initialized));
-        let executed = tokio::select! {
-            executed = &mut executing => executed,
-            failure = store_progress_logger.wait_for_failure() => {
-                return Err(stop_for_run_event_persistence_failure(
-                    &run_cancel_token,
-                    failure,
-                ));
-            }
-        };
-        store_progress_logger.flush().await.map_err(|failure| {
-            stop_for_run_event_persistence_failure(&run_cancel_token, failure)
-        })?;
+        let executed = race_persistence(
+            &store_progress_logger,
+            &run_cancel_token,
+            Box::pin(pipeline::execute(initialized)),
+        )
+        .await?;
+        flush_or_stop(&store_progress_logger, &run_cancel_token).await?;
         let final_context = Some(executed.final_context.clone());
 
         let finalize_opts = FinalizeOptions {
@@ -879,30 +885,21 @@ impl RunSession {
             model:      self.pr_model,
         };
 
-        let mut concluding = Box::pin(async {
-            let concluded = Box::pin(pipeline::conclude(executed, &finalize_opts)).await?;
-            let published = Box::pin(pipeline::publish(concluded, &publish_opts)).await;
-            Box::pin(pipeline::finalize(published, &finalize_opts)).await
-        });
-        let concluding = tokio::select! {
-            result = &mut concluding => result,
-            failure = store_progress_logger.wait_for_failure() => {
-                return Err(stop_for_run_event_persistence_failure(
-                    &run_cancel_token,
-                    failure,
-                ));
-            }
-        };
+        let concluding = race_persistence(
+            &store_progress_logger,
+            &run_cancel_token,
+            Box::pin(async {
+                let concluded = Box::pin(pipeline::conclude(executed, &finalize_opts)).await?;
+                let published = Box::pin(pipeline::publish(concluded, &publish_opts)).await;
+                Box::pin(pipeline::finalize(published, &finalize_opts)).await
+            }),
+        )
+        .await?;
         let finalized = match concluding {
             Ok(finalized) => finalized,
             Err(err) => {
                 self.steering_hub.drain_pending_at_run_end();
-                if let Err(failure) = store_progress_logger.flush().await {
-                    return Err(stop_for_run_event_persistence_failure(
-                        &run_cancel_token,
-                        failure,
-                    ));
-                }
+                flush_or_stop(&store_progress_logger, &run_cancel_token).await?;
                 return Err(err);
             }
         };
@@ -911,9 +908,7 @@ impl RunSession {
         // scopeguard above re-runs as a no-op (drain is idempotent on an
         // already-empty buffer) on the way out of scope.
         self.steering_hub.drain_pending_at_run_end();
-        store_progress_logger.flush().await.map_err(|failure| {
-            stop_for_run_event_persistence_failure(&run_cancel_token, failure)
-        })?;
+        flush_or_stop(&store_progress_logger, &run_cancel_token).await?;
 
         scopeguard::ScopeGuard::into_inner(cleanup_guard);
 
@@ -1081,7 +1076,7 @@ impl Drop for DetachedRunCompletionGuard {
                 })
                 .await
                 {
-                    let rendered_error = collect_chain(err.as_ref()).join(": ");
+                    let rendered_error = collect_chain(&err).join(": ");
                     tracing::warn!(
                         error = %rendered_error,
                         "Failed to append detached completion notice",
@@ -1110,7 +1105,7 @@ async fn persist_detached_failure(
         exec_output_tail: None,
     };
     if let Err(err) = append_event_to_sink(event_sink, &run_id, &event).await {
-        let rendered_error = collect_chain(err.as_ref()).join(": ");
+        let rendered_error = collect_chain(&err).join(": ");
         tracing::warn!(
             error = %rendered_error,
             "Failed to append detached failure notice",
@@ -1220,17 +1215,6 @@ mod tests {
     #[async_trait::async_trait]
     impl Handler for BlockingHandler {
         async fn execute(
-            &self,
-            _node: &fabro_graphviz::graph::Node,
-            _context: &Context,
-            _graph: &fabro_graphviz::graph::Graph,
-            _run_dir: &Path,
-            _services: &EngineServices,
-        ) -> Result<Outcome, Error> {
-            std::future::pending().await
-        }
-
-        async fn simulate(
             &self,
             _node: &fabro_graphviz::graph::Node,
             _context: &Context,

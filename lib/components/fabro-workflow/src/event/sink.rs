@@ -43,9 +43,15 @@ pub async fn append_event_to_sink(
     sink: &RunEventSink,
     run_id: &RunId,
     event: &Event,
-) -> Result<()> {
+) -> Result<(), RunEventPersistenceError> {
     let stored = to_run_event(run_id, event);
-    sink.write_run_event(&stored).await
+    sink.write_run_event(&stored)
+        .await
+        .map_err(|err| RunEventPersistenceError::Write {
+            run_id: *run_id,
+            event:  stored.body.event_name().to_string(),
+            source: SharedError::new(err),
+        })
 }
 
 #[derive(Clone)]
@@ -179,11 +185,12 @@ impl RunEventLogger {
         let (failure_tx, failure_rx) = watch::channel(None);
 
         tokio::spawn(async move {
-            let mut persistence_failure = None;
+            // The watch channel is the single record of the latched failure:
+            // the worker is its only writer, so borrowing it here cannot race.
             while let Some(command) = rx.recv().await {
                 match command {
                     RunEventCommand::Event(event) => {
-                        if persistence_failure.is_some() {
+                        if failure_tx.borrow().is_some() {
                             continue;
                         }
                         if let Err(err) = sink.write_run_event(&event).await {
@@ -194,17 +201,15 @@ impl RunEventLogger {
                                 error = %rendered_error,
                                 "Failed to persist run event; stopping workflow",
                             );
-                            let failure = RunEventPersistenceError::Write {
+                            failure_tx.send_replace(Some(RunEventPersistenceError::Write {
                                 run_id: event.run_id,
                                 event:  event.body.event_name().to_string(),
                                 source: SharedError::new(err),
-                            };
-                            persistence_failure = Some(failure.clone());
-                            failure_tx.send_replace(Some(failure));
+                            }));
                         }
                     }
                     RunEventCommand::Flush(tx) => {
-                        let result = persistence_failure.clone().map_or(Ok(()), Err);
+                        let result = failure_tx.borrow().clone().map_or(Ok(()), Err);
                         let _ = tx.send(result);
                     }
                 }
@@ -229,13 +234,12 @@ impl RunEventLogger {
 
     pub async fn wait_for_failure(&self) -> RunEventPersistenceError {
         let mut failure_rx = self.failure_rx.clone();
-        loop {
-            if let Some(failure) = failure_rx.borrow_and_update().clone() {
-                return failure;
-            }
-            if failure_rx.changed().await.is_err() {
-                return RunEventPersistenceError::TaskStopped;
-            }
+        let failure = failure_rx.wait_for(Option::is_some).await;
+        match failure {
+            Ok(failure) => failure
+                .clone()
+                .expect("wait_for only returns values matching the predicate"),
+            Err(_) => RunEventPersistenceError::TaskStopped,
         }
     }
 
@@ -245,7 +249,7 @@ impl RunEventLogger {
             return Err(RunEventPersistenceError::TaskStopped);
         }
         rx.await
-            .map_err(|_| RunEventPersistenceError::TaskStopped)?
+            .unwrap_or(Err(RunEventPersistenceError::TaskStopped))
     }
 }
 
