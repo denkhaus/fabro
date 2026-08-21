@@ -778,12 +778,12 @@ mod tests {
         )
         .await;
 
-        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("diagnostics timeout response body should be readable");
-        let body: serde_json::Value = serde_json::from_slice(&body)
-            .expect("diagnostics timeout response should contain JSON");
+        let body = fabro_test::expect_axum_json(
+            response,
+            StatusCode::GATEWAY_TIMEOUT,
+            "GET /api/v1/system/diagnostics timeout",
+        )
+        .await;
         assert_eq!(body["errors"][0]["code"], "diagnostics_timeout");
         assert_eq!(body["errors"][0]["detail"], "Server diagnostics timed out.");
     }

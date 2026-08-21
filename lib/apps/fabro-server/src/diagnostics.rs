@@ -6,7 +6,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use fabro_auth::auth_issue_message;
 use fabro_llm::client::Client as LlmClient;
-use fabro_llm::model_test::{ModelTestOutcome, ModelTestStatus, run_basic_model_probe};
+use fabro_llm::model_test::{ModelTestStatus, run_basic_model_probe_with_timeout};
 use fabro_model::{Catalog, ProviderId};
 use fabro_redact::redact_string;
 use fabro_sandbox::{DockerSandboxProvider, daytona};
@@ -255,35 +255,15 @@ async fn probe_single_provider(
             None,
         );
     };
-    let model_id = model.id.clone();
+    let model_id = model.id.to_string();
 
-    let outcome = run_basic_model_probe(model_id.as_str(), provider.clone(), client);
-    provider_probe_with_timeout(
-        provider,
-        model_id.to_string(),
-        outcome,
+    let outcome = run_basic_model_probe_with_timeout(
+        &model_id,
+        &provider,
+        client,
         EXTERNAL_SERVICE_PROBE_TIMEOUT,
     )
-    .await
-}
-
-async fn provider_probe_with_timeout<F>(
-    provider: ProviderId,
-    model_id: String,
-    probe: F,
-    probe_timeout: Duration,
-) -> ProviderProbeResult
-where
-    F: Future<Output = ModelTestOutcome>,
-{
-    let Ok(outcome) = timeout(probe_timeout, probe).await else {
-        return provider_probe_error(
-            provider,
-            Some(model_id),
-            probe_timeout_message(probe_timeout),
-            None,
-        );
-    };
+    .await;
 
     match outcome.status {
         ModelTestStatus::Ok => ProviderProbeResult {
@@ -299,14 +279,6 @@ where
                 .unwrap_or_else(|| "provider probe failed".to_string());
             provider_probe_error(provider, Some(model_id), redact_string(&raw), None)
         }
-    }
-}
-
-fn probe_timeout_message(probe_timeout: Duration) -> String {
-    if probe_timeout.subsec_nanos() == 0 {
-        format!("timeout ({}s)", probe_timeout.as_secs())
-    } else {
-        format!("timeout ({}ms)", probe_timeout.as_millis())
     }
 }
 
@@ -689,28 +661,13 @@ async fn check_cloud_sandbox(state: &AppState) -> CheckResult {
         };
     };
 
-    check_cloud_sandbox_with_probe(
-        || state.check_daytona_api_key(api_key),
-        EXTERNAL_SERVICE_PROBE_TIMEOUT,
-    )
-    .await
+    let probe = state
+        .check_daytona_api_key_with_timeout(api_key, EXTERNAL_SERVICE_PROBE_TIMEOUT)
+        .await;
+    cloud_sandbox_probe_check(probe)
 }
 
-async fn check_cloud_sandbox_with_probe<F, Fut>(probe: F, probe_timeout: Duration) -> CheckResult
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = anyhow::Result<daytona::DaytonaKeyCheck>>,
-{
-    let Ok(probe) = timeout(probe_timeout, probe()).await else {
-        return CheckResult {
-            name:        "Cloud Sandbox".to_string(),
-            status:      CheckStatus::Error,
-            summary:     probe_timeout_message(probe_timeout),
-            details:     vec![CheckDetail::new("Daytona probe timed out".to_string())],
-            remediation: Some("Verify DAYTONA_API_KEY value and Daytona reachability".to_string()),
-        };
-    };
-
+fn cloud_sandbox_probe_check(probe: anyhow::Result<daytona::DaytonaKeyCheck>) -> CheckResult {
     match probe {
         Ok(check) if check.ok() => CheckResult {
             name:        "Cloud Sandbox".to_string(),
@@ -733,13 +690,29 @@ where
                 daytona::required_perms_display()
             )),
         },
-        Err(err) => CheckResult {
-            name:        "Cloud Sandbox".to_string(),
-            status:      CheckStatus::Error,
-            summary:     "Daytona credential rejected".to_string(),
-            details:     vec![CheckDetail::new(format!("{err:#}"))],
-            remediation: Some("Verify DAYTONA_API_KEY value and Daytona reachability".to_string()),
-        },
+        Err(err) => {
+            if let Some(timeout) = err.downcast_ref::<daytona::DaytonaCredentialProbeTimeout>() {
+                return CheckResult {
+                    name:        "Cloud Sandbox".to_string(),
+                    status:      CheckStatus::Error,
+                    summary:     format!("timeout ({:?})", timeout.timeout()),
+                    details:     vec![CheckDetail::new("Daytona probe timed out".to_string())],
+                    remediation: Some(
+                        "Verify DAYTONA_API_KEY value and Daytona reachability".to_string(),
+                    ),
+                };
+            }
+
+            CheckResult {
+                name:        "Cloud Sandbox".to_string(),
+                status:      CheckStatus::Error,
+                summary:     "Daytona credential rejected".to_string(),
+                details:     vec![CheckDetail::new(format!("{err:#}"))],
+                remediation: Some(
+                    "Verify DAYTONA_API_KEY value and Daytona reachability".to_string(),
+                ),
+            }
+        }
     }
 }
 
@@ -1090,27 +1063,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn provider_probe_reports_provider_specific_timeout() {
-        assert_eq!(
-            probe_timeout_message(EXTERNAL_SERVICE_PROBE_TIMEOUT),
-            "timeout (15s)"
-        );
-
-        let result = provider_probe_with_timeout(
-            ProviderId::new("modal"),
-            "modal/test-model".to_string(),
-            std::future::pending::<ModelTestOutcome>(),
-            Duration::from_millis(1),
-        )
-        .await;
-
-        assert_eq!(result.provider, ProviderId::new("modal"));
-        assert_eq!(result.model_id.as_deref(), Some("modal/test-model"));
-        assert_eq!(result.status, ProviderProbeStatus::Error);
-        assert_eq!(result.error_message.as_deref(), Some("timeout (1ms)"));
-    }
-
     #[test]
     fn docker_sandbox_probe_passes_when_daemon_responds() {
         let result = docker_sandbox_probe_check(Ok(()));
@@ -1230,13 +1182,11 @@ enabled = false
         );
     }
 
-    #[tokio::test]
-    async fn check_cloud_sandbox_reports_timeout() {
-        let result = check_cloud_sandbox_with_probe(
-            std::future::pending::<anyhow::Result<daytona::DaytonaKeyCheck>>,
-            Duration::from_millis(1),
-        )
-        .await;
+    #[test]
+    fn check_cloud_sandbox_reports_timeout() {
+        let result = cloud_sandbox_probe_check(Err(anyhow::Error::new(
+            daytona::DaytonaCredentialProbeTimeout::new(Duration::from_millis(1)),
+        )));
 
         assert_eq!(result.name, "Cloud Sandbox");
         assert_eq!(result.status, CheckStatus::Error);
