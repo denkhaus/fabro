@@ -866,6 +866,7 @@ mod tests {
                 provenance: test_support::test_run_provenance(),
                 manifest_blob: None,
                 definition_blob: None,
+                spec_blob: None,
                 fork_source_ref,
             },
         )
@@ -1049,6 +1050,7 @@ mod tests {
             automation:       None,
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
+            spec_blob:        None,
             git:              None,
             fork_source_ref:  run_options.fork_source_ref.clone(),
             retried_from:     None,

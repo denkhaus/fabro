@@ -44,6 +44,7 @@ export interface RunSpec {
     'provenance': RunProvenance;
     'manifest_blob'?: string | null;
     'definition_blob'?: string | null;
+    'spec_blob'?: string | null;
     'git'?: GitContext | null;
     'fork_source_ref'?: ForkSourceRef | null;
 }

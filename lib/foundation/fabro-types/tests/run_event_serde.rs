@@ -32,6 +32,7 @@ fn run_created_props_round_trip_templated_settings() {
         }),
         provenance:       test_run_provenance(),
         manifest_blob:    None,
+        spec_blob:        None,
         git:              Some(GitContext {
             origin_url: "https://github.com/fabro-sh/fabro.git".to_string(),
             branch:     "main".to_string(),
@@ -93,6 +94,7 @@ fn run_created_props_omits_web_url_when_absent() {
         automation:       None,
         provenance:       test_run_provenance(),
         manifest_blob:    None,
+        spec_blob:        None,
         git:              None,
         fork_source_ref:  None,
         retried_from:     None,

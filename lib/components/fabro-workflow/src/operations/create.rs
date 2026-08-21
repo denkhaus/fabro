@@ -13,10 +13,11 @@ use std::sync::Arc;
 use fabro_config::Storage;
 use fabro_graphviz::graph::{AttrValue, Graph};
 use fabro_model::{Catalog, ProviderId};
-use fabro_store::Database;
+use fabro_store::{Database, RunDatabase};
 use fabro_template::TemplateContext;
 use fabro_types::{
-    AutomationRef, ForkSourceRef, GitContext, ManifestPath, RunId, RunProvenance, WorkflowSettings,
+    AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, RunId, RunProvenance,
+    WorkflowSettings,
 };
 use fabro_util::json::normalize_json_value;
 use tokio::task::spawn_blocking;
@@ -470,6 +471,7 @@ pub async fn persist_create_run(
             provenance,
             manifest_blob: None,
             definition_blob: None,
+            spec_blob: None,
             git,
             fork_source_ref,
         };
@@ -516,18 +518,17 @@ async fn persist_created_run(
         .create_run(&record.run_id)
         .await
         .map_err(|err| Error::engine_with_source("failed to create run store", err))?;
-    let manifest_blob = match submitted_manifest_bytes {
-        Some(bytes) => Some(run_store.write_blob(bytes).await.map_err(store_error)?),
-        None => None,
-    };
-    let definition_blob = match accepted_definition {
-        Some(definition) => {
-            let bytes =
-                serde_json::to_vec(definition).map_err(|err| Error::engine(err.to_string()))?;
-            Some(run_store.write_blob(&bytes).await.map_err(store_error)?)
-        }
-        None => None,
-    };
+    let definition_bytes = accepted_definition
+        .map(serde_json::to_vec)
+        .transpose()
+        .map_err(|err| Error::engine_with_source("failed to serialize run definition", err))?;
+    let spec_bytes = serde_json::to_vec(record)
+        .map_err(|err| Error::engine_with_source("failed to serialize run spec", err))?;
+    let (manifest_blob, definition_blob, spec_blob) = tokio::try_join!(
+        write_optional_blob(&run_store, submitted_manifest_bytes),
+        write_optional_blob(&run_store, definition_bytes.as_deref()),
+        async { run_store.write_blob(&spec_bytes).await.map_err(store_error) },
+    )?;
 
     let title = explicit_title.unwrap_or_else(|| fabro_types::infer_run_title(record.graph.goal()));
     let stored = to_run_event_at(
@@ -554,6 +555,7 @@ async fn persist_created_run(
             automation: record.automation.clone(),
             provenance: record.provenance.clone(),
             manifest_blob,
+            spec_blob: Some(spec_blob),
             git: record.git.clone(),
             fork_source_ref: record.fork_source_ref.clone(),
             retried_from: None,
@@ -580,8 +582,22 @@ async fn persist_created_run(
     .map_err(store_error)
 }
 
-fn store_error(err: impl std::fmt::Display) -> Error {
-    Error::engine(err.to_string())
+async fn write_optional_blob(
+    run_store: &RunDatabase,
+    bytes: Option<&[u8]>,
+) -> Result<Option<BlobHash>, Error> {
+    match bytes {
+        Some(bytes) => run_store
+            .write_blob(bytes)
+            .await
+            .map(Some)
+            .map_err(store_error),
+        None => Ok(None),
+    }
+}
+
+fn store_error(err: impl Into<anyhow::Error>) -> Error {
+    Error::engine_with_source("run store operation failed", err)
 }
 
 /// Parse, transform, and validate `dot_source`.

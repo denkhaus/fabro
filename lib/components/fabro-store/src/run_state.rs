@@ -1046,6 +1046,7 @@ fn projection_from_created(event: &EventEnvelope) -> Result<RunProjection> {
         provenance: props.provenance.clone(),
         manifest_blob: props.manifest_blob,
         definition_blob: None,
+        spec_blob: props.spec_blob,
         git: props.git.clone(),
         fork_source_ref: props.fork_source_ref.clone(),
     };
