@@ -174,6 +174,10 @@ Provider `billing_policy` defaults from `adapter` and controls usage-cost estima
 Provider fields in configuration, APIs, and model routing are provider ID strings. Built-in names like `anthropic`, `openai`, and `gemini` still work, but custom IDs like `proxy` work anywhere a provider ID is accepted.
 </Note>
 
+### Venice
+
+Fabro ships a built-in [Venice](/integrations/venice) provider with a curated catalog of Venice-hosted Kimi, Grok, GLM, DeepSeek, and Qwen models. Store its API key with `fabro provider login --provider venice`. Pin `provider = "venice"` when a shared model slug must use Venice instead of a higher-priority direct provider.
+
 ### Poolside
 
 Fabro ships a built-in [Poolside](/integrations/poolside) provider for Laguna S 2.1 and Laguna XS 2.1 over Poolside's OpenAI-compatible API. Store a direct API key with `fabro provider login --provider poolside`. The same model slugs are also available through the opt-in OpenRouter provider; its vendor-namespaced strings remain provider-only `api_id` values.
