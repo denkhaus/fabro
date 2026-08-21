@@ -126,7 +126,7 @@ fn resolves_run_defaults_from_empty_settings() {
     assert!(!settings.environment.lifecycle.preserve);
     assert!(settings.environment.lifecycle.stop_on_terminal);
     assert!(settings.clone.enabled);
-    assert_eq!(settings.clone.depth, Some(100));
+    assert_eq!(settings.clone.depth, 100);
     assert!(settings.run_branch.enabled);
     assert!(settings.run_branch.push);
     assert!(settings.meta_branch.enabled);
@@ -312,7 +312,7 @@ push = false
     .run;
 
     assert!(!settings.clone.enabled);
-    assert_eq!(settings.clone.depth, Some(1));
+    assert_eq!(settings.clone.depth, 1);
     assert!(settings.run_branch.enabled);
     assert!(!settings.run_branch.push);
     assert!(settings.meta_branch.enabled);
@@ -332,7 +332,7 @@ depth = 0
     .expect("zero clone depth should resolve")
     .run;
 
-    assert_eq!(settings.clone.depth, Some(0));
+    assert_eq!(settings.clone.depth, 0);
 }
 
 #[test]

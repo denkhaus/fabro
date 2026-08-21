@@ -61,7 +61,7 @@ pub fn daytona_config_from_environment(
                 DaytonaNetwork::AllowList(settings.network.allow.clone())
             }
         }),
-        clone_depth:        clone.depth.filter(|depth| *depth > 0),
+        clone_depth:        clone.depth_limit(),
         skip_clone:         !clone.enabled,
     }
 }
@@ -133,9 +133,8 @@ fn docker_config_from_environment_env(
             .map(|cpu| i64::from(cpu).saturating_mul(100_000)),
         env_vars,
         clone_depth: clone
-            .depth
-            .and_then(|depth| usize::try_from(depth).ok())
-            .unwrap_or(default_options.clone_depth),
+            .depth_limit()
+            .and_then(|depth| usize::try_from(depth).ok()),
         skip_clone: !clone.enabled,
         ..DockerSandboxOptions::default()
     }

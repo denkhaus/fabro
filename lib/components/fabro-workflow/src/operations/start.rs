@@ -1301,7 +1301,7 @@ reasoning = false
             resolve_docker_config(&settings.run, |_| None)
                 .unwrap()
                 .clone_depth,
-            1
+            Some(1)
         );
     }
 
@@ -1320,7 +1320,7 @@ reasoning = false
             resolve_docker_config(&settings.run, |_| None)
                 .unwrap()
                 .clone_depth,
-            0
+            None
         );
     }
 
@@ -1333,7 +1333,7 @@ reasoning = false
             resolve_docker_config(&settings.run, |_| None)
                 .unwrap()
                 .clone_depth,
-            100
+            Some(100)
         );
     }
 

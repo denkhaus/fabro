@@ -790,7 +790,7 @@ mod tests {
     type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
     struct TestContext {
-        dir:       tempfile::TempDir,
+        _dir:      tempfile::TempDir,
         source:    Database,
         source_db: slatedb::Db,
         sqlite:    sqlx::SqlitePool,
@@ -812,7 +812,7 @@ mod tests {
             let sqlite = sqlite.clone_pool();
             let target = BlobStore::new(sqlite.clone());
             Ok(Self {
-                dir,
+                _dir: dir,
                 source,
                 source_db,
                 sqlite,
@@ -822,11 +822,8 @@ mod tests {
 
         async fn new_with_single_sqlite_connection() -> TestResult<Self> {
             let mut context = Self::new().await?;
+            let options = context.sqlite.connect_options().as_ref().clone();
             context.sqlite.close().await;
-            let options = SqliteConnectOptions::new()
-                .filename(context.dir.path().join("fabro.sqlite3"))
-                .foreign_keys(true)
-                .journal_mode(SqliteJournalMode::Wal);
             let sqlite = SqlitePoolOptions::new()
                 .max_connections(1)
                 .connect_with(options)

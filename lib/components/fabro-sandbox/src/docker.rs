@@ -18,6 +18,7 @@ use bollard::image::CreateImageOptions;
 use bollard::models::{ContainerInspectResponse, HostConfig};
 use fabro_github::GitHubCredentials;
 use fabro_github::token_source::InstallationTokenSource;
+use fabro_types::settings::run::RunCloneSettings;
 use fabro_types::{CommandOutputStream, CommandTermination, RunId, SandboxProviderKind};
 use fabro_util::time::elapsed_ms;
 use futures::StreamExt;
@@ -48,7 +49,7 @@ const DOCKER_BASH_REQUIREMENT: &str = "Docker sandboxes require /bin/bash for ev
 
 pub(crate) const WORKING_DIRECTORY: &str = "/workspace";
 pub(crate) const REPOS_ROOT: &str = "/repos";
-const DEFAULT_GIT_CLONE_DEPTH: usize = 100;
+const DEFAULT_GIT_CLONE_DEPTH: usize = RunCloneSettings::DEFAULT_DEPTH.unsigned_abs() as usize;
 const GIT_CLONE_TIMEOUT: Duration = Duration::from_mins(5);
 #[cfg(test)]
 const EXEC_STOP_POLL_SLEEP_SECONDS: &str = "0.005";
@@ -121,9 +122,9 @@ pub struct DockerSandboxOptions {
     pub auto_pull:    bool,
     /// Additional `KEY=VALUE` environment variables for the container.
     pub env_vars:     Vec<String>,
-    /// Maximum Git history depth fetched during clone. Zero fetches full
+    /// Maximum Git history depth fetched during clone; `None` fetches full
     /// history.
-    pub clone_depth:  usize,
+    pub clone_depth:  Option<usize>,
     /// Create an empty workspace instead of cloning even when an origin exists.
     pub skip_clone:   bool,
 }
@@ -137,7 +138,7 @@ impl Default for DockerSandboxOptions {
             cpu_quota:    None,
             auto_pull:    true,
             env_vars:     Vec::new(),
-            clone_depth:  DEFAULT_GIT_CLONE_DEPTH,
+            clone_depth:  Some(DEFAULT_GIT_CLONE_DEPTH),
             skip_clone:   false,
         }
     }
@@ -1541,7 +1542,7 @@ fn git_clone_command(
     clone_url: &str,
     branch: Option<&str>,
     checkout_path: &str,
-    depth: usize,
+    depth: Option<usize>,
 ) -> String {
     let mut command = format!("{} clone", sandbox::GIT);
     if let Some(branch) = branch {
@@ -1549,10 +1550,7 @@ fn git_clone_command(
         command.push_str(&shell_quote(branch));
         command.push_str(" --single-branch");
     }
-    if depth > 0 {
-        command.push_str(" --depth ");
-        command.push_str(&depth.to_string());
-    }
+    command.push_str(&clone_source::depth_argument(depth));
     command.push_str(" --no-tags");
     command.push_str(" -- ");
     command.push_str(&shell_quote(clone_url));
@@ -2571,7 +2569,7 @@ mod tests {
         let options = DockerSandboxOptions::default();
         assert_eq!(options.image, "buildpack-deps:noble");
         assert_eq!(options.network_mode.as_deref(), Some("bridge"));
-        assert_eq!(options.clone_depth, DEFAULT_GIT_CLONE_DEPTH);
+        assert_eq!(options.clone_depth, Some(DEFAULT_GIT_CLONE_DEPTH));
         assert!(!options.skip_clone);
     }
 
@@ -2581,7 +2579,7 @@ mod tests {
             "https://github.com/fabro-sh/fabro",
             Some("main"),
             "/repos/fabro-sh/fabro",
-            1,
+            Some(1),
         );
         assert_eq!(
             command,
@@ -2595,7 +2593,7 @@ mod tests {
             "https://github.com/fabro-sh/fabro",
             None,
             "/repos/fabro-sh/fabro",
-            DEFAULT_GIT_CLONE_DEPTH,
+            Some(DEFAULT_GIT_CLONE_DEPTH),
         );
         assert_eq!(
             command,
@@ -2609,7 +2607,7 @@ mod tests {
             "https://github.com/fabro-sh/fabro",
             Some("main"),
             "/repos/fabro-sh/fabro",
-            0,
+            None,
         );
         assert_eq!(
             command,

@@ -12,28 +12,17 @@ use std::collections::HashMap;
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct DaytonaSettings {
     pub auto_stop_interval: Option<i32>,
     pub labels:             Option<HashMap<String, String>>,
     pub snapshot:           Option<DaytonaSnapshotSettings>,
     pub network:            Option<DaytonaNetwork>,
+    /// Git history depth for the repository clone; `None` clones full
+    /// history.
     pub clone_depth:        Option<i32>,
     #[serde(default)]
     pub skip_clone:         bool,
-}
-
-impl Default for DaytonaSettings {
-    fn default() -> Self {
-        Self {
-            auto_stop_interval: None,
-            labels:             None,
-            snapshot:           None,
-            network:            None,
-            clone_depth:        Some(100),
-            skip_clone:         false,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

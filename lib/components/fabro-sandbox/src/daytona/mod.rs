@@ -101,23 +101,6 @@ const DAYTONA_STATE_CHANGE_POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// leaked by a dead worker. An explicit `0` disables auto-stop entirely.
 const DEFAULT_AUTO_STOP_INTERVAL_MINUTES: i32 = 120;
 
-fn daytona_git_clone_options(
-    branch: Option<String>,
-    commit_id: Option<String>,
-    username: Option<String>,
-    password: Option<String>,
-    depth: Option<i32>,
-) -> GitCloneOptions {
-    GitCloneOptions {
-        branch,
-        commit_id,
-        username,
-        password,
-        depth,
-        ..GitCloneOptions::default()
-    }
-}
-
 pub(crate) fn daytona_not_found(err: &DaytonaError) -> bool {
     matches!(err, DaytonaError::NotFound { .. }) || err.status_code() == Some(404)
 }
@@ -1623,13 +1606,14 @@ impl Sandbox for DaytonaSandbox {
                         let git_svc = &git_svc;
                         let origin = origin_url.as_str();
                         let target = layout.primary_repo_path.as_str();
-                        let options = daytona_git_clone_options(
-                            branch.clone(),
-                            commit_sha.clone(),
-                            username.clone(),
-                            password.clone(),
-                            self.config.clone_depth,
-                        );
+                        let options = GitCloneOptions {
+                            branch: branch.clone(),
+                            commit_id: commit_sha.clone(),
+                            username: username.clone(),
+                            password: password.clone(),
+                            depth: self.config.clone_depth,
+                            ..GitCloneOptions::default()
+                        };
                         async move { git_svc.clone(origin, target, options).await }
                     },
                     |err: &DaytonaError| classify_clone_failure(err, clone_credential_context),
@@ -3142,26 +3126,6 @@ mod tests {
         assert!(!error.to_string().contains("Daytona client"));
     }
 
-    #[test]
-    fn exact_checkout_uses_daytona_branch_and_commit_options() {
-        let options = daytona_git_clone_options(
-            Some("feature/work".to_string()),
-            Some("0123456789abcdef0123456789abcdef01234567".to_string()),
-            Some("x-access-token".to_string()),
-            Some("secret".to_string()),
-            Some(1),
-        );
-
-        assert_eq!(options.branch.as_deref(), Some("feature/work"));
-        assert_eq!(
-            options.commit_id.as_deref(),
-            Some("0123456789abcdef0123456789abcdef01234567")
-        );
-        assert_eq!(options.username.as_deref(), Some("x-access-token"));
-        assert_eq!(options.password.as_deref(), Some("secret"));
-        assert_eq!(options.depth, Some(1));
-    }
-
     fn mock_sandbox_body(sandbox_id: &str) -> serde_json::Value {
         serde_json::json!({
             "id": sandbox_id,
@@ -3528,7 +3492,7 @@ mod tests {
         assert!(config.snapshot.is_none());
         assert!(config.auto_stop_interval.is_none());
         assert!(config.labels.is_none());
-        assert_eq!(config.clone_depth, Some(100));
+        assert!(config.clone_depth.is_none());
     }
 
     #[test]

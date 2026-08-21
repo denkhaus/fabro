@@ -248,24 +248,20 @@ fn resolve_clone(
     clone: Option<&RunCloneLayer>,
     errors: &mut Vec<ResolveError>,
 ) -> RunCloneSettings {
-    let depth =
-        clone
-            .and_then(|clone| clone.depth)
-            .map_or(RunCloneSettings::DEFAULT_DEPTH, |depth| {
-                if depth < 0 {
-                    errors.push(ResolveError::Invalid {
-                        path:   "run.clone.depth".to_string(),
-                        reason: "depth must be at least 0".to_string(),
-                    });
-                    RunCloneSettings::DEFAULT_DEPTH
-                } else {
-                    depth
-                }
-            });
+    let mut depth = clone
+        .and_then(|clone| clone.depth)
+        .unwrap_or(RunCloneSettings::DEFAULT_DEPTH);
+    if depth < 0 {
+        errors.push(ResolveError::Invalid {
+            path:   "run.clone.depth".to_string(),
+            reason: "depth must be at least 0".to_string(),
+        });
+        depth = RunCloneSettings::DEFAULT_DEPTH;
+    }
 
     RunCloneSettings {
         enabled: clone.and_then(|clone| clone.enabled).unwrap_or(true),
-        depth:   Some(depth),
+        depth,
     }
 }
 
