@@ -25,6 +25,25 @@ push = false
 [run.meta_branch]
 push = false
 
+# Toolchain image for lint/test smoke runs on this repo. Build locally:
+#   docker build -t fabro-toolchain:noble .fabro/Dockerfile.toolchain
+# (see docs/internal/self-host-resource-planning.md for resource notes)
+[environments.toolchain]
+provider = "docker"
+
+[environments.toolchain.image]
+docker = "fabro-toolchain:noble"
+
+[environments.toolchain.resources]
+cpu = 8
+memory = "16GB"
+
+[environments.toolchain.network]
+mode = "allow_all"
+
+[environments.toolchain.lifecycle]
+stop_on_terminal = true
+
 [environments.fabro-dev]
 provider = "daytona"
 

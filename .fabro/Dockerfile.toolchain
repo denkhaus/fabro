@@ -1,0 +1,19 @@
+FROM buildpack-deps:noble
+
+# Toolchain image for the smoke workflow (lint/test pipeline on the fabro repo).
+# Mirrors the toolchain parts of .fabro/Dockerfile without the desktop layers.
+ARG RUST_NIGHTLY=nightly-2026-04-14
+
+RUN set -eux; \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_NIGHTLY}; \
+    export PATH="/root/.cargo/bin:${PATH}"; \
+    rustup toolchain install ${RUST_NIGHTLY} --profile minimal --component clippy,rustfmt; \
+    cargo install cargo-nextest --locked
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+RUN set -eux; \
+    curl -fsSL https://bun.sh/install | bash; \
+    /root/.bun/bin/bun --version
+
+ENV PATH="/root/.bun/bin:${PATH}"
