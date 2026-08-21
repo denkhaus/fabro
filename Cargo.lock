@@ -2663,6 +2663,7 @@ dependencies = [
  "fabro-static",
  "fabro-test",
  "fabro-types",
+ "futures",
  "jsonwebtoken",
  "serde",
  "serde_json",

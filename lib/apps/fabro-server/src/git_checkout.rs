@@ -165,11 +165,9 @@ async fn bare_clone_may_be_corrupt(bare_dir: &Path) -> bool {
 }
 
 fn github_clone_url(repo: &GitHubRepositorySlug) -> String {
-    format!("https://github.com/{}/{}.git", repo.owner(), repo.repo())
-}
-
-pub(crate) fn github_metadata_url(repo: &GitHubRepositorySlug) -> String {
-    format!("https://github.com/{}/{}", repo.owner(), repo.repo())
+    let mut url = repo.https_url();
+    url.push_str(".git");
+    url
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -478,10 +476,7 @@ mod tests {
             github_clone_url(&repo),
             "https://github.com/fabro-sh/fabro.git"
         );
-        assert_eq!(
-            github_metadata_url(&repo),
-            "https://github.com/fabro-sh/fabro"
-        );
+        assert_eq!(repo.https_url(), "https://github.com/fabro-sh/fabro");
         assert!(!github_clone_url(&repo).contains('@'));
     }
 
@@ -491,10 +486,7 @@ mod tests {
 
         assert_eq!(repo.owner(), "owner");
         assert_eq!(repo.repo(), ".github");
-        assert_eq!(
-            github_metadata_url(&repo),
-            "https://github.com/owner/.github"
-        );
+        assert_eq!(repo.https_url(), "https://github.com/owner/.github");
     }
 
     #[test]

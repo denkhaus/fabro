@@ -811,7 +811,7 @@ impl DockerSandbox {
         auth_url: Option<&fabro_redact::DisplaySafeUrl>,
     ) -> Result<(), DockerCloneFailure> {
         let plan = git_retry::RetryPlan::clone_default(Some(clone_deadline));
-        git_retry::retry_clone(
+        git_retry::retry_git_operation(
             SandboxProviderKind::Docker,
             op,
             &plan,

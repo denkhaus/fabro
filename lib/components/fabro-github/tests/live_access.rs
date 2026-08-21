@@ -33,14 +33,8 @@ fn env_var(name: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| panic!("{name} must be set for this live test"))
 }
 
-fn private_key_pem() -> String {
-    GitHubAppCredentials::private_key_from_env()
-        .expect("GITHUB_APP_PRIVATE_KEY should decode as PEM or base64 PEM")
-        .expect("GITHUB_APP_PRIVATE_KEY must be set for this live test")
-}
-
 async fn ls_remote_with_token(slug: &GitHubRepositorySlug, token: &str) -> bool {
-    let url = format!("https://github.com/{}/{}", slug.owner(), slug.repo());
+    let url = slug.https_url();
     let mut command = Command::new("git");
     fabro_github::apply_probe_git_env(&mut command, token);
     let output = command
@@ -60,11 +54,10 @@ async fn ls_remote_with_token(slug: &GitHubRepositorySlug, token: &str) -> bool 
     live("FABRO_TEST_GITHUB_ADDITIONAL_REPO")
 )]
 async fn scoped_token_reaches_the_declared_additional_repository() {
-    let app = GitHubAppCredentials {
-        app_id:          env_var("FABRO_TEST_GITHUB_APP_ID"),
-        private_key_pem: private_key_pem(),
-        slug:            None,
-    };
+    let app_id = env_var("FABRO_TEST_GITHUB_APP_ID");
+    let app = GitHubAppCredentials::from_env(Some(&app_id))
+        .expect("GITHUB_APP_PRIVATE_KEY should decode as PEM or base64 PEM")
+        .expect("GITHUB_APP_PRIVATE_KEY must be set for this live test");
     let origin = env_var("FABRO_TEST_GITHUB_ORIGIN");
     let additional: GitHubRepositorySlug = env_var("FABRO_TEST_GITHUB_ADDITIONAL_REPO")
         .parse()
@@ -84,10 +77,7 @@ async fn scoped_token_reaches_the_declared_additional_repository() {
     let creds = GitHubCredentials::App(app.clone());
     let source =
         InstallationTokenSource::for_access(&creds, &access).expect("token source should build");
-    let resolved = access
-        .resolve_verified_token(&creds, &source)
-        .await
-        .expect("scoped mint should succeed");
+    let resolved = source.resolve().await.expect("scoped mint should succeed");
     let token = resolved.token.expose();
 
     // The one token reads both the primary and the additional repository.

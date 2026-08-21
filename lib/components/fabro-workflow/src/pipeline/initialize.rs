@@ -143,20 +143,20 @@ fn build_sandbox_env(
             None
         };
 
-    let github_token = match creds {
-        fabro_github::GitHubCredentials::Pat(token) => {
-            Some(InstallationTokenSource::pat(token.clone()))
-        }
-        fabro_github::GitHubCredentials::Installation(token) => {
-            Some(InstallationTokenSource::installation(token.clone()))
-        }
-        fabro_github::GitHubCredentials::App(_) => match github_access.as_ref() {
-            Some(access) => Some(InstallationTokenSource::for_access(creds, access).map_err(
-                |err| Error::engine_with_anyhow("Failed to build GitHub token source", err),
-            )?),
-            // No origin URL and nothing declared: keep the legacy
+    let github_token = match github_access.as_ref() {
+        Some(access) => Some(InstallationTokenSource::for_access(creds, access).map_err(
+            |err| Error::engine_with_anyhow("Failed to build GitHub token source", err),
+        )?),
+        None => match creds {
+            fabro_github::GitHubCredentials::Pat(token) => {
+                Some(InstallationTokenSource::pat(token.clone()))
+            }
+            fabro_github::GitHubCredentials::Installation(token) => {
+                Some(InstallationTokenSource::installation(token.clone()))
+            }
+            // No origin URL and nothing declared: keep the legacy App-mode
             // best-effort skip.
-            None => None,
+            fabro_github::GitHubCredentials::App(_) => None,
         },
     };
 
@@ -174,40 +174,34 @@ fn build_sandbox_env(
     })
 }
 
-/// When additional repositories are declared, prove the whole effective set
-/// is reachable before the first workflow stage
-/// ([`fabro_github::GitHubRepositoryAccess::resolve_verified_token`]).
-/// Legacy permissions-only runs skip this and keep their best-effort
-/// behavior.
-async fn validate_declared_repository_access(
-    built: &BuiltSandboxEnv,
-    github_app: Option<&fabro_github::GitHubCredentials>,
-) -> Result<(), Error> {
-    let Some(access) = built
+/// When additional repositories are declared, resolve their token before the
+/// first workflow stage. App-backed sources first check that every target is
+/// on one installation. Static credentials resolve locally; the first Git
+/// operation remains their access check. Legacy permissions-only runs skip
+/// eager resolution.
+async fn resolve_declared_repository_token(built: &BuiltSandboxEnv) -> Result<(), Error> {
+    let Some(_) = built
         .github_access
         .as_ref()
         .filter(|access| access.has_additional_repositories())
     else {
         return Ok(());
     };
-    // `build_sandbox_env` guarantees credentials and a token source whenever
-    // additional repositories are declared; fail closed if that ever breaks.
-    let (Some(creds), Some(source)) = (github_app, built.github_token.as_ref()) else {
+    // `build_sandbox_env` guarantees a token source whenever additional
+    // repositories are declared; fail closed if that ever breaks.
+    let Some(source) = built.github_token.as_ref() else {
         return Err(Error::Precondition(
             "run.integrations.github.additional_repositories requires GitHub credentials, but \
              none are configured"
                 .to_string(),
         ));
     };
-    access
-        .resolve_verified_token(creds, source)
-        .await
-        .map_err(|err| {
-            Error::engine_with_anyhow(
-                "Failed to verify GitHub access for the declared repository set",
-                err,
-            )
-        })?;
+    source.resolve().await.map_err(|err| {
+        Error::engine_with_anyhow(
+            "Failed to resolve the GitHub token for the declared repository set",
+            err,
+        )
+    })?;
     Ok(())
 }
 
@@ -530,8 +524,7 @@ pub async fn initialize(
         &options.sandbox_env,
         options.run_options.github_app.as_ref(),
     )?;
-    validate_declared_repository_access(&built_env, options.run_options.github_app.as_ref())
-        .await?;
+    resolve_declared_repository_token(&built_env).await?;
     let BuiltSandboxEnv {
         env: base_env,
         github_token,
@@ -1617,7 +1610,7 @@ mod tests {
 
     mod github_integration_env {
         //! Focused tests for `build_sandbox_env` /
-        //! `validate_declared_repository_access` around declared additional
+        //! `resolve_declared_repository_token` around declared additional
         //! repositories. Installation-resolution failure naming is covered
         //! by `fabro_github::access` tests; these prove the initialization
         //! wiring: hard errors for declared sets, best-effort behavior for
@@ -1758,10 +1751,7 @@ mod tests {
                 github_access: access,
             };
 
-            let creds = GitHubCredentials::Pat("ghp_x".to_string());
-            let err = validate_declared_repository_access(&built, Some(&creds))
-                .await
-                .unwrap_err();
+            let err = resolve_declared_repository_token(&built).await.unwrap_err();
             let message = err.to_string();
             assert!(message.contains("declared repository set"), "{message}");
         }
@@ -1777,7 +1767,7 @@ mod tests {
                 github_access: None,
             };
 
-            validate_declared_repository_access(&built, None)
+            resolve_declared_repository_token(&built)
                 .await
                 .expect("legacy permissions-only runs must not resolve eagerly");
         }

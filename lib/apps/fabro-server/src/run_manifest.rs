@@ -882,6 +882,9 @@ async fn check_git_remote_ref(
 /// failure to its most useful message: stderr, then stdout, then the exit
 /// status.
 async fn run_ls_remote(mut command: Command) -> std::result::Result<(), String> {
+    // Dropping a timed-out `Command::output` future does not stop the child
+    // unless kill-on-drop is enabled.
+    command.kill_on_drop(true);
     let output = time::timeout(Duration::from_secs(10), command.output())
         .await
         .map_err(|_| "git ls-remote timed out after 10s".to_string())?
@@ -1246,7 +1249,7 @@ where
         Err(err) => {
             return fail_github_token_check(
                 checks,
-                &[],
+                Vec::new(),
                 "invalid permissions",
                 format!("Failed to resolve GitHub permissions: {err}"),
             );
@@ -1290,10 +1293,25 @@ where
         });
     }
 
+    let Some(origin_url) = prepared
+        .git
+        .as_ref()
+        .map(|git| git.origin_url.trim())
+        .filter(|url| !url.is_empty())
+    else {
+        return fail_github_token_check(
+            checks,
+            perm_details,
+            "missing origin",
+            "run.integrations.github.additional_repositories requires a GitHub run origin, but \
+             this run has no repository origin URL"
+                .to_string(),
+        );
+    };
     let Some(creds) = github_app else {
         return fail_github_token_check(
             checks,
-            &perm_details,
+            perm_details,
             "missing credentials",
             "run.integrations.github.additional_repositories requires GitHub credentials, but \
              none are configured on the server"
@@ -1301,10 +1319,9 @@ where
         );
     };
     // The same validated access value runtime initialization constructs, so
-    // preflight and runtime cannot disagree about the effective set. A
-    // missing origin fails inside `new` with the canonical remediation.
+    // preflight and runtime cannot disagree about the effective set.
     let access = match fabro_github::GitHubRepositoryAccess::new(
-        prepared.git.as_ref().map(|git| git.origin_url.as_str()),
+        Some(origin_url),
         &integration.additional_repositories,
         integration.permissions.clone(),
     ) {
@@ -1314,7 +1331,7 @@ where
         Ok(None) => {
             return fail_github_token_check(
                 checks,
-                &perm_details,
+                perm_details,
                 "missing origin",
                 "run.integrations.github.additional_repositories requires a GitHub run origin, \
                  but this run has no repository origin URL"
@@ -1324,7 +1341,7 @@ where
         Err(err) => {
             return fail_github_token_check(
                 checks,
-                &perm_details,
+                perm_details,
                 "invalid repository set",
                 format!("{err:#}"),
             );
@@ -1337,7 +1354,7 @@ where
     let token = match mint_scoped_token(access.clone(), creds).await {
         Ok(token) => token,
         Err(err) => {
-            return fail_github_token_check(checks, &perm_details, "failed", err);
+            return fail_github_token_check(checks, perm_details, "failed", err);
         }
     };
     checks.push(CheckResult {
@@ -1396,7 +1413,7 @@ where
 /// Report one "GitHub Token" preflight failure and fail the check.
 fn fail_github_token_check(
     checks: &mut Vec<CheckResult>,
-    perm_details: &[CheckDetail],
+    perm_details: Vec<CheckDetail>,
     summary: &str,
     remediation: String,
 ) -> bool {
@@ -1404,7 +1421,7 @@ fn fail_github_token_check(
         name:        "GitHub Token".into(),
         status:      CheckStatus::Error,
         summary:     summary.into(),
-        details:     perm_details.to_vec(),
+        details:     perm_details,
         remediation: Some(remediation),
     });
     false
@@ -1412,10 +1429,6 @@ fn fail_github_token_check(
 
 /// Bounded concurrency for per-repository `git ls-remote` probes.
 const REPOSITORY_PROBE_CONCURRENCY: usize = 4;
-
-/// Total probe attempts per repository when failures classify as retryable
-/// (token replication lag or transient infrastructure).
-const REPOSITORY_PROBE_ATTEMPTS: u32 = 3;
 
 async fn check_primary_only_github_token(
     checks: &mut Vec<CheckResult>,
@@ -1459,21 +1472,16 @@ async fn check_primary_only_github_token(
     }
 }
 
-/// Production minter for the multi-repository path:
-/// [`fabro_github::GitHubRepositoryAccess::resolve_verified_token`] over a
-/// source scoped to the effective set. In App mode that resolves every
-/// repository's installation first, so a failure names the repository the
-/// App cannot see (or one on a different installation).
+/// Production minter for the multi-repository path. The source owns the
+/// effective set. In App mode its first resolve checks every repository's
+/// installation before minting the scoped token.
 async fn mint_scoped_github_token(
     access: fabro_github::GitHubRepositoryAccess,
     creds: fabro_github::GitHubCredentials,
 ) -> std::result::Result<ResolvedToken, String> {
     let source =
         InstallationTokenSource::for_access(&creds, &access).map_err(|err| format!("{err:#}"))?;
-    access
-        .resolve_verified_token(&creds, &source)
-        .await
-        .map_err(|err| format!("{err:#}"))
+    source.resolve().await.map_err(|err| format!("{err:#}"))
 }
 
 /// Production per-repository probe: a non-interactive
@@ -1486,37 +1494,31 @@ async fn probe_github_repository(
     slug: fabro_types::GitHubRepositorySlug,
     token: ResolvedToken,
 ) -> std::result::Result<(), String> {
-    let url = format!("https://github.com/{}/{}", slug.owner(), slug.repo());
+    let url = slug.https_url();
     probe_with_replication_retry(token.snapshot, || run_probe_ls_remote(&url, &token)).await
 }
 
 /// Retry auth-shaped failures with the SAME token: replication of a given
 /// token only makes progress, while re-minting would restart the replication
-/// clock. Classification and pacing match the sandbox git retry policy
-/// (`fabro_sandbox::classify_failure` / `fabro_sandbox::replication_backoff`).
+/// clock. The sandbox git retry executor owns attempt limits,
+/// classification, and pacing.
 async fn probe_with_replication_retry<F, Fut>(
     snapshot: TokenSnapshot,
-    run: F,
+    mut run: F,
 ) -> std::result::Result<(), String>
 where
-    F: Fn() -> Fut,
+    F: FnMut() -> Fut,
     Fut: Future<Output = std::result::Result<(), String>>,
 {
     let credential_context = fabro_sandbox::CredentialContext::from_snapshot(Some(&snapshot));
-    let backoff = fabro_sandbox::replication_backoff();
-    let mut attempt = 0u32;
-    loop {
-        attempt += 1;
-        let Err(message) = run().await else {
-            return Ok(());
-        };
-        if attempt >= REPOSITORY_PROBE_ATTEMPTS
-            || fabro_sandbox::classify_failure(&message, credential_context).is_none()
-        {
-            return Err(message);
-        }
-        time::sleep(backoff.delay_for_attempt(attempt)).await;
-    }
+    fabro_sandbox::retry_git_operation(
+        SandboxProviderKind::Local,
+        "repository probe",
+        &fabro_sandbox::RetryPlan::repository_probe(),
+        |_attempt| run(),
+        |message| fabro_sandbox::classify_failure(message, credential_context),
+    )
+    .await
 }
 
 async fn run_probe_ls_remote(url: &str, token: &ResolvedToken) -> std::result::Result<(), String> {
@@ -3494,7 +3496,7 @@ dockerfile = { path = "Dockerfile" }
 
             assert!(!ok);
             let check = checks.last().unwrap();
-            assert_eq!(check.summary, "invalid repository set");
+            assert_eq!(check.summary, "missing origin");
             assert!(
                 check
                     .remediation

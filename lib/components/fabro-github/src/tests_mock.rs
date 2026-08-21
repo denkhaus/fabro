@@ -2,6 +2,8 @@
 //! modules: a scripted [`HttpClient`] and a throwaway RSA key for JWT
 //! signing.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use crate::{HttpClient, HttpMethod, HttpResponse};
 
 pub(crate) fn test_rsa_key() -> &'static str {
@@ -22,12 +24,16 @@ pub(crate) enum MockHeaderCheck {
 }
 
 pub(crate) struct MockHttpClient {
-    routes: Vec<MockRoute>,
+    routes:        Vec<MockRoute>,
+    request_count: AtomicUsize,
 }
 
 impl MockHttpClient {
     pub(crate) fn new() -> Self {
-        Self { routes: vec![] }
+        Self {
+            routes:        vec![],
+            request_count: AtomicUsize::new(0),
+        }
     }
 
     pub(crate) fn on(mut self, method: HttpMethod, path: &str, status: u16, body: &str) -> Self {
@@ -53,6 +59,10 @@ impl MockHttpClient {
             Some(serde_json::from_str(json_str).unwrap());
         self
     }
+
+    pub(crate) fn request_count(&self) -> usize {
+        self.request_count.load(Ordering::SeqCst)
+    }
 }
 
 impl HttpClient for MockHttpClient {
@@ -63,6 +73,7 @@ impl HttpClient for MockHttpClient {
         headers: &[(&str, &str)],
         body: Option<&serde_json::Value>,
     ) -> anyhow::Result<HttpResponse> {
+        self.request_count.fetch_add(1, Ordering::SeqCst);
         for route in &self.routes {
             if method == route.method && url.ends_with(&route.path) {
                 if let Some((name, MockHeaderCheck::Equals(expected))) = &route.assert_header {

@@ -65,6 +65,12 @@ impl GitHubRepositorySlug {
         &self.repo
     }
 
+    /// Canonical credential-free HTTPS URL for this GitHub repository.
+    #[must_use]
+    pub fn https_url(&self) -> String {
+        format!("https://github.com/{self}")
+    }
+
     /// Whether `other` names the same repository owner, ignoring ASCII case.
     /// Owner and repository names are validated ASCII, so ASCII folding is
     /// exact.
@@ -354,6 +360,14 @@ mod tests {
         let mut ordered = std::collections::BTreeSet::new();
         ordered.insert(mixed);
         assert!(!ordered.insert(lower), "case variants share ordering");
+    }
+
+    #[test]
+    fn slug_https_url_preserves_spelling_and_has_no_credentials() {
+        let slug: GitHubRepositorySlug = "Fabro-SH/Keystone".parse().unwrap();
+
+        assert_eq!(slug.https_url(), "https://github.com/Fabro-SH/Keystone");
+        assert!(!slug.https_url().contains('@'));
     }
 
     #[test]

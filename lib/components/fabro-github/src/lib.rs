@@ -598,12 +598,6 @@ async fn mint_installation_token_with_jwt(
     permissions: serde_json::Value,
     install_url: Option<&str>,
 ) -> anyhow::Result<InstallationToken> {
-    #[derive(Deserialize)]
-    struct AccessToken {
-        token:      String,
-        expires_at: DateTime<Utc>,
-    }
-
     let Some(primary_repo) = repos.first() else {
         bail!("installation token mint requires at least one repository");
     };
@@ -644,7 +638,33 @@ async fn mint_installation_token_with_jwt(
         }
     };
 
-    // Step 2: Create a scoped access token
+    mint_installation_token_for_id_with_jwt(
+        client,
+        jwt,
+        installation_id,
+        repos,
+        base_url,
+        permissions,
+    )
+    .await
+}
+
+/// Create a repository-scoped token for an installation already resolved by
+/// the caller.
+pub(crate) async fn mint_installation_token_for_id_with_jwt(
+    client: &impl HttpClient,
+    jwt: &str,
+    installation_id: u64,
+    repos: &[String],
+    base_url: &str,
+    permissions: serde_json::Value,
+) -> anyhow::Result<InstallationToken> {
+    #[derive(Deserialize)]
+    struct AccessToken {
+        token:      String,
+        expires_at: DateTime<Utc>,
+    }
+
     let auth = format!("Bearer {jwt}");
     let token_url = format!("{base_url}/app/installations/{installation_id}/access_tokens");
     let body = serde_json::json!({
@@ -1159,25 +1179,24 @@ pub async fn check_app_installed(
     repo: &str,
     base_url: &str,
 ) -> anyhow::Result<bool> {
-    let url = format!("{base_url}/repos/{owner}/{repo}/installation");
-    let auth = format!("Bearer {jwt}");
-    let resp = client
-        .request(HttpMethod::Get, &url, &github_headers(&auth), None)
+    let lookup = lookup_installation(client, jwt, base_url, owner, repo)
         .await
         .context("Failed to check GitHub App installation")?;
 
-    match resp.status {
-        200 => Ok(true),
-        404 => Ok(false),
-        401 => bail!(
+    match lookup {
+        InstallationLookup::Found(_) => Ok(true),
+        InstallationLookup::NotFound => Ok(false),
+        InstallationLookup::Failed(401) => bail!(
             "GitHub App authentication failed. \
              Check that app_id and GITHUB_APP_PRIVATE_KEY are correct."
         ),
-        403 => bail!(
+        InstallationLookup::Failed(403) => bail!(
             "GitHub App installation is suspended. \
              Re-enable it in your organization's GitHub App settings."
         ),
-        status => bail!("Unexpected status {status} checking GitHub App installation"),
+        InstallationLookup::Failed(status) => {
+            bail!("Unexpected status {status} checking GitHub App installation")
+        }
     }
 }
 

@@ -11,9 +11,13 @@ use std::collections::{BTreeSet, HashMap};
 use anyhow::{Context as _, bail};
 use fabro_types::GitHubRepositorySlug;
 use fabro_types::settings::run::RunIntegrationsGithubSettings;
+use futures::stream::{self, StreamExt as _};
 
-use crate::token_source::{InstallationTokenSource, ResolvedToken};
-use crate::{GitHubAppCredentials, GitHubCredentials, HttpClient, InstallationLookup};
+use crate::{GitHubAppCredentials, HttpClient, InstallationLookup, InstallationToken};
+
+/// Keep GitHub installation lookups bounded while avoiding one network round
+/// trip at a time for large declared repository sets.
+const INSTALLATION_LOOKUP_CONCURRENCY: usize = 4;
 
 /// The validated effective repository set for a run: the primary origin
 /// repository plus zero or more distinct additional repositories, all with
@@ -142,38 +146,29 @@ impl GitHubRepositoryAccess {
         !self.additional.is_empty()
     }
 
-    /// [`Self::resolve_shared_installation`] against the production GitHub
-    /// API with a fresh HTTP client.
-    pub async fn resolve_shared_installation_via_api(
-        &self,
-        creds: &GitHubAppCredentials,
-    ) -> anyhow::Result<u64> {
-        let client = fabro_http::http_client()
-            .map_err(anyhow::Error::new)
-            .context("building HTTP client for installation resolution")?;
-        self.resolve_shared_installation(creds, &client, &crate::github_api_base_url())
-            .await
-    }
-
     /// Resolve every target's App installation and require one shared
     /// installation ID, so a repository the App cannot see — or one that
     /// resolves to a different installation — is named before any token is
     /// minted. Targets are checked in deterministic primary-first order.
-    pub async fn resolve_shared_installation(
+    async fn resolve_shared_installation_with_jwt(
         &self,
-        creds: &GitHubAppCredentials,
         client: &impl HttpClient,
+        jwt: &str,
         base_url: &str,
     ) -> anyhow::Result<u64> {
-        let jwt = crate::sign_app_jwt(&creds.app_id, &creds.private_key_pem)?;
-        let mut shared: Option<(u64, &GitHubRepositorySlug)> = None;
-        for slug in self.targets() {
+        let targets: Vec<GitHubRepositorySlug> = self.targets().into_iter().cloned().collect();
+        let mut lookups = stream::iter(targets.into_iter().map(|slug| async move {
             let lookup =
-                crate::lookup_installation(client, &jwt, base_url, slug.owner(), slug.repo())
+                crate::lookup_installation(client, jwt, base_url, slug.owner(), slug.repo())
                     .await
-                    .with_context(|| {
-                        format!("looking up the GitHub App installation for {slug}")
-                    })?;
+                    .with_context(|| format!("looking up the GitHub App installation for {slug}"));
+            (slug, lookup)
+        }))
+        .buffered(INSTALLATION_LOOKUP_CONCURRENCY);
+
+        let mut shared: Option<(u64, GitHubRepositorySlug)> = None;
+        while let Some((slug, lookup)) = lookups.next().await {
+            let lookup = lookup?;
             let id = match lookup {
                 InstallationLookup::Found(id) => id,
                 InstallationLookup::NotFound => bail!(
@@ -184,9 +179,9 @@ impl GitHubRepositoryAccess {
                     "unexpected status {status} looking up the GitHub App installation for {slug}"
                 ),
             };
-            match shared {
+            match &shared {
                 None => shared = Some((id, slug)),
-                Some((shared_id, first)) if shared_id != id => bail!(
+                Some((shared_id, first)) if *shared_id != id => bail!(
                     "repository {slug} belongs to GitHub App installation {id} but {first} \
                      belongs to installation {shared_id}; all repositories must share one \
                      installation"
@@ -198,25 +193,28 @@ impl GitHubRepositoryAccess {
         Ok(id)
     }
 
-    /// Prove this access value is usable and produce its token: in App mode,
-    /// first resolve every target's installation
-    /// ([`Self::resolve_shared_installation_via_api`]) so a failure names the
-    /// repository the App cannot see, then resolve `source` once — for App
-    /// credentials that eagerly mints the token scoped to the whole effective
-    /// set. The one choreography server preflight and workflow
-    /// initialization share.
-    pub async fn resolve_verified_token(
+    /// Resolve every target to one installation, then mint one token scoped
+    /// to this exact repository set without looking up the primary twice.
+    pub(crate) async fn mint_installation_token(
         &self,
-        creds: &GitHubCredentials,
-        source: &InstallationTokenSource,
-    ) -> anyhow::Result<ResolvedToken> {
-        if let GitHubCredentials::App(app) = creds {
-            self.resolve_shared_installation_via_api(app).await?;
-        }
-        source
-            .resolve()
+        creds: &GitHubAppCredentials,
+        client: &impl HttpClient,
+        base_url: &str,
+    ) -> anyhow::Result<InstallationToken> {
+        let jwt = crate::sign_app_jwt(&creds.app_id, &creds.private_key_pem)?;
+        let installation_id = self
+            .resolve_shared_installation_with_jwt(client, &jwt, base_url)
             .await
-            .context("Failed to resolve the GitHub token for the effective repository set")
+            .context("resolving the shared GitHub App installation")?;
+        crate::mint_installation_token_for_id_with_jwt(
+            client,
+            &jwt,
+            installation_id,
+            &self.repository_names(),
+            base_url,
+            self.permissions_json()?,
+        )
+        .await
     }
 }
 
@@ -436,7 +434,11 @@ mod tests {
         .unwrap();
 
         let err = access
-            .resolve_shared_installation(&creds, &mock, "")
+            .resolve_shared_installation_with_jwt(
+                &mock,
+                &crate::sign_app_jwt(&creds.app_id, &creds.private_key_pem).unwrap(),
+                "",
+            )
             .await
             .unwrap_err();
         let message = err.to_string();
@@ -476,7 +478,11 @@ mod tests {
         .unwrap();
 
         let err = access
-            .resolve_shared_installation(&creds, &mock, "")
+            .resolve_shared_installation_with_jwt(
+                &mock,
+                &crate::sign_app_jwt(&creds.app_id, &creds.private_key_pem).unwrap(),
+                "",
+            )
             .await
             .unwrap_err();
         let message = err.to_string();
@@ -516,9 +522,66 @@ mod tests {
         .unwrap();
 
         let id = access
-            .resolve_shared_installation(&creds, &mock, "")
+            .resolve_shared_installation_with_jwt(
+                &mock,
+                &crate::sign_app_jwt(&creds.app_id, &creds.private_key_pem).unwrap(),
+                "",
+            )
             .await
             .unwrap();
         assert_eq!(id, 7);
+    }
+
+    #[tokio::test]
+    async fn access_mint_reuses_the_resolved_installation_id() {
+        use crate::HttpMethod;
+        use crate::tests_mock::{MockHttpClient, test_rsa_key};
+
+        let mock = MockHttpClient::new()
+            .on(
+                HttpMethod::Get,
+                "/repos/fabro-sh/fabro/installation",
+                200,
+                r#"{"id": 7}"#,
+            )
+            .on(
+                HttpMethod::Get,
+                "/repos/fabro-sh/keystone/installation",
+                200,
+                r#"{"id": 7}"#,
+            )
+            .on(
+                HttpMethod::Post,
+                "/app/installations/7/access_tokens",
+                201,
+                r#"{"token":"scoped","expires_at":"2099-01-01T00:00:00Z"}"#,
+            )
+            .with_req_body(
+                r#"{"repositories":["fabro","keystone"],"permissions":{"contents":"read"}}"#,
+            );
+        let creds = GitHubAppCredentials {
+            app_id:          "test".to_string(),
+            private_key_pem: test_rsa_key().to_string(),
+            slug:            None,
+        };
+        let access = access(
+            "https://github.com/fabro-sh/fabro",
+            &["fabro-sh/keystone"],
+            contents_read(),
+        )
+        .unwrap()
+        .unwrap();
+
+        let token = access
+            .mint_installation_token(&creds, &mock, "")
+            .await
+            .unwrap();
+
+        assert_eq!(token.token, "scoped");
+        assert_eq!(
+            mock.request_count(),
+            3,
+            "each repository should be looked up once before the mint"
+        );
     }
 }

@@ -1612,7 +1612,7 @@ impl Sandbox for DaytonaSandbox {
                 })?;
 
                 let clone_plan = git_retry::RetryPlan::clone_default(None);
-                let clone_result = git_retry::retry_clone(
+                let clone_result = git_retry::retry_git_operation(
                     SandboxProviderKind::Daytona,
                     "clone",
                     &clone_plan,
