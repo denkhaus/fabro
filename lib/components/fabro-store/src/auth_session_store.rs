@@ -50,8 +50,9 @@ pub struct ActiveCliSession {
 pub enum RotateOutcome {
     /// The presented token was spent and its successor issued.
     Rotated(AuthSessionRecord),
-    /// The presented token had already been rotated away — a replay.
-    Reused(AuthSessionRecord),
+    /// The presented token had already been rotated away, so its session was
+    /// revoked in the same transaction.
+    ReplayedAndRevoked(AuthSessionRecord),
     Expired,
     NotFound,
 }
@@ -174,9 +175,9 @@ INSERT INTO auth_sessions (
     ///
     /// The claiming UPDATE is the transaction's first statement, so SQLite
     /// takes the write lock before anything is read. A concurrent caller
-    /// blocks on it, then observes `used_at_ms` already set and gets
-    /// [`RotateOutcome::Reused`] — the replay signal — with no application
-    /// mutex involved.
+    /// blocks on it, then observes `used_at_ms` already set and revokes the
+    /// session before returning [`RotateOutcome::ReplayedAndRevoked`], with no
+    /// application mutex involved.
     pub async fn rotate(
         &self,
         presented_hash: &[u8; 32],
@@ -219,7 +220,15 @@ RETURNING session_id
                         RotateOutcome::Expired
                     } else if used_at_ms.is_some() {
                         let session = load_session(&mut tx, presented_hash).await?;
-                        session.map_or(RotateOutcome::NotFound, RotateOutcome::Reused)
+                        if let Some(session) = session {
+                            sqlx::query("DELETE FROM auth_sessions WHERE id = ?")
+                                .bind(session.id.to_string())
+                                .execute(&mut *tx)
+                                .await?;
+                            RotateOutcome::ReplayedAndRevoked(session)
+                        } else {
+                            RotateOutcome::NotFound
+                        }
                     } else {
                         // Unreachable: a live, unexpired token would have been
                         // claimed by the UPDATE above, in this transaction.
@@ -514,7 +523,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rotate_reports_reuse_when_a_spent_token_is_replayed() {
+    async fn rotate_revokes_session_when_a_spent_token_is_replayed() {
         let (_dir, store) = sqlite_auth_session_store().await;
         let id = open_session(&store, "12345", [1_u8; 32], Duration::days(30)).await;
         let now = Utc::now();
@@ -540,10 +549,75 @@ mod tests {
             .await
             .unwrap();
 
-        let RotateOutcome::Reused(session) = replay else {
-            panic!("expected reuse, got {replay:?}");
+        let RotateOutcome::ReplayedAndRevoked(session) = replay else {
+            panic!("expected replay revocation, got {replay:?}");
         };
         assert_eq!(session.id, id);
+        for hash in [[1_u8; 32], [2_u8; 32]] {
+            assert!(
+                store
+                    .find_session_by_token_hash(&hash)
+                    .await
+                    .unwrap()
+                    .is_none(),
+                "replay revocation should delete every token in the session"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn rotate_returns_error_when_replay_revocation_fails() {
+        use std::error::Error as _;
+
+        let (_dir, store) = sqlite_auth_session_store().await;
+        open_session(&store, "12345", [1_u8; 32], Duration::days(30)).await;
+        let now = Utc::now();
+
+        store
+            .rotate(
+                &[1_u8; 32],
+                &[2_u8; 32],
+                now + Duration::days(30),
+                "ua",
+                now,
+            )
+            .await
+            .unwrap();
+        sqlx::query(
+            r"
+CREATE TRIGGER reject_auth_session_delete
+BEFORE DELETE ON auth_sessions
+BEGIN
+    SELECT RAISE(ABORT, 'auth session delete rejected');
+END
+",
+        )
+        .execute(&store.pool)
+        .await
+        .unwrap();
+
+        let error = store
+            .rotate(
+                &[1_u8; 32],
+                &[3_u8; 32],
+                now + Duration::days(30),
+                "ua",
+                now,
+            )
+            .await
+            .expect_err("failed replay revocation should return an error");
+        assert!(matches!(error, crate::Error::Sqlite(_)));
+        assert!(error.source().is_some());
+        for hash in [[1_u8; 32], [2_u8; 32]] {
+            assert!(
+                store
+                    .find_session_by_token_hash(&hash)
+                    .await
+                    .unwrap()
+                    .is_some(),
+                "failed replay revocation should leave the session intact"
+            );
+        }
     }
 
     #[tokio::test]
@@ -785,17 +859,21 @@ mod tests {
         }
 
         let mut rotated = 0;
-        let mut reused = 0;
+        let mut replayed_and_revoked = 0;
+        let mut not_found = 0;
         while let Some(outcome) = tasks.join_next().await {
             match outcome.unwrap() {
                 RotateOutcome::Rotated(_) => rotated += 1,
-                RotateOutcome::Reused(_) => reused += 1,
+                RotateOutcome::ReplayedAndRevoked(_) => replayed_and_revoked += 1,
+                RotateOutcome::NotFound => not_found += 1,
                 other => panic!("unexpected outcome {other:?}"),
             }
         }
         // SQLite's write lock serialises the claiming UPDATE, so the losers
-        // see a spent token rather than racing past it.
+        // cannot race past replay detection. The first loser revokes the
+        // session, and later callers then find no token rows.
         assert_eq!(rotated, 1);
-        assert_eq!(reused, 7);
+        assert_eq!(replayed_and_revoked, 1);
+        assert_eq!(not_found, 6);
     }
 }

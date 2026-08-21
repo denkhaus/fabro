@@ -606,11 +606,8 @@ async fn refresh(
                 "Refresh token expired",
             );
         }
-        RotateOutcome::Reused(session) => {
+        RotateOutcome::ReplayedAndRevoked(session) => {
             auth_slot.replace(RequestAuthContext::invalid());
-            if let Err(err) = auth_sessions.delete_session(session.id).await {
-                warn!(error = %err, session_id = %session.id, "Failed to revoke replayed refresh token chain");
-            }
             log_refresh_token_replay(session.id, session.identity.subject(), &next_user_agent);
             return oauth_error(
                 StatusCode::UNAUTHORIZED,
