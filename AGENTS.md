@@ -19,7 +19,7 @@ macOS note: if `cargo nextest run` fails with `Too many open files (os error 24)
 
 ### TypeScript (fabro-web)
 - `cd apps/fabro-web && bun run dev` — rebuild web assets on change for the Rust server; refresh the browser manually
-- `cd apps/fabro-web && bun test` — run tests
+- `cd apps/fabro-web && bun run test` — run tests (the script adds `--isolate`; plain `bun test` leaks `mock.module` overrides across files and fails ~32 tests spuriously)
 - `cd apps/fabro-web && bun run typecheck` — type check
 - `cd apps/fabro-web && bun run build` — production build (writes to `apps/fabro-web/dist/` only; does NOT update the bundled SPA that ships in the Rust binary)
 - `cargo dev build [-- <cargo args>]` — refreshes the embedded SPA assets from the production build, verifies SPA asset budgets, and then runs `cargo build` with forwarded args. The embedded assets are gitignored except for `.gitkeep`; use this when building a Rust binary that should include a populated SPA bundle. `bun run dev` for local development is unchanged because debug builds prefer `apps/fabro-web/dist/` on disk via the server fallback.
