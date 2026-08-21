@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -64,7 +65,8 @@ pub const DEFAULT_DAYTONA_API_URL: &str = "https://app.daytona.io/api";
 pub(crate) const DAYTONA_DASHBOARD_SANDBOXES_URL: &str =
     "https://app.daytona.io/dashboard/sandboxes";
 const FABRO_SANDBOX_USER_AGENT: &str = concat!("fabro-sandbox/", env!("CARGO_PKG_VERSION"));
-const DAYTONA_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
+pub const DAYTONA_CREDENTIAL_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
+const DAYTONA_BASH_SESSION_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 /// Upper bound on explicit and Drop-triggered Daytona cleanup calls (session
 /// deletion, temporary stdin files) so a stalled REST call cannot block
 /// cancellation/timeout paths indefinitely.
@@ -169,6 +171,24 @@ pub struct DaytonaKeyCheck {
     pub missing:  Vec<Permissions>,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("Daytona credential probe timed out after {timeout:?}")]
+pub struct DaytonaCredentialProbeTimeout {
+    timeout: Duration,
+}
+
+impl DaytonaCredentialProbeTimeout {
+    #[must_use]
+    pub const fn new(timeout: Duration) -> Self {
+        Self { timeout }
+    }
+
+    #[must_use]
+    pub const fn timeout(&self) -> Duration {
+        self.timeout
+    }
+}
+
 impl DaytonaKeyCheck {
     pub fn ok(&self) -> bool {
         self.missing.is_empty()
@@ -267,6 +287,23 @@ pub async fn check_daytona_api_key_with(
     api_key: String,
     http_client: fabro_http::HttpClient,
 ) -> anyhow::Result<DaytonaKeyCheck> {
+    check_daytona_api_key_with_timeout(
+        base_url,
+        org_id,
+        api_key,
+        http_client,
+        DAYTONA_CREDENTIAL_PROBE_TIMEOUT,
+    )
+    .await
+}
+
+pub async fn check_daytona_api_key_with_timeout(
+    base_url: &str,
+    org_id: Option<&str>,
+    api_key: String,
+    http_client: fabro_http::HttpClient,
+    probe_timeout: Duration,
+) -> anyhow::Result<DaytonaKeyCheck> {
     let work = async {
         let client = build_daytona_client_with(
             Some(api_key.clone()),
@@ -300,12 +337,21 @@ pub async fn check_daytona_api_key_with(
         })
     };
 
-    match time::timeout(DAYTONA_PROBE_TIMEOUT, work).await {
+    daytona_credential_probe_with_timeout(work, probe_timeout).await
+}
+
+async fn daytona_credential_probe_with_timeout<F>(
+    probe: F,
+    probe_timeout: Duration,
+) -> anyhow::Result<DaytonaKeyCheck>
+where
+    F: Future<Output = anyhow::Result<DaytonaKeyCheck>>,
+{
+    match time::timeout(probe_timeout, probe).await {
         Ok(result) => result,
-        Err(_) => Err(anyhow::anyhow!(
-            "Daytona credential probe timed out after {}s",
-            DAYTONA_PROBE_TIMEOUT.as_secs()
-        )),
+        Err(_) => Err(anyhow::Error::new(DaytonaCredentialProbeTimeout::new(
+            probe_timeout,
+        ))),
     }
 }
 
@@ -633,16 +679,16 @@ impl DaytonaSandbox {
     /// non-POSIX, and completion assertions all hold.
     ///
     /// Costs one session round trip plus a single status poll per sandbox
-    /// lifecycle transition. `DAYTONA_PROBE_TIMEOUT` is the outer backstop for
-    /// a stalled REST call; the inner [`BASH_PROBE_TIMEOUT_MS`] is the deadline
-    /// for the command itself. Session cleanup runs outside that deadline under
-    /// its own bounded timeout.
+    /// lifecycle transition. `DAYTONA_BASH_SESSION_PROBE_TIMEOUT` is the outer
+    /// backstop for a stalled REST call; the inner [`BASH_PROBE_TIMEOUT_MS`] is
+    /// the deadline for the command itself. Session cleanup runs outside that
+    /// deadline under its own bounded timeout.
     async fn probe_bash_session(sandbox: &daytona_sdk::Sandbox) -> crate::Result<()> {
-        let deadline = time::Instant::now() + DAYTONA_PROBE_TIMEOUT;
+        let deadline = time::Instant::now() + DAYTONA_BASH_SESSION_PROBE_TIMEOUT;
         let timeout_error = || {
             crate::Error::message(format!(
                 "Daytona Bash session check timed out after {}s",
-                DAYTONA_PROBE_TIMEOUT.as_secs()
+                DAYTONA_BASH_SESSION_PROBE_TIMEOUT.as_secs()
             ))
         };
         let mut session = match time::timeout_at(deadline, DaytonaSession::create(sandbox)).await {
@@ -3753,6 +3799,25 @@ mod tests {
             "expected auth context in chain, got {chain:#?}"
         );
         auth.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn daytona_credential_probe_reports_configured_timeout() {
+        let err = daytona_credential_probe_with_timeout(
+            std::future::pending::<anyhow::Result<DaytonaKeyCheck>>(),
+            Duration::from_millis(1),
+        )
+        .await
+        .expect_err("probe should time out");
+        let timeout = err
+            .downcast_ref::<DaytonaCredentialProbeTimeout>()
+            .expect("timeout should preserve its type");
+
+        assert_eq!(timeout.timeout(), Duration::from_millis(1));
+        assert_eq!(
+            err.to_string(),
+            "Daytona credential probe timed out after 1ms"
+        );
     }
 
     #[tokio::test]
