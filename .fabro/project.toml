@@ -13,8 +13,11 @@ provider = "github"
 owner = "denkhaus"
 repository = "fabro"
 
+# Toolchain env as project default: agents on this repo need rust/bun AND the
+# repo agent tooling (sd/ml for AGENTS.md session primes, pytest for test
+# workflows). Stock buildpack-deps:noble lacks all of these.
 [run.environment]
-id = "fabro-dev"
+id = "toolchain"
 
 # Local feature testing: keep checkpoint/metadata branches local-only.
 # The sandbox still creates checkpoint commits; remote pushes are skipped so

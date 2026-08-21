@@ -17,3 +17,15 @@ RUN set -eux; \
     /root/.bun/bin/bun --version
 
 ENV PATH="/root/.bun/bin:${PATH}"
+
+# Repo agent tooling: AGENTS.md asks agents to run `sd prime` / `ml prime` at
+# session start; without these binaries every run wastes turns on failures.
+# Pinned to the versions used on the host (seeds 0.5.15, mulch 0.10.7).
+RUN bun install -g @os-eco/seeds-cli@0.5.15 @os-eco/mulch-cli@0.10.7
+
+# Test workflows run `python3 -m pytest` (e.g. solitaire-*); the agent
+# otherwise fights PEP 668 externally-managed-environment workarounds.
+RUN set -eux; \
+    python3 -m pip --version >/dev/null 2>&1 || apt-get update && apt-get install -y --no-install-recommends python3-pip; \
+    python3 -m pip install --break-system-packages --no-cache-dir pytest; \
+    python3 -m pytest --version
