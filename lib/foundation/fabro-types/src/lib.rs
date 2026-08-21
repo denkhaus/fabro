@@ -3,6 +3,7 @@ extern crate self as fabro_types;
 pub mod artifact;
 pub mod auth;
 pub mod billing;
+pub mod blob_hash;
 pub mod blob_ref;
 pub mod checkpoint;
 pub mod command_output;
@@ -26,7 +27,6 @@ pub mod pull_request;
 pub mod reasoning;
 pub mod repository;
 pub mod run;
-pub mod run_blob_id;
 pub mod run_event;
 pub mod run_failure;
 pub mod run_id;
@@ -54,6 +54,9 @@ pub mod timing;
 pub mod todo;
 pub mod transcript;
 pub mod variable;
+pub mod workflow_path;
+pub mod workflow_version;
+pub mod workflow_version_id;
 
 pub use artifact::ArtifactUpload;
 pub use auth::{IdpIdentity, IdpIdentityError};
@@ -63,6 +66,7 @@ pub use billing::{
     ModelBillingFacts, ModelBillingInput, ModelPricing, ModelPricingPolicy, ModelRef, ModelUsage,
     OpenAiBillingFacts, OpenAiModelPricing, PricePerMTok, Speed, TokenCounts, UsdMicros,
 };
+pub use blob_hash::BlobHash;
 pub use blob_ref::{format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref};
 pub use checkpoint::Checkpoint;
 pub use command_output::{CommandOutputStream, CommandTermination};
@@ -113,7 +117,6 @@ pub use run::{
     DirtyStatus, ForkSourceRef, GitContext, RunClientProvenance, RunProvenance,
     RunServerProvenance, RunSpec,
 };
-pub use run_blob_id::RunBlobId;
 pub use run_event::{
     AgentMcpToolSummary, AgentMemoryFileProps, AgentSkillActivationSource, AgentSkillSummary,
     AgentToolCategory, AgentToolSource, AgentToolSummary, AgentToolsAvailableProps, EventBody,
@@ -183,3 +186,11 @@ pub use transcript::{
 pub use variable::{
     CreateVariableRequest, UpdateVariableRequest, Variable, VariableListResponse, is_env_style_name,
 };
+pub use workflow_path::{
+    MAX_WORKFLOW_PATH_BYTES, MAX_WORKFLOW_PATH_COMPONENTS, WorkflowPath, WorkflowPathParseError,
+};
+pub use workflow_version::{
+    MAX_WORKFLOW_VERSION_BYTES, MAX_WORKFLOW_VERSION_DEPENDENCIES, MAX_WORKFLOW_VERSION_FILE_BYTES,
+    MAX_WORKFLOW_VERSION_FILES, WorkflowVersion, WorkflowVersionShapeError,
+};
+pub use workflow_version_id::{WorkflowVersionId, WorkflowVersionIdParseError};

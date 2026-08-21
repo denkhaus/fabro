@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::WorkflowSettings;
+use crate::blob_hash::BlobHash;
 use crate::graph::Graph;
 use crate::principal::Principal;
-use crate::run_blob_id::RunBlobId;
 use crate::run_id::RunId;
 use crate::run_summary::AutomationRef;
 
@@ -73,14 +73,14 @@ pub struct RunSpec {
     pub labels:           HashMap<String, String>,
     pub provenance:       RunProvenance,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manifest_blob:    Option<RunBlobId>,
+    pub manifest_blob:    Option<BlobHash>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub definition_blob:  Option<RunBlobId>,
+    pub definition_blob:  Option<BlobHash>,
     /// Unredacted copy of this spec in the blob store. Stored events pass
     /// through secret redaction, so the spec folded from them is display
     /// data; execution must load the spec from this blob.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub spec_blob:        Option<RunBlobId>,
+    pub spec_blob:        Option<BlobHash>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git:              Option<GitContext>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -26,12 +26,12 @@ use fabro_model::{Catalog, ModelRef, ProviderId, ReasoningEffort, Speed};
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::EnvironmentProvider;
 use fabro_types::{
-    AgentBackend, AttrValue, AuthMethod, CommandTermination, FailureCategory, FailureDetail, Graph,
-    InterviewQuestionRecord, Node, Outcome, ParallelBranchId, QuestionType, RunBlobId, RunId,
-    RunSpec, SandboxProviderKind, StageContextWindowBreakdownItem, StageContextWindowCategory,
-    StageContextWindowCountMethod, StageContextWindowProjection, StageContextWindowStaleness,
-    StageContextWindowWarning, StageModelUsage, StageTiming, SuccessReason, SystemActorKind,
-    WorkflowSettings, fixtures, test_support,
+    AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, FailureCategory,
+    FailureDetail, Graph, InterviewQuestionRecord, Node, Outcome, ParallelBranchId, QuestionType,
+    RunId, RunSpec, SandboxProviderKind, StageContextWindowBreakdownItem,
+    StageContextWindowCategory, StageContextWindowCountMethod, StageContextWindowProjection,
+    StageContextWindowStaleness, StageContextWindowWarning, StageModelUsage, StageTiming,
+    SuccessReason, SystemActorKind, WorkflowSettings, fixtures, test_support,
 };
 use fabro_util::check_report::CheckStatus;
 use fabro_workflow::records::CheckpointExt;
@@ -3890,7 +3890,7 @@ layer = "project"
     let manifest_blob = created["properties"]["manifest_blob"]
         .as_str()
         .expect("run.created should carry the submitted source blob")
-        .parse::<RunBlobId>()
+        .parse::<BlobHash>()
         .unwrap();
     let persisted_manifest = run_store
         .read_blob(&manifest_blob)
@@ -10792,12 +10792,12 @@ async fn create_run_persists_manifest_and_definition_blobs_without_bundle_file()
     let manifest_blob = created["properties"]["manifest_blob"]
         .as_str()
         .expect("run.created should carry manifest_blob")
-        .parse::<RunBlobId>()
+        .parse::<BlobHash>()
         .unwrap();
     let definition_blob = submitted["properties"]["definition_blob"]
         .as_str()
         .expect("run.submitted should carry definition_blob")
-        .parse::<RunBlobId>()
+        .parse::<BlobHash>()
         .unwrap();
 
     let submitted_manifest_bytes = run_store
@@ -11040,7 +11040,7 @@ async fn get_checkpoint_returns_null_initially() {
 }
 
 #[tokio::test]
-async fn write_and_read_run_blob_round_trip() {
+async fn write_and_read_run_blob_accepts_uppercase_hash() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
 
@@ -11063,11 +11063,14 @@ async fn write_and_read_run_blob_round_trip() {
         .unwrap();
     let response = app.clone().oneshot(req).await.unwrap();
     let body = response_json!(response, StatusCode::OK).await;
-    let blob_id = body["id"].as_str().unwrap();
+    let blob_hash = body["hash"].as_str().unwrap();
 
     let req = Request::builder()
         .method("GET")
-        .uri(api(&format!("/runs/{run_id}/blobs/{blob_id}")))
+        .uri(api(&format!(
+            "/runs/{run_id}/blobs/{}",
+            blob_hash.to_uppercase()
+        )))
         .body(Body::empty())
         .unwrap();
     let response = app.oneshot(req).await.unwrap();
@@ -11465,7 +11468,7 @@ async fn worker_token_accepts_run_scoped_routes_and_falls_back_to_user_jwt() {
     let worker_token = issue_test_worker_token(&run_id);
     let other_run_id = create_run_with_bearer(&app, &user_jwt).await;
     let other_worker_token = issue_test_worker_token(&other_run_id);
-    let blob_id = state
+    let blob_hash = state
         .stores
         .runs
         .open_run(&run_id)
@@ -11559,7 +11562,7 @@ async fn worker_token_accepts_run_scoped_routes_and_falls_back_to_user_jwt() {
         .clone()
         .oneshot(bearer_request(
             Method::GET,
-            &format!("/runs/{run_id}/blobs/{blob_id}"),
+            &format!("/runs/{run_id}/blobs/{blob_hash}"),
             &worker_token,
             Body::empty(),
         ))
@@ -12064,7 +12067,7 @@ async fn worker_token_is_rejected_on_user_only_routes() {
     let user_jwt = issue_test_user_jwt();
     let run_id = create_run_with_bearer(&app, &user_jwt).await;
     let worker_token = issue_test_worker_token(&run_id);
-    let blob_id = RunBlobId::new(b"blob");
+    let blob_hash = BlobHash::new(b"blob");
     let user_only_routes = vec![
         (Method::GET, "/runs".to_string()),
         (Method::POST, "/runs".to_string()),
@@ -12127,7 +12130,7 @@ async fn worker_token_is_rejected_on_user_only_routes() {
         .clone()
         .oneshot(bearer_request(
             Method::GET,
-            &format!("/runs/{run_id}/blobs/{blob_id}"),
+            &format!("/runs/{run_id}/blobs/{blob_hash}"),
             &worker_token,
             Body::empty(),
         ))

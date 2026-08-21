@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::{BilledTokenCounts, ExecOutputTail, RunNoticeLevel};
 use crate::status::{BlockedReason, PendingReason, SuccessReason};
 use crate::{
-    AutomationRef, DiffSummary, ForkSourceRef, GitContext, Graph, PairId, PairTarget, RunBlobId,
+    AutomationRef, BlobHash, DiffSummary, ForkSourceRef, GitContext, Graph, PairId, PairTarget,
     RunControlAction, RunFailure, RunId, RunProvenance, RunTiming, WorkflowSettings,
 };
 
@@ -27,12 +27,12 @@ pub struct RunCreatedProps {
     pub automation:       Option<AutomationRef>,
     pub provenance:       RunProvenance,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manifest_blob:    Option<RunBlobId>,
+    pub manifest_blob:    Option<BlobHash>,
     /// Unredacted copy of the run spec in the blob store. The settings and
     /// graph on this event are redacted at the sink; execution loads the
     /// spec from this blob instead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub spec_blob:        Option<RunBlobId>,
+    pub spec_blob:        Option<BlobHash>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git:              Option<GitContext>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -137,7 +137,7 @@ pub struct RunPairFailedProps {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunSubmittedProps {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub definition_blob: Option<RunBlobId>,
+    pub definition_blob: Option<BlobHash>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

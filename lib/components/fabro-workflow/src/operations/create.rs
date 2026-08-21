@@ -16,7 +16,7 @@ use fabro_model::{Catalog, ProviderId};
 use fabro_store::{Database, RunDatabase};
 use fabro_template::TemplateContext;
 use fabro_types::{
-    AutomationRef, ForkSourceRef, GitContext, ManifestPath, RunBlobId, RunId, RunProvenance,
+    AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, RunId, RunProvenance,
     WorkflowSettings,
 };
 use fabro_util::json::normalize_json_value;
@@ -585,7 +585,7 @@ async fn persist_created_run(
 async fn write_optional_blob(
     run_store: &RunDatabase,
     bytes: Option<&[u8]>,
-) -> Result<Option<RunBlobId>, Error> {
+) -> Result<Option<BlobHash>, Error> {
     match bytes {
         Some(bytes) => run_store
             .write_blob(bytes)

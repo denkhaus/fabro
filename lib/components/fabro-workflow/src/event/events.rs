@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use ::fabro_types::{
-    AutomationRef, BilledTokenCounts, BlockedReason, CommandTermination, DiffSummary,
+    AutomationRef, BilledTokenCounts, BlobHash, BlockedReason, CommandTermination, DiffSummary,
     FailureReason, ForkSourceRef, GitContext, PairId, PairMessageId, PairSystemMessageKind,
     PairTarget, ParallelBranchId, ParallelBranchResult, PendingReason, PermissionLevel, Principal,
-    PullRequestCreationId, PullRequestLink, ReviewTarget, RunBlobId, RunFailure, RunId,
-    RunNoticeLevel, RunPairEndedReason, RunPairFailedReason, RunProvenance, RunRunnableSource,
-    RunTiming, SandboxProviderKind, StageId, StageOutcome, StageTiming, SuccessReason,
+    PullRequestCreationId, PullRequestLink, ReviewTarget, RunFailure, RunId, RunNoticeLevel,
+    RunPairEndedReason, RunPairFailedReason, RunProvenance, RunRunnableSource, RunTiming,
+    SandboxProviderKind, StageId, StageOutcome, StageTiming, SuccessReason,
     run_event as fabro_types,
 };
 use fabro_agent::{AgentEvent, SandboxEvent};
@@ -39,9 +39,9 @@ pub enum Event {
         automation:       Option<AutomationRef>,
         provenance:       RunProvenance,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        manifest_blob:    Option<RunBlobId>,
+        manifest_blob:    Option<BlobHash>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        spec_blob:        Option<RunBlobId>,
+        spec_blob:        Option<BlobHash>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         git:              Option<GitContext>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -69,7 +69,7 @@ pub enum Event {
     },
     RunSubmitted {
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        definition_blob: Option<RunBlobId>,
+        definition_blob: Option<BlobHash>,
     },
     RunStartRequested {
         resume: bool,

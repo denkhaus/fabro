@@ -1958,7 +1958,7 @@ pub fn json_snapshot_filters(mut filters: Vec<(String, String)>) -> Vec<(String,
     for field in ["manifest_blob", "definition_blob", "spec_blob"] {
         filters.push((
             format!(r#""{field}":\s*"[0-9a-f]{{64}}""#),
-            format!(r#""{field}": "[BLOB_ID]""#),
+            format!(r#""{field}": "[BLOB_HASH]""#),
         ));
     }
     filters.push((
@@ -2560,8 +2560,8 @@ mod tests {
   "inference_time_ms": "[INFERENCE_TIME_MS]",
   "tool_time_ms": "[TOOL_TIME_MS]",
   "active_time_ms": "[ACTIVE_TIME_MS]",
-  "manifest_blob": "[BLOB_ID]",
-  "definition_blob": "[BLOB_ID]",
+  "manifest_blob": "[BLOB_HASH]",
+  "definition_blob": "[BLOB_HASH]",
   "run_dir": "[RUN_DIR]",
   "message": "[CUSTOM]"
 }"#

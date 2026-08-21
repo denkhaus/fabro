@@ -78,8 +78,8 @@ pub struct LifecycleOptions {
 }
 
 /// A single setup (prepare) command and the per-step environment it runs with.
-/// Both the command string and the env values are already fully resolved (their
-/// `{{ env.* }}` tokens replaced at the run boundary) by the time they reach
+/// Both the command string and the env values are already fully resolved
+/// (interpolation tokens replaced at the run boundary) by the time they reach
 /// the sandbox.
 pub struct SetupCommand {
     pub command: String,

@@ -42,7 +42,7 @@ pub mod types {
     pub use fabro_types::{
         ActivatedSkill, AgentControlState, AgentMcpToolSummary, AgentSkillActivationSource,
         AgentSkillSummary, AgentToolCategory, AgentToolSource, AgentToolSummary,
-        AgentToolsAvailableProps, AskFabro, AuthMethod, AutomationRef, BilledTokenCounts,
+        AgentToolsAvailableProps, AskFabro, AuthMethod, AutomationRef, BilledTokenCounts, BlobHash,
         CommandTermination, Conclusion, ContentPart, CreateVariableRequest, DiffStats, DiffSummary,
         DirtyStatus, EventEnvelope, ExecOutputTail, FailureCategory, FailureDetail,
         FailureSignature, GitContext, IdpIdentity, IntegrationConnectionKind,
@@ -73,7 +73,8 @@ pub mod types {
         StageModelUsage, StageOutcome, StageProjection, StageState, StageToolBatchProjection,
         SubAgentProjection, SubAgentStatus, SystemActorKind, SystemIntegrationStatus,
         SystemIntegrationsResponse, TodoListProjection, TurnId, UpdateVariableRequest,
-        UserPrincipal, Variable, VariableListResponse, WorkflowSettings,
+        UserPrincipal, Variable, VariableListResponse, WorkflowPath, WorkflowSettings,
+        WorkflowVersion, WorkflowVersionId,
     };
 
     pub use crate::generated::types::*;

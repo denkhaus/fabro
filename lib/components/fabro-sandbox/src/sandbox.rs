@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use fabro_github::token_source::{InstallationTokenSource, TokenSnapshot};
 use fabro_types::{CommandOutputStream, CommandTermination};
 use fabro_util::shell;
 use fabro_util::workspace_glob::WorkspaceGlob;
@@ -278,6 +279,12 @@ macro_rules! delegate_sandbox {
 
             async fn refresh_push_credentials(&self) -> $crate::Result<$crate::RefreshOutcome> {
                 self.$field.refresh_push_credentials().await
+            }
+
+            fn push_token_source(
+                &self,
+            ) -> Option<std::sync::Arc<$crate::InstallationTokenSource>> {
+                self.$field.push_token_source()
             }
 
             async fn set_autostop_interval(&self, minutes: i32) -> $crate::Result<()> {
@@ -1013,16 +1020,68 @@ pub struct GrepOptions {
     pub max_results:      Option<usize>,
 }
 
-/// Outcome of [`Sandbox::refresh_push_credentials`]: whether a fresh token was
-/// actually minted and applied to the origin remote, or the call was a no-op
-/// (no clone, no authenticated origin, or no GitHub App credentials to rotate).
-/// Lets callers log accurately instead of assuming every `Ok` re-minted.
+/// What [`Sandbox::refresh_push_credentials`] did to the origin remote.
+///
+/// Distinct from what the token *is* — the two are independent facts. A token
+/// minted by another consumer and embedded here for the first time is an
+/// `Embedded` action carrying a `Reused` provenance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display)]
+#[strum(serialize_all = "snake_case")]
+pub enum RemoteCredentialAction {
+    /// `set-url` ran with a different generation than last embedded.
+    Embedded,
+    /// The resolved generation matched the last embedded one; `set-url` was
+    /// skipped.
+    Unchanged,
+    /// No managed credentials to embed (no clone, no authenticated origin, or
+    /// no GitHub credentials).
+    None,
+}
+
+/// Outcome of [`Sandbox::refresh_push_credentials`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefreshOutcome {
-    /// A fresh token was minted and the origin remote URL was updated.
-    Refreshed,
-    /// Nothing to refresh (no clone / no origin / no managed credentials).
-    Skipped,
+    /// No managed credentials exist for this sandbox.
+    None,
+    /// The remote already carried this token generation.
+    Unchanged(TokenSnapshot),
+    /// The remote was updated to carry this token generation.
+    Embedded(TokenSnapshot),
+}
+
+impl RefreshOutcome {
+    /// No managed credentials to refresh.
+    #[must_use]
+    pub const fn none() -> Self {
+        Self::None
+    }
+
+    #[must_use]
+    pub const fn unchanged(token: TokenSnapshot) -> Self {
+        Self::Unchanged(token)
+    }
+
+    #[must_use]
+    pub const fn embedded(token: TokenSnapshot) -> Self {
+        Self::Embedded(token)
+    }
+
+    #[must_use]
+    pub const fn action(self) -> RemoteCredentialAction {
+        match self {
+            Self::None => RemoteCredentialAction::None,
+            Self::Unchanged(_) => RemoteCredentialAction::Unchanged,
+            Self::Embedded(_) => RemoteCredentialAction::Embedded,
+        }
+    }
+
+    #[must_use]
+    pub const fn token(self) -> Option<TokenSnapshot> {
+        match self {
+            Self::None => None,
+            Self::Unchanged(token) | Self::Embedded(token) => Some(token),
+        }
+    }
 }
 
 #[async_trait]
@@ -1048,6 +1107,16 @@ pub trait Sandbox: Send + Sync {
     }
 
     async fn write_file(&self, path: &str, content: &str) -> crate::Result<()>;
+
+    /// Write a file that the caller has already confirmed exists.
+    ///
+    /// Providers can override this method to skip setup that is only needed
+    /// when creating a new path. The default preserves the behavior of
+    /// [`Sandbox::write_file`].
+    async fn write_existing_file(&self, path: &str, content: &str) -> crate::Result<()> {
+        self.write_file(path, content).await
+    }
+
     async fn delete_file(&self, path: &str) -> crate::Result<()>;
     async fn file_exists(&self, path: &str) -> crate::Result<bool>;
     async fn list_directory(
@@ -1232,11 +1301,22 @@ pub trait Sandbox: Send + Sync {
     }
 
     /// Refresh git push credentials (e.g. rotate an expiring GitHub App token).
-    /// Default is a no-op; Docker/Daytona override to update the remote URL
-    /// with a fresh token. Returns [`RefreshOutcome`] so callers can tell
-    /// an actual re-mint from a skipped no-op.
+    /// Default is a no-op; Docker/Daytona override to resolve a token through
+    /// the shared source and update the remote URL when the embedded
+    /// generation is stale. Returns [`RefreshOutcome`] so callers can tell
+    /// what happened to the remote and which token it carries.
     async fn refresh_push_credentials(&self) -> crate::Result<RefreshOutcome> {
-        Ok(RefreshOutcome::Skipped)
+        Ok(RefreshOutcome::none())
+    }
+
+    /// The shared installation-token source feeding this sandbox's push
+    /// credentials, when the provider manages GitHub credentials.
+    ///
+    /// Consumers outside the sandbox (e.g. the run-metadata writer) share
+    /// this source so every GitHub-token consumer for the origin repository
+    /// reuses one cached token instead of minting its own.
+    fn push_token_source(&self) -> Option<Arc<InstallationTokenSource>> {
+        None
     }
 
     /// Set the auto-stop interval in minutes (0 to disable).
@@ -1455,6 +1535,7 @@ pub async fn setup_git_via_exec(
     })
 }
 
+#[tracing::instrument(name = "git_op", skip_all, fields(op = "fetch"))]
 pub(crate) async fn fetch_source_run_ref(
     sandbox: &dyn Sandbox,
     source_run_id: &str,
@@ -1503,14 +1584,33 @@ pub(crate) async fn fetch_source_run_ref(
 
 /// Helper for sandbox implementations that manage git internally.
 /// Pushes a refspec to origin via exec_command inside the sandbox.
+#[tracing::instrument(name = "git_op", skip_all, fields(op = "push"))]
 pub async fn git_push_via_exec(sandbox: &dyn Sandbox, refspec: &str) -> crate::Result<()> {
-    if let Err(e) = sandbox.refresh_push_credentials().await {
-        tracing::warn!(
-            refspec = %refspec,
-            error = %crate::display_for_log(&e),
-            "Failed to refresh push credentials before git push"
-        );
-    }
+    let token = match sandbox.refresh_push_credentials().await {
+        Ok(outcome) => {
+            if let Some(token) = outcome.token() {
+                tracing::debug!(
+                    refspec = %refspec,
+                    action = %outcome.action(),
+                    generation = token.generation,
+                    provenance = %token.provenance,
+                    token_age_ms = token.age_ms(),
+                    "Resolved push credentials before git push"
+                );
+            }
+            outcome.token()
+        }
+        Err(e) => {
+            // The provider logged which token stays embedded; the push
+            // proceeds with the old origin URL.
+            tracing::warn!(
+                refspec = %refspec,
+                error = %crate::display_for_log(&e),
+                "Failed to refresh push credentials before git push"
+            );
+            None
+        }
+    };
     let cmd = format!("{GIT} push origin {}", shell_quote(refspec));
     let label = format!("git push origin {refspec}");
     sandbox
@@ -1518,7 +1618,12 @@ pub async fn git_push_via_exec(sandbox: &dyn Sandbox, refspec: &str) -> crate::R
         .await
         .map_err(|e| crate::Error::context(label.clone(), e))?
         .into_result(&label)?;
-    tracing::info!(refspec = %refspec, "Pushed git ref to origin");
+    tracing::info!(
+        refspec = %refspec,
+        token_generation = token.map(|token| token.generation),
+        token_age_ms = token.and_then(|token| token.age_ms()),
+        "Pushed git ref to origin"
+    );
     Ok(())
 }
 

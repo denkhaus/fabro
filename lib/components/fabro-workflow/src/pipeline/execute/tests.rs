@@ -753,11 +753,11 @@ impl HandlerTrait for BlobCommandOutputHandler {
         services: &crate::handler::EngineServices,
     ) -> std::result::Result<Outcome, Error> {
         let blob = serde_json::to_vec("routed-ok").unwrap();
-        let blob_id = services.run.run_store.write_blob(&blob).await.unwrap();
+        let blob_hash = services.run.run_store.write_blob(&blob).await.unwrap();
         let mut outcome = Outcome::success();
         outcome.context_updates.insert(
             context::keys::COMMAND_OUTPUT.to_string(),
-            serde_json::json!(format_blob_ref(&blob_id)),
+            serde_json::json!(format_blob_ref(&blob_hash)),
         );
         Ok(outcome)
     }

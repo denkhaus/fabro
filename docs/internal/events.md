@@ -77,7 +77,7 @@ Emitted when the run record is created.
 | `source_directory` | string? | Submitter-side source directory |
 | `workflow_slug` | string? | Workflow slug |
 | `provenance` | object | Actor and request provenance |
-| `manifest_blob` | string? | Blob id for the submitted manifest |
+| `manifest_blob` | string? | Blob hash for the submitted manifest |
 | `git` | object? | Git provenance observed before the run: normalized `origin_url`, `branch`, optional `sha`, and `dirty` status |
 | `fork_source_ref` | object? | Source run/checkpoint reference when this run was forked |
 | `in_place` | boolean | Whether the run was created with `--in-place` (no git checkpoints) |
