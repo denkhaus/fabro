@@ -1,0 +1,9 @@
+# Lefthook wiring for the lab branch: no commits may leak secrets.
+# Installed and activated by the [run.prepare] bootstrap step.
+pre-commit:
+  commands:
+    betterleaks:
+      run: betterleaks git --staged --redact
+      stage_fixed: false
+      skip:
+        - ref: main

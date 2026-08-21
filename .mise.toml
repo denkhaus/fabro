@@ -1,6 +1,13 @@
 # Workspace toolset for the lab branch. Bootstrapped by the [run.prepare]
 # step via mise (image: fabro-runner:mise — lean base, no baked-in tools).
-# npm-distributed CLIs are installed through bun -g because mise's npm
-# backend requires interactive confirmation in 2026.8.10.
+#
+# Backend notes (mise 2026.8.10):
+# - npm-distributed CLIs go through `bun install -g` in the prepare step;
+#   mise's npm/aube backend demands interactive confirmation.
+# - nushell and betterleaks come from the aqua registry; lefthook has a
+#   native mise backend.
 [tools]
 bun = "1.4.0"
+"aqua:nushell/nushell" = "0.115.0"
+"aqua:betterleaks/betterleaks" = "1.8.1"
+lefthook = "2.1.11"
