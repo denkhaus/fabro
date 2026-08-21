@@ -630,7 +630,7 @@ mod tests {
             .execute(&node, &context, &graph, tmp.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let state = run_store.state().await.unwrap();
         let node_state = state.stage(&StageId::new("plan", 1)).unwrap();
@@ -657,7 +657,7 @@ mod tests {
             .execute(&node, &context, &graph, tmp.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let state = run_store.state().await.unwrap();
         let node_state = state.stage(&StageId::new("work", 1)).unwrap();
@@ -1151,7 +1151,7 @@ All checks passed.
             .execute(&node, &context, &graph, tmp.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let state = run_store.state().await.unwrap();
         let node_state = state.stage(&StageId::new("step", 1)).unwrap();
@@ -1555,7 +1555,7 @@ Some text in between.
             .execute(&node, &context, &graph, tmp.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let state = run_store.state().await.unwrap();
         let node_state = state.stage(&StageId::new("report", 1)).unwrap();

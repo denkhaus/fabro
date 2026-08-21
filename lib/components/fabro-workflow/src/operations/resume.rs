@@ -44,7 +44,7 @@ pub async fn resume(run_dir: &Path, services: StartServices) -> Result<Started, 
         &Event::RunSubmitted { definition_blob },
     )
     .await
-    .map_err(|err| Error::engine(err.to_string()))?;
+    .map_err(|err| Error::engine_with_source("failed to persist run.submitted event", err))?;
 
     Box::pin(execute_persisted_run(run_dir, Some(resume_state), services)).await
 }

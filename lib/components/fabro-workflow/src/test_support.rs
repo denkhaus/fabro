@@ -52,7 +52,11 @@ pub(crate) fn test_configured_provider_ids(
 /// persisted before tests reopen the run store.
 async fn execute_and_emit_terminal(initialized: InitializedState) -> Executed {
     let executed = Box::pin(pipeline::execute(initialized.initialized)).await;
-    initialized.store_logger.flush().await;
+    initialized
+        .store_logger
+        .flush()
+        .await
+        .expect("test run events should persist");
     let state = executed.engine.run.run_store.state().await.ok();
     let billing = state.as_ref().and_then(billing_from_projection);
     let event = build_terminal_event(
@@ -65,7 +69,11 @@ async fn execute_and_emit_terminal(initialized: InitializedState) -> Executed {
         billing,
     );
     executed.engine.run.emitter.emit(&event);
-    initialized.store_logger.flush().await;
+    initialized
+        .store_logger
+        .flush()
+        .await
+        .expect("test run events should persist");
     executed
 }
 
@@ -481,7 +489,11 @@ pub async fn run_graph_with_state_and_llm_source(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
-    initialized.store_logger.flush().await;
+    initialized
+        .store_logger
+        .flush()
+        .await
+        .expect("test run events should persist");
     let outcome = executed.outcome?;
     let state = executed
         .engine

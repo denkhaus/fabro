@@ -1405,7 +1405,7 @@ mod tests {
             .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         assert_eq!(outcome.status, StageOutcome::Succeeded);
         let results: Vec<ParallelBranchResult> =

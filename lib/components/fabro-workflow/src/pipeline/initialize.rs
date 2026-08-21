@@ -1326,10 +1326,32 @@ mod tests {
         let run_dir = temp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
         let (graph, source) = simple_graph();
-        let persisted = test_persisted(graph, source, &run_dir);
+        let persisted = test_persisted(graph.clone(), source, &run_dir);
         let emitter = Arc::new(crate::event::Emitter::new(test_run_id()));
         let store = memory_store();
         let run_store = store.create_run(&test_run_id()).await.unwrap();
+        crate::event::append_event(&run_store, &test_run_id(), &Event::RunCreated {
+            run_id:              test_run_id(),
+            title:               None,
+            settings:            serde_json::to_value(WorkflowSettings::default()).unwrap(),
+            graph:               serde_json::to_value(graph).unwrap(),
+            workflow_source:     None,
+            labels:              BTreeMap::new(),
+            source_directory:    None,
+            workflow_slug:       Some("test".to_string()),
+            workflow_version_id: None,
+            automation:          None,
+            provenance:          test_support::test_run_provenance(),
+            manifest_blob:       None,
+            spec_blob:           None,
+            git:                 None,
+            fork_source_ref:     None,
+            retried_from:        None,
+            parent_id:           None,
+            web_url:             None,
+        })
+        .await
+        .unwrap();
         let store_logger = StoreProgressLogger::new(run_store.clone());
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
         emitter.on_event({
@@ -1380,7 +1402,7 @@ mod tests {
         })
         .await
         .unwrap();
-        store_logger.flush().await;
+        store_logger.flush().await.unwrap();
 
         assert_eq!(initialized.run_options.run_dir, run_dir);
         assert!(
