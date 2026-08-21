@@ -14636,7 +14636,9 @@ components:
         depth:
           type: integer
           format: int32
-          minimum: 1
+          minimum: 0
+          default: 100
+          description: Git history depth. Set to 0 to clone full history.
 
     RunBranchSettings:
       type: object

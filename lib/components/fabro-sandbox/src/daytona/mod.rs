@@ -3528,7 +3528,7 @@ mod tests {
         assert!(config.snapshot.is_none());
         assert!(config.auto_stop_interval.is_none());
         assert!(config.labels.is_none());
-        assert!(config.clone_depth.is_none());
+        assert_eq!(config.clone_depth, Some(100));
     }
 
     #[test]

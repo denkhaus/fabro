@@ -48,7 +48,7 @@ const DOCKER_BASH_REQUIREMENT: &str = "Docker sandboxes require /bin/bash for ev
 
 pub(crate) const WORKING_DIRECTORY: &str = "/workspace";
 pub(crate) const REPOS_ROOT: &str = "/repos";
-const DEFAULT_GIT_CLONE_DEPTH: usize = 10;
+const DEFAULT_GIT_CLONE_DEPTH: usize = 100;
 const GIT_CLONE_TIMEOUT: Duration = Duration::from_mins(5);
 #[cfg(test)]
 const EXEC_STOP_POLL_SLEEP_SECONDS: &str = "0.005";
@@ -121,7 +121,8 @@ pub struct DockerSandboxOptions {
     pub auto_pull:    bool,
     /// Additional `KEY=VALUE` environment variables for the container.
     pub env_vars:     Vec<String>,
-    /// Maximum Git history depth fetched during clone.
+    /// Maximum Git history depth fetched during clone. Zero fetches full
+    /// history.
     pub clone_depth:  usize,
     /// Create an empty workspace instead of cloning even when an origin exists.
     pub skip_clone:   bool,
@@ -1548,8 +1549,10 @@ fn git_clone_command(
         command.push_str(&shell_quote(branch));
         command.push_str(" --single-branch");
     }
-    command.push_str(" --depth ");
-    command.push_str(&depth.to_string());
+    if depth > 0 {
+        command.push_str(" --depth ");
+        command.push_str(&depth.to_string());
+    }
     command.push_str(" --no-tags");
     command.push_str(" -- ");
     command.push_str(&shell_quote(clone_url));
@@ -2596,7 +2599,21 @@ mod tests {
         );
         assert_eq!(
             command,
-            "git -c maintenance.auto=0 -c gc.auto=0 clone --depth 10 --no-tags -- https://github.com/fabro-sh/fabro /repos/fabro-sh/fabro"
+            "git -c maintenance.auto=0 -c gc.auto=0 clone --depth 100 --no-tags -- https://github.com/fabro-sh/fabro /repos/fabro-sh/fabro"
+        );
+    }
+
+    #[test]
+    fn clone_command_omits_depth_for_full_clone() {
+        let command = git_clone_command(
+            "https://github.com/fabro-sh/fabro",
+            Some("main"),
+            "/repos/fabro-sh/fabro",
+            0,
+        );
+        assert_eq!(
+            command,
+            "git -c maintenance.auto=0 -c gc.auto=0 clone --branch main --single-branch --no-tags -- https://github.com/fabro-sh/fabro /repos/fabro-sh/fabro"
         );
     }
 

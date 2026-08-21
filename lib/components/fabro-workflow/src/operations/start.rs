@@ -1306,6 +1306,38 @@ reasoning = false
     }
 
     #[test]
+    fn zero_clone_depth_requests_full_history_from_clone_providers() {
+        let settings = settings_from_run_layer(RunLayer {
+            clone: Some(RunCloneLayer {
+                enabled: None,
+                depth:   Some(0),
+            }),
+            ..RunLayer::default()
+        });
+
+        assert_eq!(resolve_daytona_config(&settings.run).clone_depth, None);
+        assert_eq!(
+            resolve_docker_config(&settings.run, |_| None)
+                .unwrap()
+                .clone_depth,
+            0
+        );
+    }
+
+    #[test]
+    fn clone_providers_default_to_depth_100() {
+        let settings = settings_from_run_layer(RunLayer::default());
+
+        assert_eq!(resolve_daytona_config(&settings.run).clone_depth, Some(100));
+        assert_eq!(
+            resolve_docker_config(&settings.run, |_| None)
+                .unwrap()
+                .clone_depth,
+            100
+        );
+    }
+
+    #[test]
     fn runtime_mcp_server_wraps_resolve_error_source() {
         let settings = ResolvedMcpServerSettings {
             name: "gemini".to_string(),

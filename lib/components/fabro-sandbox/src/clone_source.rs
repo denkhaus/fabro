@@ -93,8 +93,13 @@ pub(crate) fn exact_fetch_command(
     commit_sha: &str,
     depth: usize,
 ) -> String {
+    let depth_arg = if depth == 0 {
+        String::new()
+    } else {
+        format!(" --depth {depth}")
+    };
     format!(
-        "{git} -C {} fetch --depth {depth} --no-tags {} -- {}",
+        "{git} -C {} fetch{depth_arg} --no-tags {} -- {}",
         sandbox::shell_quote(checkout_path),
         sandbox::shell_quote(fetch_source),
         sandbox::shell_quote(commit_sha),
@@ -490,6 +495,19 @@ mod tests {
         assert_eq!(
             checkout,
             "git -c maintenance.auto=0 -c gc.auto=0 -C \"/repos/acme's widgets\" checkout -B 'feature/a b' FETCH_HEAD && git -c maintenance.auto=0 -c gc.auto=0 -C \"/repos/acme's widgets\" rev-parse HEAD"
+        );
+    }
+
+    #[test]
+    fn exact_fetch_omits_depth_for_full_history() {
+        assert_eq!(
+            exact_fetch_command(
+                "/repos/acme/widgets",
+                "origin",
+                "0123456789abcdef0123456789abcdef01234567",
+                0,
+            ),
+            "git -c maintenance.auto=0 -c gc.auto=0 -C /repos/acme/widgets fetch --no-tags origin -- 0123456789abcdef0123456789abcdef01234567"
         );
     }
 

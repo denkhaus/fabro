@@ -16,5 +16,8 @@
 
 export interface RunCloneSettings {
     'enabled': boolean;
+    /**
+     * Git history depth. Set to 0 to clone full history.
+     */
     'depth'?: number;
 }

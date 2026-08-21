@@ -241,7 +241,7 @@ Configure whether clone-based sandboxes clone the run's GitHub origin before exe
 ```toml title="run.toml"
 [run.clone]
 enabled = true
-depth = 1
+depth = 100
 ```
 
 Set `enabled = false` to start Docker and Daytona runs with an empty provider workspace. Use [prepare steps](#runprepare) to clone or create any files the workflow needs.
@@ -249,7 +249,7 @@ Set `enabled = false` to start Docker and Daytona runs with an empty provider wo
 | Field | Description |
 |---|---|
 | `enabled` | When `false`, Fabro skips the repository clone. Defaults to `true`. |
-| `depth` | Optional positive Git history depth. Applies to Docker and Daytona. If omitted, Daytona clones full history and Docker uses its default depth of 10. |
+| `depth` | Git history depth for Docker and Daytona. Defaults to `100`. Set it to `0` to clone full history. |
 
 ### `[run.run_branch]`
 

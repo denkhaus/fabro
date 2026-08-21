@@ -126,7 +126,7 @@ fn resolves_run_defaults_from_empty_settings() {
     assert!(!settings.environment.lifecycle.preserve);
     assert!(settings.environment.lifecycle.stop_on_terminal);
     assert!(settings.clone.enabled);
-    assert_eq!(settings.clone.depth, None);
+    assert_eq!(settings.clone.depth, Some(100));
     assert!(settings.run_branch.enabled);
     assert!(settings.run_branch.push);
     assert!(settings.meta_branch.enabled);
@@ -320,8 +320,8 @@ push = false
 }
 
 #[test]
-fn rejects_non_positive_clone_depth() {
-    let error = super::workflow_settings_from_toml(
+fn zero_clone_depth_requests_full_history() {
+    let settings = super::workflow_settings_from_toml(
         r"
 _version = 1
 
@@ -329,7 +329,23 @@ _version = 1
 depth = 0
 ",
     )
-    .expect_err("zero clone depth should not resolve");
+    .expect("zero clone depth should resolve")
+    .run;
+
+    assert_eq!(settings.clone.depth, Some(0));
+}
+
+#[test]
+fn rejects_negative_clone_depth() {
+    let error = super::workflow_settings_from_toml(
+        r"
+_version = 1
+
+[run.clone]
+depth = -1
+",
+    )
+    .expect_err("negative clone depth should not resolve");
 
     let message = error.to_string();
     assert!(
@@ -337,7 +353,7 @@ depth = 0
         "unexpected error: {message}"
     );
     assert!(
-        message.contains("at least 1"),
+        message.contains("at least 0"),
         "unexpected error: {message}"
     );
 }
