@@ -207,14 +207,137 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M0K803EPA7QKJVXXAR7HFBZ5",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-08-21T22:47:25.431070947Z",
+    "run_branch": "fabro/run/01M0K803EPA7QKJVXXAR7HFBZ5",
+    "base_sha": "65493e9c9f3de6d4071e053caf60186a1bf640f0"
   },
-  "status_updated_at": "2026-08-21T22:45:21.797159998Z",
-  "last_event_at": "2026-08-21T22:47:25.399721702Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-08-21T22:47:25.431214198Z",
+  "last_event_at": "2026-08-21T22:47:44.848202390Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 23,
+      "checkpoint": {
+        "timestamp": "2026-08-21T22:47:27.853970235Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.node_visit_count": 1,
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_signature": "",
+          "failure_class": "",
+          "current_node": "start",
+          "internal.retry_count.start": 0,
+          "internal.thread_id": null,
+          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+          "outcome": "succeeded",
+          "graph.rankdir": "LR",
+          "internal.run_id": "01M0K803EPA7QKJVXXAR7HFBZ5"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "greet",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-21T22:47:44.896444796Z",
+        "current_node": "greet",
+        "completed_nodes": [
+          "start",
+          "greet"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "failure_signature": "",
+          "internal.retry_count.start": 0,
+          "internal.fidelity": "compact",
+          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+          "internal.node_visit_count": 1,
+          "last_response": "Done! 👋\n\nI created `/workspace/fabro/README.md` (it didn't exist before) with a short haiku:\n\n> Simple steps flow,\n> Code takes shape with each small task —\n> Work, done quietly.\n\nAs requested, I",
+          "internal.run_id": "01M0K803EPA7QKJVXXAR7HFBZ5",
+          "last_stage": "greet",
+          "current_node": "greet",
+          "graph.rankdir": "LR",
+          "response.greet": "Done! 👋\n\nI created `/workspace/fabro/README.md` (it didn't exist before) with a short haiku:\n\n> Simple steps flow,\n> Code takes shape with each small task —\n> Work, done quietly.\n\nAs requested, I kept this edit-only — no builds, tests, or tooling were run.",
+          "internal.retry_count.greet": 0,
+          "internal.thread_id": "start",
+          "failure_class": "",
+          "outcome": "succeeded",
+          "thread.start.current_node": "greet",
+          "internal.work_dir": "/workspace/fabro"
+        },
+        "node_outcomes": {
+          "greet": {
+            "status": "succeeded",
+            "context_updates": {
+              "last_stage": "greet",
+              "last_response": "Done! 👋\n\nI created `/workspace/fabro/README.md` (it didn't exist before) with a short haiku:\n\n> Simple steps flow,\n> Code takes shape with each small task —\n> Work, done quietly.\n\nAs requested, I",
+              "response.greet": "Done! 👋\n\nI created `/workspace/fabro/README.md` (it didn't exist before) with a short haiku:\n\n> Simple steps flow,\n> Code takes shape with each small task —\n> Work, done quietly.\n\nAs requested, I kept this edit-only — no builds, tests, or tooling were run."
+            },
+            "notes": "Stage completed: greet",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 3086,
+                    "output_tokens": 168,
+                    "reasoning_tokens": 120,
+                    "cache_read_tokens": 5696,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 7066
+            },
+            "files_touched": [
+              "/workspace/fabro/README.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 15836,
+              "tool_time_ms": 283,
+              "active_time_ms": 16119
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "exit",
+        "node_visits": {
+          "start": 1,
+          "greet": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -241,5 +364,241 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "greet@1": {
+      "first_event_seq": 24,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-21T22:47:27.868275312Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "live_inference_ms": 15835,
+      "live_tool_ms": 282,
+      "usage": {
+        "input_tokens": 3086,
+        "output_tokens": 168,
+        "total_tokens": 9070,
+        "reasoning_tokens": 120,
+        "cache_read_tokens": 5696,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 7066
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": false
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "web_search",
+          "description": "Search the web using Brave Search when current external information is needed. Returns result titles, URLs, and descriptions; use web_fetch for a specific URL.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 3026,
+        "usage_percent": 0.28858184814453125,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-08-21T22:47:44.844957353Z",
+        "event_seq": 45,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1025,
+            "usage_percent": 0.09775161743164062
+          },
+          {
+            "category": "tools",
+            "tokens": 1616,
+            "usage_percent": 0.15411376953125
+          },
+          {
+            "category": "conversation",
+            "tokens": 380,
+            "usage_percent": 0.0362396240234375
+          },
+          {
+            "category": "other",
+            "tokens": 5,
+            "usage_percent": 0.000476837158203125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "running"
+    },
+    "start@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-21T22:47:27.853164655Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-21T22:47:27.840489841Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    }
+  }
 }
