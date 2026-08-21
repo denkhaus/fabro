@@ -430,6 +430,7 @@ impl RunSession {
                 run_id:           Some(record.run_id),
                 clone_origin_url: record.repo_origin_url().map(str::to_string),
                 clone_branch:     record.base_branch().map(str::to_string),
+                clone_commit_sha: None,
             },
             SandboxProviderKind::Daytona => {
                 let api_key = vault_guard
@@ -441,6 +442,7 @@ impl RunSession {
                     run_id: Some(record.run_id),
                     clone_origin_url: record.repo_origin_url().map(str::to_string),
                     clone_branch: record.base_branch().map(str::to_string),
+                    clone_commit_sha: None,
                     api_key,
                 }
             }

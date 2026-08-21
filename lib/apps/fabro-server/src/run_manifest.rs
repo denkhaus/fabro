@@ -923,6 +923,7 @@ fn preflight_sandbox_spec(
                 run_id: None,
                 clone_origin_url,
                 clone_branch,
+                clone_commit_sha: None,
             }
         }
         SandboxProviderKind::Daytona => {
@@ -934,6 +935,7 @@ fn preflight_sandbox_spec(
                 run_id: None,
                 clone_origin_url,
                 clone_branch,
+                clone_commit_sha: None,
                 api_key: daytona_api_key,
             }
         }
