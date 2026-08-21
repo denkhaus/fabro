@@ -22,16 +22,16 @@ use super::duration::Duration;
 /// (tests).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerNamespace {
-    pub listen:       ServerListenSettings,
-    pub api:          ServerApiSettings,
-    pub web:          ServerWebSettings,
-    pub auth:         ServerAuthSettings,
-    pub sandbox:      ServerSandboxSettings,
-    pub storage:      ServerStorageSettings,
-    pub artifacts:    ServerArtifactsSettings,
-    pub slatedb:      ServerSlateDbSettings,
-    pub scheduler:    ServerSchedulerSettings,
-    pub logging:      ServerLoggingSettings,
+    pub listen: ServerListenSettings,
+    pub api: ServerApiSettings,
+    pub web: ServerWebSettings,
+    pub auth: ServerAuthSettings,
+    pub sandbox: ServerSandboxSettings,
+    pub storage: ServerStorageSettings,
+    pub artifacts: ServerArtifactsSettings,
+    pub slatedb: ServerSlateDbSettings,
+    pub scheduler: ServerSchedulerSettings,
+    pub logging: ServerLoggingSettings,
     pub integrations: ServerIntegrationsSettings,
 }
 
@@ -43,16 +43,16 @@ impl ServerNamespace {
     #[must_use]
     pub fn test_default() -> Self {
         Self {
-            listen:       ServerListenSettings::default(),
-            api:          ServerApiSettings::default(),
-            web:          ServerWebSettings::default(),
-            auth:         ServerAuthSettings::default(),
-            sandbox:      ServerSandboxSettings::default(),
-            storage:      ServerStorageSettings::default(),
-            artifacts:    ServerArtifactsSettings::default(),
-            slatedb:      ServerSlateDbSettings::default(),
-            scheduler:    ServerSchedulerSettings::default(),
-            logging:      ServerLoggingSettings::default(),
+            listen: ServerListenSettings::default(),
+            api: ServerApiSettings::default(),
+            web: ServerWebSettings::default(),
+            auth: ServerAuthSettings::default(),
+            sandbox: ServerSandboxSettings::default(),
+            storage: ServerStorageSettings::default(),
+            artifacts: ServerArtifactsSettings::default(),
+            slatedb: ServerSlateDbSettings::default(),
+            scheduler: ServerSchedulerSettings::default(),
+            logging: ServerLoggingSettings::default(),
             integrations: ServerIntegrationsSettings::default(),
         }
     }
@@ -89,13 +89,13 @@ pub struct ServerApiSettings {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerWebSettings {
     pub enabled: bool,
-    pub url:     String,
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerAuthSettings {
     pub methods: Vec<ServerAuthMethod>,
-    pub github:  ServerAuthGithubSettings,
+    pub github: ServerAuthGithubSettings,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,8 +117,8 @@ pub struct ServerSandboxSettings {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerSandboxProvidersSettings {
-    pub local:   ServerSandboxProviderSettings,
-    pub docker:  ServerSandboxProviderSettings,
+    pub local: ServerSandboxProviderSettings,
+    pub docker: ServerSandboxProviderSettings,
     pub daytona: ServerSandboxProviderSettings,
 }
 
@@ -158,28 +158,28 @@ pub struct ServerStorageSettings {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerArtifactsSettings {
     pub prefix: String,
-    pub store:  ObjectStoreSettings,
+    pub store: ObjectStoreSettings,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerSlateDbSettings {
-    pub prefix:         String,
-    pub store:          ObjectStoreSettings,
+    pub prefix: String,
+    pub store: ObjectStoreSettings,
     #[serde(
         serialize_with = "serialize_std_duration",
         deserialize_with = "deserialize_std_duration"
     )]
     pub flush_interval: StdDuration,
-    pub disk_cache:     bool,
+    pub disk_cache: bool,
 }
 
 impl Default for ServerSlateDbSettings {
     fn default() -> Self {
         Self {
-            prefix:         String::new(),
-            store:          ObjectStoreSettings::default(),
+            prefix: String::new(),
+            store: ObjectStoreSettings::default(),
             flush_interval: StdDuration::ZERO,
-            disk_cache:     false,
+            disk_cache: false,
         }
     }
 }
@@ -191,9 +191,9 @@ pub enum ObjectStoreSettings {
         root: String,
     },
     S3 {
-        bucket:     String,
-        region:     String,
-        endpoint:   Option<String>,
+        bucket: String,
+        region: String,
+        endpoint: Option<String>,
         path_style: bool,
     },
 }
@@ -233,7 +233,7 @@ pub enum LogDestination {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerLoggingSettings {
-    pub level:       Option<String>,
+    pub level: Option<String>,
     #[serde(default)]
     pub destination: LogDestination,
 }
@@ -241,32 +241,102 @@ pub struct ServerLoggingSettings {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerIntegrationsSettings {
     pub github: GithubIntegrationSettings,
-    pub slack:  SlackIntegrationSettings,
+    pub slack: SlackIntegrationSettings,
+    pub search: SearchIntegrationSettings,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GithubIntegrationSettings {
-    pub enabled:   bool,
-    pub strategy:  GithubIntegrationStrategy,
-    pub app_id:    Option<String>,
+    pub enabled: bool,
+    pub strategy: GithubIntegrationStrategy,
+    pub app_id: Option<String>,
     pub client_id: Option<String>,
-    pub slug:      Option<String>,
-    pub webhooks:  Option<IntegrationWebhooksSettings>,
+    pub slug: Option<String>,
+    pub webhooks: Option<IntegrationWebhooksSettings>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SlackIntegrationSettings {
-    pub enabled:         bool,
+    pub enabled: bool,
     pub default_channel: Option<String>,
 }
 
 impl Default for SlackIntegrationSettings {
     fn default() -> Self {
         Self {
-            enabled:         true,
+            enabled: true,
             default_channel: None,
         }
     }
+}
+
+/// Backend used by the built-in `web_search` tool.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    strum::EnumString,
+    strum::IntoStaticStr,
+)]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
+pub enum SearchProvider {
+    #[default]
+    Brave,
+    Venice,
+}
+
+impl SearchProvider {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Brave => "brave",
+            Self::Venice => "venice",
+        }
+    }
+}
+
+/// Venice `/augment/search` engine. `brave` is Firecrawl ZDR; `google` is an
+/// anonymized proxy. Direct Brave Search remains [`SearchProvider::Brave`].
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    strum::EnumString,
+    strum::IntoStaticStr,
+)]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
+pub enum VeniceSearchEngine {
+    #[default]
+    Brave,
+    Google,
+}
+
+impl VeniceSearchEngine {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Brave => "brave",
+            Self::Google => "google",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchIntegrationSettings {
+    pub provider: SearchProvider,
+    pub venice_engine: VeniceSearchEngine,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

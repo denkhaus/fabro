@@ -28,11 +28,12 @@ pub mod types {
     pub use fabro_types::settings::run::{McpHttpProtocol, RunModelControls, RunModelSettings};
     pub use fabro_types::settings::server::{
         GithubIntegrationSettings, GithubIntegrationStrategy, IntegrationWebhooksSettings,
-        LogDestination, ObjectStoreSettings, ServerApiSettings, ServerArtifactsSettings,
-        ServerAuthGithubSettings, ServerAuthMethod, ServerAuthSettings, ServerIntegrationsSettings,
-        ServerListenSettings, ServerLoggingSettings, ServerSandboxProviderSettings,
-        ServerSandboxProvidersSettings, ServerSandboxSettings, ServerSchedulerSettings,
-        ServerSlateDbSettings, ServerStorageSettings, ServerWebSettings, SlackIntegrationSettings,
+        LogDestination, ObjectStoreSettings, SearchIntegrationSettings, SearchProvider,
+        ServerApiSettings, ServerArtifactsSettings, ServerAuthGithubSettings, ServerAuthMethod,
+        ServerAuthSettings, ServerIntegrationsSettings, ServerListenSettings,
+        ServerLoggingSettings, ServerSandboxProviderSettings, ServerSandboxProvidersSettings,
+        ServerSandboxSettings, ServerSchedulerSettings, ServerSlateDbSettings,
+        ServerStorageSettings, ServerWebSettings, SlackIntegrationSettings, VeniceSearchEngine,
         WebhookStrategy,
     };
     pub use fabro_types::settings::{McpTransport, ServerNamespace};

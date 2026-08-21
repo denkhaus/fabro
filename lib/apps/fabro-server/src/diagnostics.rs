@@ -5,12 +5,14 @@ use std::time::Duration;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use fabro_auth::auth_issue_message;
+use fabro_http::Response;
 use fabro_llm::client::Client as LlmClient;
 use fabro_llm::model_test::{ModelTestStatus, run_basic_model_probe_with_timeout};
 use fabro_model::{Catalog, ProviderId};
 use fabro_redact::redact_string;
 use fabro_sandbox::{DockerSandboxProvider, daytona};
 use fabro_static::EnvVars;
+use fabro_types::settings::SearchProvider;
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::server::GithubIntegrationStrategy;
 use fabro_util::check_report::{CheckDetail, CheckResult, CheckSection, CheckStatus};
@@ -19,6 +21,7 @@ use fabro_util::session_secret;
 use fabro_util::version::FABRO_VERSION;
 use futures_util::future::join_all;
 use serde::Serialize;
+use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 
 use crate::server::AppState;
@@ -41,21 +44,21 @@ fn http_client_or_check(
 
 #[derive(Debug, Serialize)]
 pub struct DiagnosticsReport {
-    pub version:  String,
+    pub version: String,
     pub sections: Vec<CheckSection>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ProviderProbeReport {
-    pub data:    Vec<ProviderProbeResult>,
+    pub data: Vec<ProviderProbeResult>,
     pub summary: ProviderProbeSummary,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ProviderProbeResult {
-    pub provider:      ProviderId,
-    pub model_id:      Option<String>,
-    pub status:        ProviderProbeStatus,
+    pub provider: ProviderId,
+    pub model_id: Option<String>,
+    pub status: ProviderProbeStatus,
     pub error_message: Option<String>,
     #[serde(skip)]
     diagnostic_detail: Option<String>,
@@ -64,7 +67,7 @@ pub(crate) struct ProviderProbeResult {
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ProviderProbeSummary {
     pub status: ProviderProbeStatus,
-    pub total:  u32,
+    pub total: u32,
     pub passed: u32,
     pub failed: u32,
 }
@@ -92,24 +95,24 @@ fn validate_session_secret(value: &str) -> Result<(), String> {
 }
 
 pub async fn run_all(state: &AppState) -> DiagnosticsReport {
-    let (llm, github, docker_sandbox, cloud_sandbox, brave, crypto) = tokio::join!(
+    let (llm, github, docker_sandbox, cloud_sandbox, web_search, crypto) = tokio::join!(
         check_llm_providers(state),
         check_github_app(state),
         check_docker_sandbox(state),
         check_cloud_sandbox(state),
-        check_brave_search(state),
+        check_web_search(state),
         check_crypto(state),
     );
 
     DiagnosticsReport {
-        version:  FABRO_VERSION.to_string(),
+        version: FABRO_VERSION.to_string(),
         sections: vec![
             CheckSection {
-                title:  "Credentials".to_string(),
-                checks: vec![llm, github, docker_sandbox, cloud_sandbox, brave],
+                title: "Credentials".to_string(),
+                checks: vec![llm, github, docker_sandbox, cloud_sandbox, web_search],
             },
             CheckSection {
-                title:  "Configuration".to_string(),
+                title: "Configuration".to_string(),
                 checks: vec![crypto, check_storage_dir(state)],
             },
         ],
@@ -121,20 +124,20 @@ async fn check_llm_providers(state: &AppState) -> CheckResult {
         Ok(report) => report,
         Err(err) => {
             return CheckResult {
-                name:        "LLM Providers".to_string(),
-                status:      CheckStatus::Error,
-                summary:     "failed to initialize".to_string(),
-                details:     vec![CheckDetail::new(format!("{err:#}"))],
+                name: "LLM Providers".to_string(),
+                status: CheckStatus::Error,
+                summary: "failed to initialize".to_string(),
+                details: vec![CheckDetail::new(format!("{err:#}"))],
                 remediation: Some("Check configured provider credentials".to_string()),
             };
         }
     };
     if report.data.is_empty() {
         return CheckResult {
-            name:        "LLM Providers".to_string(),
-            status:      CheckStatus::Error,
-            summary:     "none configured".to_string(),
-            details:     Vec::new(),
+            name: "LLM Providers".to_string(),
+            status: CheckStatus::Error,
+            summary: "none configured".to_string(),
+            details: Vec::new(),
             remediation: Some("Set at least one provider API key".to_string()),
         };
     }
@@ -156,7 +159,7 @@ async fn check_llm_providers(state: &AppState) -> CheckResult {
                     .clone()
                     .unwrap_or_else(|| format!("{}: {message}", result.provider));
                 failures.push(ProviderFailure {
-                    provider:     result.provider.to_string(),
+                    provider: result.provider.to_string(),
                     summary_line: short_error_line(message),
                 });
                 details.push(CheckDetail::new(detail));
@@ -195,7 +198,7 @@ async fn check_llm_providers(state: &AppState) -> CheckResult {
 }
 
 struct ProviderFailure {
-    provider:     String,
+    provider: String,
     summary_line: String,
 }
 
@@ -352,10 +355,10 @@ async fn check_github_app(state: &AppState) -> CheckResult {
                     Ok(token) => token.to_string(),
                     Err(err) => {
                         return CheckResult {
-                            name:        "GitHub Token".to_string(),
-                            status:      CheckStatus::Error,
-                            summary:     "token expired".to_string(),
-                            details:     vec![CheckDetail::new(err.to_string())],
+                            name: "GitHub Token".to_string(),
+                            status: CheckStatus::Error,
+                            summary: "token expired".to_string(),
+                            details: vec![CheckDetail::new(err.to_string())],
                             remediation: Some(
                                 "Run fabro install or run `fabro secret set GITHUB_TOKEN`"
                                     .to_string(),
@@ -367,10 +370,10 @@ async fn check_github_app(state: &AppState) -> CheckResult {
             Ok(Some(_)) => unreachable!("token strategy should not return app credentials"),
             Ok(None) => {
                 return CheckResult {
-                    name:        "GitHub Token".to_string(),
-                    status:      CheckStatus::Warning,
-                    summary:     "not configured".to_string(),
-                    details:     Vec::new(),
+                    name: "GitHub Token".to_string(),
+                    status: CheckStatus::Warning,
+                    summary: "not configured".to_string(),
+                    details: Vec::new(),
                     remediation: Some(
                         "Run fabro install or run `fabro secret set GITHUB_TOKEN`".to_string(),
                     ),
@@ -379,10 +382,10 @@ async fn check_github_app(state: &AppState) -> CheckResult {
             Err(err) => {
                 let rendered = format!("{err:#}");
                 return CheckResult {
-                    name:        "GitHub Token".to_string(),
-                    status:      CheckStatus::Error,
-                    summary:     "missing token".to_string(),
-                    details:     vec![CheckDetail::new(rendered.clone())],
+                    name: "GitHub Token".to_string(),
+                    status: CheckStatus::Error,
+                    summary: "missing token".to_string(),
+                    details: vec![CheckDetail::new(rendered.clone())],
                     remediation: Some(rendered),
                 };
             }
@@ -404,18 +407,18 @@ async fn check_github_app(state: &AppState) -> CheckResult {
 
         return match probe {
             Ok(Ok(response)) if response.status().is_success() => CheckResult {
-                name:        "GitHub Token".to_string(),
-                status:      CheckStatus::Pass,
-                summary:     "configured".to_string(),
-                details:     Vec::new(),
+                name: "GitHub Token".to_string(),
+                status: CheckStatus::Pass,
+                summary: "configured".to_string(),
+                details: Vec::new(),
                 remediation: None,
             },
             Ok(Ok(response)) if response.status() == fabro_http::StatusCode::UNAUTHORIZED => {
                 CheckResult {
-                    name:        "GitHub Token".to_string(),
-                    status:      CheckStatus::Error,
-                    summary:     "token invalid".to_string(),
-                    details:     vec![CheckDetail::new(format!(
+                    name: "GitHub Token".to_string(),
+                    status: CheckStatus::Error,
+                    summary: "token invalid".to_string(),
+                    details: vec![CheckDetail::new(format!(
                         "GitHub returned {}",
                         response.status()
                     ))],
@@ -425,10 +428,10 @@ async fn check_github_app(state: &AppState) -> CheckResult {
                 }
             }
             Ok(Ok(response)) => CheckResult {
-                name:        "GitHub Token".to_string(),
-                status:      CheckStatus::Error,
-                summary:     "connectivity error".to_string(),
-                details:     vec![CheckDetail::new(format!(
+                name: "GitHub Token".to_string(),
+                status: CheckStatus::Error,
+                summary: "connectivity error".to_string(),
+                details: vec![CheckDetail::new(format!(
                     "GitHub returned {}",
                     response.status()
                 ))],
@@ -437,19 +440,19 @@ async fn check_github_app(state: &AppState) -> CheckResult {
                 ),
             },
             Ok(Err(err)) => CheckResult {
-                name:        "GitHub Token".to_string(),
-                status:      CheckStatus::Error,
-                summary:     "connectivity error".to_string(),
-                details:     vec![CheckDetail::new(err.to_string())],
+                name: "GitHub Token".to_string(),
+                status: CheckStatus::Error,
+                summary: "connectivity error".to_string(),
+                details: vec![CheckDetail::new(err.to_string())],
                 remediation: Some(
                     "Check GitHub connectivity and the vault GITHUB_TOKEN".to_string(),
                 ),
             },
             Err(_) => CheckResult {
-                name:        "GitHub Token".to_string(),
-                status:      CheckStatus::Error,
-                summary:     "timeout".to_string(),
-                details:     vec![CheckDetail::new("GitHub probe timed out".to_string())],
+                name: "GitHub Token".to_string(),
+                status: CheckStatus::Error,
+                summary: "timeout".to_string(),
+                details: vec![CheckDetail::new("GitHub probe timed out".to_string())],
                 remediation: Some(
                     "Check GitHub connectivity and the vault GITHUB_TOKEN".to_string(),
                 ),
@@ -483,20 +486,20 @@ async fn check_github_app(state: &AppState) -> CheckResult {
         && !webhook_secret
     {
         return CheckResult {
-            name:        "GitHub App".to_string(),
-            status:      CheckStatus::Warning,
-            summary:     "not configured".to_string(),
-            details:     Vec::new(),
+            name: "GitHub App".to_string(),
+            status: CheckStatus::Warning,
+            summary: "not configured".to_string(),
+            details: Vec::new(),
             remediation: Some("Configure GitHub App settings and secrets".to_string()),
         };
     }
 
     let Some(app_id) = app_id else {
         return CheckResult {
-            name:        "GitHub App".to_string(),
-            status:      CheckStatus::Error,
-            summary:     "missing app_id".to_string(),
-            details:     Vec::new(),
+            name: "GitHub App".to_string(),
+            status: CheckStatus::Error,
+            summary: "missing app_id".to_string(),
+            details: Vec::new(),
             remediation: Some(
                 "Set [server.integrations.github].app_id in settings.toml".to_string(),
             ),
@@ -504,10 +507,10 @@ async fn check_github_app(state: &AppState) -> CheckResult {
     };
     let Some(private_key_raw) = private_key_raw else {
         return CheckResult {
-            name:        "GitHub App".to_string(),
-            status:      CheckStatus::Error,
-            summary:     "missing private key".to_string(),
-            details:     Vec::new(),
+            name: "GitHub App".to_string(),
+            status: CheckStatus::Error,
+            summary: "missing private key".to_string(),
+            details: Vec::new(),
             remediation: Some("Run `fabro secret set GITHUB_APP_PRIVATE_KEY`".to_string()),
         };
     };
@@ -516,10 +519,10 @@ async fn check_github_app(state: &AppState) -> CheckResult {
         Ok(value) => value,
         Err(err) => {
             return CheckResult {
-                name:        "GitHub App".to_string(),
-                status:      CheckStatus::Error,
-                summary:     "private key invalid".to_string(),
-                details:     vec![CheckDetail::new(err.clone())],
+                name: "GitHub App".to_string(),
+                status: CheckStatus::Error,
+                summary: "private key invalid".to_string(),
+                details: vec![CheckDetail::new(err.clone())],
                 remediation: Some(err),
             };
         }
@@ -529,10 +532,10 @@ async fn check_github_app(state: &AppState) -> CheckResult {
         Ok(jwt) => jwt,
         Err(err) => {
             return CheckResult {
-                name:        "GitHub App".to_string(),
-                status:      CheckStatus::Error,
-                summary:     "JWT signing failed".to_string(),
-                details:     vec![CheckDetail::new(format!("{err:#}"))],
+                name: "GitHub App".to_string(),
+                status: CheckStatus::Error,
+                summary: "JWT signing failed".to_string(),
+                details: vec![CheckDetail::new(format!("{err:#}"))],
                 remediation: Some(err.to_string()),
             };
         }
@@ -549,24 +552,24 @@ async fn check_github_app(state: &AppState) -> CheckResult {
     .await;
     match auth_result {
         Ok(Ok(_app)) => CheckResult {
-            name:        "GitHub App".to_string(),
-            status:      CheckStatus::Pass,
-            summary:     slug.unwrap_or_else(|| "configured".to_string()),
-            details:     Vec::new(),
+            name: "GitHub App".to_string(),
+            status: CheckStatus::Pass,
+            summary: slug.unwrap_or_else(|| "configured".to_string()),
+            details: Vec::new(),
             remediation: None,
         },
         Ok(Err(err)) => CheckResult {
-            name:        "GitHub App".to_string(),
-            status:      CheckStatus::Error,
-            summary:     "connectivity error".to_string(),
-            details:     vec![CheckDetail::new(format!("{err:#}"))],
+            name: "GitHub App".to_string(),
+            status: CheckStatus::Error,
+            summary: "connectivity error".to_string(),
+            details: vec![CheckDetail::new(format!("{err:#}"))],
             remediation: Some("Check GitHub App credentials and network connectivity".to_string()),
         },
         Err(_) => CheckResult {
-            name:        "GitHub App".to_string(),
-            status:      CheckStatus::Error,
-            summary:     "timeout".to_string(),
-            details:     vec![CheckDetail::new("GitHub probe timed out".to_string())],
+            name: "GitHub App".to_string(),
+            status: CheckStatus::Error,
+            summary: "timeout".to_string(),
+            details: vec![CheckDetail::new("GitHub probe timed out".to_string())],
             remediation: Some("Check GitHub connectivity and credentials".to_string()),
         },
     }
@@ -602,10 +605,10 @@ where
 {
     if !enabled {
         return CheckResult {
-            name:        "Docker Sandbox".to_string(),
-            status:      CheckStatus::Pass,
-            summary:     "disabled".to_string(),
-            details:     vec![CheckDetail::new(
+            name: "Docker Sandbox".to_string(),
+            status: CheckStatus::Pass,
+            summary: "disabled".to_string(),
+            details: vec![CheckDetail::new(
                 "server.sandbox.providers.docker.enabled = false".to_string(),
             )],
             remediation: None,
@@ -650,10 +653,10 @@ async fn check_cloud_sandbox(state: &AppState) -> CheckResult {
     };
     let Some(api_key) = api_key else {
         return CheckResult {
-            name:        "Cloud Sandbox".to_string(),
-            status:      CheckStatus::Warning,
-            summary:     "recommended, not configured".to_string(),
-            details:     Vec::new(),
+            name: "Cloud Sandbox".to_string(),
+            status: CheckStatus::Warning,
+            summary: "recommended, not configured".to_string(),
+            details: Vec::new(),
             remediation: Some(
                 "Run `fabro secret set DAYTONA_API_KEY` to enable cloud sandbox execution"
                     .to_string(),
@@ -670,17 +673,17 @@ async fn check_cloud_sandbox(state: &AppState) -> CheckResult {
 fn cloud_sandbox_probe_check(probe: anyhow::Result<daytona::DaytonaKeyCheck>) -> CheckResult {
     match probe {
         Ok(check) if check.ok() => CheckResult {
-            name:        "Cloud Sandbox".to_string(),
-            status:      CheckStatus::Pass,
-            summary:     format!("Daytona configured ({})", check.key_name),
-            details:     Vec::new(),
+            name: "Cloud Sandbox".to_string(),
+            status: CheckStatus::Pass,
+            summary: format!("Daytona configured ({})", check.key_name),
+            details: Vec::new(),
             remediation: None,
         },
         Ok(check) => CheckResult {
-            name:        "Cloud Sandbox".to_string(),
-            status:      CheckStatus::Error,
-            summary:     "Daytona API key is missing required scopes".to_string(),
-            details:     vec![CheckDetail::new(format!(
+            name: "Cloud Sandbox".to_string(),
+            status: CheckStatus::Error,
+            summary: "Daytona API key is missing required scopes".to_string(),
+            details: vec![CheckDetail::new(format!(
                 "missing: {}",
                 check.missing_display()
             ))],
@@ -693,10 +696,10 @@ fn cloud_sandbox_probe_check(probe: anyhow::Result<daytona::DaytonaKeyCheck>) ->
         Err(err) => {
             if let Some(timeout) = err.downcast_ref::<daytona::DaytonaCredentialProbeTimeout>() {
                 return CheckResult {
-                    name:        "Cloud Sandbox".to_string(),
-                    status:      CheckStatus::Error,
-                    summary:     format!("timeout ({:?})", timeout.timeout()),
-                    details:     vec![CheckDetail::new("Daytona probe timed out".to_string())],
+                    name: "Cloud Sandbox".to_string(),
+                    status: CheckStatus::Error,
+                    summary: format!("timeout ({:?})", timeout.timeout()),
+                    details: vec![CheckDetail::new("Daytona probe timed out".to_string())],
                     remediation: Some(
                         "Verify DAYTONA_API_KEY value and Daytona reachability".to_string(),
                     ),
@@ -704,10 +707,10 @@ fn cloud_sandbox_probe_check(probe: anyhow::Result<daytona::DaytonaKeyCheck>) ->
             }
 
             CheckResult {
-                name:        "Cloud Sandbox".to_string(),
-                status:      CheckStatus::Error,
-                summary:     "Daytona credential rejected".to_string(),
-                details:     vec![CheckDetail::new(format!("{err:#}"))],
+                name: "Cloud Sandbox".to_string(),
+                status: CheckStatus::Error,
+                summary: "Daytona credential rejected".to_string(),
+                details: vec![CheckDetail::new(format!("{err:#}"))],
                 remediation: Some(
                     "Verify DAYTONA_API_KEY value and Daytona reachability".to_string(),
                 ),
@@ -755,25 +758,40 @@ fn check_storage_dir_path(path: &std::path::Path) -> CheckResult {
     }
 }
 
+async fn check_web_search(state: &AppState) -> CheckResult {
+    let search = state.server_settings().server.integrations.search;
+    match search.provider {
+        SearchProvider::Brave => check_brave_search(state).await,
+        SearchProvider::Venice => check_venice_search(state).await,
+    }
+}
+
+const WEB_SEARCH_CHECK_NAME: &str = "Web Search";
+
 async fn check_brave_search(state: &AppState) -> CheckResult {
-    let api_key =
-        match diagnostic_secret(state, "Web Search (Brave)", EnvVars::BRAVE_SEARCH_API_KEY).await {
-            Ok(value) => value,
-            Err(result) => return result,
-        };
+    let api_key = match diagnostic_secret(
+        state,
+        WEB_SEARCH_CHECK_NAME,
+        EnvVars::BRAVE_SEARCH_API_KEY,
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(result) => return result,
+    };
     let Some(api_key) = api_key else {
         return CheckResult {
-            name:        "Web Search (Brave)".to_string(),
-            status:      CheckStatus::Warning,
-            summary:     "optional, not configured".to_string(),
-            details:     Vec::new(),
+            name: WEB_SEARCH_CHECK_NAME.to_string(),
+            status: CheckStatus::Warning,
+            summary: "brave: optional, not configured".to_string(),
+            details: Vec::new(),
             remediation: Some(
                 "Run `fabro secret set BRAVE_SEARCH_API_KEY` to enable web search".to_string(),
             ),
         };
     };
 
-    let http = match http_client_or_check("Web Search (Brave)", CheckStatus::Warning) {
+    let http = match http_client_or_check(WEB_SEARCH_CHECK_NAME, CheckStatus::Warning) {
         Ok(http) => http,
         Err(result) => return result,
     };
@@ -787,36 +805,80 @@ async fn check_brave_search(state: &AppState) -> CheckResult {
     })
     .await;
 
+    match_web_search_probe(probe, "brave", "BRAVE_SEARCH_API_KEY")
+}
+
+async fn check_venice_search(state: &AppState) -> CheckResult {
+    let api_key =
+        match diagnostic_secret(state, WEB_SEARCH_CHECK_NAME, EnvVars::VENICE_API_KEY).await {
+            Ok(value) => value,
+            Err(result) => return result,
+        };
+    let Some(api_key) = api_key else {
+        return CheckResult {
+            name: WEB_SEARCH_CHECK_NAME.to_string(),
+            status: CheckStatus::Warning,
+            summary: "venice: optional, not configured".to_string(),
+            details: Vec::new(),
+            remediation: Some(
+                "Run `fabro secret set VENICE_API_KEY` to enable web search".to_string(),
+            ),
+        };
+    };
+
+    let http = match http_client_or_check(WEB_SEARCH_CHECK_NAME, CheckStatus::Warning) {
+        Ok(http) => http,
+        Err(result) => return result,
+    };
+
+    let probe = timeout(EXTERNAL_SERVICE_PROBE_TIMEOUT, async move {
+        http.post("https://api.venice.ai/api/v1/augment/search")
+            .bearer_auth(api_key)
+            .json(&serde_json::json!({ "query": "test", "limit": 1 }))
+            .send()
+            .await
+            .map_err(anyhow::Error::new)
+    })
+    .await;
+
+    match_web_search_probe(probe, "venice", "VENICE_API_KEY")
+}
+
+fn match_web_search_probe(
+    probe: Result<anyhow::Result<Response>, Elapsed>,
+    provider: &str,
+    secret_name: &str,
+) -> CheckResult {
     match probe {
         Ok(Ok(response)) if response.status().is_success() => CheckResult {
-            name:        "Web Search (Brave)".to_string(),
-            status:      CheckStatus::Pass,
-            summary:     "configured and reachable".to_string(),
-            details:     Vec::new(),
+            name: WEB_SEARCH_CHECK_NAME.to_string(),
+            status: CheckStatus::Pass,
+            summary: format!("{provider}: configured and reachable"),
+            details: Vec::new(),
             remediation: None,
         },
         Ok(Ok(response)) => CheckResult {
-            name:        "Web Search (Brave)".to_string(),
-            status:      CheckStatus::Warning,
-            summary:     format!("HTTP {}", response.status()),
-            details:     Vec::new(),
-            remediation: Some("Check BRAVE_SEARCH_API_KEY and network connectivity".to_string()),
+            name: WEB_SEARCH_CHECK_NAME.to_string(),
+            status: CheckStatus::Warning,
+            summary: format!("{provider}: HTTP {}", response.status()),
+            details: Vec::new(),
+            remediation: Some(format!("Check {secret_name} and network connectivity")),
         },
         Ok(Err(err)) => CheckResult {
-            name:        "Web Search (Brave)".to_string(),
-            status:      CheckStatus::Warning,
-            summary:     "connectivity error".to_string(),
-            details:     vec![CheckDetail::new(format!("{err:#}"))],
-            remediation: Some("Check BRAVE_SEARCH_API_KEY and network connectivity".to_string()),
+            name: WEB_SEARCH_CHECK_NAME.to_string(),
+            status: CheckStatus::Warning,
+            summary: format!("{provider}: connectivity error"),
+            details: vec![CheckDetail::new(format!("{err:#}"))],
+            remediation: Some(format!("Check {secret_name} and network connectivity")),
         },
         Err(_) => CheckResult {
-            name:        "Web Search (Brave)".to_string(),
-            status:      CheckStatus::Warning,
-            summary:     "timeout".to_string(),
-            details:     vec![CheckDetail::new(
-                "Web Search (Brave) probe timed out".to_string(),
-            )],
-            remediation: Some("Check BRAVE_SEARCH_API_KEY and network connectivity".to_string()),
+            name: WEB_SEARCH_CHECK_NAME.to_string(),
+            status: CheckStatus::Warning,
+            summary: format!("{provider}: timeout"),
+            details: vec![CheckDetail::new(format!(
+                "Web Search ({provider}) probe timed out"
+            ))],
+            remediation: Some(format!("Check {secret_name} and network connectivity")),
         },
     }
 }
@@ -894,10 +956,10 @@ async fn diagnostic_secret(
     name: &str,
 ) -> Result<Option<String>, CheckResult> {
     state.vault_secret(name).await.map_err(|err| CheckResult {
-        name:        check_name.to_string(),
-        status:      CheckStatus::Error,
-        summary:     "secret store unavailable".to_string(),
-        details:     vec![CheckDetail::new(err.to_string())],
+        name: check_name.to_string(),
+        status: CheckStatus::Error,
+        summary: "secret store unavailable".to_string(),
+        details: vec![CheckDetail::new(err.to_string())],
         remediation: Some("Check the Fabro database and retry".to_string()),
     })
 }
@@ -1195,20 +1257,53 @@ enabled = false
     }
 
     #[tokio::test]
-    async fn check_brave_search_ignores_env_backed_api_key() {
+    async fn check_web_search_ignores_env_backed_api_key() {
         let state = TestAppStateBuilder::new()
             .env_lookup(|name| {
                 (name == EnvVars::BRAVE_SEARCH_API_KEY).then(|| "brave-from-env".to_string())
             })
             .build();
 
-        let result = check_brave_search(&state).await;
+        let result = check_web_search(&state).await;
 
+        assert_eq!(result.name, "Web Search");
         assert_eq!(result.status, CheckStatus::Warning);
-        assert_eq!(result.summary, "optional, not configured");
+        assert_eq!(result.summary, "brave: optional, not configured");
         assert_eq!(
             result.remediation.as_deref(),
             Some("Run `fabro secret set BRAVE_SEARCH_API_KEY` to enable web search")
+        );
+    }
+
+    #[tokio::test]
+    async fn check_web_search_venice_ignores_env_backed_api_key() {
+        let settings = fabro_config::ServerSettingsBuilder::from_toml(
+            r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[server.integrations.search]
+provider = "venice"
+"#,
+        )
+        .expect("venice search settings should parse");
+        let state = TestAppStateBuilder::new()
+            .runtime_settings(settings, RunLayer::default())
+            .env_lookup(|name| {
+                (name == EnvVars::VENICE_API_KEY).then(|| "venice-from-env".to_string())
+            })
+            .build();
+
+        let result = check_web_search(&state).await;
+
+        assert_eq!(result.name, "Web Search");
+        assert_eq!(result.status, CheckStatus::Warning);
+        assert_eq!(result.summary, "venice: optional, not configured");
+        assert_eq!(
+            result.remediation.as_deref(),
+            Some("Run `fabro secret set VENICE_API_KEY` to enable web search")
         );
     }
 

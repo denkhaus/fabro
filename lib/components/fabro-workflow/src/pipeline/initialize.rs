@@ -235,13 +235,11 @@ async fn build_registry(
 }
 
 async fn tool_secrets_from_configured_sources(vault: &Arc<AsyncRwLock<Vault>>) -> ToolSecrets {
-    let brave_search_api_key = vault
-        .read()
-        .await
-        .get(EnvVars::BRAVE_SEARCH_API_KEY)
-        .map(str::to_string);
+    let vault = vault.read().await;
     ToolSecrets {
-        brave_search_api_key,
+        brave_search_api_key: vault.get(EnvVars::BRAVE_SEARCH_API_KEY).map(str::to_string),
+        venice_api_key: vault.get(EnvVars::VENICE_API_KEY).map(str::to_string),
+        search: fabro_agent::search_settings_from_disk(),
     }
 }
 

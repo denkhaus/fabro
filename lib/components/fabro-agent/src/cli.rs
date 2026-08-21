@@ -34,16 +34,18 @@ use crate::tool_permissions::{is_auto_approved, tool_category};
 use crate::tools::WebFetchSummarizer;
 use crate::{
     AgentEvent, AgentProfile, AgentProfileBuilder, LocalSandbox, Message, Sandbox, Session,
-    SessionOptions, SessionShutdownReason,
+    SessionOptions, SessionShutdownReason, search_settings_from_disk,
 };
 
 #[expect(
     clippy::disallowed_methods,
-    reason = "Standalone agent CLI explicitly passes the Brave Search process-env credential into tool configuration."
+    reason = "Standalone agent CLI explicitly passes search process-env credentials into tool configuration."
 )]
 fn cli_tool_secrets() -> ToolSecrets {
     ToolSecrets {
         brave_search_api_key: std::env::var(EnvVars::BRAVE_SEARCH_API_KEY).ok(),
+        venice_api_key: std::env::var(EnvVars::VENICE_API_KEY).ok(),
+        search: search_settings_from_disk(),
     }
 }
 

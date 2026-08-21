@@ -26,22 +26,22 @@ type Provider = ProviderId;
 #[derive(Clone)]
 struct OpenAiTwinOptions {
     base_url: String,
-    api_key:  String,
+    api_key: String,
 }
 
 fn summarizer_model_id(provider: &Provider) -> ModelHandle {
     match provider.as_str() {
         ProviderId::OPENAI | "moonshot" | "zai" | "minimax" | "inception" => ModelHandle::ByName {
             provider: ProviderId::openai(),
-            model:    "gpt-5.4-mini".to_string(),
+            model: "gpt-5.4-mini".to_string(),
         },
         ProviderId::GEMINI => ModelHandle::ByName {
             provider: ProviderId::gemini(),
-            model:    "gemini-3-flash-preview".to_string(),
+            model: "gemini-3-flash-preview".to_string(),
         },
         ProviderId::ANTHROPIC => ModelHandle::ByName {
             provider: ProviderId::anthropic(),
-            model:    "claude-haiku-4-5".to_string(),
+            model: "claude-haiku-4-5".to_string(),
         },
         other => panic!("unexpected provider {other}"),
     }
@@ -49,7 +49,7 @@ fn summarizer_model_id(provider: &Provider) -> ModelHandle {
 
 fn build_summarizer(provider: &Provider, client: &Client) -> WebFetchSummarizer {
     WebFetchSummarizer {
-        client:   client.clone(),
+        client: client.clone(),
         model_id: summarizer_model_id(provider),
     }
 }
@@ -170,12 +170,13 @@ fn make_openai_compatible_twin_session(
     // twin fixture so the profile can resolve the same OpenAI-compatible
     // codec that the manually registered adapter uses.
     let mut settings = LlmCatalogSettings::default();
-    settings
-        .providers
-        .insert(provider.to_string(), ProviderCatalogSettings {
+    settings.providers.insert(
+        provider.to_string(),
+        ProviderCatalogSettings {
             enabled: Some(true),
             ..ProviderCatalogSettings::default()
-        });
+        },
+    );
     let catalog = Arc::new(
         Catalog::from_builtin_with_overrides(&settings)
             .expect("OpenAI-compatible twin catalog should build"),
@@ -230,6 +231,7 @@ macro_rules! web_search_provider_test {
                         "BRAVE_SEARCH_API_KEY must be set for web-search tests",
                     ),
                 ),
+                ..ToolSecrets::default()
             }
         );
     };

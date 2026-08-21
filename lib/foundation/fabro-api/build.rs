@@ -325,6 +325,21 @@ fn main() {
             &[],
         ),
         (
+            "SearchIntegrationSettings",
+            "fabro_types::settings::server::SearchIntegrationSettings",
+            &[],
+        ),
+        (
+            "SearchProvider",
+            "fabro_types::settings::server::SearchProvider",
+            &[],
+        ),
+        (
+            "VeniceSearchEngine",
+            "fabro_types::settings::server::VeniceSearchEngine",
+            &[],
+        ),
+        (
             "IntegrationWebhooksSettings",
             "fabro_types::settings::server::IntegrationWebhooksSettings",
             &[],
@@ -676,8 +691,11 @@ fn main() {
         ("AskFabro", "fabro_types::AskFabro", &[]),
         ("Automation", "fabro_automation::Automation", &[]),
         ("AutomationRef", "fabro_types::AutomationRef", &[]),
-        ("AutomationTarget", "fabro_automation::AutomationTarget", &[
-        ]),
+        (
+            "AutomationTarget",
+            "fabro_automation::AutomationTarget",
+            &[],
+        ),
         (
             "AutomationTrigger",
             "fabro_automation::AutomationTrigger",

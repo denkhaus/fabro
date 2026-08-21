@@ -3921,6 +3921,7 @@ enabled = true
             // An invalid header value makes a correctly configured executor
             // fail locally before any request can leave the test process.
             brave_search_api_key: Some("\n".to_string()),
+            ..ToolSecrets::default()
         });
         let node = Node::new("search");
         let context = Context::new();

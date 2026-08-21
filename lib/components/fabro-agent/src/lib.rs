@@ -31,6 +31,7 @@ pub mod tool_registry;
 pub mod tools;
 pub mod truncation;
 pub mod types;
+pub(crate) mod web_search;
 
 pub use agent_profile::AgentProfile;
 pub use config::{
@@ -85,6 +86,7 @@ pub use types::{
     AgentEvent, McpToolSummary, MemoryFileSummary, Message, SessionEvent, SessionState,
     SkillActivationSource, SkillSummary,
 };
+pub use web_search::search_settings_from_disk;
 
 #[cfg(test)]
 #[allow(
