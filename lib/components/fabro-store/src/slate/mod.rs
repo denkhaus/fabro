@@ -1,6 +1,5 @@
 mod auth_codes;
 mod auth_tokens;
-mod blob_store;
 mod projection_cache;
 mod run_catalog_index;
 mod run_store;
@@ -12,7 +11,6 @@ use std::time::Duration;
 
 pub use auth_codes::{AuthCode, AuthCodeStore};
 pub use auth_tokens::{ConsumeOutcome, RefreshToken, RefreshTokenStore};
-pub use blob_store::{Blob, BlobStore};
 use chrono::{DateTime, Utc};
 use fabro_types::{Run, RunId, SessionId};
 use object_store::ObjectStore;
@@ -25,7 +23,7 @@ use slatedb::config::{CompressionCodec, Settings};
 use tokio::sync::{Mutex, OnceCell};
 use tracing::warn;
 
-use crate::{Error, ListRunsQuery, Result, RunProjection, RunSummaryStore, keys};
+use crate::{BlobStore, Error, ListRunsQuery, Result, RunProjection, RunSummaryStore, keys};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnreadableRun {
@@ -449,7 +447,7 @@ impl Database {
             .blobs
             .get_or_try_init(|| async {
                 let db = Arc::new(self.open_db().await?);
-                Ok::<_, Error>(Arc::new(BlobStore::new(db)))
+                Ok::<_, Error>(Arc::new(BlobStore::from_slate(db)))
             })
             .await?;
         Ok(Arc::clone(store))
@@ -595,6 +593,7 @@ mod tests {
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
             definition_blob: None,
+            spec_blob: None,
             git: Some(fabro_types::GitContext {
                 origin_url: "https://github.com/fabro-sh/fabro".to_string(),
                 branch:     "main".to_string(),
@@ -836,12 +835,12 @@ mod tests {
         append_created(&run_2, "run-2", dt("2026-03-27T12:00:10Z")).await;
 
         let shared_blob = br#"{"summary":"shared"}"#;
-        let shared_blob_id = run_1.write_blob(shared_blob).await.unwrap();
+        let shared_blob_hash = run_1.write_blob(shared_blob).await.unwrap();
 
         store.delete_run(&test_run_id("run-1")).await.unwrap();
 
         let reopened = store.open_run(&test_run_id("run-2")).await.unwrap();
-        let read = reopened.read_blob(&shared_blob_id).await.unwrap();
+        let read = reopened.read_blob(&shared_blob_hash).await.unwrap();
         assert_eq!(read.as_deref(), Some(shared_blob.as_slice()));
     }
 
@@ -851,7 +850,7 @@ mod tests {
         let run = store.create_run(&test_run_id("run-1")).await.unwrap();
         append_created(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
         let blob = br#"{"summary":"readable"}"#;
-        let blob_id = run.write_blob(blob).await.unwrap();
+        let blob_hash = run.write_blob(blob).await.unwrap();
 
         // Evict the cached writer so the reader is built through the real
         // `open_run_reader` construction path, not a clone of the writer.
@@ -859,11 +858,9 @@ mod tests {
 
         let reader = store.open_run_reader(&test_run_id("run-1")).await.unwrap();
         assert_eq!(
-            reader.read_blob(&blob_id).await.unwrap().as_deref(),
+            reader.read_blob(&blob_hash).await.unwrap().as_deref(),
             Some(blob.as_slice())
         );
-        assert_eq!(reader.list_blobs().await.unwrap(), vec![blob_id]);
-
         let err = reader.write_blob(b"blocked").await.unwrap_err();
         assert!(matches!(err, Error::ReadOnly));
 

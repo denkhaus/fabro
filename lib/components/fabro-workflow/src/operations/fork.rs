@@ -162,6 +162,9 @@ async fn persist_forked_run(
         automation:       spec.automation.clone(),
         provenance:       spec.provenance.clone(),
         manifest_blob:    spec.manifest_blob,
+        // Content-addressed, so the forked run reads the source run's
+        // unredacted spec bytes through the same id.
+        spec_blob:        spec.spec_blob,
         git:              spec.git.clone(),
         fork_source_ref:  spec.fork_source_ref.clone(),
         retried_from:     None,
@@ -381,6 +384,7 @@ mod tests {
             automation:       None,
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
+            spec_blob:        None,
             git:              Some(fabro_types::GitContext {
                 origin_url: "https://github.com/example/repo.git".to_string(),
                 branch:     "main".to_string(),

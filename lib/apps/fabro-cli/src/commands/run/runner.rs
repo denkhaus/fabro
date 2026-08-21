@@ -1018,12 +1018,12 @@ impl RunStoreBackend for HttpRunStore {
         .await
     }
 
-    async fn read_blob(&self, id: &BlobHash) -> Result<Option<bytes::Bytes>> {
+    async fn read_blob(&self, blob_hash: &BlobHash) -> Result<Option<bytes::Bytes>> {
         self.with_retries("read run blob", || {
             let client = self.client.clone_for_reuse();
             let run_id = self.run_id;
-            let blob_id = *id;
-            async move { client.read_run_blob(&run_id, &blob_id).await }
+            let blob_hash = *blob_hash;
+            async move { client.read_run_blob(&run_id, &blob_hash).await }
         })
         .await
     }

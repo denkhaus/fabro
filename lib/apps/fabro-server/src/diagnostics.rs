@@ -6,7 +6,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use fabro_auth::auth_issue_message;
 use fabro_llm::client::Client as LlmClient;
-use fabro_llm::model_test::{ModelTestStatus, run_basic_model_probe};
+use fabro_llm::model_test::{ModelTestStatus, run_basic_model_probe_with_timeout};
 use fabro_model::{Catalog, ProviderId};
 use fabro_redact::redact_string;
 use fabro_sandbox::{DockerSandboxProvider, daytona};
@@ -22,6 +22,9 @@ use serde::Serialize;
 use tokio::time::timeout;
 
 use crate::server::AppState;
+
+const EXTERNAL_SERVICE_PROBE_TIMEOUT: Duration = Duration::from_secs(15);
+const DOCKER_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn http_client_or_check(
     name: &str,
@@ -252,13 +255,20 @@ async fn probe_single_provider(
             None,
         );
     };
-    let model_id = model.id.clone();
+    let model_id = model.id.to_string();
 
-    let outcome = run_basic_model_probe(model_id.as_str(), &provider, client).await;
+    let outcome = run_basic_model_probe_with_timeout(
+        &model_id,
+        &provider,
+        client,
+        EXTERNAL_SERVICE_PROBE_TIMEOUT,
+    )
+    .await;
+
     match outcome.status {
         ModelTestStatus::Ok => ProviderProbeResult {
             provider,
-            model_id: Some(model_id.to_string()),
+            model_id: Some(model_id),
             status: ProviderProbeStatus::Ok,
             error_message: None,
             diagnostic_detail: None,
@@ -267,12 +277,7 @@ async fn probe_single_provider(
             let raw = outcome
                 .error_message
                 .unwrap_or_else(|| "provider probe failed".to_string());
-            provider_probe_error(
-                provider,
-                Some(model_id.to_string()),
-                redact_string(&raw),
-                None,
-            )
+            provider_probe_error(provider, Some(model_id), redact_string(&raw), None)
         }
     }
 }
@@ -388,7 +393,7 @@ async fn check_github_app(state: &AppState) -> CheckResult {
             Err(result) => return result,
         };
         let probe = timeout(
-            Duration::from_secs(15),
+            EXTERNAL_SERVICE_PROBE_TIMEOUT,
             http.get(format!("{}/user", fabro_github::github_api_base_url()))
                 .header("Authorization", format!("Bearer {token}"))
                 .header("Accept", "application/vnd.github+json")
@@ -538,7 +543,7 @@ async fn check_github_app(state: &AppState) -> CheckResult {
         Err(result) => return result,
     };
     let auth_result = timeout(
-        Duration::from_secs(15),
+        EXTERNAL_SERVICE_PROBE_TIMEOUT,
         fabro_github::get_authenticated_app(&http, &jwt, &fabro_github::github_api_base_url()),
     )
     .await;
@@ -581,7 +586,7 @@ async fn check_docker_sandbox(state: &AppState) -> CheckResult {
                 .await
                 .map_err(|err| err.display_with_causes())
         },
-        Duration::from_secs(5),
+        DOCKER_PROBE_TIMEOUT,
     )
     .await
 }
@@ -656,7 +661,14 @@ async fn check_cloud_sandbox(state: &AppState) -> CheckResult {
         };
     };
 
-    match state.check_daytona_api_key(api_key).await {
+    let probe = state
+        .check_daytona_api_key_with_timeout(api_key, EXTERNAL_SERVICE_PROBE_TIMEOUT)
+        .await;
+    cloud_sandbox_probe_check(probe)
+}
+
+fn cloud_sandbox_probe_check(probe: anyhow::Result<daytona::DaytonaKeyCheck>) -> CheckResult {
+    match probe {
         Ok(check) if check.ok() => CheckResult {
             name:        "Cloud Sandbox".to_string(),
             status:      CheckStatus::Pass,
@@ -678,13 +690,29 @@ async fn check_cloud_sandbox(state: &AppState) -> CheckResult {
                 daytona::required_perms_display()
             )),
         },
-        Err(err) => CheckResult {
-            name:        "Cloud Sandbox".to_string(),
-            status:      CheckStatus::Error,
-            summary:     "Daytona credential rejected".to_string(),
-            details:     vec![CheckDetail::new(format!("{err:#}"))],
-            remediation: Some("Verify DAYTONA_API_KEY value and Daytona reachability".to_string()),
-        },
+        Err(err) => {
+            if let Some(timeout) = err.downcast_ref::<daytona::DaytonaCredentialProbeTimeout>() {
+                return CheckResult {
+                    name:        "Cloud Sandbox".to_string(),
+                    status:      CheckStatus::Error,
+                    summary:     format!("timeout ({:?})", timeout.timeout()),
+                    details:     vec![CheckDetail::new("Daytona probe timed out".to_string())],
+                    remediation: Some(
+                        "Verify DAYTONA_API_KEY value and Daytona reachability".to_string(),
+                    ),
+                };
+            }
+
+            CheckResult {
+                name:        "Cloud Sandbox".to_string(),
+                status:      CheckStatus::Error,
+                summary:     "Daytona credential rejected".to_string(),
+                details:     vec![CheckDetail::new(format!("{err:#}"))],
+                remediation: Some(
+                    "Verify DAYTONA_API_KEY value and Daytona reachability".to_string(),
+                ),
+            }
+        }
     }
 }
 
@@ -750,7 +778,7 @@ async fn check_brave_search(state: &AppState) -> CheckResult {
         Err(result) => return result,
     };
 
-    let probe = timeout(Duration::from_secs(15), async move {
+    let probe = timeout(EXTERNAL_SERVICE_PROBE_TIMEOUT, async move {
         http.get("https://api.search.brave.com/res/v1/web/search?q=test&count=1")
             .header("X-Subscription-Token", api_key)
             .send()
@@ -1152,6 +1180,18 @@ enabled = false
             result.remediation.as_deref(),
             Some("Run `fabro secret set DAYTONA_API_KEY` to enable cloud sandbox execution")
         );
+    }
+
+    #[test]
+    fn check_cloud_sandbox_reports_timeout() {
+        let result = cloud_sandbox_probe_check(Err(anyhow::Error::new(
+            daytona::DaytonaCredentialProbeTimeout::new(Duration::from_millis(1)),
+        )));
+
+        assert_eq!(result.name, "Cloud Sandbox");
+        assert_eq!(result.status, CheckStatus::Error);
+        assert_eq!(result.summary, "timeout (1ms)");
+        assert_eq!(result.details[0].text, "Daytona probe timed out");
     }
 
     #[tokio::test]

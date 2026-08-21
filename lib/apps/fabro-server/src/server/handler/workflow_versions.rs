@@ -116,7 +116,7 @@ mod tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Method, Request, StatusCode, header};
     use axum::response::IntoResponse;
-    use fabro_types::WorkflowVersionId;
+    use fabro_types::{BlobHash, WorkflowVersion, WorkflowVersionId};
     use serde_json::{Value, json};
     use tower::ServiceExt;
 
@@ -230,6 +230,45 @@ mod tests {
         assert_eq!(
             error_code(&response_json(invalid).await),
             INVALID_VERSION_CODE
+        );
+    }
+
+    #[tokio::test]
+    async fn create_rejects_workflow_config_with_missing_goal_file_before_storage() {
+        let state = TestAppStateBuilder::new().build();
+        let app = test_support::build_test_router(Arc::clone(&state));
+        let payload = json!({
+            "entrypoint": "workflow.fabro",
+            "files": {
+                "workflow.fabro": GRAPH,
+                "workflow.toml": "_version = 1\n[run.goal]\nfile = \"prompts/goal.md\"\n"
+            },
+            "workflow_dependencies": {}
+        });
+        let version = serde_json::from_value::<WorkflowVersion>(payload.clone()).unwrap();
+        let id = WorkflowVersionId::from(BlobHash::new(&version.canonical_bytes().unwrap()));
+
+        let response = app
+            .oneshot(request(serde_json::to_vec(&payload).unwrap()))
+            .await
+            .unwrap();
+        let body = fabro_test::expect_axum_json(
+            response,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "POST /api/v1/workflow-versions with missing run goal file",
+        )
+        .await;
+
+        assert_eq!(error_code(&body), INVALID_VERSION_CODE);
+        assert!(
+            !state
+                .store_ref()
+                .blobs()
+                .await
+                .unwrap()
+                .exists(&id.into())
+                .await
+                .unwrap()
         );
     }
 

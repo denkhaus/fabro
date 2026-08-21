@@ -1046,6 +1046,7 @@ fn projection_from_created(event: &EventEnvelope) -> Result<RunProjection> {
         provenance: props.provenance.clone(),
         manifest_blob: props.manifest_blob,
         definition_blob: None,
+        spec_blob: props.spec_blob,
         git: props.git.clone(),
         fork_source_ref: props.fork_source_ref.clone(),
     };
@@ -1360,8 +1361,7 @@ pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
         .conclusion
         .as_ref()
         .map(|conclusion| conclusion.timing);
-    let terminal_total = terminal_total_usd_micros(state);
-    let current_total = projected_billing(state).total_usd_micros;
+    let total_usd_micros = projected_billing(state).total_usd_micros;
 
     Run {
         id: *run_id,
@@ -1405,10 +1405,10 @@ pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
             completed_at,
         },
         timing: run_timing,
-        billing: terminal_total.map(|total_usd_micros| RunBillingSummary {
+        billing: total_usd_micros.map(|total_usd_micros| RunBillingSummary {
             total_usd_micros: Some(total_usd_micros),
         }),
-        size: RunSize::from_total_usd_micros(current_total),
+        size: RunSize::from_total_usd_micros(total_usd_micros),
         ask_fabro: AskFabro::default(),
         diff: diff_summary,
         pull_request: state.pull_request.clone(),
@@ -1419,14 +1419,6 @@ pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
             web: state.web_url.clone(),
         },
     }
-}
-
-fn terminal_total_usd_micros(state: &RunProjection) -> Option<i64> {
-    state
-        .conclusion
-        .as_ref()
-        .and_then(|conclusion| conclusion.billing.as_ref())
-        .and_then(|billing| billing.total_usd_micros)
 }
 
 pub(crate) fn projected_billing(state: &RunProjection) -> BilledTokenCounts {
@@ -1694,11 +1686,12 @@ mod tests {
         CommandTermination, EventBody, FailureCategory, FailureDetail, FailureReason, Graph,
         McpServerStatus, Node, Outcome, ParallelBranchId, PendingReason, PermissionLevel,
         PullRequestCreationStatus, PullRequestLink, QuestionType, ReasoningEffort,
-        RunApprovalState, RunControlAction, RunDiff, RunEvent, RunSize, RunSpec, RunStatus, Speed,
-        StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
-        StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning,
-        StageHandler, StageModelUsage, StageOutcome, StageState, StageTiming, SubAgentStatus,
-        SuccessReason, WorkflowSettings, first_event_seq, fixtures, test_support,
+        RunApprovalState, RunBillingSummary, RunControlAction, RunDiff, RunEvent, RunSize, RunSpec,
+        RunStatus, Speed, StageContextWindowBreakdownItem, StageContextWindowCategory,
+        StageContextWindowCountMethod, StageContextWindowProjection, StageContextWindowStaleness,
+        StageContextWindowWarning, StageHandler, StageModelUsage, StageOutcome, StageState,
+        StageTiming, SubAgentStatus, SuccessReason, WorkflowSettings, first_event_seq, fixtures,
+        test_support,
     };
     use serde_json::json;
 
@@ -2281,19 +2274,8 @@ mod tests {
 
     fn test_run_spec() -> RunSpec {
         RunSpec {
-            run_id:           fixtures::RUN_1,
-            settings:         WorkflowSettings::default(),
-            graph:            Graph::new("test"),
-            graph_source:     Some("digraph test {}".to_string()),
-            workflow_slug:    None,
-            automation:       None,
-            source_directory: None,
-            labels:           HashMap::new(),
-            provenance:       test_support::test_run_provenance(),
-            manifest_blob:    None,
-            definition_blob:  None,
-            git:              None,
-            fork_source_ref:  None,
+            graph_source: Some("digraph test {}".to_string()),
+            ..test_support::test_run_spec()
         }
     }
 
@@ -4086,19 +4068,9 @@ mod tests {
     fn summary_synthesizes_submitted_when_run_exists_without_status() {
         let mut state = initialized_projection();
         state.spec = fabro_types::RunSpec {
-            run_id:           fixtures::RUN_1,
-            settings:         WorkflowSettings::default(),
-            graph:            fabro_types::Graph::new("test"),
-            graph_source:     None,
-            workflow_slug:    Some("test".to_string()),
-            automation:       None,
+            workflow_slug: Some("test".to_string()),
             source_directory: Some("/tmp/repo".to_string()),
-            git:              None,
-            labels:           HashMap::new(),
-            provenance:       test_support::test_run_provenance(),
-            manifest_blob:    None,
-            definition_blob:  None,
-            fork_source_ref:  None,
+            ..test_support::test_run_spec()
         };
 
         let summary_json = serde_json::to_value(build_summary(&state, &fixtures::RUN_1)).unwrap();
@@ -4112,19 +4084,10 @@ mod tests {
     fn summary_preserves_absent_workflow_name_and_reports_graph_name() {
         let mut state = initialized_projection();
         state.spec = fabro_types::RunSpec {
-            run_id:           fixtures::RUN_1,
-            settings:         WorkflowSettings::default(),
-            graph:            fabro_types::Graph::new("GraphName"),
-            graph_source:     None,
-            workflow_slug:    Some("release-flow".to_string()),
-            automation:       None,
+            graph: fabro_types::Graph::new("GraphName"),
+            workflow_slug: Some("release-flow".to_string()),
             source_directory: Some("/tmp/repo".to_string()),
-            git:              None,
-            labels:           HashMap::new(),
-            provenance:       test_support::test_run_provenance(),
-            manifest_blob:    None,
-            definition_blob:  None,
-            fork_source_ref:  None,
+            ..test_support::test_run_spec()
         };
 
         let summary = build_summary(&state, &fixtures::RUN_1);
@@ -5284,7 +5247,12 @@ mod tests {
 
         let summary = build_summary(&state, &fixtures::RUN_1);
         assert_eq!(summary.size, RunSize::S);
-        assert_eq!(summary.billing, None);
+        assert_eq!(
+            summary.billing,
+            Some(RunBillingSummary {
+                total_usd_micros: Some(20_000_001),
+            })
+        );
     }
 
     #[test]

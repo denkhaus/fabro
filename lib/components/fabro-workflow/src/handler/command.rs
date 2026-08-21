@@ -374,6 +374,7 @@ mod tests {
                     provenance:       test_support::test_run_provenance(),
                     manifest_blob:    None,
                     definition_blob:  None,
+                    spec_blob:        None,
                     git:              None,
                     fork_source_ref:  None,
                 },
@@ -390,16 +391,19 @@ mod tests {
         }
 
         async fn write_blob(&self, data: &[u8]) -> anyhow::Result<fabro_types::BlobHash> {
-            let blob_id = fabro_types::BlobHash::new(data);
+            let blob_hash = fabro_types::BlobHash::new(data);
             self.blobs
                 .lock()
                 .await
-                .insert(blob_id, Bytes::copy_from_slice(data));
-            Ok(blob_id)
+                .insert(blob_hash, Bytes::copy_from_slice(data));
+            Ok(blob_hash)
         }
 
-        async fn read_blob(&self, id: &fabro_types::BlobHash) -> anyhow::Result<Option<Bytes>> {
-            Ok(self.blobs.lock().await.get(id).cloned())
+        async fn read_blob(
+            &self,
+            blob_hash: &fabro_types::BlobHash,
+        ) -> anyhow::Result<Option<Bytes>> {
+            Ok(self.blobs.lock().await.get(blob_hash).cloned())
         }
 
         async fn read_run_log(&self) -> anyhow::Result<Option<Vec<u8>>> {
@@ -471,6 +475,7 @@ mod tests {
                 automation:       None,
                 provenance:       test_support::test_run_provenance(),
                 manifest_blob:    None,
+                spec_blob:        None,
                 git:              None,
                 fork_source_ref:  None,
                 retried_from:     None,
@@ -1690,7 +1695,7 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl crate::github_token_source::IatMinter for RefreshingMinter {
+    impl fabro_github::test_support::InstallationTokenMinter for RefreshingMinter {
         async fn mint(&self) -> anyhow::Result<fabro_github::InstallationToken> {
             let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
             Ok(fabro_github::InstallationToken {
@@ -1831,8 +1836,9 @@ mod tests {
             calls: std::sync::atomic::AtomicUsize::new(0),
         });
         let mut services = make_sandbox_services(spy.clone());
-        services.github_token = Some(std::sync::Arc::new(
-            crate::github_token_source::GitHubTokenSource::mintable(minter.clone()),
+        services.github_token = Some(fabro_github::test_support::installation_token_source(
+            "owner/repo",
+            minter.clone(),
         ));
 
         let handler = CommandHandler;

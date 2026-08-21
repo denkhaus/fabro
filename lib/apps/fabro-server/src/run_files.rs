@@ -2387,6 +2387,7 @@ index 1111111..2222222 160000
                 provenance:       test_support::test_run_provenance(),
                 manifest_blob:    None,
                 definition_blob:  None,
+                spec_blob:        None,
                 git:              None,
                 fork_source_ref:  None,
             },

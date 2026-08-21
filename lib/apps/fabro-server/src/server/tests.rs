@@ -10,7 +10,7 @@ use std::sync::{Arc as StdArc, Mutex as StdMutex};
 use async_zip::base::read::mem::ZipFileReader;
 use axum::body::Body;
 use axum::http::{Method, Request, header};
-use chrono::{Duration as ChronoDuration, Utc};
+use chrono::{Duration as ChronoDuration, SubsecRound as _, Utc};
 use fabro_automation::{AutomationId, AutomationTarget};
 use fabro_config::bind::Bind;
 use fabro_config::{
@@ -4069,7 +4069,9 @@ async fn create_run_from_manifest_resolves_generated_id_after_variable_snapshot(
 
     let body = response_json!(response, StatusCode::CREATED).await;
     let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
-    assert!(run_id.created_at() >= variable.updated_at);
+    // RunId is a ULID whose timestamp only has millisecond precision, so
+    // truncate the variable timestamp to milliseconds before comparing.
+    assert!(run_id.created_at() >= variable.updated_at.trunc_subsecs(3));
 }
 
 #[tokio::test]
@@ -4650,6 +4652,7 @@ async fn append_default_run_created(run_store: &fabro_store::RunDatabase, run_id
         automation: None,
         provenance: test_support::test_run_provenance(),
         manifest_blob: None,
+        spec_blob: None,
         git: None,
         fork_source_ref: None,
         retried_from: None,
@@ -4701,6 +4704,7 @@ async fn create_slack_notification_run(
         automation: None,
         provenance: test_support::test_run_provenance(),
         manifest_blob: None,
+        spec_blob: None,
         git: None,
         fork_source_ref: None,
         retried_from: None,
@@ -5774,6 +5778,7 @@ async fn list_run_stages_distinguishes_visits() {
             automation: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
+            spec_blob: None,
             git: None,
             fork_source_ref: None,
             retried_from: None,
@@ -5910,6 +5915,7 @@ async fn list_run_stages_exposes_execution_identity_for_resumed_stage() {
             automation: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
+            spec_blob: None,
             git: None,
             fork_source_ref: None,
             retried_from: None,
@@ -7097,6 +7103,7 @@ async fn create_completed_run_ready_for_pull_request(
         provenance: test_support::test_run_provenance(),
         manifest_blob: None,
         definition_blob: None,
+        spec_blob: None,
         fork_source_ref: None,
     };
 
@@ -7113,6 +7120,7 @@ async fn create_completed_run_ready_for_pull_request(
             automation: None,
             provenance: run_spec.provenance.clone(),
             manifest_blob: None,
+            spec_blob: None,
             git,
             fork_source_ref: None,
             retried_from: None,
@@ -11034,7 +11042,7 @@ async fn get_checkpoint_returns_null_initially() {
 }
 
 #[tokio::test]
-async fn write_and_read_run_blob_round_trip() {
+async fn write_and_read_run_blob_accepts_uppercase_hash() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
 
@@ -11057,11 +11065,14 @@ async fn write_and_read_run_blob_round_trip() {
         .unwrap();
     let response = app.clone().oneshot(req).await.unwrap();
     let body = response_json!(response, StatusCode::OK).await;
-    let blob_id = body["id"].as_str().unwrap();
+    let blob_hash = body["hash"].as_str().unwrap();
 
     let req = Request::builder()
         .method("GET")
-        .uri(api(&format!("/runs/{run_id}/blobs/{blob_id}")))
+        .uri(api(&format!(
+            "/runs/{run_id}/blobs/{}",
+            blob_hash.to_uppercase()
+        )))
         .body(Body::empty())
         .unwrap();
     let response = app.oneshot(req).await.unwrap();
@@ -11459,7 +11470,7 @@ async fn worker_token_accepts_run_scoped_routes_and_falls_back_to_user_jwt() {
     let worker_token = issue_test_worker_token(&run_id);
     let other_run_id = create_run_with_bearer(&app, &user_jwt).await;
     let other_worker_token = issue_test_worker_token(&other_run_id);
-    let blob_id = state
+    let blob_hash = state
         .stores
         .runs
         .open_run(&run_id)
@@ -11553,7 +11564,7 @@ async fn worker_token_accepts_run_scoped_routes_and_falls_back_to_user_jwt() {
         .clone()
         .oneshot(bearer_request(
             Method::GET,
-            &format!("/runs/{run_id}/blobs/{blob_id}"),
+            &format!("/runs/{run_id}/blobs/{blob_hash}"),
             &worker_token,
             Body::empty(),
         ))
@@ -12058,7 +12069,7 @@ async fn worker_token_is_rejected_on_user_only_routes() {
     let user_jwt = issue_test_user_jwt();
     let run_id = create_run_with_bearer(&app, &user_jwt).await;
     let worker_token = issue_test_worker_token(&run_id);
-    let blob_id = BlobHash::new(b"blob");
+    let blob_hash = BlobHash::new(b"blob");
     let user_only_routes = vec![
         (Method::GET, "/runs".to_string()),
         (Method::POST, "/runs".to_string()),
@@ -12121,7 +12132,7 @@ async fn worker_token_is_rejected_on_user_only_routes() {
         .clone()
         .oneshot(bearer_request(
             Method::GET,
-            &format!("/runs/{run_id}/blobs/{blob_id}"),
+            &format!("/runs/{run_id}/blobs/{blob_hash}"),
             &worker_token,
             Body::empty(),
         ))
@@ -14082,6 +14093,7 @@ async fn create_preserved_local_sandbox_run(state: &Arc<AppState>, run_id: RunId
             automation: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
+            spec_blob: None,
             git: None,
             fork_source_ref: None,
             retried_from: None,
@@ -14831,6 +14843,7 @@ async fn delete_run_retry_after_missing_provider_resource_removes_metadata() {
             automation: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
+            spec_blob: None,
             git: None,
             fork_source_ref: None,
             retried_from: None,

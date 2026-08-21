@@ -11,7 +11,9 @@
 //! reference-bearing attribute is added here once instead of drifting between
 //! per-crate walkers.
 
-use fabro_types::graph::{AttributeScope, Graph, ReferenceKind, reference_kind_for_attribute};
+use fabro_types::graph::{
+    AttributeScope, Graph, GraphReferenceKind, ReferenceKind, reference_kind_for_attribute,
+};
 
 use crate::contains_template_syntax;
 
@@ -119,20 +121,19 @@ pub fn visit_graph_references<'graph, E>(
                 continue;
             };
             let reference = match kind {
-                ReferenceKind::Import | ReferenceKind::ChildWorkflow => value,
-                // Classification only yields FileInline for `@` values.
-                ReferenceKind::FileInline => value
+                GraphReferenceKind::Import | GraphReferenceKind::ChildWorkflow => value,
+                // Classification only yields these kinds for `@` values.
+                GraphReferenceKind::FileInline | GraphReferenceKind::GraphGoalFile => value
                     .strip_prefix('@')
-                    .expect("file inline classification requires a leading '@'"),
-                ReferenceKind::Dockerfile | ReferenceKind::GraphGoalFile => continue,
+                    .expect("file reference classification requires a leading '@'"),
             };
-            validate_static_reference(reference, kind)
+            validate_static_reference(reference, kind.into())
                 .map_err(GraphReferenceError::StaticReference)?;
             let event = match kind {
-                ReferenceKind::Import => GraphReference::Import { reference },
-                ReferenceKind::ChildWorkflow => GraphReference::ChildWorkflow { reference },
-                ReferenceKind::FileInline => GraphReference::FileInline { key, reference },
-                ReferenceKind::Dockerfile | ReferenceKind::GraphGoalFile => unreachable!(),
+                GraphReferenceKind::Import => GraphReference::Import { reference },
+                GraphReferenceKind::ChildWorkflow => GraphReference::ChildWorkflow { reference },
+                GraphReferenceKind::FileInline => GraphReference::FileInline { key, reference },
+                GraphReferenceKind::GraphGoalFile => GraphReference::GoalFile { reference },
             };
             visit(event).map_err(GraphReferenceError::Visit)?;
         }

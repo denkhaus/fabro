@@ -1839,20 +1839,20 @@ impl Client {
                     .await
             })
             .await?;
-        response
-            .into_inner()
-            .id
-            .parse()
-            .context("write_run_blob returned invalid blob id")
+        Ok(response.into_inner().hash)
     }
 
-    pub async fn read_run_blob(&self, run_id: &RunId, blob_id: &BlobHash) -> Result<Option<Bytes>> {
+    pub async fn read_run_blob(
+        &self,
+        run_id: &RunId,
+        blob_hash: &BlobHash,
+    ) -> Result<Option<Bytes>> {
         let response = self
             .current_state()
             .client
             .read_run_blob()
             .id(run_id.to_string())
-            .blob_id(blob_id.to_string())
+            .blob_hash(*blob_hash)
             .send()
             .await;
         match response {

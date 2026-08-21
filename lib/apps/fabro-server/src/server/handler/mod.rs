@@ -101,7 +101,7 @@ pub(super) fn demo_routes() -> Router<Arc<AppState>> {
         )
         .route("/runs/{id}/attach", get(demo::run_events_stub))
         .route("/runs/{id}/blobs", post(not_implemented))
-        .route("/runs/{id}/blobs/{blobId}", get(not_implemented))
+        .route("/runs/{id}/blobs/{blobHash}", get(not_implemented))
         .route(
             "/runs/{id}/stages/{stageId}/logs/output",
             get(not_implemented),

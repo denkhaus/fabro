@@ -1,7 +1,7 @@
 openapi: "3.1.0"
 info:
   title: Fabro Run API
-  version: "0.1.0"
+  version: "0.2.0"
   description: HTTP API for managing Fabro workflow run executions.
 
 tags:
@@ -596,6 +596,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DiagnosticsReport"
+        "504":
+          description: Diagnostics operation timed out
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/openapi.json:
     get:
@@ -3092,7 +3101,7 @@ paths:
       operationId: writeRunBlob
       tags: [Run Internals]
       summary: Write Run Blob
-      description: Writes an opaque binary blob and returns its content-addressed blob identifier.
+      description: Writes an opaque binary blob and returns its content-addressed blob hash.
       parameters:
         - $ref: "#/components/parameters/RunId"
       requestBody:
@@ -3137,15 +3146,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /api/v1/runs/{id}/blobs/{blobId}:
+  /api/v1/runs/{id}/blobs/{blobHash}:
     get:
       operationId: readRunBlob
       tags: [Run Internals]
       summary: Read Run Blob
-      description: Reads a previously stored blob by identifier.
+      description: Reads a previously stored blob by hash.
       parameters:
         - $ref: "#/components/parameters/RunId"
-        - $ref: "#/components/parameters/BlobId"
+        - $ref: "#/components/parameters/BlobHash"
       responses:
         "200":
           description: Blob contents
@@ -5974,14 +5983,13 @@ components:
         default: 65536
       example: 65536
 
-    BlobId:
-      name: blobId
+    BlobHash:
+      name: blobHash
       in: path
       required: true
-      description: Content-addressed blob identifier.
+      description: Content-addressed blob hash.
       schema:
-        type: string
-        pattern: '^[0-9a-f]{64}$'
+        $ref: "#/components/schemas/BlobHash"
       example: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
 
     ArtifactFilename:
@@ -9152,9 +9160,11 @@ components:
       example: graphs/main.fabro
 
     WorkflowVersionId:
-      description: SHA-256 identity of validated canonical workflow-version bytes.
+      description: >-
+        SHA-256 identity of validated canonical workflow-version bytes. Hex input is
+        case-insensitive; Fabro emits the canonical lowercase form.
       type: string
-      pattern: "^[0-9a-f]{64}$"
+      pattern: "^[0-9A-Fa-f]{64}$"
       example: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
     WorkflowVersion:
@@ -10283,16 +10293,22 @@ components:
           description: Assigned event sequence number.
           example: 42
 
+    BlobHash:
+      description: >-
+        Content-addressed SHA-256 hash of a stored blob. Hex input is case-insensitive;
+        Fabro emits the canonical lowercase form.
+      type: string
+      pattern: "^[0-9A-Fa-f]{64}$"
+      example: 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+
     WriteBlobResponse:
-      description: Content-addressed identifier for a stored blob.
+      description: Content-addressed hash of a stored blob.
       type: object
       required:
-        - id
+        - hash
       properties:
-        id:
-          type: string
-          description: Blob identifier.
-          example: 550e8400-e29b-41d4-a716-446655440000
+        hash:
+          $ref: "#/components/schemas/BlobHash"
 
     CommandTermination:
       description: Terminal state for a command execution.
@@ -10401,7 +10417,7 @@ components:
           example: src/lib.rs
         sha256:
           type: ["string", "null"]
-          description: Optional lowercase hex SHA-256 checksum for the file contents.
+          description: Optional SHA-256 checksum for the file contents; hex input is case-insensitive.
           example: 3f785df4c5b7d3f1f4c1f0ecb0f55f1d9f6f6a3d9f0a8a98f7a74f29d1f81a2c
         expected_bytes:
           type: ["integer", "null"]
@@ -11433,6 +11449,8 @@ components:
         manifest_blob:
           type: ["string", "null"]
         definition_blob:
+          type: ["string", "null"]
+        spec_blob:
           type: ["string", "null"]
         git:
           oneOf:

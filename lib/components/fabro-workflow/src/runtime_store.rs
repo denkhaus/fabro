@@ -14,7 +14,7 @@ pub trait RunStoreBackend: Send + Sync {
     async fn list_events(&self) -> Result<Vec<EventEnvelope>>;
     async fn append_run_event(&self, event: &RunEvent) -> Result<()>;
     async fn write_blob(&self, data: &[u8]) -> Result<BlobHash>;
-    async fn read_blob(&self, id: &BlobHash) -> Result<Option<Bytes>>;
+    async fn read_blob(&self, blob_hash: &BlobHash) -> Result<Option<Bytes>>;
     async fn read_run_log(&self) -> Result<Option<Vec<u8>>>;
 }
 
@@ -50,8 +50,8 @@ impl RunStoreHandle {
         self.backend.write_blob(data).await
     }
 
-    pub async fn read_blob(&self, id: &BlobHash) -> Result<Option<Bytes>> {
-        self.backend.read_blob(id).await
+    pub async fn read_blob(&self, blob_hash: &BlobHash) -> Result<Option<Bytes>> {
+        self.backend.read_blob(blob_hash).await
     }
 
     pub async fn read_run_log(&self) -> Result<Option<Vec<u8>>> {
@@ -98,9 +98,9 @@ impl RunStoreBackend for LocalRunStoreBackend {
             .map_err(anyhow::Error::from)
     }
 
-    async fn read_blob(&self, id: &BlobHash) -> Result<Option<Bytes>> {
+    async fn read_blob(&self, blob_hash: &BlobHash) -> Result<Option<Bytes>> {
         self.run_store
-            .read_blob(id)
+            .read_blob(blob_hash)
             .await
             .map_err(anyhow::Error::from)
     }
@@ -112,15 +112,13 @@ impl RunStoreBackend for LocalRunStoreBackend {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use std::sync::Arc;
     use std::time::Duration;
 
     use chrono::Utc;
-    use fabro_graphviz::graph::Graph;
     use fabro_store::Database;
     use fabro_types::run_event::RunSubmittedProps;
-    use fabro_types::{EventBody, RunEvent, WorkflowSettings, fixtures, test_support};
+    use fabro_types::{EventBody, RunEvent, fixtures, test_support};
     use object_store::memory::InMemory;
 
     use super::RunStoreHandle;
@@ -139,19 +137,9 @@ mod tests {
 
     fn test_run_spec() -> RunSpec {
         RunSpec {
-            run_id:           fixtures::RUN_1,
-            settings:         WorkflowSettings::default(),
-            graph:            Graph::new("test"),
-            graph_source:     None,
-            workflow_slug:    Some("test".to_string()),
-            automation:       None,
+            workflow_slug: Some("test".to_string()),
             source_directory: Some("/tmp/test".to_string()),
-            git:              None,
-            labels:           HashMap::new(),
-            provenance:       test_support::test_run_provenance(),
-            manifest_blob:    None,
-            definition_blob:  None,
-            fork_source_ref:  None,
+            ..test_support::test_run_spec()
         }
     }
 
@@ -169,6 +157,7 @@ mod tests {
             automation:       None,
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
+            spec_blob:        None,
             git:              None,
             fork_source_ref:  None,
             retried_from:     None,
@@ -217,8 +206,8 @@ mod tests {
         };
         handle.append_run_event(&event).await.unwrap();
 
-        let blob_id = handle.write_blob(br#"{"ok":true}"#).await.unwrap();
-        let blob = handle.read_blob(&blob_id).await.unwrap().unwrap();
+        let blob_hash = handle.write_blob(br#"{"ok":true}"#).await.unwrap();
+        let blob = handle.read_blob(&blob_hash).await.unwrap().unwrap();
         let events = handle.list_events().await.unwrap();
 
         assert_eq!(events.len(), 2);

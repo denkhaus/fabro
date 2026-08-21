@@ -7,6 +7,7 @@ use fabro_agent::{Sandbox, ToolSecrets};
 use fabro_auth::{
     CredentialSource, ExtraHeadersCredentialSource, VaultCredentialSource, auth_issue_message,
 };
+use fabro_github::token_source::InstallationTokenSource;
 use fabro_graphviz::graph;
 use fabro_hooks::{HookContext, HookDecision, HookEvent, HookExecutionContext, HookRunner};
 use fabro_model::Catalog;
@@ -23,7 +24,6 @@ use super::types::{InitOptions, Initialized, LlmSpec, Persisted, SandboxEnvSpec}
 use crate::error::Error;
 use crate::event::{Event, RunNoticeCode, RunNoticeLevel};
 use crate::git::GitAuthor;
-use crate::github_token_source::{AppIatMinter, GitHubTokenSource};
 use crate::handler::llm::{AgentAcpBackend, AgentApiBackend, BackendRouter, routing};
 use crate::handler::{HandlerRegistry, default_registry};
 #[cfg(test)]
@@ -37,7 +37,10 @@ use crate::services::{
 use crate::stage_execution::{StageExecutionSeed, StageExecutionTracker};
 use crate::steering_hub::SteeringHub;
 
-type BuiltSandboxEnv = (HashMap<String, String>, Option<Arc<GitHubTokenSource>>);
+type BuiltSandboxEnv = (
+    HashMap<String, String>,
+    Option<Arc<InstallationTokenSource>>,
+);
 
 async fn run_hooks(
     hook_runner: Option<&HookRunner>,
@@ -99,12 +102,12 @@ fn build_sandbox_env(
 
     let source = match creds {
         fabro_github::GitHubCredentials::Pat(token) => {
-            Some(Arc::new(GitHubTokenSource::pat(token.clone())))
+            Some(InstallationTokenSource::pat(token.clone()))
         }
         fabro_github::GitHubCredentials::Installation(token) => {
-            Some(Arc::new(GitHubTokenSource::static_iat(token.clone())))
+            Some(InstallationTokenSource::installation(token.clone()))
         }
-        fabro_github::GitHubCredentials::App(app) => {
+        fabro_github::GitHubCredentials::App(_) => {
             let Some(origin_url) = spec.origin_url.as_deref() else {
                 return Ok((env, None));
             };
@@ -114,19 +117,11 @@ fn build_sandbox_env(
             let permissions = serde_json::to_value(permissions).map_err(|err| {
                 Error::engine_with_source("Failed to serialize GitHub permissions", err)
             })?;
-            let http = fabro_http::http_client()
-                .map_err(|err| Error::engine_with_source("Failed to build HTTP client", err))?;
-            let install_url = app.installation_url(&owner);
-            let minter = AppIatMinter::new(
-                app.clone(),
-                http,
-                owner,
-                repo,
-                fabro_github::github_api_base_url(),
-                install_url,
-                permissions,
-            );
-            Some(Arc::new(GitHubTokenSource::mintable(Arc::new(minter))))
+            Some(
+                InstallationTokenSource::for_repository(creds, owner, repo, permissions).map_err(
+                    |err| Error::engine_with_anyhow("Failed to build GitHub token source", err),
+                )?,
+            )
         }
     };
 
@@ -458,7 +453,7 @@ pub async fn initialize(
     });
     let github_token_refresh_managed = github_token
         .as_deref()
-        .is_some_and(GitHubTokenSource::is_refreshable);
+        .is_some_and(InstallationTokenSource::mints_installation_tokens);
     let (registry, effective_dry_run) = if let Some(registry) = options.registry_override.clone() {
         // A caller-supplied registry owns execution behavior for its handlers.
         (registry, options.dry_run)
@@ -600,20 +595,21 @@ pub async fn initialize(
         });
     }
 
-    let metadata_writer = match build_metadata_writer(&options.run_options) {
-        Ok(writer) => writer,
-        Err(err) => {
-            let message = format!("failed to initialize checkpoint metadata writer: {err}");
-            if metadata_runtime.mark_metadata_degraded() {
-                options.emitter.notice(
-                    RunNoticeLevel::Warn,
-                    RunNoticeCode::CheckpointMetadataWriteFailed,
-                    message,
-                );
+    let metadata_writer =
+        match build_metadata_writer(&options.run_options, sandbox.push_token_source()) {
+            Ok(writer) => writer,
+            Err(err) => {
+                let message = format!("failed to initialize checkpoint metadata writer: {err}");
+                if metadata_runtime.mark_metadata_degraded(false) {
+                    options.emitter.notice(
+                        RunNoticeLevel::Warn,
+                        RunNoticeCode::CheckpointMetadataWriteFailed,
+                        message,
+                    );
+                }
+                None
             }
-            None
-        }
-    };
+        };
 
     let run_services = RunServices::new(
         options.run_store.clone(),
@@ -870,6 +866,7 @@ mod tests {
                 provenance: test_support::test_run_provenance(),
                 manifest_blob: None,
                 definition_blob: None,
+                spec_blob: None,
                 fork_source_ref,
             },
         )
@@ -1053,6 +1050,7 @@ mod tests {
             automation:       None,
             provenance:       test_support::test_run_provenance(),
             manifest_blob:    None,
+            spec_blob:        None,
             git:              None,
             fork_source_ref:  run_options.fork_source_ref.clone(),
             retried_from:     None,

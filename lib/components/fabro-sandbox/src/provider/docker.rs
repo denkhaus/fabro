@@ -100,7 +100,7 @@ impl SandboxProvider for DockerSandboxProvider {
 
         let sandbox = DockerSandbox::new(
             config,
-            github_app,
+            github_app.as_ref(),
             run_id,
             clone_origin_url,
             clone_branch,

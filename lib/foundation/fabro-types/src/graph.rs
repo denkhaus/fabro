@@ -598,8 +598,7 @@ pub enum AttributeScope {
     Edge,
 }
 
-/// Kinds of static (non-templated) file references a graph attribute can
-/// carry.
+/// Kinds of static (non-templated) workflow-owned file references.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, strum::Display)]
 pub enum ReferenceKind {
     #[strum(to_string = "file inline reference")]
@@ -612,6 +611,31 @@ pub enum ReferenceKind {
     Dockerfile,
     #[strum(to_string = "graph goal file reference")]
     GraphGoalFile,
+    #[strum(to_string = "run goal file reference")]
+    RunGoalFile,
+}
+
+/// Kinds of static file references that graph attributes can carry: the
+/// subset of [`ReferenceKind`] that [`reference_kind_for_attribute`] can
+/// classify. Config-sourced kinds (Dockerfiles, run goal files) are
+/// unrepresentable here by construction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GraphReferenceKind {
+    FileInline,
+    Import,
+    ChildWorkflow,
+    GraphGoalFile,
+}
+
+impl From<GraphReferenceKind> for ReferenceKind {
+    fn from(kind: GraphReferenceKind) -> Self {
+        match kind {
+            GraphReferenceKind::FileInline => Self::FileInline,
+            GraphReferenceKind::Import => Self::Import,
+            GraphReferenceKind::ChildWorkflow => Self::ChildWorkflow,
+            GraphReferenceKind::GraphGoalFile => Self::GraphGoalFile,
+        }
+    }
 }
 
 /// Classify a graph attribute as a static file reference, if it is one.
@@ -620,19 +644,19 @@ pub fn reference_kind_for_attribute(
     scope: AttributeScope,
     key: &str,
     value: &str,
-) -> Option<ReferenceKind> {
+) -> Option<GraphReferenceKind> {
     match key {
-        "import" if matches!(scope, AttributeScope::Node) => Some(ReferenceKind::Import),
+        "import" if matches!(scope, AttributeScope::Node) => Some(GraphReferenceKind::Import),
         "stack.child_workflow" if matches!(scope, AttributeScope::Node) => {
-            Some(ReferenceKind::ChildWorkflow)
+            Some(GraphReferenceKind::ChildWorkflow)
         }
         "goal" if matches!(scope, AttributeScope::Graph) && value.starts_with('@') => {
-            Some(ReferenceKind::GraphGoalFile)
+            Some(GraphReferenceKind::GraphGoalFile)
         }
         "prompt" | "output_schema"
             if matches!(scope, AttributeScope::Node) && value.starts_with('@') =>
         {
-            Some(ReferenceKind::FileInline)
+            Some(GraphReferenceKind::FileInline)
         }
         _ => None,
     }
@@ -1168,7 +1192,7 @@ mod tests {
                 "output_schema",
                 "@schemas/result.schema.json",
             ),
-            Some(ReferenceKind::FileInline),
+            Some(GraphReferenceKind::FileInline),
         );
     }
 

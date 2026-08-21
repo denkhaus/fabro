@@ -40,6 +40,49 @@ pub enum WorkflowVersionStoreError {
     },
 }
 
+/// A fully loaded and validated workflow-version dependency graph: the
+/// requested root alongside every unique transitive dependency, keyed by
+/// canonical content ID.
+///
+/// Deliberately not `Clone`: a closure owns the full file contents of every
+/// version in the graph, so copies should be explicit and deliberate.
+#[derive(Debug)]
+pub struct LoadedWorkflowVersionClosure {
+    root_id:      WorkflowVersionId,
+    root:         ValidatedWorkflowVersion,
+    dependencies: BTreeMap<WorkflowVersionId, ValidatedWorkflowVersion>,
+}
+
+impl LoadedWorkflowVersionClosure {
+    #[must_use]
+    pub fn root_id(&self) -> WorkflowVersionId {
+        self.root_id
+    }
+
+    #[must_use]
+    pub fn root(&self) -> &WorkflowVersion {
+        self.root.version()
+    }
+
+    #[must_use]
+    pub fn get(&self, id: &WorkflowVersionId) -> Option<&WorkflowVersion> {
+        if *id == self.root_id {
+            return Some(self.root.version());
+        }
+        self.dependencies
+            .get(id)
+            .map(ValidatedWorkflowVersion::version)
+    }
+
+    pub fn versions(&self) -> impl Iterator<Item = (WorkflowVersionId, &WorkflowVersion)> + '_ {
+        std::iter::once((self.root_id, self.root.version())).chain(
+            self.dependencies
+                .iter()
+                .map(|(id, version)| (*id, version.version())),
+        )
+    }
+}
+
 /// Content-addressed storage for validated workflow versions.
 ///
 /// `put` only accepts semantically validated versions; `get` re-validates
@@ -61,7 +104,7 @@ impl WorkflowVersionStore {
         version: &ValidatedWorkflowVersion,
     ) -> Result<WorkflowVersionId, WorkflowVersionStoreError> {
         let canonical = version.version().canonical_bytes()?;
-        self.validate_dependency_closure(version.version().workflow_dependencies())
+        self.walk_dependency_closure(version.version().workflow_dependencies(), |_, _| ())
             .await?;
         self.blobs
             .write(&canonical)
@@ -77,19 +120,38 @@ impl WorkflowVersionStore {
         let Some(version) = self.load_one(id).await? else {
             return Ok(None);
         };
-        self.validate_dependency_closure(version.version().workflow_dependencies())
+        self.walk_dependency_closure(version.version().workflow_dependencies(), |_, _| ())
             .await?;
         Ok(Some(version))
+    }
+
+    pub async fn get_closure(
+        &self,
+        root_id: &WorkflowVersionId,
+    ) -> Result<Option<LoadedWorkflowVersionClosure>, WorkflowVersionStoreError> {
+        let Some(root) = self.load_one(root_id).await? else {
+            return Ok(None);
+        };
+        let mut dependencies = BTreeMap::new();
+        self.walk_dependency_closure(root.version().workflow_dependencies(), |id, version| {
+            dependencies.insert(id, version);
+        })
+        .await?;
+        Ok(Some(LoadedWorkflowVersionClosure {
+            root_id: *root_id,
+            root,
+            dependencies,
+        }))
     }
 
     async fn load_one(
         &self,
         id: &WorkflowVersionId,
     ) -> Result<Option<ValidatedWorkflowVersion>, WorkflowVersionStoreError> {
-        let blob_id = (*id).into();
+        let blob_hash = (*id).into();
         let Some(bytes) = self
             .blobs
-            .read(&blob_id)
+            .read(&blob_hash)
             .await
             .map_err(|source| WorkflowVersionStoreError::Storage { source })?
         else {
@@ -105,9 +167,12 @@ impl WorkflowVersionStore {
         Ok(Some(validated))
     }
 
-    async fn validate_dependency_closure(
+    /// Walk the transitive dependency closure, validating every dependency
+    /// and handing each loaded version to `visit` exactly once.
+    async fn walk_dependency_closure(
         &self,
         dependencies: &BTreeMap<WorkflowPath, WorkflowVersionId>,
+        mut visit: impl FnMut(WorkflowVersionId, ValidatedWorkflowVersion),
     ) -> Result<(), WorkflowVersionStoreError> {
         let mut pending = dependencies
             .iter()
@@ -128,6 +193,7 @@ impl WorkflowVersionStore {
                             .iter()
                             .map(|(path, id)| (path.clone(), *id)),
                     );
+                    visit(id, dependency);
                 }
                 Ok(None) => {
                     return Err(WorkflowVersionStoreError::DependencyNotFound { path, id });
@@ -180,6 +246,12 @@ mod tests {
         .unwrap()
     }
 
+    fn version_id(version: &ValidatedWorkflowVersion) -> WorkflowVersionId {
+        WorkflowVersionId::from(fabro_types::BlobHash::new(
+            &version.version().canonical_bytes().unwrap(),
+        ))
+    }
+
     async fn stores() -> (Arc<BlobStore>, WorkflowVersionStore) {
         let database = Database::new(
             Arc::new(InMemory::new()),
@@ -197,12 +269,15 @@ mod tests {
         let (blobs, store) = stores().await;
         let version = version("digraph W {}", BTreeMap::new());
         let expected_bytes = version.version().canonical_bytes().unwrap();
-        let expected_id = WorkflowVersionId::from(fabro_types::BlobHash::new(&expected_bytes));
+        let expected_id = version_id(&version);
 
         let id = store.put(&version).await.unwrap();
         assert_eq!(id, expected_id);
-        let blob_id = id.into();
-        assert_eq!(blobs.read(&blob_id).await.unwrap().unwrap(), expected_bytes);
+        let blob_hash = id.into();
+        assert_eq!(
+            blobs.read(&blob_hash).await.unwrap().unwrap(),
+            expected_bytes
+        );
         assert_eq!(store.get(&id).await.unwrap(), Some(version));
     }
 
@@ -227,16 +302,12 @@ mod tests {
     async fn dependency_must_be_stored_first() {
         let (blobs, store) = stores().await;
         let child = version("digraph Child {}", BTreeMap::new());
-        let child_id = WorkflowVersionId::from(fabro_types::BlobHash::new(
-            &child.version().canonical_bytes().unwrap(),
-        ));
+        let child_id = version_id(&child);
         let root = version(
             r#"digraph Root { child [stack.child_workflow="child.fabro"] }"#,
             BTreeMap::from([(path("child.fabro"), child_id)]),
         );
-        let root_id = WorkflowVersionId::from(fabro_types::BlobHash::new(
-            &root.version().canonical_bytes().unwrap(),
-        ));
+        let root_id = version_id(&root);
 
         let error = store.put(&root).await.unwrap_err();
         assert!(matches!(
@@ -262,9 +333,7 @@ mod tests {
             r#"digraph Root { child [stack.child_workflow="child.fabro"] }"#,
             BTreeMap::from([(path("child.fabro"), child_id)]),
         );
-        let root_id = WorkflowVersionId::from(fabro_types::BlobHash::new(
-            &root.version().canonical_bytes().unwrap(),
-        ));
+        let root_id = version_id(&root);
 
         assert!(matches!(
             store.put(&root).await.unwrap_err(),
@@ -273,10 +342,130 @@ mod tests {
         ));
         assert!(!blobs.exists(&root_id.into()).await.unwrap());
         assert!(matches!(
-            store.get(&child_id).await.unwrap_err(),
+            store.get_closure(&child_id).await.unwrap_err(),
             WorkflowVersionStoreError::DependencyNotFound { id, .. }
                 if id == missing_grandchild_id
         ));
+    }
+
+    #[tokio::test]
+    async fn get_closure_returns_root_and_transitive_dependencies() {
+        let (_, store) = stores().await;
+        let grandchild = version("digraph Grandchild {}", BTreeMap::new());
+        let grandchild_id = store.put(&grandchild).await.unwrap();
+        let child = version(
+            r#"digraph Child { grandchild [stack.child_workflow="grandchild.fabro"] }"#,
+            BTreeMap::from([(path("grandchild.fabro"), grandchild_id)]),
+        );
+        let child_id = store.put(&child).await.unwrap();
+        let root = version(
+            r#"digraph Root { child [stack.child_workflow="child.fabro"] }"#,
+            BTreeMap::from([(path("child.fabro"), child_id)]),
+        );
+        let root_id = store.put(&root).await.unwrap();
+
+        let closure = store.get_closure(&root_id).await.unwrap().unwrap();
+
+        assert_eq!(closure.root_id(), root_id);
+        assert_eq!(closure.root(), root.version());
+        assert_eq!(closure.get(&child_id), Some(child.version()));
+        assert_eq!(closure.get(&grandchild_id), Some(grandchild.version()));
+        assert_eq!(
+            closure
+                .versions()
+                .map(|(id, version)| (id, version.clone()))
+                .collect::<BTreeMap<_, _>>(),
+            BTreeMap::from([
+                (root_id, root.version().clone()),
+                (child_id, child.version().clone()),
+                (grandchild_id, grandchild.version().clone()),
+            ])
+        );
+    }
+
+    #[tokio::test]
+    async fn get_closure_deduplicates_a_diamond() {
+        let (_, store) = stores().await;
+        let leaf = version("digraph Leaf {}", BTreeMap::new());
+        let leaf_id = store.put(&leaf).await.unwrap();
+        let left = version(
+            r#"digraph Left { leaf [stack.child_workflow="leaf.fabro"] }"#,
+            BTreeMap::from([(path("leaf.fabro"), leaf_id)]),
+        );
+        let left_id = store.put(&left).await.unwrap();
+        let right = version(
+            r#"digraph Right { leaf [stack.child_workflow="leaf.fabro"] }"#,
+            BTreeMap::from([(path("leaf.fabro"), leaf_id)]),
+        );
+        let right_id = store.put(&right).await.unwrap();
+        let root = version(
+            r#"digraph Root {
+                left [stack.child_workflow="left.fabro"]
+                right [stack.child_workflow="right.fabro"]
+            }"#,
+            BTreeMap::from([
+                (path("left.fabro"), left_id),
+                (path("right.fabro"), right_id),
+            ]),
+        );
+        let root_id = store.put(&root).await.unwrap();
+
+        let closure = store.get_closure(&root_id).await.unwrap().unwrap();
+        let ids = closure.versions().map(|(id, _)| id).collect::<Vec<_>>();
+
+        assert_eq!(ids.len(), 4);
+        assert_eq!(ids.iter().filter(|&&id| id == leaf_id).count(), 1);
+    }
+
+    #[tokio::test]
+    async fn get_closure_preserves_noncanonical_dependency_errors() {
+        let (blobs, store) = stores().await;
+        let dependency = version("digraph Dependency {}", BTreeMap::new());
+        let pretty = serde_json::to_vec_pretty(dependency.version()).unwrap();
+        let dependency_id = WorkflowVersionId::from(blobs.write(&pretty).await.unwrap());
+        let root = version(
+            r#"digraph Root { dependency [stack.child_workflow="dependency.fabro"] }"#,
+            BTreeMap::from([(path("dependency.fabro"), dependency_id)]),
+        );
+        let root_id = WorkflowVersionId::from(
+            blobs
+                .write(&root.version().canonical_bytes().unwrap())
+                .await
+                .unwrap(),
+        );
+
+        let error = store.get_closure(&root_id).await.unwrap_err();
+        let WorkflowVersionStoreError::DependencyInvalid { source, .. } = error else {
+            panic!("expected invalid dependency error");
+        };
+        assert!(matches!(
+            source.as_ref(),
+            WorkflowVersionStoreError::NonCanonical { id } if *id == dependency_id
+        ));
+        assert!(matches!(
+            store.get_closure(&dependency_id).await.unwrap_err(),
+            WorkflowVersionStoreError::NonCanonical { id } if id == dependency_id
+        ));
+    }
+
+    #[tokio::test]
+    async fn get_projects_the_same_validated_root_as_get_closure() {
+        let (_, store) = stores().await;
+        let child = version("digraph Child {}", BTreeMap::new());
+        let child_id = store.put(&child).await.unwrap();
+        let root = version(
+            r#"digraph Root { child [stack.child_workflow="child.fabro"] }"#,
+            BTreeMap::from([(path("child.fabro"), child_id)]),
+        );
+        let root_id = store.put(&root).await.unwrap();
+
+        let closure = store.get_closure(&root_id).await.unwrap().unwrap();
+        let projected = store.get(&root_id).await.unwrap().unwrap();
+
+        assert_eq!(projected.version(), closure.root());
+        let absent = version_id(&version("digraph Absent {}", BTreeMap::new()));
+        assert!(store.get_closure(&absent).await.unwrap().is_none());
+        assert!(store.get(&absent).await.unwrap().is_none());
     }
 
     #[tokio::test]

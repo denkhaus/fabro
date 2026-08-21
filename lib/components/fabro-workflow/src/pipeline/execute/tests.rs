@@ -173,6 +173,7 @@ fn persisted_workflow(graph: Graph, source: String, run_dir: &Path, run_id: RunI
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
             definition_blob: None,
+            spec_blob: None,
             fork_source_ref: None,
         },
     )
@@ -218,6 +219,7 @@ async fn seed_created_and_starting(
         automation:       None,
         provenance:       test_support::test_run_provenance(),
         manifest_blob:    None,
+        spec_blob:        None,
         git:              run_options.pre_run_git.clone(),
         fork_source_ref:  run_options.fork_source_ref.clone(),
         retried_from:     None,
@@ -751,11 +753,11 @@ impl HandlerTrait for BlobCommandOutputHandler {
         services: &crate::handler::EngineServices,
     ) -> std::result::Result<Outcome, Error> {
         let blob = serde_json::to_vec("routed-ok").unwrap();
-        let blob_id = services.run.run_store.write_blob(&blob).await.unwrap();
+        let blob_hash = services.run.run_store.write_blob(&blob).await.unwrap();
         let mut outcome = Outcome::success();
         outcome.context_updates.insert(
             context::keys::COMMAND_OUTPUT.to_string(),
-            serde_json::json!(format_blob_ref(&blob_id)),
+            serde_json::json!(format_blob_ref(&blob_hash)),
         );
         Ok(outcome)
     }

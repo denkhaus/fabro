@@ -11,11 +11,11 @@ use tokio::sync::{Mutex, broadcast, mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::warn;
 
-use super::blob_store::BlobStore;
 use super::projection_cache::{CachedRunProjection, RunProjectionCache};
 use crate::run_state::{EventProjectionCache, RunProjectionReducer};
 use crate::{
-    Error, EventEnvelope, EventPayload, Result, RunProjection, RunSummaryStore, StageId, keys,
+    BlobStore, Error, EventEnvelope, EventPayload, Result, RunProjection, RunSummaryStore, StageId,
+    keys,
 };
 
 const DEFAULT_EVENT_TAIL_LIMIT: usize = 1024;
@@ -561,12 +561,8 @@ impl RunDatabase {
         self.inner.blob_store.write(data).await
     }
 
-    pub async fn read_blob(&self, id: &BlobHash) -> Result<Option<Bytes>> {
-        self.inner.blob_store.read(id).await
-    }
-
-    pub async fn list_blobs(&self) -> Result<Vec<BlobHash>> {
-        self.inner.blob_store.list().await
+    pub async fn read_blob(&self, blob_hash: &BlobHash) -> Result<Option<Bytes>> {
+        self.inner.blob_store.read(blob_hash).await
     }
 
     pub async fn state(&self) -> Result<RunProjection> {
@@ -895,23 +891,6 @@ mod tests {
     use serde_json::json;
 
     use crate::{Database, Error, EventPayload, keys};
-
-    #[tokio::test]
-    async fn list_blobs_reads_global_cas_namespace() {
-        let object_store = Arc::new(InMemory::new());
-        let store = Database::new(object_store, "", Duration::from_millis(1), None);
-        let run_id = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
-        let run = store.create_run(&run_id).await.unwrap();
-        let first_blob = br#"{"a":1}"#;
-        let second_blob = br#"{"b":2}"#;
-
-        let first_id = run.write_blob(first_blob).await.unwrap();
-        let second_id = run.write_blob(second_blob).await.unwrap();
-        let mut blob_ids = run.list_blobs().await.unwrap();
-        blob_ids.sort();
-
-        assert_eq!(blob_ids, vec![first_id, second_id]);
-    }
 
     fn stage_prompt_payload(run_id: &RunId, idx: u32, node_id: Option<&str>) -> EventPayload {
         stage_prompt_payload_for_stage(run_id, idx, node_id, None)

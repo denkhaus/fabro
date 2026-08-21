@@ -219,10 +219,10 @@ When Fabro builds a [preamble](/execution/context#preamble-construction) for a d
 - **plan**: success
   - Model: claude-sonnet-4-5, 12.4k tokens in / 3.2k out
   - Files: src/main.rs, tests/api_test.rs
-  - Response: See: /path/to/runtime/blobs/<blob_id>.json
+  - Response: See: /path/to/runtime/blobs/<blob_hash>.json
 - **test**: success
   - Script: `cargo test 2>&1 || true`
-  - Stdout: See: /path/to/runtime/blobs/<blob_id>.json
+  - Stdout: See: /path/to/runtime/blobs/<blob_hash>.json
 ```
 
 This keeps preambles concise while still giving agents a path to read the full output if needed.
@@ -237,7 +237,7 @@ Captured stage artifacts such as screenshots, videos, reports, and traces still 
 
 For remote sandboxes (Docker, Daytona), execution-time file access happens inside the sandbox filesystem.
 
-- Blob refs are materialized into `{working_directory}/.fabro/blobs/{blob_id}.json`
+- Blob refs are materialized into `{working_directory}/.fabro/blobs/{blob_hash}.json`
 - Explicit non-blob `file://` refs keep the existing copy-on-demand behavior and are copied into `{working_directory}/.fabro/artifacts/{filename}` when needed
 
 In both cases, downstream handlers and agents continue to consume ordinary `file://` pointers during execution.

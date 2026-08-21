@@ -445,13 +445,11 @@ fn run_id_matches(run_id: RunId, prefix: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use std::sync::Arc;
     use std::time::Duration;
 
-    use fabro_graphviz::graph::Graph;
     use fabro_store::Database;
-    use fabro_types::{RunStatus, WorkflowSettings, fixtures, test_support};
+    use fabro_types::{RunStatus, fixtures, test_support};
     use object_store::memory::InMemory;
 
     use super::scan_runs_combined;
@@ -470,24 +468,15 @@ mod tests {
 
     fn sample_run_spec() -> RunSpec {
         RunSpec {
-            run_id:           fixtures::RUN_1,
-            settings:         WorkflowSettings::default(),
-            graph:            Graph::new("test"),
-            graph_source:     None,
-            workflow_slug:    Some("test".to_string()),
-            automation:       None,
+            workflow_slug: Some("test".to_string()),
             source_directory: Some("/tmp/project".to_string()),
-            git:              Some(fabro_types::GitContext {
+            git: Some(fabro_types::GitContext {
                 origin_url: String::new(),
                 branch:     "main".to_string(),
                 sha:        None,
                 dirty:      fabro_types::DirtyStatus::Clean,
             }),
-            labels:           HashMap::new(),
-            provenance:       test_support::test_run_provenance(),
-            manifest_blob:    None,
-            definition_blob:  None,
-            fork_source_ref:  None,
+            ..test_support::test_run_spec()
         }
     }
 
@@ -512,6 +501,7 @@ mod tests {
             automation:       None,
             provenance:       run_spec.provenance.clone(),
             manifest_blob:    None,
+            spec_blob:        None,
             git:              run_spec.git.clone(),
             fork_source_ref:  run_spec.fork_source_ref.clone(),
             retried_from:     None,

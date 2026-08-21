@@ -66,20 +66,8 @@ fn format_output_snapshot(output: &Output, filters: &[(String, String)]) -> Stri
 }
 
 fn normalize_attach_json_progress_event(mut event: Value) -> Value {
-    if let Some(properties) = event.get_mut("properties").and_then(Value::as_object_mut) {
-        if properties.contains_key("manifest_blob") {
-            properties.insert(
-                "manifest_blob".to_string(),
-                Value::String("[BLOB_ID]".to_string()),
-            );
-        }
-        if properties.contains_key("definition_blob") {
-            properties.insert(
-                "definition_blob".to_string(),
-                Value::String("[BLOB_ID]".to_string()),
-            );
-        }
-    }
+    // manifest_blob/definition_blob hashes are already rewritten to
+    // [BLOB_HASH] by the shared json_snapshot_filters regexes.
     // Strip v2-shape server/version fields that the bridge emits,
     // since the test fixture's socket path is randomised per run.
     if let Some(settings) = event
@@ -896,7 +884,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
               }
             }
           },
-          "manifest_blob": "[BLOB_ID]",
+          "manifest_blob": "[BLOB_HASH]",
           "provenance": {
             "client": {
               "name": "fabro-cli",
@@ -1024,6 +1012,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
             }
           },
           "source_directory": "[TEMP_DIR]",
+          "spec_blob": "[BLOB_HASH]",
           "title": "Wait for approval",
           "web_url": "http://localhost:3000/runs/[ULID]",
           "workflow_slug": "human-gate",
@@ -1036,7 +1025,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
         "event": "run.submitted",
         "id": "[EVENT_ID]",
         "properties": {
-          "definition_blob": "[BLOB_ID]"
+          "definition_blob": "[BLOB_HASH]"
         },
         "run_id": "[ULID]",
         "ts": "[TIMESTAMP]"

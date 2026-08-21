@@ -84,6 +84,8 @@ const TRANSIENT_INFRA_HINTS: &[&str] = &[
     "cross-device link",
     "invalid cross-device link",
     "os error 18",
+    "state change in progress",
+    "sandbox stop still in progress",
 ];
 
 const BUDGET_EXHAUSTED_HINTS: &[&str] = &[
@@ -307,6 +309,10 @@ pub enum Error {
         message:          String,
         failure_class:    FailureCategory,
         exec_output_tail: Option<ExecOutputTail>,
+        /// Structured context lines appended after the source chain in
+        /// `causes()` — e.g. one line per push attempt on a publish push
+        /// failure.
+        extra_causes:     Vec<String>,
         #[source]
         source:           Option<SharedError>,
     },
@@ -355,6 +361,7 @@ impl Error {
             message,
             failure_class,
             exec_output_tail,
+            extra_causes: Vec::new(),
             source: None,
         }
     }
@@ -367,15 +374,28 @@ impl Error {
         source: impl Into<anyhow::Error>,
         exec_output_tail: Option<ExecOutputTail>,
     ) -> Self {
+        Self::stage_with_source_details(stage, message, source, None, exec_output_tail, Vec::new())
+    }
+
+    fn stage_with_source_details(
+        stage: ErrorStage,
+        message: impl Into<String>,
+        source: impl Into<anyhow::Error>,
+        failure_class: Option<FailureCategory>,
+        exec_output_tail: Option<ExecOutputTail>,
+        extra_causes: Vec<String>,
+    ) -> Self {
         let message = message.into();
         let source = SharedError::new(source.into());
-        let failure_class =
-            classify_failure_reason(&render_with_causes(&message, &collect_chain(&source)));
+        let failure_class = failure_class.unwrap_or_else(|| {
+            classify_failure_reason(&render_with_causes(&message, &collect_chain(&source)))
+        });
         Self::Stage {
             stage,
             message,
             failure_class,
             exec_output_tail,
+            extra_causes,
             source: Some(source),
         }
     }
@@ -452,12 +472,42 @@ impl Error {
         Self::stage_with_source(ErrorStage::Publish, message, source, exec_output_tail)
     }
 
+    /// Build a publish error with an explicitly determined failure category,
+    /// for callers that know more than message sniffing can recover — e.g.
+    /// exhausted push retries whose attempts all classified as transient.
+    /// `extra_causes` lines land after the source chain in the failure
+    /// detail (one line per push attempt).
+    pub fn publish_with_source_and_class(
+        message: impl Into<String>,
+        source: impl Into<anyhow::Error>,
+        failure_class: FailureCategory,
+        exec_output_tail: Option<ExecOutputTail>,
+        extra_causes: Vec<String>,
+    ) -> Self {
+        Self::stage_with_source_details(
+            ErrorStage::Publish,
+            message,
+            source,
+            Some(failure_class),
+            exec_output_tail,
+            extra_causes,
+        )
+    }
+
     #[must_use]
     pub fn causes(&self) -> Vec<String> {
         match self {
-            Self::Stage { source, .. } => source
-                .as_ref()
-                .map_or_else(Vec::new, |source| collect_chain(source)),
+            Self::Stage {
+                source,
+                extra_causes,
+                ..
+            } => {
+                let mut causes = source
+                    .as_ref()
+                    .map_or_else(Vec::new, |source| collect_chain(source));
+                causes.extend(extra_causes.iter().cloned());
+                causes
+            }
             Self::Template { source, .. } => collect_chain(source),
             Self::ScriptInterpolation { source, .. } => collect_chain(source),
             Self::Llm(err) => collect_causes(err),
@@ -805,6 +855,18 @@ mod tests {
             "Engine error: Failed to initialize sandbox\n  caused by: Failed to pull Docker image buildpack-deps:noble\n  caused by: connection refused"
         );
         assert_eq!(err.failure_category(), FailureCategory::TransientInfra);
+    }
+
+    #[test]
+    fn engine_error_with_sandbox_state_change_cause_classifies_transient() {
+        let source = TestOuterError {
+            message: "Failed to start Daytona sandbox",
+            source:  TestCause("Sandbox state change in progress"),
+        };
+        let err = Error::engine_with_source("Pipeline lifecycle operation failed", source);
+
+        assert_eq!(err.failure_category(), FailureCategory::TransientInfra);
+        assert!(err.is_retryable());
     }
 
     #[test]
@@ -1281,7 +1343,7 @@ mod tests {
 
     #[test]
     fn transient_infra_hints_count() {
-        assert_eq!(TRANSIENT_INFRA_HINTS.len(), 38);
+        assert_eq!(TRANSIENT_INFRA_HINTS.len(), 40);
     }
 
     #[test]
@@ -1446,6 +1508,25 @@ mod tests {
     fn classify_reason_connection_reset() {
         assert_eq!(
             classify_failure_reason("connection reset by peer"),
+            FailureCategory::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_sandbox_state_change_in_progress() {
+        assert_eq!(
+            classify_failure_reason(
+                "Pipeline lifecycle operation failed: failed to activate sandbox after node \
+                 attempt survey: Failed to start Daytona sandbox: Sandbox state change in progress"
+            ),
+            FailureCategory::TransientInfra
+        );
+    }
+
+    #[test]
+    fn classify_reason_sandbox_stop_still_in_progress() {
+        assert_eq!(
+            classify_failure_reason("Daytona sandbox stop still in progress after 120s"),
             FailureCategory::TransientInfra
         );
     }
