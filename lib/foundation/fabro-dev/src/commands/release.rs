@@ -8,6 +8,7 @@ use super::{PlannedCommand, capture_command, run_command, spa_refresh, workspace
 
 const RELEASE_EPOCH: &str = "2026-01-01";
 const RELEASE_TEST_SEGMENT_WRITE_KEY: &str = "fake-for-local-smoke";
+const MAX_PUSH_ATTEMPTS: u32 = 4;
 
 #[derive(Debug, Args)]
 pub(crate) struct ReleaseArgs {
@@ -36,6 +37,12 @@ struct ReleasePlan {
     root:         PathBuf,
 }
 
+struct ReleaseVersions {
+    current: String,
+    next:    String,
+    tag:     String,
+}
+
 #[expect(
     clippy::print_stdout,
     reason = "dev release command reports progress and dry-run commands directly"
@@ -52,64 +59,19 @@ pub(crate) fn release(args: ReleaseArgs) -> Result<()> {
     };
 
     let cargo_toml = plan.root.join("Cargo.toml");
-    let current_version = read_current_version(&cargo_toml)?;
-    println!("Current version: {current_version}");
-
-    let base_version = plan.next_base_version()?;
-    let new_version = plan.compute_release_version(&base_version)?;
-    let tag = format!("v{new_version}");
-    println!("Releasing {new_version} (tag {tag})");
+    let versions = plan.compute_versions(&cargo_toml)?;
+    println!("Current version: {}", versions.current);
+    println!("Releasing {} (tag {})", versions.next, versions.tag);
 
     if plan.dry_run {
-        plan.print_dry_run(&current_version, &new_version, &tag);
+        plan.print_dry_run(&versions);
         return Ok(());
     }
 
     plan.ensure_clean_worktree()?;
     spa_refresh::spa_refresh_root(&plan.root)?;
     plan.verify_release_tests()?;
-    update_version(&cargo_toml, &current_version, &new_version)?;
-    println!("Updated {}", cargo_toml.display());
-
-    run_command(
-        &plan.root,
-        &PlannedCommand::new("cargo")
-            .arg("update")
-            .arg("--workspace"),
-    )?;
-    println!("Updated Cargo.lock");
-
-    run_command(
-        &plan.root,
-        &PlannedCommand::new("git")
-            .arg("add")
-            .arg("Cargo.toml")
-            .arg("Cargo.lock"),
-    )?;
-    run_command(
-        &plan.root,
-        &PlannedCommand::new("git")
-            .arg("commit")
-            .arg("-m")
-            .arg(format!("Bump version to {new_version}")),
-    )?;
-    run_command(
-        &plan.root,
-        &PlannedCommand::new("git")
-            .arg("tag")
-            .arg("-a")
-            .arg(&tag)
-            .arg("-m")
-            .arg(&tag),
-    )?;
-    run_command(
-        &plan.root,
-        &PlannedCommand::new("git")
-            .arg("push")
-            .arg("origin")
-            .arg("main")
-            .arg(&tag),
-    )?;
+    let tag = plan.commit_tag_and_push(&cargo_toml, versions)?;
 
     println!();
     println!("Released {tag}");
@@ -156,6 +118,156 @@ impl ReleasePlan {
         }
     }
 
+    fn compute_versions(&self, cargo_toml: &Path) -> Result<ReleaseVersions> {
+        let current = read_current_version(cargo_toml)?;
+        let base_version = self.next_base_version()?;
+        let next = self.compute_release_version(&base_version)?;
+        let tag = format!("v{next}");
+        Ok(ReleaseVersions { current, next, tag })
+    }
+
+    /// Commits the version bump, tags it, and pushes `main` plus the tag
+    /// atomically. When the push is rejected because origin/main moved while
+    /// the release ran, rebuilds the bump commit and tag on the fresh tip
+    /// and retries.
+    #[expect(
+        clippy::print_stdout,
+        reason = "dev release command reports push retry progress directly"
+    )]
+    fn commit_tag_and_push(
+        &self,
+        cargo_toml: &Path,
+        mut versions: ReleaseVersions,
+    ) -> Result<String> {
+        let mut attempt = 1;
+        loop {
+            let start_head = self.head_commit()?;
+            self.create_bump_commit_and_tag(cargo_toml, &versions)?;
+            let Err(error) = self.push_main_and_tag(&versions.tag) else {
+                return Ok(versions.tag);
+            };
+            if attempt == MAX_PUSH_ATTEMPTS {
+                return Err(error);
+            }
+            println!(
+                "Push failed on attempt {attempt} of {MAX_PUSH_ATTEMPTS}; rebuilding the \
+                 release on the latest origin/main"
+            );
+            self.resync_with_origin_main(&versions.tag, &start_head)?;
+            versions = self.compute_versions(cargo_toml)?;
+            println!("Retrying as {} (tag {})", versions.next, versions.tag);
+            attempt += 1;
+        }
+    }
+
+    #[expect(
+        clippy::print_stdout,
+        reason = "dev release command reports version bump progress directly"
+    )]
+    fn create_bump_commit_and_tag(
+        &self,
+        cargo_toml: &Path,
+        versions: &ReleaseVersions,
+    ) -> Result<()> {
+        update_version(cargo_toml, &versions.current, &versions.next)?;
+        println!("Updated {}", cargo_toml.display());
+
+        run_command(
+            &self.root,
+            &PlannedCommand::new("cargo")
+                .arg("update")
+                .arg("--workspace"),
+        )?;
+        println!("Updated Cargo.lock");
+
+        run_command(
+            &self.root,
+            &PlannedCommand::new("git")
+                .arg("add")
+                .arg("Cargo.toml")
+                .arg("Cargo.lock"),
+        )?;
+        run_command(
+            &self.root,
+            &PlannedCommand::new("git")
+                .arg("commit")
+                .arg("-m")
+                .arg(format!("Bump version to {}", versions.next)),
+        )?;
+        run_command(
+            &self.root,
+            &PlannedCommand::new("git")
+                .arg("tag")
+                .arg("-a")
+                .arg(&versions.tag)
+                .arg("-m")
+                .arg(&versions.tag),
+        )
+    }
+
+    fn push_main_and_tag(&self, tag: &str) -> Result<()> {
+        run_command(&self.root, &Self::push_command(tag))
+    }
+
+    /// Drops the bump commit and tag this run created, then fast-forwards
+    /// onto the updated origin/main. `--ff-only` refuses to discard commits
+    /// that did not come from origin, so unpushed local work fails loudly
+    /// instead of being reset away.
+    fn resync_with_origin_main(&self, tag: &str, start_head: &str) -> Result<()> {
+        run_command(
+            &self.root,
+            &PlannedCommand::new("git").arg("tag").arg("-d").arg(tag),
+        )?;
+        run_command(
+            &self.root,
+            &PlannedCommand::new("git")
+                .arg("reset")
+                .arg("--hard")
+                .arg(start_head),
+        )?;
+        run_command(
+            &self.root,
+            &PlannedCommand::new("git")
+                .arg("fetch")
+                .arg("--tags")
+                .arg("origin")
+                .arg("main"),
+        )?;
+        run_command(
+            &self.root,
+            &PlannedCommand::new("git")
+                .arg("merge")
+                .arg("--ff-only")
+                .arg("origin/main"),
+        )
+        .context(
+            "local main has diverged from origin/main; reconcile manually and rerun the release",
+        )
+    }
+
+    fn head_commit(&self) -> Result<String> {
+        let output = capture_command(
+            &self.root,
+            &PlannedCommand::new("git").arg("rev-parse").arg("HEAD"),
+        )?;
+        if !output.status.success() {
+            bail!(
+                "failed to resolve HEAD: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+
+    fn push_command(tag: &str) -> PlannedCommand {
+        PlannedCommand::new("git")
+            .arg("push")
+            .arg("--atomic")
+            .arg("origin")
+            .arg("main")
+            .arg(tag)
+    }
+
     fn ensure_clean_worktree(&self) -> Result<()> {
         let output = capture_command(
             &self.root,
@@ -195,7 +307,7 @@ impl ReleasePlan {
         clippy::print_stdout,
         reason = "dev release command reports dry-run commands directly"
     )]
-    fn print_dry_run(&self, current_version: &str, new_version: &str, tag: &str) {
+    fn print_dry_run(&self, versions: &ReleaseVersions) {
         println!("DRY RUN: would refresh SPA assets:");
         println!("{}", Self::spa_refresh_command().to_shell_line());
 
@@ -206,7 +318,10 @@ impl ReleasePlan {
             println!("{}", Self::release_tests_command().to_shell_line());
         }
 
-        println!("DRY RUN: would update Cargo.toml version {current_version} -> {new_version}");
+        println!(
+            "DRY RUN: would update Cargo.toml version {} -> {}",
+            versions.current, versions.next
+        );
         for command in [
             PlannedCommand::new("cargo")
                 .arg("update")
@@ -218,18 +333,14 @@ impl ReleasePlan {
             PlannedCommand::new("git")
                 .arg("commit")
                 .arg("-m")
-                .arg(format!("Bump version to {new_version}")),
+                .arg(format!("Bump version to {}", versions.next)),
             PlannedCommand::new("git")
                 .arg("tag")
                 .arg("-a")
-                .arg(tag)
+                .arg(&versions.tag)
                 .arg("-m")
-                .arg(tag),
-            PlannedCommand::new("git")
-                .arg("push")
-                .arg("origin")
-                .arg("main")
-                .arg(tag),
+                .arg(&versions.tag),
+            Self::push_command(&versions.tag),
         ] {
             println!("{}", command.to_shell_line());
         }
@@ -320,4 +431,203 @@ fn workspace_package_version<'a>(
                 cargo_toml.display()
             )
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const WORKSPACE_MANIFEST: &str = r#"[workspace]
+members = ["app"]
+
+[workspace.package]
+version = "0.1.0"
+"#;
+
+    const MEMBER_MANIFEST: &str = r#"[package]
+name = "app"
+edition = "2021"
+version.workspace = true
+"#;
+
+    fn git(root: &Path, args: &[&str]) -> String {
+        let mut command = PlannedCommand::new("git");
+        for arg in args {
+            command = command.arg(*arg);
+        }
+        let output = capture_command(root, &command).expect("git should spawn");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
+    fn configure_identity(repo: &Path) {
+        git(repo, &["config", "user.name", "Release Test"]);
+        git(repo, &["config", "user.email", "release-test@example.com"]);
+    }
+
+    /// A fixture with a bare `origin`, a `work` clone releases run from, and
+    /// an `other` clone that simulates concurrent pushes.
+    struct RaceFixture {
+        _dir:   tempfile::TempDir,
+        origin: PathBuf,
+        work:   PathBuf,
+        other:  PathBuf,
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "release tests build git fixture repositories synchronously"
+    )]
+    fn race_fixture() -> RaceFixture {
+        let dir = tempfile::tempdir().expect("creating fixture");
+        let origin = dir.path().join("origin.git");
+        let work = dir.path().join("work");
+        let other = dir.path().join("other");
+
+        std::fs::create_dir(&origin).expect("creating origin dir");
+        git(&origin, &["init", "--bare", "-b", "main"]);
+
+        std::fs::create_dir(&work).expect("creating work dir");
+        git(&work, &["init", "-b", "main"]);
+        configure_identity(&work);
+        std::fs::write(work.join("Cargo.toml"), WORKSPACE_MANIFEST).expect("writing manifest");
+        std::fs::create_dir_all(work.join("app/src")).expect("creating member dirs");
+        std::fs::write(work.join("app/Cargo.toml"), MEMBER_MANIFEST)
+            .expect("writing member manifest");
+        std::fs::write(work.join("app/src/lib.rs"), "").expect("writing member lib");
+        git(&work, &["add", "."]);
+        git(&work, &["commit", "-m", "initial"]);
+        git(&work, &[
+            "remote",
+            "add",
+            "origin",
+            origin.to_str().expect("origin path should be utf-8"),
+        ]);
+        git(&work, &["push", "-u", "origin", "main"]);
+
+        git(dir.path(), &[
+            "clone",
+            origin.to_str().expect("origin path should be utf-8"),
+            "other",
+        ]);
+        configure_identity(&other);
+
+        RaceFixture {
+            _dir: dir,
+            origin,
+            work,
+            other,
+        }
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "release tests write fixture files synchronously"
+    )]
+    fn write_file(path: &Path, contents: &str) {
+        std::fs::write(path, contents).expect("writing fixture file");
+    }
+
+    fn nightly_plan(root: &Path) -> ReleasePlan {
+        ReleasePlan {
+            nightly:      true,
+            release_date: NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid release date"),
+            dry_run:      false,
+            skip_tests:   true,
+            root:         root.to_path_buf(),
+        }
+    }
+
+    #[test]
+    fn push_rebuilds_bump_commit_when_origin_main_moves() {
+        let fixture = race_fixture();
+
+        write_file(&fixture.other.join("README.md"), "concurrent\n");
+        git(&fixture.other, &["add", "README.md"]);
+        git(&fixture.other, &["commit", "-m", "concurrent work"]);
+        git(&fixture.other, &["push", "origin", "main"]);
+
+        let plan = nightly_plan(&fixture.work);
+        let cargo_toml = fixture.work.join("Cargo.toml");
+        let versions = plan
+            .compute_versions(&cargo_toml)
+            .expect("computing versions");
+        let tag = plan
+            .commit_tag_and_push(&cargo_toml, versions)
+            .expect("push should rescue itself when origin/main moves");
+
+        assert_eq!(tag, "v0.100.0-nightly.0");
+        let subjects = git(&fixture.origin, &["log", "--format=%s", "main"]);
+        assert_eq!(subjects.lines().collect::<Vec<_>>(), [
+            "Bump version to 0.100.0-nightly.0",
+            "concurrent work",
+            "initial"
+        ]);
+        git(&fixture.origin, &[
+            "rev-parse",
+            "--verify",
+            "refs/tags/v0.100.0-nightly.0",
+        ]);
+    }
+
+    #[test]
+    fn push_recomputes_version_when_tag_is_taken() {
+        let fixture = race_fixture();
+
+        git(&fixture.other, &["tag", "v0.100.0-nightly.0"]);
+        git(&fixture.other, &["push", "origin", "v0.100.0-nightly.0"]);
+
+        let plan = nightly_plan(&fixture.work);
+        let cargo_toml = fixture.work.join("Cargo.toml");
+        let versions = plan
+            .compute_versions(&cargo_toml)
+            .expect("computing versions");
+        let tag = plan
+            .commit_tag_and_push(&cargo_toml, versions)
+            .expect("push should rescue itself when the tag is taken");
+
+        assert_eq!(tag, "v0.100.0-nightly.1");
+        git(&fixture.origin, &[
+            "rev-parse",
+            "--verify",
+            "refs/tags/v0.100.0-nightly.1",
+        ]);
+        let subject = git(&fixture.origin, &["log", "-1", "--format=%s", "main"]);
+        assert_eq!(subject, "Bump version to 0.100.0-nightly.1");
+    }
+
+    #[test]
+    fn push_preserves_unpushed_local_commits_on_divergence() {
+        let fixture = race_fixture();
+
+        write_file(&fixture.work.join("local.txt"), "local\n");
+        git(&fixture.work, &["add", "local.txt"]);
+        git(&fixture.work, &["commit", "-m", "unpushed local work"]);
+
+        write_file(&fixture.other.join("README.md"), "concurrent\n");
+        git(&fixture.other, &["add", "README.md"]);
+        git(&fixture.other, &["commit", "-m", "concurrent work"]);
+        git(&fixture.other, &["push", "origin", "main"]);
+
+        let plan = nightly_plan(&fixture.work);
+        let cargo_toml = fixture.work.join("Cargo.toml");
+        let versions = plan
+            .compute_versions(&cargo_toml)
+            .expect("computing versions");
+        let error = plan
+            .commit_tag_and_push(&cargo_toml, versions)
+            .expect_err("diverged local main should fail instead of being reset away");
+
+        assert!(
+            format!("{error:#}").contains("diverged"),
+            "error should explain the divergence: {error:#}"
+        );
+        let subject = git(&fixture.work, &["log", "-1", "--format=%s"]);
+        assert_eq!(subject, "unpushed local work");
+    }
 }
