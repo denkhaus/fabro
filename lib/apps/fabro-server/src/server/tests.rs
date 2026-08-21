@@ -10,7 +10,7 @@ use std::sync::{Arc as StdArc, Mutex as StdMutex};
 use async_zip::base::read::mem::ZipFileReader;
 use axum::body::Body;
 use axum::http::{Method, Request, header};
-use chrono::{Duration as ChronoDuration, Utc};
+use chrono::{Duration as ChronoDuration, SubsecRound as _, Utc};
 use fabro_automation::{AutomationId, AutomationTarget};
 use fabro_config::bind::Bind;
 use fabro_config::{
@@ -4069,7 +4069,9 @@ async fn create_run_from_manifest_resolves_generated_id_after_variable_snapshot(
 
     let body = response_json!(response, StatusCode::CREATED).await;
     let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
-    assert!(run_id.created_at() >= variable.updated_at);
+    // RunId is a ULID whose timestamp only has millisecond precision, so
+    // truncate the variable timestamp to milliseconds before comparing.
+    assert!(run_id.created_at() >= variable.updated_at.trunc_subsecs(3));
 }
 
 #[tokio::test]
