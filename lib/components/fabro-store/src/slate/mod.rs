@@ -593,6 +593,7 @@ mod tests {
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
             definition_blob: None,
+            spec_blob: None,
             git: Some(fabro_types::GitContext {
                 origin_url: "https://github.com/fabro-sh/fabro".to_string(),
                 branch:     "main".to_string(),

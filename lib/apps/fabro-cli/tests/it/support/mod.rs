@@ -53,6 +53,7 @@ pub(crate) fn run_projection_json(run_id: &str, status: &serde_json::Value) -> s
         provenance: test_support::test_run_provenance(),
         manifest_blob: None,
         definition_blob: None,
+        spec_blob: None,
         git: None,
         fork_source_ref: None,
     };

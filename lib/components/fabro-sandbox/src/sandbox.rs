@@ -1032,18 +1032,46 @@ pub struct GrepOptions {
 /// remote, and the non-secret description of the token embedded in it.
 /// `token` is `None` only when `action` is [`RemoteCredentialAction::None`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RefreshOutcome {
-    pub action: RemoteCredentialAction,
-    pub token:  Option<TokenSnapshot>,
+pub enum RefreshOutcome {
+    /// No managed credentials exist for this sandbox.
+    None,
+    /// The remote already carried this token generation.
+    Unchanged(TokenSnapshot),
+    /// The remote was updated to carry this token generation.
+    Embedded(TokenSnapshot),
 }
 
 impl RefreshOutcome {
     /// No managed credentials to refresh.
     #[must_use]
-    pub fn none() -> Self {
-        Self {
-            action: RemoteCredentialAction::None,
-            token:  None,
+    pub const fn none() -> Self {
+        Self::None
+    }
+
+    #[must_use]
+    pub const fn unchanged(token: TokenSnapshot) -> Self {
+        Self::Unchanged(token)
+    }
+
+    #[must_use]
+    pub const fn embedded(token: TokenSnapshot) -> Self {
+        Self::Embedded(token)
+    }
+
+    #[must_use]
+    pub const fn action(self) -> RemoteCredentialAction {
+        match self {
+            Self::None => RemoteCredentialAction::None,
+            Self::Unchanged(_) => RemoteCredentialAction::Unchanged,
+            Self::Embedded(_) => RemoteCredentialAction::Embedded,
+        }
+    }
+
+    #[must_use]
+    pub const fn token(self) -> Option<TokenSnapshot> {
+        match self {
+            Self::None => None,
+            Self::Unchanged(token) | Self::Embedded(token) => Some(token),
         }
     }
 }
@@ -1071,6 +1099,16 @@ pub trait Sandbox: Send + Sync {
     }
 
     async fn write_file(&self, path: &str, content: &str) -> crate::Result<()>;
+
+    /// Write a file that the caller has already confirmed exists.
+    ///
+    /// Providers can override this method to skip setup that is only needed
+    /// when creating a new path. The default preserves the behavior of
+    /// [`Sandbox::write_file`].
+    async fn write_existing_file(&self, path: &str, content: &str) -> crate::Result<()> {
+        self.write_file(path, content).await
+    }
+
     async fn delete_file(&self, path: &str) -> crate::Result<()>;
     async fn file_exists(&self, path: &str) -> crate::Result<bool>;
     async fn list_directory(
@@ -1496,6 +1534,7 @@ pub async fn setup_git_via_exec(
     })
 }
 
+#[tracing::instrument(name = "git_op", skip_all, fields(op = "fetch"))]
 pub(crate) async fn fetch_source_run_ref(
     sandbox: &dyn Sandbox,
     source_run_id: &str,
@@ -1613,6 +1652,7 @@ fn push_failure_looks_auth_shaped(error: &crate::Error) -> bool {
 /// operation. `credentials` is the provider's push-credential state plus the
 /// origin URL; `None` pushes with whatever the remote already carries (the
 /// local sandbox, or a workspace without managed credentials).
+#[tracing::instrument(name = "git_op", skip_all, fields(op = "push"))]
 pub(crate) async fn git_push_via_exec(
     sandbox: &dyn Sandbox,
     credentials: Option<(&PushCredentialState, &str)>,
@@ -1799,9 +1839,8 @@ mod push_tests {
 
     use chrono::Utc;
     use fabro_github::InstallationToken;
-    use fabro_github::token_source::{
-        InstallationTokenMinter, InstallationTokenSource, REFRESH_MARGIN,
-    };
+    use fabro_github::test_support::{InstallationTokenMinter, installation_token_source};
+    use fabro_github::token_source::{InstallationTokenSource, REFRESH_MARGIN};
     use tokio::sync::Mutex as AsyncMutex;
 
     use super::*;
@@ -2003,13 +2042,11 @@ mod push_tests {
         }
     }
 
-    struct SharedMinter(std::sync::Arc<ScriptedMinter>);
-
     #[async_trait]
-    impl InstallationTokenMinter for SharedMinter {
+    impl InstallationTokenMinter for ScriptedMinter {
         async fn mint(&self) -> anyhow::Result<InstallationToken> {
-            self.0.calls.fetch_add(1, Ordering::SeqCst);
-            match self.0.script.lock().await.pop_front().expect("mint script") {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            match self.script.lock().await.pop_front().expect("mint script") {
                 MintAction::Token(token, ttl) => Ok(InstallationToken {
                     token:      token.to_string(),
                     expires_at: Utc::now() + ttl,
@@ -2036,9 +2073,9 @@ mod push_tests {
         script: Vec<MintAction>,
     ) -> (PushCredentialState, std::sync::Arc<ScriptedMinter>) {
         let minter = ScriptedMinter::new(script);
-        let source = InstallationTokenSource::with_minter(
-            "fabro-testing/repo".to_string(),
-            Box::new(SharedMinter(std::sync::Arc::clone(&minter))),
+        let source = installation_token_source(
+            "fabro-testing/repo",
+            std::sync::Arc::clone(&minter) as std::sync::Arc<dyn InstallationTokenMinter>,
         );
         (PushCredentialState::new(Some(source)), minter)
     }
@@ -2446,10 +2483,7 @@ mod push_tests {
 
     #[tokio::test(start_paused = true)]
     async fn retry_deadline_includes_credential_lease_acquisition() {
-        let source = InstallationTokenSource::with_minter(
-            "fabro-testing/repo".to_string(),
-            Box::new(SlowMinter),
-        );
+        let source = installation_token_source("fabro-testing/repo", Arc::new(SlowMinter));
         let state = PushCredentialState::new(Some(source));
         let sandbox = ScriptedGitSandbox::new(vec![]);
         let mut plan = RetryPlan::checkpoint_push();

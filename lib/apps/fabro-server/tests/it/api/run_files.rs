@@ -68,6 +68,7 @@ async fn append_completed_run_with_final_patch(
         automation:       None,
         provenance:       test_support::test_run_provenance(),
         manifest_blob:    None,
+        spec_blob:        None,
         git:              None,
         fork_source_ref:  None,
         retried_from:     None,

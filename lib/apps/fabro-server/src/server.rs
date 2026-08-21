@@ -1456,6 +1456,15 @@ impl AppState {
         &self,
         api_key: String,
     ) -> anyhow::Result<daytona::DaytonaKeyCheck> {
+        self.check_daytona_api_key_with_timeout(api_key, daytona::DAYTONA_CREDENTIAL_PROBE_TIMEOUT)
+            .await
+    }
+
+    pub(crate) async fn check_daytona_api_key_with_timeout(
+        &self,
+        api_key: String,
+        probe_timeout: Duration,
+    ) -> anyhow::Result<daytona::DaytonaKeyCheck> {
         let base_url = self
             .config_env_lookup(EnvVars::DAYTONA_API_URL)
             .or_else(|| self.config_env_lookup(EnvVars::DAYTONA_SERVER_URL))
@@ -1463,8 +1472,14 @@ impl AppState {
         let org_id = self.config_env_lookup(EnvVars::DAYTONA_ORGANIZATION_ID);
 
         let http_client = fabro_http::http_client().context("failed to build HTTP client")?;
-        daytona::check_daytona_api_key_with(&base_url, org_id.as_deref(), api_key, http_client)
-            .await
+        daytona::check_daytona_api_key_with_timeout(
+            &base_url,
+            org_id.as_deref(),
+            api_key,
+            http_client,
+            probe_timeout,
+        )
+        .await
     }
 
     /// Borrow the persistent store so sibling modules can open run readers

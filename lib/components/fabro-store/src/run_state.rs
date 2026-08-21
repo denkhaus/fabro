@@ -1046,6 +1046,7 @@ fn projection_from_created(event: &EventEnvelope) -> Result<RunProjection> {
         provenance: props.provenance.clone(),
         manifest_blob: props.manifest_blob,
         definition_blob: None,
+        spec_blob: props.spec_blob,
         git: props.git.clone(),
         fork_source_ref: props.fork_source_ref.clone(),
     };
@@ -1360,8 +1361,7 @@ pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
         .conclusion
         .as_ref()
         .map(|conclusion| conclusion.timing);
-    let terminal_total = terminal_total_usd_micros(state);
-    let current_total = projected_billing(state).total_usd_micros;
+    let total_usd_micros = projected_billing(state).total_usd_micros;
 
     Run {
         id: *run_id,
@@ -1405,10 +1405,10 @@ pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
             completed_at,
         },
         timing: run_timing,
-        billing: terminal_total.map(|total_usd_micros| RunBillingSummary {
+        billing: total_usd_micros.map(|total_usd_micros| RunBillingSummary {
             total_usd_micros: Some(total_usd_micros),
         }),
-        size: RunSize::from_total_usd_micros(current_total),
+        size: RunSize::from_total_usd_micros(total_usd_micros),
         ask_fabro: AskFabro::default(),
         diff: diff_summary,
         pull_request: state.pull_request.clone(),
@@ -1419,14 +1419,6 @@ pub(crate) fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
             web: state.web_url.clone(),
         },
     }
-}
-
-fn terminal_total_usd_micros(state: &RunProjection) -> Option<i64> {
-    state
-        .conclusion
-        .as_ref()
-        .and_then(|conclusion| conclusion.billing.as_ref())
-        .and_then(|billing| billing.total_usd_micros)
 }
 
 pub(crate) fn projected_billing(state: &RunProjection) -> BilledTokenCounts {
@@ -1694,11 +1686,12 @@ mod tests {
         CommandTermination, EventBody, FailureCategory, FailureDetail, FailureReason, Graph,
         McpServerStatus, Node, Outcome, ParallelBranchId, PendingReason, PermissionLevel,
         PullRequestCreationStatus, PullRequestLink, QuestionType, ReasoningEffort,
-        RunApprovalState, RunControlAction, RunDiff, RunEvent, RunSize, RunSpec, RunStatus, Speed,
-        StageContextWindowBreakdownItem, StageContextWindowCategory, StageContextWindowCountMethod,
-        StageContextWindowProjection, StageContextWindowStaleness, StageContextWindowWarning,
-        StageHandler, StageModelUsage, StageOutcome, StageState, StageTiming, SubAgentStatus,
-        SuccessReason, WorkflowSettings, first_event_seq, fixtures, test_support,
+        RunApprovalState, RunBillingSummary, RunControlAction, RunDiff, RunEvent, RunSize, RunSpec,
+        RunStatus, Speed, StageContextWindowBreakdownItem, StageContextWindowCategory,
+        StageContextWindowCountMethod, StageContextWindowProjection, StageContextWindowStaleness,
+        StageContextWindowWarning, StageHandler, StageModelUsage, StageOutcome, StageState,
+        StageTiming, SubAgentStatus, SuccessReason, WorkflowSettings, first_event_seq, fixtures,
+        test_support,
     };
     use serde_json::json;
 
@@ -5254,7 +5247,12 @@ mod tests {
 
         let summary = build_summary(&state, &fixtures::RUN_1);
         assert_eq!(summary.size, RunSize::S);
-        assert_eq!(summary.billing, None);
+        assert_eq!(
+            summary.billing,
+            Some(RunBillingSummary {
+                total_usd_micros: Some(20_000_001),
+            })
+        );
     }
 
     #[test]

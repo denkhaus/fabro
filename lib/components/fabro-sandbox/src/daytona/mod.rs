@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -64,12 +65,24 @@ pub const DEFAULT_DAYTONA_API_URL: &str = "https://app.daytona.io/api";
 pub(crate) const DAYTONA_DASHBOARD_SANDBOXES_URL: &str =
     "https://app.daytona.io/dashboard/sandboxes";
 const FABRO_SANDBOX_USER_AGENT: &str = concat!("fabro-sandbox/", env!("CARGO_PKG_VERSION"));
-const DAYTONA_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
-const DAYTONA_START_TIMEOUT: Duration = Duration::from_mins(1);
+pub const DAYTONA_CREDENTIAL_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
+const DAYTONA_BASH_SESSION_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 /// Upper bound on explicit and Drop-triggered Daytona cleanup calls (session
 /// deletion, temporary stdin files) so a stalled REST call cannot block
 /// cancellation/timeout paths indefinitely.
 const DAYTONA_CLEANUP_TIMEOUT: Duration = Duration::from_secs(10);
+/// Budget for waiting out an in-flight Daytona lifecycle transition (for
+/// example an auto-stop racing an activation) before giving up. Transitions
+/// normally finish within seconds; the budget only bounds a wedged sandbox.
+const DAYTONA_STATE_CHANGE_TIMEOUT: Duration = Duration::from_mins(2);
+/// Poll interval while waiting out an in-flight Daytona lifecycle transition.
+const DAYTONA_STATE_CHANGE_POLL_INTERVAL: Duration = Duration::from_secs(1);
+/// Auto-stop applied when `lifecycle.auto_stop` is unset. Omitting the field
+/// would inherit Daytona's server-side default of 15 idle minutes, which is
+/// shorter than a single long inference call and stops the sandbox mid-run;
+/// 120 minutes clears any realistic call while still reclaiming sandboxes
+/// leaked by a dead worker. An explicit `0` disables auto-stop entirely.
+const DEFAULT_AUTO_STOP_INTERVAL_MINUTES: i32 = 120;
 
 /// Permissions a Daytona API key needs for Fabro's snapshot and sandbox flow.
 pub const REQUIRED_DAYTONA_PERMISSIONS: &[Permissions] = &[
@@ -156,6 +169,24 @@ pub mod snapshot_identity {
 pub struct DaytonaKeyCheck {
     pub key_name: String,
     pub missing:  Vec<Permissions>,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Daytona credential probe timed out after {timeout:?}")]
+pub struct DaytonaCredentialProbeTimeout {
+    timeout: Duration,
+}
+
+impl DaytonaCredentialProbeTimeout {
+    #[must_use]
+    pub const fn new(timeout: Duration) -> Self {
+        Self { timeout }
+    }
+
+    #[must_use]
+    pub const fn timeout(&self) -> Duration {
+        self.timeout
+    }
 }
 
 impl DaytonaKeyCheck {
@@ -256,6 +287,23 @@ pub async fn check_daytona_api_key_with(
     api_key: String,
     http_client: fabro_http::HttpClient,
 ) -> anyhow::Result<DaytonaKeyCheck> {
+    check_daytona_api_key_with_timeout(
+        base_url,
+        org_id,
+        api_key,
+        http_client,
+        DAYTONA_CREDENTIAL_PROBE_TIMEOUT,
+    )
+    .await
+}
+
+pub async fn check_daytona_api_key_with_timeout(
+    base_url: &str,
+    org_id: Option<&str>,
+    api_key: String,
+    http_client: fabro_http::HttpClient,
+    probe_timeout: Duration,
+) -> anyhow::Result<DaytonaKeyCheck> {
     let work = async {
         let client = build_daytona_client_with(
             Some(api_key.clone()),
@@ -289,12 +337,21 @@ pub async fn check_daytona_api_key_with(
         })
     };
 
-    match time::timeout(DAYTONA_PROBE_TIMEOUT, work).await {
+    daytona_credential_probe_with_timeout(work, probe_timeout).await
+}
+
+async fn daytona_credential_probe_with_timeout<F>(
+    probe: F,
+    probe_timeout: Duration,
+) -> anyhow::Result<DaytonaKeyCheck>
+where
+    F: Future<Output = anyhow::Result<DaytonaKeyCheck>>,
+{
+    match time::timeout(probe_timeout, probe).await {
         Ok(result) => result,
-        Err(_) => Err(anyhow::anyhow!(
-            "Daytona credential probe timed out after {}s",
-            DAYTONA_PROBE_TIMEOUT.as_secs()
-        )),
+        Err(_) => Err(anyhow::Error::new(DaytonaCredentialProbeTimeout::new(
+            probe_timeout,
+        ))),
     }
 }
 
@@ -331,12 +388,38 @@ fn command_kind(command: &str) -> &'static str {
     }
 }
 
+#[derive(Clone, Copy, strum::Display)]
+#[strum(serialize_all = "lowercase")]
+enum DaytonaLifecycleAction {
+    Start,
+    Stop,
+}
+
+impl DaytonaLifecycleAction {
+    async fn execute(
+        self,
+        client: &daytona_sdk::Client,
+        sandbox_name: &str,
+    ) -> Result<(), DaytonaError> {
+        match self {
+            Self::Start => client.start(sandbox_name).await.map(drop),
+            Self::Stop => client.stop(sandbox_name).await.map(drop),
+        }
+    }
+
+    fn is_complete(self, state: Option<SandboxState>) -> bool {
+        match self {
+            Self::Start => state == Some(SandboxState::Started),
+            Self::Stop => matches!(state, Some(SandboxState::Stopped | SandboxState::Destroyed)),
+        }
+    }
+}
+
 /// Sandbox that runs all operations inside a Daytona cloud sandbox.
 pub struct DaytonaSandbox {
     config:            DaytonaConfig,
     client:            daytona_sdk::Client,
     api_key:           Option<String>,
-    github_app:        Option<GitHubCredentials>,
     push_credentials:  PushCredentialState,
     sandbox:           OnceCell<daytona_sdk::Sandbox>,
     snapshot_name:     OnceCell<String>,
@@ -379,7 +462,6 @@ impl DaytonaSandbox {
             config,
             client,
             api_key,
-            github_app,
             push_credentials,
             sandbox: OnceCell::new(),
             snapshot_name: OnceCell::new(),
@@ -432,7 +514,6 @@ impl DaytonaSandbox {
             config: DaytonaConfig::default(),
             client,
             api_key,
-            github_app: None,
             push_credentials: PushCredentialState::new(None),
             sandbox: sandbox_cell,
             snapshot_name: OnceCell::new(),
@@ -520,6 +601,19 @@ impl DaytonaSandbox {
         resolve_path(path, self.working_directory())
     }
 
+    async fn upload_file_content(&self, resolved_path: &str, content: &str) -> crate::Result<()> {
+        let sandbox = self.sandbox()?;
+        let fs_svc = sandbox
+            .fs()
+            .await
+            .map_err(|e| crate::Error::context("Failed to get fs service", e))?;
+
+        fs_svc
+            .upload_file_bytes(resolved_path, content.as_bytes())
+            .await
+            .map_err(|e| crate::Error::context(format!("Failed to write file {resolved_path}"), e))
+    }
+
     /// Verify a Daytona sandbox evaluates commands as non-login Bash.
     ///
     /// Runs on a freshly created sandbox before any Fabro-owned setup, and
@@ -585,16 +679,16 @@ impl DaytonaSandbox {
     /// non-POSIX, and completion assertions all hold.
     ///
     /// Costs one session round trip plus a single status poll per sandbox
-    /// lifecycle transition. `DAYTONA_PROBE_TIMEOUT` is the outer backstop for
-    /// a stalled REST call; the inner [`BASH_PROBE_TIMEOUT_MS`] is the deadline
-    /// for the command itself. Session cleanup runs outside that deadline under
-    /// its own bounded timeout.
+    /// lifecycle transition. `DAYTONA_BASH_SESSION_PROBE_TIMEOUT` is the outer
+    /// backstop for a stalled REST call; the inner [`BASH_PROBE_TIMEOUT_MS`] is
+    /// the deadline for the command itself. Session cleanup runs outside that
+    /// deadline under its own bounded timeout.
     async fn probe_bash_session(sandbox: &daytona_sdk::Sandbox) -> crate::Result<()> {
-        let deadline = time::Instant::now() + DAYTONA_PROBE_TIMEOUT;
+        let deadline = time::Instant::now() + DAYTONA_BASH_SESSION_PROBE_TIMEOUT;
         let timeout_error = || {
             crate::Error::message(format!(
                 "Daytona Bash session check timed out after {}s",
-                DAYTONA_PROBE_TIMEOUT.as_secs()
+                DAYTONA_BASH_SESSION_PROBE_TIMEOUT.as_secs()
             ))
         };
         let mut session = match time::timeout_at(deadline, DaytonaSession::create(sandbox)).await {
@@ -736,7 +830,10 @@ impl DaytonaSandbox {
         daytona_sdk::SandboxBaseParams {
             name: Some(name),
             env_vars: Some(clean_bash_env(None)),
-            auto_stop_interval: self.config.auto_stop_interval,
+            auto_stop_interval: self
+                .config
+                .auto_stop_interval
+                .or(Some(DEFAULT_AUTO_STOP_INTERVAL_MINUTES)),
             labels: Some(managed_labels::merge_for_run(
                 self.config.labels.as_ref(),
                 self.run_id.as_ref(),
@@ -861,6 +958,157 @@ impl DaytonaSandbox {
             "Timed out waiting for snapshot '{name}' to become active"
         )))
     }
+
+    async fn wait_for_stable_state(
+        &self,
+        sandbox_name: &str,
+    ) -> Result<Option<SandboxState>, DaytonaError> {
+        loop {
+            time::sleep(DAYTONA_STATE_CHANGE_POLL_INTERVAL).await;
+            let state = self.client.get(sandbox_name).await?.state;
+            if !is_transitional_state(state) {
+                return Ok(state);
+            }
+        }
+    }
+
+    async fn run_lifecycle_action(
+        &self,
+        sandbox_name: &str,
+        action: DaytonaLifecycleAction,
+        deadline: time::Instant,
+    ) -> crate::Result<()> {
+        loop {
+            let request = time::timeout_at(deadline, action.execute(&self.client, sandbox_name));
+            match request.await {
+                Ok(Ok(())) => return Ok(()),
+                Ok(Err(source)) if is_state_change_in_progress(&source) => {
+                    tracing::debug!(
+                        action = %action,
+                        sandbox = sandbox_name,
+                        "Daytona lifecycle request rejected during state change"
+                    );
+                    match time::timeout_at(deadline, self.wait_for_stable_state(sandbox_name)).await
+                    {
+                        Ok(Ok(state)) if action.is_complete(state) => return Ok(()),
+                        Ok(Ok(_)) => {}
+                        Ok(Err(wait_source)) => {
+                            return Err(crate::Error::context(
+                                format!(
+                                    "Failed to inspect Daytona sandbox while waiting to {action}"
+                                ),
+                                wait_source,
+                            ));
+                        }
+                        Err(_) => {
+                            return Err(crate::Error::context(
+                                format!("Timed out waiting to {action} Daytona sandbox"),
+                                source,
+                            ));
+                        }
+                    }
+                }
+                Ok(Err(source)) => {
+                    return Err(crate::Error::context(
+                        format!("Failed to {action} Daytona sandbox"),
+                        source,
+                    ));
+                }
+                Err(_) => {
+                    return Err(crate::Error::message(format!(
+                        "Timed out waiting to {action} Daytona sandbox"
+                    )));
+                }
+            }
+        }
+    }
+
+    fn start_error(&self, error: crate::Error) -> crate::Result<()> {
+        self.emit(SandboxEvent::StartFailed {
+            provider: "daytona".into(),
+            error:    error.to_string(),
+            causes:   error.causes(),
+        });
+        Err(error)
+    }
+
+    fn stop_error(&self, error: crate::Error) -> crate::Result<()> {
+        self.emit(SandboxEvent::StopFailed {
+            provider: "daytona".into(),
+            error:    error.to_string(),
+            causes:   error.causes(),
+        });
+        Err(error)
+    }
+
+    async fn start_with_deadline(&self, deadline: time::Instant) -> crate::Result<()> {
+        self.emit(SandboxEvent::StartStarted {
+            provider: "daytona".into(),
+        });
+        let start = Instant::now();
+        let result = async {
+            let sandbox = self.sandbox()?;
+            self.run_lifecycle_action(&sandbox.name, DaytonaLifecycleAction::Start, deadline)
+                .await?;
+            Self::probe_bash(sandbox).await
+        }
+        .await;
+        if let Err(error) = result {
+            return self.start_error(error);
+        }
+        self.emit(SandboxEvent::StartCompleted {
+            provider:    "daytona".into(),
+            duration_ms: elapsed_ms(start),
+        });
+        Ok(())
+    }
+
+    async fn stop_with_deadline(&self, deadline: time::Instant) -> crate::Result<()> {
+        self.emit(SandboxEvent::StopStarted {
+            provider: "daytona".into(),
+        });
+        let start = Instant::now();
+        let result = async {
+            let sandbox = self.sandbox()?;
+            self.run_lifecycle_action(&sandbox.name, DaytonaLifecycleAction::Stop, deadline)
+                .await
+        }
+        .await;
+        if let Err(error) = result {
+            return self.stop_error(error);
+        }
+        self.emit(SandboxEvent::StopCompleted {
+            provider:    "daytona".into(),
+            duration_ms: elapsed_ms(start),
+        });
+        Ok(())
+    }
+}
+
+fn is_state_change_in_progress(err: &DaytonaError) -> bool {
+    err.status_code() == Some(400)
+        && err
+            .message()
+            .to_ascii_lowercase()
+            .contains("state change in progress")
+}
+
+fn is_transitional_state(state: Option<SandboxState>) -> bool {
+    matches!(
+        state,
+        Some(
+            SandboxState::Creating
+                | SandboxState::Restoring
+                | SandboxState::Destroying
+                | SandboxState::Starting
+                | SandboxState::Stopping
+                | SandboxState::PendingBuild
+                | SandboxState::BuildingSnapshot
+                | SandboxState::PullingSnapshot
+                | SandboxState::Archiving
+                | SandboxState::Resizing
+        )
+    )
 }
 
 /// Detect the git remote URL and current branch from a local repository.
@@ -1072,10 +1320,11 @@ impl Sandbox for DaytonaSandbox {
                 // against the clone token instead of believing nothing was
                 // ever embedded.
                 let resolved_token = match self.push_credentials.source() {
-                    Some(source) => Some(source.mint_for_clone().await.map_err(|e| {
-                        let err = crate::Error::message(format!(
-                            "Failed to get GitHub App credentials for clone: {e}"
-                        ));
+                    Some(source) => Some(source.mint_for_clone().await.map_err(|source| {
+                        let err = crate::Error::context_anyhow(
+                            "Failed to get GitHub App credentials for clone",
+                            source,
+                        );
                         self.emit(SandboxEvent::GitCloneFailed {
                             url:    origin_url.clone(),
                             error:  err.to_string(),
@@ -1297,7 +1546,7 @@ impl Sandbox for DaytonaSandbox {
                                 }
                                 Err(e) => {
                                     tracing::warn!(
-                                        origin = %origin_url,
+                                        origin = %fabro_redact::redacted_url_for_log(&origin_url),
                                         error = %e,
                                         "Failed to build authenticated origin URL — \
                                          subsequent git push from this sandbox will fail"
@@ -1306,7 +1555,7 @@ impl Sandbox for DaytonaSandbox {
                             }
                         }
                     }
-                    Err(e) if self.github_app.is_none() => {
+                    Err(e) if self.push_credentials.source().is_none() => {
                         let err = crate::Error::context(
                             "Git clone failed. If this is a private repository, \
                              configure a GitHub App with `fabro install` and install it \
@@ -1356,76 +1605,47 @@ impl Sandbox for DaytonaSandbox {
     }
 
     async fn start(&self) -> crate::Result<()> {
-        self.emit(SandboxEvent::StartStarted {
-            provider: "daytona".into(),
-        });
-        let start = Instant::now();
-        let sandbox = self.sandbox()?;
-        if let Err(e) = self.client.start(&sandbox.name).await {
-            let err = crate::Error::context("Failed to start Daytona sandbox", e);
-            self.emit(SandboxEvent::StartFailed {
-                provider: "daytona".into(),
-                error:    err.to_string(),
-                causes:   err.causes(),
-            });
-            return Err(err);
-        }
-        if let Err(err) = Self::probe_bash(sandbox).await {
-            self.emit(SandboxEvent::StartFailed {
-                provider: "daytona".into(),
-                error:    err.to_string(),
-                causes:   err.causes(),
-            });
-            return Err(err);
-        }
-        let duration_ms = elapsed_ms(start);
-        self.emit(SandboxEvent::StartCompleted {
-            provider: "daytona".into(),
-            duration_ms,
-        });
-        Ok(())
+        self.start_with_deadline(time::Instant::now() + DAYTONA_STATE_CHANGE_TIMEOUT)
+            .await
     }
 
     async fn activate(&self) -> crate::Result<()> {
         let sandbox = self.sandbox()?;
-        let current = self.client.get(&sandbox.name).await.map_err(|e| {
-            crate::Error::context("Failed to inspect Daytona sandbox before activation", e)
-        })?;
-        if current.state == Some(SandboxState::Started) {
+        let deadline = time::Instant::now() + DAYTONA_STATE_CHANGE_TIMEOUT;
+        let current = time::timeout_at(deadline, self.client.get(&sandbox.name))
+            .await
+            .map_err(|_| {
+                crate::Error::message("Timed out inspecting Daytona sandbox before activation")
+            })?
+            .map_err(|e| {
+                crate::Error::context("Failed to inspect Daytona sandbox before activation", e)
+            })?;
+        let state = if is_transitional_state(current.state) {
+            time::timeout_at(deadline, self.wait_for_stable_state(&sandbox.name))
+                .await
+                .map_err(|_| {
+                    crate::Error::message(
+                        "Timed out waiting for Daytona sandbox state change before activation",
+                    )
+                })?
+                .map_err(|e| {
+                    crate::Error::context(
+                        "Failed to wait for Daytona sandbox state change before activation",
+                        e,
+                    )
+                })?
+        } else {
+            current.state
+        };
+        if state == Some(SandboxState::Started) {
             return Ok(());
         }
-        if current.state == Some(SandboxState::Starting) {
-            return current
-                .wait_for_start(Some(DAYTONA_START_TIMEOUT))
-                .await
-                .map_err(|e| {
-                    crate::Error::context("Failed to wait for Daytona sandbox activation", e)
-                });
-        }
-        self.start().await
+        self.start_with_deadline(deadline).await
     }
 
     async fn stop(&self) -> crate::Result<()> {
-        self.emit(SandboxEvent::StopStarted {
-            provider: "daytona".into(),
-        });
-        let start = Instant::now();
-        let sandbox = self.sandbox()?;
-        if let Err(e) = self.client.stop(&sandbox.name).await {
-            let err = crate::Error::context("Failed to stop Daytona sandbox", e);
-            self.emit(SandboxEvent::StopFailed {
-                provider: "daytona".into(),
-                error:    err.to_string(),
-                causes:   err.causes(),
-            });
-            return Err(err);
-        }
-        let duration_ms = elapsed_ms(start);
-        self.emit(SandboxEvent::StopCompleted {
-            provider: "daytona".into(),
-            duration_ms,
-        });
-        Ok(())
+        self.stop_with_deadline(time::Instant::now() + DAYTONA_STATE_CHANGE_TIMEOUT)
+            .await
     }
 
     async fn delete(&self) -> crate::Result<()> {
@@ -1548,6 +1768,7 @@ impl Sandbox for DaytonaSandbox {
         Ok(Some((preview.url, headers)))
     }
 
+    #[tracing::instrument(name = "git_op", skip_all, fields(op = "refresh-credentials"))]
     async fn refresh_push_credentials(&self) -> crate::Result<RefreshOutcome> {
         if !self.repo_cloned() {
             return Ok(RefreshOutcome::none());
@@ -1611,17 +1832,12 @@ impl Sandbox for DaytonaSandbox {
             }
         }
 
-        let fs_svc = sandbox
-            .fs()
-            .await
-            .map_err(|e| crate::Error::context("Failed to get fs service", e))?;
+        self.upload_file_content(&resolved, content).await
+    }
 
-        fs_svc
-            .upload_file_bytes(&resolved, content.as_bytes())
-            .await
-            .map_err(|e| crate::Error::context(format!("Failed to write file {resolved}"), e))?;
-
-        Ok(())
+    async fn write_existing_file(&self, path: &str, content: &str) -> crate::Result<()> {
+        let resolved = self.resolve_path(path);
+        self.upload_file_content(&resolved, content).await
     }
 
     async fn delete_file(&self, path: &str) -> crate::Result<()> {
@@ -2751,7 +2967,6 @@ mod tests {
             config,
             client,
             api_key: Some(api_key.to_string()),
-            github_app: None,
             push_credentials: PushCredentialState::new(None),
             sandbox: OnceCell::new(),
             snapshot_name: OnceCell::new(),
@@ -2947,6 +3162,10 @@ mod tests {
         assert_eq!(params.ephemeral, Some(false));
         assert_eq!(params.auto_delete_interval, Some(-1));
         assert_eq!(
+            params.auto_stop_interval,
+            Some(DEFAULT_AUTO_STOP_INTERVAL_MINUTES)
+        );
+        assert_eq!(
             params.env_vars,
             Some(HashMap::from([(BASH_ENV_VAR.to_string(), String::new())]))
         );
@@ -2957,6 +3176,27 @@ mod tests {
                 "true".to_string(),
             )]))
         );
+    }
+
+    #[tokio::test]
+    async fn base_params_passes_explicit_auto_stop_through() {
+        for interval in [0, 45] {
+            let sandbox = DaytonaSandbox::new(
+                DaytonaConfig {
+                    auto_stop_interval: Some(interval),
+                    ..DaytonaConfig::default()
+                },
+                None,
+                None,
+                None,
+                None,
+                Some("dtn_test".to_string()),
+            )
+            .await
+            .expect("sandbox config should be valid");
+
+            assert_eq!(sandbox.base_params().auto_stop_interval, Some(interval));
+        }
     }
 
     #[tokio::test]
@@ -3058,6 +3298,201 @@ mod tests {
 
         assert_eq!(get_sandbox.calls_async().await, get_calls_before + 2);
         start_sandbox.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn activate_waits_out_a_stop_in_progress() {
+        let server = MockServer::start_async().await;
+        let response_count = Arc::new(AtomicU32::new(0));
+        let get_sandbox = server
+            .mock_async({
+                let response_count = Arc::clone(&response_count);
+                move |when, then| {
+                    when.method(GET)
+                        .path("/sandbox/test-sandbox")
+                        .header("authorization", "Bearer dtn_test");
+                    then.respond_with(move |_| {
+                        let state = if response_count.fetch_add(1, Ordering::Relaxed) == 1 {
+                            SandboxState::Stopping
+                        } else {
+                            SandboxState::Started
+                        };
+                        HttpMockResponse::builder()
+                            .status(200)
+                            .header("content-type", "application/json")
+                            .body(sandbox_body("test-sandbox", state).to_string())
+                            .build()
+                    });
+                }
+            })
+            .await;
+        let start_sandbox = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/sandbox/test-sandbox/start")
+                    .header("authorization", "Bearer dtn_test");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(sandbox_body("test-sandbox", SandboxState::Started));
+            })
+            .await;
+        let sandbox = mock_daytona_sandbox(&server, "dtn_test", DaytonaConfig::default()).await;
+        let sdk_sandbox = sandbox
+            .client
+            .get("test-sandbox")
+            .await
+            .expect("test sandbox should load");
+        sandbox
+            .sandbox
+            .set(sdk_sandbox)
+            .expect("test sandbox should initialize once");
+
+        let get_calls_before = get_sandbox.calls_async().await;
+        sandbox
+            .activate()
+            .await
+            .expect("an in-progress stop should be waited out");
+
+        assert_eq!(get_sandbox.calls_async().await, get_calls_before + 2);
+        start_sandbox.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn stop_succeeds_when_a_pending_auto_stop_finishes_first() {
+        let server = MockServer::start_async().await;
+        let response_count = Arc::new(AtomicU32::new(0));
+        let get_sandbox = server
+            .mock_async({
+                let response_count = Arc::clone(&response_count);
+                move |when, then| {
+                    when.method(GET)
+                        .path("/sandbox/test-sandbox")
+                        .header("authorization", "Bearer dtn_test");
+                    then.respond_with(move |_| {
+                        let state = if response_count.fetch_add(1, Ordering::Relaxed) == 0 {
+                            SandboxState::Started
+                        } else {
+                            SandboxState::Stopped
+                        };
+                        HttpMockResponse::builder()
+                            .status(200)
+                            .header("content-type", "application/json")
+                            .body(sandbox_body("test-sandbox", state).to_string())
+                            .build()
+                    });
+                }
+            })
+            .await;
+        let stop_sandbox = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/sandbox/test-sandbox/stop")
+                    .header("authorization", "Bearer dtn_test");
+                then.status(400)
+                    .header("content-type", "application/json")
+                    .json_body(serde_json::json!({
+                        "message": "Sandbox state change in progress",
+                        "statusCode": 400
+                    }));
+            })
+            .await;
+        let sandbox = mock_daytona_sandbox(&server, "dtn_test", DaytonaConfig::default()).await;
+        let sdk_sandbox = sandbox
+            .client
+            .get("test-sandbox")
+            .await
+            .expect("test sandbox should load");
+        sandbox
+            .sandbox
+            .set(sdk_sandbox)
+            .expect("test sandbox should initialize once");
+
+        let get_calls_before = get_sandbox.calls_async().await;
+        sandbox
+            .stop()
+            .await
+            .expect("a stop already in flight should count as stopped");
+
+        stop_sandbox.assert_calls_async(1).await;
+        assert_eq!(get_sandbox.calls_async().await, get_calls_before + 1);
+    }
+
+    #[tokio::test]
+    async fn start_surfaces_state_change_rejection_after_the_deadline() {
+        let server = MockServer::start_async().await;
+        let _get_sandbox = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/sandbox/test-sandbox")
+                    .header("authorization", "Bearer dtn_test");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(sandbox_body("test-sandbox", SandboxState::Stopping));
+            })
+            .await;
+        let start_sandbox = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/sandbox/test-sandbox/start")
+                    .header("authorization", "Bearer dtn_test");
+                then.status(400)
+                    .header("content-type", "application/json")
+                    .json_body(serde_json::json!({
+                        "message": "Sandbox state change in progress",
+                        "statusCode": 400
+                    }));
+            })
+            .await;
+        let sandbox = mock_daytona_sandbox(&server, "dtn_test", DaytonaConfig::default()).await;
+        let sdk_sandbox = sandbox
+            .client
+            .get("test-sandbox")
+            .await
+            .expect("test sandbox should load");
+        sandbox
+            .sandbox
+            .set(sdk_sandbox)
+            .expect("test sandbox should initialize once");
+
+        let err = sandbox
+            .start_with_deadline(time::Instant::now() + Duration::from_millis(1500))
+            .await
+            .expect_err("a state change that outlives the deadline should fail");
+
+        assert_eq!(
+            start_sandbox.calls_async().await,
+            1,
+            "start should not be retried while the current transition is in flight"
+        );
+        assert!(
+            err.causes().iter().any(|cause| cause
+                .to_ascii_lowercase()
+                .contains("state change in progress")),
+            "error should carry the Daytona rejection: {err}"
+        );
+    }
+
+    #[test]
+    fn state_change_in_progress_matcher_ignores_case_and_context() {
+        assert!(is_state_change_in_progress(&DaytonaError::api(
+            400,
+            "Sandbox state change in progress"
+        )));
+        assert!(is_state_change_in_progress(&DaytonaError::api(
+            400,
+            "State Change In Progress"
+        )));
+        assert!(!is_state_change_in_progress(&DaytonaError::api(
+            400,
+            "Sandbox already started"
+        )));
+        assert!(!is_state_change_in_progress(&DaytonaError::api(
+            500,
+            "Sandbox state change in progress"
+        )));
+        assert!(!is_state_change_in_progress(&DaytonaError::general(
+            "Sandbox state change in progress"
+        )));
     }
 
     #[tokio::test]
@@ -3364,6 +3799,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn daytona_credential_probe_reports_configured_timeout() {
+        let err = daytona_credential_probe_with_timeout(
+            std::future::pending::<anyhow::Result<DaytonaKeyCheck>>(),
+            Duration::from_millis(1),
+        )
+        .await
+        .expect_err("probe should time out");
+        let timeout = err
+            .downcast_ref::<DaytonaCredentialProbeTimeout>()
+            .expect("timeout should preserve its type");
+
+        assert_eq!(timeout.timeout(), Duration::from_millis(1));
+        assert_eq!(
+            err.to_string(),
+            "Daytona credential probe timed out after 1ms"
+        );
+    }
+
+    #[tokio::test]
     async fn daytona_stdin_file_uploads_exact_bytes_and_is_deleted() {
         let server = MockServer::start_async().await;
         let server_url = server.base_url();
@@ -3435,6 +3889,62 @@ mod tests {
         toolbox_response.assert_async().await;
         upload.assert_async().await;
         delete.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn write_existing_file_skips_parent_directory_creation() {
+        let server = MockServer::start_async().await;
+        let server_url = server.base_url();
+        let sandbox_response = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/sandbox/sandbox-edit");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(sandbox_body("sandbox-edit", SandboxState::Started));
+            })
+            .await;
+        let toolbox_response = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/sandbox/sandbox-edit/toolbox-proxy-url");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(serde_json::json!({"url": server_url}));
+            })
+            .await;
+        let folder = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/sandbox-edit/files/folder");
+                then.status(200);
+            })
+            .await;
+        let upload = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/sandbox-edit/files/upload")
+                    .query_param("path", "/home/daytona/workspace/src/lib.rs")
+                    .body_includes("updated contents");
+                then.status(200);
+            })
+            .await;
+
+        let sandbox = mock_daytona_sandbox(&server, "dtn_test", DaytonaConfig::default()).await;
+        let sdk_sandbox = sandbox
+            .client
+            .get("sandbox-edit")
+            .await
+            .expect("get mock sandbox");
+        assert!(sandbox.sandbox.set(sdk_sandbox).is_ok());
+
+        sandbox
+            .write_existing_file("src/lib.rs", "updated contents")
+            .await
+            .expect("write existing file");
+
+        sandbox_response.assert_async().await;
+        toolbox_response.assert_async().await;
+        upload.assert_async().await;
+        folder.assert_calls_async(0).await;
     }
 
     /// Recover the inner command a wrapper carries, proving it survives the

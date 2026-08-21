@@ -243,6 +243,7 @@ impl RunMetadataWriterHandle {
         .unwrap()
     }
 
+    #[tracing::instrument(name = "git_op", skip_all, fields(op = "metadata-push"))]
     pub(crate) async fn write_snapshot(
         &self,
         dump: &RunDump,
@@ -298,19 +299,16 @@ pub(crate) fn build_metadata_writer(
     if !normalized_url.starts_with("https://") {
         return Ok(None);
     }
-    if fabro_github::parse_github_owner_repo(&normalized_url).is_err() {
+    let Ok((owner, repo)) = fabro_github::parse_github_owner_repo(&normalized_url) else {
         return Ok(None);
-    }
+    };
 
-    // Share the sandbox's token source so the metadata writer reuses the
-    // same cached token as every other consumer for this origin. Resumed
-    // runs reconnect the sandbox without one; they build their own cached
-    // source from the run's credentials.
     let source = match token_source {
         Some(source) => source,
-        None => InstallationTokenSource::for_origin(
+        None => InstallationTokenSource::for_repository(
             creds,
-            &normalized_url,
+            owner,
+            repo,
             serde_json::json!({ "contents": "write" }),
         )
         .map_err(RunMetadataError::TokenMint)?,
@@ -699,6 +697,7 @@ mod tests {
                 provenance:       test_support::test_run_provenance(),
                 manifest_blob:    None,
                 definition_blob:  None,
+                spec_blob:        None,
                 fork_source_ref:  None,
             },
             chrono::Utc::now(),

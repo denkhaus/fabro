@@ -1012,6 +1012,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
             }
           },
           "source_directory": "[TEMP_DIR]",
+          "spec_blob": "[BLOB_HASH]",
           "title": "Wait for approval",
           "web_url": "http://localhost:3000/runs/[ULID]",
           "workflow_slug": "human-gate",

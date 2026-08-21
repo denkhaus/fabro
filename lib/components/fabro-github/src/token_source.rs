@@ -1,12 +1,10 @@
 //! Cached GitHub installation-token source.
 //!
-//! One [`InstallationTokenSource`] serves every GitHub-token consumer for an
-//! origin repository — the clone-based sandbox providers and the run-metadata
-//! writer share a single source, so "reuse a token until near expiry" is the
-//! default behavior instead of a per-call-site special case. Reusing mature
-//! tokens keeps consumers out of GitHub's token-replication lag window, where
-//! a token minted milliseconds earlier is rejected with 404 "Repository not
-//! found" or an authentication failure.
+//! One [`InstallationTokenSource`] can serve GitHub-token consumers that share
+//! a repository and permission scope. Reusing mature tokens keeps consumers
+//! out of GitHub's token-replication lag window, where a token minted
+//! milliseconds earlier is rejected with 404 "Repository not found" or an
+//! authentication failure.
 //!
 //! The source also reports *provenance*: when it minted the token it returned,
 //! and which mint generation it belongs to. Retry classification, logging, and
@@ -134,14 +132,17 @@ impl fmt::Debug for SecretString {
 /// boundaries.
 #[derive(Debug, Clone)]
 pub struct ResolvedToken {
-    pub token:    SecretString,
-    pub snapshot: TokenSnapshot,
+    pub token:          SecretString,
+    pub snapshot:       TokenSnapshot,
+    /// The source tried to refresh an expiring token, but returned the still-
+    /// valid cached token after the mint failed.
+    pub refresh_failed: bool,
 }
 
 /// Mints installation tokens for [`InstallationTokenSource`]. Abstracted so
 /// tests can script mint results without HTTP.
 #[async_trait::async_trait]
-pub trait InstallationTokenMinter: Send + Sync {
+pub(crate) trait InstallationTokenMinter: Send + Sync {
     async fn mint(&self) -> anyhow::Result<InstallationToken>;
 }
 
@@ -181,11 +182,12 @@ struct CachedToken {
 impl CachedToken {
     fn resolved(&self, provenance: TokenProvenance) -> ResolvedToken {
         ResolvedToken {
-            token:    SecretString::new(self.token.token.clone()),
-            snapshot: TokenSnapshot {
+            token:          SecretString::new(self.token.token.clone()),
+            snapshot:       TokenSnapshot {
                 generation: self.generation,
                 provenance,
             },
+            refresh_failed: false,
         }
     }
 }
@@ -231,6 +233,16 @@ impl InstallationTokenSource {
         let normalized = crate::normalize_repo_origin_url(origin_url);
         let (owner, repo) = crate::parse_github_owner_repo(&normalized)
             .context("parsing GitHub origin for token source")?;
+        Self::for_repository(creds, owner, repo, permissions)
+    }
+
+    /// Build a source for an already parsed GitHub repository.
+    pub fn for_repository(
+        creds: &GitHubCredentials,
+        owner: String,
+        repo: String,
+        permissions: serde_json::Value,
+    ) -> anyhow::Result<Arc<Self>> {
         let repo_display = format!("{owner}/{repo}");
         let state = match creds {
             GitHubCredentials::Pat(token) => SourceState::Pat(SecretString::new(token.clone())),
@@ -258,9 +270,28 @@ impl InstallationTokenSource {
         }))
     }
 
-    /// Build a minting source over a custom minter. For tests.
+    /// Build a source for a personal access token.
     #[must_use]
-    pub fn with_minter(repo: String, minter: Box<dyn InstallationTokenMinter>) -> Arc<Self> {
+    pub fn pat(token: String) -> Arc<Self> {
+        Arc::new(Self {
+            repo:  String::new(),
+            state: SourceState::Pat(SecretString::new(token)),
+        })
+    }
+
+    /// Build a source for a pre-minted installation token.
+    #[must_use]
+    pub fn installation(token: InstallationToken) -> Arc<Self> {
+        Arc::new(Self {
+            repo:  String::new(),
+            state: SourceState::Installation(token),
+        })
+    }
+
+    /// Build a minting source over a custom minter.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub(crate) fn with_minter(repo: String, minter: Box<dyn InstallationTokenMinter>) -> Arc<Self> {
         Arc::new(Self {
             repo,
             state: SourceState::App {
@@ -299,7 +330,29 @@ impl InstallationTokenSource {
                         return Ok(resolved);
                     }
                 }
-                self.mint_locked(minter.as_ref(), &mut cache).await
+                match self.mint_locked(minter.as_ref(), &mut cache).await {
+                    Ok(resolved) => Ok(resolved),
+                    Err(err) => {
+                        if let Some(cached) = cache.as_ref() {
+                            if cached.token.valid_token().is_ok() {
+                                tracing::warn!(
+                                    error = %format!("{err:#}"),
+                                    repo = %self.repo,
+                                    generation = cached.generation,
+                                    expires_at = %cached.token.expires_at,
+                                    "GitHub installation token refresh failed; using cached token"
+                                );
+                                let mut resolved = cached.resolved(TokenProvenance::Reused {
+                                    minted_at:  cached.minted_at,
+                                    expires_at: cached.token.expires_at,
+                                });
+                                resolved.refresh_failed = true;
+                                return Ok(resolved);
+                            }
+                        }
+                        Err(err)
+                    }
+                }
             }
         }
     }
@@ -329,11 +382,12 @@ impl InstallationTokenSource {
             SourceState::App { .. } => unreachable!("resolve_static called for App credentials"),
         };
         Ok(ResolvedToken {
-            token:    secret,
-            snapshot: TokenSnapshot {
+            token:          secret,
+            snapshot:       TokenSnapshot {
                 generation: 0,
                 provenance: TokenProvenance::Static,
             },
+            refresh_failed: false,
         })
     }
 
@@ -518,6 +572,27 @@ mod tests {
             TokenProvenance::Minted { .. }
         ));
         assert_eq!(second.token.expose(), "ghs_gen2");
+    }
+
+    #[tokio::test]
+    async fn resolve_uses_a_valid_cached_token_when_refresh_fails() {
+        let (source, minter) = mintable(vec![
+            MintAction::Token("ghs_gen1", Utc::now() + chrono::Duration::minutes(5)),
+            MintAction::Error("mint failed"),
+        ]);
+
+        let first = source.resolve().await.unwrap();
+        let second = source.resolve().await.unwrap();
+
+        assert_eq!(minter.calls(), 2);
+        assert_eq!(first.snapshot.generation, 1);
+        assert_eq!(second.snapshot.generation, 1);
+        assert!(second.refresh_failed);
+        assert!(matches!(
+            second.snapshot.provenance,
+            TokenProvenance::Reused { .. }
+        ));
+        assert_eq!(second.token.expose(), "ghs_gen1");
     }
 
     #[tokio::test]

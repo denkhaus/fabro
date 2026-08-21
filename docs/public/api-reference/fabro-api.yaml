@@ -596,6 +596,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DiagnosticsReport"
+        "504":
+          description: Diagnostics operation timed out
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/openapi.json:
     get:
@@ -11440,6 +11449,8 @@ components:
         manifest_blob:
           type: ["string", "null"]
         definition_blob:
+          type: ["string", "null"]
+        spec_blob:
           type: ["string", "null"]
         git:
           oneOf:

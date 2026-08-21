@@ -134,7 +134,6 @@ impl Default for DockerSandboxOptions {
 pub struct DockerSandbox {
     docker:            Docker,
     config:            DockerSandboxOptions,
-    github_app:        Option<GitHubCredentials>,
     push_credentials:  PushCredentialState,
     run_id:            Option<RunId>,
     clone_origin_url:  Option<String>,
@@ -165,7 +164,7 @@ enum ContainerStartAction {
 impl DockerSandbox {
     pub fn new(
         config: DockerSandboxOptions,
-        github_app: Option<GitHubCredentials>,
+        github_app: Option<&GitHubCredentials>,
         run_id: Option<RunId>,
         clone_origin_url: Option<String>,
         clone_branch: Option<String>,
@@ -184,19 +183,18 @@ impl DockerSandbox {
     fn with_docker_client(
         docker: Docker,
         config: DockerSandboxOptions,
-        github_app: Option<GitHubCredentials>,
+        github_app: Option<&GitHubCredentials>,
         run_id: Option<RunId>,
         clone_origin_url: Option<String>,
         clone_branch: Option<String>,
     ) -> crate::Result<Self> {
         let push_credentials = PushCredentialState::new(push_credentials::build_token_source(
-            github_app.as_ref(),
+            github_app,
             clone_origin_url.as_deref(),
         )?);
         Ok(Self {
             docker,
             config,
-            github_app,
             push_credentials,
             run_id,
             clone_origin_url,
@@ -725,7 +723,7 @@ impl DockerSandbox {
     ) -> crate::Error {
         let error = result
             .into_exec_error_with_redactor("git clone", |output| redact_auth_url(output, auth_url));
-        let message = if self.github_app.is_none() {
+        let message = if self.push_credentials.source().is_none() {
             "Git clone failed. If this is a private repository, configure a GitHub App with \
              `fabro install` and install it for your organization."
         } else {
@@ -754,10 +752,8 @@ impl DockerSandbox {
         // the shared source, so the first refresh compares against the clone
         // token instead of believing nothing was ever embedded.
         let resolved_token = match self.push_credentials.source() {
-            Some(source) => Some(source.mint_for_clone().await.map_err(|e| {
-                crate::Error::message(format!(
-                    "Failed to get GitHub App credentials for clone: {e}"
-                ))
+            Some(source) => Some(source.mint_for_clone().await.map_err(|err| {
+                crate::Error::context_anyhow("Failed to get GitHub App credentials for clone", err)
             })?),
             None => None,
         };
@@ -770,10 +766,11 @@ impl DockerSandbox {
         let auth_url = match &resolved_token {
             Some(token) => Some(
                 fabro_github::embed_token_in_url(&origin_url, token.token.expose()).map_err(
-                    |e| {
-                        crate::Error::message(format!(
-                            "Failed to get GitHub App credentials for clone: {e}"
-                        ))
+                    |err| {
+                        crate::Error::context_anyhow(
+                            "Failed to build authenticated GitHub clone URL",
+                            err,
+                        )
                     },
                 )?,
             ),
@@ -2207,6 +2204,7 @@ impl Sandbox for DockerSandbox {
         self.origin_url.get().map(String::as_str)
     }
 
+    #[tracing::instrument(name = "git_op", skip_all, fields(op = "refresh-credentials"))]
     async fn refresh_push_credentials(&self) -> crate::Result<RefreshOutcome> {
         if !self.repo_cloned() {
             return Ok(RefreshOutcome::none());

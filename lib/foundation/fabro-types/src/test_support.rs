@@ -49,6 +49,7 @@ pub fn test_run_spec() -> RunSpec {
         provenance:       test_run_provenance(),
         manifest_blob:    None,
         definition_blob:  None,
+        spec_blob:        None,
         git:              None,
         fork_source_ref:  None,
     }

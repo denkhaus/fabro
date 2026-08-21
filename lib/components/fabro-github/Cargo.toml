@@ -9,6 +9,9 @@ description = "GitHub App authentication and API helpers for Fabro"
 [lib]
 doctest = false
 
+[features]
+test-support = []
+
 [lints]
 workspace = true
 

@@ -41,6 +41,8 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         manifest_blob:    Option<BlobHash>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        spec_blob:        Option<BlobHash>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         git:              Option<GitContext>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         fork_source_ref:  Option<ForkSourceRef>,

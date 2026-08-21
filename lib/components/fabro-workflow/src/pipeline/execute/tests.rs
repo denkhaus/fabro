@@ -173,6 +173,7 @@ fn persisted_workflow(graph: Graph, source: String, run_dir: &Path, run_id: RunI
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
             definition_blob: None,
+            spec_blob: None,
             fork_source_ref: None,
         },
     )
@@ -218,6 +219,7 @@ async fn seed_created_and_starting(
         automation:       None,
         provenance:       test_support::test_run_provenance(),
         manifest_blob:    None,
+        spec_blob:        None,
         git:              run_options.pre_run_git.clone(),
         fork_source_ref:  run_options.fork_source_ref.clone(),
         retried_from:     None,

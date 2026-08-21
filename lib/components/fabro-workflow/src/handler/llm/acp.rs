@@ -11,8 +11,7 @@ use fabro_acp::{
     render_stop_reason,
 };
 use fabro_agent::{
-    AgentEvent, RefreshOutcome, RemoteCredentialAction, Sandbox, StaticEnvProvider, SteeringItem,
-    ToolEnvProvider,
+    AgentEvent, RefreshOutcome, Sandbox, StaticEnvProvider, SteeringItem, ToolEnvProvider,
 };
 use fabro_github::token_source::REFRESH_MARGIN;
 use fabro_graphviz::graph::Node;
@@ -115,12 +114,8 @@ fn push_cred_refresh_interval() -> Option<Duration> {
 /// tick. Schedule from the token's own `expires_at` instead: wake when the
 /// cache margin opens, so that tick re-mints. `None` disables the loop —
 /// static credentials cannot be re-minted by waiting.
-fn next_refresh_delay(outcome: &RefreshOutcome, fallback: Duration) -> Option<Duration> {
-    let Some(token) = outcome.token else {
-        // No managed credentials to watch; keep the configured cadence in
-        // case a later tick sees them (e.g. after a reconnect).
-        return Some(fallback);
-    };
+fn next_refresh_delay(outcome: &RefreshOutcome) -> Option<Duration> {
+    let token = outcome.token()?;
     let expires_at = token.expires_at()?;
     let margin = chrono::Duration::from_std(REFRESH_MARGIN).unwrap_or(chrono::Duration::MAX);
     let until_margin = ((expires_at - margin) - chrono::Utc::now())
@@ -140,9 +135,10 @@ async fn refresh_ahead_loop(
     sandbox: Arc<dyn Sandbox>,
     cancel: CancellationToken,
     interval: Duration,
+    initial_delay: Duration,
 ) {
     let retry_delay = interval.min(Duration::from_mins(1));
-    let mut delay = interval;
+    let mut delay = initial_delay;
     loop {
         tokio::select! {
             () = cancel.cancelled() => break,
@@ -151,26 +147,26 @@ async fn refresh_ahead_loop(
                     .await
                 {
                     Ok(Ok(outcome)) => {
-                        match outcome.action {
-                            RemoteCredentialAction::Embedded => {
+                        match outcome {
+                            RefreshOutcome::Embedded(token) => {
                                 tracing::info!(
-                                    generation = outcome.token.map(|token| token.generation),
+                                    generation = token.generation,
                                     "refresh-ahead re-embedded push credentials mid-turn"
                                 );
                             }
-                            RemoteCredentialAction::Unchanged => {
+                            RefreshOutcome::Unchanged(token) => {
                                 tracing::debug!(
-                                    generation = outcome.token.map(|token| token.generation),
+                                    generation = token.generation,
                                     "refresh-ahead tick: embedded push credentials still fresh"
                                 );
                             }
-                            RemoteCredentialAction::None => {
+                            RefreshOutcome::None => {
                                 tracing::debug!(
                                     "refresh-ahead tick: no managed push credentials to refresh"
                                 );
                             }
                         }
-                        if let Some(next) = next_refresh_delay(&outcome, interval) {
+                        if let Some(next) = next_refresh_delay(&outcome) {
                             delay = next;
                         } else {
                             tracing::debug!(
@@ -312,77 +308,57 @@ impl AgentAcpBackend {
             }) as Arc<dyn Fn(String, Option<Principal>) + Send + Sync>
         });
 
-        // Keep the sandbox's push credentials fresh for the duration of this ACP
-        // turn so the agent's own `git push` uses a live token instead of the one
-        // baked into the clone at run start.
-        //
-        // Part 2 (turn-entry): resolve through the cached token source and
-        // rewrite the origin URL before the ACP process spawns, covering a push
-        // early in the turn. A fresh cached token makes this a no-op exec-wise.
-        // Non-fatal and timeout-bounded — a stalled mint must neither fail nor
-        // hang node entry. Part 3 (loop): a background task keeps the embedded
-        // token fresh so a single turn that outlives the ~60-min
-        // installation-token TTL still pushes with a fresh token; ticks
-        // reschedule from the embedded token's expiry, so a normal short turn
-        // never ticks (the drop-guard aborts the task at turn end).
-        //
-        // FABRO_PUSH_CRED_REFRESH_AHEAD=0 (or false/off/no/empty, case-
-        // insensitive) disables the WHOLE feature — turn-entry refresh AND loop —
-        // so an operator who manages `origin` themselves can opt out of all
-        // fabro-side origin rewriting. FABRO_PUSH_CRED_REFRESH_INTERVAL_SECONDS
-        // overrides the loop cadence for ticks without token expiry info; 0
-        // disables just the loop.
-        //
-        // Known limitations tracked as follow-ups (not addressed here): (a)
-        // resumed/parked runs reconnect the sandbox with no GitHub App creds, so
-        // refresh no-ops until those creds are threaded through the reconnect
-        // path; (b) the background `git remote set-url` can contend with the
-        // agent's own git on `.git/config.lock` (skipped entirely while the
-        // cached generation is already embedded); (c) parallel ACP branches each
-        // run their own loop; (d) this refresh lives in the ACP handler only,
-        // though the stale-origin problem is stage-type-agnostic (native/command
-        // stages that push are not covered); (e) refresh failures are logged via
-        // tracing but not surfaced as a RunNotice event on the run stream.
+        // Refresh before launch for early pushes. Schedule later refreshes from
+        // token expiry so the loop cannot sleep past the cache margin.
         let refresh_enabled = push_cred_refresh_enabled();
-        if refresh_enabled {
+        let refresh_interval = refresh_enabled.then(push_cred_refresh_interval).flatten();
+        let refresh_schedule = if refresh_enabled {
             match timeout(REFRESH_MINT_TIMEOUT, sandbox.refresh_push_credentials()).await {
-                Ok(Ok(outcome)) => match outcome.action {
-                    RemoteCredentialAction::Embedded => {
-                        tracing::debug!(
-                            generation = outcome.token.map(|token| token.generation),
-                            "refreshed sandbox push credentials at ACP turn entry"
-                        );
+                Ok(Ok(outcome)) => {
+                    match outcome {
+                        RefreshOutcome::Embedded(token) => {
+                            tracing::debug!(
+                                generation = token.generation,
+                                "refreshed sandbox push credentials at ACP turn entry"
+                            );
+                        }
+                        RefreshOutcome::Unchanged(token) => {
+                            tracing::debug!(
+                                generation = token.generation,
+                                "sandbox push credentials already fresh at ACP turn entry"
+                            );
+                        }
+                        RefreshOutcome::None => {}
                     }
-                    RemoteCredentialAction::Unchanged => {
-                        tracing::debug!(
-                            generation = outcome.token.map(|token| token.generation),
-                            "sandbox push credentials already fresh at ACP turn entry"
-                        );
-                    }
-                    RemoteCredentialAction::None => {}
-                },
+                    refresh_interval.zip(next_refresh_delay(&outcome))
+                }
                 Ok(Err(e)) => {
                     tracing::warn!(
                         error = %fabro_sandbox::display_for_log(&e),
                         "node-entry push-credential refresh failed (non-fatal)"
                     );
+                    refresh_interval
+                        .map(|interval| (interval, interval.min(Duration::from_mins(1))))
                 }
                 Err(_elapsed) => {
                     tracing::warn!(
                         timeout_secs = REFRESH_MINT_TIMEOUT.as_secs(),
                         "node-entry push-credential refresh timed out (non-fatal)"
                     );
+                    refresh_interval
+                        .map(|interval| (interval, interval.min(Duration::from_mins(1))))
                 }
             }
-        }
-        let _refresh_ahead_guard: Option<AbortOnDrop> = refresh_enabled
-            .then(push_cred_refresh_interval)
-            .flatten()
-            .map(|interval| {
+        } else {
+            None
+        };
+        let _refresh_ahead_guard: Option<AbortOnDrop> =
+            refresh_schedule.map(|(interval, initial_delay)| {
                 AbortOnDrop(tokio::spawn(refresh_ahead_loop(
                     Arc::clone(sandbox),
                     cancel_token.child_token(),
                     interval,
+                    initial_delay,
                 )))
             });
 
@@ -766,23 +742,22 @@ mod tests {
                 expires_at,
             }
         };
-        RefreshOutcome {
-            action,
-            token: Some(TokenSnapshot {
-                generation,
-                provenance,
-            }),
+        let token = TokenSnapshot {
+            generation,
+            provenance,
+        };
+        match action {
+            RemoteCredentialAction::Embedded => RefreshOutcome::embedded(token),
+            RemoteCredentialAction::Unchanged => RefreshOutcome::unchanged(token),
+            RemoteCredentialAction::None => RefreshOutcome::none(),
         }
     }
 
     fn static_outcome() -> RefreshOutcome {
-        RefreshOutcome {
-            action: RemoteCredentialAction::Unchanged,
-            token:  Some(TokenSnapshot {
-                generation: 0,
-                provenance: TokenProvenance::Static,
-            }),
-        }
+        RefreshOutcome::unchanged(TokenSnapshot {
+            generation: 0,
+            provenance: TokenProvenance::Static,
+        })
     }
 
     #[test]
@@ -794,7 +769,7 @@ mod tests {
             chrono::Duration::minutes(60),
             false,
         );
-        let delay = next_refresh_delay(&outcome, Duration::from_mins(45)).unwrap();
+        let delay = next_refresh_delay(&outcome).unwrap();
         // Expiry minus the 10-minute refresh margin: ~50 minutes out.
         assert!(delay > Duration::from_mins(49), "{delay:?}");
         assert!(delay <= Duration::from_mins(50), "{delay:?}");
@@ -809,26 +784,17 @@ mod tests {
             chrono::Duration::minutes(5),
             true,
         );
-        assert_eq!(
-            next_refresh_delay(&outcome, Duration::from_mins(45)),
-            Some(REFRESH_RESCHEDULE_FLOOR)
-        );
+        assert_eq!(next_refresh_delay(&outcome), Some(REFRESH_RESCHEDULE_FLOOR));
     }
 
     #[test]
     fn next_refresh_delay_disables_the_loop_for_static_credentials() {
-        assert_eq!(
-            next_refresh_delay(&static_outcome(), Duration::from_mins(45)),
-            None
-        );
+        assert_eq!(next_refresh_delay(&static_outcome()), None);
     }
 
     #[test]
-    fn next_refresh_delay_keeps_the_cadence_without_managed_credentials() {
-        assert_eq!(
-            next_refresh_delay(&RefreshOutcome::none(), Duration::from_mins(45)),
-            Some(Duration::from_mins(45))
-        );
+    fn next_refresh_delay_disables_the_loop_without_managed_credentials() {
+        assert_eq!(next_refresh_delay(&RefreshOutcome::none()), None);
     }
 
     /// Sandbox stub whose refresh outcomes are scripted, recording when each
@@ -989,6 +955,7 @@ mod tests {
             Arc::clone(&sandbox) as Arc<dyn Sandbox>,
             cancel.clone(),
             interval,
+            interval,
         ));
 
         while sandbox.ticks().len() < 3 {
@@ -1011,19 +978,41 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn refresh_ahead_stops_by_itself_for_static_credentials() {
-        let sandbox = ScriptedRefreshSandbox::new(vec![static_outcome()]);
+    async fn refresh_ahead_honors_the_expiry_based_initial_delay() {
+        let interval = Duration::from_mins(45);
+        let entry_outcome = minted_outcome(
+            RemoteCredentialAction::Unchanged,
+            1,
+            chrono::Duration::minutes(45),
+            chrono::Duration::minutes(15),
+            true,
+        );
+        let initial_delay = next_refresh_delay(&entry_outcome).unwrap();
+        let sandbox = ScriptedRefreshSandbox::new(vec![minted_outcome(
+            RemoteCredentialAction::Embedded,
+            2,
+            chrono::Duration::zero(),
+            chrono::Duration::minutes(60),
+            false,
+        )]);
         let cancel = CancellationToken::new();
+        let start = tokio::time::Instant::now();
         let loop_task = tokio::spawn(refresh_ahead_loop(
             Arc::clone(&sandbox) as Arc<dyn Sandbox>,
             cancel.clone(),
-            Duration::from_mins(45),
+            interval,
+            initial_delay,
         ));
 
-        // The loop exits after the first tick without being cancelled: static
-        // credentials cannot be re-minted, so there is nothing to keep fresh.
-        loop_task.await.expect("refresh loop should stop by itself");
-        assert_eq!(sandbox.ticks().len(), 1);
+        while sandbox.ticks().is_empty() {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+        cancel.cancel();
+        loop_task.await.expect("refresh loop should exit cleanly");
+
+        let first_tick = sandbox.ticks()[0] - start;
+        assert!(first_tick <= Duration::from_mins(5), "{first_tick:?}");
+        assert!(first_tick > Duration::from_mins(4), "{first_tick:?}");
     }
 
     #[tokio::test]
