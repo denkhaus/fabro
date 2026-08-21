@@ -36,7 +36,10 @@ pub const REFRESH_MARGIN: Duration = Duration::from_mins(10);
 /// credentials (a PAT, or a pre-minted installation token) carry no
 /// `minted_at`, so token age is undefined for them and they are never
 /// treated as freshly minted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum TokenProvenance {
     /// This resolve minted the token.
@@ -55,7 +58,7 @@ pub enum TokenProvenance {
 
 /// Non-secret description of the token a resolve returned. Shared by the
 /// source, refresh outcomes, logs, and events.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TokenSnapshot {
     /// Increments per mint; 0 for `Static`.
     pub generation: u64,

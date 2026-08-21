@@ -432,10 +432,9 @@ pub enum Event {
         success:          bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         exec_output_tail: Option<fabro_types::ExecOutputTail>,
-        /// Per-attempt history of the push operation, already projected to
-        /// the durable shape by the emit site.
+        /// Per-attempt history of the push operation.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        attempts:         Vec<fabro_types::GitPushAttemptProps>,
+        attempts:         Vec<fabro_sandbox::PushAttempt>,
     },
     GitFetch {
         branch:  String,

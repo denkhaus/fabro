@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use fabro_dump::RunDump;
 use fabro_hooks::{HookContext, HookEvent};
-use fabro_sandbox::git_retry;
 use fabro_types::run_event::{MetadataSnapshotFailureKind, MetadataSnapshotPhase};
 use fabro_types::{BilledTokenCounts, DiffSummary, EventBody, RunFailure, RunProjection};
 use fabro_util::error::collect_causes;
@@ -15,7 +14,7 @@ use crate::error::{Error, run_failure_from_error, run_failure_from_outcome_failu
 use crate::event::{Event, RunNoticeCode, RunNoticeLevel};
 use crate::outcome::{Outcome, StageOutcome};
 use crate::records::{Checkpoint, Conclusion, StageSummary};
-use crate::run_metadata::MetadataSnapshot;
+use crate::run_metadata::{MetadataSnapshot, metadata_push_failure_is_transient};
 use crate::run_options::RunOptions;
 use crate::run_status::{FailureReason, RunStatus, SuccessReason};
 use crate::runtime_store::RunStoreHandle;
@@ -380,16 +379,6 @@ fn emit_metadata_snapshot_failed(
         bytes,
         exec_output_tail: None,
     });
-}
-
-/// Whether a metadata push failure leaves the writer eligible for re-probing.
-/// See `lifecycle::git`: only retryable push classifications qualify.
-fn metadata_push_failure_is_transient(
-    detail: &str,
-    token: Option<&fabro_sandbox::TokenSnapshot>,
-) -> bool {
-    let cred = fabro_sandbox::CredentialContext::from_snapshot(token);
-    git_retry::classify_failure(detail, cred).is_some()
 }
 
 fn emit_metadata_warning(

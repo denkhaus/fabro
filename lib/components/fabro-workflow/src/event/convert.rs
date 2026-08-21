@@ -30,7 +30,7 @@ fn stage_status_from_string(status: &str) -> StageOutcome {
 /// events: the token snapshot flattens into the three flat `token_*` fields
 /// (a nested provenance enum never appears in stored events), and the retry
 /// classifier's verdict becomes `classified_reason`.
-pub fn git_push_attempt_props(
+fn git_push_attempt_props(
     attempts: &[fabro_sandbox::PushAttempt],
 ) -> Vec<fabro_types::GitPushAttemptProps> {
     attempts
@@ -39,16 +39,24 @@ pub fn git_push_attempt_props(
             attempt:           attempt.attempt,
             started_at:        attempt.started_at,
             success:           attempt.success,
-            classified_reason: attempt.retry_reason.map(|reason| reason.to_string()),
+            classified_reason: attempt.retry_reason,
             exec_output_tail:  attempt.exec_output_tail.clone(),
             token_generation:  attempt.token.map(|token| token.generation),
-            token_provenance:  attempt.token.map(|token| token.provenance.to_string()),
+            token_provenance:  attempt.token.map(|token| match token.provenance {
+                fabro_sandbox::TokenProvenance::Minted { .. } => {
+                    fabro_types::GitTokenProvenance::Minted
+                }
+                fabro_sandbox::TokenProvenance::Reused { .. } => {
+                    fabro_types::GitTokenProvenance::Reused
+                }
+                fabro_sandbox::TokenProvenance::Static => fabro_types::GitTokenProvenance::Static,
+            }),
             token_age_ms:      attempt
                 .token
                 .and_then(|token| token.age_at(attempt.started_at))
                 .map(|age| u64::try_from(age.as_millis()).unwrap_or(u64::MAX)),
-            credential_action: attempt.credential_action.map(|action| action.to_string()),
-            refresh_error:     attempt.refresh_error.map(|kind| kind.to_string()),
+            credential_action: attempt.credential_action,
+            refresh_error:     attempt.refresh_error,
         })
         .collect()
 }
@@ -555,7 +563,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             branch:           branch.clone(),
             success:          *success,
             exec_output_tail: exec_output_tail.clone(),
-            attempts:         attempts.clone(),
+            attempts:         git_push_attempt_props(attempts),
         }),
         Event::GitFetch { branch, success } => EventBody::GitFetch(fabro_types::GitFetchProps {
             branch:  branch.clone(),
@@ -2212,7 +2220,7 @@ mod tests {
         let started_at = Utc::now();
         let minted_at = started_at - chrono::Duration::milliseconds(180);
         let expires_at = started_at + chrono::Duration::minutes(60);
-        let attempts = git_push_attempt_props(&[
+        let runtime_attempts = vec![
             fabro_sandbox::PushAttempt {
                 attempt: 1,
                 started_at,
@@ -2247,13 +2255,14 @@ mod tests {
                 credential_action: Some(fabro_sandbox::RemoteCredentialAction::Unchanged),
                 refresh_error:     Some(fabro_sandbox::RefreshErrorKind::SetUrl),
             },
-        ]);
+        ];
+        let expected_attempts = git_push_attempt_props(&runtime_attempts);
 
         let stored = to_run_event(&fixtures::RUN_1, &Event::GitPush {
             branch:           "fabro/run/01M0DH033P2XSTHAGVBHG6922F".to_string(),
             success:          false,
             exec_output_tail: Some(exec_tail()),
-            attempts:         attempts.clone(),
+            attempts:         runtime_attempts,
         });
 
         let json = serde_json::to_value(&stored).unwrap();
@@ -2275,7 +2284,7 @@ mod tests {
         match round_tripped.body {
             EventBody::GitPush(props) => {
                 assert!(!props.success);
-                assert_eq!(props.attempts, attempts);
+                assert_eq!(props.attempts, expected_attempts);
             }
             other => panic!("expected GitPush body, got {other:?}"),
         }
@@ -2283,7 +2292,7 @@ mod tests {
 
     #[test]
     fn successful_single_attempt_push_omits_failure_fields() {
-        let attempts = git_push_attempt_props(&[fabro_sandbox::PushAttempt {
+        let attempts = vec![fabro_sandbox::PushAttempt {
             attempt:           1,
             started_at:        Utc::now(),
             success:           true,
@@ -2295,7 +2304,7 @@ mod tests {
             }),
             credential_action: Some(fabro_sandbox::RemoteCredentialAction::Unchanged),
             refresh_error:     None,
-        }]);
+        }];
         let stored = to_run_event(&fixtures::RUN_1, &Event::GitPush {
             branch: "fabro/run/run-1".to_string(),
             success: true,

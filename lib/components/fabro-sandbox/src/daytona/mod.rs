@@ -1085,15 +1085,9 @@ impl Sandbox for DaytonaSandbox {
                     })?),
                     None => None,
                 };
-                // The clone call site maps its mint knowledge onto the
-                // credential context: a token minted for this clone is
-                // FreshApp; a static credential cannot become valid by
-                // waiting.
-                let clone_credential_context = match &resolved_token {
-                    Some(token) if !token.snapshot.is_static() => CredentialContext::FreshApp,
-                    Some(_) => CredentialContext::Static,
-                    None => CredentialContext::None,
-                };
+                let clone_credential_context = CredentialContext::from_snapshot(
+                    resolved_token.as_ref().map(|token| &token.snapshot),
+                );
                 let (username, password) = match &resolved_token {
                     Some(token) => (
                         Some("x-access-token".to_string()),
@@ -1164,7 +1158,7 @@ impl Sandbox for DaytonaSandbox {
                 })?;
 
                 let clone_plan = git_retry::RetryPlan::clone_default(None);
-                let clone_result = git_retry::retry_git(
+                let clone_result = git_retry::retry_clone(
                     SandboxProviderKind::Daytona,
                     "clone",
                     &clone_plan,
@@ -1562,26 +1556,8 @@ impl Sandbox for DaytonaSandbox {
             return Ok(RefreshOutcome::none()); // no authenticated origin — nothing to refresh
         };
         self.push_credentials
-            .refresh(origin_url, |auth_url| async move {
-                let cmd = format!(
-                    "git -c maintenance.auto=0 remote set-url origin {}",
-                    shell_quote(auth_url.as_raw_url().as_str()),
-                );
-                let result = self
-                    .exec_command(&cmd, 10_000, None, None, None)
-                    .await
-                    .map_err(|_| {
-                        crate::Error::message(
-                            "Failed to refresh push credentials: set_url_exec_failed",
-                        )
-                    })?;
-                if !result.is_success() {
-                    return Err(result.into_exec_error_with_redactor(
-                        "git remote set-url origin (refresh push credentials)",
-                        |s| redact_auth_url(s, Some(&auth_url)),
-                    ));
-                }
-                Ok(())
+            .refresh(origin_url, |auth_url| {
+                push_credentials::set_auth_url_via_exec(self, auth_url)
             })
             .await
     }

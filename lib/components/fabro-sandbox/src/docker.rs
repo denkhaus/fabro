@@ -764,11 +764,8 @@ impl DockerSandbox {
         // The clone call site maps its mint knowledge onto the credential
         // context: a token minted for this clone is FreshApp; a static
         // credential cannot become valid by waiting.
-        let clone_credential_context = match &resolved_token {
-            Some(token) if !token.snapshot.is_static() => CredentialContext::FreshApp,
-            Some(_) => CredentialContext::Static,
-            None => CredentialContext::None,
-        };
+        let clone_credential_context =
+            CredentialContext::from_snapshot(resolved_token.as_ref().map(|token| &token.snapshot));
 
         let auth_url = match &resolved_token {
             Some(token) => Some(
@@ -814,7 +811,7 @@ impl DockerSandbox {
         let command = git_clone_command(clone_url, branch.as_deref(), &layout.primary_repo_path);
         let clone_deadline = time::Instant::now() + GIT_CLONE_TIMEOUT;
         let clone_plan = git_retry::RetryPlan::clone_default(Some(clone_deadline));
-        let clone_result = git_retry::retry_git(
+        let clone_result = git_retry::retry_clone(
             SandboxProviderKind::Docker,
             "clone",
             &clone_plan,
@@ -1407,13 +1404,7 @@ fn classify_docker_clone_result(
     result: &ExecResult,
     cred: CredentialContext,
 ) -> Option<git_retry::GitRetryReason> {
-    let stderr = git_retry::classify_message(&result.stderr, cred);
-    match stderr {
-        git_retry::GitMessageClass::Unknown => {
-            git_retry::classify_message(&result.stdout, cred).retry_reason()
-        }
-        class => class.retry_reason(),
-    }
+    git_retry::classify_output(&result.stderr, &result.stdout, cred).retry_reason()
 }
 
 fn host_config(config: &DockerSandboxOptions) -> HostConfig {
@@ -2224,21 +2215,8 @@ impl Sandbox for DockerSandbox {
             return Ok(RefreshOutcome::none());
         };
         self.push_credentials
-            .refresh(origin_url, |auth_url| async move {
-                let command = format!(
-                    "git -c maintenance.auto=0 remote set-url origin {}",
-                    shell_quote(auth_url.as_raw_url().as_str())
-                );
-                let result = self
-                    .docker_exec_shell(&command, 10_000, Some(self.working_directory()), None, None)
-                    .await?;
-                if !result.is_success() {
-                    return Err(result.into_exec_error_with_redactor(
-                        "git remote set-url origin (refresh push credentials)",
-                        |s| redact_auth_url(s, Some(&auth_url)),
-                    ));
-                }
-                Ok(())
+            .refresh(origin_url, |auth_url| {
+                push_credentials::set_auth_url_via_exec(self, auth_url)
             })
             .await
     }

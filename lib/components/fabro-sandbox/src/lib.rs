@@ -9,7 +9,7 @@ pub mod sandbox_spec;
 #[cfg(any(feature = "docker", feature = "daytona"))]
 mod clone_source;
 
-pub mod git_retry;
+mod git_retry;
 
 #[cfg(any(feature = "docker", feature = "daytona", test))]
 mod managed_labels;
@@ -43,7 +43,7 @@ pub use fabro_github::token_source::{
     InstallationTokenSource, ResolvedToken, TokenProvenance, TokenSnapshot,
 };
 pub use fabro_types::{RunSandboxInstance, SandboxProviderKind};
-pub use git_retry::{CredentialContext, GitRetryReason, RetryPlan};
+pub use git_retry::{CredentialContext, GitRetryReason, RetryPlan, classify_failure};
 pub use local::LocalSandbox;
 #[cfg(feature = "daytona")]
 pub use provider::daytona::DaytonaSandboxProvider;

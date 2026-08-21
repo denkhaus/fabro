@@ -22,6 +22,7 @@ use fabro_github::token_source::TokenSnapshot;
 #[cfg(test)]
 use fabro_github::token_source::{REFRESH_MARGIN, TokenProvenance};
 use fabro_types::SandboxProviderKind;
+pub use fabro_types::run_event::GitPushRetryReason as GitRetryReason;
 use fabro_util::backoff::BackoffPolicy;
 use tokio::time;
 
@@ -29,17 +30,6 @@ use tokio::time;
 /// GitHub's git endpoints. Matches the observed scale of the lag (seconds,
 /// occasionally tens of seconds).
 pub(crate) const REPLICATION_HORIZON: Duration = Duration::from_mins(1);
-
-/// Why a failed git attempt is worth repeating.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, strum::Display)]
-#[strum(serialize_all = "snake_case")]
-pub enum GitRetryReason {
-    /// A recently minted installation token has not reached the GitHub edge
-    /// cache site serving this operation yet.
-    TokenReplication,
-    /// The operation failed on infrastructure, unrelated to credentials.
-    TransientInfra,
-}
 
 /// What a git failure message tells us about retry safety.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -145,6 +135,10 @@ pub(crate) fn matches_auth_failure_hints(message: &str) -> bool {
         .any(|hint| lower.contains(hint))
 }
 
+pub(crate) fn output_matches_auth_failure_hints(stderr: &str, stdout: &str) -> bool {
+    matches_auth_failure_hints(stderr) || matches_auth_failure_hints(stdout)
+}
+
 /// Classify a failed git operation by its rendered message.
 ///
 /// `cred` gates the reading of 404/auth-failure messages: a fresh App token
@@ -177,6 +171,19 @@ pub(crate) fn classify_message(message: &str, cred: CredentialContext) -> GitMes
         return GitMessageClass::Permanent;
     }
     GitMessageClass::Unknown
+}
+
+pub(crate) fn classify_output(
+    stderr: &str,
+    stdout: &str,
+    cred: CredentialContext,
+) -> GitMessageClass {
+    let by_stderr = classify_message(stderr, cred);
+    if by_stderr == GitMessageClass::Unknown {
+        classify_message(stdout, cred)
+    } else {
+        by_stderr
+    }
 }
 
 /// Classify a rendered git failure message, returning the retry reason when
@@ -292,15 +299,30 @@ impl RetryPlan {
             (None, remaining) => remaining,
         }
     }
+
+    pub(crate) fn retry_delay(
+        &self,
+        attempt_number: u32,
+        deadline: Option<time::Instant>,
+    ) -> Option<Duration> {
+        let delay = self.backoff.delay_for_attempt(attempt_number);
+        if deadline.is_some_and(|deadline| {
+            delay >= deadline.saturating_duration_since(time::Instant::now())
+        }) {
+            None
+        } else {
+            Some(delay)
+        }
+    }
 }
 
-/// Run a git operation, repeating it while the failure looks transient.
+/// Run a clone operation, repeating it while the failure looks transient.
 ///
 /// `attempt` receives the 1-based attempt number. `classify` decides whether
 /// an error is worth repeating; `None` returns it to the caller untouched.
 /// A retry starts only when its backoff fits before the plan's effective
 /// deadline. The final error is returned as-is.
-pub(crate) async fn retry_git<T, E, Attempt, Fut, Classify>(
+pub(crate) async fn retry_clone<T, E, Attempt, Fut, Classify>(
     provider: SandboxProviderKind,
     op: &str,
     plan: &RetryPlan,
@@ -321,12 +343,9 @@ where
                 let Some(reason) = classify(&err) else {
                     return Err(err);
                 };
-                let delay = plan.backoff.delay_for_attempt(attempt_number);
-                if deadline.is_some_and(|deadline| {
-                    delay >= deadline.saturating_duration_since(time::Instant::now())
-                }) {
+                let Some(delay) = plan.retry_delay(attempt_number, deadline) else {
                     return Err(err);
-                }
+                };
                 // The failure text can carry git stderr, so log the category
                 // rather than the message. The caller still reports the full
                 // error if the attempts run out.
@@ -576,7 +595,7 @@ mod tests {
     async fn first_success_runs_one_attempt() {
         let attempts = Attempts::default();
 
-        let result = retry_git(
+        let result = retry_clone(
             SandboxProviderKind::Docker,
             "clone",
             &RetryPlan::clone_default(None),
@@ -596,7 +615,7 @@ mod tests {
     async fn retries_until_a_later_attempt_succeeds() {
         let attempts = Attempts::default();
 
-        let result = retry_git(
+        let result = retry_clone(
             SandboxProviderKind::Docker,
             "clone",
             &RetryPlan::clone_default(None),
@@ -622,7 +641,7 @@ mod tests {
     async fn exhausted_attempts_return_the_final_error() {
         let attempts = Attempts::default();
 
-        let result = retry_git(
+        let result = retry_clone(
             SandboxProviderKind::Docker,
             "clone",
             &RetryPlan::clone_default(None),
@@ -646,7 +665,7 @@ mod tests {
     async fn unretryable_failure_stops_immediately() {
         let attempts = Attempts::default();
 
-        let result = retry_git(
+        let result = retry_clone(
             SandboxProviderKind::Docker,
             "clone",
             &RetryPlan::clone_default(None),
@@ -673,7 +692,7 @@ mod tests {
         let attempts = Attempts::default();
         let deadline = time::Instant::now() + Duration::from_secs(2);
 
-        let result = retry_git(
+        let result = retry_clone(
             SandboxProviderKind::Docker,
             "clone",
             &RetryPlan::clone_default(Some(deadline)),
@@ -696,7 +715,7 @@ mod tests {
     async fn unbounded_plan_runs_all_attempts() {
         let attempts = Attempts::default();
 
-        let result = retry_git(
+        let result = retry_clone(
             SandboxProviderKind::Daytona,
             "clone",
             &RetryPlan::clone_default(None),
@@ -723,7 +742,7 @@ mod tests {
             outer_deadline:      None,
         };
 
-        let result = retry_git(
+        let result = retry_clone(
             SandboxProviderKind::Docker,
             "push",
             &plan,

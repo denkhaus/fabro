@@ -112,6 +112,54 @@ pub struct GitCommitProps {
     pub sha: String,
 }
 
+/// Why a failed git push attempt is safe to retry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum GitPushRetryReason {
+    /// A recently minted token may not have reached every GitHub git endpoint.
+    TokenReplication,
+    /// The failure came from transient network or service infrastructure.
+    TransientInfra,
+}
+
+/// Non-secret origin of the token used by a git push attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum GitTokenProvenance {
+    /// The token source minted the token for this resolve.
+    Minted,
+    /// The token source reused an earlier mint.
+    Reused,
+    /// The credential cannot be refreshed by Fabro.
+    Static,
+}
+
+/// What credential preparation changed before a git push attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum GitCredentialAction {
+    /// Fabro wrote a token generation into the remote URL.
+    Embedded,
+    /// The remote already tracked the selected token generation.
+    Unchanged,
+    /// No managed credential was available.
+    None,
+}
+
+/// Which credential preparation step failed before a git push attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum GitCredentialRefreshError {
+    /// Token resolution or minting failed.
+    Mint,
+    /// Rewriting the remote URL failed.
+    SetUrl,
+}
+
 /// One attempt of a retried git push, nested inside [`GitPushProps`].
 ///
 /// The durable projection of the sandbox layer's runtime attempt record.
@@ -127,7 +175,7 @@ pub struct GitPushAttemptProps {
     pub started_at:        chrono::DateTime<chrono::Utc>,
     pub success:           bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub classified_reason: Option<String>,
+    pub classified_reason: Option<GitPushRetryReason>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exec_output_tail:  Option<ExecOutputTail>,
     /// Generation of the token embedded during this attempt (0 for static
@@ -136,17 +184,17 @@ pub struct GitPushAttemptProps {
     pub token_generation:  Option<u64>,
     /// `minted`, `reused`, or `static`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub token_provenance:  Option<String>,
+    pub token_provenance:  Option<GitTokenProvenance>,
     /// Token age at the attempt; absent for static credentials.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_age_ms:      Option<u64>,
     /// What the credential refresh did to the remote this attempt:
     /// `embedded`, `unchanged`, or `none`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub credential_action: Option<String>,
+    pub credential_action: Option<GitCredentialAction>,
     /// A credential `mint` or `set_url` failure this attempt pushed through.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub refresh_error:     Option<String>,
+    pub refresh_error:     Option<GitCredentialRefreshError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use fabro_github::token_source::{InstallationTokenSource, TokenSnapshot};
+pub use fabro_types::run_event::GitCredentialAction as RemoteCredentialAction;
 use fabro_types::{CommandOutputStream, CommandTermination};
 use fabro_util::shell;
 use fabro_util::workspace_glob::WorkspaceGlob;
@@ -18,7 +19,7 @@ use tokio::task::JoinHandle;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
-use crate::git_retry::{self, CredentialContext, GitMessageClass, GitRetryReason, RetryPlan};
+use crate::git_retry::{self, CredentialContext, GitRetryReason, RetryPlan};
 use crate::push_credentials::{CredentialLease, PushCredentialState, RefreshErrorKind};
 
 /// Git command prefix that disables background maintenance.
@@ -1027,24 +1028,6 @@ pub struct GrepOptions {
     pub max_results:      Option<usize>,
 }
 
-/// What [`Sandbox::refresh_push_credentials`] did to the origin remote.
-///
-/// Distinct from what the token *is* — the two are independent facts. A token
-/// minted by another consumer and embedded here for the first time is an
-/// `Embedded` action carrying a `Reused` provenance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display)]
-#[strum(serialize_all = "snake_case")]
-pub enum RemoteCredentialAction {
-    /// `set-url` ran with a different generation than last embedded.
-    Embedded,
-    /// The resolved generation matched the last embedded one; `set-url` was
-    /// skipped.
-    Unchanged,
-    /// No managed credentials to embed (no clone, no authenticated origin, or
-    /// no GitHub credentials).
-    None,
-}
-
 /// Outcome of [`Sandbox::refresh_push_credentials`]: what this call did to the
 /// remote, and the non-secret description of the token embedded in it.
 /// `token` is `None` only when `action` is [`RemoteCredentialAction::None`].
@@ -1562,7 +1545,7 @@ pub(crate) async fn fetch_source_run_ref(
 /// One push attempt inside a retried push operation. Runtime detail only —
 /// the durable serialized shape lives in `fabro-types` and the workflow layer
 /// owns the conversion.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushAttempt {
     /// 1-based attempt number within this operation.
     pub attempt:           u32,
@@ -1590,34 +1573,22 @@ pub struct PushReport {
 
 /// A failed push operation: the final typed error plus the attempt history.
 /// The error type stays the safety boundary for output tails.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("git push failed")]
 pub struct PushError {
     pub report: PushReport,
+    #[source]
     pub error:  crate::Error,
-}
-
-impl std::fmt::Display for PushError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.error.fmt(f)
-    }
-}
-
-impl std::error::Error for PushError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.error)
-    }
 }
 
 /// Classify a failed push attempt by the failure's rendered output.
 fn classify_push_error(error: &crate::Error, cred: CredentialContext) -> Option<GitRetryReason> {
     let class = match error {
+        crate::Error::Exec { result, .. } if result.termination != CommandTermination::Exited => {
+            return None;
+        }
         crate::Error::Exec { result, .. } => {
-            let by_stderr = git_retry::classify_message(&result.stderr, cred);
-            if by_stderr == GitMessageClass::Unknown {
-                git_retry::classify_message(&result.stdout, cred)
-            } else {
-                by_stderr
-            }
+            git_retry::classify_output(&result.stderr, &result.stdout, cred)
         }
         other => git_retry::classify_message(&crate::display_for_log(other), cred),
     };
@@ -1629,8 +1600,7 @@ fn classify_push_error(error: &crate::Error, cred: CredentialContext) -> Option<
 fn push_failure_looks_auth_shaped(error: &crate::Error) -> bool {
     match error {
         crate::Error::Exec { result, .. } => {
-            git_retry::matches_auth_failure_hints(&result.stderr)
-                || git_retry::matches_auth_failure_hints(&result.stdout)
+            git_retry::output_matches_auth_failure_hints(&result.stderr, &result.stdout)
         }
         other => git_retry::matches_auth_failure_hints(&crate::display_for_log(other)),
     }
@@ -1652,12 +1622,26 @@ pub(crate) async fn git_push_via_exec(
     use CredentialContext;
     use CredentialLease;
 
+    let start = time::Instant::now();
+    let deadline = plan.effective_deadline(start);
+
     // The lease pins one token generation and owns the embed mutex for the
     // whole operation; no concurrent refresh can re-embed mid-operation, and
     // no attempt can cross the refresh margin and restart the replication
     // clock.
     let mut lease: Option<(CredentialLease<'_>, &str)> = match credentials {
-        Some((state, origin_url)) => match state.lease().await {
+        Some((state, origin_url)) => match match deadline {
+            Some(deadline) => match time::timeout_at(deadline, state.lease()).await {
+                Ok(result) => result,
+                Err(_) => {
+                    return Err(push_deadline_error(
+                        Vec::new(),
+                        "while acquiring credentials",
+                    ));
+                }
+            },
+            None => state.lease().await,
+        } {
             Ok(lease) => Some((lease, origin_url)),
             Err(error) => {
                 return Err(PushError {
@@ -1669,8 +1653,6 @@ pub(crate) async fn git_push_via_exec(
         None => None,
     };
 
-    let start = time::Instant::now();
-    let deadline = plan.effective_deadline(start);
     let mut attempts: Vec<PushAttempt> = Vec::new();
     let mut force_reembed = false;
     let mut drift_repaired = false;
@@ -1680,21 +1662,46 @@ pub(crate) async fn git_push_via_exec(
     loop {
         let attempt_number = u32::try_from(attempts.len()).unwrap_or(u32::MAX) + 1;
         let started_at = chrono::Utc::now();
+        let attempt_timeout = plan
+            .attempt_timeout(deadline)
+            .unwrap_or(Duration::from_mins(1));
+        if attempt_timeout.is_zero() {
+            return Err(push_deadline_error(attempts, "before the next attempt"));
+        }
+        let attempt_deadline = time::Instant::now() + attempt_timeout;
         let (token, credential_action, refresh_error) = match lease.as_mut() {
             Some((lease, origin_url)) => {
-                let ensured = lease
-                    .ensure_embedded(sandbox, origin_url, force_reembed)
-                    .await;
+                let ensured = match time::timeout_at(
+                    attempt_deadline,
+                    lease.ensure_embedded(sandbox, origin_url, force_reembed),
+                )
+                .await
+                {
+                    Ok(Ok(ensured)) => ensured,
+                    Ok(Err(error)) => {
+                        return Err(PushError {
+                            report: PushReport { attempts },
+                            error,
+                        });
+                    }
+                    Err(_) => {
+                        return Err(push_deadline_error(
+                            attempts,
+                            "while refreshing credentials",
+                        ));
+                    }
+                };
                 force_reembed = false;
                 (ensured.token, Some(ensured.action), ensured.refresh_error)
             }
             None => (None, None, None),
         };
 
-        let timeout = plan
-            .attempt_timeout(deadline)
-            .unwrap_or(Duration::from_mins(1));
-        let timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+        let remaining = attempt_deadline.saturating_duration_since(time::Instant::now());
+        let timeout_ms = u64::try_from(remaining.as_millis()).unwrap_or(u64::MAX);
+        if timeout_ms == 0 {
+            return Err(push_deadline_error(attempts, "before running git push"));
+        }
         let push_result = match sandbox
             .exec_command(&cmd, timeout_ms, None, None, None)
             .await
@@ -1753,15 +1760,12 @@ pub(crate) async fn git_push_via_exec(
                         error,
                     });
                 };
-                let delay = plan.backoff.delay_for_attempt(attempt_number);
-                if deadline.is_some_and(|deadline| {
-                    delay >= deadline.saturating_duration_since(time::Instant::now())
-                }) {
+                let Some(delay) = plan.retry_delay(attempt_number, deadline) else {
                     return Err(PushError {
                         report: PushReport { attempts },
                         error,
                     });
-                }
+                };
                 // The failure text can carry git stderr, so log the category
                 // rather than the message.
                 tracing::warn!(
@@ -1777,6 +1781,13 @@ pub(crate) async fn git_push_via_exec(
                 time::sleep(delay).await;
             }
         }
+    }
+}
+
+fn push_deadline_error(attempts: Vec<PushAttempt>, stage: &str) -> PushError {
+    PushError {
+        report: PushReport { attempts },
+        error:  crate::Error::message(format!("Git push retry deadline expired {stage}")),
     }
 }
 
@@ -1817,6 +1828,16 @@ mod push_tests {
             exit_code:   Some(128),
             termination: CommandTermination::Exited,
             duration_ms: 5,
+        }
+    }
+
+    fn timed_out_exec() -> ExecResult {
+        ExecResult {
+            stdout:      String::new(),
+            stderr:      "Command timed out".to_string(),
+            exit_code:   None,
+            termination: CommandTermination::TimedOut,
+            duration_ms: 60_000,
         }
     }
 
@@ -1998,6 +2019,19 @@ mod push_tests {
         }
     }
 
+    struct SlowMinter;
+
+    #[async_trait]
+    impl InstallationTokenMinter for SlowMinter {
+        async fn mint(&self) -> anyhow::Result<InstallationToken> {
+            time::sleep(Duration::from_secs(2)).await;
+            Ok(InstallationToken {
+                token:      "ghs_slow".to_string(),
+                expires_at: Utc::now() + chrono::Duration::hours(1),
+            })
+        }
+    }
+
     fn minting_state(
         script: Vec<MintAction>,
     ) -> (PushCredentialState, std::sync::Arc<ScriptedMinter>) {
@@ -2165,9 +2199,8 @@ mod push_tests {
     async fn mint_failure_falls_back_to_the_clone_token() {
         let (state, minter) = minting_state(vec![
             MintAction::Token("ghs_clone", chrono::Duration::minutes(5)),
-            // The clone token is inside the margin, so the lease acquisition
-            // re-mints — and fails. So does the attempt-level retry.
-            MintAction::Error("mint failed"),
+            // The clone token is inside the margin, so lease acquisition
+            // re-mints and fails.
             MintAction::Error("mint failed"),
         ]);
         seed_clone_token(&state).await;
@@ -2182,7 +2215,7 @@ mod push_tests {
         .await
         .expect("push proceeds with the still-valid clone token");
 
-        assert_eq!(minter.calls(), 3);
+        assert_eq!(minter.calls(), 2);
         let attempt = &report.attempts[0];
         assert!(attempt.success);
         assert_eq!(attempt.refresh_error, Some(RefreshErrorKind::Mint));
@@ -2224,7 +2257,6 @@ mod push_tests {
         let (state, minter) = minting_state(vec![
             MintAction::Token("ghs_gen1", chrono::Duration::minutes(5)),
             MintAction::Error("mint failed"),
-            MintAction::Error("mint failed"),
             MintAction::Token("ghs_gen2", chrono::Duration::minutes(60)),
         ]);
         seed_clone_token(&state).await;
@@ -2242,7 +2274,7 @@ mod push_tests {
         .await
         .expect("late mint should recover the push");
 
-        assert_eq!(minter.calls(), 4);
+        assert_eq!(minter.calls(), 3);
         let first = &report.attempts[0];
         assert_eq!(first.refresh_error, Some(RefreshErrorKind::Mint));
         assert_eq!(first.token.unwrap().generation, 1);
@@ -2305,6 +2337,29 @@ mod push_tests {
             Some(RemoteCredentialAction::Embedded)
         );
         assert!(second.success);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timed_out_set_url_stops_before_push_while_it_may_still_run() {
+        let (state, minter) = minting_state(vec![
+            MintAction::Token("ghs_gen1", chrono::Duration::minutes(5)),
+            MintAction::Token("ghs_gen2", chrono::Duration::minutes(60)),
+        ]);
+        seed_clone_token(&state).await;
+        let sandbox = ScriptedGitSandbox::new(vec![]).with_set_url_results(vec![timed_out_exec()]);
+
+        let push_error = git_push_via_exec(
+            &sandbox,
+            Some((&state, ORIGIN)),
+            REFSPEC,
+            &RetryPlan::checkpoint_push(),
+        )
+        .await
+        .expect_err("a timed-out set-url can still rewrite origin later");
+
+        assert_eq!(minter.calls(), 2);
+        assert!(push_error.report.attempts.is_empty());
+        assert_eq!(sandbox.push_count(), 0);
     }
 
     /// Remote drift: agent code rewrote `origin`, so the push fails on auth
@@ -2374,6 +2429,53 @@ mod push_tests {
 
         assert_eq!(push_error.report.attempts.len(), 1);
         assert_eq!(push_error.report.attempts[0].retry_reason, None);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timed_out_push_is_not_retried_while_the_remote_process_may_still_run() {
+        let sandbox = ScriptedGitSandbox::new(vec![timed_out_exec()]);
+
+        let push_error = git_push_via_exec(&sandbox, None, REFSPEC, &RetryPlan::publish_push())
+            .await
+            .expect_err("an unconfirmed timeout must fail without another push");
+
+        assert_eq!(sandbox.push_count(), 1);
+        assert_eq!(push_error.report.attempts.len(), 1);
+        assert_eq!(push_error.report.attempts[0].retry_reason, None);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn retry_deadline_includes_credential_lease_acquisition() {
+        let source = InstallationTokenSource::with_minter(
+            "fabro-testing/repo".to_string(),
+            Box::new(SlowMinter),
+        );
+        let state = PushCredentialState::new(Some(source));
+        let sandbox = ScriptedGitSandbox::new(vec![]);
+        let mut plan = RetryPlan::checkpoint_push();
+        plan.max_elapsed = Some(Duration::from_secs(1));
+
+        let push_error = git_push_via_exec(&sandbox, Some((&state, ORIGIN)), REFSPEC, &plan)
+            .await
+            .expect_err("credential acquisition must stop at the operation deadline");
+
+        assert!(push_error.report.attempts.is_empty());
+        assert_eq!(sandbox.push_count(), 0);
+        assert!(push_error.error.to_string().contains("deadline expired"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn expired_retry_deadline_does_not_launch_a_zero_timeout_push() {
+        let sandbox = ScriptedGitSandbox::new(vec![]);
+        let mut plan = RetryPlan::checkpoint_push();
+        plan.max_elapsed = Some(Duration::ZERO);
+
+        let push_error = git_push_via_exec(&sandbox, None, REFSPEC, &plan)
+            .await
+            .expect_err("an expired operation must stop before exec");
+
+        assert!(push_error.report.attempts.is_empty());
+        assert_eq!(sandbox.push_count(), 0);
     }
 }
 

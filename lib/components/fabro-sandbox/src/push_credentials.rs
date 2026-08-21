@@ -13,6 +13,7 @@ use std::sync::Arc;
 use fabro_github::GitHubCredentials;
 use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
 use fabro_redact::DisplaySafeUrl;
+pub use fabro_types::run_event::GitCredentialRefreshError as RefreshErrorKind;
 use tokio::sync::{Mutex, MutexGuard};
 
 use crate::redact;
@@ -151,18 +152,6 @@ impl PushCredentialState {
     }
 }
 
-/// Which refresh step failed while a push held the credential lease.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, strum::Display)]
-#[strum(serialize_all = "snake_case")]
-pub enum RefreshErrorKind {
-    /// Minting a replacement token failed; the push proceeded with the last
-    /// embedded token.
-    Mint,
-    /// Rewriting `origin` with the resolved token failed; the push proceeded
-    /// with the last embedded token.
-    SetUrl,
-}
-
 /// What [`CredentialLease::ensure_embedded`] did for one push attempt.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct EnsureOutcome {
@@ -187,11 +176,14 @@ pub(crate) struct EnsureOutcome {
 /// embed. The token source's refresh margin exceeds every push plan's elapsed
 /// bound, so the pinned token always outlives the operation.
 pub(crate) struct CredentialLease<'a> {
-    source:   Option<&'a InstallationTokenSource>,
+    source:             Option<&'a InstallationTokenSource>,
     /// Embed-mutex guard: the last successfully embedded token.
-    embedded: MutexGuard<'a, Option<ResolvedToken>>,
+    embedded:           MutexGuard<'a, Option<ResolvedToken>>,
     /// The operation's single successful resolve.
-    target:   Option<ResolvedToken>,
+    target:             Option<ResolvedToken>,
+    /// Skip an immediate duplicate resolve after lease acquisition already
+    /// failed. A later push attempt can retry after backoff.
+    defer_resolve_once: bool,
 }
 
 impl PushCredentialState {
@@ -210,6 +202,7 @@ impl PushCredentialState {
                 source: None,
                 embedded,
                 target: None,
+                defer_resolve_once: false,
             });
         };
         match source.resolve().await {
@@ -217,6 +210,7 @@ impl PushCredentialState {
                 source: Some(source),
                 embedded,
                 target: Some(resolved),
+                defer_resolve_once: false,
             }),
             Err(err) => {
                 if let Some(prev) = embedded.as_ref() {
@@ -231,6 +225,7 @@ impl PushCredentialState {
                         source: Some(source),
                         embedded,
                         target: None,
+                        defer_resolve_once: true,
                     })
                 } else {
                     tracing::warn!(
@@ -266,16 +261,18 @@ impl CredentialLease<'_> {
         sandbox: &dyn crate::Sandbox,
         origin_url: &str,
         force: bool,
-    ) -> EnsureOutcome {
+    ) -> crate::Result<EnsureOutcome> {
         let Some(source) = self.source else {
-            return EnsureOutcome {
+            return Ok(EnsureOutcome {
                 action:        RemoteCredentialAction::None,
                 token:         None,
                 refresh_error: None,
-            };
+            });
         };
-        let mut refresh_error = None;
-        if self.target.is_none() {
+        let mut refresh_error = self.defer_resolve_once.then_some(RefreshErrorKind::Mint);
+        if self.defer_resolve_once {
+            self.defer_resolve_once = false;
+        } else if self.target.is_none() {
             match source.resolve().await {
                 Ok(resolved) => self.target = Some(resolved),
                 Err(err) => {
@@ -291,43 +288,50 @@ impl CredentialLease<'_> {
             // Managed credentials with nothing resolved or embedded:
             // acquisition fails before any attempt runs, so pushes never see
             // this state.
-            return EnsureOutcome {
+            return Ok(EnsureOutcome {
                 action: RemoteCredentialAction::None,
                 token: None,
                 refresh_error,
-            };
+            });
         };
         let embedded_generation = self
             .embedded
             .as_ref()
             .map(|token| token.snapshot.generation);
         if !force && embedded_generation == Some(desired.snapshot.generation) {
-            return EnsureOutcome {
+            return Ok(EnsureOutcome {
                 action: RemoteCredentialAction::Unchanged,
                 token: Some(desired.snapshot),
                 refresh_error,
-            };
+            });
         }
         match set_url_via_exec(sandbox, origin_url, &desired).await {
             Ok(()) => {
                 let snapshot = desired.snapshot;
                 *self.embedded = Some(desired);
-                EnsureOutcome {
+                Ok(EnsureOutcome {
                     action: RemoteCredentialAction::Embedded,
                     token: Some(snapshot),
                     refresh_error,
-                }
+                })
             }
             Err(err) => {
+                if matches!(
+                    &err,
+                    crate::Error::Exec { result, .. }
+                        if result.termination != fabro_types::CommandTermination::Exited
+                ) {
+                    return Err(err);
+                }
                 tracing::warn!(
                     error = %crate::display_for_log(&err),
                     "embedding push credentials in origin failed; pushing with the last embedded token"
                 );
-                EnsureOutcome {
+                Ok(EnsureOutcome {
                     action:        RemoteCredentialAction::Unchanged,
                     token:         self.snapshot(),
                     refresh_error: Some(RefreshErrorKind::SetUrl),
-                }
+                })
             }
         }
     }
@@ -342,8 +346,18 @@ async fn set_url_via_exec(
 ) -> crate::Result<()> {
     let auth_url =
         fabro_github::embed_token_in_url(origin_url, token.token.expose()).map_err(|err| {
-            crate::Error::message(format!("Failed to build authenticated origin URL: {err:#}"))
+            crate::Error::context(
+                "Failed to build authenticated origin URL",
+                RedactedSetUrlError(fabro_redact::redact_string(&format!("{err:#}"))),
+            )
         })?;
+    set_auth_url_via_exec(sandbox, auth_url).await
+}
+
+pub(crate) async fn set_auth_url_via_exec(
+    sandbox: &dyn crate::Sandbox,
+    auth_url: DisplaySafeUrl,
+) -> crate::Result<()> {
     let command = format!(
         "git -c maintenance.auto=0 remote set-url origin {}",
         crate::shell_quote(auth_url.as_raw_url().as_str())
@@ -351,17 +365,25 @@ async fn set_url_via_exec(
     let result = sandbox
         .exec_command(&command, 10_000, None, None, None)
         .await
-        .map_err(|_| {
-            crate::Error::message("Failed to refresh push credentials: set_url_exec_failed")
+        .map_err(|err| {
+            let message = redact::redact_auth_url(&crate::display_for_log(&err), Some(&auth_url));
+            crate::Error::context(
+                "Failed to refresh push credentials: set_url_exec_failed",
+                RedactedSetUrlError(message),
+            )
         })?;
     if !result.is_success() {
         return Err(result.into_exec_error_with_redactor(
-            "git remote set-url origin (push credential lease)",
+            "git remote set-url origin (refresh push credentials)",
             |s| redact::redact_auth_url(s, Some(&auth_url)),
         ));
     }
     Ok(())
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+struct RedactedSetUrlError(String);
 
 #[cfg(test)]
 mod tests {

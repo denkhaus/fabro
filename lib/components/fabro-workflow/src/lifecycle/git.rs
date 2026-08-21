@@ -8,22 +8,20 @@ use fabro_core::lifecycle::RunLifecycle;
 use fabro_core::outcome::NodeResult;
 use fabro_core::state::ExecutionState;
 use fabro_dump::RunDump;
-use fabro_sandbox::git_retry;
-use fabro_types::run_event::{
-    GitPushAttemptProps, MetadataSnapshotFailureKind, MetadataSnapshotPhase,
-};
+use fabro_types::run_event::{MetadataSnapshotFailureKind, MetadataSnapshotPhase};
 use fabro_types::{CheckpointRecord, DiffSummary, RunDiff, RunId};
 use fabro_util::error::collect_causes;
 use fabro_util::time::elapsed_ms;
 
 use crate::artifact;
-use crate::event::{
-    Emitter, Event, RunNoticeCode, RunNoticeLevel, StageScope, git_push_attempt_props,
-};
+use crate::event::{Emitter, Event, RunNoticeCode, RunNoticeLevel, StageScope};
 use crate::graph::{WorkflowGraph, WorkflowNode};
 use crate::lifecycle::event::stage_scope_for;
 use crate::outcome::BilledModelUsage;
-use crate::run_metadata::{MetadataSnapshot, RunMetadataRuntime, RunMetadataWriterHandle};
+use crate::run_metadata::{
+    MetadataSnapshot, RunMetadataRuntime, RunMetadataWriterHandle,
+    metadata_push_failure_is_transient,
+};
 use crate::run_options::RunOptions;
 use crate::runtime_store::RunStoreHandle;
 use crate::sandbox_git::{
@@ -77,8 +75,7 @@ pub(crate) struct PushResult {
     pub branch:           String,
     pub success:          bool,
     pub exec_output_tail: Option<fabro_types::ExecOutputTail>,
-    /// Per-attempt history, already projected to the durable event shape.
-    pub attempts:         Vec<GitPushAttemptProps>,
+    pub attempts:         Vec<fabro_sandbox::PushAttempt>,
 }
 
 /// Push a run branch to its remote counterpart.
@@ -95,18 +92,6 @@ pub(crate) async fn push_run_branch(
     sandbox
         .git_push_ref(&format!("refs/heads/{branch}:refs/heads/{branch}"), plan)
         .await
-}
-
-/// Whether a metadata push failure leaves the writer eligible for re-probing
-/// at later checkpoints. Only push failures with retryable classifications
-/// (replication lag on a fresh token, transient infrastructure) qualify;
-/// everything else keeps the permanent latch.
-fn metadata_push_failure_is_transient(
-    detail: &str,
-    token: Option<&fabro_sandbox::TokenSnapshot>,
-) -> bool {
-    let cred = fabro_sandbox::CredentialContext::from_snapshot(token);
-    git_retry::classify_failure(detail, cred).is_some()
 }
 
 /// Sub-lifecycle responsible for git operations (checkpoint commits, pushes,
@@ -232,7 +217,9 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
             None,
         );
         let shadow_sha = if let Some(meta_branch) = self.metadata_branch().map(str::to_string) {
-            if self.metadata_writer.is_none() || self.metadata_runtime.metadata_suspended() {
+            if self.metadata_writer.is_none()
+                || self.metadata_runtime.metadata_checkpoint_suspended()
+            {
                 None
             } else {
                 let phase = MetadataSnapshotPhase::Checkpoint;
@@ -380,7 +367,7 @@ impl RunLifecycle<WorkflowGraph> for GitLifecycle {
                             branch: branch.clone(),
                             success: push_ok,
                             exec_output_tail,
-                            attempts: git_push_attempt_props(&attempts),
+                            attempts,
                         });
                     }
                 }
@@ -489,7 +476,10 @@ impl GitLifecycle {
         message: &str,
         scope: Option<&StageScope>,
     ) -> Option<String> {
-        if self.metadata_runtime.metadata_suspended() {
+        if self.metadata_runtime.metadata_suspended()
+            || (phase == MetadataSnapshotPhase::Checkpoint
+                && self.metadata_runtime.metadata_checkpoint_suspended())
+        {
             return None;
         }
         let writer = self.metadata_writer.as_ref()?;

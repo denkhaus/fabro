@@ -372,16 +372,28 @@ impl Error {
         source: impl Into<anyhow::Error>,
         exec_output_tail: Option<ExecOutputTail>,
     ) -> Self {
+        Self::stage_with_source_details(stage, message, source, None, exec_output_tail, Vec::new())
+    }
+
+    fn stage_with_source_details(
+        stage: ErrorStage,
+        message: impl Into<String>,
+        source: impl Into<anyhow::Error>,
+        failure_class: Option<FailureCategory>,
+        exec_output_tail: Option<ExecOutputTail>,
+        extra_causes: Vec<String>,
+    ) -> Self {
         let message = message.into();
         let source = SharedError::new(source.into());
-        let failure_class =
-            classify_failure_reason(&render_with_causes(&message, &collect_chain(&source)));
+        let failure_class = failure_class.unwrap_or_else(|| {
+            classify_failure_reason(&render_with_causes(&message, &collect_chain(&source)))
+        });
         Self::Stage {
             stage,
             message,
             failure_class,
             exec_output_tail,
-            extra_causes: Vec::new(),
+            extra_causes,
             source: Some(source),
         }
     }
@@ -470,14 +482,14 @@ impl Error {
         exec_output_tail: Option<ExecOutputTail>,
         extra_causes: Vec<String>,
     ) -> Self {
-        Self::Stage {
-            stage: ErrorStage::Publish,
-            message: message.into(),
-            failure_class,
+        Self::stage_with_source_details(
+            ErrorStage::Publish,
+            message,
+            source,
+            Some(failure_class),
             exec_output_tail,
             extra_causes,
-            source: Some(SharedError::new(source.into())),
-        }
+        )
     }
 
     #[must_use]
