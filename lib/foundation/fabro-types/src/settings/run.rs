@@ -631,11 +631,21 @@ impl RunIntegrationsGithubSettings {
         !self.additional_repositories.is_empty()
     }
 
+    /// Whether a resolved `contents` permission level lets the token reach
+    /// repository contents — the level a declared `additional_repositories`
+    /// set requires. The one definition shared by config-time validation and
+    /// the runtime re-check after interpolation, so the accepted levels
+    /// cannot drift between the two layers.
+    #[must_use]
+    pub fn contents_permission_allows_repository_access(value: &str) -> bool {
+        value == "read" || value == "write"
+    }
+
     /// Resolve every `permissions` value. `{{ vars.* }}` is substituted
     /// server-side at run creation, so values are literal by this point; a
     /// still-unresolved token fails closed rather than reaching the GitHub API
     /// as literal text.
-    pub fn resolve_permissions(&self) -> Result<HashMap<String, String>, ResolveError> {
+    fn resolve_permissions(&self) -> Result<HashMap<String, String>, ResolveError> {
         let mut ctx = ResolveCtx::new();
         self.permissions
             .iter()

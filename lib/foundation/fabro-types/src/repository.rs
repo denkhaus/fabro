@@ -72,13 +72,12 @@ impl GitHubRepositorySlug {
     pub fn same_owner(&self, other: &Self) -> bool {
         self.owner.eq_ignore_ascii_case(&other.owner)
     }
+}
 
-    fn canonical_key(&self) -> (String, String) {
-        (
-            self.owner.to_ascii_lowercase(),
-            self.repo.to_ascii_lowercase(),
-        )
-    }
+/// Case-folded bytes for identity comparisons without allocating; owner and
+/// repository names are validated ASCII, so ASCII folding is exact.
+fn folded_bytes(value: &str) -> impl Iterator<Item = u8> + '_ {
+    value.bytes().map(|byte| byte.to_ascii_lowercase())
 }
 
 impl PartialEq for GitHubRepositorySlug {
@@ -97,13 +96,23 @@ impl PartialOrd for GitHubRepositorySlug {
 
 impl Ord for GitHubRepositorySlug {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.canonical_key().cmp(&other.canonical_key())
+        folded_bytes(&self.owner)
+            .cmp(folded_bytes(&other.owner))
+            .then_with(|| folded_bytes(&self.repo).cmp(folded_bytes(&other.repo)))
     }
 }
 
 impl Hash for GitHubRepositorySlug {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.canonical_key().hash(state);
+        for byte in folded_bytes(&self.owner) {
+            state.write_u8(byte);
+        }
+        // `/` cannot appear in a validated owner, so the folded
+        // `owner/repo` encoding stays unambiguous.
+        state.write_u8(b'/');
+        for byte in folded_bytes(&self.repo) {
+            state.write_u8(byte);
+        }
     }
 }
 

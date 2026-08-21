@@ -209,7 +209,7 @@ fn validate_additional_repository_permissions(
         return;
     };
     if let Ok(literal) = contents.resolve_with(&mut ResolveCtx::new()) {
-        if literal != "read" && literal != "write" {
+        if !RunIntegrationsGithubSettings::contents_permission_allows_repository_access(&literal) {
             errors.push(ResolveError::Invalid {
                 path:   "run.integrations.github.permissions.contents".to_string(),
                 reason: format!(

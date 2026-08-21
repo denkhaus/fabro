@@ -175,10 +175,10 @@ fn build_sandbox_env(
 }
 
 /// When additional repositories are declared, prove the whole effective set
-/// is reachable before the first workflow stage: resolve every repository's
-/// App installation (naming any repository the App cannot see), then resolve
-/// the token once eagerly. Legacy permissions-only runs skip this and keep
-/// their best-effort behavior.
+/// is reachable before the first workflow stage
+/// ([`fabro_github::GitHubRepositoryAccess::resolve_verified_token`]).
+/// Legacy permissions-only runs skip this and keep their best-effort
+/// behavior.
 async fn validate_declared_repository_access(
     built: &BuiltSandboxEnv,
     github_app: Option<&fabro_github::GitHubCredentials>,
@@ -190,25 +190,24 @@ async fn validate_declared_repository_access(
     else {
         return Ok(());
     };
-    if let Some(fabro_github::GitHubCredentials::App(app)) = github_app {
-        access
-            .resolve_shared_installation_via_api(app)
-            .await
-            .map_err(|err| {
-                Error::engine_with_anyhow(
-                    "Declared additional GitHub repository is not accessible",
-                    err,
-                )
-            })?;
-    }
-    if let Some(source) = built.github_token.as_ref() {
-        source.resolve().await.map_err(|err| {
+    // `build_sandbox_env` guarantees credentials and a token source whenever
+    // additional repositories are declared; fail closed if that ever breaks.
+    let (Some(creds), Some(source)) = (github_app, built.github_token.as_ref()) else {
+        return Err(Error::Precondition(
+            "run.integrations.github.additional_repositories requires GitHub credentials, but \
+             none are configured"
+                .to_string(),
+        ));
+    };
+    access
+        .resolve_verified_token(creds, source)
+        .await
+        .map_err(|err| {
             Error::engine_with_anyhow(
-                "Failed to resolve GitHub access for the declared repository set",
+                "Failed to verify GitHub access for the declared repository set",
                 err,
             )
         })?;
-    }
     Ok(())
 }
 
@@ -1759,7 +1758,8 @@ mod tests {
                 github_access: access,
             };
 
-            let err = validate_declared_repository_access(&built, None)
+            let creds = GitHubCredentials::Pat("ghp_x".to_string());
+            let err = validate_declared_repository_access(&built, Some(&creds))
                 .await
                 .unwrap_err();
             let message = err.to_string();

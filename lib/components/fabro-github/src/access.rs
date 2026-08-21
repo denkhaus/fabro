@@ -10,8 +10,10 @@ use std::collections::{BTreeSet, HashMap};
 
 use anyhow::{Context as _, bail};
 use fabro_types::GitHubRepositorySlug;
+use fabro_types::settings::run::RunIntegrationsGithubSettings;
 
-use crate::{GitHubAppCredentials, HttpClient, HttpMethod};
+use crate::token_source::{InstallationTokenSource, ResolvedToken};
+use crate::{GitHubAppCredentials, GitHubCredentials, HttpClient, InstallationLookup};
 
 /// The validated effective repository set for a run: the primary origin
 /// repository plus zero or more distinct additional repositories, all with
@@ -163,54 +165,58 @@ impl GitHubRepositoryAccess {
         client: &impl HttpClient,
         base_url: &str,
     ) -> anyhow::Result<u64> {
-        #[derive(serde::Deserialize)]
-        struct Installation {
-            id: u64,
-        }
-
         let jwt = crate::sign_app_jwt(&creds.app_id, &creds.private_key_pem)?;
-        let auth = format!("Bearer {jwt}");
         let mut shared: Option<(u64, &GitHubRepositorySlug)> = None;
         for slug in self.targets() {
-            let endpoint = format!(
-                "{base_url}/repos/{}/{}/installation",
-                slug.owner(),
-                slug.repo()
-            );
-            let response = client
-                .request(
-                    HttpMethod::Get,
-                    &endpoint,
-                    &crate::github_headers(&auth),
-                    None,
-                )
-                .await
-                .with_context(|| format!("looking up the GitHub App installation for {slug}"))?;
-            match response.status {
-                200 => {}
-                404 => bail!(
+            let lookup =
+                crate::lookup_installation(client, &jwt, base_url, slug.owner(), slug.repo())
+                    .await
+                    .with_context(|| {
+                        format!("looking up the GitHub App installation for {slug}")
+                    })?;
+            let id = match lookup {
+                InstallationLookup::Found(id) => id,
+                InstallationLookup::NotFound => bail!(
                     "the GitHub App installation cannot see repository {slug}; add it to the \
                      installation's repository access"
                 ),
-                status => bail!(
+                InstallationLookup::Failed(status) => bail!(
                     "unexpected status {status} looking up the GitHub App installation for {slug}"
                 ),
-            }
-            let installation: Installation = response
-                .json()
-                .with_context(|| format!("parsing the installation response for {slug}"))?;
+            };
             match shared {
-                None => shared = Some((installation.id, slug)),
-                Some((id, first)) if id != installation.id => bail!(
-                    "repository {slug} belongs to GitHub App installation {} but {first} belongs \
-                     to installation {id}; all repositories must share one installation",
-                    installation.id
+                None => shared = Some((id, slug)),
+                Some((shared_id, first)) if shared_id != id => bail!(
+                    "repository {slug} belongs to GitHub App installation {id} but {first} \
+                     belongs to installation {shared_id}; all repositories must share one \
+                     installation"
                 ),
                 Some(_) => {}
             }
         }
         let (id, _) = shared.expect("the effective repository set always contains the primary");
         Ok(id)
+    }
+
+    /// Prove this access value is usable and produce its token: in App mode,
+    /// first resolve every target's installation
+    /// ([`Self::resolve_shared_installation_via_api`]) so a failure names the
+    /// repository the App cannot see, then resolve `source` once — for App
+    /// credentials that eagerly mints the token scoped to the whole effective
+    /// set. The one choreography server preflight and workflow
+    /// initialization share.
+    pub async fn resolve_verified_token(
+        &self,
+        creds: &GitHubCredentials,
+        source: &InstallationTokenSource,
+    ) -> anyhow::Result<ResolvedToken> {
+        if let GitHubCredentials::App(app) = creds {
+            self.resolve_shared_installation_via_api(app).await?;
+        }
+        source
+            .resolve()
+            .await
+            .context("Failed to resolve the GitHub token for the effective repository set")
     }
 }
 
@@ -224,7 +230,7 @@ fn validate_additional_permissions(permissions: &HashMap<String, String>) -> any
              (`read` or `write`)"
         );
     };
-    if contents != "read" && contents != "write" {
+    if !RunIntegrationsGithubSettings::contents_permission_allows_repository_access(contents) {
         bail!(
             "run.integrations.github.additional_repositories requires `contents = \"read\"` or \
              `contents = \"write\"`, got `{contents}`"

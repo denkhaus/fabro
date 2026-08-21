@@ -21,6 +21,33 @@ pub use access::GitHubRepositoryAccess;
 
 pub const GITHUB_API_BASE_URL: &str = "https://api.github.com";
 
+/// Git config key that routes github.com HTTPS credentials through
+/// [`GITHUB_CREDENTIAL_HELPER`].
+pub const GITHUB_CREDENTIAL_HELPER_KEY: &str = "credential.https://github.com.helper";
+
+/// Secret-free git credential helper: reads `$GITHUB_TOKEN` from the
+/// invoking git process's environment at invocation time, so the token never
+/// lands in git configuration, argv, or rendered errors. Non-`get`
+/// operations (`store`, `erase`) are ignored. The one definition shared by
+/// the runtime git bridge, server preflight probes, and the live contract
+/// test, so the probes always exercise exactly what the bridge configures.
+pub const GITHUB_CREDENTIAL_HELPER: &str = r#"!f() { if [ "$1" = get ]; then echo username=x-access-token; echo "password=$GITHUB_TOKEN"; fi; }; f"#;
+
+/// Configure a `git` invocation to authenticate to github.com through
+/// [`GITHUB_CREDENTIAL_HELPER`] with `token`, isolated from user/system git
+/// configuration and terminal prompts. The token is passed only through the
+/// child process environment.
+pub fn apply_probe_git_env(command: &mut Command, token: &str) {
+    command
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env(EnvVars::GITHUB_TOKEN, token)
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", GITHUB_CREDENTIAL_HELPER_KEY)
+        .env("GIT_CONFIG_VALUE_0", GITHUB_CREDENTIAL_HELPER);
+}
+
 /// Returns the GitHub API base URL, allowing override via `GITHUB_BASE_URL` env
 /// var.
 #[expect(
@@ -516,6 +543,52 @@ pub async fn create_installation_access_token_with_permissions_and_install_url(
     .map(|token| token.token)
 }
 
+/// Outcome of one GitHub App installation lookup
+/// (`GET /repos/{owner}/{repo}/installation`).
+///
+/// Status interpretation stays with callers because their user guidance
+/// differs: the mint path speaks about the owner's App installation, the
+/// multi-repository resolution names the specific repository.
+pub(crate) enum InstallationLookup {
+    Found(u64),
+    /// 404: the App cannot see the repository (or is not installed at all).
+    NotFound,
+    /// Any other non-200 status.
+    Failed(u16),
+}
+
+/// Look up the App installation covering `owner/repo` and parse its id.
+/// Transport and parse failures carry no caller-specific context; callers
+/// attach their own.
+pub(crate) async fn lookup_installation(
+    client: &impl HttpClient,
+    jwt: &str,
+    base_url: &str,
+    owner: &str,
+    repo: &str,
+) -> anyhow::Result<InstallationLookup> {
+    #[derive(Deserialize)]
+    struct Installation {
+        id: u64,
+    }
+
+    let endpoint = format!("{base_url}/repos/{owner}/{repo}/installation");
+    let auth = format!("Bearer {jwt}");
+    let resp = client
+        .request(HttpMethod::Get, &endpoint, &github_headers(&auth), None)
+        .await?;
+    match resp.status {
+        200 => {
+            let installation: Installation = resp
+                .json()
+                .context("Failed to parse installation response")?;
+            Ok(InstallationLookup::Found(installation.id))
+        }
+        404 => Ok(InstallationLookup::NotFound),
+        status => Ok(InstallationLookup::Failed(status)),
+    }
+}
+
 async fn mint_installation_token_with_jwt(
     client: &impl HttpClient,
     jwt: &str,
@@ -525,11 +598,6 @@ async fn mint_installation_token_with_jwt(
     permissions: serde_json::Value,
     install_url: Option<&str>,
 ) -> anyhow::Result<InstallationToken> {
-    #[derive(Deserialize)]
-    struct Installation {
-        id: u64,
-    }
-
     #[derive(Deserialize)]
     struct AccessToken {
         token:      String,
@@ -544,21 +612,12 @@ async fn mint_installation_token_with_jwt(
     // repository callers resolve every repository's installation up front
     // (`GitHubRepositoryAccess::resolve_shared_installation`), so the
     // primary stands for the whole set here.
-    let installation_endpoint = format!("{base_url}/repos/{owner}/{primary_repo}/installation");
-    let auth = format!("Bearer {jwt}");
-    let resp = client
-        .request(
-            HttpMethod::Get,
-            &installation_endpoint,
-            &github_headers(&auth),
-            None,
-        )
+    let installation_id = match lookup_installation(client, jwt, base_url, owner, primary_repo)
         .await
-        .context("Failed to look up GitHub App installation")?;
-
-    match resp.status {
-        200 => {}
-        404 => {
+        .context("Failed to look up GitHub App installation")?
+    {
+        InstallationLookup::Found(id) => id,
+        InstallationLookup::NotFound => {
             let install_url = install_url.map_or_else(
                 || format!("https://github.com/organizations/{owner}/settings/installations"),
                 str::to_string,
@@ -568,35 +627,26 @@ async fn mint_installation_token_with_jwt(
                  Install it at {install_url}"
             );
         }
-        403 => {
+        InstallationLookup::Failed(403) => {
             bail!(
                 "GitHub App installation is suspended. \
                  Re-enable it in your organization's GitHub App settings."
             );
         }
-        401 => {
+        InstallationLookup::Failed(401) => {
             bail!(
                 "GitHub App authentication failed. \
                  Check that app_id and GITHUB_APP_PRIVATE_KEY are correct."
             );
         }
-        _ => {
-            bail!(
-                "Unexpected status {} looking up GitHub App installation",
-                resp.status
-            );
+        InstallationLookup::Failed(status) => {
+            bail!("Unexpected status {status} looking up GitHub App installation");
         }
-    }
-
-    let installation: Installation = resp
-        .json()
-        .context("Failed to parse installation response")?;
+    };
 
     // Step 2: Create a scoped access token
-    let token_url = format!(
-        "{base_url}/app/installations/{}/access_tokens",
-        installation.id
-    );
+    let auth = format!("Bearer {jwt}");
+    let token_url = format!("{base_url}/app/installations/{installation_id}/access_tokens");
     let body = serde_json::json!({
         "repositories": repos,
         "permissions": permissions,

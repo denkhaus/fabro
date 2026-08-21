@@ -35,17 +35,13 @@
 
 use std::collections::HashMap;
 
+use fabro_github::{GITHUB_CREDENTIAL_HELPER, GITHUB_CREDENTIAL_HELPER_KEY};
 use fabro_types::GitHubRepositorySlug;
 
 use crate::error::Error;
 
 /// Section base for the effective repositories' HTTPS routes.
 const GITHUB_HTTPS_BASE: &str = "https://github.com/";
-
-const CREDENTIAL_HELPER_KEY: &str = "credential.https://github.com.helper";
-/// Reads the invoking process's `$GITHUB_TOKEN` at invocation time; contains
-/// no secret itself. Non-`get` operations (`store`, `erase`) are ignored.
-const CREDENTIAL_HELPER: &str = r#"!f() { if [ "$1" = get ]; then echo username=x-access-token; echo "password=$GITHUB_TOKEN"; fi; }; f"#;
 
 /// Merge the bridging entries into `env` for the effective repository set
 /// (primary first). Appends after any valid user-provided `GIT_CONFIG_COUNT`
@@ -56,15 +52,13 @@ pub(crate) fn merge_git_bridge_env(
     targets: &[&GitHubRepositorySlug],
 ) -> Result<(), Error> {
     let start = user_git_config_count(env)?;
-    for (offset, (key, value)) in bridge_entries(targets, GITHUB_HTTPS_BASE)
-        .into_iter()
-        .enumerate()
-    {
+    let entries = bridge_entries(targets, GITHUB_HTTPS_BASE);
+    let total = start + entries.len();
+    for (offset, (key, value)) in entries.into_iter().enumerate() {
         let index = start + offset;
         env.insert(format!("GIT_CONFIG_KEY_{index}"), key);
         env.insert(format!("GIT_CONFIG_VALUE_{index}"), value);
     }
-    let total = start + bridge_entry_count(targets);
     env.insert("GIT_CONFIG_COUNT".to_string(), total.to_string());
     // Fail instead of hanging when access is missing or invalid; a user who
     // explicitly configured prompting keeps their value.
@@ -73,20 +67,16 @@ pub(crate) fn merge_git_bridge_env(
     Ok(())
 }
 
-fn bridge_entry_count(targets: &[&GitHubRepositorySlug]) -> usize {
-    1 + targets.len() * 2
-}
-
 /// The bridge's Git config entries in order: the credential helper, then two
 /// SSH-to-HTTPS rewrites per repository. `https_base` is
 /// [`GITHUB_HTTPS_BASE`] in production; contract tests substitute a local
 /// `file://` root to prove real Git applies the generated entries without
 /// touching the network.
 fn bridge_entries(targets: &[&GitHubRepositorySlug], https_base: &str) -> Vec<(String, String)> {
-    let mut entries = Vec::with_capacity(bridge_entry_count(targets));
+    let mut entries = Vec::with_capacity(1 + targets.len() * 2);
     entries.push((
-        CREDENTIAL_HELPER_KEY.to_string(),
-        CREDENTIAL_HELPER.to_string(),
+        GITHUB_CREDENTIAL_HELPER_KEY.to_string(),
+        GITHUB_CREDENTIAL_HELPER.to_string(),
     ));
     for slug in targets {
         let owner = slug.owner();
@@ -195,7 +185,7 @@ mod tests {
     fn no_targets_means_no_bridge_call_and_empty_env_stays_empty() {
         // The caller only bridges when the additional set is non-empty; the
         // pure entry builder is still total for the primary-only case.
-        assert_eq!(bridge_entry_count(&[]), 1);
+        assert_eq!(bridge_entries(&[], GITHUB_HTTPS_BASE).len(), 1);
         let env: HashMap<String, String> = HashMap::new();
         assert!(!env.contains_key("GIT_CONFIG_COUNT"));
     }

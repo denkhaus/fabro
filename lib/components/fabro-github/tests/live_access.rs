@@ -19,7 +19,6 @@ use std::collections::BTreeSet;
 use std::process::Stdio;
 use std::time::Duration;
 
-use base64::engine::general_purpose::STANDARD;
 use fabro_github::token_source::InstallationTokenSource;
 use fabro_github::{GitHubAppCredentials, GitHubCredentials, GitHubRepositoryAccess};
 use fabro_types::GitHubRepositorySlug;
@@ -35,28 +34,16 @@ fn env_var(name: &str) -> String {
 }
 
 fn private_key_pem() -> String {
-    let raw = env_var("GITHUB_APP_PRIVATE_KEY");
-    if raw.starts_with("-----") {
-        return raw;
-    }
-    let bytes = base64::Engine::decode(&STANDARD, &raw)
-        .expect("GITHUB_APP_PRIVATE_KEY is not valid base64");
-    String::from_utf8(bytes).expect("GITHUB_APP_PRIVATE_KEY decoded to invalid UTF-8")
+    GitHubAppCredentials::private_key_from_env()
+        .expect("GITHUB_APP_PRIVATE_KEY should decode as PEM or base64 PEM")
+        .expect("GITHUB_APP_PRIVATE_KEY must be set for this live test")
 }
 
 async fn ls_remote_with_token(slug: &GitHubRepositorySlug, token: &str) -> bool {
     let url = format!("https://github.com/{}/{}", slug.owner(), slug.repo());
-    let output = Command::new("git")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .env("GITHUB_TOKEN", token)
-        .env("GIT_CONFIG_COUNT", "1")
-        .env("GIT_CONFIG_KEY_0", "credential.https://github.com.helper")
-        .env(
-            "GIT_CONFIG_VALUE_0",
-            r#"!f() { if [ "$1" = get ]; then echo username=x-access-token; echo "password=$GITHUB_TOKEN"; fi; }; f"#,
-        )
+    let mut command = Command::new("git");
+    fabro_github::apply_probe_git_env(&mut command, token);
+    let output = command
         .args(["ls-remote", &url, "HEAD"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -92,16 +79,15 @@ async fn scoped_token_reaches_the_declared_additional_repository() {
     .expect("access request should validate")
     .expect("origin should produce an access value");
 
-    // Every target resolves to one shared installation.
-    access
-        .resolve_shared_installation_via_api(&app)
+    // The production choreography: every target resolves to one shared
+    // installation, then one mint scoped to the whole effective set.
+    let creds = GitHubCredentials::App(app.clone());
+    let source =
+        InstallationTokenSource::for_access(&creds, &access).expect("token source should build");
+    let resolved = access
+        .resolve_verified_token(&creds, &source)
         .await
-        .expect("all repositories should share one App installation");
-
-    // One mint scoped to the whole effective set.
-    let source = InstallationTokenSource::for_access(&GitHubCredentials::App(app.clone()), &access)
-        .expect("token source should build");
-    let resolved = source.resolve().await.expect("scoped mint should succeed");
+        .expect("scoped mint should succeed");
     let token = resolved.token.expose();
 
     // The one token reads both the primary and the additional repository.

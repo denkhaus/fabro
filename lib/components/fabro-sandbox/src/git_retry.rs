@@ -198,8 +198,11 @@ pub fn classify_failure(message: &str, cred: CredentialContext) -> Option<GitRet
 ///
 /// GitHub's guidance for token replication is to wait a few seconds and retry
 /// with the same token. Sub-second delays land inside the same replication
-/// window and spend an attempt for nothing.
-fn clone_backoff() -> BackoffPolicy {
+/// window and spend an attempt for nothing. Exported so other retried git
+/// operations against a freshly minted token (e.g. server preflight probes)
+/// pace themselves by the same policy.
+#[must_use]
+pub fn replication_backoff() -> BackoffPolicy {
     BackoffPolicy {
         initial_delay: Duration::from_secs(3),
         factor:        3.0,
@@ -236,7 +239,7 @@ impl RetryPlan {
     pub fn clone_default(outer_deadline: Option<time::Instant>) -> Self {
         Self {
             max_attempts: 3,
-            backoff: clone_backoff(),
+            backoff: replication_backoff(),
             max_elapsed: None,
             per_attempt_timeout: None,
             outer_deadline,
@@ -249,7 +252,7 @@ impl RetryPlan {
     pub fn checkpoint_push() -> Self {
         Self {
             max_attempts:        3,
-            backoff:             clone_backoff(),
+            backoff:             replication_backoff(),
             max_elapsed:         Some(Duration::from_secs(90)),
             per_attempt_timeout: Some(Duration::from_mins(1)),
             outer_deadline:      None,
@@ -736,7 +739,7 @@ mod tests {
         let attempts = Attempts::default();
         let plan = RetryPlan {
             max_attempts:        5,
-            backoff:             clone_backoff(),
+            backoff:             replication_backoff(),
             max_elapsed:         Some(Duration::from_secs(4)),
             per_attempt_timeout: None,
             outer_deadline:      None,

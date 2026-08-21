@@ -873,6 +873,15 @@ async fn check_git_remote_ref(
         command.arg(branch);
     }
 
+    run_ls_remote(command)
+        .await
+        .map_err(|message| redact_auth_url(&message, auth_url.as_ref()))
+}
+
+/// Run a prepared `git ls-remote` invocation with a 10s timeout, reducing a
+/// failure to its most useful message: stderr, then stdout, then the exit
+/// status.
+async fn run_ls_remote(mut command: Command) -> std::result::Result<(), String> {
     let output = time::timeout(Duration::from_secs(10), command.output())
         .await
         .map_err(|_| "git ls-remote timed out after 10s".to_string())?
@@ -884,14 +893,13 @@ async fn check_git_remote_ref(
 
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let message = if !stderr.is_empty() {
+    Err(if !stderr.is_empty() {
         stderr
     } else if !stdout.is_empty() {
         stdout
     } else {
         format!("git ls-remote exited with status {}", output.status)
-    };
-    Err(redact_auth_url(&message, auth_url.as_ref()))
+    })
 }
 
 fn preflight_sandbox_spec(
@@ -1236,14 +1244,12 @@ where
     let integration = match github.resolve_integration() {
         Ok(integration) => integration,
         Err(err) => {
-            checks.push(CheckResult {
-                name:        "GitHub Token".into(),
-                status:      CheckStatus::Error,
-                summary:     "invalid permissions".into(),
-                details:     vec![],
-                remediation: Some(format!("Failed to resolve GitHub permissions: {err}")),
-            });
-            return false;
+            return fail_github_token_check(
+                checks,
+                &[],
+                "invalid permissions",
+                format!("Failed to resolve GitHub permissions: {err}"),
+            );
         }
     };
     let perm_details = integration
@@ -1269,7 +1275,7 @@ where
     // `gh` checks GH_TOKEN before GITHUB_TOKEN, so a user-defined GH_TOKEN
     // bypasses the managed scoped token for gh commands. Warn without
     // failing; the value is the workflow author's responsibility.
-    if resolved_run.environment.env.contains_key("GH_TOKEN") {
+    if resolved_run.environment.env.contains_key(EnvVars::GH_TOKEN) {
         checks.push(CheckResult {
             name:        "GH_TOKEN Override".into(),
             status:      CheckStatus::Warning,
@@ -1284,65 +1290,44 @@ where
         });
     }
 
-    let Some(git) = prepared.git.as_ref() else {
-        checks.push(CheckResult {
-            name:        "GitHub Token".into(),
-            status:      CheckStatus::Error,
-            summary:     "missing origin".into(),
-            details:     perm_details,
-            remediation: Some(
-                "run.integrations.github.additional_repositories requires a GitHub run origin, \
-                 but this run has no repository origin URL"
-                    .to_string(),
-            ),
-        });
-        return false;
-    };
     let Some(creds) = github_app else {
-        checks.push(CheckResult {
-            name:        "GitHub Token".into(),
-            status:      CheckStatus::Error,
-            summary:     "missing credentials".into(),
-            details:     perm_details,
-            remediation: Some(
-                "run.integrations.github.additional_repositories requires GitHub credentials, \
-                 but none are configured on the server"
-                    .to_string(),
-            ),
-        });
-        return false;
+        return fail_github_token_check(
+            checks,
+            &perm_details,
+            "missing credentials",
+            "run.integrations.github.additional_repositories requires GitHub credentials, but \
+             none are configured on the server"
+                .to_string(),
+        );
     };
     // The same validated access value runtime initialization constructs, so
-    // preflight and runtime cannot disagree about the effective set.
+    // preflight and runtime cannot disagree about the effective set. A
+    // missing origin fails inside `new` with the canonical remediation.
     let access = match fabro_github::GitHubRepositoryAccess::new(
-        Some(&git.origin_url),
+        prepared.git.as_ref().map(|git| git.origin_url.as_str()),
         &integration.additional_repositories,
         integration.permissions.clone(),
     ) {
         Ok(Some(access)) => access,
+        // `new` returns `Ok(None)` only when nothing is declared, and the
+        // declared set is non-empty here. Fail closed instead of panicking.
         Ok(None) => {
-            checks.push(CheckResult {
-                name:        "GitHub Token".into(),
-                status:      CheckStatus::Error,
-                summary:     "missing origin".into(),
-                details:     perm_details,
-                remediation: Some(
-                    "run.integrations.github.additional_repositories requires a GitHub run \
-                     origin, but the origin URL is empty"
-                        .to_string(),
-                ),
-            });
-            return false;
+            return fail_github_token_check(
+                checks,
+                &perm_details,
+                "missing origin",
+                "run.integrations.github.additional_repositories requires a GitHub run origin, \
+                 but this run has no repository origin URL"
+                    .to_string(),
+            );
         }
         Err(err) => {
-            checks.push(CheckResult {
-                name:        "GitHub Token".into(),
-                status:      CheckStatus::Error,
-                summary:     "invalid repository set".into(),
-                details:     perm_details,
-                remediation: Some(format!("{err:#}")),
-            });
-            return false;
+            return fail_github_token_check(
+                checks,
+                &perm_details,
+                "invalid repository set",
+                format!("{err:#}"),
+            );
         }
     };
 
@@ -1352,14 +1337,7 @@ where
     let token = match mint_scoped_token(access.clone(), creds).await {
         Ok(token) => token,
         Err(err) => {
-            checks.push(CheckResult {
-                name:        "GitHub Token".into(),
-                status:      CheckStatus::Error,
-                summary:     "failed".into(),
-                details:     perm_details,
-                remediation: Some(err),
-            });
-            return false;
+            return fail_github_token_check(checks, &perm_details, "failed", err);
         }
     };
     checks.push(CheckResult {
@@ -1415,12 +1393,29 @@ where
     ok
 }
 
+/// Report one "GitHub Token" preflight failure and fail the check.
+fn fail_github_token_check(
+    checks: &mut Vec<CheckResult>,
+    perm_details: &[CheckDetail],
+    summary: &str,
+    remediation: String,
+) -> bool {
+    checks.push(CheckResult {
+        name:        "GitHub Token".into(),
+        status:      CheckStatus::Error,
+        summary:     summary.into(),
+        details:     perm_details.to_vec(),
+        remediation: Some(remediation),
+    });
+    false
+}
+
 /// Bounded concurrency for per-repository `git ls-remote` probes.
 const REPOSITORY_PROBE_CONCURRENCY: usize = 4;
 
 /// Total probe attempts per repository when failures classify as retryable
 /// (token replication lag or transient infrastructure).
-const REPOSITORY_PROBE_ATTEMPTS: u64 = 3;
+const REPOSITORY_PROBE_ATTEMPTS: u32 = 3;
 
 async fn check_primary_only_github_token(
     checks: &mut Vec<CheckResult>,
@@ -1464,34 +1459,29 @@ async fn check_primary_only_github_token(
     }
 }
 
-/// Production minter for the multi-repository path: resolve every
-/// repository's installation in App mode (naming any repository the App
-/// cannot see, or one on a different installation), then mint the single
-/// scoped token. A mint rejection after a clean resolution check surfaces
-/// the raw error.
+/// Production minter for the multi-repository path:
+/// [`fabro_github::GitHubRepositoryAccess::resolve_verified_token`] over a
+/// source scoped to the effective set. In App mode that resolves every
+/// repository's installation first, so a failure names the repository the
+/// App cannot see (or one on a different installation).
 async fn mint_scoped_github_token(
     access: fabro_github::GitHubRepositoryAccess,
     creds: fabro_github::GitHubCredentials,
 ) -> std::result::Result<ResolvedToken, String> {
-    if let fabro_github::GitHubCredentials::App(app) = &creds {
-        access
-            .resolve_shared_installation_via_api(app)
-            .await
-            .map_err(|err| format!("{err:#}"))?;
-    }
     let source =
         InstallationTokenSource::for_access(&creds, &access).map_err(|err| format!("{err:#}"))?;
-    source
-        .resolve()
+    access
+        .resolve_verified_token(&creds, &source)
         .await
-        .map_err(|err| format!("Failed to mint GitHub token: {err:#}"))
+        .map_err(|err| format!("{err:#}"))
 }
 
 /// Production per-repository probe: a non-interactive
-/// `git ls-remote <https-url> HEAD` authenticated through a credential
-/// helper that reads `GITHUB_TOKEN` from the child process environment, so
-/// the token never appears in the URL, argv, or rendered errors. Mirrors the
-/// runtime `git_bridge` credential helper in `fabro-workflow`.
+/// `git ls-remote <https-url> HEAD` authenticated through
+/// [`fabro_github::GITHUB_CREDENTIAL_HELPER`] reading `GITHUB_TOKEN` from
+/// the child process environment, so the token never appears in the URL,
+/// argv, or rendered errors — exactly what the runtime `git_bridge`
+/// configures in `fabro-workflow`.
 async fn probe_github_repository(
     slug: fabro_types::GitHubRepositorySlug,
     token: ResolvedToken,
@@ -1502,8 +1492,8 @@ async fn probe_github_repository(
 
 /// Retry auth-shaped failures with the SAME token: replication of a given
 /// token only makes progress, while re-minting would restart the replication
-/// clock. Classification matches the sandbox git retry policy
-/// (`fabro_sandbox::classify_failure`).
+/// clock. Classification and pacing match the sandbox git retry policy
+/// (`fabro_sandbox::classify_failure` / `fabro_sandbox::replication_backoff`).
 async fn probe_with_replication_retry<F, Fut>(
     snapshot: TokenSnapshot,
     run: F,
@@ -1513,7 +1503,8 @@ where
     Fut: Future<Output = std::result::Result<(), String>>,
 {
     let credential_context = fabro_sandbox::CredentialContext::from_snapshot(Some(&snapshot));
-    let mut attempt = 0u64;
+    let backoff = fabro_sandbox::replication_backoff();
+    let mut attempt = 0u32;
     loop {
         attempt += 1;
         let Err(message) = run().await else {
@@ -1524,44 +1515,15 @@ where
         {
             return Err(message);
         }
-        time::sleep(Duration::from_secs(attempt)).await;
+        time::sleep(backoff.delay_for_attempt(attempt)).await;
     }
 }
 
 async fn run_probe_ls_remote(url: &str, token: &ResolvedToken) -> std::result::Result<(), String> {
     let mut command = Command::new("git");
-    command
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .env("GITHUB_TOKEN", token.token.expose())
-        .env("GIT_CONFIG_COUNT", "1")
-        .env("GIT_CONFIG_KEY_0", "credential.https://github.com.helper")
-        .env(
-            "GIT_CONFIG_VALUE_0",
-            r#"!f() { if [ "$1" = get ]; then echo username=x-access-token; echo "password=$GITHUB_TOKEN"; fi; }; f"#,
-        )
-        .args(["ls-remote", url, "HEAD"]);
-
-    let output = time::timeout(Duration::from_secs(10), command.output())
-        .await
-        .map_err(|_| "git ls-remote timed out after 10s".to_string())?
-        .map_err(|err| format!("Failed to run git ls-remote: {err}"))?;
-    if output.status.success() {
-        return Ok(());
-    }
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if !stderr.is_empty() {
-        Err(stderr)
-    } else if !stdout.is_empty() {
-        Err(stdout)
-    } else {
-        Err(format!(
-            "git ls-remote exited with status {}",
-            output.status
-        ))
-    }
+    fabro_github::apply_probe_git_env(&mut command, token.token.expose());
+    command.args(["ls-remote", url, "HEAD"]);
+    run_ls_remote(command).await
 }
 
 async fn mint_github_token(
@@ -3531,7 +3493,17 @@ dockerfile = { path = "Dockerfile" }
             .await;
 
             assert!(!ok);
-            assert_eq!(checks.last().unwrap().summary, "missing origin");
+            let check = checks.last().unwrap();
+            assert_eq!(check.summary, "invalid repository set");
+            assert!(
+                check
+                    .remediation
+                    .as_deref()
+                    .unwrap_or_default()
+                    .contains("requires a GitHub run origin"),
+                "{:?}",
+                check.remediation
+            );
         }
 
         #[tokio::test]
