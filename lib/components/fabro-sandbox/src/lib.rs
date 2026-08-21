@@ -16,6 +16,9 @@ mod clone_retry;
 mod managed_labels;
 
 #[cfg(any(feature = "docker", feature = "daytona", test))]
+mod push_credentials;
+
+#[cfg(any(feature = "docker", feature = "daytona", test))]
 pub mod redact;
 
 pub mod details;
@@ -39,6 +42,9 @@ pub use details::sandbox_details;
 #[cfg(feature = "docker")]
 pub use docker::{DockerSandbox, DockerSandboxOptions};
 pub use error::{Error, Result, default_redacted_output_tail, display_for_log};
+pub use fabro_github::token_source::{
+    InstallationTokenSource, ResolvedToken, TokenProvenance, TokenSnapshot,
+};
 pub use fabro_types::{RunSandboxInstance, SandboxProviderKind};
 pub use local::LocalSandbox;
 #[cfg(feature = "daytona")]
@@ -53,9 +59,10 @@ pub use reconnect::{reconnect, reconnect_for_run, reconnect_for_run_with_callbac
 pub use sandbox::{
     CommandOutputCallback, DEFAULT_EXEC_OUTPUT_TAIL_BYTES, DirEntry, ExecResult,
     ExecStreamingRequest, ExecStreamingResult, GitRunInfo, GitSetupIntent, GrepOptions,
-    RefreshOutcome, Sandbox, SandboxEvent, SandboxEventCallback, SandboxFile, StderrCollector,
-    StdioProcess, StdioProcessHandle, StdioProcessTermination, WalkOptions, format_lines_numbered,
-    git_push_via_exec, redacted_output_tail, setup_git_via_exec, shell_quote,
+    RefreshOutcome, RemoteCredentialAction, Sandbox, SandboxEvent, SandboxEventCallback,
+    SandboxFile, StderrCollector, StdioProcess, StdioProcessHandle, StdioProcessTermination,
+    WalkOptions, format_lines_numbered, git_push_via_exec, redacted_output_tail,
+    setup_git_via_exec, shell_quote,
 };
 pub use sandbox_spec::SandboxSpec;
 pub use terminal::{TerminalSession, TerminalSize, open_terminal_for_run};

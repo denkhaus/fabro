@@ -359,8 +359,8 @@ impl RunSession {
         let git = git_checkpoint_options_from_start(settings, &record.run_id, state.start);
         let definition_blob = state.spec.definition_blob;
         let accepted_definition = match definition_blob {
-            Some(blob_id) => {
-                Some(load_accepted_run_definition(&services.run_store, blob_id).await?)
+            Some(blob_hash) => {
+                Some(load_accepted_run_definition(&services.run_store, blob_hash).await?)
             }
             None => None,
         };
@@ -570,15 +570,15 @@ fn vault_token_lookup(vault: &Vault, name: &str) -> Option<String> {
 
 async fn load_accepted_run_definition(
     run_store: &RunStoreHandle,
-    blob_id: fabro_types::RunBlobId,
+    blob_hash: fabro_types::BlobHash,
 ) -> Result<RunDefinition, Error> {
     let bytes = run_store
-        .read_blob(&blob_id)
+        .read_blob(&blob_hash)
         .await
         .map_err(|err| Error::engine(err.to_string()))?
         .ok_or_else(|| {
             Error::engine(format!(
-                "run definition blob is missing from the run store: {blob_id}"
+                "run definition blob is missing from the run store: {blob_hash}"
             ))
         })?;
     serde_json::from_slice(&bytes).map_err(|err| Error::Parse(err.to_string()))

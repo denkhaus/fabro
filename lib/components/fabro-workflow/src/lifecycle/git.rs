@@ -613,7 +613,7 @@ mod tests {
     use fabro_model::Catalog;
     use fabro_store::{Database, EventEnvelope, RunDatabase, RunProjection};
     use fabro_types::run_event::{MetadataSnapshotFailureKind, MetadataSnapshotPhase};
-    use fabro_types::{EventBody, RunBlobId, RunEvent, WorkflowSettings, fixtures, test_support};
+    use fabro_types::{BlobHash, EventBody, RunEvent, WorkflowSettings, fixtures, test_support};
     use object_store::memory::InMemory;
 
     use super::*;
@@ -1324,11 +1324,11 @@ mod tests {
             Ok(())
         }
 
-        async fn write_blob(&self, data: &[u8]) -> Result<RunBlobId> {
-            Ok(RunBlobId::new(data))
+        async fn write_blob(&self, data: &[u8]) -> Result<BlobHash> {
+            Ok(BlobHash::new(data))
         }
 
-        async fn read_blob(&self, _id: &RunBlobId) -> Result<Option<Bytes>> {
+        async fn read_blob(&self, _blob_hash: &BlobHash) -> Result<Option<Bytes>> {
             Ok(None)
         }
 
