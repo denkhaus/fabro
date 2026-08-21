@@ -216,7 +216,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-21T22:23:24.294878562Z",
-  "last_event_at": "2026-08-21T22:23:45.377970309Z",
+  "last_event_at": "2026-08-21T22:23:49.955618062Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -256,9 +256,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 52,
       "checkpoint": {
-        "timestamp": "2026-08-21T22:23:45.423927803Z",
+        "timestamp": "2026-08-21T22:23:49.955218799Z",
         "current_node": "greet",
         "completed_nodes": [
           "start",
@@ -267,24 +267,28 @@
         "node_retries": {},
         "context_values": {
           "internal.work_dir": "/workspace/fabro",
-          "graph.rankdir": "LR",
-          "internal.run_id": "01M0K6PKCAG131JA3TAF0A5TJQ",
-          "thread.start.current_node": "greet",
-          "last_response": "Done! Created `README.md` with a hello-themed haiku:\n\n> Hello, Fabro here —\n> simple steps weave through the code,\n> work flows, soft and clear.\n\nPer your instructions, I didn't run any builds, test",
-          "internal.node_visit_count": 1,
-          "response.greet": "Done! Created `README.md` with a hello-themed haiku:\n\n> Hello, Fabro here —\n> simple steps weave through the code,\n> work flows, soft and clear.\n\nPer your instructions, I didn't run any builds, tests, or tooling — this was an edit-only task.",
-          "failure_class": "",
-          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
-          "last_stage": "greet",
-          "internal.retry_count.start": 0,
-          "internal.thread_id": "start",
           "internal.retry_count.greet": 0,
-          "current_node": "greet",
+          "last_stage": "greet",
           "outcome": "succeeded",
+          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+          "internal.thread_id": "start",
+          "thread.start.current_node": "greet",
+          "internal.run_id": "01M0K6PKCAG131JA3TAF0A5TJQ",
+          "last_response": "Done! Created `README.md` with a hello-themed haiku:\n\n> Hello, Fabro here —\n> simple steps weave through the code,\n> work flows, soft and clear.\n\nPer your instructions, I didn't run any builds, test",
+          "response.greet": "Done! Created `README.md` with a hello-themed haiku:\n\n> Hello, Fabro here —\n> simple steps weave through the code,\n> work flows, soft and clear.\n\nPer your instructions, I didn't run any builds, tests, or tooling — this was an edit-only task.",
+          "current_node": "greet",
+          "failure_class": "",
+          "internal.node_visit_count": 1,
+          "internal.fidelity": "compact",
           "failure_signature": "",
-          "internal.fidelity": "compact"
+          "graph.rankdir": "LR",
+          "internal.retry_count.start": 0
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "greet": {
             "status": "succeeded",
             "context_updates": {
@@ -323,22 +327,79 @@
               "tool_time_ms": 230,
               "active_time_ms": 14770
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "00de6ae220e35256ce80211124e587164ec279a4",
         "node_visits": {
           "greet": 1,
           "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/README.md b/README.md\nnew file mode 100644\nindex 0000000..bdbc10f\n--- /dev/null\n+++ b/README.md\n@@ -0,0 +1,5 @@\n+# Fabro\n+\n+Hello, Fabro here —\n+simple steps weave through the code,\n+work flows, soft and clear.\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 5,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-08-21T22:23:49.986832556Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 22298,
+      "inference_time_ms": 14540,
+      "tool_time_ms": 230,
+      "active_time_ms": 14770
+    },
+    "final_git_commit_sha": "00de6ae220e35256ce80211124e587164ec279a4",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "greet",
+        "stage_label": "greet",
+        "timing": {
+          "wall_time_ms": 15543,
+          "inference_time_ms": 14540,
+          "tool_time_ms": 230,
+          "active_time_ms": 14770
+        },
+        "billing_usd_micros": 7465,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 3216,
+      "output_tokens": 150,
+      "total_tokens": 9129,
+      "reasoning_tokens": 195,
+      "cache_read_tokens": 5568,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 7465
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/README.md b/README.md\nnew file mode 100644\nindex 0000000..bdbc10f\n--- /dev/null\n+++ b/README.md\n@@ -0,0 +1,5 @@\n+# Fabro\n+\n+Hello, Fabro here —\n+simple steps weave through the code,\n+work flows, soft and clear.\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 5,
+        "deletions": 0
+      }
+    }
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -405,7 +466,12 @@
       "first_event_seq": 24,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: greet",
+        "failure_reason": null,
+        "timestamp": "2026-08-21T22:23:45.423369917Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -419,8 +485,12 @@
       "started_at": "2026-08-21T22:23:26.501213737Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 17902,
-      "live_tool_ms": 229,
+      "timing": {
+        "wall_time_ms": 15543,
+        "inference_time_ms": 14540,
+        "tool_time_ms": 230,
+        "active_time_ms": 14770
+      },
       "usage": {
         "input_tokens": 3216,
         "output_tokens": 150,
@@ -598,7 +668,43 @@
         "warnings": []
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 55,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-21T22:23:49.955618062Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-21T22:23:49.955436785Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
     }
   }
 }
