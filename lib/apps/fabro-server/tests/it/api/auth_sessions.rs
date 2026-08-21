@@ -9,7 +9,7 @@ use fabro_server::jwt_auth::resolve_auth_mode_with_lookup;
 use fabro_server::server::{AppState, RouterOptions, build_router_with_options};
 use fabro_server::test_support::{TEST_SESSION_SECRET, TestAppStateBuilder};
 use fabro_server::web_auth::{SESSION_COOKIE_NAME, SessionCookie};
-use fabro_store::auth_session_store::{AuthSessionRecord, RefreshToken};
+use fabro_store::auth_session_store::{AuthSessionRecord, InitialRefreshToken};
 use fabro_store::{ArtifactStore, Database};
 use hkdf::Hkdf;
 use object_store::memory::InMemory;
@@ -134,18 +134,16 @@ fn cli_session(id: Uuid, identity: fabro_types::IdpIdentity) -> AuthSessionRecor
     }
 }
 
-fn refresh_token(hash: [u8; 32], session_id: Uuid) -> RefreshToken {
+fn initial_refresh_token(hash: [u8; 32]) -> InitialRefreshToken {
     let now = chrono::Utc::now();
-    RefreshToken {
+    InitialRefreshToken {
         token_hash: hash,
-        session_id,
-        issued_at: now - chrono::Duration::days(1),
+        issued_at:  now - chrono::Duration::days(1),
         expires_at: now + chrono::Duration::days(30),
-        used_at: None,
     }
 }
 
-async fn seed_session(state: &AppState, session: AuthSessionRecord, token: RefreshToken) {
+async fn seed_session(state: &AppState, session: AuthSessionRecord, token: InitialRefreshToken) {
     state
         .test_auth_session_store()
         .create_session(&session, &token)
@@ -196,7 +194,7 @@ async fn active_cli_refresh_token_chains_for_identity_appear_in_unified_list() {
     seed_session(
         &state,
         cli_session(session_id, github_identity()),
-        refresh_token([1_u8; 32], session_id),
+        initial_refresh_token([1_u8; 32]),
     )
     .await;
 
@@ -227,33 +225,41 @@ async fn inactive_and_other_identity_cli_tokens_are_excluded() {
     let now = chrono::Utc::now();
 
     let expired_id = Uuid::new_v4();
-    let mut expired = refresh_token([2_u8; 32], expired_id);
+    let mut expired = initial_refresh_token([2_u8; 32]);
     expired.expires_at = now - chrono::Duration::seconds(1);
 
-    // A chain whose only token has already been rotated away has nothing left
-    // to spend, so it is inactive even though the token has not expired.
-    let used_id = Uuid::new_v4();
-    let mut used = refresh_token([3_u8; 32], used_id);
-    used.used_at = Some(now);
+    // A rotated chain whose successor has expired is inactive even though its
+    // original token remains as a live-but-spent replay marker.
+    let spent_id = Uuid::new_v4();
 
     for (session, token) in [
         (
             cli_session(active_session_id, github_identity()),
-            refresh_token([1_u8; 32], active_session_id),
+            initial_refresh_token([1_u8; 32]),
         ),
         (cli_session(expired_id, github_identity()), expired),
-        (cli_session(used_id, github_identity()), used),
+        (
+            cli_session(spent_id, github_identity()),
+            initial_refresh_token([3_u8; 32]),
+        ),
         (
             cli_session(Uuid::new_v4(), other_identity()),
-            refresh_token([4_u8; 32], Uuid::new_v4()),
+            initial_refresh_token([4_u8; 32]),
         ),
     ] {
-        let token = RefreshToken {
-            session_id: session.id,
-            ..token
-        };
         seed_session(&state, session, token).await;
     }
+    state
+        .test_auth_session_store()
+        .rotate(
+            &[3_u8; 32],
+            &[5_u8; 32],
+            now - chrono::Duration::hours(1),
+            "fabro-cli/it",
+            now - chrono::Duration::hours(2),
+        )
+        .await
+        .expect("rotation should succeed");
 
     let body = get_sessions(app, &session_cookie()).await;
     let session_ids = body["sessions"]
@@ -281,7 +287,7 @@ async fn deleting_cli_session_removes_refresh_token_chain() {
     seed_session(
         &state,
         cli_session(session_id, github_identity()),
-        refresh_token([1_u8; 32], session_id),
+        initial_refresh_token([1_u8; 32]),
     )
     .await;
     // Rotate once so the chain holds a spent token alongside its live one.

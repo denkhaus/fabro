@@ -27,15 +27,22 @@ pub struct AuthSessionRecord {
     pub last_used_at: DateTime<Utc>,
 }
 
-/// One refresh token within a session. `used_at` is set when the token is
-/// rotated away; the row is kept until expiry so a replay stays recognisable.
+/// Token-specific facts needed to open a session with its first refresh
+/// token. The store derives the owning session and unused state.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RefreshToken {
+pub struct InitialRefreshToken {
     pub token_hash: [u8; 32],
-    pub session_id: Uuid,
     pub issued_at:  DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
-    pub used_at:    Option<DateTime<Utc>>,
+}
+
+/// Complete refresh-token row stored in SQLite.
+struct RefreshTokenRecord {
+    token_hash: [u8; 32],
+    session_id: Uuid,
+    issued_at:  DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    used_at:    Option<DateTime<Utc>>,
 }
 
 /// A session with a spendable token, as returned by the session listing.
@@ -102,7 +109,7 @@ impl AuthSessionStore {
     pub async fn create_session(
         &self,
         session: &AuthSessionRecord,
-        token: &RefreshToken,
+        token: &InitialRefreshToken,
     ) -> Result<()> {
         let mut tx = self.pool.begin().await?;
         sqlx::query(
@@ -125,7 +132,14 @@ INSERT INTO auth_sessions (
         .bind(session.last_used_at.timestamp_millis())
         .execute(&mut *tx)
         .await?;
-        insert_token(&mut tx, token).await?;
+        insert_token(&mut tx, &RefreshTokenRecord {
+            token_hash: token.token_hash,
+            session_id: session.id,
+            issued_at:  token.issued_at,
+            expires_at: token.expires_at,
+            used_at:    None,
+        })
+        .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -241,7 +255,7 @@ RETURNING session_id
         };
 
         let session_id = parse_uuid(&session_id)?;
-        insert_token(&mut tx, &RefreshToken {
+        insert_token(&mut tx, &RefreshTokenRecord {
             token_hash: *new_token_hash,
             session_id,
             issued_at: now,
@@ -330,7 +344,7 @@ WHERE NOT EXISTS (SELECT 1 FROM refresh_tokens t WHERE t.session_id = auth_sessi
 
 async fn insert_token(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    token: &RefreshToken,
+    token: &RefreshTokenRecord,
 ) -> Result<()> {
     sqlx::query(
         r"
@@ -404,7 +418,7 @@ mod tests {
     use tokio::task::JoinSet;
     use uuid::Uuid;
 
-    use super::{AuthSessionRecord, AuthSessionStore, RefreshToken, RotateOutcome};
+    use super::{AuthSessionRecord, AuthSessionStore, InitialRefreshToken, RotateOutcome};
     use crate::test_support::sqlite_auth_session_store;
 
     fn identity(subject: &str) -> IdpIdentity {
@@ -428,14 +442,12 @@ mod tests {
 
     /// Tokens are issued an hour back so that a fixture with a negative
     /// `expires_in` is still a coherent row: issued in the past, expired since.
-    fn token(hash: [u8; 32], session_id: Uuid, expires_in: Duration) -> RefreshToken {
+    fn token(hash: [u8; 32], expires_in: Duration) -> InitialRefreshToken {
         let now = Utc::now();
-        RefreshToken {
+        InitialRefreshToken {
             token_hash: hash,
-            session_id,
-            issued_at: now - Duration::hours(1),
+            issued_at:  now - Duration::hours(1),
             expires_at: now + expires_in,
-            used_at: None,
         }
     }
 
@@ -447,7 +459,7 @@ mod tests {
     ) -> Uuid {
         let id = Uuid::new_v4();
         store
-            .create_session(&session(id, subject), &token(hash, id, expires_in))
+            .create_session(&session(id, subject), &token(hash, expires_in))
             .await
             .unwrap();
         id
@@ -467,6 +479,16 @@ mod tests {
         assert_eq!(found.identity, identity("12345"));
         assert_eq!(found.login, "octocat");
         assert_eq!(found.avatar_url, "https://example.com/octocat.png");
+
+        let (token_session_id, used_at_ms): (String, Option<i64>) = sqlx::query_as(
+            "SELECT session_id, used_at_ms FROM refresh_tokens WHERE token_hash = ?",
+        )
+        .bind([1_u8; 32].as_slice())
+        .fetch_one(&store.pool)
+        .await
+        .unwrap();
+        assert_eq!(token_session_id, id.to_string());
+        assert_eq!(used_at_ms, None);
 
         assert!(
             store
@@ -866,7 +888,7 @@ END
                 RotateOutcome::Rotated(_) => rotated += 1,
                 RotateOutcome::ReplayedAndRevoked(_) => replayed_and_revoked += 1,
                 RotateOutcome::NotFound => not_found += 1,
-                other => panic!("unexpected outcome {other:?}"),
+                other @ RotateOutcome::Expired => panic!("unexpected outcome {other:?}"),
             }
         }
         // SQLite's write lock serialises the claiming UPDATE, so the losers

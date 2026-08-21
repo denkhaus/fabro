@@ -7,7 +7,7 @@ use base64::Engine;
 use fabro_server::jwt_auth::resolve_auth_mode_with_lookup;
 use fabro_server::server::{AppState, RouterOptions, build_router_with_options};
 use fabro_server::test_support::test_app_state_with_store_and_runtime_settings;
-use fabro_store::auth_session_store::{AuthSessionRecord, RefreshToken};
+use fabro_store::auth_session_store::{AuthSessionRecord, InitialRefreshToken};
 use fabro_store::{ArtifactStore, AuthCode, Database};
 use object_store::memory::InMemory;
 use sha2::{Digest, Sha256};
@@ -153,12 +153,10 @@ client_id = "Iv1.test"
     };
     state
         .test_auth_session_store()
-        .create_session(&session, &RefreshToken {
+        .create_session(&session, &InitialRefreshToken {
             token_hash: hash_refresh_secret("integration-refresh"),
-            session_id: session.id,
             issued_at:  now,
             expires_at: now + chrono::Duration::days(30),
-            used_at:    None,
         })
         .await
         .unwrap();

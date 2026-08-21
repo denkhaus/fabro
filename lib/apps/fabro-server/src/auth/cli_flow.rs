@@ -28,8 +28,8 @@ use url::{Host, Url};
 
 use crate::auth::browser_shell::browser_shell;
 use crate::auth::{
-    self, AuthCode, AuthErrorCode, AuthSessionRecord, JwtSubject, REFRESH_TOKEN_PREFIX,
-    RefreshToken, RotateOutcome,
+    self, AuthCode, AuthErrorCode, AuthSessionRecord, InitialRefreshToken, JwtSubject,
+    REFRESH_TOKEN_PREFIX, RotateOutcome,
 };
 use crate::jwt_auth::{AuthMode, ConfiguredAuth, bearer_token_from_headers};
 use crate::principal_middleware::{
@@ -478,12 +478,10 @@ async fn token(
         created_at:   now,
         last_used_at: now,
     };
-    let refresh_row = RefreshToken {
+    let refresh_row = InitialRefreshToken {
         token_hash: hash_refresh_secret(&refresh_secret),
-        session_id: session.id,
         issued_at:  now,
         expires_at: refresh_expires_at,
-        used_at:    None,
     };
     if let Err(err) = state
         .stores
@@ -1187,7 +1185,7 @@ mod tests {
         CliFlowCookie, DEV_TOKEN_LOGIN_INSTRUCTIONS, add_cli_flow_cookie, read_private_cli_flow,
         user_agent_fingerprint, web_routes,
     };
-    use crate::auth::{self, AuthCode, AuthErrorCode, AuthSessionRecord, RefreshToken};
+    use crate::auth::{self, AuthCode, AuthErrorCode, AuthSessionRecord, InitialRefreshToken};
     use crate::jwt_auth::{AuthMode, ConfiguredAuth};
     use crate::principal_middleware::{AuthStatus, RequestAuthContext};
     use crate::server::AppState;
@@ -1353,7 +1351,7 @@ client_id = "github-client-id"
         Sha256::digest(secret.as_bytes()).into()
     }
 
-    fn session_and_token(secret: &str) -> (AuthSessionRecord, RefreshToken) {
+    fn session_and_token(secret: &str) -> (AuthSessionRecord, InitialRefreshToken) {
         let now = chrono::Utc::now();
         let session = AuthSessionRecord {
             id:           Uuid::new_v4(),
@@ -1367,12 +1365,10 @@ client_id = "github-client-id"
             created_at:   now,
             last_used_at: now,
         };
-        let token = RefreshToken {
+        let token = InitialRefreshToken {
             token_hash: hash_refresh_secret(secret),
-            session_id: session.id,
             issued_at:  now,
             expires_at: now + chrono::Duration::days(30),
-            used_at:    None,
         };
         (session, token)
     }

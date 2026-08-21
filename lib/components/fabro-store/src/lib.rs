@@ -21,7 +21,7 @@ pub use artifact_store::{
     stage_storage_segment,
 };
 pub use auth_session_store::{
-    ActiveCliSession, AuthSessionRecord, AuthSessionStore, RefreshToken, RotateOutcome,
+    ActiveCliSession, AuthSessionRecord, AuthSessionStore, InitialRefreshToken, RotateOutcome,
 };
 pub use blob_store::{Blob, BlobStore};
 pub use error::{Error, Result};
