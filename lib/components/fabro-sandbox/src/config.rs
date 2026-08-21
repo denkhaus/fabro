@@ -18,6 +18,7 @@ pub struct DaytonaSettings {
     pub labels:             Option<HashMap<String, String>>,
     pub snapshot:           Option<DaytonaSnapshotSettings>,
     pub network:            Option<DaytonaNetwork>,
+    pub clone_depth:        Option<i32>,
     #[serde(default)]
     pub skip_clone:         bool,
 }

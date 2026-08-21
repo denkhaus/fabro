@@ -591,7 +591,7 @@ fn resolve_sandbox_provider(settings: &ResolvedRunSettings) -> SandboxProviderKi
 }
 
 fn resolve_daytona_config(settings: &ResolvedRunSettings) -> DaytonaConfig {
-    daytona_config_from_environment(&settings.environment, !settings.clone.enabled)
+    daytona_config_from_environment(&settings.environment, &settings.clone)
 }
 
 fn resolve_docker_config(
@@ -600,7 +600,7 @@ fn resolve_docker_config(
 ) -> Result<DockerSandboxOptions, Error> {
     docker_config_from_environment_with_secrets(
         &settings.environment,
-        !settings.clone.enabled,
+        &settings.clone,
         secrets_lookup,
     )
     .map_err(|err| Error::engine_with_source("failed to resolve Docker environment config", err))
@@ -1285,6 +1285,7 @@ reasoning = false
         let settings = settings_from_run_layer(RunLayer {
             clone: Some(RunCloneLayer {
                 enabled: Some(false),
+                depth:   Some(1),
             }),
             ..RunLayer::default()
         });
@@ -1295,6 +1296,13 @@ reasoning = false
                 .skip_clone
         );
         assert!(resolve_daytona_config(&settings.run).skip_clone);
+        assert_eq!(resolve_daytona_config(&settings.run).clone_depth, Some(1));
+        assert_eq!(
+            resolve_docker_config(&settings.run, |_| None)
+                .unwrap()
+                .clone_depth,
+            1
+        );
     }
 
     #[test]

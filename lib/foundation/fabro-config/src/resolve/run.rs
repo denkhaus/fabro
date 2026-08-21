@@ -28,7 +28,7 @@ pub fn resolve_run(
     mcp_server_catalog: &HashMap<String, McpServerSettings>,
     errors: &mut Vec<ResolveError>,
 ) -> RunNamespace {
-    let clone = resolve_clone(layer.clone.as_ref());
+    let clone = resolve_clone(layer.clone.as_ref(), errors);
     let run_branch = resolve_run_branch(layer.run_branch.as_ref());
     let mut meta_branch = resolve_meta_branch(layer.meta_branch.as_ref());
     if !run_branch.enabled {
@@ -244,9 +244,25 @@ fn resolve_checkpoint(checkpoint: Option<&RunCheckpointLayer>) -> RunCheckpointS
     }
 }
 
-fn resolve_clone(clone: Option<&RunCloneLayer>) -> RunCloneSettings {
+fn resolve_clone(
+    clone: Option<&RunCloneLayer>,
+    errors: &mut Vec<ResolveError>,
+) -> RunCloneSettings {
+    let depth = clone.and_then(|clone| clone.depth).and_then(|depth| {
+        if depth < 1 {
+            errors.push(ResolveError::Invalid {
+                path:   "run.clone.depth".to_string(),
+                reason: "depth must be at least 1".to_string(),
+            });
+            None
+        } else {
+            Some(depth)
+        }
+    });
+
     RunCloneSettings {
         enabled: clone.and_then(|clone| clone.enabled).unwrap_or(true),
+        depth,
     }
 }
 

@@ -48,7 +48,7 @@ const DOCKER_BASH_REQUIREMENT: &str = "Docker sandboxes require /bin/bash for ev
 
 pub(crate) const WORKING_DIRECTORY: &str = "/workspace";
 pub(crate) const REPOS_ROOT: &str = "/repos";
-const GIT_CLONE_DEPTH: usize = 10;
+const DEFAULT_GIT_CLONE_DEPTH: usize = 10;
 const GIT_CLONE_TIMEOUT: Duration = Duration::from_mins(5);
 #[cfg(test)]
 const EXEC_STOP_POLL_SLEEP_SECONDS: &str = "0.005";
@@ -121,6 +121,8 @@ pub struct DockerSandboxOptions {
     pub auto_pull:    bool,
     /// Additional `KEY=VALUE` environment variables for the container.
     pub env_vars:     Vec<String>,
+    /// Maximum Git history depth fetched during clone.
+    pub clone_depth:  usize,
     /// Create an empty workspace instead of cloning even when an origin exists.
     pub skip_clone:   bool,
 }
@@ -134,6 +136,7 @@ impl Default for DockerSandboxOptions {
             cpu_quota:    None,
             auto_pull:    true,
             env_vars:     Vec::new(),
+            clone_depth:  DEFAULT_GIT_CLONE_DEPTH,
             skip_clone:   false,
         }
     }
@@ -954,7 +957,7 @@ impl DockerSandbox {
                 &layout.primary_repo_path,
                 "origin",
                 expected_sha,
-                GIT_CLONE_DEPTH,
+                self.config.clone_depth,
             );
             if let Err(failure) = self
                 .retry_git_transfer(
@@ -992,8 +995,12 @@ impl DockerSandbox {
                 return Err(self.report_clone_failure(&origin_url, error));
             }
         } else {
-            let command =
-                git_clone_command(clone_url, branch.as_deref(), &layout.primary_repo_path);
+            let command = git_clone_command(
+                clone_url,
+                branch.as_deref(),
+                &layout.primary_repo_path,
+                self.config.clone_depth,
+            );
             if let Err(failure) = self
                 .retry_git_transfer(
                     &command,
@@ -1529,7 +1536,12 @@ async fn cache_docker_stdio_completion(
     }
 }
 
-fn git_clone_command(clone_url: &str, branch: Option<&str>, checkout_path: &str) -> String {
+fn git_clone_command(
+    clone_url: &str,
+    branch: Option<&str>,
+    checkout_path: &str,
+    depth: usize,
+) -> String {
     let mut command = format!("{} clone", sandbox::GIT);
     if let Some(branch) = branch {
         command.push_str(" --branch ");
@@ -1537,7 +1549,7 @@ fn git_clone_command(clone_url: &str, branch: Option<&str>, checkout_path: &str)
         command.push_str(" --single-branch");
     }
     command.push_str(" --depth ");
-    command.push_str(&GIT_CLONE_DEPTH.to_string());
+    command.push_str(&depth.to_string());
     command.push_str(" --no-tags");
     command.push_str(" -- ");
     command.push_str(&shell_quote(clone_url));
@@ -2556,19 +2568,21 @@ mod tests {
         let options = DockerSandboxOptions::default();
         assert_eq!(options.image, "buildpack-deps:noble");
         assert_eq!(options.network_mode.as_deref(), Some("bridge"));
+        assert_eq!(options.clone_depth, DEFAULT_GIT_CLONE_DEPTH);
         assert!(!options.skip_clone);
     }
 
     #[test]
-    fn clone_command_uses_depth_ten_without_tags_for_branch_clone() {
+    fn clone_command_uses_configured_depth_without_tags_for_branch_clone() {
         let command = git_clone_command(
             "https://github.com/fabro-sh/fabro",
             Some("main"),
             "/repos/fabro-sh/fabro",
+            1,
         );
         assert_eq!(
             command,
-            "git -c maintenance.auto=0 -c gc.auto=0 clone --branch main --single-branch --depth 10 --no-tags -- https://github.com/fabro-sh/fabro /repos/fabro-sh/fabro"
+            "git -c maintenance.auto=0 -c gc.auto=0 clone --branch main --single-branch --depth 1 --no-tags -- https://github.com/fabro-sh/fabro /repos/fabro-sh/fabro"
         );
     }
 
@@ -2578,6 +2592,7 @@ mod tests {
             "https://github.com/fabro-sh/fabro",
             None,
             "/repos/fabro-sh/fabro",
+            DEFAULT_GIT_CLONE_DEPTH,
         );
         assert_eq!(
             command,

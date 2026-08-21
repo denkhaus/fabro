@@ -14633,6 +14633,10 @@ components:
       properties:
         enabled:
           type: boolean
+        depth:
+          type: integer
+          format: int32
+          minimum: 1
 
     RunBranchSettings:
       type: object

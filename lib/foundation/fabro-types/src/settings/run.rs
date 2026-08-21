@@ -961,11 +961,16 @@ impl Default for RunCheckpointSettings {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunCloneSettings {
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depth:   Option<i32>,
 }
 
 impl Default for RunCloneSettings {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            depth:   None,
+        }
     }
 }
 

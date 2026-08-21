@@ -16,4 +16,5 @@
 
 export interface RunCloneSettings {
     'enabled': boolean;
+    'depth'?: number;
 }

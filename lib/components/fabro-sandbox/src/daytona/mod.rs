@@ -106,12 +106,15 @@ fn daytona_git_clone_options(
     commit_id: Option<String>,
     username: Option<String>,
     password: Option<String>,
+    depth: Option<i32>,
 ) -> GitCloneOptions {
     GitCloneOptions {
         branch,
         commit_id,
         username,
         password,
+        depth,
+        ..GitCloneOptions::default()
     }
 }
 
@@ -121,10 +124,10 @@ pub(crate) fn daytona_not_found(err: &DaytonaError) -> bool {
 
 /// Permissions a Daytona API key needs for Fabro's snapshot and sandbox flow.
 pub const REQUIRED_DAYTONA_PERMISSIONS: &[Permissions] = &[
-    Permissions::WriteColonSnapshots,
-    Permissions::DeleteColonSnapshots,
-    Permissions::WriteColonSandboxes,
-    Permissions::DeleteColonSandboxes,
+    Permissions::WRITE_SNAPSHOTS,
+    Permissions::DELETE_SNAPSHOTS,
+    Permissions::WRITE_SANDBOXES,
+    Permissions::DELETE_SANDBOXES,
 ];
 
 pub use crate::config::{
@@ -258,10 +261,10 @@ fn join_perms(perms: &[Permissions]) -> String {
 
 fn perm_wire_str(permission: Permissions) -> &'static str {
     match permission {
-        Permissions::WriteColonSnapshots => "write:snapshots",
-        Permissions::DeleteColonSnapshots => "delete:snapshots",
-        Permissions::WriteColonSandboxes => "write:sandboxes",
-        Permissions::DeleteColonSandboxes => "delete:sandboxes",
+        Permissions::WRITE_SNAPSHOTS => "write:snapshots",
+        Permissions::DELETE_SNAPSHOTS => "delete:snapshots",
+        Permissions::WRITE_SANDBOXES => "write:sandboxes",
+        Permissions::DELETE_SANDBOXES => "delete:sandboxes",
         _ => "unknown",
     }
 }
@@ -1625,6 +1628,7 @@ impl Sandbox for DaytonaSandbox {
                             commit_sha.clone(),
                             username.clone(),
                             password.clone(),
+                            self.config.clone_depth,
                         );
                         async move { git_svc.clone(origin, target, options).await }
                     },
@@ -3145,6 +3149,7 @@ mod tests {
             Some("0123456789abcdef0123456789abcdef01234567".to_string()),
             Some("x-access-token".to_string()),
             Some("secret".to_string()),
+            Some(1),
         );
 
         assert_eq!(options.branch.as_deref(), Some("feature/work"));
@@ -3154,6 +3159,7 @@ mod tests {
         );
         assert_eq!(options.username.as_deref(), Some("x-access-token"));
         assert_eq!(options.password.as_deref(), Some("secret"));
+        assert_eq!(options.depth, Some(1));
     }
 
     fn mock_sandbox_body(sandbox_id: &str) -> serde_json::Value {
@@ -3171,6 +3177,7 @@ mod tests {
             "gpu": 0.0,
             "memory": 4.0,
             "disk": 20.0,
+            "toolboxProxyUrl": "https://proxy.example.com/toolbox",
             "state": "started"
         })
     }
@@ -3488,6 +3495,7 @@ mod tests {
             "size": null,
             "entrypoint": null,
             "errorReason": null,
+            "sourceSandboxId": null,
             "lastUsedAt": null,
             "createdAt": "2026-05-01T00:00:00Z",
             "updatedAt": "2026-05-01T00:00:00Z"
@@ -3509,6 +3517,7 @@ mod tests {
             "gpu": 0.0,
             "memory": 4.0,
             "disk": 20.0,
+            "toolboxProxyUrl": "https://proxy.example.com/toolbox",
             "state": state.to_string()
         })
     }
@@ -3519,6 +3528,7 @@ mod tests {
         assert!(config.snapshot.is_none());
         assert!(config.auto_stop_interval.is_none());
         assert!(config.labels.is_none());
+        assert!(config.clone_depth.is_none());
     }
 
     #[test]
@@ -4195,10 +4205,7 @@ mod tests {
     fn missing_display_uses_daytona_wire_scope_names() {
         let check = DaytonaKeyCheck {
             key_name: "delete-only".to_string(),
-            missing:  vec![
-                Permissions::WriteColonSnapshots,
-                Permissions::WriteColonSandboxes,
-            ],
+            missing:  vec![Permissions::WRITE_SNAPSHOTS, Permissions::WRITE_SANDBOXES],
         };
 
         assert_eq!(check.missing_display(), "write:snapshots, write:sandboxes");
@@ -4337,6 +4344,7 @@ mod tests {
                         "gpu": 0.0,
                         "memory": 4.0,
                         "disk": 20.0,
+                        "toolboxProxyUrl": "https://proxy.example.com/toolbox",
                         "state": "started"
                     }));
             })
