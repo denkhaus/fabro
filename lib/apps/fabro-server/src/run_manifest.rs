@@ -12,6 +12,7 @@ use fabro_config::{
     CliLayer, CliOutputLayer, EnvironmentLayer, MergeMap, RunLayer, SettingsLayer,
     WorkflowSettingsBuilder, parse_input_overrides, parse_labels, project,
 };
+use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
 use fabro_graphviz::graph::{Graph, is_llm_handler_type};
 use fabro_graphviz::render::apply_direction;
 use fabro_llm::model_test::{ModelTestStatus, run_basic_model_probe};
@@ -1200,14 +1201,40 @@ async fn run_github_token_check(
     resolved_run: &RunNamespace,
     github_app: Option<fabro_github::GitHubCredentials>,
 ) -> bool {
-    if !resolved_run.integrations.github.is_token_requested() {
+    run_github_token_check_with(
+        checks,
+        prepared,
+        resolved_run,
+        github_app,
+        mint_scoped_github_token,
+        probe_github_repository,
+    )
+    .await
+}
+
+async fn run_github_token_check_with<M, MFut, P, PFut>(
+    checks: &mut Vec<CheckResult>,
+    prepared: &PreparedManifest,
+    resolved_run: &RunNamespace,
+    github_app: Option<fabro_github::GitHubCredentials>,
+    mint_scoped_token: M,
+    probe_repository: P,
+) -> bool
+where
+    M: FnOnce(fabro_github::GitHubRepositoryAccess, fabro_github::GitHubCredentials) -> MFut,
+    MFut: Future<Output = std::result::Result<ResolvedToken, String>>,
+    P: Fn(fabro_types::GitHubRepositorySlug, ResolvedToken) -> PFut,
+    PFut: Future<Output = std::result::Result<(), String>>,
+{
+    let github = &resolved_run.integrations.github;
+    if !github.is_token_requested() {
         return true;
     }
 
     // Resolve InterpString permission values eagerly for token minting and
     // for display in the preflight report.
-    let github_permissions = match resolved_run.integrations.github.resolve_permissions() {
-        Ok(permissions) => permissions,
+    let integration = match github.resolve_integration() {
+        Ok(integration) => integration,
         Err(err) => {
             checks.push(CheckResult {
                 name:        "GitHub Token".into(),
@@ -1219,13 +1246,191 @@ async fn run_github_token_check(
             return false;
         }
     };
-
-    let perm_details = github_permissions
+    let perm_details = integration
+        .permissions
         .iter()
         .map(|(key, value)| CheckDetail::new(format!("{key}: {value}")))
         .collect::<Vec<_>>();
+
+    if !integration.has_additional_repositories() {
+        // Primary-only behavior is unchanged: a mint check when credentials
+        // and an origin exist, a warning otherwise, and no Git-content probe
+        // (permissions-only workflows may request non-contents permissions).
+        return check_primary_only_github_token(
+            checks,
+            prepared,
+            github_app,
+            &integration.permissions,
+            perm_details,
+        )
+        .await;
+    }
+
+    // `gh` checks GH_TOKEN before GITHUB_TOKEN, so a user-defined GH_TOKEN
+    // bypasses the managed scoped token for gh commands. Warn without
+    // failing; the value is the workflow author's responsibility.
+    if resolved_run.environment.env.contains_key("GH_TOKEN") {
+        checks.push(CheckResult {
+            name:        "GH_TOKEN Override".into(),
+            status:      CheckStatus::Warning,
+            summary:     "gh will not use the managed token".into(),
+            details:     vec![],
+            remediation: Some(
+                "The resolved run environment defines GH_TOKEN, which the gh CLI prefers over \
+                 the managed GITHUB_TOKEN; gh commands will not use the token scoped to the \
+                 declared repositories."
+                    .to_string(),
+            ),
+        });
+    }
+
+    let Some(git) = prepared.git.as_ref() else {
+        checks.push(CheckResult {
+            name:        "GitHub Token".into(),
+            status:      CheckStatus::Error,
+            summary:     "missing origin".into(),
+            details:     perm_details,
+            remediation: Some(
+                "run.integrations.github.additional_repositories requires a GitHub run origin, \
+                 but this run has no repository origin URL"
+                    .to_string(),
+            ),
+        });
+        return false;
+    };
+    let Some(creds) = github_app else {
+        checks.push(CheckResult {
+            name:        "GitHub Token".into(),
+            status:      CheckStatus::Error,
+            summary:     "missing credentials".into(),
+            details:     perm_details,
+            remediation: Some(
+                "run.integrations.github.additional_repositories requires GitHub credentials, \
+                 but none are configured on the server"
+                    .to_string(),
+            ),
+        });
+        return false;
+    };
+    // The same validated access value runtime initialization constructs, so
+    // preflight and runtime cannot disagree about the effective set.
+    let access = match fabro_github::GitHubRepositoryAccess::new(
+        Some(&git.origin_url),
+        &integration.additional_repositories,
+        integration.permissions.clone(),
+    ) {
+        Ok(Some(access)) => access,
+        Ok(None) => {
+            checks.push(CheckResult {
+                name:        "GitHub Token".into(),
+                status:      CheckStatus::Error,
+                summary:     "missing origin".into(),
+                details:     perm_details,
+                remediation: Some(
+                    "run.integrations.github.additional_repositories requires a GitHub run \
+                     origin, but the origin URL is empty"
+                        .to_string(),
+                ),
+            });
+            return false;
+        }
+        Err(err) => {
+            checks.push(CheckResult {
+                name:        "GitHub Token".into(),
+                status:      CheckStatus::Error,
+                summary:     "invalid repository set".into(),
+                details:     perm_details,
+                remediation: Some(format!("{err:#}")),
+            });
+            return false;
+        }
+    };
+
+    // One mint scoped to the whole effective set. In App mode the minter
+    // first resolves every repository's installation so a failure names the
+    // repository the App cannot see.
+    let token = match mint_scoped_token(access.clone(), creds).await {
+        Ok(token) => token,
+        Err(err) => {
+            checks.push(CheckResult {
+                name:        "GitHub Token".into(),
+                status:      CheckStatus::Error,
+                summary:     "failed".into(),
+                details:     perm_details,
+                remediation: Some(err),
+            });
+            return false;
+        }
+    };
+    checks.push(CheckResult {
+        name:        "GitHub Token".into(),
+        status:      CheckStatus::Pass,
+        summary:     "minted".into(),
+        details:     perm_details.clone(),
+        remediation: None,
+    });
+
+    // Probe every effective repository with bounded concurrency, then report
+    // in deterministic primary-first order. Possession of a scoped token is
+    // not proof of access; the probe also verifies PAT/static credentials.
+    let targets: Vec<fabro_types::GitHubRepositorySlug> =
+        access.targets().into_iter().cloned().collect();
+    let probe_repository = &probe_repository;
+    let mut results: Vec<(usize, CheckResult)> =
+        stream::iter(targets.into_iter().enumerate().map(|(index, slug)| {
+            let token = token.clone();
+            let perm_details = perm_details.clone();
+            async move {
+                let check = match probe_repository(slug.clone(), token).await {
+                    Ok(()) => CheckResult {
+                        name:        format!("GitHub Repository ({slug})"),
+                        status:      CheckStatus::Pass,
+                        summary:     "reachable".into(),
+                        details:     perm_details,
+                        remediation: None,
+                    },
+                    Err(err) => CheckResult {
+                        name:        format!("GitHub Repository ({slug})"),
+                        status:      CheckStatus::Error,
+                        summary:     "failed".into(),
+                        details:     perm_details,
+                        remediation: Some(format!("Failed to verify repository access: {err}")),
+                    },
+                };
+                (index, check)
+            }
+        }))
+        .buffer_unordered(REPOSITORY_PROBE_CONCURRENCY)
+        .collect()
+        .await;
+    results.sort_by_key(|(index, _)| *index);
+
+    let mut ok = true;
+    for (_, check) in results {
+        if check.status != CheckStatus::Pass {
+            ok = false;
+        }
+        checks.push(check);
+    }
+    ok
+}
+
+/// Bounded concurrency for per-repository `git ls-remote` probes.
+const REPOSITORY_PROBE_CONCURRENCY: usize = 4;
+
+/// Total probe attempts per repository when failures classify as retryable
+/// (token replication lag or transient infrastructure).
+const REPOSITORY_PROBE_ATTEMPTS: u64 = 3;
+
+async fn check_primary_only_github_token(
+    checks: &mut Vec<CheckResult>,
+    prepared: &PreparedManifest,
+    github_app: Option<fabro_github::GitHubCredentials>,
+    permissions: &HashMap<String, String>,
+    perm_details: Vec<CheckDetail>,
+) -> bool {
     if let (Some(creds), Some(git)) = (&github_app, prepared.git.as_ref()) {
-        match mint_github_token(creds, &git.origin_url, &github_permissions).await {
+        match mint_github_token(creds, &git.origin_url, permissions).await {
             Ok(_) => {
                 checks.push(CheckResult {
                     name:        "GitHub Token".into(),
@@ -1256,6 +1461,106 @@ async fn run_github_token_check(
             remediation: Some("No GitHub credentials or origin URL available".to_string()),
         });
         true
+    }
+}
+
+/// Production minter for the multi-repository path: resolve every
+/// repository's installation in App mode (naming any repository the App
+/// cannot see, or one on a different installation), then mint the single
+/// scoped token. A mint rejection after a clean resolution check surfaces
+/// the raw error.
+async fn mint_scoped_github_token(
+    access: fabro_github::GitHubRepositoryAccess,
+    creds: fabro_github::GitHubCredentials,
+) -> std::result::Result<ResolvedToken, String> {
+    if let fabro_github::GitHubCredentials::App(app) = &creds {
+        access
+            .resolve_shared_installation_via_api(app)
+            .await
+            .map_err(|err| format!("{err:#}"))?;
+    }
+    let source =
+        InstallationTokenSource::for_access(&creds, &access).map_err(|err| format!("{err:#}"))?;
+    source
+        .resolve()
+        .await
+        .map_err(|err| format!("Failed to mint GitHub token: {err:#}"))
+}
+
+/// Production per-repository probe: a non-interactive
+/// `git ls-remote <https-url> HEAD` authenticated through a credential
+/// helper that reads `GITHUB_TOKEN` from the child process environment, so
+/// the token never appears in the URL, argv, or rendered errors. Mirrors the
+/// runtime `git_bridge` credential helper in `fabro-workflow`.
+async fn probe_github_repository(
+    slug: fabro_types::GitHubRepositorySlug,
+    token: ResolvedToken,
+) -> std::result::Result<(), String> {
+    let url = format!("https://github.com/{}/{}", slug.owner(), slug.repo());
+    probe_with_replication_retry(token.snapshot, || run_probe_ls_remote(&url, &token)).await
+}
+
+/// Retry auth-shaped failures with the SAME token: replication of a given
+/// token only makes progress, while re-minting would restart the replication
+/// clock. Classification matches the sandbox git retry policy
+/// (`fabro_sandbox::classify_failure`).
+async fn probe_with_replication_retry<F, Fut>(
+    snapshot: TokenSnapshot,
+    run: F,
+) -> std::result::Result<(), String>
+where
+    F: Fn() -> Fut,
+    Fut: Future<Output = std::result::Result<(), String>>,
+{
+    let credential_context = fabro_sandbox::CredentialContext::from_snapshot(Some(&snapshot));
+    let mut attempt = 0u64;
+    loop {
+        attempt += 1;
+        let Err(message) = run().await else {
+            return Ok(());
+        };
+        if attempt >= REPOSITORY_PROBE_ATTEMPTS
+            || fabro_sandbox::classify_failure(&message, credential_context).is_none()
+        {
+            return Err(message);
+        }
+        time::sleep(Duration::from_secs(attempt)).await;
+    }
+}
+
+async fn run_probe_ls_remote(url: &str, token: &ResolvedToken) -> std::result::Result<(), String> {
+    let mut command = Command::new("git");
+    command
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GITHUB_TOKEN", token.token.expose())
+        .env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "credential.https://github.com.helper")
+        .env(
+            "GIT_CONFIG_VALUE_0",
+            r#"!f() { if [ "$1" = get ]; then echo username=x-access-token; echo "password=$GITHUB_TOKEN"; fi; }; f"#,
+        )
+        .args(["ls-remote", url, "HEAD"]);
+
+    let output = time::timeout(Duration::from_secs(10), command.output())
+        .await
+        .map_err(|_| "git ls-remote timed out after 10s".to_string())?
+        .map_err(|err| format!("Failed to run git ls-remote: {err}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !stderr.is_empty() {
+        Err(stderr)
+    } else if !stdout.is_empty() {
+        Err(stdout)
+    } else {
+        Err(format!(
+            "git ls-remote exited with status {}",
+            output.status
+        ))
     }
 }
 
@@ -2971,6 +3276,328 @@ dockerfile = { path = "Dockerfile" }
                 *dockerfile,
                 EnvironmentDockerfileLayer::Inline("FROM ubuntu:24.04\n".to_string()),
                 "catalog dockerfile path should be inlined, got: {dockerfile:?}"
+            );
+        }
+    }
+
+    mod github_additional_repository_checks {
+        //! Seam-injected tests for the declared-additional-repositories
+        //! preflight path: one scoped mint, per-repository probes with
+        //! deterministic primary-first reporting, GH_TOKEN warning, and the
+        //! replication-lag retry policy.
+
+        use std::sync::Mutex as StdMutex;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        use fabro_github::token_source::{
+            ResolvedToken, SecretString, TokenProvenance, TokenSnapshot,
+        };
+        use fabro_types::settings::run::RunIntegrationsGithubSettings;
+
+        use super::*;
+
+        fn static_token(secret: &str) -> ResolvedToken {
+            ResolvedToken {
+                token:          SecretString::new(secret.to_string()),
+                snapshot:       TokenSnapshot {
+                    generation: 0,
+                    provenance: TokenProvenance::Static,
+                },
+                refresh_failed: false,
+            }
+        }
+
+        fn fresh_minted_snapshot() -> TokenSnapshot {
+            let now = chrono::Utc::now();
+            TokenSnapshot {
+                generation: 1,
+                provenance: TokenProvenance::Minted {
+                    minted_at:  now,
+                    expires_at: now + chrono::Duration::minutes(60),
+                },
+            }
+        }
+
+        fn declared(origin: &str, additional: &[&str]) -> (PreparedManifest, RunNamespace) {
+            let (prepared, mut resolved) = prepared_and_resolved_for_sandbox(
+                SandboxProviderKind::Local,
+                true,
+                Some(git_context(origin, "main")),
+            );
+            resolved.integrations.github = RunIntegrationsGithubSettings {
+                permissions:             HashMap::from([(
+                    "contents".to_string(),
+                    InterpString::parse("read"),
+                )]),
+                additional_repositories: additional
+                    .iter()
+                    .map(|value| value.parse().expect("test slug should parse"))
+                    .collect(),
+            };
+            (prepared, resolved)
+        }
+
+        fn pat_creds() -> fabro_github::GitHubCredentials {
+            fabro_github::GitHubCredentials::Pat("ghp_test".to_string())
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn reports_each_repository_primary_first_despite_probe_completion_order() {
+            let (prepared, resolved) = declared("https://github.com/acme/widgets", &[
+                "acme/zeta",
+                "acme/alpha",
+            ]);
+            let minted = Arc::new(StdMutex::new(Vec::new()));
+            let minted_for_seam = Arc::clone(&minted);
+            let mut checks = Vec::new();
+
+            let ok = run_github_token_check_with(
+                &mut checks,
+                &prepared,
+                &resolved,
+                Some(pat_creds()),
+                move |access, _creds| {
+                    minted_for_seam.lock().unwrap().push(access);
+                    async { Ok(static_token("scoped-token")) }
+                },
+                |slug, _token| async move {
+                    // Invert completion order: the primary finishes last.
+                    let delay = match slug.repo() {
+                        "widgets" => 30,
+                        "alpha" => 20,
+                        _ => 10,
+                    };
+                    time::sleep(Duration::from_millis(delay)).await;
+                    Ok(())
+                },
+            )
+            .await;
+
+            assert!(ok);
+            // One mint listing every repository with the shared permissions.
+            let minted = minted.lock().unwrap();
+            assert_eq!(minted.len(), 1);
+            assert_eq!(minted[0].repository_names(), vec![
+                "widgets", "alpha", "zeta"
+            ]);
+            assert_eq!(
+                minted[0].permissions().get("contents").map(String::as_str),
+                Some("read")
+            );
+
+            let names: Vec<&str> = checks.iter().map(|check| check.name.as_str()).collect();
+            assert_eq!(names, vec![
+                "GitHub Token",
+                "GitHub Repository (acme/widgets)",
+                "GitHub Repository (acme/alpha)",
+                "GitHub Repository (acme/zeta)",
+            ]);
+            assert!(checks.iter().all(|check| check.status == CheckStatus::Pass));
+            // The token never reaches check output.
+            for check in &checks {
+                let rendered = format!("{check:?}");
+                assert!(!rendered.contains("scoped-token"), "{rendered}");
+            }
+        }
+
+        #[tokio::test]
+        async fn installation_resolution_failure_names_only_the_inaccessible_repository() {
+            let (prepared, resolved) =
+                declared("https://github.com/acme/widgets", &["acme/keystone"]);
+            let probes = Arc::new(AtomicU64::new(0));
+            let probes_for_seam = Arc::clone(&probes);
+            let mut checks = Vec::new();
+
+            let ok = run_github_token_check_with(
+                &mut checks,
+                &prepared,
+                &resolved,
+                Some(pat_creds()),
+                |_access, _creds| async {
+                    Err(
+                        "the GitHub App installation cannot see repository acme/keystone; add \
+                         it to the installation's repository access"
+                            .to_string(),
+                    )
+                },
+                move |_slug, _token| {
+                    probes_for_seam.fetch_add(1, Ordering::SeqCst);
+                    async { Ok(()) }
+                },
+            )
+            .await;
+
+            assert!(!ok);
+            assert_eq!(
+                probes.load(Ordering::SeqCst),
+                0,
+                "no probes after a failed mint"
+            );
+            assert_eq!(checks.last().unwrap().name, "GitHub Token");
+            assert_eq!(checks.last().unwrap().status, CheckStatus::Error);
+            let remediation = checks.last().unwrap().remediation.as_deref().unwrap();
+            assert!(remediation.contains("acme/keystone"), "{remediation}");
+            assert!(!remediation.contains("acme/widgets"), "{remediation}");
+        }
+
+        #[tokio::test]
+        async fn successful_mint_with_failed_probe_still_fails() {
+            let (prepared, resolved) =
+                declared("https://github.com/acme/widgets", &["acme/keystone"]);
+            let mut checks = Vec::new();
+
+            let ok = run_github_token_check_with(
+                &mut checks,
+                &prepared,
+                &resolved,
+                Some(pat_creds()),
+                |_access, _creds| async { Ok(static_token("scoped-token")) },
+                |slug, _token| async move {
+                    if slug.repo() == "keystone" {
+                        Err("remote: Repository not found.".to_string())
+                    } else {
+                        Ok(())
+                    }
+                },
+            )
+            .await;
+
+            assert!(!ok);
+            let keystone = checks
+                .iter()
+                .find(|check| check.name == "GitHub Repository (acme/keystone)")
+                .expect("keystone probe result should be reported");
+            assert_eq!(keystone.status, CheckStatus::Error);
+            assert!(
+                !keystone
+                    .remediation
+                    .as_deref()
+                    .unwrap_or_default()
+                    .contains("scoped-token")
+            );
+            let widgets = checks
+                .iter()
+                .find(|check| check.name == "GitHub Repository (acme/widgets)")
+                .expect("primary probe result should be reported");
+            assert_eq!(widgets.status, CheckStatus::Pass);
+        }
+
+        #[tokio::test]
+        async fn resolved_gh_token_warns_without_failing() {
+            let (prepared, mut resolved) =
+                declared("https://github.com/acme/widgets", &["acme/keystone"]);
+            resolved
+                .environment
+                .env
+                .insert("GH_TOKEN".to_string(), InterpString::parse("user-token"));
+            let mut checks = Vec::new();
+
+            let ok = run_github_token_check_with(
+                &mut checks,
+                &prepared,
+                &resolved,
+                Some(pat_creds()),
+                |_access, _creds| async { Ok(static_token("scoped-token")) },
+                |_slug, _token| async { Ok(()) },
+            )
+            .await;
+
+            assert!(ok, "a GH_TOKEN override warns but does not fail preflight");
+            let warning = checks
+                .iter()
+                .find(|check| check.name == "GH_TOKEN Override")
+                .expect("GH_TOKEN warning should be reported");
+            assert_eq!(warning.status, CheckStatus::Warning);
+        }
+
+        #[tokio::test]
+        async fn missing_origin_fails_for_declared_repositories() {
+            let (prepared, resolved) = {
+                let (mut prepared, resolved) =
+                    declared("https://github.com/acme/widgets", &["acme/keystone"]);
+                prepared.git = None;
+                (prepared, resolved)
+            };
+            let mut checks = Vec::new();
+
+            let ok = run_github_token_check_with(
+                &mut checks,
+                &prepared,
+                &resolved,
+                Some(pat_creds()),
+                |_access, _creds| async { Ok(static_token("scoped-token")) },
+                |_slug, _token| async { Ok(()) },
+            )
+            .await;
+
+            assert!(!ok);
+            assert_eq!(checks.last().unwrap().summary, "missing origin");
+        }
+
+        #[tokio::test]
+        async fn missing_credentials_fail_for_declared_repositories() {
+            let (prepared, resolved) =
+                declared("https://github.com/acme/widgets", &["acme/keystone"]);
+            let mut checks = Vec::new();
+
+            let ok = run_github_token_check_with(
+                &mut checks,
+                &prepared,
+                &resolved,
+                None,
+                |_access, _creds| async { Ok(static_token("scoped-token")) },
+                |_slug, _token| async { Ok(()) },
+            )
+            .await;
+
+            assert!(!ok);
+            assert_eq!(checks.last().unwrap().summary, "missing credentials");
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn replication_lag_failure_retries_with_the_same_token_and_succeeds() {
+            let attempts = Arc::new(AtomicU64::new(0));
+            let attempts_for_run = Arc::clone(&attempts);
+
+            let result = probe_with_replication_retry(fresh_minted_snapshot(), move || {
+                let attempts = Arc::clone(&attempts_for_run);
+                async move {
+                    if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                        Err("remote: Repository not found.".to_string())
+                    } else {
+                        Ok(())
+                    }
+                }
+            })
+            .await;
+
+            assert!(result.is_ok());
+            assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn static_credential_auth_failures_do_not_retry() {
+            let attempts = Arc::new(AtomicU64::new(0));
+            let attempts_for_run = Arc::clone(&attempts);
+            let static_snapshot = TokenSnapshot {
+                generation: 0,
+                provenance: TokenProvenance::Static,
+            };
+
+            let result = probe_with_replication_retry(static_snapshot, move || {
+                let attempts = Arc::clone(&attempts_for_run);
+                async move {
+                    attempts.fetch_add(1, Ordering::SeqCst);
+                    Err("remote: Repository not found.".to_string())
+                }
+            })
+            .await;
+
+            assert!(result.is_err());
+            assert_eq!(
+                attempts.load(Ordering::SeqCst),
+                1,
+                "a 404 with a static credential cannot become valid by waiting"
             );
         }
     }
