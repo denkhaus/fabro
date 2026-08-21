@@ -205,7 +205,7 @@ impl SandboxSpec {
             } => {
                 let mut sandbox = DockerSandbox::new(
                     config.clone(),
-                    github_app.clone(),
+                    github_app.as_ref(),
                     *run_id,
                     clone_origin_url.clone(),
                     clone_branch.clone(),
