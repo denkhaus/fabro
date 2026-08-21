@@ -473,8 +473,9 @@ impl AgentAcpBackend {
             emitter.notice(
                 RunNoticeLevel::Info,
                 RunNoticeCode::GithubTokenRefreshLimited,
-                "ACP agent stages receive workflow env at process launch; stages running beyond \
-                 token expiry may need to be retried.",
+                "ACP agent stages receive workflow env at process launch; GITHUB_TOKEN access to \
+                 every declared repository expires together, so stages running beyond token \
+                 expiry may need to be retried.",
             );
         }
         provider

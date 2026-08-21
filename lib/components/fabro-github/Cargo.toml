@@ -25,6 +25,7 @@ fabro-http.workspace = true
 fabro-redact.workspace = true
 fabro-static.workspace = true
 fabro-types = { path = "../../foundation/fabro-types" }
+futures.workspace = true
 jsonwebtoken.workspace = true
 chrono.workspace = true
 tracing.workspace = true

@@ -241,9 +241,15 @@ Configure whether clone-based sandboxes clone the run's GitHub origin before exe
 ```toml title="run.toml"
 [run.clone]
 enabled = true
+depth = 100
 ```
 
 Set `enabled = false` to start Docker and Daytona runs with an empty provider workspace. Use [prepare steps](#runprepare) to clone or create any files the workflow needs.
+
+| Field | Description |
+|---|---|
+| `enabled` | When `false`, Fabro skips the repository clone. Defaults to `true`. |
+| `depth` | Git history depth for Docker and Daytona. Defaults to `100`. Set it to `0` to clone full history. |
 
 ### `[run.run_branch]`
 
@@ -362,6 +368,24 @@ issues = "read"
 Only requested permissions are included. The upper bound is the permission set granted to the installed GitHub App, and Fabro logs a warning and continues without `GITHUB_TOKEN` if the app is not configured or is not installed on the repository.
 
 This table follows the normal settings precedence order. A higher-precedence layer can set `permissions = {}` to clear inherited permissions and run without a GitHub token.
+
+### `[run.integrations.github].additional_repositories`
+
+Declare extra GitHub repositories, beyond the implicit run origin, that the minted `GITHUB_TOKEN` must cover. The one `permissions` map applies to the origin and every declared repository.
+
+```toml title="run.toml"
+[run.integrations.github]
+additional_repositories = ["fabro-sh/keystone"]
+permissions = { contents = "read" }
+```
+
+Each entry is a full `owner/repository` slug. Every repository in the effective set must share one owner and be reachable by the origin repository's GitHub App installation. A non-empty list requires `contents = "read"` or `contents = "write"`. Malformed slugs, case-insensitive duplicates, cross-owner sets, and sets larger than 499 entries fail configuration validation with indexed error paths such as `run.integrations.github.additional_repositories[1]`.
+
+Unlike permissions-only configuration, declared additional repositories are a hard requirement: missing credentials, a missing origin, or an inaccessible declared repository fails preflight and run initialization with the repository named.
+
+The higher-precedence list replaces the lower one wholesale — no union and no `...` splice — and `additional_repositories = []` explicitly clears an inherited list. `additional_repositories` and `permissions` resolve independently; if layering leaves repositories declared while permissions were cleared, resolution reports the invalid combination instead of dropping either field.
+
+See [Additional repositories](/integrations/github#additional-repositories) for what works inside stages (`gh`, GitHub API, plain Git over HTTPS and the common SSH spellings) and for the security boundary.
 
 ### `[run.notifications]`
 

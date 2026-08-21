@@ -15,7 +15,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Context as _;
+use anyhow::{Context as _, bail};
 use chrono::{DateTime, Utc};
 use tokio::sync::Mutex;
 
@@ -146,29 +146,54 @@ pub(crate) trait InstallationTokenMinter: Send + Sync {
     async fn mint(&self) -> anyhow::Result<InstallationToken>;
 }
 
+/// Repository scope an App-backed source owns.
+enum AppTokenScope {
+    /// A single-repository source that resolves its installation during each
+    /// mint.
+    Repository {
+        owner:       String,
+        repo:        String,
+        permissions: serde_json::Value,
+    },
+    /// A validated declared set. Each mint resolves every target to one App
+    /// installation before creating the token.
+    Access(crate::GitHubRepositoryAccess),
+}
+
 /// Real minter backed by GitHub App credentials.
 struct AppTokenMinter {
-    creds:       GitHubAppCredentials,
-    http:        fabro_http::HttpClient,
-    owner:       String,
-    repo:        String,
-    base_url:    String,
-    permissions: serde_json::Value,
+    creds:    GitHubAppCredentials,
+    http:     fabro_http::HttpClient,
+    base_url: String,
+    scope:    AppTokenScope,
 }
 
 #[async_trait::async_trait]
 impl InstallationTokenMinter for AppTokenMinter {
     async fn mint(&self) -> anyhow::Result<InstallationToken> {
-        self.creds
-            .mint_installation_token(
-                &self.http,
-                &self.owner,
-                &self.repo,
-                &self.base_url,
-                self.permissions.clone(),
-                None,
-            )
-            .await
+        match &self.scope {
+            AppTokenScope::Repository {
+                owner,
+                repo,
+                permissions,
+            } => {
+                self.creds
+                    .mint_installation_token(
+                        &self.http,
+                        owner,
+                        repo,
+                        &self.base_url,
+                        permissions.clone(),
+                        None,
+                    )
+                    .await
+            }
+            AppTokenScope::Access(access) => {
+                access
+                    .mint_installation_token(&self.creds, &self.http, &self.base_url)
+                    .await
+            }
+        }
     }
 }
 
@@ -220,6 +245,17 @@ pub struct InstallationTokenSource {
     state: SourceState,
 }
 
+fn repository_set_display(owner: &str, repos: &[String]) -> anyhow::Result<String> {
+    match repos {
+        [primary] => Ok(format!("{owner}/{primary}")),
+        [primary, additional @ ..] => Ok(format!(
+            "{owner}/{primary} (+{} additional)",
+            additional.len()
+        )),
+        [] => bail!("token source requires at least one repository"),
+    }
+}
+
 impl InstallationTokenSource {
     /// Build a source for `creds` against the repository in `origin_url`.
     ///
@@ -244,6 +280,32 @@ impl InstallationTokenSource {
         permissions: serde_json::Value,
     ) -> anyhow::Result<Arc<Self>> {
         let repo_display = format!("{owner}/{repo}");
+        Self::with_app_scope(creds, repo_display, AppTokenScope::Repository {
+            owner,
+            repo,
+            permissions,
+        })
+    }
+
+    /// Build a source for a validated effective repository set. Minted
+    /// tokens are scoped to every repository in the set with the shared
+    /// permissions. App-backed sources also resolve every repository to one
+    /// shared installation before each mint. Caching, refresh margin, and
+    /// single-flight behavior are identical to the single-repository source.
+    pub fn for_access(
+        creds: &GitHubCredentials,
+        access: &crate::GitHubRepositoryAccess,
+    ) -> anyhow::Result<Arc<Self>> {
+        let repository_names = access.repository_names();
+        let repo_display = repository_set_display(access.owner(), &repository_names)?;
+        Self::with_app_scope(creds, repo_display, AppTokenScope::Access(access.clone()))
+    }
+
+    fn with_app_scope(
+        creds: &GitHubCredentials,
+        repo_display: String,
+        scope: AppTokenScope,
+    ) -> anyhow::Result<Arc<Self>> {
         let state = match creds {
             GitHubCredentials::Pat(token) => SourceState::Pat(SecretString::new(token.clone())),
             GitHubCredentials::Installation(token) => SourceState::Installation(token.clone()),
@@ -255,10 +317,8 @@ impl InstallationTokenSource {
                     minter: Box::new(AppTokenMinter {
                         creds: app.clone(),
                         http,
-                        owner,
-                        repo,
                         base_url: crate::github_api_base_url(),
-                        permissions,
+                        scope,
                     }),
                     cache:  Mutex::new(None),
                 }
@@ -500,6 +560,31 @@ mod tests {
         assert_eq!(resolved.snapshot.generation, 0);
         assert!(resolved.snapshot.is_static());
         assert!(!source.mints_installation_tokens());
+    }
+
+    /// A source built from a validated multi-repository access value uses the
+    /// same state machine as the single-repository constructor: static
+    /// credentials pass through, and App credentials share the cache
+    /// machinery exercised by the `with_minter` tests below.
+    #[tokio::test]
+    async fn for_access_source_resolves_like_the_single_repository_source() {
+        let access = crate::GitHubRepositoryAccess::new(
+            Some("https://github.com/owner/repo.git"),
+            &["owner/keystone".parse().unwrap()].into_iter().collect(),
+            std::collections::HashMap::from([("contents".to_string(), "read".to_string())]),
+        )
+        .unwrap()
+        .expect("origin should produce an access value");
+
+        let source = InstallationTokenSource::for_access(
+            &GitHubCredentials::Pat("ghp_pat".to_string()),
+            &access,
+        )
+        .unwrap();
+
+        let resolved = source.resolve().await.unwrap();
+        assert_eq!(resolved.token.expose(), "ghp_pat");
+        assert!(resolved.snapshot.is_static());
     }
 
     #[tokio::test]

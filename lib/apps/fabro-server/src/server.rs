@@ -4081,15 +4081,15 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
             return;
         }
     };
-    let github_permissions = match persisted
+    let github_integration = match persisted
         .run_spec()
         .settings
         .run
         .integrations
         .github
-        .resolve_permissions()
+        .resolve_integration()
     {
-        Ok(permissions) => permissions,
+        Ok(integration) => integration,
         Err(err) => {
             tracing::error!(
                 run_id = %run_id,
@@ -4131,7 +4131,7 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
         artifact_sink: Some(ArtifactSink::Store(state.artifact_store.clone())),
         run_control: None,
         github_app,
-        github_permissions,
+        github_integration,
         vault: Arc::new(AsyncRwLock::new(vault.into_vault())),
         catalog: state.catalog(),
         on_node: None,

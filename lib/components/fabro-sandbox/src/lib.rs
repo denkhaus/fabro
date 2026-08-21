@@ -43,7 +43,9 @@ pub use fabro_github::token_source::{
     InstallationTokenSource, ResolvedToken, TokenProvenance, TokenSnapshot,
 };
 pub use fabro_types::{RunSandboxInstance, SandboxProviderKind};
-pub use git_retry::{CredentialContext, GitRetryReason, RetryPlan, classify_failure};
+pub use git_retry::{
+    CredentialContext, GitRetryReason, RetryPlan, classify_failure, retry_git_operation,
+};
 pub use local::LocalSandbox;
 #[cfg(feature = "daytona")]
 pub use provider::daytona::DaytonaSandboxProvider;

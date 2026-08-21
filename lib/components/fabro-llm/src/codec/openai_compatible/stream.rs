@@ -29,8 +29,8 @@ pub(super) struct StreamState {
     /// True after `finish_events()` has run (guards against duplicates).
     finished:              bool,
     rate_limit:            Option<RateLimitInfo>,
-    /// In-band USD cost from the usage chunk (OpenRouter), surfaced as
-    /// authoritative on the final response.
+    /// In-band USD cost from the response, surfaced as authoritative on the
+    /// final response.
     cost_usd:              Option<f64>,
 }
 
@@ -72,9 +72,13 @@ impl StreamState {
         // Capture usage if present (often in a dedicated chunk).
         if let Some(usage) = &chunk.usage {
             self.usage = usage.token_counts();
-            // Keep a previously seen cost when a later usage chunk omits it.
-            self.cost_usd = usage.cost.or(self.cost_usd);
         }
+        let cost_usd = chunk
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.cost)
+            .or_else(|| chunk.cost.as_ref().and_then(|cost| cost.usd));
+        self.cost_usd = cost_usd.or(self.cost_usd);
 
         let choices = chunk.choices.as_mut()?;
         let choice = choices.first_mut()?;

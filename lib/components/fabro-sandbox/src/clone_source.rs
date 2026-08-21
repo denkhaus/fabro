@@ -91,15 +91,22 @@ pub(crate) fn exact_fetch_command(
     checkout_path: &str,
     fetch_source: &str,
     commit_sha: &str,
-    depth: usize,
+    depth: Option<usize>,
 ) -> String {
+    let depth_arg = depth_argument(depth);
     format!(
-        "{git} -C {} fetch --depth {depth} --no-tags {} -- {}",
+        "{git} -C {} fetch{depth_arg} --no-tags {} -- {}",
         sandbox::shell_quote(checkout_path),
         sandbox::shell_quote(fetch_source),
         sandbox::shell_quote(commit_sha),
         git = sandbox::GIT,
     )
+}
+
+/// Leading-space ` --depth N` fragment for a Git command, or empty when
+/// `depth` is `None` to fetch full history.
+pub(crate) fn depth_argument(depth: Option<usize>) -> String {
+    depth.map_or_else(String::new, |depth| format!(" --depth {depth}"))
 }
 
 /// Point the admitted branch at `revision` and attach HEAD to it.
@@ -474,7 +481,7 @@ mod tests {
             "/repos/acme's widgets",
             "https://token@example.com/acme/widgets.git?x=a b",
             sha,
-            10,
+            Some(10),
         );
         let checkout =
             exact_checkout_verify_command("/repos/acme's widgets", "feature/a b", "FETCH_HEAD");
@@ -490,6 +497,19 @@ mod tests {
         assert_eq!(
             checkout,
             "git -c maintenance.auto=0 -c gc.auto=0 -C \"/repos/acme's widgets\" checkout -B 'feature/a b' FETCH_HEAD && git -c maintenance.auto=0 -c gc.auto=0 -C \"/repos/acme's widgets\" rev-parse HEAD"
+        );
+    }
+
+    #[test]
+    fn exact_fetch_omits_depth_for_full_history() {
+        assert_eq!(
+            exact_fetch_command(
+                "/repos/acme/widgets",
+                "origin",
+                "0123456789abcdef0123456789abcdef01234567",
+                None,
+            ),
+            "git -c maintenance.auto=0 -c gc.auto=0 -C /repos/acme/widgets fetch --no-tags origin -- 0123456789abcdef0123456789abcdef01234567"
         );
     }
 
@@ -554,7 +574,7 @@ mod tests {
         );
         run_shell(
             temp.path(),
-            &exact_fetch_command(checkout_path, remote_path, &admitted_sha, 10),
+            &exact_fetch_command(checkout_path, remote_path, &admitted_sha, Some(10)),
         );
         let checked_out_sha = run_shell(
             temp.path(),

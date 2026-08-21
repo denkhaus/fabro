@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::future::Future;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -18,7 +18,7 @@ use fabro_sandbox::{DockerSandboxOptions, SandboxSpec};
 use fabro_static::EnvVars;
 use fabro_types::settings::run::{
     ApprovalMode, McpServerSettings as ResolvedMcpServerSettings, PullRequestSettings,
-    ResolvedMcpEntry, RunMode, RunNamespace as ResolvedRunSettings,
+    ResolvedGithubIntegration, ResolvedMcpEntry, RunMode, RunNamespace as ResolvedRunSettings,
     RunPrepareSettings as ResolvedRunPrepareSettings,
 };
 use fabro_types::{ManifestPath, RunId, RunRunnableSource, SandboxProviderKind};
@@ -107,9 +107,10 @@ pub struct StartServices {
     pub artifact_sink:      Option<ArtifactSink>,
     pub run_control:        Option<Arc<RunControlState>>,
     pub github_app:         Option<fabro_github::GitHubCredentials>,
-    /// Server-resolved GitHub integration permissions to inject into the
-    /// sandbox env. Empty when github integration has no permissions.
-    pub github_permissions: HashMap<String, String>,
+    /// The resolved GitHub integration request (interpolated permissions
+    /// plus declared additional repositories) to inject into the sandbox
+    /// env. Empty when the github integration requests no token.
+    pub github_integration: ResolvedGithubIntegration,
     pub vault:              Arc<AsyncRwLock<Vault>>,
     pub catalog:            Arc<Catalog>,
     pub on_node:            crate::OnNodeCallback,
@@ -493,11 +494,13 @@ impl RunSession {
             .environment
             .resolve_env(secret_lookup)
             .map_err(|err| Error::engine_with_source("failed to resolve run environment", err))?;
-        let github_permissions: Option<HashMap<String, String>> =
-            (!services.github_permissions.is_empty()).then(|| services.github_permissions.clone());
+        let github_integration = services
+            .github_integration
+            .is_token_requested()
+            .then(|| services.github_integration.clone());
         let sandbox_env = SandboxEnvSpec {
             toml_env,
-            github_permissions,
+            github_integration,
             origin_url: record.repo_origin_url().map(str::to_string),
         };
 
@@ -632,7 +635,7 @@ fn resolve_sandbox_provider(settings: &ResolvedRunSettings) -> SandboxProviderKi
 }
 
 fn resolve_daytona_config(settings: &ResolvedRunSettings) -> DaytonaConfig {
-    daytona_config_from_environment(&settings.environment, !settings.clone.enabled)
+    daytona_config_from_environment(&settings.environment, &settings.clone)
 }
 
 fn resolve_docker_config(
@@ -641,7 +644,7 @@ fn resolve_docker_config(
 ) -> Result<DockerSandboxOptions, Error> {
     docker_config_from_environment_with_secrets(
         &settings.environment,
-        !settings.clone.enabled,
+        &settings.clone,
         secrets_lookup,
     )
     .map_err(|err| Error::engine_with_source("failed to resolve Docker environment config", err))
@@ -1387,6 +1390,7 @@ reasoning = false
         let settings = settings_from_run_layer(RunLayer {
             clone: Some(RunCloneLayer {
                 enabled: Some(false),
+                depth:   Some(1),
             }),
             ..RunLayer::default()
         });
@@ -1397,6 +1401,45 @@ reasoning = false
                 .skip_clone
         );
         assert!(resolve_daytona_config(&settings.run).skip_clone);
+        assert_eq!(resolve_daytona_config(&settings.run).clone_depth, Some(1));
+        assert_eq!(
+            resolve_docker_config(&settings.run, |_| None)
+                .unwrap()
+                .clone_depth,
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn zero_clone_depth_requests_full_history_from_clone_providers() {
+        let settings = settings_from_run_layer(RunLayer {
+            clone: Some(RunCloneLayer {
+                enabled: None,
+                depth:   Some(0),
+            }),
+            ..RunLayer::default()
+        });
+
+        assert_eq!(resolve_daytona_config(&settings.run).clone_depth, None);
+        assert_eq!(
+            resolve_docker_config(&settings.run, |_| None)
+                .unwrap()
+                .clone_depth,
+            None
+        );
+    }
+
+    #[test]
+    fn clone_providers_default_to_depth_100() {
+        let settings = settings_from_run_layer(RunLayer::default());
+
+        assert_eq!(resolve_daytona_config(&settings.run).clone_depth, Some(100));
+        assert_eq!(
+            resolve_docker_config(&settings.run, |_| None)
+                .unwrap()
+                .clone_depth,
+            Some(100)
+        );
     }
 
     #[test]
@@ -1827,7 +1870,7 @@ reasoning = false
             artifact_sink: None,
             run_control: None,
             github_app: None,
-            github_permissions: HashMap::new(),
+            github_integration: ResolvedGithubIntegration::default(),
             vault: Arc::new(AsyncRwLock::new(start_vault(&[]))),
             catalog: test_catalog(),
             on_node: None,
