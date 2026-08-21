@@ -37,8 +37,8 @@ use crate::sandbox::{
 };
 use crate::{
     CommandOutputCallback, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult,
-    GrepOptions, Sandbox, SandboxEvent, SandboxEventCallback, SandboxFile, StdioProcess,
-    WalkOptions, managed_labels, shell_quote,
+    GrepOptions, Sandbox, SandboxActivation, SandboxEvent, SandboxEventCallback, SandboxFile,
+    StdioProcess, WalkOptions, managed_labels, shell_quote,
 };
 
 /// Remediation shown when a Daytona sandbox has no usable Bash.
@@ -1609,7 +1609,7 @@ impl Sandbox for DaytonaSandbox {
             .await
     }
 
-    async fn activate(&self) -> crate::Result<()> {
+    async fn activate(&self) -> crate::Result<SandboxActivation> {
         let sandbox = self.sandbox()?;
         let deadline = time::Instant::now() + DAYTONA_STATE_CHANGE_TIMEOUT;
         let current = time::timeout_at(deadline, self.client.get(&sandbox.name))
@@ -1621,6 +1621,10 @@ impl Sandbox for DaytonaSandbox {
                 crate::Error::context("Failed to inspect Daytona sandbox before activation", e)
             })?;
         let state = if is_transitional_state(current.state) {
+            // Someone else is driving the lifecycle through a transitional
+            // state; wait for it to settle instead of racing them. Settling
+            // into Started means this call did not start the sandbox, so the
+            // caller must not own stopping it.
             time::timeout_at(deadline, self.wait_for_stable_state(&sandbox.name))
                 .await
                 .map_err(|_| {
@@ -1638,9 +1642,11 @@ impl Sandbox for DaytonaSandbox {
             current.state
         };
         if state == Some(SandboxState::Started) {
-            return Ok(());
+            return Ok(SandboxActivation::AlreadyActive);
         }
-        self.start_with_deadline(deadline).await
+        self.start_with_deadline(deadline)
+            .await
+            .map(|()| SandboxActivation::Started)
     }
 
     async fn stop(&self) -> crate::Result<()> {
@@ -3234,11 +3240,12 @@ mod tests {
             .expect("test sandbox should initialize once");
 
         let get_calls_before = get_sandbox.calls_async().await;
-        sandbox
+        let activation = sandbox
             .activate()
             .await
             .expect("an active sandbox should require no restart");
 
+        assert_eq!(activation, SandboxActivation::AlreadyActive);
         assert_eq!(get_sandbox.calls_async().await, get_calls_before + 1);
         start_sandbox.assert_calls_async(0).await;
     }
@@ -3291,11 +3298,13 @@ mod tests {
             .expect("test sandbox should initialize once");
 
         let get_calls_before = get_sandbox.calls_async().await;
-        sandbox
+        let activation = sandbox
             .activate()
             .await
             .expect("an in-progress start should be awaited");
 
+        // Someone else initiated the start; this call must not own stopping.
+        assert_eq!(activation, SandboxActivation::AlreadyActive);
         assert_eq!(get_sandbox.calls_async().await, get_calls_before + 2);
         start_sandbox.assert_calls_async(0).await;
     }
