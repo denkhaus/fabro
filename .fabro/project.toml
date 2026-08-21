@@ -25,10 +25,10 @@ id = "toolchain"
 # The sandbox still creates checkpoint commits; remote pushes are skipped so
 # runs do not depend on GitHub write access for the origin repo.
 [run.run_branch]
-push = false
+push = true
 
 [run.meta_branch]
-push = false
+push = true
 
 # Toolchain image for lint/test smoke runs on this repo. Build locally:
 #   docker build -t fabro-toolchain:noble .fabro/Dockerfile.toolchain
