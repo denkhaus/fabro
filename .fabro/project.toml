@@ -5,13 +5,10 @@ _version = 1
 [run.pull_request]
 enabled = false
 
-# Pin the canonical GitHub origin for sandbox clones and PRs. Without this,
-# local URL rewrites (url.<alias>.insteadOf for per-account SSH keys) leak the
-# SSH alias into the run manifest and clone-based sandboxes reject the origin.
-[run.scm]
-provider = "github"
-owner = "denkhaus"
-repository = "fabro"
+# [run.scm] is intentionally NOT pinned: origin detection resolves
+# url.<replacement>.insteadOf rewrites to the canonical URL
+# (fabro-manifest detect_manifest_repo_info + fabro_github::canonicalize_repo_origin_url),
+# so alias-host checkouts no longer leak their SSH alias into run manifests.
 
 # Toolchain env as project default: agents on this repo need rust/bun AND the
 # repo agent tooling (sd/ml for AGENTS.md session primes, pytest for test

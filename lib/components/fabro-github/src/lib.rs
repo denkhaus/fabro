@@ -959,6 +959,45 @@ pub fn ssh_url_to_https(url: &str) -> String {
     url.to_string()
 }
 
+/// Every URL a raw origin can denote under `url.<replacement>.insteadOf`
+/// config rewrites: the raw URL itself, git's forward rewrite (matcher prefix
+/// replaced by the replacement), and the inverse rewrite that recovers the
+/// pre-rewrite form for origins stored in rewritten form.
+///
+/// Git allows multiple `insteadOf` matchers per replacement key; each pair
+/// yields its own candidates. Use with [`normalize_repo_origin_url`] to
+/// compare or canonicalize origins across differently-configured hosts.
+pub fn rewrite_candidates(raw_origin: &str, rewrites: &[(String, String)]) -> Vec<String> {
+    let mut candidates = vec![raw_origin.to_string()];
+    for (replacement, matcher) in rewrites {
+        if let Some(rest) = raw_origin.strip_prefix(matcher.as_str()) {
+            candidates.push(format!("{replacement}{rest}"));
+        }
+        if let Some(rest) = raw_origin.strip_prefix(replacement.as_str()) {
+            candidates.push(format!("{matcher}{rest}"));
+        }
+    }
+    candidates
+}
+
+/// The canonical form of `raw_origin` under `insteadOf` rewrites.
+///
+/// When the origin is stored in rewritten form (it starts with a replacement
+/// prefix, as produced by cloning through an alias), the first
+/// inverse-rewritten candidate replaces it: git rewrites at fetch time, so the
+/// pre-rewrite form is the URL every other host and service recognizes. Origins
+/// stored in pre-rewrite form are returned unchanged — git already applies the
+/// rewrite transparently and the stored form is the canonical one.
+#[must_use]
+pub fn canonicalize_repo_origin_url(raw_origin: &str, rewrites: &[(String, String)]) -> String {
+    for (replacement, matcher) in rewrites {
+        if let Some(rest) = raw_origin.strip_prefix(replacement.as_str()) {
+            return format!("{matcher}{rest}");
+        }
+    }
+    raw_origin.to_string()
+}
+
 pub fn normalize_repo_origin_url(url: &str) -> String {
     let https = ssh_url_to_https(url.trim());
     let without_credentials = strip_https_credentials(&https);
@@ -1556,6 +1595,63 @@ mod tests {
         assert_eq!(
             ssh_url_to_https("https://github.com/brynary/arc.git"),
             "https://github.com/brynary/arc.git"
+        );
+    }
+
+    #[test]
+    fn rewrite_candidates_keep_the_raw_url() {
+        let candidates = rewrite_candidates("https://example.com/owner/repo.git", &[]);
+        assert_eq!(candidates, vec!["https://example.com/owner/repo.git"]);
+    }
+
+    #[test]
+    fn rewrite_candidates_recover_canonical_form_from_alias_origin() {
+        // Origin stored in rewritten form: the inverse rewrite recovers the
+        // canonical URL the run spec stores.
+        let rewrites = vec![(
+            "git@denkhaus.github.com:denkhaus/".to_string(),
+            "https://github.com/denkhaus/".to_string(),
+        )];
+        let candidates =
+            rewrite_candidates("git@denkhaus.github.com:denkhaus/fabro.git", &rewrites);
+        assert!(candidates.contains(&"https://github.com/denkhaus/fabro.git".to_string()));
+    }
+
+    #[test]
+    fn rewrite_candidates_apply_forward_rewrite_to_canonical_origin() {
+        // Origin stored canonically: git's forward rewrite yields the alias
+        // form actually used for fetches and pushes.
+        let rewrites = vec![(
+            "git@denkhaus.github.com:denkhaus/".to_string(),
+            "git@github.com:denkhaus/".to_string(),
+        )];
+        let candidates = rewrite_candidates("git@github.com:denkhaus/fabro.git", &rewrites);
+        assert!(candidates.contains(&"git@denkhaus.github.com:denkhaus/fabro.git".to_string()));
+    }
+
+    #[test]
+    fn canonicalize_recovers_pre_rewrite_form_for_alias_origins() {
+        let rewrites = vec![(
+            "git@denkhaus.github.com:denkhaus/".to_string(),
+            "https://github.com/denkhaus/".to_string(),
+        )];
+        assert_eq!(
+            canonicalize_repo_origin_url("git@denkhaus.github.com:denkhaus/fabro.git", &rewrites),
+            "https://github.com/denkhaus/fabro.git"
+        );
+    }
+
+    #[test]
+    fn canonicalize_keeps_canonically_stored_origins_unchanged() {
+        // Git applies the rewrite at fetch time; the stored pre-rewrite form
+        // is already the canonical URL and must not be transformed.
+        let rewrites = vec![(
+            "git@denkhaus.github.com:denkhaus/".to_string(),
+            "https://github.com/denkhaus/".to_string(),
+        )];
+        assert_eq!(
+            canonicalize_repo_origin_url("https://github.com/denkhaus/fabro.git", &rewrites),
+            "https://github.com/denkhaus/fabro.git"
         );
     }
 

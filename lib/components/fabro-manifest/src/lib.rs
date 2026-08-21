@@ -361,8 +361,41 @@ fn detect_manifest_repo_info(repo_path: &Path) -> Option<(Option<String>, String
     let origin_url = repo
         .find_remote("origin")
         .ok()
-        .and_then(|remote| remote.url().map(ToOwned::to_owned));
+        .and_then(|remote| remote.url().map(ToOwned::to_owned))
+        .map(|url| {
+            // Origins stored in rewritten form (cloned through an
+            // `insteadOf` alias) must not leak the alias host into the
+            // manifest; recover the canonical pre-rewrite form first.
+            let rewrites = insteadof_rewrites(&repo).unwrap_or_default();
+            fabro_github::canonicalize_repo_origin_url(&url, &rewrites)
+        });
     Some((origin_url, branch))
+}
+
+/// `url.<replacement>.insteadOf` pairs visible from `repo`, following git's
+/// config cascade (repo-local, global, system). Git allows multiple
+/// `insteadOf` values per replacement key; each becomes its own pair.
+pub fn insteadof_rewrites(repo: &git2::Repository) -> Option<Vec<(String, String)>> {
+    let config = repo.config().ok()?;
+    let mut entries = config.entries(Some("url.*.insteadof")).ok()?;
+    let mut pairs = Vec::new();
+    while let Some(entry) = entries.next() {
+        let entry = entry.ok()?;
+        let Some(name) = entry.name() else {
+            continue;
+        };
+        let name = name.to_ascii_lowercase();
+        let Some(replacement) = name
+            .strip_prefix("url.")
+            .and_then(|rest| rest.strip_suffix(".insteadof"))
+        else {
+            continue;
+        };
+        if let Some(value) = entry.value() {
+            pairs.push((replacement.to_string(), value.to_string()));
+        }
+    }
+    Some(pairs)
 }
 
 /// Best-effort push of the local branch so clone-based execution can see
@@ -1460,6 +1493,92 @@ working_dir = "repos/target"
 
     /// A local branch ahead of its origin is pushed as a side effect of
     /// building the manifest, so clone-based execution sees local commits.
+    #[test]
+    fn insteadof_rewrites_reads_git_config_cascade() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(temp.path()).unwrap();
+        let mut config = repo.config().unwrap();
+        config
+            .set_str(
+                "url.git@alias.github.com:owner/.insteadOf",
+                "https://github.com/owner/",
+            )
+            .unwrap();
+        config
+            .set_multivar(
+                "url.git@alias.github.com:owner/.insteadOf",
+                "^$",
+                "git@github.com:owner/",
+            )
+            .unwrap();
+
+        let pairs = insteadof_rewrites(&repo).expect("rewrites should be readable");
+        assert!(pairs.contains(&(
+            "git@alias.github.com:owner/".to_string(),
+            "https://github.com/owner/".to_string(),
+        )));
+        assert!(pairs.contains(&(
+            "git@alias.github.com:owner/".to_string(),
+            "git@github.com:owner/".to_string(),
+        )));
+    }
+
+    #[test]
+    fn build_manifest_resolves_insteadof_alias_origin_to_canonical_url() {
+        // A checkout cloned through an insteadOf alias stores the alias host
+        // in its origin. The manifest must carry the canonical pre-rewrite
+        // URL so clone-based sandboxes accept it.
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let bare_origin = init_bare_origin(temp.path());
+        init_git_repo(&workspace, "feature", bare_origin.to_str().unwrap());
+
+        // Point origin at the alias form and register the rewrite.
+        run_git(&workspace, &[
+            "remote",
+            "set-url",
+            "origin",
+            "git@alias.github.com:owner/app.git",
+        ]);
+        run_git(&workspace, &[
+            "config",
+            "url.git@alias.github.com:owner/.insteadOf",
+            "https://github.com/owner/",
+        ]);
+        mark_origin_branch_synced(&workspace, "feature");
+
+        let workflow_dir = workspace.join(".fabro/workflows/demo");
+        std::fs::create_dir_all(&workflow_dir).unwrap();
+        std::fs::write(
+            workspace.join(".fabro/project.toml"),
+            "_version = 1
+",
+        )
+        .unwrap();
+        std::fs::write(
+            workflow_dir.join("workflow.toml"),
+            "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            workflow_dir.join("workflow.fabro"),
+            r"digraph Demo { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }",
+        )
+        .unwrap();
+
+        let built = build_run_manifest(ManifestBuildInput {
+            workflow: PathBuf::from(".fabro/workflows/demo/workflow.toml"),
+            cwd: workspace.clone(),
+            environment_defaults: test_environment_defaults(),
+            ..Default::default()
+        })
+        .unwrap();
+
+        let git = built.manifest.git.expect("git context should be built");
+        assert_eq!(git.origin_url, "https://github.com/owner/app");
+    }
+
     #[test]
     fn build_manifest_pushes_local_commits_to_bare_origin() {
         let temp = tempfile::tempdir().unwrap();
