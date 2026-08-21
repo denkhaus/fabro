@@ -686,6 +686,7 @@ mod tests {
                 graph_source:        None,
                 workflow_slug:       Some("metadata".to_string()),
                 workflow_version_id: None,
+                target:              None,
                 automation:          None,
                 source_directory:    Some("/Users/client/project".to_string()),
                 git:                 Some(GitContext {

@@ -30,6 +30,7 @@ pub mod run;
 pub mod run_event;
 pub mod run_failure;
 pub mod run_id;
+pub mod run_intent;
 pub mod run_projection;
 pub mod run_sandbox;
 pub mod run_summary;
@@ -112,7 +113,9 @@ pub use pull_request::{
     PullRequestRef, PullRequestResponse, PullRequestTimestamps, PullRequestUser,
 };
 pub use reasoning::ReasoningOutput;
-pub use repository::{GitHubRepositorySlug, RepositoryProvider, RepositoryRef};
+pub use repository::{
+    GitHubRepositorySlug, RepositoryProvider, RepositoryRef, normalize_git_commit_sha,
+};
 pub use run::{
     DirtyStatus, ForkSourceRef, GitContext, RunClientProvenance, RunProvenance,
     RunServerProvenance, RunSpec,
@@ -127,6 +130,7 @@ pub use run_event::{
 };
 pub use run_failure::RunFailure;
 pub use run_id::{RunId, fixtures};
+pub use run_intent::{RunIntent, RunIntentArgs, RunTarget};
 pub use run_projection::{
     ActivatedSkill, AgentControlState, CheckpointRecord, McpServerProjection, McpServerStatus,
     PendingInterviewRecord, RunProjection, SkillsProjection, StageContextWindow,

@@ -6,7 +6,7 @@ use super::{BilledTokenCounts, ExecOutputTail, RunNoticeLevel};
 use crate::status::{BlockedReason, PendingReason, SuccessReason};
 use crate::{
     AutomationRef, BlobHash, DiffSummary, ForkSourceRef, GitContext, Graph, PairId, PairTarget,
-    RunControlAction, RunFailure, RunId, RunProvenance, RunTiming, WorkflowSettings,
+    RunControlAction, RunFailure, RunId, RunProvenance, RunTarget, RunTiming, WorkflowSettings,
     WorkflowVersionId,
 };
 
@@ -26,6 +26,8 @@ pub struct RunCreatedProps {
     pub workflow_slug:       Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow_version_id: Option<WorkflowVersionId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target:              Option<RunTarget>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub automation:          Option<AutomationRef>,
     pub provenance:          RunProvenance,

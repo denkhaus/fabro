@@ -706,6 +706,14 @@ impl Client {
         Ok(status.id)
     }
 
+    pub async fn create_run_from_intent(&self, intent: types::RunIntent) -> Result<RunId> {
+        let response = self
+            .send_api(|client| async move { client.create_run().body(intent.clone()).send().await })
+            .await?;
+        let status = response.into_inner();
+        Ok(status.id)
+    }
+
     pub async fn list_secrets(&self) -> Result<Vec<types::SecretMetadata>> {
         let response = self
             .send_api(|client| async move { client.list_secrets().send().await })

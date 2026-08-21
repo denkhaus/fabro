@@ -15,21 +15,24 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use fabro_api::types::{
-    BoardColumn, ManifestConfigType, ManifestGoalType, RunManifest, SubmitAnswerRequest,
+    BoardColumn, ManifestConfigType, ManifestGoalType, RunIntent, RunManifest, SubmitAnswerRequest,
     UpdateRunParentRequest, UpdateRunRequest,
 };
-use fabro_config::{CliLayer, RunLayer, Storage};
+use fabro_config::{CliLayer, ReplaceMap, RunEnvironmentLayer, RunLayer, RunModelLayer, Storage};
+use fabro_environment::{DEFAULT_ENVIRONMENT_ID, EnvironmentId};
 use fabro_interview::AnswerSubmission;
 use fabro_llm::client::Client as LlmClient;
+use fabro_static::EnvVars;
 use fabro_store::{
     RunSummaryListQuery, RunSummarySort, RunSummarySortDirection, RunSummaryVisibility,
 };
 use fabro_types::{
     AutomationRef, ManifestPath, Principal, Run, RunClientProvenance, RunId, RunProvenance,
-    RunServerProvenance, RunStatusKind, StageContextWindow, StageContextWindowStaleness,
-    StageContextWindowUnavailableReason, StageHandler, StageModelUsage, StageProjection,
-    SystemActorKind, parse_blob_ref,
+    RunServerProvenance, RunStatusKind, SandboxProviderKind, StageContextWindow,
+    StageContextWindowStaleness, StageContextWindowUnavailableReason, StageHandler,
+    StageModelUsage, StageProjection, SystemActorKind, json_scalar_to_toml_value, parse_blob_ref,
 };
+use fabro_util::error as error_util;
 use fabro_util::version::FABRO_VERSION;
 use fabro_workflow::command_log::{command_log_path, read_json_string_blob, read_log_slice};
 use fabro_workflow::run_status::RunStatus;
@@ -52,8 +55,13 @@ use crate::principal_middleware::{
 };
 use crate::run_compiler::{
     self, ProjectSettingsPathError, ProjectSettingsSource, RawRunCompilerInput, RunCompilerError,
+    RunCompilerSettingsInput,
 };
 use crate::run_files::{list_run_commits, list_run_files};
+use crate::run_intent::{
+    EnvironmentSelectionError, RunIntentAdmissionError, lower_workflow_closure,
+    pin_workflow_environment_authority, validate_target,
+};
 use crate::run_manifest;
 use crate::run_selector::{ResolveRunError, resolve_run_by_selector};
 use crate::run_title_generation::{self, GenerateTitleInput, TitlePromptInput, WorkflowSummary};
@@ -527,9 +535,35 @@ async fn create_run(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let req = match serde_json::from_slice::<RunManifest>(&body) {
+    let value = match serde_json::from_slice::<serde_json::Value>(&body) {
+        Ok(value) => value,
+        Err(err) => {
+            return ApiError::with_code(StatusCode::BAD_REQUEST, err.to_string(), "invalid_json")
+                .into_response();
+        }
+    };
+    let intent_error = match serde_json::from_value::<RunIntent>(value.clone()) {
+        Ok(intent) => {
+            return Box::pin(create_run_from_intent(state, intent, actor, headers)).await;
+        }
+        Err(err) => err,
+    };
+    let req = match serde_json::from_value::<RunManifest>(value.clone()) {
         Ok(req) => req,
-        Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
+        Err(manifest_error) => {
+            if value
+                .as_object()
+                .is_some_and(|object| object.contains_key("workflow_version_id"))
+            {
+                return ApiError::with_code(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    intent_error.to_string(),
+                    "run_intent_invalid",
+                )
+                .into_response();
+            }
+            return ApiError::bad_request(manifest_error.to_string()).into_response();
+        }
     };
     let explicit_title_supplied = req.title.is_some();
     Box::pin(create_run_from_manifest(
@@ -545,6 +579,413 @@ async fn create_run(
         },
     ))
     .await
+}
+
+async fn create_run_from_intent(
+    state: Arc<AppState>,
+    intent: RunIntent,
+    actor: Principal,
+    headers: HeaderMap,
+) -> Response {
+    let blobs = match state.store_ref().blobs().await {
+        Ok(blobs) => blobs,
+        Err(source) => {
+            return run_intent_admission_error(RunIntentAdmissionError::StoreOpen { source });
+        }
+    };
+    let version_store = fabro_workflow_version::WorkflowVersionStore::new(blobs);
+    let closure = match version_store.get_closure(&intent.workflow_version_id).await {
+        Ok(Some(closure)) => closure,
+        Ok(None) => {
+            return intent_error(
+                StatusCode::NOT_FOUND,
+                "workflow version not found",
+                "workflow_version_not_found",
+            );
+        }
+        Err(source) => {
+            return run_intent_admission_error(RunIntentAdmissionError::VersionStore { source });
+        }
+    };
+    let mut lowered = match lower_workflow_closure(&closure) {
+        Ok(lowered) => lowered,
+        Err(error) => return run_intent_admission_error(error.into()),
+    };
+    let validated_target = match validate_target(intent.target) {
+        Ok(target) => target,
+        Err(error) => return run_intent_admission_error(error.into()),
+    };
+    let environment_id = match select_intent_environment_id(
+        &state,
+        intent
+            .environment_id
+            .as_deref()
+            .unwrap_or(DEFAULT_ENVIRONMENT_ID),
+    ) {
+        Ok(id) => id,
+        Err(error) => return run_intent_admission_error(error.into()),
+    };
+    if let Some(layer) = lowered.workflow_layer.as_mut() {
+        pin_workflow_environment_authority(layer, environment_id.as_str());
+    }
+
+    let title = match intent
+        .title
+        .as_deref()
+        .map(fabro_types::normalize_explicit_run_title)
+        .transpose()
+    {
+        Ok(title) => title,
+        Err(err) => {
+            return intent_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                err.to_string(),
+                "run_intent_invalid",
+            );
+        }
+    };
+    let mut input_overrides = HashMap::new();
+    for (name, value) in &intent.args.inputs {
+        let value = match json_scalar_to_toml_value(value) {
+            Ok(value) => value,
+            Err(err) => {
+                return intent_error(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("args.inputs.{name}: {err}"),
+                    "run_intent_invalid",
+                );
+            }
+        };
+        input_overrides.insert(name.clone(), value);
+    }
+    let mut run_overrides = RunLayer {
+        environment: Some(RunEnvironmentLayer {
+            id: Some(environment_id.to_string()),
+            ..RunEnvironmentLayer::default()
+        }),
+        metadata: ReplaceMap::from(intent.args.labels),
+        ..RunLayer::default()
+    };
+    if intent.args.model.is_some() || intent.args.provider.is_some() {
+        run_overrides.model = Some(RunModelLayer {
+            name: intent.args.model,
+            provider: intent.args.provider,
+            ..RunModelLayer::default()
+        });
+    }
+
+    let entrypoint = lowered.entrypoint.clone();
+    let raw_compiler_input = RawRunCompilerInput {
+        workflow_bundle: lowered.workflow_bundle,
+        entrypoint: lowered.entrypoint,
+        cwd: PathBuf::from("/workspace"),
+        server_run_defaults: state.manifest_run_defaults().as_ref().clone(),
+        server_environment_defaults: state.environment_store().catalog_layer().as_ref().clone(),
+        server_mcp_catalog: state.mcp_server_store().catalog_settings(),
+        settings_input: RunCompilerSettingsInput::Admitted {
+            workflow_layer: lowered.workflow_layer.map(Box::new),
+        },
+        user_toml: Vec::new(),
+        run_overrides: Some(run_overrides),
+        cli_overrides: None,
+        input_overrides,
+        inline_goal_override: intent.goal,
+        run_id: None,
+        title,
+        parent_id: intent.parent_id,
+        git: Some(validated_target.git),
+        storage_root: state.server_storage_dir(),
+        workflow_slug: None,
+        workflow_version_id: Some(intent.workflow_version_id),
+        target: Some(validated_target.target),
+        provenance: run_provenance(&headers, &actor),
+        web_url: None,
+        submitted_manifest_bytes: None,
+        automation: None,
+    };
+    let normalized = match run_compiler::normalize_source(raw_compiler_input) {
+        Ok(normalized) => normalized,
+        Err(error) => return run_intent_admission_error(error.into()),
+    };
+    let layered = match run_compiler::layer_settings(normalized) {
+        Ok(layered) => layered,
+        Err(error) => return run_intent_admission_error(error.into()),
+    };
+    let vars = match snapshot_run_variables(&state).await {
+        Ok(vars) => vars,
+        Err(source) => {
+            return run_intent_admission_error(RunIntentAdmissionError::VariableSnapshot {
+                source,
+            });
+        }
+    };
+    let prepared = match run_compiler::apply_run_variables(layered, vars) {
+        Ok(prepared) => prepared,
+        Err(error) => return run_intent_admission_error(error.into()),
+    };
+    if let Err(error) = validate_intent_environment(&state, prepared.settings()).await {
+        return run_intent_admission_error(error.into());
+    }
+    let catalog = state.catalog();
+    let (llm_result, ready_provider_ids) = state.resolve_llm_client_with_ready_ids().await;
+    let llm_client_for_title = llm_result.ok();
+    let run_materialization_provider_ids = {
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            server_test_support::test_run_materialization_provider_ids(
+                catalog.as_ref(),
+                &ready_provider_ids,
+            )
+        }
+        #[cfg(not(any(test, feature = "test-support")))]
+        {
+            ready_provider_ids.clone()
+        }
+    };
+    let pinned =
+        match run_compiler::compile_and_pin(prepared, run_materialization_provider_ids, catalog)
+            .await
+        {
+            Ok(pinned) => pinned,
+            Err(error) => return run_intent_admission_error(error.into()),
+        };
+    let (pinned, run_id) = pinned.resolve_run_id();
+    if let Some(parent_id) = pinned.parent_id() {
+        if parent_id == run_id {
+            return ApiError::bad_request("A run cannot be its own parent.").into_response();
+        }
+        if let Err(err) = validate_parent_link(&state, run_id, parent_id).await {
+            return err.into_response();
+        }
+    }
+    let pinned = pinned.with_web_url(state.run_web_url(&run_id));
+    let persistence_input = run_compiler::assemble_run(pinned);
+    let created = match Box::pin(operations::persist_create_run(
+        state.stores.runs.as_ref(),
+        persistence_input,
+    ))
+    .await
+    {
+        Ok(created) => created,
+        Err(err) => {
+            tracing::error!(
+                error = %err,
+                error_chain = ?error_util::collect_chain(&err),
+                "Failed to persist admitted run intent"
+            );
+            return intent_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to persist run",
+                "run_persistence_failed",
+            );
+        }
+    };
+    let summary = match state
+        .stores
+        .runs
+        .get_cached_summary(&created.run_id, Utc::now())
+        .await
+    {
+        Ok(Some(summary)) => summary,
+        Ok(None) => {
+            return intent_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "created run summary is unavailable",
+                "run_persistence_failed",
+            );
+        }
+        Err(err) => {
+            tracing::error!(error = %err, "Failed to read admitted run summary");
+            return intent_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to read created run",
+                "run_persistence_failed",
+            );
+        }
+    };
+    let deterministic_title = summary.title.clone();
+    let created_at = created.run_id.created_at();
+    {
+        let mut runs = state.runs.lock().expect("runs lock poisoned");
+        runs.insert(
+            created.run_id,
+            managed_run(
+                created.persisted.source().to_string(),
+                RunStatus::Submitted,
+                created_at,
+                created.run_dir,
+                RunExecutionMode::Start,
+            ),
+        );
+    }
+    if intent.title.is_none() && !ready_provider_ids.is_empty() {
+        if let Some(client) = llm_client_for_title {
+            let run_spec = created.persisted.run_spec();
+            let workflow = run_title_generation::workflow_summary(&run_spec.graph);
+            let run_inputs = run_spec.settings.run.inputs.clone();
+            let title_catalog = state.catalog();
+            let title_model = title_catalog.small_default_for_configured_ids(&ready_provider_ids);
+            spawn_generated_title_task(GeneratedTitleTask {
+                state: Arc::clone(&state),
+                run_id: created.run_id,
+                deterministic_title,
+                workflow_target: entrypoint.to_string(),
+                workflow,
+                run_inputs,
+                client: client.client,
+                model_id: title_model.id.to_string(),
+                provider_id: title_model.provider.clone(),
+            });
+        }
+    }
+    info!(run_id = %created.run_id, "Run created from intent");
+    (
+        StatusCode::CREATED,
+        Json(state.decorate_run_summary(summary).await),
+    )
+        .into_response()
+}
+
+fn intent_error(status: StatusCode, detail: impl Into<String>, code: &'static str) -> Response {
+    ApiError::with_code(status, detail, code).into_response()
+}
+
+fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
+    match &error {
+        RunIntentAdmissionError::StoreOpen { .. }
+        | RunIntentAdmissionError::VersionStore { .. }
+        | RunIntentAdmissionError::VariableSnapshot { .. }
+        | RunIntentAdmissionError::Environment(EnvironmentSelectionError::CredentialStore {
+            ..
+        }) => {
+            tracing::error!(
+                error = %error,
+                error_chain = ?error_util::collect_chain(&error),
+                "Run intent admission failed"
+            );
+        }
+        RunIntentAdmissionError::Lowering(_) | RunIntentAdmissionError::Compiler(_) => {
+            tracing::warn!(
+                error = %error,
+                error_chain = ?error_util::collect_chain(&error),
+                "Run intent admission rejected"
+            );
+        }
+        RunIntentAdmissionError::Target(_) | RunIntentAdmissionError::Environment(_) => {}
+    }
+
+    match error {
+        RunIntentAdmissionError::StoreOpen { .. }
+        | RunIntentAdmissionError::VersionStore { .. } => intent_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "workflow version store operation failed",
+            "workflow_version_store_error",
+        ),
+        RunIntentAdmissionError::Lowering(_) => intent_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "workflow version cannot be used for run creation",
+            "workflow_version_unusable",
+        ),
+        RunIntentAdmissionError::Target(error) => intent_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            error.to_string(),
+            "target_invalid",
+        ),
+        RunIntentAdmissionError::Environment(error) => match error {
+            EnvironmentSelectionError::InvalidId { source, .. } => intent_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                source.to_string(),
+                "run_intent_invalid",
+            ),
+            EnvironmentSelectionError::NotFound { .. } => intent_error(
+                StatusCode::NOT_FOUND,
+                error.to_string(),
+                "environment_not_found",
+            ),
+            EnvironmentSelectionError::TargetUnsupported => intent_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                error.to_string(),
+                "target_environment_unsupported",
+            ),
+            EnvironmentSelectionError::ProviderDisabled { .. }
+            | EnvironmentSelectionError::MissingCredential { .. } => intent_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                error.to_string(),
+                "integration_unavailable",
+            ),
+            EnvironmentSelectionError::CredentialStore { .. } => intent_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to read sandbox credentials",
+                "run_persistence_failed",
+            ),
+        },
+        RunIntentAdmissionError::Compiler(_) => intent_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "run intent could not be compiled",
+            "run_compile_invalid",
+        ),
+        RunIntentAdmissionError::VariableSnapshot { .. } => intent_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to prepare run",
+            "run_persistence_failed",
+        ),
+    }
+}
+
+fn select_intent_environment_id(
+    state: &AppState,
+    value: &str,
+) -> Result<EnvironmentId, EnvironmentSelectionError> {
+    let id =
+        value
+            .parse::<EnvironmentId>()
+            .map_err(|source| EnvironmentSelectionError::InvalidId {
+                value: value.to_string(),
+                source,
+            })?;
+    if state.environment_store().get(&id).is_none() {
+        return Err(EnvironmentSelectionError::NotFound { id });
+    }
+    Ok(id)
+}
+
+async fn validate_intent_environment(
+    state: &AppState,
+    settings: &fabro_types::WorkflowSettings,
+) -> Result<(), EnvironmentSelectionError> {
+    let provider = run_manifest::effective_sandbox_provider(&settings.run);
+    let image = &settings.run.environment.image;
+    let incompatible = match provider {
+        SandboxProviderKind::Local => true,
+        SandboxProviderKind::Docker => image.docker.is_none() && image.dockerfile.is_some(),
+        SandboxProviderKind::Daytona => image.docker.is_some(),
+    };
+    if incompatible || !settings.run.clone.enabled {
+        return Err(EnvironmentSelectionError::TargetUnsupported);
+    }
+    if let Some(detail) =
+        run_manifest::sandbox_provider_policy_error(&state.server_settings(), provider)
+    {
+        return Err(EnvironmentSelectionError::ProviderDisabled { provider, detail });
+    }
+    if provider == SandboxProviderKind::Daytona {
+        match state.vault_secret(EnvVars::DAYTONA_API_KEY).await {
+            Ok(Some(key)) if !key.trim().is_empty() => {}
+            Ok(_) => {
+                return Err(EnvironmentSelectionError::MissingCredential {
+                    provider,
+                    name: EnvVars::DAYTONA_API_KEY,
+                });
+            }
+            Err(source) => {
+                return Err(EnvironmentSelectionError::CredentialStore {
+                    name: EnvVars::DAYTONA_API_KEY,
+                    source,
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 pub(crate) struct CreateRunFromManifestRequest {
@@ -718,7 +1159,9 @@ pub(crate) async fn create_run_from_manifest(
         server_run_defaults: manifest_run_defaults.as_ref().clone(),
         server_environment_defaults: manifest_environment_defaults.as_ref().clone(),
         server_mcp_catalog: manifest_mcp_server_catalog,
-        project_settings: manifest_adapter.project_settings,
+        settings_input: RunCompilerSettingsInput::LegacyManifest {
+            project_settings: manifest_adapter.project_settings,
+        },
         user_toml: manifest_adapter.user_toml,
         run_overrides: manifest_adapter.run_overrides,
         cli_overrides: manifest_adapter.cli_overrides,
@@ -731,6 +1174,7 @@ pub(crate) async fn create_run_from_manifest(
         storage_root: state.server_storage_dir(),
         workflow_slug: None,
         workflow_version_id: None,
+        target: None,
         provenance: run_provenance(&headers, &actor),
         web_url: None,
         submitted_manifest_bytes: Some(submitted_manifest_bytes),

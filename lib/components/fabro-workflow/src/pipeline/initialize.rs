@@ -810,6 +810,7 @@ mod tests {
             source_directory,
             workflow_slug: Some("test".to_string()),
             workflow_version_id: None,
+            target: None,
             automation: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
@@ -966,6 +967,7 @@ mod tests {
                 graph_source: None,
                 workflow_slug: Some("test".to_string()),
                 workflow_version_id: None,
+                target: None,
                 automation: None,
                 source_directory: Some(std::env::current_dir().unwrap().display().to_string()),
                 git: Some(fabro_types::GitContext {

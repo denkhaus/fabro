@@ -212,6 +212,17 @@ pub fn is_valid_github_ref_selector(value: &str) -> bool {
             .all(|part| !part.is_empty() && !part.starts_with('.') && !has_lock_suffix(part))
 }
 
+/// Validates and canonicalizes an exact Git commit SHA.
+///
+/// The grammar accepts exactly 40 untrimmed ASCII hexadecimal bytes. It does
+/// not resolve abbreviations or verify that the object exists or belongs to a
+/// branch.
+#[must_use]
+pub fn normalize_git_commit_sha(value: &str) -> Option<String> {
+    (value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| value.to_ascii_lowercase())
+}
+
 fn has_lock_suffix(value: &str) -> bool {
     value
         .rsplit_once('.')

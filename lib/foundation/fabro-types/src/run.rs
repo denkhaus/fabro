@@ -7,6 +7,7 @@ use crate::blob_hash::BlobHash;
 use crate::graph::Graph;
 use crate::principal::Principal;
 use crate::run_id::RunId;
+use crate::run_intent::RunTarget;
 use crate::run_summary::AutomationRef;
 use crate::workflow_version_id::WorkflowVersionId;
 
@@ -68,6 +69,8 @@ pub struct RunSpec {
     pub workflow_slug:       Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow_version_id: Option<WorkflowVersionId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target:              Option<RunTarget>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub automation:          Option<AutomationRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
