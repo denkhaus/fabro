@@ -9,6 +9,11 @@ use fabro_types::settings::run::MergeStrategy;
 use serde::Deserialize;
 use tokio::process::Command;
 
+pub mod token_source;
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 pub const GITHUB_API_BASE_URL: &str = "https://api.github.com";
 
 /// Returns the GitHub API base URL, allowing override via `GITHUB_BASE_URL` env

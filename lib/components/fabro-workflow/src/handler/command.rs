@@ -1693,7 +1693,7 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl crate::github_token_source::IatMinter for RefreshingMinter {
+    impl fabro_github::test_support::InstallationTokenMinter for RefreshingMinter {
         async fn mint(&self) -> anyhow::Result<fabro_github::InstallationToken> {
             let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
             Ok(fabro_github::InstallationToken {
@@ -1834,8 +1834,9 @@ mod tests {
             calls: std::sync::atomic::AtomicUsize::new(0),
         });
         let mut services = make_sandbox_services(spy.clone());
-        services.github_token = Some(std::sync::Arc::new(
-            crate::github_token_source::GitHubTokenSource::mintable(minter.clone()),
+        services.github_token = Some(fabro_github::test_support::installation_token_source(
+            "owner/repo",
+            minter.clone(),
         ));
 
         let handler = CommandHandler;

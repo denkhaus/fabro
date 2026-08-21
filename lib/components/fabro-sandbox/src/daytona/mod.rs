@@ -15,6 +15,7 @@ use daytona_sdk::api_types::SignedPortPreviewUrl;
 use daytona_sdk::toolbox_types::Command as SessionCommandResult;
 use daytona_sdk::{DaytonaError, SessionCommandLogsResult};
 use fabro_github::GitHubCredentials;
+use fabro_github::token_source::InstallationTokenSource;
 use fabro_static::EnvVars;
 use fabro_types::{CommandOutputStream, CommandTermination, RunId, SandboxProviderKind};
 use fabro_util::time::elapsed_ms;
@@ -27,6 +28,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::clone_retry::{self, CloneRetryReason};
 use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason};
+use crate::push_credentials::{self, PushCredentialState};
 use crate::redact::redact_auth_url;
 use crate::sandbox::{
     self, BASH_ENV_VAR, BASH_PROBE_MARKER, BASH_PROBE_SCRIPT, BASH_PROBE_TIMEOUT_MS, REMOTE_BASH,
@@ -340,7 +342,7 @@ pub struct DaytonaSandbox {
     config:            DaytonaConfig,
     client:            daytona_sdk::Client,
     api_key:           Option<String>,
-    github_app:        Option<GitHubCredentials>,
+    push_credentials:  PushCredentialState,
     sandbox:           OnceCell<daytona_sdk::Sandbox>,
     snapshot_name:     OnceCell<String>,
     rg_available:      OnceCell<bool>,
@@ -374,11 +376,15 @@ impl DaytonaSandbox {
         let client = build_daytona_client(api_key.clone())
             .await
             .map_err(|e| crate::Error::context("Failed to create Daytona client", e))?;
+        let push_credentials = PushCredentialState::new(push_credentials::build_token_source(
+            github_app.as_ref(),
+            clone_origin_url.as_deref(),
+        )?);
         Ok(Self {
             config,
             client,
             api_key,
-            github_app,
+            push_credentials,
             sandbox: OnceCell::new(),
             snapshot_name: OnceCell::new(),
             rg_available: OnceCell::const_new(),
@@ -430,7 +436,7 @@ impl DaytonaSandbox {
             config: DaytonaConfig::default(),
             client,
             api_key,
-            github_app: None,
+            push_credentials: PushCredentialState::new(None),
             sandbox: sandbox_cell,
             snapshot_name: OnceCell::new(),
             rg_available: OnceCell::const_new(),
@@ -1074,37 +1080,39 @@ impl Sandbox for DaytonaSandbox {
                 let layout =
                     clone_source::github_repo_layout(&origin_url, WORKING_DIRECTORY, REPOS_ROOT)
                         .map_err(|err| self.fail_init(init_start, err))?;
-                let token_was_freshly_minted = self
-                    .github_app
-                    .as_ref()
-                    .is_some_and(GitHubCredentials::mints_installation_token);
                 self.emit(SandboxEvent::GitCloneStarted {
                     url:    origin_url.clone(),
                     branch: branch.clone(),
                 });
                 let clone_start = Instant::now();
 
-                let (username, password) = match &self.github_app {
-                    Some(creds) => fabro_github::resolve_clone_credentials(
-                        &fabro_github::GitHubContext::new(
-                            creds,
-                            &fabro_github::github_api_base_url(),
-                        ),
-                        &layout.owner,
-                        &layout.repo,
-                    )
-                    .await
-                    .map_err(|e| {
-                        let err = crate::Error::message(format!(
-                            "Failed to get GitHub App credentials for clone: {e}"
-                        ));
+                // The clone mints its own token (never a warm-cache reuse) and
+                // seeds the shared source, so the first refresh compares
+                // against the clone token instead of believing nothing was
+                // ever embedded.
+                let resolved_token = match self.push_credentials.source() {
+                    Some(source) => Some(source.mint_for_clone().await.map_err(|source| {
+                        let err = crate::Error::context_anyhow(
+                            "Failed to get GitHub App credentials for clone",
+                            source,
+                        );
                         self.emit(SandboxEvent::GitCloneFailed {
                             url:    origin_url.clone(),
                             error:  err.to_string(),
                             causes: err.causes(),
                         });
                         self.fail_init(init_start, err)
-                    })?,
+                    })?),
+                    None => None,
+                };
+                let token_was_freshly_minted = resolved_token
+                    .as_ref()
+                    .is_some_and(|token| !token.snapshot.is_static());
+                let (username, password) = match &resolved_token {
+                    Some(token) => (
+                        Some("x-access-token".to_string()),
+                        Some(token.token.expose().to_string()),
+                    ),
                     None => (None, None),
                 };
 
@@ -1252,8 +1260,11 @@ impl Sandbox for DaytonaSandbox {
                         let _ = self.origin_url.set(origin_url.clone());
                         self.set_working_directory(layout.execution_directory.clone())
                             .map_err(|err| self.fail_init(init_start, err))?;
-                        if let Some(token) = password.as_deref() {
-                            match fabro_github::embed_token_in_url(&origin_url, token) {
+                        if let Some(resolved) = resolved_token {
+                            match fabro_github::embed_token_in_url(
+                                &origin_url,
+                                resolved.token.expose(),
+                            ) {
                                 Ok(auth_url) => {
                                     let cmd = format!(
                                         "git -c maintenance.auto=0 remote set-url origin {}",
@@ -1286,7 +1297,12 @@ impl Sandbox for DaytonaSandbox {
                                                  sandbox will fail"
                                             );
                                         }
-                                        Ok(_) => {}
+                                        Ok(_) => {
+                                            // Origin now carries this token;
+                                            // record it so refreshes compare
+                                            // against the clone generation.
+                                            self.push_credentials.record_embedded(resolved).await;
+                                        }
                                         Err(_) => {
                                             tracing::warn!(
                                                 error_class = "daytona_set_url_exec_failed",
@@ -1299,7 +1315,7 @@ impl Sandbox for DaytonaSandbox {
                                 }
                                 Err(e) => {
                                     tracing::warn!(
-                                        origin = %origin_url,
+                                        origin = %fabro_redact::redacted_url_for_log(&origin_url),
                                         error = %e,
                                         "Failed to build authenticated origin URL — \
                                          subsequent git push from this sandbox will fail"
@@ -1308,7 +1324,7 @@ impl Sandbox for DaytonaSandbox {
                             }
                         }
                     }
-                    Err(e) if self.github_app.is_none() => {
+                    Err(e) if self.push_credentials.source().is_none() => {
                         let err = crate::Error::context(
                             "Git clone failed. If this is a private repository, \
                              configure a GitHub App with `fabro install` and install it \
@@ -1545,50 +1561,39 @@ impl Sandbox for DaytonaSandbox {
     #[tracing::instrument(name = "git_op", skip_all, fields(op = "refresh-credentials"))]
     async fn refresh_push_credentials(&self) -> crate::Result<RefreshOutcome> {
         if !self.repo_cloned() {
-            return Ok(RefreshOutcome::Skipped);
+            return Ok(RefreshOutcome::none());
         }
         let Some(origin_url) = self.origin_url.get() else {
-            return Ok(RefreshOutcome::Skipped); // no authenticated origin — nothing to refresh
+            return Ok(RefreshOutcome::none()); // no authenticated origin — nothing to refresh
         };
-        let Some(creds) = &self.github_app else {
-            return Ok(RefreshOutcome::Skipped);
-        };
-        // Only a GitHub App installation token can be re-minted; a static PAT or
-        // a pre-minted Installation token is fixed, so re-embedding it changes
-        // nothing. Short-circuit to Skipped before the resolve + set-url exec.
-        if !creds.mints_installation_token() {
-            return Ok(RefreshOutcome::Skipped);
-        }
-
-        let auth_url = fabro_github::resolve_authenticated_url(
-            &fabro_github::GitHubContext::new(creds, &fabro_github::github_api_base_url()),
-            origin_url,
-        )
-        .await
-        .map_err(|_| {
-            crate::Error::message("Failed to refresh push credentials: token_mint_failed")
-        })?;
-
-        let cmd = format!(
-            "git -c maintenance.auto=0 remote set-url origin {}",
-            shell_quote(auth_url.as_raw_url().as_str()),
-        );
-        let result = self
-            .exec_command(&cmd, 10_000, None, None, None)
+        self.push_credentials
+            .refresh(origin_url, |auth_url| async move {
+                let cmd = format!(
+                    "git -c maintenance.auto=0 remote set-url origin {}",
+                    shell_quote(auth_url.as_raw_url().as_str()),
+                );
+                let result = self
+                    .exec_command(&cmd, 10_000, None, None, None)
+                    .await
+                    .map_err(|err| {
+                        crate::Error::context(
+                            "Failed to refresh push credentials: set origin URL",
+                            err,
+                        )
+                    })?;
+                if !result.is_success() {
+                    return Err(result.into_exec_error_with_redactor(
+                        "git remote set-url origin (refresh push credentials)",
+                        |s| redact_auth_url(s, Some(&auth_url)),
+                    ));
+                }
+                Ok(())
+            })
             .await
-            .map_err(|_| {
-                crate::Error::message("Failed to refresh push credentials: set_url_exec_failed")
-            })?;
-        if !result.is_success() {
-            return Err(result.into_exec_error_with_redactor(
-                "git remote set-url origin (refresh push credentials)",
-                |s| redact_auth_url(s, Some(&auth_url)),
-            ));
-        }
+    }
 
-        // Static creds were short-circuited to Skipped above; reaching here means
-        // a GitHub App installation token was freshly minted.
-        Ok(RefreshOutcome::Refreshed)
+    fn push_token_source(&self) -> Option<Arc<InstallationTokenSource>> {
+        self.push_credentials.source().cloned()
     }
 
     async fn set_autostop_interval(&self, minutes: i32) -> crate::Result<()> {
@@ -2774,7 +2779,7 @@ mod tests {
             config,
             client,
             api_key: Some(api_key.to_string()),
-            github_app: None,
+            push_credentials: PushCredentialState::new(None),
             sandbox: OnceCell::new(),
             snapshot_name: OnceCell::new(),
             rg_available: OnceCell::const_new(),
