@@ -1,0 +1,7 @@
+_version = 1
+
+# Lab branch: workflows only, no repo code, no AGENTS.md — clean conditions
+# for exercising the run -> push -> pull dev cycle.
+[run.model]
+provider = "zai"
+name = "glm-5.3"
