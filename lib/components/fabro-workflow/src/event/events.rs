@@ -434,6 +434,9 @@ pub enum Event {
         success:          bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         exec_output_tail: Option<fabro_types::ExecOutputTail>,
+        /// Per-attempt history of the push operation.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        attempts:         Vec<fabro_sandbox::PushAttempt>,
     },
     GitFetch {
         branch:  String,
@@ -1232,14 +1235,16 @@ impl Event {
                 branch,
                 success,
                 exec_output_tail,
+                attempts,
             } => {
                 if *success {
-                    debug!(branch, "Git push succeeded");
+                    debug!(branch, attempts = attempts.len(), "Git push succeeded");
                 } else {
                     let tail =
                         fabro_types::ExecOutputTail::trace_summary(exec_output_tail.as_ref());
                     warn!(
                         branch,
+                        attempts = attempts.len(),
                         exec_output_tail_present = tail.present,
                         exec_stdout_tail_bytes = tail.stdout_bytes,
                         exec_stderr_tail_bytes = tail.stderr_bytes,

@@ -34,7 +34,10 @@ pub const REFRESH_MARGIN: Duration = Duration::from_mins(10);
 /// credentials (a PAT, or a pre-minted installation token) carry no
 /// `minted_at`, so token age is undefined for them and they are never
 /// treated as freshly minted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum TokenProvenance {
     /// This resolve minted the token.
@@ -53,7 +56,7 @@ pub enum TokenProvenance {
 
 /// Non-secret description of the token a resolve returned. Shared by the
 /// source, refresh outcomes, logs, and events.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TokenSnapshot {
     /// Increments per mint; 0 for `Static`.
     pub generation: u64,
@@ -129,8 +132,11 @@ impl fmt::Debug for SecretString {
 /// boundaries.
 #[derive(Debug, Clone)]
 pub struct ResolvedToken {
-    pub token:    SecretString,
-    pub snapshot: TokenSnapshot,
+    pub token:          SecretString,
+    pub snapshot:       TokenSnapshot,
+    /// The source tried to refresh an expiring token, but returned the still-
+    /// valid cached token after the mint failed.
+    pub refresh_failed: bool,
 }
 
 /// Mints installation tokens for [`InstallationTokenSource`]. Abstracted so
@@ -176,11 +182,12 @@ struct CachedToken {
 impl CachedToken {
     fn resolved(&self, provenance: TokenProvenance) -> ResolvedToken {
         ResolvedToken {
-            token:    SecretString::new(self.token.token.clone()),
-            snapshot: TokenSnapshot {
+            token:          SecretString::new(self.token.token.clone()),
+            snapshot:       TokenSnapshot {
                 generation: self.generation,
                 provenance,
             },
+            refresh_failed: false,
         }
     }
 }
@@ -335,10 +342,12 @@ impl InstallationTokenSource {
                                     expires_at = %cached.token.expires_at,
                                     "GitHub installation token refresh failed; using cached token"
                                 );
-                                return Ok(cached.resolved(TokenProvenance::Reused {
+                                let mut resolved = cached.resolved(TokenProvenance::Reused {
                                     minted_at:  cached.minted_at,
                                     expires_at: cached.token.expires_at,
-                                }));
+                                });
+                                resolved.refresh_failed = true;
+                                return Ok(resolved);
                             }
                         }
                         Err(err)
@@ -373,11 +382,12 @@ impl InstallationTokenSource {
             SourceState::App { .. } => unreachable!("resolve_static called for App credentials"),
         };
         Ok(ResolvedToken {
-            token:    secret,
-            snapshot: TokenSnapshot {
+            token:          secret,
+            snapshot:       TokenSnapshot {
                 generation: 0,
                 provenance: TokenProvenance::Static,
             },
+            refresh_failed: false,
         })
     }
 
@@ -577,6 +587,7 @@ mod tests {
         assert_eq!(minter.calls(), 2);
         assert_eq!(first.snapshot.generation, 1);
         assert_eq!(second.snapshot.generation, 1);
+        assert!(second.refresh_failed);
         assert!(matches!(
             second.snapshot.provenance,
             TokenProvenance::Reused { .. }

@@ -600,7 +600,7 @@ pub async fn initialize(
             Ok(writer) => writer,
             Err(err) => {
                 let message = format!("failed to initialize checkpoint metadata writer: {err}");
-                if metadata_runtime.mark_metadata_degraded() {
+                if metadata_runtime.mark_metadata_degraded(false) {
                     options.emitter.notice(
                         RunNoticeLevel::Warn,
                         RunNoticeCode::CheckpointMetadataWriteFailed,

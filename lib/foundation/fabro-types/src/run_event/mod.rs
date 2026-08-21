@@ -1954,6 +1954,7 @@ mod tests {
                 branch:           "refs/heads/run:refs/heads/run".to_string(),
                 success:          false,
                 exec_output_tail: Some(tail.clone()),
+                attempts:         Vec::new(),
             }),
         ] {
             let value = serde_json::to_value(&body).unwrap();
@@ -1985,6 +1986,7 @@ mod tests {
                 branch:           "refs/heads/run:refs/heads/run".to_string(),
                 success:          false,
                 exec_output_tail: None,
+                attempts:         Vec::new(),
             }),
         ] {
             let value = serde_json::to_value(&body).unwrap();

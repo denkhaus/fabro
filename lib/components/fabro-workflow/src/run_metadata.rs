@@ -1,22 +1,31 @@
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use fabro_checkpoint::git::{FileMode, Store, TreeEntries};
 use fabro_dump::RunDump;
-use fabro_github::token_source::InstallationTokenSource;
+use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
 use git2::{
     Cred, Direction, ErrorClass, ErrorCode, FetchOptions, Oid, PushOptions, RemoteCallbacks,
     Repository, Signature,
 };
 use tokio::task::{self, JoinError};
+use tokio::time;
 
 use crate::git::{GitAuthor, META_BRANCH_PREFIX};
 use crate::run_options::RunOptions;
 
 pub(crate) fn metadata_branch_name(run_id: &str) -> String {
     format!("{META_BRANCH_PREFIX}{run_id}")
+}
+
+pub(crate) fn metadata_push_failure_is_transient(
+    detail: &str,
+    token: Option<&TokenSnapshot>,
+) -> bool {
+    let credentials = fabro_sandbox::CredentialContext::from_snapshot(token);
+    fabro_sandbox::classify_failure(detail, credentials).is_some()
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -47,28 +56,86 @@ pub(crate) struct MetadataSnapshot {
     pub push_error:  Option<String>,
     pub entry_count: usize,
     pub bytes:       u64,
+    /// The token the push authenticated with, for classifying a push
+    /// failure against the credential context.
+    pub token:       Option<TokenSnapshot>,
+}
+
+const METADATA_REPROBE_COOLDOWN: Duration = Duration::from_secs(30);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MetadataRuntimeState {
+    Healthy,
+    TransientDegraded { next_probe_at: time::Instant },
+    PermanentlyDegraded,
 }
 
 pub(crate) struct RunMetadataRuntime {
-    degraded:        AtomicBool,
-    warning_emitted: AtomicBool,
+    state: Mutex<MetadataRuntimeState>,
 }
 
 impl RunMetadataRuntime {
     pub(crate) fn new() -> Self {
         Self {
-            degraded:        AtomicBool::new(false),
-            warning_emitted: AtomicBool::new(false),
+            state: Mutex::new(MetadataRuntimeState::Healthy),
         }
     }
 
-    pub(crate) fn mark_metadata_degraded(&self) -> bool {
-        self.degraded.store(true, Ordering::SeqCst);
-        !self.warning_emitted.swap(true, Ordering::SeqCst)
+    /// Record a metadata failure. `transient` failures (push failures with
+    /// retryable classifications) leave the writer eligible for re-probing;
+    /// initialization, discovery, serialization, and permanent-authentication
+    /// failures latch it off — repeating known-failing work at every
+    /// checkpoint is noise, not resilience. A permanent latch is never
+    /// upgraded by a later transient failure. Returns whether the caller
+    /// should emit the degradation warning (once per degradation).
+    pub(crate) fn mark_metadata_degraded(&self, transient: bool) -> bool {
+        let mut state = self.state.lock().expect("metadata runtime mutex poisoned");
+        let should_warn = matches!(*state, MetadataRuntimeState::Healthy);
+        *state = match (*state, transient) {
+            (MetadataRuntimeState::PermanentlyDegraded, _) | (_, false) => {
+                MetadataRuntimeState::PermanentlyDegraded
+            }
+            (_, true) => MetadataRuntimeState::TransientDegraded {
+                next_probe_at: time::Instant::now() + METADATA_REPROBE_COOLDOWN,
+            },
+        };
+        should_warn
+    }
+
+    /// A successful snapshot clears the degraded state and re-arms the
+    /// warning, so a later independent failure warns again instead of
+    /// failing silently.
+    pub(crate) fn clear_metadata_degraded(&self) {
+        let mut state = self.state.lock().expect("metadata runtime mutex poisoned");
+        if !matches!(*state, MetadataRuntimeState::Healthy) {
+            *state = MetadataRuntimeState::Healthy;
+        }
+    }
+
+    /// Whether all later snapshot writes must be skipped.
+    pub(crate) fn metadata_suspended(&self) -> bool {
+        matches!(
+            *self.state.lock().expect("metadata runtime mutex poisoned"),
+            MetadataRuntimeState::PermanentlyDegraded
+        )
+    }
+
+    /// Whether a checkpoint should defer its transient-failure re-probe.
+    pub(crate) fn metadata_checkpoint_suspended(&self) -> bool {
+        match *self.state.lock().expect("metadata runtime mutex poisoned") {
+            MetadataRuntimeState::Healthy => false,
+            MetadataRuntimeState::TransientDegraded { next_probe_at } => {
+                time::Instant::now() < next_probe_at
+            }
+            MetadataRuntimeState::PermanentlyDegraded => true,
+        }
     }
 
     pub(crate) fn metadata_degraded(&self) -> bool {
-        self.degraded.load(Ordering::SeqCst)
+        !matches!(
+            *self.state.lock().expect("metadata runtime mutex poisoned"),
+            MetadataRuntimeState::Healthy
+        )
     }
 }
 
@@ -80,7 +147,7 @@ impl Default for RunMetadataRuntime {
 
 #[async_trait]
 pub(crate) trait AuthProvider: Send + Sync {
-    async fn token(&self) -> Result<Option<String>, RunMetadataError>;
+    async fn token(&self) -> Result<Option<ResolvedToken>, RunMetadataError>;
 }
 
 struct GitHubAuthProvider {
@@ -95,11 +162,11 @@ impl GitHubAuthProvider {
 
 #[async_trait]
 impl AuthProvider for GitHubAuthProvider {
-    async fn token(&self) -> Result<Option<String>, RunMetadataError> {
+    async fn token(&self) -> Result<Option<ResolvedToken>, RunMetadataError> {
         self.source
             .resolve()
             .await
-            .map(|resolved| Some(resolved.token.expose().to_owned()))
+            .map(Some)
             .map_err(RunMetadataError::TokenMint)
     }
 }
@@ -110,7 +177,7 @@ struct NoAuth;
 #[cfg(test)]
 #[async_trait]
 impl AuthProvider for NoAuth {
-    async fn token(&self) -> Result<Option<String>, RunMetadataError> {
+    async fn token(&self) -> Result<Option<ResolvedToken>, RunMetadataError> {
         Ok(None)
     }
 }
@@ -183,6 +250,7 @@ impl RunMetadataWriterHandle {
         message: &str,
     ) -> Result<MetadataSnapshot, RunMetadataError> {
         let token = self.auth.token().await?;
+        let token_snapshot = token.as_ref().map(|token| token.snapshot);
         let entries = dump
             .git_entries()
             .map_err(RunMetadataError::DumpSerialize)?;
@@ -191,10 +259,18 @@ impl RunMetadataWriterHandle {
 
         task::spawn_blocking(move || {
             let mut guard = writer.lock().expect("metadata writer mutex poisoned");
-            guard.write_snapshot_blocking(&entries, &message, token.as_deref())
+            guard.write_snapshot_blocking(
+                &entries,
+                &message,
+                token.as_ref().map(|token| token.token.expose()),
+            )
         })
         .await
         .map_err(RunMetadataError::Join)?
+        .map(|mut snapshot| {
+            snapshot.token = token_snapshot;
+            snapshot
+        })
     }
 }
 
@@ -337,6 +413,7 @@ impl RunMetadataWriter {
             push_error,
             entry_count,
             bytes,
+            token: None,
         })
     }
 
@@ -1012,5 +1089,56 @@ mod tests {
         options.settings.run.meta_branch.enabled = false;
 
         assert!(build_metadata_writer(&options, None).unwrap().is_none());
+    }
+    #[tokio::test(start_paused = true)]
+    async fn transient_degradation_reprobes_after_a_cooldown() {
+        let runtime = RunMetadataRuntime::new();
+        assert!(runtime.mark_metadata_degraded(true), "first failure warns");
+        assert!(runtime.metadata_degraded());
+        assert!(
+            !runtime.metadata_suspended(),
+            "a final snapshot can still re-probe"
+        );
+        assert!(runtime.metadata_checkpoint_suspended());
+        time::advance(METADATA_REPROBE_COOLDOWN).await;
+        assert!(!runtime.metadata_checkpoint_suspended());
+        assert!(
+            !runtime.mark_metadata_degraded(true),
+            "repeat failures do not warn again"
+        );
+    }
+
+    #[test]
+    fn permanent_degradation_latches_snapshots_off() {
+        let runtime = RunMetadataRuntime::new();
+        runtime.mark_metadata_degraded(false);
+        assert!(runtime.metadata_suspended());
+
+        // A later transient failure never upgrades a permanent latch.
+        runtime.mark_metadata_degraded(true);
+        assert!(runtime.metadata_suspended());
+    }
+
+    #[test]
+    fn permanent_failure_latches_a_transiently_degraded_writer() {
+        let runtime = RunMetadataRuntime::new();
+        runtime.mark_metadata_degraded(true);
+        assert!(!runtime.metadata_suspended());
+        runtime.mark_metadata_degraded(false);
+        assert!(runtime.metadata_suspended());
+    }
+
+    #[test]
+    fn successful_snapshot_clears_degradation_and_rearms_the_warning() {
+        let runtime = RunMetadataRuntime::new();
+        assert!(runtime.mark_metadata_degraded(true));
+        runtime.clear_metadata_degraded();
+
+        assert!(!runtime.metadata_degraded());
+        assert!(!runtime.metadata_suspended());
+        assert!(
+            runtime.mark_metadata_degraded(false),
+            "a later independent failure warns again instead of failing silently"
+        );
     }
 }

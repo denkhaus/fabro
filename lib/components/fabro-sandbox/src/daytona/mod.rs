@@ -27,8 +27,8 @@ use tokio::task::JoinHandle;
 use tokio::{fs, time};
 use tokio_util::sync::CancellationToken;
 
-use crate::clone_retry::{self, CloneRetryReason};
 use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason};
+use crate::git_retry::{self, CredentialContext, GitRetryReason};
 use crate::push_credentials::{self, PushCredentialState};
 use crate::redact::redact_auth_url;
 use crate::sandbox::{
@@ -1334,9 +1334,9 @@ impl Sandbox for DaytonaSandbox {
                     })?),
                     None => None,
                 };
-                let token_was_freshly_minted = resolved_token
-                    .as_ref()
-                    .is_some_and(|token| !token.snapshot.is_static());
+                let clone_credential_context = CredentialContext::from_snapshot(
+                    resolved_token.as_ref().map(|token| &token.snapshot),
+                );
                 let (username, password) = match &resolved_token {
                     Some(token) => (
                         Some("x-access-token".to_string()),
@@ -1406,9 +1406,11 @@ impl Sandbox for DaytonaSandbox {
                     self.fail_init(init_start, err)
                 })?;
 
-                let clone_result = clone_retry::retry_clone(
+                let clone_plan = git_retry::RetryPlan::clone_default(None);
+                let clone_result = git_retry::retry_clone(
                     SandboxProviderKind::Daytona,
-                    None,
+                    "clone",
+                    &clone_plan,
                     |_attempt| {
                         let git_svc = &git_svc;
                         let origin = origin_url.as_str();
@@ -1421,7 +1423,7 @@ impl Sandbox for DaytonaSandbox {
                         };
                         async move { git_svc.clone(origin, target, options).await }
                     },
-                    |err: &DaytonaError| classify_clone_failure(err, token_was_freshly_minted),
+                    |err: &DaytonaError| classify_clone_failure(err, clone_credential_context),
                 )
                 .await;
 
@@ -1721,11 +1723,19 @@ impl Sandbox for DaytonaSandbox {
         )]
     }
 
-    async fn git_push_ref(&self, refspec: &str) -> crate::Result<()> {
+    async fn git_push_ref(
+        &self,
+        refspec: &str,
+        plan: &crate::RetryPlan,
+    ) -> Result<crate::PushReport, crate::PushError> {
         if !self.repo_cloned() {
-            return Ok(());
+            return Ok(crate::PushReport::default());
         }
-        crate::git_push_via_exec(self, refspec).await
+        let credentials = self
+            .origin_url
+            .get()
+            .map(|origin_url| (&self.push_credentials, origin_url.as_str()));
+        sandbox::git_push_via_exec(self, credentials, refspec, plan).await
     }
 
     async fn ssh_access_command(&self) -> crate::Result<Option<String>> {
@@ -1767,27 +1777,8 @@ impl Sandbox for DaytonaSandbox {
             return Ok(RefreshOutcome::none()); // no authenticated origin — nothing to refresh
         };
         self.push_credentials
-            .refresh(origin_url, |auth_url| async move {
-                let cmd = format!(
-                    "git -c maintenance.auto=0 remote set-url origin {}",
-                    shell_quote(auth_url.as_raw_url().as_str()),
-                );
-                let result = self
-                    .exec_command(&cmd, 10_000, None, None, None)
-                    .await
-                    .map_err(|err| {
-                        crate::Error::context(
-                            "Failed to refresh push credentials: set origin URL",
-                            err,
-                        )
-                    })?;
-                if !result.is_success() {
-                    return Err(result.into_exec_error_with_redactor(
-                        "git remote set-url origin (refresh push credentials)",
-                        |s| redact_auth_url(s, Some(&auth_url)),
-                    ));
-                }
-                Ok(())
+            .refresh(origin_url, |auth_url| {
+                push_credentials::set_auth_url_via_exec(self, auth_url)
             })
             .await
     }
@@ -2829,23 +2820,20 @@ fn daytona_bash_session_probe_outcome(execution: crate::Result<ExecResult>) -> c
 /// inside the sandbox, so its stderr comes back through the toolbox as the
 /// error message — the credential race has to be matched on text. Daytona's own
 /// transport failures are visible structurally.
-fn classify_clone_failure(
-    err: &DaytonaError,
-    token_was_freshly_minted: bool,
-) -> Option<CloneRetryReason> {
+fn classify_clone_failure(err: &DaytonaError, cred: CredentialContext) -> Option<GitRetryReason> {
     // A Daytona request timeout does not prove that the remote clone stopped.
     // Retrying could overlap the still-running first request.
     if matches!(err, DaytonaError::Timeout { .. }) {
         return None;
     }
 
-    match clone_retry::classify_message(err.message(), token_was_freshly_minted) {
-        clone_retry::CloneMessageClass::Retry(reason) => Some(reason),
-        clone_retry::CloneMessageClass::Permanent => None,
-        clone_retry::CloneMessageClass::Unknown => match err {
-            DaytonaError::RateLimit { .. } => Some(CloneRetryReason::TransientInfra),
+    match git_retry::classify_message(err.message(), cred) {
+        git_retry::GitMessageClass::Retry(reason) => Some(reason),
+        git_retry::GitMessageClass::Permanent => None,
+        git_retry::GitMessageClass::Unknown => match err {
+            DaytonaError::RateLimit { .. } => Some(GitRetryReason::TransientInfra),
             DaytonaError::Api { status_code, .. } if (500..600).contains(status_code) => {
-                Some(CloneRetryReason::TransientInfra)
+                Some(GitRetryReason::TransientInfra)
             }
             DaytonaError::Timeout { .. }
             | DaytonaError::Api { .. }
@@ -3575,11 +3563,11 @@ mod tests {
         let err = DaytonaError::general("repository not found: Repository not found.");
 
         assert_eq!(
-            classify_clone_failure(&err, true),
-            Some(CloneRetryReason::TokenReplication)
+            classify_clone_failure(&err, CredentialContext::FreshApp),
+            Some(GitRetryReason::TokenReplication)
         );
         assert_eq!(
-            classify_clone_failure(&err, false),
+            classify_clone_failure(&err, CredentialContext::None),
             None,
             "without credentials there is no token to replicate"
         );
@@ -3592,8 +3580,8 @@ mod tests {
             DaytonaError::api(503, ""),
         ] {
             assert_eq!(
-                classify_clone_failure(&err, false),
-                Some(CloneRetryReason::TransientInfra),
+                classify_clone_failure(&err, CredentialContext::None),
+                Some(GitRetryReason::TransientInfra),
                 "expected {err:?} to be transient"
             );
         }
@@ -3603,24 +3591,33 @@ mod tests {
     fn clone_timeout_is_not_retried_without_remote_termination() {
         let err = DaytonaError::timeout("request timed out");
 
-        assert_eq!(classify_clone_failure(&err, true), None);
+        assert_eq!(
+            classify_clone_failure(&err, CredentialContext::FreshApp),
+            None
+        );
     }
 
     #[test]
     fn clone_api_failure_message_takes_precedence_over_status() {
         let not_found = DaytonaError::api(500, "repository not found: Repository not found.");
         assert_eq!(
-            classify_clone_failure(&not_found, true),
-            Some(CloneRetryReason::TokenReplication)
+            classify_clone_failure(&not_found, CredentialContext::FreshApp),
+            Some(GitRetryReason::TokenReplication)
         );
-        assert_eq!(classify_clone_failure(&not_found, false), None);
+        assert_eq!(
+            classify_clone_failure(&not_found, CredentialContext::Static),
+            None
+        );
 
         for message in [
             "fatal: destination path 'fabro' already exists",
             "remote: Permission to fabro-sh/fabro.git denied",
         ] {
             assert_eq!(
-                classify_clone_failure(&DaytonaError::api(500, message), true),
+                classify_clone_failure(
+                    &DaytonaError::api(500, message),
+                    CredentialContext::FreshApp
+                ),
                 None,
                 "expected {message:?} to take precedence over HTTP 500"
             );
@@ -3636,7 +3633,7 @@ mod tests {
             DaytonaError::general("fatal: could not read Username for 'https://github.com'"),
         ] {
             assert_eq!(
-                classify_clone_failure(&err, true),
+                classify_clone_failure(&err, CredentialContext::FreshApp),
                 None,
                 "expected {err:?} to fail fast"
             );

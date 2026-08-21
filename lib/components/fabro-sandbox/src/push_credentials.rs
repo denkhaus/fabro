@@ -11,11 +11,13 @@ use std::future::Future;
 use std::sync::Arc;
 
 use fabro_github::GitHubCredentials;
-use fabro_github::token_source::{InstallationTokenSource, ResolvedToken};
+use fabro_github::token_source::{InstallationTokenSource, ResolvedToken, TokenSnapshot};
 use fabro_redact::DisplaySafeUrl;
-use tokio::sync::Mutex;
+pub use fabro_types::run_event::GitCredentialRefreshError as RefreshErrorKind;
+use tokio::sync::{Mutex, MutexGuard};
 
-use crate::sandbox::RefreshOutcome;
+use crate::redact;
+use crate::sandbox::{RefreshOutcome, RemoteCredentialAction};
 
 /// Build the shared installation-token source for a clone-based sandbox.
 ///
@@ -146,6 +148,248 @@ impl PushCredentialState {
     }
 }
 
+/// What [`CredentialLease::ensure_embedded`] did for one push attempt.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct EnsureOutcome {
+    pub action:        RemoteCredentialAction,
+    /// The token embedded in the remote right now — never an unembedded mint.
+    pub token:         Option<TokenSnapshot>,
+    pub refresh_error: Option<RefreshErrorKind>,
+}
+
+/// Scoped pin of push credentials for one push operation.
+///
+/// Holds the provider's embed mutex until dropped, so no other refresh can
+/// re-embed mid-operation — a refresh-ahead tick crossing the cache margin
+/// during a retrying push waits here instead of swapping the remote out from
+/// under the pin. Internally retains up to two secrets: the last successfully
+/// embedded token (the fallback) and the operation's resolved target, so both
+/// drift re-embedding and the refresh-error fallback work. Only non-secret
+/// snapshots leave the lease.
+///
+/// A successful resolve happens at most once per operation and is never
+/// replaced; the pin transitions to the target only through a successful
+/// embed. The token source's refresh margin exceeds every push plan's elapsed
+/// bound, so the pinned token always outlives the operation.
+pub(crate) struct CredentialLease<'a> {
+    source:             Option<&'a InstallationTokenSource>,
+    /// Embed-mutex guard: the last successfully embedded token.
+    embedded:           MutexGuard<'a, Option<ResolvedToken>>,
+    /// The operation's resolved target, including a cached fallback when a
+    /// refresh mint failed.
+    target:             Option<ResolvedToken>,
+    /// Skip an immediate duplicate resolve after lease acquisition already
+    /// failed. A later push attempt can retry after backoff.
+    defer_resolve_once: bool,
+}
+
+impl PushCredentialState {
+    /// Acquire the push-credential lease for one push operation.
+    ///
+    /// Resolves the operation's target token up front. A failed refresh can
+    /// return a valid cached token; the first attempt uses it, and
+    /// [`CredentialLease::ensure_embedded`] retries the refresh after push
+    /// backoff. A resolve with no cached or embedded token fails acquisition.
+    pub(crate) async fn lease(&self) -> crate::Result<CredentialLease<'_>> {
+        let embedded = self.embedded.lock().await;
+        let Some(source) = self.source.as_deref() else {
+            return Ok(CredentialLease {
+                source: None,
+                embedded,
+                target: None,
+                defer_resolve_once: false,
+            });
+        };
+        match source.resolve().await {
+            Ok(resolved) => {
+                let defer_resolve_once = resolved.refresh_failed;
+                Ok(CredentialLease {
+                    source: Some(source),
+                    embedded,
+                    target: Some(resolved),
+                    defer_resolve_once,
+                })
+            }
+            Err(err) => {
+                if let Some(prev) = embedded.as_ref() {
+                    tracing::warn!(
+                        error = %format!("{err:#}"),
+                        generation = prev.snapshot.generation,
+                        provenance = %prev.snapshot.provenance,
+                        token_age_ms = prev.snapshot.age_ms(),
+                        "token resolve failed; push pins the last embedded credentials"
+                    );
+                    Ok(CredentialLease {
+                        source: Some(source),
+                        embedded,
+                        target: None,
+                        defer_resolve_once: true,
+                    })
+                } else {
+                    tracing::warn!(
+                        error = %format!("{err:#}"),
+                        "token resolve failed and no credentials were ever embedded"
+                    );
+                    Err(crate::Error::message(
+                        "Failed to refresh push credentials: token_mint_failed",
+                    ))
+                }
+            }
+        }
+    }
+}
+
+impl CredentialLease<'_> {
+    /// Non-secret description of the token embedded in the remote right now.
+    pub(crate) fn snapshot(&self) -> Option<TokenSnapshot> {
+        self.embedded.as_ref().map(|token| token.snapshot)
+    }
+
+    /// Embed the pinned generation if the remote does not carry it.
+    ///
+    /// One call covers the initial embed, a deferred embed after an earlier
+    /// failure, and drift repair (`force` re-embeds even when the tracked
+    /// generation matches, for remotes rewritten inside the sandbox). While
+    /// the lease has no target, this retries the failed `resolve()` first —
+    /// retrying a failed resolve discards no fresh token, so it cannot
+    /// restart any replication clock. Refresh failures are recorded, never
+    /// propagated: the push proceeds with the last embedded token.
+    pub(crate) async fn ensure_embedded(
+        &mut self,
+        sandbox: &dyn crate::Sandbox,
+        origin_url: &str,
+        force: bool,
+    ) -> crate::Result<EnsureOutcome> {
+        let Some(source) = self.source else {
+            return Ok(EnsureOutcome {
+                action:        RemoteCredentialAction::None,
+                token:         None,
+                refresh_error: None,
+            });
+        };
+        let mut refresh_error = self.defer_resolve_once.then_some(RefreshErrorKind::Mint);
+        if self.defer_resolve_once {
+            self.defer_resolve_once = false;
+        } else if self
+            .target
+            .as_ref()
+            .is_none_or(|resolved| resolved.refresh_failed)
+        {
+            match source.resolve().await {
+                Ok(resolved) => {
+                    refresh_error = resolved.refresh_failed.then_some(RefreshErrorKind::Mint);
+                    self.target = Some(resolved);
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        error = %format!("{err:#}"),
+                        "token resolve retry failed; pushing with the last embedded token"
+                    );
+                    refresh_error = Some(RefreshErrorKind::Mint);
+                }
+            }
+        }
+        let Some(desired) = self.target.as_ref().or(self.embedded.as_ref()).cloned() else {
+            // Managed credentials with nothing resolved or embedded:
+            // acquisition fails before any attempt runs, so pushes never see
+            // this state.
+            return Ok(EnsureOutcome {
+                action: RemoteCredentialAction::None,
+                token: None,
+                refresh_error,
+            });
+        };
+        let embedded_generation = self
+            .embedded
+            .as_ref()
+            .map(|token| token.snapshot.generation);
+        if !force && embedded_generation == Some(desired.snapshot.generation) {
+            return Ok(EnsureOutcome {
+                action: RemoteCredentialAction::Unchanged,
+                token: Some(desired.snapshot),
+                refresh_error,
+            });
+        }
+        match set_url_via_exec(sandbox, origin_url, &desired).await {
+            Ok(()) => {
+                let snapshot = desired.snapshot;
+                *self.embedded = Some(desired);
+                Ok(EnsureOutcome {
+                    action: RemoteCredentialAction::Embedded,
+                    token: Some(snapshot),
+                    refresh_error,
+                })
+            }
+            Err(err) => {
+                if matches!(
+                    &err,
+                    crate::Error::Exec { result, .. }
+                        if result.termination != fabro_types::CommandTermination::Exited
+                ) {
+                    return Err(err);
+                }
+                tracing::warn!(
+                    error = %crate::display_for_log(&err),
+                    "embedding push credentials in origin failed; pushing with the last embedded token"
+                );
+                Ok(EnsureOutcome {
+                    action:        RemoteCredentialAction::Unchanged,
+                    token:         self.snapshot(),
+                    refresh_error: Some(RefreshErrorKind::SetUrl),
+                })
+            }
+        }
+    }
+}
+
+/// Rewrite `origin` with the token embedded, through the sandbox's uniform
+/// exec surface.
+async fn set_url_via_exec(
+    sandbox: &dyn crate::Sandbox,
+    origin_url: &str,
+    token: &ResolvedToken,
+) -> crate::Result<()> {
+    let auth_url =
+        fabro_github::embed_token_in_url(origin_url, token.token.expose()).map_err(|err| {
+            crate::Error::context(
+                "Failed to build authenticated origin URL",
+                RedactedSetUrlError(fabro_redact::redact_string(&format!("{err:#}"))),
+            )
+        })?;
+    set_auth_url_via_exec(sandbox, auth_url).await
+}
+
+pub(crate) async fn set_auth_url_via_exec(
+    sandbox: &dyn crate::Sandbox,
+    auth_url: DisplaySafeUrl,
+) -> crate::Result<()> {
+    let command = format!(
+        "git -c maintenance.auto=0 remote set-url origin {}",
+        crate::shell_quote(auth_url.as_raw_url().as_str())
+    );
+    let result = sandbox
+        .exec_command(&command, 10_000, None, None, None)
+        .await
+        .map_err(|err| {
+            let message = redact::redact_auth_url(&crate::display_for_log(&err), Some(&auth_url));
+            crate::Error::context(
+                "Failed to refresh push credentials: set_url_exec_failed",
+                RedactedSetUrlError(message),
+            )
+        })?;
+    if !result.is_success() {
+        return Err(result.into_exec_error_with_redactor(
+            "git remote set-url origin (refresh push credentials)",
+            |s| redact::redact_auth_url(s, Some(&auth_url)),
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+struct RedactedSetUrlError(String);
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -153,6 +397,7 @@ mod tests {
     use chrono::Utc;
     use fabro_github::InstallationToken;
     use fabro_github::test_support::{InstallationTokenMinter, installation_token_source};
+    use tokio::time::sleep;
 
     use super::*;
     use crate::sandbox::RemoteCredentialAction;
@@ -193,6 +438,41 @@ mod tests {
     }
 
     const ORIGIN: &str = "https://github.com/owner/repo";
+    /// Long enough for a blocked task to be observably pending on paused time.
+    const SHORT_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+    /// A refresh-ahead tick crossing the cache margin during a push waits on
+    /// the embed mutex until the operation releases the lease, so the remote
+    /// can never be swapped out from under the pinned generation.
+    #[tokio::test(start_paused = true)]
+    async fn refresh_waits_for_the_lease_to_release() {
+        let state = std::sync::Arc::new(minting_state(chrono::Duration::minutes(60)));
+
+        let lease = state.lease().await.expect("lease acquires");
+
+        let refresh_task = {
+            let state = std::sync::Arc::clone(&state);
+            tokio::spawn(async move {
+                state
+                    .refresh(ORIGIN, |_| async { Ok(()) })
+                    .await
+                    .expect("refresh succeeds after the lease releases")
+            })
+        };
+
+        // The refresh must be blocked while the lease holds the embed mutex.
+        sleep(SHORT_WAIT).await;
+        assert!(
+            !refresh_task.is_finished(),
+            "refresh must wait on the embed mutex"
+        );
+
+        drop(lease);
+        let outcome = refresh_task.await.expect("refresh task completes");
+        // The lease's resolve minted generation 1; the deferred refresh
+        // reuses it (the operation never embedded, so the refresh embeds).
+        assert_eq!(outcome.token().unwrap().generation, 1);
+    }
 
     #[tokio::test]
     async fn refresh_without_managed_credentials_reports_none() {

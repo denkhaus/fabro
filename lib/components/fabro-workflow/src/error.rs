@@ -309,6 +309,10 @@ pub enum Error {
         message:          String,
         failure_class:    FailureCategory,
         exec_output_tail: Option<ExecOutputTail>,
+        /// Structured context lines appended after the source chain in
+        /// `causes()` — e.g. one line per push attempt on a publish push
+        /// failure.
+        extra_causes:     Vec<String>,
         #[source]
         source:           Option<SharedError>,
     },
@@ -357,6 +361,7 @@ impl Error {
             message,
             failure_class,
             exec_output_tail,
+            extra_causes: Vec::new(),
             source: None,
         }
     }
@@ -369,15 +374,28 @@ impl Error {
         source: impl Into<anyhow::Error>,
         exec_output_tail: Option<ExecOutputTail>,
     ) -> Self {
+        Self::stage_with_source_details(stage, message, source, None, exec_output_tail, Vec::new())
+    }
+
+    fn stage_with_source_details(
+        stage: ErrorStage,
+        message: impl Into<String>,
+        source: impl Into<anyhow::Error>,
+        failure_class: Option<FailureCategory>,
+        exec_output_tail: Option<ExecOutputTail>,
+        extra_causes: Vec<String>,
+    ) -> Self {
         let message = message.into();
         let source = SharedError::new(source.into());
-        let failure_class =
-            classify_failure_reason(&render_with_causes(&message, &collect_chain(&source)));
+        let failure_class = failure_class.unwrap_or_else(|| {
+            classify_failure_reason(&render_with_causes(&message, &collect_chain(&source)))
+        });
         Self::Stage {
             stage,
             message,
             failure_class,
             exec_output_tail,
+            extra_causes,
             source: Some(source),
         }
     }
@@ -454,12 +472,42 @@ impl Error {
         Self::stage_with_source(ErrorStage::Publish, message, source, exec_output_tail)
     }
 
+    /// Build a publish error with an explicitly determined failure category,
+    /// for callers that know more than message sniffing can recover — e.g.
+    /// exhausted push retries whose attempts all classified as transient.
+    /// `extra_causes` lines land after the source chain in the failure
+    /// detail (one line per push attempt).
+    pub fn publish_with_source_and_class(
+        message: impl Into<String>,
+        source: impl Into<anyhow::Error>,
+        failure_class: FailureCategory,
+        exec_output_tail: Option<ExecOutputTail>,
+        extra_causes: Vec<String>,
+    ) -> Self {
+        Self::stage_with_source_details(
+            ErrorStage::Publish,
+            message,
+            source,
+            Some(failure_class),
+            exec_output_tail,
+            extra_causes,
+        )
+    }
+
     #[must_use]
     pub fn causes(&self) -> Vec<String> {
         match self {
-            Self::Stage { source, .. } => source
-                .as_ref()
-                .map_or_else(Vec::new, |source| collect_chain(source)),
+            Self::Stage {
+                source,
+                extra_causes,
+                ..
+            } => {
+                let mut causes = source
+                    .as_ref()
+                    .map_or_else(Vec::new, |source| collect_chain(source));
+                causes.extend(extra_causes.iter().cloned());
+                causes
+            }
             Self::Template { source, .. } => collect_chain(source),
             Self::ScriptInterpolation { source, .. } => collect_chain(source),
             Self::Llm(err) => collect_causes(err),
