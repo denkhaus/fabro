@@ -88,13 +88,23 @@ pub struct RunIntegrationsLayer {
 #[serde(deny_unknown_fields)]
 pub struct RunIntegrationsGithubLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub permissions: Option<HashMap<String, InterpString>>,
+    pub permissions:             Option<HashMap<String, InterpString>>,
+    /// Extra `owner/repository` slugs the minted `GITHUB_TOKEN` must cover in
+    /// addition to the implicit run origin. Kept as raw strings in this
+    /// sparse layer; slug validation happens at resolve time so diagnostics
+    /// can carry indexed paths. The higher-precedence list replaces the lower
+    /// one wholesale (`Some(vec![])` is an explicit clear); no `...` splice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub additional_repositories: Option<Vec<String>>,
 }
 
 impl Combine for RunIntegrationsGithubLayer {
     fn combine(self, other: Self) -> Self {
         Self {
-            permissions: self.permissions.or(other.permissions),
+            permissions:             self.permissions.or(other.permissions),
+            additional_repositories: self
+                .additional_repositories
+                .or(other.additional_repositories),
         }
     }
 }

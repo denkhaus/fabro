@@ -199,7 +199,7 @@ pub fn classify_failure(message: &str, cred: CredentialContext) -> Option<GitRet
 /// GitHub's guidance for token replication is to wait a few seconds and retry
 /// with the same token. Sub-second delays land inside the same replication
 /// window and spend an attempt for nothing.
-fn clone_backoff() -> BackoffPolicy {
+fn replication_backoff() -> BackoffPolicy {
     BackoffPolicy {
         initial_delay: Duration::from_secs(3),
         factor:        3.0,
@@ -229,6 +229,13 @@ pub struct RetryPlan {
 }
 
 impl RetryPlan {
+    /// Host-side repository probes use the same attempt count and pacing as
+    /// clone operations against a freshly minted token.
+    #[must_use]
+    pub fn repository_probe() -> Self {
+        Self::clone_default(None)
+    }
+
     /// The clone policy both providers already trust: 3 attempts, 3s/9s
     /// backoff, no plan-level bounds. Docker supplies its existing absolute
     /// five-minute deadline through `outer_deadline`; Daytona supplies none.
@@ -236,7 +243,7 @@ impl RetryPlan {
     pub fn clone_default(outer_deadline: Option<time::Instant>) -> Self {
         Self {
             max_attempts: 3,
-            backoff: clone_backoff(),
+            backoff: replication_backoff(),
             max_elapsed: None,
             per_attempt_timeout: None,
             outer_deadline,
@@ -249,7 +256,7 @@ impl RetryPlan {
     pub fn checkpoint_push() -> Self {
         Self {
             max_attempts:        3,
-            backoff:             clone_backoff(),
+            backoff:             replication_backoff(),
             max_elapsed:         Some(Duration::from_secs(90)),
             per_attempt_timeout: Some(Duration::from_mins(1)),
             outer_deadline:      None,
@@ -316,13 +323,13 @@ impl RetryPlan {
     }
 }
 
-/// Run a clone operation, repeating it while the failure looks transient.
+/// Run a git operation, repeating it while the failure looks transient.
 ///
 /// `attempt` receives the 1-based attempt number. `classify` decides whether
 /// an error is worth repeating; `None` returns it to the caller untouched.
 /// A retry starts only when its backoff fits before the plan's effective
 /// deadline. The final error is returned as-is.
-pub(crate) async fn retry_clone<T, E, Attempt, Fut, Classify>(
+pub async fn retry_git_operation<T, E, Attempt, Fut, Classify>(
     provider: SandboxProviderKind,
     op: &str,
     plan: &RetryPlan,
@@ -595,7 +602,7 @@ mod tests {
     async fn first_success_runs_one_attempt() {
         let attempts = Attempts::default();
 
-        let result = retry_clone(
+        let result = retry_git_operation(
             SandboxProviderKind::Docker,
             "clone",
             &RetryPlan::clone_default(None),
@@ -615,7 +622,7 @@ mod tests {
     async fn retries_until_a_later_attempt_succeeds() {
         let attempts = Attempts::default();
 
-        let result = retry_clone(
+        let result = retry_git_operation(
             SandboxProviderKind::Docker,
             "clone",
             &RetryPlan::clone_default(None),
@@ -641,7 +648,7 @@ mod tests {
     async fn exhausted_attempts_return_the_final_error() {
         let attempts = Attempts::default();
 
-        let result = retry_clone(
+        let result = retry_git_operation(
             SandboxProviderKind::Docker,
             "clone",
             &RetryPlan::clone_default(None),
@@ -665,7 +672,7 @@ mod tests {
     async fn unretryable_failure_stops_immediately() {
         let attempts = Attempts::default();
 
-        let result = retry_clone(
+        let result = retry_git_operation(
             SandboxProviderKind::Docker,
             "clone",
             &RetryPlan::clone_default(None),
@@ -692,7 +699,7 @@ mod tests {
         let attempts = Attempts::default();
         let deadline = time::Instant::now() + Duration::from_secs(2);
 
-        let result = retry_clone(
+        let result = retry_git_operation(
             SandboxProviderKind::Docker,
             "clone",
             &RetryPlan::clone_default(Some(deadline)),
@@ -715,7 +722,7 @@ mod tests {
     async fn unbounded_plan_runs_all_attempts() {
         let attempts = Attempts::default();
 
-        let result = retry_clone(
+        let result = retry_git_operation(
             SandboxProviderKind::Daytona,
             "clone",
             &RetryPlan::clone_default(None),
@@ -736,13 +743,13 @@ mod tests {
         let attempts = Attempts::default();
         let plan = RetryPlan {
             max_attempts:        5,
-            backoff:             clone_backoff(),
+            backoff:             replication_backoff(),
             max_elapsed:         Some(Duration::from_secs(4)),
             per_attempt_timeout: None,
             outer_deadline:      None,
         };
 
-        let result = retry_clone(
+        let result = retry_git_operation(
             SandboxProviderKind::Docker,
             "push",
             &plan,

@@ -12,8 +12,7 @@ use fabro_util::error::collect_chain;
 use tokio::{fs, task};
 
 use crate::git_checkout::{
-    GitCheckoutError, GitRepoCache, WorktreePrepareInput, github_metadata_url,
-    resolve_git_auth_config,
+    GitCheckoutError, GitRepoCache, WorktreePrepareInput, resolve_git_auth_config,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -199,7 +198,7 @@ fn build_manifest_from_checkout(
 
     let mut manifest = built.manifest;
     manifest.git = Some(GitContext {
-        origin_url: github_metadata_url(&git_context.repo),
+        origin_url: git_context.repo.https_url(),
         branch:     git_context.ref_selector,
         sha:        Some(git_context.checked_out_sha),
         dirty:      DirtyStatus::Clean,
