@@ -790,10 +790,10 @@ mod tests {
     type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
     struct TestContext {
-        _dir:      tempfile::TempDir,
+        dir:       tempfile::TempDir,
         source:    Database,
         source_db: slatedb::Db,
-        sqlite:    fabro_db::Database,
+        sqlite:    sqlx::SqlitePool,
         target:    BlobStore,
     }
 
@@ -809,14 +809,31 @@ mod tests {
             let dir = tempfile::tempdir()?;
             let sqlite = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
             sqlite.migrate().await?;
-            let target = BlobStore::new(sqlite.clone_pool());
+            let sqlite = sqlite.clone_pool();
+            let target = BlobStore::new(sqlite.clone());
             Ok(Self {
-                _dir: dir,
+                dir,
                 source,
                 source_db,
                 sqlite,
                 target,
             })
+        }
+
+        async fn new_with_single_sqlite_connection() -> TestResult<Self> {
+            let mut context = Self::new().await?;
+            context.sqlite.close().await;
+            let options = SqliteConnectOptions::new()
+                .filename(context.dir.path().join("fabro.sqlite3"))
+                .foreign_keys(true)
+                .journal_mode(SqliteJournalMode::Wal);
+            let sqlite = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(options)
+                .await?;
+            context.target = BlobStore::new(sqlite.clone());
+            context.sqlite = sqlite;
+            Ok(context)
         }
 
         async fn put_blob(&self, bytes: &[u8]) -> TestResult<BlobHash> {
@@ -842,7 +859,7 @@ mod tests {
 
         async fn destination_rows(&self) -> TestResult<i64> {
             Ok(sqlx::query_scalar("SELECT COUNT(*) FROM blobs")
-                .fetch_one(self.sqlite.pool())
+                .fetch_one(&self.sqlite)
                 .await?)
         }
 
@@ -850,7 +867,7 @@ mod tests {
             sqlx::query("INSERT INTO blobs (hash, data) VALUES (?, ?)")
                 .bind(hash.to_string())
                 .bind(bytes)
-                .execute(self.sqlite.pool())
+                .execute(&self.sqlite)
                 .await?;
             Ok(())
         }
@@ -858,20 +875,20 @@ mod tests {
         async fn delete_destination(&self, hash: BlobHash) -> TestResult<()> {
             sqlx::query("DELETE FROM blobs WHERE hash = ?")
                 .bind(hash.to_string())
-                .execute(self.sqlite.pool())
+                .execute(&self.sqlite)
                 .await?;
             Ok(())
         }
 
         async fn set_automatic_checkpoint(&self, pages: i64) -> TestResult<()> {
-            let mut connection = self.sqlite.pool().acquire().await?;
+            let mut connection = self.sqlite.acquire().await?;
             let statement = sqlx::AssertSqlSafe(format!("PRAGMA wal_autocheckpoint = {pages}"));
             sqlx::query(statement).execute(&mut *connection).await?;
             Ok(())
         }
 
         async fn automatic_checkpoint(&self) -> TestResult<i64> {
-            let mut connection = self.sqlite.pool().acquire().await?;
+            let mut connection = self.sqlite.acquire().await?;
             Ok(sqlx::query_scalar("PRAGMA wal_autocheckpoint")
                 .fetch_one(&mut *connection)
                 .await?)
@@ -1341,13 +1358,13 @@ mod tests {
     #[tokio::test]
     async fn automatic_checkpoint_setting_is_restored_after_success_and_failure() -> TestResult<()>
     {
-        let success = TestContext::new().await?;
+        let success = TestContext::new_with_single_sqlite_connection().await?;
         success.set_automatic_checkpoint(37).await?;
         success.put_blob(b"success").await?;
         success.import().await?;
         assert_eq!(success.automatic_checkpoint().await?, 37);
 
-        let failure = TestContext::new().await?;
+        let failure = TestContext::new_with_single_sqlite_connection().await?;
         failure.set_automatic_checkpoint(41).await?;
         let mut invalid_key = legacy_prefix();
         invalid_key.extend_from_slice(&[b'z'; 64]);
