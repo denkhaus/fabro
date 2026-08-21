@@ -751,7 +751,7 @@ mod tests {
     use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
     use fabro_interview::AutoApproveInterviewer;
     use fabro_sandbox::SandboxSpec;
-    use fabro_store::Database;
+    use fabro_store::{Database, RunDatabase};
     use fabro_types::settings::run::RunModelControls;
     use fabro_types::{
         EventBody, ForkSourceRef, RunEvent, RunId, WorkflowSettings, fixtures, test_support,
@@ -794,6 +794,37 @@ mod tests {
             Duration::from_millis(1),
             None,
         ))
+    }
+
+    async fn seed_run_created(
+        run_store: &RunDatabase,
+        settings: serde_json::Value,
+        graph: serde_json::Value,
+        source_directory: Option<String>,
+        fork_source_ref: Option<ForkSourceRef>,
+    ) {
+        crate::event::append_event(run_store, &test_run_id(), &Event::RunCreated {
+            run_id: test_run_id(),
+            title: None,
+            settings,
+            graph,
+            workflow_source: None,
+            labels: BTreeMap::new(),
+            source_directory,
+            workflow_slug: Some("test".to_string()),
+            workflow_version_id: None,
+            automation: None,
+            provenance: test_support::test_run_provenance(),
+            manifest_blob: None,
+            spec_blob: None,
+            git: None,
+            fork_source_ref,
+            retried_from: None,
+            parent_id: None,
+            web_url: None,
+        })
+        .await
+        .unwrap();
     }
 
     fn simple_graph() -> (Graph, String) {
@@ -1122,28 +1153,14 @@ mod tests {
         let mut run_options = test_settings(&run_dir);
         run_options.settings = settings;
         run_options.fork_source_ref = fork_source_ref;
-        crate::event::append_event(&run_store, &test_run_id(), &Event::RunCreated {
-            run_id:              test_run_id(),
-            title:               None,
-            settings:            serde_json::to_value(&run_options.settings).unwrap(),
-            graph:               serde_json::to_value(&graph).unwrap(),
-            workflow_source:     None,
-            labels:              BTreeMap::new(),
-            source_directory:    Some(workspace.display().to_string()),
-            workflow_slug:       Some("test".to_string()),
-            workflow_version_id: None,
-            automation:          None,
-            provenance:          test_support::test_run_provenance(),
-            manifest_blob:       None,
-            spec_blob:           None,
-            git:                 None,
-            fork_source_ref:     run_options.fork_source_ref.clone(),
-            retried_from:        None,
-            parent_id:           None,
-            web_url:             None,
-        })
-        .await
-        .unwrap();
+        seed_run_created(
+            &run_store,
+            serde_json::to_value(&run_options.settings).unwrap(),
+            serde_json::to_value(&graph).unwrap(),
+            Some(workspace.display().to_string()),
+            run_options.fork_source_ref.clone(),
+        )
+        .await;
 
         initialize(persisted, InitOptions {
             resume: Some(ResumeState::for_test(
@@ -1409,10 +1426,18 @@ mod tests {
         let run_dir = temp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
         let (graph, source) = simple_graph();
-        let persisted = test_persisted(graph, source, &run_dir);
+        let persisted = test_persisted(graph.clone(), source, &run_dir);
         let emitter = Arc::new(crate::event::Emitter::new(test_run_id()));
         let store = memory_store();
         let run_store = store.create_run(&test_run_id()).await.unwrap();
+        seed_run_created(
+            &run_store,
+            serde_json::to_value(WorkflowSettings::default()).unwrap(),
+            serde_json::to_value(graph).unwrap(),
+            None,
+            None,
+        )
+        .await;
         let store_logger = StoreProgressLogger::new(run_store.clone());
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
         emitter.on_event({
@@ -1463,7 +1488,7 @@ mod tests {
         })
         .await
         .unwrap();
-        store_logger.flush().await;
+        store_logger.flush().await.unwrap();
 
         assert_eq!(initialized.run_options.run_dir, run_dir);
         assert!(

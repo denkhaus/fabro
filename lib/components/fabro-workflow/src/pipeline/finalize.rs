@@ -1114,8 +1114,8 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let run_dir = temp.path().join("run");
         std::fs::create_dir_all(&run_dir).unwrap();
-        let inner_store = test_store().create_run(&test_run_id()).await.unwrap();
-        let run_store = inner_store;
+        let run_store = seeded_run_store().await;
+        crate::test_support::mark_run_running(&run_store, &test_run_id()).await;
         let emitter = Arc::new(Emitter::new(test_run_id()));
         let store_logger = StoreProgressLogger::new(run_store.clone());
         store_logger.register(&emitter);
@@ -1158,7 +1158,7 @@ mod tests {
         })
         .await
         .unwrap();
-        store_logger.flush().await;
+        store_logger.flush().await.unwrap();
 
         assert_eq!(concluded.conclusion.status, StageOutcome::Succeeded);
     }

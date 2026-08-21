@@ -304,7 +304,7 @@ async fn execute_test_run_with_options(
     .unwrap();
 
     let executed = execute(initialized).await;
-    store_logger.flush().await;
+    store_logger.flush().await.unwrap();
     executed
 }
 
