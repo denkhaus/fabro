@@ -39,7 +39,7 @@ git diff --stat $base HEAD
 
 print ""
 print "== full diff (per-file, 100k char budget) =="
-let changed = (git diff --name-only --diff-filter=ACMRT $base HEAD | lines)
+let changed = (git diff --name-only --diff-filter=ACMRTD $base HEAD | lines)
 mut budget = 100000
 mut shown = 0
 for f in $changed {
