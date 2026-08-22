@@ -1,0 +1,215 @@
+diff --git a/.mulch/expertise/gofib.jsonl b/.mulch/expertise/gofib.jsonl
+index 0bdfd61..5685917 100644
+--- a/.mulch/expertise/gofib.jsonl
++++ b/.mulch/expertise/gofib.jsonl
+@@ -1,2 +1,3 @@
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-08-22T17:10:28.450Z","evidence":{"seeds":"fabro-759d","commit":"802b69be5b96ee07d2af8abf553e0f7ff5205750"},"name":"thin-main-runnable-core","description":"gofib CLI testability: keep main() as a thin flag.Parse + error-exit shim and put all output logic in run(w io.Writer, count int) error, so tests exercise CLI behavior (counts, formats, invalid -n values) via bytes.Buffer instead of os/exec subprocesses. New flags should validate in run and surface errors through main's stderr+exit-1 path.","files":[".mulch/mulch.config.yaml","fib_test.go","main.go"],"id":"mx-d4cf38"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-08-22T18:08:57.202Z","evidence":{"commit":"423d296789e3a8c6f97e29e6f03f4fe41fb56356"},"description":"A previous implementer pass left a compiled 'gofib' binary in the worktree root (gitignored, so the gate stayed green). Hard rule: build smoke checks must not leave binaries behind — use 'go run .' (builds to cache) or build into a temp dir outside the worktree, and remove any stray binary before finishing the pass.","resolution":"Binary removed with 'rm -f gofib'; smoke checks now use 'go run .' which builds into the Go cache and never touches the worktree.","id":"mx-a58327"}
++{"type":"decision","classification":"tactical","recorded_at":"2026-08-22T20:26:58.408Z","evidence":{"commit":"90dc7ead113103615d224d7ef69c7f9fb81af5a8"},"title":"Pretty-mode column widths come from the last line; prose beats inconsistent examples","rationale":"Seed fabro-0879's example block was internally inconsistent (line lengths 26/26/26/28 chars; no width triple reproduces all four lines), while its prose rule (index width = width of largest index, value width = width of largest value, ': ' separator, right-aligned) is self-consistent and yields equal-length lines. Fib grows monotonically, so the largest index is count and the largest value is Fib(count).","id":"mx-8edfdc"}
+diff --git a/fib_test.go b/fib_test.go
+index e2ecedd..c3c36e1 100644
+--- a/fib_test.go
++++ b/fib_test.go
+@@ -3,7 +3,9 @@ package main
+ import (
+ 	"bytes"
+ 	"encoding/json"
++	"fmt"
+ 	"math/big"
++	"strconv"
+ 	"strings"
+ 	"testing"
+ )
+@@ -34,6 +36,12 @@ func TestFib(t *testing.T) {
+ 	}
+ }
+ 
++// outputLines splits run output into lines, dropping the trailing newline
++// so each printed line can be compared exactly.
++func outputLines(s string) []string {
++	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
++}
++
+ func TestRun(t *testing.T) {
+ 	tests := []struct {
+ 		name      string
+@@ -52,10 +60,10 @@ func TestRun(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, tt.n, false); err != nil {
++			if err := run(&buf, tt.n, false, false); err != nil {
+ 				t.Fatalf("run(%d) returned error: %v", tt.n, err)
+ 			}
+-			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
++			lines := outputLines(buf.String())
+ 			if len(lines) != tt.wantLines {
+ 				t.Fatalf("run(%d) printed %d lines, want %d", tt.n, len(lines), tt.wantLines)
+ 			}
+@@ -93,10 +101,10 @@ func TestRunJSON(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, tt.n, true); err != nil {
++			if err := run(&buf, tt.n, true, false); err != nil {
+ 				t.Fatalf("run(%d, json) returned error: %v", tt.n, err)
+ 			}
+-			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
++			lines := outputLines(buf.String())
+ 			if len(lines) != tt.wantLines {
+ 				t.Fatalf("run(%d, json) printed %d lines, want %d", tt.n, len(lines), tt.wantLines)
+ 			}
+@@ -120,14 +128,81 @@ func TestRunJSON(t *testing.T) {
+ 	}
+ }
+ 
++// wantPrettyLine returns the expected -pretty text line for index i when
++// count numbers are printed: index and value are right-aligned in columns
++// as wide as the largest index (count) and the largest value (Fib(count)),
++// separated by ": ". Nothing is hardcoded — widths and values are derived
++// from the same Fib the code under test uses.
++func wantPrettyLine(i, count int) string {
++	return fmt.Sprintf("%*d: %*s",
++		len(strconv.Itoa(count)), i,
++		len(Fib(count).String()), Fib(i).String())
++}
++
++func TestRunPretty(t *testing.T) {
++	tests := []struct {
++		name string
++		n    int
++	}{
++		// n=5: widths come from the 5th line, so every line is expected
++		// exactly, padding included.
++		{"pretty n=5 prints the exact aligned five-line block", 5},
++		// Default count: all 100 lines are checked, which pins the count
++		// and the exact last line (no padding on the widest line).
++		{"pretty default prints 100 aligned numbers", defaultCount},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			var buf bytes.Buffer
++			if err := run(&buf, tt.n, false, true); err != nil {
++				t.Fatalf("run(%d, pretty) returned error: %v", tt.n, err)
++			}
++			lines := outputLines(buf.String())
++			if len(lines) != tt.n {
++				t.Fatalf("run(%d, pretty) printed %d lines, want %d", tt.n, len(lines), tt.n)
++			}
++			for i, line := range lines {
++				if want := wantPrettyLine(i+1, tt.n); line != want {
++					t.Errorf("line %d = %q, want exactly %q", i+1, line, want)
++				}
++			}
++		})
++	}
++}
++
++func TestRunPrettyJSON(t *testing.T) {
++	// -pretty affects text mode only: JSON Lines output must be byte-for-
++	// byte identical to plain -json for the same count.
++	var prettyBuf, plainBuf bytes.Buffer
++	if err := run(&prettyBuf, 3, true, true); err != nil {
++		t.Fatalf("run(3, json, pretty) returned error: %v", err)
++	}
++	if err := run(&plainBuf, 3, true, false); err != nil {
++		t.Fatalf("run(3, json) returned error: %v", err)
++	}
++	pretty, plain := outputLines(prettyBuf.String()), outputLines(plainBuf.String())
++	if len(pretty) != 3 || len(plain) != 3 {
++		t.Fatalf("pretty json printed %d lines, plain json %d, want 3 each", len(pretty), len(plain))
++	}
++	for i := range plain {
++		if pretty[i] != plain[i] {
++			t.Errorf("line %d differs: pretty json %q, plain json %q", i+1, pretty[i], plain[i])
++		}
++		if want := wantJSONLine(i + 1); pretty[i] != want {
++			t.Errorf("line %d = %q, want exactly %q", i+1, pretty[i], want)
++		}
++	}
++}
++
+ func TestRunRejectsInvalidCount(t *testing.T) {
+ 	for _, mode := range []struct {
+ 		name   string
+ 		asJSON bool
+-	}{{"text", false}, {"json", true}} {
++		pretty bool
++	}{{"text", false, false}, {"pretty text", false, true}, {"json", true, false}} {
+ 		for _, n := range []int{0, -5} {
+ 			var buf bytes.Buffer
+-			err := run(&buf, n, mode.asJSON)
++			err := run(&buf, n, mode.asJSON, mode.pretty)
+ 			if err == nil {
+ 				t.Fatalf("run(%d, %s) succeeded, want error", n, mode.name)
+ 			}
+diff --git a/main.go b/main.go
+index 435e69a..039246d 100644
+--- a/main.go
++++ b/main.go
+@@ -1,7 +1,9 @@
+ // Command gofib prints Fibonacci numbers, one per line, prefixed with
+ // the index: "1: 1", "2: 1", "3: 2", ... By default it prints the first
+ // 100; the -n flag changes how many are printed, and -json switches to
+-// JSON Lines output.
++// JSON Lines output. With -pretty the text output is aligned in two
++// right-aligned columns sized by the largest printed line; it has no
++// effect on -json output.
+ package main
+ 
+ import (
+@@ -11,6 +13,7 @@ import (
+ 	"io"
+ 	"math/big"
+ 	"os"
++	"strconv"
+ )
+ 
+ // defaultCount is how many numbers gofib prints when -n is omitted.
+@@ -33,19 +36,31 @@ func Fib(n int) *big.Int {
+ }
+ 
+ // run writes the first count Fibonacci numbers to w. In text mode each
+-// line is "<index>: <value>"; in JSON mode each line is one JSON object
+-// {"index": <int>, "fib": "<value>"} (JSON Lines). It returns an error
+-// when count < 1.
+-func run(w io.Writer, count int, asJSON bool) error {
++// line is "<index>: <value>"; with pretty the index and value are
++// right-aligned in columns as wide as the largest printed index and
++// value. In JSON mode each line is one JSON object
++// {"index": <int>, "fib": "<value>"} (JSON Lines); pretty does not
++// change it. It returns an error when count < 1.
++func run(w io.Writer, count int, asJSON, pretty bool) error {
+ 	if count < 1 {
+ 		return fmt.Errorf("invalid value %d for flag -n: must be >= 1", count)
+ 	}
++	// Pretty text lines share one alignment: both columns are sized by
++	// the largest line, which is always the last one (Fib grows, and the
++	// index grows with it).
++	idxWidth, valWidth := 0, 0
++	if pretty {
++		idxWidth = len(strconv.Itoa(count))
++		valWidth = len(Fib(count).String())
++	}
+ 	enc := json.NewEncoder(w)
+ 	for i := 1; i <= count; i++ {
+ 		if asJSON {
+ 			if err := enc.Encode(fibLine{Index: i, Fib: Fib(i).String()}); err != nil {
+ 				return err
+ 			}
++		} else if pretty {
++			fmt.Fprintf(w, "%*d: %*s\n", idxWidth, i, valWidth, Fib(i).String())
+ 		} else {
+ 			fmt.Fprintf(w, "%d: %v\n", i, Fib(i))
+ 		}
+@@ -56,8 +71,9 @@ func run(w io.Writer, count int, asJSON bool) error {
+ func main() {
+ 	n := flag.Int("n", defaultCount, "how many Fibonacci numbers to print (must be >= 1; default 100)")
+ 	asJSON := flag.Bool("json", false, "emit JSON Lines instead of text: one {\"index\": i, \"fib\": \"value\"} object per number")
++	pretty := flag.Bool("pretty", false, "align text output in two right-aligned columns sized by the largest printed index and value; affects text mode only, not -json")
+ 	flag.Parse()
+-	if err := run(os.Stdout, *n, *asJSON); err != nil {
++	if err := run(os.Stdout, *n, *asJSON, *pretty); err != nil {
+ 		fmt.Fprintln(os.Stderr, err)
+ 		os.Exit(1)
+ 	}
