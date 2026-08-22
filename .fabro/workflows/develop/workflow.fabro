@@ -16,7 +16,8 @@ digraph Develop {
         output_schema="routing",
         output_retries=2,
         max_visits=20,
-        goal_gate=true
+        goal_gate=true,
+        retry_policy="standard"
     ]
 
     // Implementer: builds exactly what the claimed seed specifies.
@@ -26,7 +27,8 @@ digraph Develop {
         output_schema="routing",
         output_retries=2,
         max_visits=10,
-        fidelity="summary:high"
+        fidelity="summary:high",
+        retry_policy="standard"
     ]
 
     // Tester: deterministic quality gate, no agent. The host project defines
@@ -76,7 +78,8 @@ digraph Develop {
         fidelity="summary:high",
         output_schema="routing",
         output_retries=2,
-        max_visits=20
+        max_visits=20,
+        retry_policy="standard"
     ]
 
     // Refiner: deterministic painpoint delivery (ADR-0002). Lifts staged
