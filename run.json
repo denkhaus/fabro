@@ -437,7 +437,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-22T18:01:57.212488099Z",
-  "last_event_at": "2026-08-22T18:05:16.844758027Z",
+  "last_event_at": "2026-08-22T18:05:21.919231268Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -718,9 +718,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 199,
       "checkpoint": {
-        "timestamp": "2026-08-22T18:05:16.861877130Z",
+        "timestamp": "2026-08-22T18:05:21.269285884Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
@@ -730,9 +730,172 @@
         ],
         "node_retries": {},
         "context_values": {
+          "response.implementer": "Implementation of seed `fabro-a1f5` is complete. Summary:\n\n**Changes to `main.go`:**\n- Added `fibLine` struct (`{\"index\": int, \"fib\": string}`) — fib serialized as string since values exceed int64.\n- `run` gained an `asJSON bool` parameter; JSON mode uses a `json.Encoder` to emit one object per line (JSON Lines), text mode unchanged. Count validation happens before any output, so invalid `-n` errors identically in both modes.\n- `main` wires up the new `-json` bool flag via the flag package, combinable with `-n`.\n\n**Changes to `fib_test.go`:**\n- Updated existing `TestRun` call sites for the new signature.\n- Added `TestRunJSON`: table-driven for json+n=1, json default (100 lines), and combined json+n=10; unmarshals every line, compares `index`/`fib` fields, and pins the exact canonical line shape.\n- `TestRunRejectsInvalidCount` now loops over both text and JSON modes.\n\n**Smoke checks (not the full gate):** gofmt clean, `go vet`, `go build`, `go test` all pass; `go run . -json -n 5` emits exactly 5 valid JSON lines and `go run . -json -n 0` exits 1 with the stderr error. Only source files modified — no artifacts in the worktree.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Extended gofib with a -json flag per seed fabro-a1f5: main.go adds a fibLine struct and an asJSON parameter to run(), emitting JSON Lines via json.Encoder while text mode stays unchanged, with -n validation before any output in both modes; fib_test.go adds TestRunJSON (json+n=1, json default, json+n=10, unmarshal-and-compare plus exact-line check) and extends the invalid-count test to both modes. gofmt/vet/build/test pass and `go run . -json -n 5` emits 5 valid JSON lines; no artifacts left behind.\"\n  }\n}",
+          "thread.start.current_node": "planner",
+          "internal.retry_count.planner": 0,
+          "current_seed_id": "fabro-a1f5",
+          "failure_class": "",
+          "internal.retry_count.implementer": 0,
+          "last_response": "Implementation of seed `fabro-a1f5` is complete. Summary:\n\n**Changes to `main.go`:**\n- Added `fibLine` struct (`{\"index\": int, \"fib\": string}`) — fib serialized as string since values exceed int64.\n",
+          "outcome": "succeeded",
+          "thread.implementer.current_node": "tester",
+          "graph.max_node_visits": "40",
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "preferred_label": "Implemented",
           "command.output": "blob://sha256/7e6bd0403ac64fc3489aa6e655adc758aaf3889b8ce98b0d35e9ac1296adfa25",
           "internal.node_visit_count": 1,
+          "internal.run_id": "01M0NA4J5H30CZAFZEBF7HHQX5",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.planner.current_node": "implementer",
           "internal.thread_id": "implementer",
+          "failure_signature": "",
+          "graph.rankdir": "LR",
+          "current_seed_brief": "In the Go module at `/workspace/fabro` (`main.go`, `fib_test.go`), add a `-json` bool flag via the flag package. JSON mode emits JSON Lines: one object per line, exactly {\"index\": <int>, \"fib\": \"<value-as-string>\"}, with big.Int fib values serialized as strings using `encoding/json` (stdlib only). Text mode unchanged: `<index>: <value>`, default 100 numbers, `-n` controls count; flags combine (`-json -n 10` emits exactly 10 JSON lines). Invalid usage (n < 1) still exits non-zero with stderr error in both modes. Extend `run`'s signature (e.g., jsonMode bool) and update existing tests; extend `fib_test.go` with table-driven tests for `run` covering json+n=1, json default, and combined json+n=10, asserting exact lines by unmarshalling each and comparing fields. Acceptance: `go run . -json -n 5` emits exactly 5 valid JSON lines with correct fib values and `just qualitygate` is green.",
+          "response.planner": "Seed `fabro-a1f5` claimed. Brief for the Implementer:\n\n**Seed:** `fabro-a1f5` — gofib: add -json flag for machine-readable output\n\n**Brief:** In the Go module at `/workspace/fabro` (source in `/workspace/fabro/main.go`, tests in `/workspace/fabro/fib_test.go`), add a `-json` bool flag via the flag package so `gofib -json` and `gofib -json -n 5` work. JSON mode emits JSON Lines: one object per line, exactly `{\"index\": <int>, \"fib\": \"<value-as-string>\"}`, with big.Int fib values serialized as strings via `encoding/json` (stdlib only, no new deps). Text mode stays unchanged: `<index>: <value>`, default 100 numbers, `-n` controls count; flags combine so `-json -n 10` emits exactly 10 JSON lines. Invalid usage (`n < 1`) still exits non-zero with a stderr error in both modes — keep the existing pattern where `run` returns an error and `main` prints it and exits 1. This requires extending `run`'s signature (e.g., a `jsonMode bool` parameter) and updating existing tests. Extend `fib_test.go` with table-driven tests for `run` covering json+n=1, json default (100 lines), and combined json+n=10; assert exact output by unmarshalling each line and comparing fields. Acceptance: `go run . -json -n 5` emits exactly 5 valid JSON lines with correct fib values, and `just qualitygate` is green.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-a1f5\",\n    \"current_seed_title\": \"gofib: add -json flag for machine-readable output\",\n    \"current_seed_brief\": \"In the Go module at `/workspace/fabro` (`main.go`, `fib_test.go`), add a `-json` bool flag via the flag package. JSON mode emits JSON Lines: one object per line, exactly {\\\"index\\\": <int>, \\\"fib\\\": \\\"<value-as-string>\\\"}, with big.Int fib values serialized as strings using `encoding/json` (stdlib only). Text mode unchanged: `<index>: <value>`, default 100 numbers, `-n` controls count; flags combine (`-json -n 10` emits exactly 10 JSON lines). Invalid usage (n < 1) still exits non-zero with stderr error in both modes. Extend `run`'s signature (e.g., jsonMode bool) and update existing tests; extend `fib_test.go` with table-driven tests for `run` covering json+n=1, json default, and combined json+n=10, asserting exact lines by unmarshalling each and comparing fields. Acceptance: `go run . -json -n 5` emits exactly 5 valid JSON lines with correct fib values and `just qualitygate` is green.\"\n  }\n}",
+          "internal.fidelity": "compact",
+          "internal.retry_count.tester": 0,
+          "last_stage": "implementer",
+          "implementation_summary": "Extended gofib with a -json flag per seed fabro-a1f5: main.go adds a fibLine struct and an asJSON parameter to run(), emitting JSON Lines via json.Encoder while text mode stays unchanged, with -n validation before any output in both modes; fib_test.go adds TestRunJSON (json+n=1, json default, json+n=10, unmarshal-and-compare plus exact-line check) and extends the invalid-count test to both modes. gofmt/vet/build/test pass and `go run . -json -n 5` emits 5 valid JSON lines; no artifacts left behind.",
+          "current_node": "tester",
+          "current_seed_title": "gofib: add -json flag for machine-readable output",
+          "internal.retry_count.start": 0
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "response.planner": "Seed `fabro-a1f5` claimed. Brief for the Implementer:\n\n**Seed:** `fabro-a1f5` — gofib: add -json flag for machine-readable output\n\n**Brief:** In the Go module at `/workspace/fabro` (source in `/workspace/fabro/main.go`, tests in `/workspace/fabro/fib_test.go`), add a `-json` bool flag via the flag package so `gofib -json` and `gofib -json -n 5` work. JSON mode emits JSON Lines: one object per line, exactly `{\"index\": <int>, \"fib\": \"<value-as-string>\"}`, with big.Int fib values serialized as strings via `encoding/json` (stdlib only, no new deps). Text mode stays unchanged: `<index>: <value>`, default 100 numbers, `-n` controls count; flags combine so `-json -n 10` emits exactly 10 JSON lines. Invalid usage (`n < 1`) still exits non-zero with a stderr error in both modes — keep the existing pattern where `run` returns an error and `main` prints it and exits 1. This requires extending `run`'s signature (e.g., a `jsonMode bool` parameter) and updating existing tests. Extend `fib_test.go` with table-driven tests for `run` covering json+n=1, json default (100 lines), and combined json+n=10; assert exact output by unmarshalling each line and comparing fields. Acceptance: `go run . -json -n 5` emits exactly 5 valid JSON lines with correct fib values, and `just qualitygate` is green.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-a1f5\",\n    \"current_seed_title\": \"gofib: add -json flag for machine-readable output\",\n    \"current_seed_brief\": \"In the Go module at `/workspace/fabro` (`main.go`, `fib_test.go`), add a `-json` bool flag via the flag package. JSON mode emits JSON Lines: one object per line, exactly {\\\"index\\\": <int>, \\\"fib\\\": \\\"<value-as-string>\\\"}, with big.Int fib values serialized as strings using `encoding/json` (stdlib only). Text mode unchanged: `<index>: <value>`, default 100 numbers, `-n` controls count; flags combine (`-json -n 10` emits exactly 10 JSON lines). Invalid usage (n < 1) still exits non-zero with stderr error in both modes. Extend `run`'s signature (e.g., jsonMode bool) and update existing tests; extend `fib_test.go` with table-driven tests for `run` covering json+n=1, json default, and combined json+n=10, asserting exact lines by unmarshalling each and comparing fields. Acceptance: `go run . -json -n 5` emits exactly 5 valid JSON lines with correct fib values and `just qualitygate` is green.\"\n  }\n}",
+              "current_seed_id": "fabro-a1f5",
+              "current_seed_title": "gofib: add -json flag for machine-readable output",
+              "current_seed_brief": "In the Go module at `/workspace/fabro` (`main.go`, `fib_test.go`), add a `-json` bool flag via the flag package. JSON mode emits JSON Lines: one object per line, exactly {\"index\": <int>, \"fib\": \"<value-as-string>\"}, with big.Int fib values serialized as strings using `encoding/json` (stdlib only). Text mode unchanged: `<index>: <value>`, default 100 numbers, `-n` controls count; flags combine (`-json -n 10` emits exactly 10 JSON lines). Invalid usage (n < 1) still exits non-zero with stderr error in both modes. Extend `run`'s signature (e.g., jsonMode bool) and update existing tests; extend `fib_test.go` with table-driven tests for `run` covering json+n=1, json default, and combined json+n=10, asserting exact lines by unmarshalling each and comparing fields. Acceptance: `go run . -json -n 5` emits exactly 5 valid JSON lines with correct fib values and `just qualitygate` is green.",
+              "last_response": "Seed `fabro-a1f5` claimed. Brief for the Implementer:\n\n**Seed:** `fabro-a1f5` — gofib: add -json flag for machine-readable output\n\n**Brief:** In the Go module at `/workspace/fabro` (source in `/work"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 11353,
+                    "output_tokens": 1210,
+                    "reasoning_tokens": 1265,
+                    "cache_read_tokens": 51712,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 40220
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 46048,
+              "tool_time_ms": 1578,
+              "active_time_ms": 47626
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/7e6bd0403ac64fc3489aa6e655adc758aaf3889b8ce98b0d35e9ac1296adfa25"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 829,
+              "active_time_ms": 829
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "Implementation of seed `fabro-a1f5` is complete. Summary:\n\n**Changes to `main.go`:**\n- Added `fibLine` struct (`{\"index\": int, \"fib\": string}`) — fib serialized as string since values exceed int64.\n",
+              "last_stage": "implementer",
+              "response.implementer": "Implementation of seed `fabro-a1f5` is complete. Summary:\n\n**Changes to `main.go`:**\n- Added `fibLine` struct (`{\"index\": int, \"fib\": string}`) — fib serialized as string since values exceed int64.\n- `run` gained an `asJSON bool` parameter; JSON mode uses a `json.Encoder` to emit one object per line (JSON Lines), text mode unchanged. Count validation happens before any output, so invalid `-n` errors identically in both modes.\n- `main` wires up the new `-json` bool flag via the flag package, combinable with `-n`.\n\n**Changes to `fib_test.go`:**\n- Updated existing `TestRun` call sites for the new signature.\n- Added `TestRunJSON`: table-driven for json+n=1, json default (100 lines), and combined json+n=10; unmarshals every line, compares `index`/`fib` fields, and pins the exact canonical line shape.\n- `TestRunRejectsInvalidCount` now loops over both text and JSON modes.\n\n**Smoke checks (not the full gate):** gofmt clean, `go vet`, `go build`, `go test` all pass; `go run . -json -n 5` emits exactly 5 valid JSON lines and `go run . -json -n 0` exits 1 with the stderr error. Only source files modified — no artifacts in the worktree.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Extended gofib with a -json flag per seed fabro-a1f5: main.go adds a fibLine struct and an asJSON parameter to run(), emitting JSON Lines via json.Encoder while text mode stays unchanged, with -n validation before any output in both modes; fib_test.go adds TestRunJSON (json+n=1, json default, json+n=10, unmarshal-and-compare plus exact-line check) and extends the invalid-count test to both modes. gofmt/vet/build/test pass and `go run . -json -n 5` emits 5 valid JSON lines; no artifacts left behind.\"\n  }\n}",
+              "implementation_summary": "Extended gofib with a -json flag per seed fabro-a1f5: main.go adds a fibLine struct and an asJSON parameter to run(), emitting JSON Lines via json.Encoder while text mode stays unchanged, with -n validation before any output in both modes; fib_test.go adds TestRunJSON (json+n=1, json default, json+n=10, unmarshal-and-compare plus exact-line check) and extends the invalid-count test to both modes. gofmt/vet/build/test pass and `go run . -json -n 5` emits 5 valid JSON lines; no artifacts left behind."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 17112,
+                    "output_tokens": 2902,
+                    "reasoning_tokens": 3022,
+                    "cache_read_tokens": 168192,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 93736
+            },
+            "files_touched": [
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 110154,
+              "tool_time_ms": 11454,
+              "active_time_ms": 121608
+            }
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "91f6e7cfbf3c4f192d1aed97397f1cd18adf08b9",
+        "node_visits": {
+          "start": 1,
+          "tester": 1,
+          "implementer": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 3,
+          "additions": 95,
+          "deletions": 19
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-22T18:05:21.936977019Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "command.output": "blob://sha256/c2ea34987ae54a3891c2bf0594f19f3f5db352add666251a963e221373eaaf2f",
+          "internal.node_visit_count": 1,
+          "internal.thread_id": "tester",
           "thread.implementer.current_node": "tester",
           "graph.max_node_visits": "40",
           "preferred_label": "Implemented",
@@ -741,6 +904,7 @@
           "thread.planner.current_node": "implementer",
           "internal.fidelity": "compact",
           "current_seed_brief": "In the Go module at `/workspace/fabro` (`main.go`, `fib_test.go`), add a `-json` bool flag via the flag package. JSON mode emits JSON Lines: one object per line, exactly {\"index\": <int>, \"fib\": \"<value-as-string>\"}, with big.Int fib values serialized as strings using `encoding/json` (stdlib only). Text mode unchanged: `<index>: <value>`, default 100 numbers, `-n` controls count; flags combine (`-json -n 10` emits exactly 10 JSON lines). Invalid usage (n < 1) still exits non-zero with stderr error in both modes. Extend `run`'s signature (e.g., jsonMode bool) and update existing tests; extend `fib_test.go` with table-driven tests for `run` covering json+n=1, json default, and combined json+n=10, asserting exact lines by unmarshalling each and comparing fields. Acceptance: `go run . -json -n 5` emits exactly 5 valid JSON lines with correct fib values and `just qualitygate` is green.",
+          "thread.tester.current_node": "evidence",
           "response.planner": "Seed `fabro-a1f5` claimed. Brief for the Implementer:\n\n**Seed:** `fabro-a1f5` — gofib: add -json flag for machine-readable output\n\n**Brief:** In the Go module at `/workspace/fabro` (source in `/workspace/fabro/main.go`, tests in `/workspace/fabro/fib_test.go`), add a `-json` bool flag via the flag package so `gofib -json` and `gofib -json -n 5` work. JSON mode emits JSON Lines: one object per line, exactly `{\"index\": <int>, \"fib\": \"<value-as-string>\"}`, with big.Int fib values serialized as strings via `encoding/json` (stdlib only, no new deps). Text mode stays unchanged: `<index>: <value>`, default 100 numbers, `-n` controls count; flags combine so `-json -n 10` emits exactly 10 JSON lines. Invalid usage (`n < 1`) still exits non-zero with a stderr error in both modes — keep the existing pattern where `run` returns an error and `main` prints it and exits 1. This requires extending `run`'s signature (e.g., a `jsonMode bool` parameter) and updating existing tests. Extend `fib_test.go` with table-driven tests for `run` covering json+n=1, json default (100 lines), and combined json+n=10; assert exact output by unmarshalling each line and comparing fields. Acceptance: `go run . -json -n 5` emits exactly 5 valid JSON lines with correct fib values, and `just qualitygate` is green.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-a1f5\",\n    \"current_seed_title\": \"gofib: add -json flag for machine-readable output\",\n    \"current_seed_brief\": \"In the Go module at `/workspace/fabro` (`main.go`, `fib_test.go`), add a `-json` bool flag via the flag package. JSON mode emits JSON Lines: one object per line, exactly {\\\"index\\\": <int>, \\\"fib\\\": \\\"<value-as-string>\\\"}, with big.Int fib values serialized as strings using `encoding/json` (stdlib only). Text mode unchanged: `<index>: <value>`, default 100 numbers, `-n` controls count; flags combine (`-json -n 10` emits exactly 10 JSON lines). Invalid usage (n < 1) still exits non-zero with stderr error in both modes. Extend `run`'s signature (e.g., jsonMode bool) and update existing tests; extend `fib_test.go` with table-driven tests for `run` covering json+n=1, json default, and combined json+n=10, asserting exact lines by unmarshalling each and comparing fields. Acceptance: `go run . -json -n 5` emits exactly 5 valid JSON lines with correct fib values and `just qualitygate` is green.\"\n  }\n}",
           "implementation_summary": "Extended gofib with a -json flag per seed fabro-a1f5: main.go adds a fibLine struct and an asJSON parameter to run(), emitting JSON Lines via json.Encoder while text mode stays unchanged, with -n validation before any output in both modes; fib_test.go adds TestRunJSON (json+n=1, json default, json+n=10, unmarshal-and-compare plus exact-line check) and extends the invalid-count test to both modes. gofmt/vet/build/test pass and `go run . -json -n 5` emits 5 valid JSON lines; no artifacts left behind.",
           "internal.retry_count.tester": 0,
@@ -754,9 +918,10 @@
           "thread.start.current_node": "planner",
           "internal.retry_count.planner": 0,
           "last_stage": "implementer",
+          "internal.retry_count.evidence": 0,
           "current_seed_id": "fabro-a1f5",
           "failure_signature": "",
-          "current_node": "tester",
+          "current_node": "evidence",
           "internal.retry_count.start": 0,
           "last_response": "Implementation of seed `fabro-a1f5` is complete. Summary:\n\n**Changes to `main.go`:**\n- Added `fibLine` struct (`{\"index\": int, \"fib\": string}`) — fib serialized as string since values exceed int64.\n"
         },
@@ -860,12 +1025,27 @@
               "tool_time_ms": 829,
               "active_time_ms": 829
             }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/c2ea34987ae54a3891c2bf0594f19f3f5db352add666251a963e221373eaaf2f"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 623,
+              "active_time_ms": 623
+            }
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
           "start": 1,
           "tester": 1,
+          "evidence": 1,
           "planner": 1,
           "implementer": 1
         }
@@ -1271,7 +1451,12 @@
       "first_event_seq": 192,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-08-22T18:05:16.860091764Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
@@ -1294,6 +1479,52 @@
       "live_streaming": true,
       "termination": "exited",
       "started_at": "2026-08-22T18:05:16.010155476Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 834,
+        "inference_time_ms": 0,
+        "tool_time_ms": 829,
+        "active_time_ms": 829
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 202,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/c2ea34987ae54a3891c2bf0594f19f3f5db352add666251a963e221373eaaf2f",
+        "exit_code": 0,
+        "duration_ms": 623,
+        "termination": "exited",
+        "output_bytes": 2856,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 2856,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-08-22T18:05:21.289344945Z",
       "handler": "command",
       "graph_visit": 1,
       "usage": {
