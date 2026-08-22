@@ -16,6 +16,10 @@ pub type DbPool = sqlx::SqlitePool;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
+/// The blob-table migration, exposed so fixtures in other crates can install
+/// the production blob schema without a filesystem path into this crate.
+pub const BLOBS_MIGRATION_SQL: &str = include_str!("../migrations/2026081301_blobs.sql");
+
 #[derive(Clone)]
 pub struct Database {
     pool: DbPool,
@@ -112,7 +116,9 @@ impl Database {
             .with_context(|| {
                 format!("writing pre-migration snapshot {}", staging_path.display())
             })?;
-        set_private_permissions(&staging_path).await?;
+        set_private_permissions(&staging_path)
+            .await
+            .with_context(|| format!("setting permissions on {}", staging_path.display()))?;
         remove_file_if_exists(&snapshot_path)
             .await
             .with_context(|| {
@@ -191,7 +197,9 @@ pub fn pre_migration_snapshot_path(database_path: &Path) -> PathBuf {
     append_to_path(database_path, ".pre-migration.bak")
 }
 
-fn append_to_path(path: &Path, suffix: &str) -> PathBuf {
+/// Returns `path` with `suffix` appended to its final component, preserving
+/// any extension (`fabro.sqlite3` + `-wal` → `fabro.sqlite3-wal`).
+pub fn append_to_path(path: &Path, suffix: &str) -> PathBuf {
     let mut path = path.as_os_str().to_os_string();
     path.push(suffix);
     PathBuf::from(path)
@@ -218,7 +226,8 @@ async fn applied_migration_versions(pool: &DbPool) -> anyhow::Result<HashSet<i64
         .collect())
 }
 
-async fn remove_file_if_exists(path: &Path) -> std::io::Result<()> {
+/// Removes `path`, treating an already-missing file as success.
+pub async fn remove_file_if_exists(path: &Path) -> std::io::Result<()> {
     match fs::remove_file(path).await {
         Ok(()) => Ok(()),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -226,17 +235,17 @@ async fn remove_file_if_exists(path: &Path) -> std::io::Result<()> {
     }
 }
 
+/// Restricts `path` to owner-only access (0o600). No-op off Unix.
 #[cfg(unix)]
-async fn set_private_permissions(path: &Path) -> anyhow::Result<()> {
+pub async fn set_private_permissions(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
-    fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-        .await
-        .with_context(|| format!("setting permissions on {}", path.display()))
+    fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).await
 }
 
+/// Restricts `path` to owner-only access (0o600). No-op off Unix.
 #[cfg(not(unix))]
-async fn set_private_permissions(_path: &Path) -> anyhow::Result<()> {
+pub async fn set_private_permissions(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
