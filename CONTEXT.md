@@ -1,52 +1,37 @@
-# fabro lab
+# fabro lab — product world (denkhaus-lab)
 
-This repo hosts the gofib product and the Fabro develop workflow that builds
-it. Work is split into two worlds, each with its own branch and seed tracker.
+This branch hosts gofib, a small Go CLI, built seed-by-seed by the develop
+workflow. Platform decisions — the two-world architecture, the painpoint
+channel, asset sync, the platform gate — live on `meta/denkhaus-lab`
+(docs/adr there); its CONTEXT.md owns the dev-loop vocabulary (painpoint,
+mailbox, refiner, platform/product seed). This glossary owns gofib.
 
 ## Language
 
-**Product branch**:
-`denkhaus-lab` — product code plus product seeds.
-_Avoid_: "main branch", "project branch" (ambiguous about which world).
+**gofib**:
+The product: a Go CLI printing Fibonacci numbers. Module `gofib`, package
+main in `main.go`. _Avoid_: "the fibonacci app" in commit or seed titles.
 
-**Platform meta branch**:
-`denkhaus-lab/meta` — workflow assets, platform seeds, and the mailbox; the
-bird's-eye view of how work flows, never the product content itself.
-_Avoid_: "meta" for anything that is not this branch.
+**Fib**:
+`Fib(n int) *big.Int` — the unit-testable computation, separate from output.
+F(100) overflows int64, hence math/big. _Avoid_: recomputing inline.
 
-**Product seed**:
-A seed in the product tracker (`fabro-*`); it builds or verifies product
-code. _Avoid_: calling platform work a "product fix".
+**Text mode**:
+Default output: one line per number, `<index>: <value>` (e.g. `100: 354224848179261915075`).
 
-**Platform seed**:
-A seed in the platform tracker (`fabro-meta-*`); it changes workflow assets
-(greps, prompts, scripts, gate). _Avoid_: slipping platform scope into a
-product seed.
+**JSON mode**:
+`-json` output: JSON Lines, one object per number: `{"index":<int>,"fib":"<string>"}`.
+_fib_ is a string by decision (ADR-0001). _Avoid_: emitting a JSON array.
 
-**Painpoint**:
-A stage's observation about friction in the flow — evidence gaps, broken
-scripts, gate blind spots. The only legal channel for platform criticism
-during a product run; never a fix applied in place.
-_Avoid_: "issue", "bug report" (those live in trackers).
-
-**Mailbox**:
-`painpoints.jsonl` on the platform meta branch — append-only JSONL that
-collects delivered painpoints. German: Briefkasten.
-
-**Refiner**:
-The workflow step that lifts painpoints from run context into the mailbox
-at the end of a run.
+**Count flag**:
+`-n <int>` — how many numbers to print (default 100; >= 1 or non-zero exit
+with stderr error). Combines with JSON mode.
 
 **Quality gate**:
-The opaque `just qualitygate` contract each implementer answers to. The
-product gate checks product code; the platform gate lints workflow assets.
-_Avoid_: "tester", "CI".
+The opaque `just qualitygate` contract the implementer answers to. Treat as
+green/black; its checks are the project's own business. _Avoid_: "tester".
 
-**Evidence**:
-The deterministic capture (diff since run base, worktree, tracker, seed
-specs) that feeds the tool-less reviewer. _Avoid_: mixing evidence claims
-into implementation summaries.
+## Related contexts
 
-**Verification-only brief**:
-A brief marking a seed whose acceptance criteria look already satisfied;
-the implementer verifies without changing code.
+Platform vocabulary and architecture ADRs: `meta/denkhaus-lab`, its
+CONTEXT.md and docs/adr/. Do not duplicate them here.

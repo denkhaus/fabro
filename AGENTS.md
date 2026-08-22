@@ -2,8 +2,10 @@
 
 This file provides guidance to AI agents working in this repository.
 
-The `denkhaus-lab` branch is a minimal workflow playground: `.fabro/` workflows,
-project config, and tooling setup only. There is no application source code here.
+The `denkhaus-lab` branch is the product world: the gofib Go CLI, its tests,
+and the product seed tracker (`fabro-*`). Workflow assets are synced from the
+platform world (`meta/denkhaus-lab`); platform criticism goes through the
+painpoint channel, never through edits to workflow assets. See CONTEXT.md.
 
 ## Agent skills
 
