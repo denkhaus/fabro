@@ -305,8 +305,10 @@ fn inline_goal_file(
     config_path: &ManifestPath,
     files: &HashMap<ManifestPath, String>,
 ) -> Result<(), WorkflowClosureLoweringError> {
-    let Some(RunGoalLayer::File { file }) = layer.run.as_mut().and_then(|run| run.goal.as_mut())
-    else {
+    let Some(goal) = layer.run.as_mut().and_then(|run| run.goal.as_mut()) else {
+        return Ok(());
+    };
+    let RunGoalLayer::File { file } = &*goal else {
         return Ok(());
     };
     let reference = unresolved_source(file);
@@ -319,12 +321,7 @@ fn inline_goal_file(
     let content = files
         .get(&path)
         .ok_or_else(|| WorkflowClosureLoweringError::MissingGoalFile { path: path.clone() })?;
-    *layer
-        .run
-        .as_mut()
-        .and_then(|run| run.goal.as_mut())
-        .expect("goal file should still be present") =
-        RunGoalLayer::Inline(InterpString::parse(content));
+    *goal = RunGoalLayer::Inline(InterpString::parse(content));
     Ok(())
 }
 

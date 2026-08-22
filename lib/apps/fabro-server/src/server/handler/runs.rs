@@ -38,6 +38,7 @@ use fabro_workflow::command_log::{command_log_path, read_json_string_blob, read_
 use fabro_workflow::run_status::RunStatus;
 use fabro_workflow::workflow_bundle::WorkflowBundle;
 use fabro_workflow::{Error as WorkflowError, operations};
+use serde::Deserialize as _;
 use strum::VariantArray as _;
 use tokio::fs;
 use tracing::info;
@@ -542,13 +543,13 @@ async fn create_run(
                 .into_response();
         }
     };
-    let intent_error = match serde_json::from_value::<RunIntent>(value.clone()) {
+    let intent_error = match RunIntent::deserialize(&value) {
         Ok(intent) => {
             return Box::pin(create_run_from_intent(state, intent, actor, headers)).await;
         }
         Err(err) => err,
     };
-    let req = match serde_json::from_value::<RunManifest>(value.clone()) {
+    let req = match RunManifest::deserialize(&value) {
         Ok(req) => req,
         Err(manifest_error) => {
             if value
