@@ -2,3 +2,6 @@ gofib
 .fabro/blobs/
 .fabro/tmp/
 .fabro/run-painpoints.jsonl
+
+# prime harness state — reviewer code is canonical on meta
+.prime/
