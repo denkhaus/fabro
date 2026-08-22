@@ -350,7 +350,7 @@ PROMPT_ONLY_SHAPES = {"tab"}             # single LLM call, no tools (docs/fabro
 # project that happens to be called "fabro"
 PLATFORM_FABRO_PATTERNS = (
     r"\.fabro\b", r"\.fabro/", r"docs\.fabro\.sh", r"Fabro-", r"fabro/run/",
-    r"fabro/meta/", r"fabro\(", r"\bfabro\b(?=\s*(?:workflow|run|CLI|server|checkpoint))",
+    r"fabro/meta/", r"fabro\\?\(", r"\bfabro\b(?=\s*(?:workflow|run|CLI|server|checkpoint))",
 )
 
 
@@ -427,7 +427,18 @@ def check_agnosticity(
             # AGNOS-04: references to files outside the workflow directory
             universal = {".gitignore", ".gitattributes", ".gitmodules", "readme.md",
                          "license", "licence", "changelog.md", "makefile",
-                         "justfile", ".justfile"}
+                         "justfile", ".justfile",
+                         # agent/docs convention roots shared across repos,
+                         # not this project's layout
+                         "agents.md", "claude.md", "context.md", "context-map.md",
+                         "contributors.md", "lefthook.yml", "go.sum", "go.mod",
+                         "package.json", "bun.lock", "cargo.lock", "rust-toolchain",
+                         "rust-toolchain.toml", "mise.toml", ".mise.toml",
+                         "pyproject.toml", "requirements.txt", "dockerfile",
+                         "docker-compose.yaml", "docker-compose.yml", ".env.example",
+                         # dev-loop interface contracts (ADR-0002 mailbox,
+                         # staged painpoints) defined by convention, not layout
+                         "painpoints.jsonl", "run-painpoints.jsonl"}
             for tf in external_files:
                 base = Path(tf).name
                 if len(base) < 5 or base.lower() in universal:
@@ -902,11 +913,17 @@ def check_scripts(wf_root: Path, rel_dir: str, files: list[Path], fp: Fingerprin
                     "SCRIPT-02", "pass", rel, (i,),
                     "evidence diff budget is disclosed to the reviewer (truncation is explicit)",
                 ))
-            # SCRIPT-04: just recipes referenced by workflow assets must exist
-            for m in re.finditer(r"\bjust\s+([A-Za-z0-9_-]+)", line):
-                recipe = m.group(1)
-                if recipe in ("--list", "--summary", "--choose", "-l"):
-                    continue
+            # SCRIPT-04: just recipes referenced by workflow assets must
+            # exist. Only real invocations count (line-initial `just x` or a
+            # script="just x" attribute); mid-sentence English prose such as
+            # "just the brief" is not a recipe call.
+            stripped = line.lstrip()
+            is_call = stripped.startswith("just ") or 'script="just ' in line
+            if is_call:
+                for m in re.finditer(r"\bjust\s+([A-Za-z0-9_-]+)", line):
+                    recipe = m.group(1)
+                    if recipe in ("--list", "--summary", "--choose", "-l"):
+                        continue
                 if fp.just_recipes and recipe not in fp.just_recipes:
                     findings.append(Finding(
                         "SCRIPT-04", "error", rel, (i,),
@@ -1034,7 +1051,14 @@ def check_prompts(wf_root: Path, rel_dir: str, nodes: dict[str, Node],
         if re.search(r"read-only|without tools|no tools", text, re.I) and \
            re.search(r"verify everything against it|nothing else", text, re.I):
             evidence_txt = "\n".join(scripts_text.values())
-            if evidence_txt and "sd show" not in evidence_txt and "sd list" in evidence_txt:
+            # satisfied when the capture emits the seed description at all:
+            # `sd show <id>` or `sd list --format json` + `.description` use
+            spec_emitted = (
+                "sd show" in evidence_txt
+                or ".description" in evidence_txt
+                or "spec" in evidence_txt.lower() and "authoritative" in evidence_txt
+            )
+            if evidence_txt and not spec_emitted and "sd list" in evidence_txt:
                 anchor = next(
                     (i for i, l in enumerate(lines, 1)
                      if re.search(r"ground truth|current_seed_id", l)),
