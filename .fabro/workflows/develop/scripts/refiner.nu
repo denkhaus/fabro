@@ -52,6 +52,10 @@ def stamp []: nothing -> string {
 # Append the delivered rows to the mailbox inside a detached worktree of
 # the platform branch, commit, push, remove the worktree. Ownership is
 # documented: a left-over worktree would poison the next run.
+# Network-tolerant delivery (run-12 review): a fetch/push failure must
+# never fail this node or destroy the staged file — the design intent is
+# 'never fails the goal gate'. On any git error: clean up the worktree,
+# keep the staged file, report loudly, exit 0 (next run retries).
 def deliver [raw: list<string>, meta_branch: string]: nothing -> nothing {
     let run = (current-run-id)
     let delivered = ($raw | each {|line|
@@ -60,18 +64,31 @@ def deliver [raw: list<string>, meta_branch: string]: nothing -> nothing {
     let n = ($delivered | length)
 
     let wt = (mktemp --directory)
-    git fetch origin $meta_branch
-    git worktree add $wt $"origin/($meta_branch)" --detach
-    let mailbox = ($wt | path join $MAILBOX)
-    let existing = (if ($mailbox | path exists) { open $mailbox | lines | compact } else { [] })
-    ($existing | append $delivered | str join "\n" | $"($in)\n") | save --force $mailbox
-
-    git -C $wt add $MAILBOX
-    git -C $wt commit -m $"refiner: deliver ($n) painpoints from run ($run)"
-    git -C $wt push origin $"HEAD:refs/heads/($meta_branch)"
-    git worktree remove --force $wt
-    rm $STAGED
-    print $"delivered ($n) painpoints to ($meta_branch)"
+    let ok = (try {
+        let fetch = (do { git fetch origin $meta_branch } | complete)
+        if $fetch.exit_code != 0 { error make --unspanned {msg: $"fetch failed: ($fetch.stderr)"} }
+        let add = (do { git worktree add $wt $"origin/($meta_branch)" --detach } | complete)
+        if $add.exit_code != 0 { error make --unspanned {msg: $"worktree failed: ($add.stderr)"} }
+        let mailbox = ($wt | path join $MAILBOX)
+        let existing = (if ($mailbox | path exists) { open $mailbox | lines | compact } else { [] })
+        ($existing | append $delivered | str join "\n" | $"($in)\n") | save --force $mailbox
+        git -C $wt add $MAILBOX
+        git -C $wt commit -m $"refiner: deliver ($n) painpoints from run ($run)"
+        let push = (do { git -C $wt push origin $"HEAD:refs/heads/($meta_branch)" } | complete)
+        if $push.exit_code != 0 { error make --unspanned {msg: $"push failed: ($push.stderr)"} }
+        true
+    } catch {|err|
+        print $"SKIP: delivery error kept staged file: ($err.msg)"
+        false
+    })
+    # worktree cleanup must not mask the result
+    let _ = (do { git worktree remove --force $wt } | complete)
+    if $ok {
+        rm $STAGED
+        print $"delivered ($n) painpoints to ($meta_branch)"
+    } else {
+        print $"painpoints stay staged at ($STAGED) for the next run"
+    }
 }
 
 # ---------------------------------------------------------------------------
