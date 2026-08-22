@@ -501,7 +501,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-22T22:52:43.376408259Z",
-  "last_event_at": "2026-08-22T22:56:18.206043335Z",
+  "last_event_at": "2026-08-22T22:57:17.659128733Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -939,9 +939,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 196,
       "checkpoint": {
-        "timestamp": "2026-08-22T22:56:18.223318192Z",
+        "timestamp": "2026-08-22T22:56:22.928511706Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -952,34 +952,221 @@
         ],
         "node_retries": {},
         "context_values": {
+          "current_seed_brief": "Add a -version flag to the gofib CLI in `main.go` (repo root `/workspace/fabro`). Acceptance criteria: - define a package-level const `Version = \"1.3.0\"`; - add a bool flag `version` via the flag package so `gofib -version` works; - when -version is set, print exactly one line to stdout: `gofib <semver>` (i.e. `gofib 1.3.0`) and exit 0; - -version takes precedence over every output mode: `gofib -version -pretty` and `gofib -version -json -n 5` print only the version line (no fib output, no JSON); - add a table-driven test (in `fib_test.go` or a new `main_test.go`) covering run()/main-level behavior for -version alone and -version combined with -json, asserting the single version line and exit code 0; - no external dependencies; - `just qualitygate` must pass; - done when `go run . -version` prints `gofib 1.3.0`. No spec contradictions found.",
+          "internal.retry_count.tester": 0,
+          "internal.node_visit_count": 1,
+          "internal.work_dir": "/workspace/fabro",
+          "thread.tester.current_node": "evidence",
+          "current_seed_title": "gofib: add -version flag",
+          "failure_class": "",
+          "internal.fidelity": "compact",
+          "graph.max_node_visits": "40",
+          "failure_signature": "",
+          "graph.rankdir": "LR",
+          "last_response": "Implementation complete and verified. Summary against the seed's acceptance criteria:\n\n- **`Version` const**: package-level `const Version = \"1.3.0\"` in `main.go` with doc comment.\n- **Bool `version` ",
+          "internal.retry_count.planner": 0,
+          "last_stage": "implementer",
+          "internal.retry_count.evidence": 0,
+          "internal.retry_count.implementer": 0,
+          "current_node": "evidence",
+          "response.planner": "Not yet implemented — this is a fresh implementation cycle. The spec is internally consistent (bool flag, const `Version = \"1.3.0\"`, precedence over all output modes, table-driven test for `-version` alone and with `-json`, no deps, `just qualitygate` green).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-8d26\",\n    \"current_seed_title\": \"gofib: add -version flag\",\n    \"current_seed_brief\": \"Add a -version flag to the gofib CLI in `main.go` (repo root `/workspace/fabro`). Acceptance criteria: - define a package-level const `Version = \\\"1.3.0\\\"`; - add a bool flag `version` via the flag package so `gofib -version` works; - when -version is set, print exactly one line to stdout: `gofib <semver>` (i.e. `gofib 1.3.0`) and exit 0; - -version takes precedence over every output mode: `gofib -version -pretty` and `gofib -version -json -n 5` print only the version line (no fib output, no JSON); - add a table-driven test (in `fib_test.go` or a new `main_test.go`) covering run()/main-level behavior for -version alone and -version combined with -json, asserting the single version line and exit code 0; - no external dependencies; - `just qualitygate` must pass; - done when `go run . -version` prints `gofib 1.3.0`. No spec contradictions found.\"\n  }\n}",
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.start": 0,
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "internal.thread_id": "tester",
+          "current_seed_id": "fabro-8d26",
+          "command.output": "blob://sha256/3bab3766919918e4bbc94a1cad9cf78ddd8276a494015cbe5363e0c13e8d7bbf",
+          "thread.start.current_node": "planner",
+          "response.implementer": "Implementation complete and verified. Summary against the seed's acceptance criteria:\n\n- **`Version` const**: package-level `const Version = \"1.3.0\"` in `main.go` with doc comment.\n- **Bool `version` flag**: via `flag` package; `gofib -version` prints exactly `gofib 1.3.0` (one line, stdout, exit 0) — verified by `go run . -version`.\n- **Precedence**: version check early-returns in `runApp` before any output mode; smoke-verified `gofib -version -pretty` and `gofib -version -json -n 5` print only the version line.\n- **Table-driven test**: new `main_test.go` with `TestRunAppVersion` (cases: `-version` alone, `-version -json -n 5`, `-version -pretty`) asserting the exact single line and exit code 0, plus `TestRunAppDispatch` guarding that normal modes (`-n 3` text, `-json -n 2`) still dispatch correctly and `-n 0` exits 1.\n- **Testability**: to make exit-code assertions possible at main level, `main()` is now a thin `os.Exit(runApp(os.Stdout, os.Args[1:]))` using a per-call `flag.NewFlagSet` (behavior-preserving: `-h`→0, flag error→2, `run` error→1); `run()` and all existing tests untouched.\n- **No external deps**; smoke checks green: `gofmt` clean, `go vet` clean, `go test ./...` ok. Worktree contains only the source changes — no binaries or generated artifacts. Full `just qualitygate` left to the tester step.\n\nRecorded the testable-main pattern in mulch (`ml record gofib --type pattern --name \"runapp-testable-main\"`).\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Modified `/workspace/fabro/main.go`: added const `Version = \\\"1.3.0\\\"`, restructured main into a testable `runApp(w, args) int` (per-call FlagSet, ErrHelp->0, parse error->2, run error->1) with a `version` bool flag that early-returns before all output modes, printing exactly `gofib 1.3.0`. Added `/workspace/fabro/main_test.go`: table-driven `TestRunAppVersion` (-version alone, with -json -n 5, with -pretty; asserts single line + exit 0) and `TestRunAppDispatch` passthrough guards. Smoke checks pass (gofmt, vet, go test, `go run . -version` -> `gofib 1.3.0`); no artifacts left.\"\n  }\n}",
+          "preferred_label": "Implemented",
+          "outcome": "succeeded",
+          "thread.implementer.current_node": "tester",
+          "implementation_summary": "Modified `/workspace/fabro/main.go`: added const `Version = \"1.3.0\"`, restructured main into a testable `runApp(w, args) int` (per-call FlagSet, ErrHelp->0, parse error->2, run error->1) with a `version` bool flag that early-returns before all output modes, printing exactly `gofib 1.3.0`. Added `/workspace/fabro/main_test.go`: table-driven `TestRunAppVersion` (-version alone, with -json -n 5, with -pretty; asserts single line + exit 0) and `TestRunAppDispatch` passthrough guards. Smoke checks pass (gofmt, vet, go test, `go run . -version` -> `gofib 1.3.0`); no artifacts left.",
+          "internal.run_id": "01M0NTS5XCXJ4V88M9MQWKD83G"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Modified `/workspace/fabro/main.go`: added const `Version = \"1.3.0\"`, restructured main into a testable `runApp(w, args) int` (per-call FlagSet, ErrHelp->0, parse error->2, run error->1) with a `version` bool flag that early-returns before all output modes, printing exactly `gofib 1.3.0`. Added `/workspace/fabro/main_test.go`: table-driven `TestRunAppVersion` (-version alone, with -json -n 5, with -pretty; asserts single line + exit 0) and `TestRunAppDispatch` passthrough guards. Smoke checks pass (gofmt, vet, go test, `go run . -version` -> `gofib 1.3.0`); no artifacts left.",
+              "last_response": "Implementation complete and verified. Summary against the seed's acceptance criteria:\n\n- **`Version` const**: package-level `const Version = \"1.3.0\"` in `main.go` with doc comment.\n- **Bool `version` ",
+              "response.implementer": "Implementation complete and verified. Summary against the seed's acceptance criteria:\n\n- **`Version` const**: package-level `const Version = \"1.3.0\"` in `main.go` with doc comment.\n- **Bool `version` flag**: via `flag` package; `gofib -version` prints exactly `gofib 1.3.0` (one line, stdout, exit 0) — verified by `go run . -version`.\n- **Precedence**: version check early-returns in `runApp` before any output mode; smoke-verified `gofib -version -pretty` and `gofib -version -json -n 5` print only the version line.\n- **Table-driven test**: new `main_test.go` with `TestRunAppVersion` (cases: `-version` alone, `-version -json -n 5`, `-version -pretty`) asserting the exact single line and exit code 0, plus `TestRunAppDispatch` guarding that normal modes (`-n 3` text, `-json -n 2`) still dispatch correctly and `-n 0` exits 1.\n- **Testability**: to make exit-code assertions possible at main level, `main()` is now a thin `os.Exit(runApp(os.Stdout, os.Args[1:]))` using a per-call `flag.NewFlagSet` (behavior-preserving: `-h`→0, flag error→2, `run` error→1); `run()` and all existing tests untouched.\n- **No external deps**; smoke checks green: `gofmt` clean, `go vet` clean, `go test ./...` ok. Worktree contains only the source changes — no binaries or generated artifacts. Full `just qualitygate` left to the tester step.\n\nRecorded the testable-main pattern in mulch (`ml record gofib --type pattern --name \"runapp-testable-main\"`).\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Modified `/workspace/fabro/main.go`: added const `Version = \\\"1.3.0\\\"`, restructured main into a testable `runApp(w, args) int` (per-call FlagSet, ErrHelp->0, parse error->2, run error->1) with a `version` bool flag that early-returns before all output modes, printing exactly `gofib 1.3.0`. Added `/workspace/fabro/main_test.go`: table-driven `TestRunAppVersion` (-version alone, with -json -n 5, with -pretty; asserts single line + exit 0) and `TestRunAppDispatch` passthrough guards. Smoke checks pass (gofmt, vet, go test, `go run . -version` -> `gofib 1.3.0`); no artifacts left.\"\n  }\n}",
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 20447,
+                    "output_tokens": 3473,
+                    "reasoning_tokens": 4904,
+                    "cache_read_tokens": 241472,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              }
+            },
+            "files_touched": [
+              "/workspace/fabro/main.go",
+              "/workspace/fabro/main_test.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 147418,
+              "tool_time_ms": 14691,
+              "active_time_ms": 162109
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/3bab3766919918e4bbc94a1cad9cf78ddd8276a494015cbe5363e0c13e8d7bbf"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 413,
+              "active_time_ms": 413
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_id": "fabro-8d26",
+              "current_seed_brief": "Add a -version flag to the gofib CLI in `main.go` (repo root `/workspace/fabro`). Acceptance criteria: - define a package-level const `Version = \"1.3.0\"`; - add a bool flag `version` via the flag package so `gofib -version` works; - when -version is set, print exactly one line to stdout: `gofib <semver>` (i.e. `gofib 1.3.0`) and exit 0; - -version takes precedence over every output mode: `gofib -version -pretty` and `gofib -version -json -n 5` print only the version line (no fib output, no JSON); - add a table-driven test (in `fib_test.go` or a new `main_test.go`) covering run()/main-level behavior for -version alone and -version combined with -json, asserting the single version line and exit code 0; - no external dependencies; - `just qualitygate` must pass; - done when `go run . -version` prints `gofib 1.3.0`. No spec contradictions found.",
+              "response.planner": "Not yet implemented — this is a fresh implementation cycle. The spec is internally consistent (bool flag, const `Version = \"1.3.0\"`, precedence over all output modes, table-driven test for `-version` alone and with `-json`, no deps, `just qualitygate` green).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-8d26\",\n    \"current_seed_title\": \"gofib: add -version flag\",\n    \"current_seed_brief\": \"Add a -version flag to the gofib CLI in `main.go` (repo root `/workspace/fabro`). Acceptance criteria: - define a package-level const `Version = \\\"1.3.0\\\"`; - add a bool flag `version` via the flag package so `gofib -version` works; - when -version is set, print exactly one line to stdout: `gofib <semver>` (i.e. `gofib 1.3.0`) and exit 0; - -version takes precedence over every output mode: `gofib -version -pretty` and `gofib -version -json -n 5` print only the version line (no fib output, no JSON); - add a table-driven test (in `fib_test.go` or a new `main_test.go`) covering run()/main-level behavior for -version alone and -version combined with -json, asserting the single version line and exit code 0; - no external dependencies; - `just qualitygate` must pass; - done when `go run . -version` prints `gofib 1.3.0`. No spec contradictions found.\"\n  }\n}",
+              "last_stage": "planner",
+              "last_response": "Not yet implemented — this is a fresh implementation cycle. The spec is internally consistent (bool flag, const `Version = \"1.3.0\"`, precedence over all output modes, table-driven test for `-version",
+              "current_seed_title": "gofib: add -version flag"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 8529,
+                    "output_tokens": 587,
+                    "reasoning_tokens": 130,
+                    "cache_read_tokens": 30080,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              }
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 24662,
+              "tool_time_ms": 1646,
+              "active_time_ms": 26308
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/9526fbd7f4930bac55427672c5d50a7a95770cd3549399dcba7394f29b0ebd55"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1032,
+              "active_time_ms": 1032
+            }
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "dd3e9fbdae162d4d8a222f95e222c75f16783cf7",
+        "node_visits": {
+          "evidence": 1,
+          "start": 1,
+          "tester": 1,
+          "planner": 1,
+          "implementer": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 4,
+          "additions": 102,
+          "deletions": 9
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-22T22:57:17.676530441Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
           "current_seed_id": "fabro-8d26",
           "thread.implementer.current_node": "tester",
-          "last_response": "Implementation complete and verified. Summary against the seed's acceptance criteria:\n\n- **`Version` const**: package-level `const Version = \"1.3.0\"` in `main.go` with doc comment.\n- **Bool `version` ",
+          "review_feedback": "Verification blocked by a truncated evidence capture — the '(119 lines omitted)' span hides the integrity header, the per-file add/delete counts, the ENTIRE main.go diff, and the first half of main_test.go. Re-run the evidence step so the capture is complete, and ensure the following are visible: (1) the full main.go diff showing `const Version = \"1.3.0\"`, registration of the `version` bool flag via a flag.FlagSet, an early return before any output mode so `-version -pretty` and `-version - -n 5` emit only the version line, the exact output `gofib 1.3.0`, and exit code 0; (2) the complete TestRunAppVersion table (cases: -version alone, -version - -n 5, -version -pretty) with its single-line and exit-0 assertions; (3) the runApp exit-code mapping (-h→0, flag parse error→2, run error→1), since that main() refactor is a behavior risk bundled with this seed and must be inspectable. No code change is required if the implementation matches the summary — the blocker is that none of it is reviewable in the provided diff. If the capture cannot be made complete (size limits), route that as a painpoint rather than approving blind.",
+          "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Changes requested\", \"context_updates\": {\"review_verdict\": \"changes_requested\", \"review_feedback\": \"Verification blocked by a truncated evidence captur",
           "implementation_summary": "Modified `/workspace/fabro/main.go`: added const `Version = \"1.3.0\"`, restructured main into a testable `runApp(w, args) int` (per-call FlagSet, ErrHelp->0, parse error->2, run error->1) with a `version` bool flag that early-returns before all output modes, printing exactly `gofib 1.3.0`. Added `/workspace/fabro/main_test.go`: table-driven `TestRunAppVersion` (-version alone, with -json -n 5, with -pretty; asserts single line + exit 0) and `TestRunAppDispatch` passthrough guards. Smoke checks pass (gofmt, vet, go test, `go run . -version` -> `gofib 1.3.0`); no artifacts left.",
           "response.planner": "Not yet implemented — this is a fresh implementation cycle. The spec is internally consistent (bool flag, const `Version = \"1.3.0\"`, precedence over all output modes, table-driven test for `-version` alone and with `-json`, no deps, `just qualitygate` green).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-8d26\",\n    \"current_seed_title\": \"gofib: add -version flag\",\n    \"current_seed_brief\": \"Add a -version flag to the gofib CLI in `main.go` (repo root `/workspace/fabro`). Acceptance criteria: - define a package-level const `Version = \\\"1.3.0\\\"`; - add a bool flag `version` via the flag package so `gofib -version` works; - when -version is set, print exactly one line to stdout: `gofib <semver>` (i.e. `gofib 1.3.0`) and exit 0; - -version takes precedence over every output mode: `gofib -version -pretty` and `gofib -version -json -n 5` print only the version line (no fib output, no JSON); - add a table-driven test (in `fib_test.go` or a new `main_test.go`) covering run()/main-level behavior for -version alone and -version combined with -json, asserting the single version line and exit code 0; - no external dependencies; - `just qualitygate` must pass; - done when `go run . -version` prints `gofib 1.3.0`. No spec contradictions found.\"\n  }\n}",
           "internal.retry_count.evidence": 0,
           "thread.start.current_node": "planner",
           "internal.node_visit_count": 1,
           "internal.retry_count.implementer": 0,
-          "current_node": "evidence",
+          "response.reviewer": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Changes requested\", \"context_updates\": {\"review_verdict\": \"changes_requested\", \"review_feedback\": \"Verification blocked by a truncated evidence capture — the '(119 lines omitted)' span hides the integrity header, the per-file add/delete counts, the ENTIRE main.go diff, and the first half of main_test.go. Re-run the evidence step so the capture is complete, and ensure the following are visible: (1) the full main.go diff showing `const Version = \\\"1.3.0\\\"`, registration of the `version` bool flag via a flag.FlagSet, an early return before any output mode so `-version -pretty` and `-version - -n 5` emit only the version line, the exact output `gofib 1.3.0`, and exit code 0; (2) the complete TestRunAppVersion table (cases: -version alone, -version - -n 5, -version -pretty) with its single-line and exit-0 assertions; (3) the runApp exit-code mapping (-h→0, flag parse error→2, run error→1), since that main() refactor is a behavior risk bundled with this seed and must be inspectable. No code change is required if the implementation matches the summary — the blocker is that none of it is reviewable in the provided diff. If the capture cannot be made complete (size limits), route that as a painpoint rather than approving blind.\", \"workflow_painpoints\": [\"develop/evidence: at summary:high the capture was still truncated mid-diff ('119 lines omitted'), and the omitted span contained the entire main.go diff — the single most critical artifact for review. Critical-first ordering was violated by the omission, forcing a Changes-requested verdict on an otherwise plausible implementation. Evidence capture should guarantee the seed-work diff is never elided (e.g., raise line budget for diffs, or elide loop-churn/test tails before source diffs).\"]}}",
+          "current_node": "reviewer",
           "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
           "current_seed_brief": "Add a -version flag to the gofib CLI in `main.go` (repo root `/workspace/fabro`). Acceptance criteria: - define a package-level const `Version = \"1.3.0\"`; - add a bool flag `version` via the flag package so `gofib -version` works; - when -version is set, print exactly one line to stdout: `gofib <semver>` (i.e. `gofib 1.3.0`) and exit 0; - -version takes precedence over every output mode: `gofib -version -pretty` and `gofib -version -json -n 5` print only the version line (no fib output, no JSON); - add a table-driven test (in `fib_test.go` or a new `main_test.go`) covering run()/main-level behavior for -version alone and -version combined with -json, asserting the single version line and exit code 0; - no external dependencies; - `just qualitygate` must pass; - done when `go run . -version` prints `gofib 1.3.0`. No spec contradictions found.",
           "internal.run_id": "01M0NTS5XCXJ4V88M9MQWKD83G",
-          "last_stage": "implementer",
+          "last_stage": "reviewer",
           "thread.tester.current_node": "evidence",
           "command.output": "blob://sha256/3bab3766919918e4bbc94a1cad9cf78ddd8276a494015cbe5363e0c13e8d7bbf",
           "internal.work_dir": "/workspace/fabro",
-          "internal.thread_id": "tester",
+          "internal.thread_id": "evidence",
           "internal.retry_count.planner": 0,
+          "thread.evidence.current_node": "reviewer",
           "graph.max_node_visits": "40",
+          "workflow_painpoints": [
+            "develop/evidence: at summary:high the capture was still truncated mid-diff ('119 lines omitted'), and the omitted span contained the entire main.go diff — the single most critical artifact for review. Critical-first ordering was violated by the omission, forcing a Changes-requested verdict on an otherwise plausible implementation. Evidence capture should guarantee the seed-work diff is never elided (e.g., raise line budget for diffs, or elide loop-churn/test tails before source diffs)."
+          ],
           "internal.retry_count.start": 0,
+          "internal.retry_count.reviewer": 0,
           "current_seed_title": "gofib: add -version flag",
           "internal.retry_count.tester": 0,
-          "preferred_label": "Implemented",
+          "preferred_label": "Changes requested",
+          "review_verdict": "changes_requested",
           "response.implementer": "Implementation complete and verified. Summary against the seed's acceptance criteria:\n\n- **`Version` const**: package-level `const Version = \"1.3.0\"` in `main.go` with doc comment.\n- **Bool `version` flag**: via `flag` package; `gofib -version` prints exactly `gofib 1.3.0` (one line, stdout, exit 0) — verified by `go run . -version`.\n- **Precedence**: version check early-returns in `runApp` before any output mode; smoke-verified `gofib -version -pretty` and `gofib -version -json -n 5` print only the version line.\n- **Table-driven test**: new `main_test.go` with `TestRunAppVersion` (cases: `-version` alone, `-version -json -n 5`, `-version -pretty`) asserting the exact single line and exit code 0, plus `TestRunAppDispatch` guarding that normal modes (`-n 3` text, `-json -n 2`) still dispatch correctly and `-n 0` exits 1.\n- **Testability**: to make exit-code assertions possible at main level, `main()` is now a thin `os.Exit(runApp(os.Stdout, os.Args[1:]))` using a per-call `flag.NewFlagSet` (behavior-preserving: `-h`→0, flag error→2, `run` error→1); `run()` and all existing tests untouched.\n- **No external deps**; smoke checks green: `gofmt` clean, `go vet` clean, `go test ./...` ok. Worktree contains only the source changes — no binaries or generated artifacts. Full `just qualitygate` left to the tester step.\n\nRecorded the testable-main pattern in mulch (`ml record gofib --type pattern --name \"runapp-testable-main\"`).\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Modified `/workspace/fabro/main.go`: added const `Version = \\\"1.3.0\\\"`, restructured main into a testable `runApp(w, args) int` (per-call FlagSet, ErrHelp->0, parse error->2, run error->1) with a `version` bool flag that early-returns before all output modes, printing exactly `gofib 1.3.0`. Added `/workspace/fabro/main_test.go`: table-driven `TestRunAppVersion` (-version alone, with -json -n 5, with -pretty; asserts single line + exit 0) and `TestRunAppDispatch` passthrough guards. Smoke checks pass (gofmt, vet, go test, `go run . -version` -> `gofib 1.3.0`); no artifacts left.\"\n  }\n}",
           "outcome": "succeeded",
           "failure_signature": "",
-          "internal.fidelity": "compact",
+          "internal.fidelity": "summary:high",
           "graph.rankdir": "LR",
           "thread.planner.current_node": "implementer",
           "failure_class": ""
@@ -1083,6 +1270,47 @@
               "active_time_ms": 162109
             }
           },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Changes requested",
+            "context_updates": {
+              "last_stage": "reviewer",
+              "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Changes requested\", \"context_updates\": {\"review_verdict\": \"changes_requested\", \"review_feedback\": \"Verification blocked by a truncated evidence captur",
+              "workflow_painpoints": [
+                "develop/evidence: at summary:high the capture was still truncated mid-diff ('119 lines omitted'), and the omitted span contained the entire main.go diff — the single most critical artifact for review. Critical-first ordering was violated by the omission, forcing a Changes-requested verdict on an otherwise plausible implementation. Evidence capture should guarantee the seed-work diff is never elided (e.g., raise line budget for diffs, or elide loop-churn/test tails before source diffs)."
+              ],
+              "response.reviewer": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Changes requested\", \"context_updates\": {\"review_verdict\": \"changes_requested\", \"review_feedback\": \"Verification blocked by a truncated evidence capture — the '(119 lines omitted)' span hides the integrity header, the per-file add/delete counts, the ENTIRE main.go diff, and the first half of main_test.go. Re-run the evidence step so the capture is complete, and ensure the following are visible: (1) the full main.go diff showing `const Version = \\\"1.3.0\\\"`, registration of the `version` bool flag via a flag.FlagSet, an early return before any output mode so `-version -pretty` and `-version - -n 5` emit only the version line, the exact output `gofib 1.3.0`, and exit code 0; (2) the complete TestRunAppVersion table (cases: -version alone, -version - -n 5, -version -pretty) with its single-line and exit-0 assertions; (3) the runApp exit-code mapping (-h→0, flag parse error→2, run error→1), since that main() refactor is a behavior risk bundled with this seed and must be inspectable. No code change is required if the implementation matches the summary — the blocker is that none of it is reviewable in the provided diff. If the capture cannot be made complete (size limits), route that as a painpoint rather than approving blind.\", \"workflow_painpoints\": [\"develop/evidence: at summary:high the capture was still truncated mid-diff ('119 lines omitted'), and the omitted span contained the entire main.go diff — the single most critical artifact for review. Critical-first ordering was violated by the omission, forcing a Changes-requested verdict on an otherwise plausible implementation. Evidence capture should guarantee the seed-work diff is never elided (e.g., raise line budget for diffs, or elide loop-churn/test tails before source diffs).\"]}}",
+              "review_verdict": "changes_requested",
+              "review_feedback": "Verification blocked by a truncated evidence capture — the '(119 lines omitted)' span hides the integrity header, the per-file add/delete counts, the ENTIRE main.go diff, and the first half of main_test.go. Re-run the evidence step so the capture is complete, and ensure the following are visible: (1) the full main.go diff showing `const Version = \"1.3.0\"`, registration of the `version` bool flag via a flag.FlagSet, an early return before any output mode so `-version -pretty` and `-version - -n 5` emit only the version line, the exact output `gofib 1.3.0`, and exit code 0; (2) the complete TestRunAppVersion table (cases: -version alone, -version - -n 5, -version -pretty) with its single-line and exit-0 assertions; (3) the runApp exit-code mapping (-h→0, flag parse error→2, run error→1), since that main() refactor is a behavior risk bundled with this seed and must be inspectable. No code change is required if the implementation matches the summary — the blocker is that none of it is reviewable in the provided diff. If the capture cannot be made complete (size limits), route that as a painpoint rather than approving blind."
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 4434,
+                    "output_tokens": 916,
+                    "reasoning_tokens": 3758,
+                    "cache_read_tokens": 0,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              }
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 53104,
+              "tool_time_ms": 0,
+              "active_time_ms": 53104
+            }
+          },
           "tester": {
             "status": "succeeded",
             "context_updates": {
@@ -1098,13 +1326,14 @@
             }
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "planner",
         "node_visits": {
           "implementer": 1,
           "evidence": 1,
           "start": 1,
           "planner": 1,
-          "tester": 1
+          "tester": 1,
+          "reviewer": 1
         }
       },
       "diff": {}
@@ -1137,6 +1366,39 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "reviewer@1": {
+      "first_event_seq": 199,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "prompt",
+        "provider": "zai",
+        "model": "glm-5.3"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-22T22:56:22.955846475Z",
+      "handler": "prompt",
+      "graph_visit": 1,
+      "usage": {
+        "input_tokens": 4434,
+        "output_tokens": 916,
+        "total_tokens": 9108,
+        "reasoning_tokens": 3758,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "agent_control": "running",
+      "state": "running"
+    },
     "planner@1": {
       "first_event_seq": 27,
       "prompt": null,
@@ -1961,7 +2223,12 @@
       "first_event_seq": 189,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-08-22T22:56:18.221644756Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
@@ -1986,6 +2253,12 @@
       "started_at": "2026-08-22T22:56:17.785931110Z",
       "handler": "command",
       "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 420,
+        "inference_time_ms": 0,
+        "tool_time_ms": 413,
+        "active_time_ms": 413
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -1995,7 +2268,7 @@
         "cache_write_tokens": 0
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "succeeded"
     }
   }
 }
