@@ -6,6 +6,7 @@
 print "== tracked large files =="
 let big = (
     git ls-files
+    | lines
     | par-each {|f| {file: $f, size: (ls $f | get 0.size)}}
     | where size > 1mb
 )

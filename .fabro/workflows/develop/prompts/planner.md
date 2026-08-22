@@ -22,6 +22,8 @@ Clear the verdict from your mind after handling it — the next review pass will
 3. Claim it: `sd update <id> --status in_progress`.
 4. Write the implementation brief into the context: seed id, title, requirements distilled from its description, plus any review feedback if this is a re-plan.
 
+Before claiming, sanity-check the top candidate against the worktree: if its acceptance criteria are already visibly satisfied (the implementation exists and looks complete), the tracker is stale from a previous run — close that seed (`sd close <id>`) and pick the next one instead of re-implementing finished work.
+
 If `sd ready` returns nothing and no seed is in progress for this effort, the tracker is empty — route Tracker empty instead of inventing work.
 
 Do not implement anything yourself. Do not review. Planning and tracker writes only.
