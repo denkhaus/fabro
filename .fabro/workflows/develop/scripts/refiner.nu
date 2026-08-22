@@ -27,8 +27,10 @@ def staged-lines []: nothing -> list<string> {
     open $STAGED | lines | compact
 }
 
-# The single origin head under refs/heads/meta/*, or null when absent or
-# ambiguous — delivery then skips loudly instead of guessing.
+# The single origin head under refs/heads/meta/* as a FULL branch name
+# (meta/<name>), or null when absent or ambiguous — delivery then skips
+# loudly instead of guessing. The prefix is part of the contract: callers
+# use the result directly as a branch name.
 def single-meta-branch []: nothing -> any {
     let metas = (
         git ls-remote --heads origin "refs/heads/meta/*"
@@ -38,7 +40,7 @@ def single-meta-branch []: nothing -> any {
         | compact
     )
     match ($metas | length) {
-        1 => ($metas | get 0)
+        1 => $"meta/($metas | get 0)"
         _ => null
     }
 }
