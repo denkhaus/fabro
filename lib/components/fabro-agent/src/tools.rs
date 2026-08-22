@@ -14,6 +14,7 @@ use crate::config::NativeToolOptions;
 use crate::sandbox::{ExecStreamingResult, GrepOptions};
 use crate::tool_registry::{RegisteredTool, ToolContext, ToolRegistry, ToolSource};
 use crate::types::AgentEvent;
+use crate::web_search::{SearchBackend, make_web_search_tool};
 
 const MAX_WEB_FETCH_BYTES: usize = 100 * 1024;
 const MAX_READ_MANY_FILES_CONCURRENCY: usize = 8;
@@ -49,14 +50,14 @@ fn html_to_markdown(text: &str) -> String {
     converter.convert(text).unwrap_or_else(|_| text.to_string())
 }
 
-/// Name of the Brave-backed web search tool. Profiles look this up in their own
-/// registry to decide whether to advertise web search in the system prompt, so
-/// availability and prompt guidance cannot drift apart.
+/// Name of the credential-backed web search tool. Profiles look this up in
+/// their own registry to decide whether to advertise web search in the system
+/// prompt, so availability and prompt guidance cannot drift apart.
 pub const WEB_SEARCH_TOOL_NAME: &str = "web_search";
 
 /// Registers the core tools shared by all provider profiles: `read_file`,
 /// `write_file`, `shell`, `grep`, `glob`, and `web_fetch`. `web_search` is
-/// included when a Brave Search API key is configured.
+/// included when a Brave or Venice Search API key is configured.
 ///
 /// The shell tool captures its default and max timeouts from `options`.
 pub fn register_core_tools(
@@ -82,13 +83,13 @@ pub(crate) fn register_discovery_and_web_tools(
     registry.register(make_web_fetch_tool(summarizer));
 }
 
-/// Register `web_search` when a Brave Search key is configured.
+/// Register `web_search` when a search provider credential is configured.
 ///
 /// Separate from [`register_discovery_and_web_tools`] for profiles that offer
 /// search without fabro's discovery tools.
 pub(crate) fn register_web_search_tool(registry: &mut ToolRegistry, options: &NativeToolOptions) {
-    if let Some(api_key) = &options.secrets.brave_search_api_key {
-        registry.register(make_web_search_tool_with_api_key(api_key.clone()));
+    if let Some(backend) = SearchBackend::from_secrets(&options.secrets) {
+        registry.register(make_web_search_tool(backend));
     }
 }
 
@@ -610,102 +611,6 @@ pub(crate) fn make_list_dir_tool() -> RegisteredTool {
     }
 }
 
-fn format_brave_results(body: &serde_json::Value) -> String {
-    let results = body
-        .get("web")
-        .and_then(|w| w.get("results"))
-        .and_then(serde_json::Value::as_array);
-
-    let Some(results) = results else {
-        return "No results found.".to_string();
-    };
-
-    let mut output = String::new();
-    for (i, result) in results.iter().enumerate() {
-        let title = result
-            .get("title")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("(no title)");
-        let url = result
-            .get("url")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("(no url)");
-        let description = result
-            .get("description")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("");
-        let _ = write!(
-            output,
-            "{}. {}\n   {}\n   {}\n\n",
-            i + 1,
-            title,
-            url,
-            description
-        );
-    }
-    output
-}
-
-pub(crate) fn make_web_search_tool_with_api_key(api_key: String) -> RegisteredTool {
-    use std::sync::OnceLock;
-    static CLIENT: OnceLock<fabro_http::HttpClient> = OnceLock::new();
-
-    RegisteredTool {
-        definition: ToolDefinition {
-            name:        WEB_SEARCH_TOOL_NAME.into(),
-            description: "Search the web using Brave Search when current external information is needed. Returns result titles, URLs, and descriptions; use web_fetch for a specific URL.".into(),
-            parameters:  serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query"},
-                    "max_results": {"type": "integer", "description": "Maximum number of results (default 5, max 20)"}
-                },
-                "required": ["query"]
-            }),
-        },
-        executor:   Arc::new(move |args, _ctx| {
-            let api_key = api_key.clone();
-            Box::pin(async move {
-                let query = required_str(&args, "query")?;
-                let client = CLIENT
-                    .get_or_init(|| {
-                        fabro_http::http_client().expect("Brave Search HTTP client should build")
-                    })
-                    .clone();
-                let count = args
-                    .get("max_results")
-                    .and_then(serde_json::Value::as_u64)
-                    .unwrap_or(5)
-                    .min(20);
-
-                let resp = client
-                    .get("https://api.search.brave.com/res/v1/web/search")
-                    .header("X-Subscription-Token", &api_key)
-                    .header("Accept", "application/json")
-                    .query(&[("q", query), ("count", &count.to_string())])
-                    .send()
-                    .await
-                    .map_err(|e| format!("HTTP request failed: {e}"))?;
-
-                if !resp.status().is_success() {
-                    return Err(format!(
-                        "Brave Search API returned status {}",
-                        resp.status()
-                    ));
-                }
-
-                let body: serde_json::Value = resp
-                    .json()
-                    .await
-                    .map_err(|e| format!("Failed to parse response: {e}"))?;
-
-                Ok(format_brave_results(&body))
-            })
-        }),
-        source:     ToolSource::Native,
-    }
-}
-
 #[must_use]
 pub(crate) fn make_web_fetch_tool(summarizer: Option<WebFetchSummarizer>) -> RegisteredTool {
     RegisteredTool {
@@ -827,6 +732,7 @@ mod tests {
     use crate::tool_registry::ToolContext;
     use crate::truncation;
     use crate::types::SessionEvent;
+    use crate::web_search::make_web_search_tool_with_api_key;
 
     #[test]
     fn core_tool_descriptions_include_actionable_guidance() {
@@ -1818,6 +1724,7 @@ mod tests {
         let options = NativeToolOptions {
             secrets: ToolSecrets {
                 brave_search_api_key: Some("fake-key".to_string()),
+                ..ToolSecrets::default()
             },
             ..NativeToolOptions::default()
         };
@@ -1844,29 +1751,6 @@ mod tests {
             err.contains("query"),
             "configured key should allow validation to reach query parsing, got: {err}"
         );
-    }
-
-    #[test]
-    fn format_brave_results_formats_results() {
-        let body = serde_json::json!({
-            "web": {
-                "results": [
-                    {"title": "Rust Lang", "url": "https://rust-lang.org", "description": "A systems language"},
-                    {"title": "Rust Book", "url": "https://doc.rust-lang.org/book", "description": "The Rust book"}
-                ]
-            }
-        });
-        let output = format_brave_results(&body);
-        assert!(output.contains("1. Rust Lang"));
-        assert!(output.contains("https://rust-lang.org"));
-        assert!(output.contains("A systems language"));
-        assert!(output.contains("2. Rust Book"));
-    }
-
-    #[test]
-    fn format_brave_results_no_results() {
-        let body = serde_json::json!({"web": {}});
-        assert_eq!(format_brave_results(&body), "No results found.");
     }
 
     #[tokio::test]

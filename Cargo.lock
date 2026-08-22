@@ -2300,6 +2300,7 @@ dependencies = [
  "futures",
  "glob",
  "htmd",
+ "httpmock",
  "insta",
  "jsonschema",
  "libc",

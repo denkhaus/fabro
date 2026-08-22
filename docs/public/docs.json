@@ -103,7 +103,8 @@
               "integrations/modal",
               "integrations/fireworks",
               "integrations/slack",
-              "integrations/brave-search"
+              "integrations/brave-search",
+              "integrations/venice-search"
             ]
           },
           {
