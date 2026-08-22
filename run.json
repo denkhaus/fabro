@@ -1,0 +1,259 @@
+{
+  "title": "Verify Slack notifications",
+  "spec": {
+    "run_id": "01M0MT60SD3BMZAR89NR8Q3VWT",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "Verify Slack notifications"
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {},
+        "model": {
+          "provider": "zai",
+          "name": "glm-5.3",
+          "fallbacks": {},
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [
+            {
+              "type": "script",
+              "script": "mise install && bun install -g @os-eco/seeds-cli@0.5.15 @os-eco/mulch-cli@0.10.7 && lefthook install && sd --version && ml --version && nu --version && betterleaks --version"
+            }
+          ],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false,
+          "commit_timeout_ms": 30000
+        },
+        "clone": {
+          "enabled": true,
+          "depth": 100
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "mise",
+          "provider": "docker",
+          "image": {
+            "docker": "fabro-runner:mise",
+            "dockerfile": null
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": null
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": null
+          },
+          "labels": {
+            "purpose": "lean-mise-runner"
+          },
+          "env": {}
+        },
+        "notifications": {
+          "smoke": {
+            "enabled": true,
+            "provider": "slack",
+            "events": [
+              "run.started",
+              "run.completed",
+              "run.failed"
+            ],
+            "slack": {
+              "channel": "#fabro-reviews"
+            }
+          }
+        },
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": null,
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {}
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "Smoke",
+      "nodes": {
+        "start": {
+          "id": "start",
+          "attrs": {
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "label": {
+              "String": "Start"
+            }
+          }
+        },
+        "ping": {
+          "id": "ping",
+          "attrs": {
+            "shape": {
+              "String": "parallelogram"
+            },
+            "label": {
+              "String": "Ping"
+            },
+            "script": {
+              "String": "echo slack smoke"
+            }
+          }
+        },
+        "done": {
+          "id": "done",
+          "attrs": {
+            "label": {
+              "String": "Done"
+            },
+            "shape": {
+              "String": "Msquare"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "ping",
+          "attrs": {}
+        },
+        {
+          "from": "ping",
+          "to": "done",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "goal": {
+          "String": "Verify Slack notifications"
+        }
+      }
+    },
+    "graph_source": "digraph Smoke {\n    start [shape = Mdiamond;label = \"Start\";];\n    ping [shape = parallelogram;label = \"Ping\";script = \"echo slack smoke\";];\n    done [shape = Msquare;label = \"Done\";];\n    \n    start -> ping -> done;\n}\n",
+    "workflow_slug": "slack-test",
+    "source_directory": "/home/denkhaus/dev/fabro",
+    "provenance": {
+      "server": {
+        "version": "0.333.0-nightly.0"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.333.0-nightly.0",
+        "name": "fabro-cli",
+        "version": "0.333.0-nightly.0"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "fabro:dev",
+          "subject": "dev"
+        },
+        "login": "dev",
+        "auth_method": "dev_token"
+      }
+    },
+    "manifest_blob": "c7d6a2486b9174557b8045afaae58bc766fa78993a9aff3dde863261b8220004",
+    "definition_blob": "0019e3910b846bee787d655260c4c1390bdb5dfe9d61b986bf843331b1ca6aa1",
+    "spec_blob": "f46fb555726588d546d5b0f9fda4584f801fa9c269a114668f8934957e6b2ad9",
+    "git": {
+      "origin_url": "https://github.com/denkhaus/fabro",
+      "branch": "denkhaus-lab",
+      "sha": "f98566906508c95083716b7e7c0feb0093438fa8",
+      "dirty": "dirty"
+    }
+  },
+  "web_url": "http://127.0.0.1:32276/runs/01M0MT60SD3BMZAR89NR8Q3VWT",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-08-22T13:22:24.293392024Z",
+  "last_event_at": "2026-08-22T13:22:50.285414786Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "docker",
+      "image": "fabro-runner:mise"
+    },
+    "instance": {
+      "provider": "docker",
+      "image": "fabro-runner:mise",
+      "runtime": {
+        "id": "c71cebded64b748465b98dd4d4d6bd348cf1c715f84c4f03f45672f9e54bee6c",
+        "working_directory": "/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/denkhaus/fabro",
+        "clone_branch": "denkhaus-lab",
+        "workspace_root": "/workspace",
+        "repos_root": "/repos",
+        "primary_repo_path": "/repos/denkhaus/fabro",
+        "primary_repo_link": "/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
