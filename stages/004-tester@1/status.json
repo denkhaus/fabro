@@ -1,0 +1,6 @@
+{
+  "outcome": "succeeded",
+  "notes": "Script completed: nu .fabro/workflows/develop/scripts/gate.nu",
+  "failure_reason": null,
+  "timestamp": "2026-08-22T17:10:51.508346763Z"
+}
