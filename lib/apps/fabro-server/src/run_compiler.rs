@@ -212,23 +212,6 @@ pub(crate) struct PinnedRun {
     metadata:     RunMetadata,
 }
 
-impl PinnedRun {
-    pub(crate) fn parent_id(&self) -> Option<RunId> {
-        self.metadata.parent_id
-    }
-
-    pub(crate) fn resolve_run_id(mut self) -> (Self, RunId) {
-        let run_id = self.metadata.run_id.unwrap_or_default();
-        self.metadata.run_id = Some(run_id);
-        (self, run_id)
-    }
-
-    pub(crate) fn with_web_url(mut self, web_url: Option<String>) -> Self {
-        self.metadata.web_url = web_url;
-        self
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RunCompilerError {
     /// The acquired source bundle is invalid: missing entrypoint or broken
