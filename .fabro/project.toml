@@ -31,6 +31,11 @@ timeout = "5m"
 [[run.prepare.steps]]
 script = "mise install"
 
+# Tooling beyond mise (npm CLIs via bun, toolchain checks) lives in
+# scripts/bootstrap.nu — no inline shell in config files.
+[[run.prepare.steps]]
+script = "just bootstrap"
+
 # Default model for all project runs.
 [run.model]
 provider = "zai"

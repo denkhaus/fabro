@@ -2,8 +2,9 @@
 # step via mise (image: fabro-runner:mise — lean base, no baked-in tools).
 #
 # Backend notes (mise 2026.8.10):
-# - npm-distributed CLIs go through `bun install -g` in the prepare step;
-#   mise's npm/aube backend demands interactive confirmation.
+# - npm-distributed CLIs (seeds/mulch) go through `bun install -g` in the
+#   prepare step; mise's npm/aube backend demands interactive confirmation.
+#   BUN_INSTALL is pinned to a PATH dir by the runner image for exactly this.
 # - nushell and betterleaks come from the aqua registry; lefthook has a
 #   native mise backend.
 [tools]
@@ -11,3 +12,5 @@ bun = "1.4.0"
 "aqua:nushell/nushell" = "0.115.0"
 "aqua:betterleaks/betterleaks" = "1.8.1"
 lefthook = "2.1.0"
+go = "1.27.0"
+just = "1.58.0"
