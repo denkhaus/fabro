@@ -32,8 +32,12 @@ When you write text that flows into context (briefs, feedback), wrap absolute pa
 
 ## Outcome contract
 
-- `succeeded`: a seed is claimed (fresh or re-planned) and its brief is in the context.
-- `failed`: no open unblocked seed exists for this goal.
+Both routes are successes — planning succeeded either way. The label decides what happens next.
+
+- `succeeded` + "Seed claimed": a seed is claimed (fresh or re-planned) and its brief is in the context.
+- `succeeded` + "Tracker empty": the effort is complete — every seed is closed and the goal holds.
+
+`failed` is reserved for genuine planner errors (cannot read the tracker, invalid routing after retries). Never use `failed` to mean "no more work".
 
 End your response with exactly one JSON object:
 
@@ -48,11 +52,10 @@ Claimed a seed:
   }
 }
 
-Tracker empty:
+Tracker empty (the goal is achieved, not an error):
 {
-  "outcome": "failed",
+  "outcome": "succeeded",
   "preferred_next_label": "Tracker empty",
-  "failure_reason": "No open unblocked seed remains for this effort.",
   "context_updates": {
     "review_verdict": ""
   }

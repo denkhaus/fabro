@@ -29,6 +29,8 @@ Treat uncertain verification as not approved.
 
 ## Outcome contract
 
+The review itself always succeeds — the verdict is carried by the label and `review_verdict`, not by the outcome.
+
 End your response with exactly one JSON object:
 
 Approved:
@@ -40,11 +42,10 @@ Approved:
   }
 }
 
-Changes requested:
+Changes requested (a verdict, not an error):
 {
-  "outcome": "failed",
+  "outcome": "succeeded",
   "preferred_next_label": "Changes requested",
-  "failure_reason": "<the concrete deviations the next pass must fix>",
   "context_updates": {
     "review_verdict": "changes_requested",
     "review_feedback": "<the concrete deviations, phrased as instructions for the Implementer>"

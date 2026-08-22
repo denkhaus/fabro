@@ -15,7 +15,8 @@ digraph Develop {
         prompt="@prompts/planner.md",
         output_schema="routing",
         output_retries=2,
-        max_visits=20
+        max_visits=20,
+        goal_gate=true
     ]
 
     // Implementer: builds exactly what the claimed seed specifies.
@@ -59,7 +60,7 @@ digraph Develop {
 
     start -> planner
 
-    planner -> exit        [label="Tracker empty", condition="outcome=failed"]
+    planner -> exit        [label="Tracker empty", condition="preferred_label=\"Tracker empty\" || outcome=failed"]
     planner -> implementer [label="Seed claimed"]
 
     implementer -> planner  [label="Blocked", condition="outcome=failed"]
@@ -71,6 +72,6 @@ digraph Develop {
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
     evidence -> implementer [label="Capture failed"]
 
-    reviewer -> planner [label="Approved", condition="outcome=succeeded"]
+    reviewer -> planner [label="Approved", condition="preferred_label=\"Approved\""]
     reviewer -> planner [label="Changes requested"]
 }
