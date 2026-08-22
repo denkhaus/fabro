@@ -944,24 +944,25 @@ mod tests {
             run_store,
             &fixtures::RUN_1,
             &crate::event::Event::RunCreated {
-                run_id:           fixtures::RUN_1,
-                title:            None,
-                settings:         serde_json::to_value(fabro_types::WorkflowSettings::default())
+                run_id:              fixtures::RUN_1,
+                title:               None,
+                settings:            serde_json::to_value(fabro_types::WorkflowSettings::default())
                     .unwrap(),
-                graph:            serde_json::to_value(fabro_types::Graph::new("test")).unwrap(),
-                workflow_source:  None,
-                labels:           BTreeMap::default(),
-                source_directory: None,
-                workflow_slug:    None,
-                automation:       None,
-                provenance:       test_support::test_run_provenance(),
-                manifest_blob:    None,
-                spec_blob:        None,
-                git:              None,
-                fork_source_ref:  None,
-                retried_from:     None,
-                parent_id:        None,
-                web_url:          None,
+                graph:               serde_json::to_value(fabro_types::Graph::new("test")).unwrap(),
+                workflow_source:     None,
+                labels:              BTreeMap::default(),
+                source_directory:    None,
+                workflow_slug:       None,
+                workflow_version_id: None,
+                automation:          None,
+                provenance:          test_support::test_run_provenance(),
+                manifest_blob:       None,
+                spec_blob:           None,
+                git:                 None,
+                fork_source_ref:     None,
+                retried_from:        None,
+                parent_id:           None,
+                web_url:             None,
             },
         )
         .await
@@ -1404,7 +1405,7 @@ mod tests {
             .execute(&node, &context, &graph, Path::new("/tmp/test"), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         assert_eq!(outcome.status, StageOutcome::Succeeded);
         let results: Vec<ParallelBranchResult> =

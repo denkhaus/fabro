@@ -100,7 +100,7 @@ impl Database {
         self.base_prefix.clone()
     }
 
-    async fn open_db(&self) -> Result<slatedb::Db> {
+    pub(crate) async fn open_db(&self) -> Result<slatedb::Db> {
         let db = self
             .db
             .get_or_try_init(|| async {
@@ -587,6 +587,7 @@ mod tests {
             graph,
             graph_source: None,
             workflow_slug: Some("night-sky".to_string()),
+            workflow_version_id: None,
             automation: None,
             source_directory: Some(format!("/tmp/{label}")),
             labels: std::collections::HashMap::from([("team".to_string(), "infra".to_string())]),

@@ -97,6 +97,7 @@
               "integrations/litellm",
               "integrations/bedrock",
               "integrations/deepseek",
+              "integrations/venice",
               "integrations/poolside",
               "integrations/openrouter",
               "integrations/modal",

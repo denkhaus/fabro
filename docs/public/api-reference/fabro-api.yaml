@@ -11434,6 +11434,11 @@ components:
           type: ["string", "null"]
         workflow_slug:
           type: ["string", "null"]
+        workflow_version_id:
+          description: Exact immutable root workflow version from which the run was admitted, when applicable.
+          oneOf:
+            - $ref: "#/components/schemas/WorkflowVersionId"
+            - type: "null"
         automation:
           oneOf:
             - $ref: "#/components/schemas/AutomationRef"
@@ -14442,6 +14447,17 @@ components:
           type: object
           additionalProperties:
             type: string
+        additional_repositories:
+          type: array
+          description: |
+            Additional GitHub repositories, beyond the implicit run origin,
+            that the minted GITHUB_TOKEN must cover. Each entry is a full
+            `owner/repository` slug; every repository must share one owner
+            with the run origin. Omitted when empty; settings persisted
+            before this field existed deserialize to an empty set.
+          items:
+            type: string
+          uniqueItems: true
 
     RunGoal:
       oneOf:
@@ -14628,6 +14644,12 @@ components:
       properties:
         enabled:
           type: boolean
+        depth:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 100
+          description: Git history depth. Set to 0 to clone full history.
 
     RunBranchSettings:
       type: object

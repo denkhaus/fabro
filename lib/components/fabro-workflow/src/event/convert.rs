@@ -71,6 +71,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             labels,
             source_directory,
             workflow_slug,
+            workflow_version_id,
             automation,
             provenance,
             manifest_blob,
@@ -90,6 +91,7 @@ fn event_body_from_event(event: &Event) -> EventBody {
             labels:           labels.clone(),
             source_directory: source_directory.clone(),
             workflow_slug:    workflow_slug.clone(),
+            workflow_version_id: *workflow_version_id,
             automation:       automation.clone(),
             provenance:       provenance.clone(),
             manifest_blob:    *manifest_blob,
@@ -1445,7 +1447,7 @@ mod tests {
     use ::fabro_types::{
         AutomationRef, EventBody, FailureReason, ParallelBranchId, Principal, RunNoticeCode,
         RunNoticeLevel, RunProvenance, StageId, SystemActorKind, fixtures,
-        run_event as fabro_types,
+        run_event as fabro_types, test_support,
     };
     use chrono::Utc;
     use fabro_agent::{
@@ -2828,6 +2830,7 @@ mod tests {
             name:       Some("Nightly".to_string()),
             trigger_id: Some("schedule_1".to_string()),
         };
+        let workflow_version_id = test_support::test_workflow_version_id();
 
         let stored = to_run_event(&fixtures::RUN_1, &Event::RunCreated {
             run_id: fixtures::RUN_1,
@@ -2838,6 +2841,7 @@ mod tests {
             labels: BTreeMap::default(),
             source_directory: Some("/tmp/run".to_string()),
             workflow_slug: None,
+            workflow_version_id: Some(workflow_version_id),
             automation: Some(automation.clone()),
             provenance,
             manifest_blob: None,
@@ -2854,6 +2858,7 @@ mod tests {
             panic!("expected run.created body");
         };
         assert_eq!(props.automation, Some(automation));
+        assert_eq!(props.workflow_version_id, Some(workflow_version_id));
     }
 
     #[test]

@@ -1,7 +1,23 @@
 ---
-title: "Venice search backend"
+title: "Additional GitHub repositories and Venice search"
 date: "2026-08-21"
 ---
+
+## One token for the whole repository set
+
+A run can now declare additional GitHub repositories that its stages may access through the managed `GITHUB_TOKEN`:
+
+```toml
+[run.integrations.github]
+additional_repositories = ["fabro-sh/keystone"]
+permissions = { contents = "read" }
+```
+
+The run origin stays implicit, and Fabro mints one installation token scoped to the origin plus every declared repository with the shared permission map. Inside stages, `gh` commands, raw GitHub API calls, plain Git over HTTPS, and the common SSH URL spellings (`git@github.com:owner/repo` and `ssh://git@github.com/owner/repo`) all work against the declared set — the SSH forms are transparently rewritten to authenticated HTTPS with no secret placed in Git configuration.
+
+Every repository must share one owner and be reachable by the origin's GitHub App installation. Preflight resolves each repository's installation, mints the scoped token once, and probes every repository with `git ls-remote`, naming the exact repository when something is not accessible; run initialization enforces the same checks. A declared-but-inaccessible repository fails the run before its first stage.
+
+Declaring additional repositories requires `contents = "read"` or `contents = "write"`. With `contents = "write"`, any stage can push to any declared repository — declare the smallest set and weakest permissions that work. See [Additional repositories](/integrations/github#additional-repositories) for details, including layering rules and `GH_TOKEN` precedence.
 
 ## Venice search backend for `web_search`
 

@@ -1870,7 +1870,7 @@ checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
 [[package]]
 name = "daytona-api-client"
 version = "0.1.0"
-source = "git+https://github.com/brynary/daytona-sdk-rust?rev=73c9c458dd1a1d096afd3521175637af82afd8d8#73c9c458dd1a1d096afd3521175637af82afd8d8"
+source = "git+https://github.com/brynary/daytona-sdk-rust?rev=be2c7b7272740d47c023cac8abc9f63c1a51a511#be2c7b7272740d47c023cac8abc9f63c1a51a511"
 dependencies = [
  "reqwest 0.13.2",
  "reqwest-middleware",
@@ -1884,7 +1884,7 @@ dependencies = [
 [[package]]
 name = "daytona-sdk"
 version = "0.1.0"
-source = "git+https://github.com/brynary/daytona-sdk-rust?rev=73c9c458dd1a1d096afd3521175637af82afd8d8#73c9c458dd1a1d096afd3521175637af82afd8d8"
+source = "git+https://github.com/brynary/daytona-sdk-rust?rev=be2c7b7272740d47c023cac8abc9f63c1a51a511#be2c7b7272740d47c023cac8abc9f63c1a51a511"
 dependencies = [
  "daytona-api-client",
  "daytona-toolbox-client",
@@ -1904,13 +1904,15 @@ dependencies = [
 [[package]]
 name = "daytona-toolbox-client"
 version = "0.1.0"
-source = "git+https://github.com/brynary/daytona-sdk-rust?rev=73c9c458dd1a1d096afd3521175637af82afd8d8#73c9c458dd1a1d096afd3521175637af82afd8d8"
+source = "git+https://github.com/brynary/daytona-sdk-rust?rev=be2c7b7272740d47c023cac8abc9f63c1a51a511#be2c7b7272740d47c023cac8abc9f63c1a51a511"
 dependencies = [
  "reqwest 0.13.2",
  "reqwest-middleware",
  "serde",
  "serde_json",
  "serde_repr",
+ "tokio",
+ "tokio-util",
  "url",
 ]
 
@@ -2072,7 +2074,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2199,7 +2201,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2664,6 +2666,7 @@ dependencies = [
  "fabro-static",
  "fabro-test",
  "fabro-types",
+ "futures",
  "jsonwebtoken",
  "serde",
  "serde_json",
@@ -4390,6 +4393,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyper-tls"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70206fc6890eaca9fde8a0bf71caa2ddfc9fe045ac9e5c70df101a7dbde866e0"
+dependencies = [
+ "bytes",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "native-tls",
+ "tokio",
+ "tokio-native-tls",
+ "tower-service",
+]
+
+[[package]]
 name = "hyper-util"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4441,7 +4460,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.61.2",
 ]
 
 [[package]]
@@ -5317,6 +5336,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "native-tls"
+version = "0.2.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "465500e14ea162429d264d44189adc38b199b62b1c21eea9f69e4b73cb03bbf2"
+dependencies = [
+ "libc",
+ "log",
+ "openssl",
+ "openssl-probe 0.2.1",
+ "openssl-sys",
+ "schannel",
+ "security-framework",
+ "security-framework-sys",
+ "tempfile",
+]
+
+[[package]]
 name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5390,7 +5426,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6387,7 +6423,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6672,11 +6708,13 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-rustls",
+ "hyper-tls",
  "hyper-util",
  "js-sys",
  "log",
  "mime",
  "mime_guess",
+ "native-tls",
  "percent-encoding",
  "pin-project-lite",
  "quinn",
@@ -6688,6 +6726,7 @@ dependencies = [
  "serde_urlencoded",
  "sync_wrapper",
  "tokio",
+ "tokio-native-tls",
  "tokio-rustls",
  "tokio-util",
  "tower",
@@ -6861,7 +6900,7 @@ dependencies = [
  "errno 0.3.14",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6920,7 +6959,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7444,7 +7483,7 @@ version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b"
 dependencies = [
- "errno 0.3.14",
+ "errno 0.2.8",
  "libc",
 ]
 
@@ -8034,7 +8073,7 @@ dependencies = [
  "getrandom 0.4.1",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8080,7 +8119,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8230,6 +8269,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "tokio-native-tls"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
+dependencies = [
+ "native-tls",
+ "tokio",
 ]
 
 [[package]]
@@ -9133,7 +9182,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

@@ -152,7 +152,8 @@ fn inspect_resolves_selector_via_server_endpoint() {
                 "commit_timeout_ms": 30000
               },
               "clone": {
-                "enabled": true
+                "enabled": true,
+                "depth": 100
               },
               "run_branch": {
                 "enabled": true,

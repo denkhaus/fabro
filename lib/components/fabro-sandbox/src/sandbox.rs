@@ -23,7 +23,7 @@ use crate::git_retry::{self, CredentialContext, GitRetryReason, RetryPlan};
 use crate::push_credentials::{CredentialLease, PushCredentialState, RefreshErrorKind};
 
 /// Git command prefix that disables background maintenance.
-const GIT: &str = "git -c maintenance.auto=0 -c gc.auto=0";
+pub(crate) const GIT: &str = "git -c maintenance.auto=0 -c gc.auto=0";
 
 pub const DEFAULT_EXEC_OUTPUT_TAIL_BYTES: usize = 8 * 1024;
 

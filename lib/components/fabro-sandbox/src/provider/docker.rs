@@ -104,6 +104,7 @@ impl SandboxProvider for DockerSandboxProvider {
             run_id,
             clone_origin_url,
             clone_branch,
+            None,
         )?;
         sandbox.initialize().await?;
         let container_id = sandbox.container_identifier()?.to_string();
