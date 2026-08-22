@@ -10,48 +10,69 @@
 # (fabro/run/*), detached heads, or a world without its counterpart branch.
 # The guarantee is enforced on the two world branches, where drift starts.
 
-const scope = ".fabro/workflows"
+const SCOPE = ".fabro/workflows"
 
-def counterpart [branch: string]: nothing -> string {
-    # meta/<name> pairs with <name>; a plain world branch pairs with meta/<name>.
-    # Anything deeper (fabro/run/*, fabro/meta/*, ...) is not a world branch.
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+def current-branch []: nothing -> string {
+    git branch --show-current | str trim
+}
+
+# meta/<name> pairs with <name>; a plain world branch pairs with meta/<name>.
+# Anything deeper (fabro/run/*, fabro/meta/*, ...) is not a world branch.
+def world-counterpart [branch: string]: nothing -> string {
     let segs = ($branch | split row "/" | length)
-    if ($branch | str starts-with "meta/") and $segs == 2 {
-        $branch | str replace --regex '^meta/' ''
-    } else if $segs == 1 {
-        $"meta/($branch)"
-    } else {
-        ''
+    let is_meta = ($branch | str starts-with "meta/") and $segs == 2
+    let kind = if $is_meta { 'meta' } else if $segs == 1 { 'plain' } else { 'other' }
+    match $kind {
+        'meta' => ($branch | str replace --regex '^meta/' '')
+        'plain' => $"meta/($branch)"
+        _ => ''
     }
 }
 
-let here = (git branch --show-current | str trim)
-if ($here | is-empty) {
-    print "sync-check: detached HEAD — skip"
-    exit 0
-}
-let other = (counterpart $here)
-if ($other | is-empty) {
-    print "sync-check: no world pairing — skip"
-    exit 0
-}
-
-# counterpart must exist locally or on origin (fetch it otherwise)
-let has_local = (git rev-parse --verify $"refs/heads/($other)" | complete | get exit_code) == 0
-let ref = if $has_local { $other } else {
-    git fetch origin $other
-    $"origin/($other)"
-}
-if ((git rev-parse --verify $ref | complete | get exit_code) != 0) {
-    print $"sync-check: counterpart branch ($other) not found — skip (single-world repo?)"
-    exit 0
+# Resolve the counterpart as a git ref: local branch, else fetched
+# origin/<branch>, else null (counterpart does not exist). Fetch output is
+# captured and discarded — progress spam must not pollute gate logs.
+def counterpart-ref [branch: string]: nothing -> any {
+    let local = (do { git rev-parse --verify $"refs/heads/($branch)" } | complete)
+    if $local.exit_code == 0 {
+        return $branch
+    }
+    let _ = (do { git fetch origin $branch } | complete)
+    let remote = (do { git rev-parse --verify $"origin/($branch)" } | complete)
+    if $remote.exit_code == 0 { $"origin/($branch)" } else { null }
 }
 
-let drift = (git diff $"($ref)" HEAD -- $scope | lines | length)
-if $drift > 0 {
-    print $"sync-check: DRIFT — ($scope) differs between ($here) and ($ref)"
-    git diff --stat $"($ref)" HEAD -- $scope
-    print "re-sync with: git checkout <canonical> -- .fabro/workflows"
-    exit 1
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+def main []: nothing -> nothing {
+    let here = (current-branch)
+    if ($here | is-empty) {
+        print "sync-check: detached HEAD — skip"
+        return
+    }
+    let other = (world-counterpart $here)
+    if ($other | is-empty) {
+        print "sync-check: no world pairing — skip"
+        return
+    }
+    let ref = (counterpart-ref $other)
+    if $ref == null {
+        print $"sync-check: counterpart branch ($other) not found — skip (single-world repo?)"
+        return
+    }
+
+    let drift = (git diff $ref HEAD -- $SCOPE | lines | length)
+    if $drift > 0 {
+        print $"sync-check: DRIFT — ($SCOPE) differs between ($here) and ($ref)"
+        git diff --stat $ref HEAD -- $SCOPE
+        print "re-sync with: git checkout <canonical> -- .fabro/workflows"
+        exit 1
+    }
+    print $"sync-check: ($SCOPE) in sync with ($ref)"
 }
-print $"sync-check: ($scope) in sync with ($ref)"
