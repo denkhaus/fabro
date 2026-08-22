@@ -363,20 +363,21 @@ mod tests {
             Ok(RunProjection::new(
                 "Test run".to_string(),
                 RunSpec {
-                    run_id:           fixtures::RUN_1,
-                    settings:         WorkflowSettings::default(),
-                    graph:            Graph::new("test"),
-                    graph_source:     None,
-                    workflow_slug:    None,
-                    automation:       None,
-                    source_directory: None,
-                    labels:           std::collections::HashMap::default(),
-                    provenance:       test_support::test_run_provenance(),
-                    manifest_blob:    None,
-                    definition_blob:  None,
-                    spec_blob:        None,
-                    git:              None,
-                    fork_source_ref:  None,
+                    run_id:              fixtures::RUN_1,
+                    settings:            WorkflowSettings::default(),
+                    graph:               Graph::new("test"),
+                    graph_source:        None,
+                    workflow_slug:       None,
+                    workflow_version_id: None,
+                    automation:          None,
+                    source_directory:    None,
+                    labels:              std::collections::HashMap::default(),
+                    provenance:          test_support::test_run_provenance(),
+                    manifest_blob:       None,
+                    definition_blob:     None,
+                    spec_blob:           None,
+                    git:                 None,
+                    fork_source_ref:     None,
                 },
                 chrono::Utc::now(),
             ))
@@ -464,23 +465,24 @@ mod tests {
             run_store,
             &fixtures::RUN_1,
             &crate::event::Event::RunCreated {
-                run_id:           fixtures::RUN_1,
-                title:            None,
-                settings:         serde_json::to_value(WorkflowSettings::default()).unwrap(),
-                graph:            serde_json::to_value(Graph::new("test")).unwrap(),
-                workflow_source:  None,
-                labels:           std::collections::BTreeMap::default(),
-                source_directory: None,
-                workflow_slug:    None,
-                automation:       None,
-                provenance:       test_support::test_run_provenance(),
-                manifest_blob:    None,
-                spec_blob:        None,
-                git:              None,
-                fork_source_ref:  None,
-                retried_from:     None,
-                parent_id:        None,
-                web_url:          None,
+                run_id:              fixtures::RUN_1,
+                title:               None,
+                settings:            serde_json::to_value(WorkflowSettings::default()).unwrap(),
+                graph:               serde_json::to_value(Graph::new("test")).unwrap(),
+                workflow_source:     None,
+                labels:              std::collections::BTreeMap::default(),
+                source_directory:    None,
+                workflow_slug:       None,
+                workflow_version_id: None,
+                automation:          None,
+                provenance:          test_support::test_run_provenance(),
+                manifest_blob:       None,
+                spec_blob:           None,
+                git:                 None,
+                fork_source_ref:     None,
+                retried_from:        None,
+                parent_id:           None,
+                web_url:             None,
             },
         )
         .await
@@ -1075,7 +1077,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1106,7 +1108,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1133,7 +1135,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1160,7 +1162,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1185,7 +1187,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1210,7 +1212,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1240,7 +1242,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap_err();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1267,7 +1269,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node = snapshot

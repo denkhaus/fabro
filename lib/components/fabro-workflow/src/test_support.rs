@@ -52,7 +52,11 @@ pub(crate) fn test_configured_provider_ids(
 /// persisted before tests reopen the run store.
 async fn execute_and_emit_terminal(initialized: InitializedState) -> Executed {
     let executed = Box::pin(pipeline::execute(initialized.initialized)).await;
-    initialized.store_logger.flush().await;
+    initialized
+        .store_logger
+        .flush()
+        .await
+        .expect("test run events should persist");
     let state = executed.engine.run.run_store.state().await.ok();
     let billing = state.as_ref().and_then(billing_from_projection);
     let event = build_terminal_event(
@@ -65,7 +69,11 @@ async fn execute_and_emit_terminal(initialized: InitializedState) -> Executed {
         billing,
     );
     executed.engine.run.emitter.emit(&event);
-    initialized.store_logger.flush().await;
+    initialized
+        .store_logger
+        .flush()
+        .await
+        .expect("test run events should persist");
     executed
 }
 
@@ -182,34 +190,35 @@ async fn initialized(
         .expect("failed to create slate-backed test run store");
     let run_store = inner_store;
     append_event(&run_store, &run_options.run_id, &Event::RunCreated {
-        run_id:           run_options.run_id,
-        title:            None,
-        settings:         serde_json::to_value(&run_options.settings)
+        run_id:              run_options.run_id,
+        title:               None,
+        settings:            serde_json::to_value(&run_options.settings)
             .expect("failed to serialize settings"),
-        graph:            serde_json::to_value(graph).expect("failed to serialize graph"),
-        workflow_source:  None,
-        labels:           run_options
+        graph:               serde_json::to_value(graph).expect("failed to serialize graph"),
+        workflow_source:     None,
+        labels:              run_options
             .labels
             .clone()
             .into_iter()
             .collect::<BTreeMap<_, _>>(),
-        source_directory: Some(sandbox.working_directory().to_string()),
-        workflow_slug:    run_options.workflow_slug.clone(),
-        automation:       None,
-        provenance:       fabro_types::RunProvenance {
+        source_directory:    Some(sandbox.working_directory().to_string()),
+        workflow_slug:       run_options.workflow_slug.clone(),
+        workflow_version_id: None,
+        automation:          None,
+        provenance:          fabro_types::RunProvenance {
             server:  None,
             client:  None,
             subject: fabro_types::Principal::System {
                 system_kind: fabro_types::SystemActorKind::Engine,
             },
         },
-        manifest_blob:    None,
-        spec_blob:        None,
-        git:              run_options.pre_run_git.clone(),
-        fork_source_ref:  run_options.fork_source_ref.clone(),
-        retried_from:     None,
-        parent_id:        None,
-        web_url:          None,
+        manifest_blob:       None,
+        spec_blob:           None,
+        git:                 run_options.pre_run_git.clone(),
+        fork_source_ref:     run_options.fork_source_ref.clone(),
+        retried_from:        None,
+        parent_id:           None,
+        web_url:             None,
     })
     .await
     .expect("failed to seed run.created event in run store");
@@ -480,7 +489,11 @@ pub async fn run_graph_with_state_and_llm_source(
     )
     .await;
     let executed = pipeline::execute(initialized.initialized).await;
-    initialized.store_logger.flush().await;
+    initialized
+        .store_logger
+        .flush()
+        .await
+        .expect("test run events should persist");
     let outcome = executed.outcome?;
     let state = executed
         .engine

@@ -141,6 +141,15 @@ provider = "daytona"
 enabled = false
 ```
 
+Daytona clones 100 commits by default. To keep only the newest commit, set a smaller clone depth:
+
+```toml title="run.toml"
+[run.clone]
+depth = 1
+```
+
+Set `depth = 0` to clone the full repository history.
+
 If the clone fails without GitHub access configured, Fabro suggests running the setup flow:
 
 ```

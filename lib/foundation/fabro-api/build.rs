@@ -208,6 +208,19 @@ fn main() {
         ("DiffSummary", "fabro_types::DiffSummary", &[]),
         ("RepositoryRef", "fabro_types::RepositoryRef", &[]),
         ("WorkflowSettings", "fabro_types::WorkflowSettings", &[]),
+        // Run-level GitHub integration settings reuse the canonical resolved
+        // types instead of generating parallel API DTOs; the wire shape is
+        // identical (InterpString serializes as its source string).
+        (
+            "RunIntegrationsSettings",
+            "fabro_types::settings::run::RunIntegrationsSettings",
+            &[],
+        ),
+        (
+            "RunIntegrationsGithubSettings",
+            "fabro_types::settings::run::RunIntegrationsGithubSettings",
+            &[],
+        ),
         ("ServerSettings", "fabro_types::ServerSettings", &[]),
         (
             "ServerNamespace",

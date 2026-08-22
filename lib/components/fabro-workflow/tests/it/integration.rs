@@ -10344,14 +10344,18 @@ async fn downstream_local_execution_resolves_response_blob_refs_as_text() {
         .expect("pipeline should succeed");
     assert_eq!(outcome.status, StageOutcome::Succeeded);
 
+    // The downstream handler saw the full inline text, so resolution itself
+    // did not swap the value for a file reference. Prompt-preamble demotion
+    // materializes the oversized response for preamble use, confined to the
+    // run's blob directory.
     let captured_value = captured.lock().unwrap().first().cloned().unwrap();
     assert_eq!(captured_value, "x".repeat(150 * 1024));
     assert!(
-        !RunScratch::new(dir.path())
+        RunScratch::new(dir.path())
             .runtime_dir()
             .join("blobs")
             .exists(),
-        "textual response values should resolve without file materialization"
+        "prompt demotion materializes the oversized response under runtime/blobs"
     );
 }
 
@@ -10420,11 +10424,22 @@ async fn downstream_remote_execution_resolves_response_blob_refs_as_text() {
         .expect("pipeline should succeed");
     assert_eq!(outcome.status, StageOutcome::Succeeded);
 
+    // The downstream handler saw the full inline text, so resolution itself
+    // did not swap the value for a file reference. Prompt-preamble demotion
+    // may still materialize the oversized response into the sandbox blob
+    // directory, but nowhere else.
     let captured_value = captured.lock().unwrap().first().cloned().unwrap();
     assert_eq!(captured_value, "x".repeat(150 * 1024));
+    let written = remote_env.written.lock().unwrap();
     assert!(
-        remote_env.written.lock().unwrap().is_empty(),
-        "textual response values should resolve without sandbox file materialization"
+        !written.is_empty(),
+        "prompt demotion materializes the oversized response into the sandbox"
+    );
+    assert!(
+        written
+            .iter()
+            .all(|(path, _)| path.contains("/.fabro/blobs/")),
+        "nothing is written outside the sandbox blob directory"
     );
 }
 
@@ -13332,7 +13347,7 @@ async fn asset_collection_docker_sandbox() {
         ..Default::default()
     };
     let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::new(
-        fabro_agent::DockerSandbox::new(config, None, None, None, None)
+        fabro_agent::DockerSandbox::new(config, None, None, None, None, None)
             .expect("Docker not available"),
     );
     sandbox.initialize().await.expect("Docker init failed");

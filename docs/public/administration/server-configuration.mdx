@@ -360,7 +360,7 @@ Fabro splits server-runtime secrets into two scopes:
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` when a manual config uses
   static S3 object-store credentials
 
-`server.env` is not used for Slack, Daytona, Brave Search, LLM provider keys, `GITHUB_TOKEN`, or GitHub App private key/client secret/webhook secret. Configure those optional integrations with `fabro secret set`, `fabro provider login`, or `fabro install`.
+`server.env` is not used for Slack, Daytona, Brave Search, Venice Search, LLM provider keys, `GITHUB_TOKEN`, or GitHub App private key/client secret/webhook secret. Configure those optional integrations with `fabro secret set`, `fabro provider login`, or `fabro install`.
 
 During startup, Fabro temporarily migrates recognized legacy optional integration secrets from process env or `server.env` into the vault. When a matching `server.env` entry can be safely removed, Fabro writes a hidden backup beside `server.env` first. Process env values cannot be cleaned up automatically, so remove those from your deployment environment after the vault contains the secret.
 
@@ -402,12 +402,16 @@ These optional server integrations are vault-only:
 ```bash
 fabro secret set DAYTONA_API_KEY dtn_...
 fabro secret set BRAVE_SEARCH_API_KEY BSA...
+fabro secret set VENICE_API_KEY venice-...
 ```
+
+The built-in [`web_search`](/agents/tools#web_search) tool selects its backend from these credentials. It uses direct Brave Search when `BRAVE_SEARCH_API_KEY` exists. Otherwise it uses Venice Search when `VENICE_API_KEY` exists. When neither exists, the tool is not registered.
 
 | Variable | Description |
 |---|---|
 | `DAYTONA_API_KEY` | Daytona cloud sandbox API key |
-| `BRAVE_SEARCH_API_KEY` | Brave Search API key (for the `web_search` tool) |
+| `BRAVE_SEARCH_API_KEY` | Brave Search API key; the preferred `web_search` backend when present |
+| `VENICE_API_KEY` | Venice API key; used by the Venice LLM provider and by `web_search` when no Brave key exists |
 
 ### Server authentication
 

@@ -97,12 +97,14 @@
               "integrations/litellm",
               "integrations/bedrock",
               "integrations/deepseek",
+              "integrations/venice",
               "integrations/poolside",
               "integrations/openrouter",
               "integrations/modal",
               "integrations/fireworks",
               "integrations/slack",
-              "integrations/brave-search"
+              "integrations/brave-search",
+              "integrations/venice-search"
             ]
           },
           {
@@ -293,6 +295,13 @@
         "tab": "Changelog",
         "icon": "clock-rotate-left",
         "groups": [
+          {
+            "group": "August 2026",
+            "icon": "clock-rotate-left",
+            "pages": [
+              "changelog/2026-08-21"
+            ]
+          },
           {
             "group": "July 2026",
             "icon": "clock-rotate-left",

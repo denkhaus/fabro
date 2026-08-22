@@ -68,6 +68,19 @@ pub mod keys {
     pub const RESPONSE_PREFIX: &str = "response.";
     pub const INTERNAL_RETRY_COUNT_PREFIX: &str = "internal.retry_count.";
 
+    /// Keys the prompt preamble never renders as context values: engine
+    /// bookkeeping, per-thread cursors, and values the per-stage sections
+    /// already present.
+    #[must_use]
+    pub(crate) fn is_preamble_hidden_key(key: &str) -> bool {
+        is_engine_internal_key(key)
+            || key.starts_with(RESPONSE_PREFIX)
+            || key == OUTCOME
+            || key == LAST_STAGE
+            || key == LAST_RESPONSE
+            || key == PREFERRED_LABEL
+    }
+
     // --- Helper functions for dynamic keys ---
 
     #[must_use]

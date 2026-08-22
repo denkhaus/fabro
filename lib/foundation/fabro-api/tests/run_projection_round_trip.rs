@@ -130,6 +130,7 @@ fn run_projection_round_trips_with_pending_control_unset() {
 fn run_spec_json() -> serde_json::Value {
     serde_json::to_value(RunSpec {
         graph_source: Some("digraph test {}".to_string()),
+        workflow_version_id: Some(test_support::test_workflow_version_id()),
         ..test_support::test_run_spec()
     })
     .unwrap()

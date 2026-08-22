@@ -17,7 +17,7 @@ use fabro_store::{Database, RunDatabase};
 use fabro_template::TemplateContext;
 use fabro_types::{
     AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, RunId, RunProvenance,
-    WorkflowSettings,
+    WorkflowSettings, WorkflowVersionId,
 };
 use fabro_util::json::normalize_json_value;
 use tokio::task::spawn_blocking;
@@ -100,6 +100,7 @@ impl CreateRunInput {
                 run_id,
                 storage_root,
                 workflow_slug,
+                workflow_version_id: None,
                 submitted_manifest_bytes,
                 title,
                 automation,
@@ -133,6 +134,7 @@ pub struct CreateRunPersistenceMetadata {
     pub run_id: RunId,
     pub storage_root: PathBuf,
     pub workflow_slug: Option<String>,
+    pub workflow_version_id: Option<WorkflowVersionId>,
     pub submitted_manifest_bytes: Option<Vec<u8>>,
     pub title: Option<String>,
     pub automation: Option<AutomationRef>,
@@ -202,6 +204,7 @@ pub struct CreateRunPersistenceInput {
     run_id: RunId,
     run_dir: PathBuf,
     workflow_slug: Option<String>,
+    workflow_version_id: Option<WorkflowVersionId>,
     submitted_manifest_bytes: Option<Vec<u8>>,
     title: Option<String>,
     automation: Option<AutomationRef>,
@@ -227,6 +230,10 @@ impl CreateRunPersistenceInput {
 
     pub fn workflow_slug(&self) -> Option<&str> {
         self.workflow_slug.as_deref()
+    }
+
+    pub fn workflow_version_id(&self) -> Option<WorkflowVersionId> {
+        self.workflow_version_id
     }
 
     pub fn submitted_manifest_bytes(&self) -> Option<&[u8]> {
@@ -397,6 +404,7 @@ pub fn assemble_create_run_persistence_input(
         run_id,
         storage_root,
         workflow_slug,
+        workflow_version_id,
         submitted_manifest_bytes,
         title,
         automation,
@@ -417,6 +425,7 @@ pub fn assemble_create_run_persistence_input(
         run_id,
         run_dir,
         workflow_slug,
+        workflow_version_id,
         submitted_manifest_bytes,
         title,
         automation,
@@ -438,6 +447,7 @@ pub async fn persist_create_run(
         run_id,
         run_dir,
         workflow_slug,
+        workflow_version_id,
         submitted_manifest_bytes,
         title,
         automation,
@@ -465,6 +475,7 @@ pub async fn persist_create_run(
             graph: validated.graph().clone(),
             graph_source: Some(validated.source().to_string()),
             workflow_slug,
+            workflow_version_id,
             automation,
             source_directory: Some(source_directory),
             labels,
@@ -552,6 +563,7 @@ async fn persist_created_run(
                 .collect::<BTreeMap<_, _>>(),
             source_directory: record.source_directory.clone(),
             workflow_slug: record.workflow_slug.clone(),
+            workflow_version_id: record.workflow_version_id,
             automation: record.automation.clone(),
             provenance: record.provenance.clone(),
             manifest_blob,
@@ -1709,6 +1721,7 @@ reasoning = false
                 run_id: fixtures::RUN_1,
                 storage_root: PathBuf::from("/tmp/storage"),
                 workflow_slug: None,
+                workflow_version_id: None,
                 submitted_manifest_bytes: None,
                 title: None,
                 automation: None,
@@ -1761,7 +1774,9 @@ reasoning = false
         std::fs::write(&dot_path, "this is no longer a graph").unwrap();
 
         let materialized = materialize_create_run(compiled, catalog.as_ref()).unwrap();
-        let metadata = persistence_metadata(&request, fixtures::RUN_2, &storage_root);
+        let workflow_version_id = test_support::test_workflow_version_id();
+        let mut metadata = persistence_metadata(&request, fixtures::RUN_2, &storage_root);
+        metadata.workflow_version_id = Some(workflow_version_id);
         let input = assemble_create_run_persistence_input(materialized, metadata);
         let store = memory_store();
         let created = persist_create_run(store.as_ref(), input).await.unwrap();
@@ -1775,6 +1790,7 @@ reasoning = false
         let state = run_store.state().await.unwrap();
         assert_eq!(state.spec.graph.goal(), "Compiled goal");
         assert_eq!(state.spec.automation, Some(automation));
+        assert_eq!(state.spec.workflow_version_id, Some(workflow_version_id));
         let events = run_store.list_events().await.unwrap();
         assert_eq!(
             events
@@ -1790,6 +1806,7 @@ reasoning = false
             created.workflow_source.as_deref(),
             Some(compiled_source.as_str())
         );
+        assert_eq!(created.workflow_version_id, Some(workflow_version_id));
         let manifest_blob = created
             .manifest_blob
             .as_ref()
