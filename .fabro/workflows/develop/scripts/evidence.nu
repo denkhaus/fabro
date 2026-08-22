@@ -33,8 +33,8 @@
 # not HEAD, so uncommitted edits are captured too; untracked files are not
 # in any diff and surface via the worktree section instead.
 #
-# The full seed description is NOT duplicated here — the tracker record and
-# the Planner's brief carry the spec.
+# The in-progress seed's full description is emitted so the tool-less
+# reviewer can judge against the authoritative spec, not just the brief.
 #
 # Output hygiene: bare " /word " tokens are wrapped in backticks because
 # agent nodes treat them as skill references ("Unknown skill: /tmp" crash).
@@ -99,6 +99,12 @@ let churn_del = (total $churn_rows del)
 let integrity = $"integrity: seed-work=($seed_files | length) files +($seed_add)/-($seed_del) | loop-churn=($churn_files | length) files +($churn_add)/-($churn_del) | worktree=($wt_state)"
 print $"evidence: base=($base_short) seed=($seed_desc)"
 print $integrity
+
+if $wip != null {
+    print ""
+    print "== in-progress seed spec (authoritative — judge against this, not the brief) =="
+    print $wip.description
+}
 
 print ""
 print "== seed work: changed files (review scope — complete diff below) =="

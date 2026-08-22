@@ -1,8 +1,10 @@
 # Workflow assets sync meta -> product, never the other way
 
-`.fabro/workflows/`, `scripts/`, and `.mise.toml` are canonical on
-`denkhaus-lab/meta` and copied to the product branch with a path-scoped
-sync. The product justfile stays per-world on purpose: the product gate
-checks product code, the platform gate checks workflow assets. `.seeds/`
-is never synced (see ADR-0001), and the justfile is never synced (the gate
-is each world's own contract).
+`.fabro/workflows/` is canonical on `meta/denkhaus-lab` and copied to the
+product branch with a path-scoped sync. Everything else is per-world on
+purpose: the product justfile and root scripts/ gate product code; the
+platform justfile and root scripts/ lint workflow assets; `.mise.toml`
+differs because the two worlds provision different toolchains (product:
+go + just; platform: fabro + uv + just). `.seeds/` is never synced (see
+ADR-0001). The justfile is never synced — the gate is each world's own
+contract.

@@ -1,3 +1,4 @@
 gofib
 .fabro/blobs/
 .fabro/tmp/
+.fabro/run-painpoints.jsonl

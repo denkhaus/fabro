@@ -19,6 +19,17 @@ The Planner put the claimed seed in the context (`current_seed_id`, `current_see
 5. Do NOT close the seed and do NOT review — the Reviewer decides, the Planner closes.
 6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced.
 
+## Platform scope is off-limits — use the painpoint channel
+
+You build the PRODUCT. Never modify workflow assets or repo wiring:
+`.fabro/`, `scripts/`, `justfile`, `.mise.toml`, `AGENTS.md`, `CONTEXT.md`,
+`docs/`. When your work reveals friction in these (a script bug, a prompt
+gap, a gate blind spot), do NOT fix it here. Instead append one JSON line to
+`.fabro/run-painpoints.jsonl` (create if missing; append, never rewrite):
+{"stage": "implementer", "text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}
+and mirror the same entries in `context_updates.workflow_painpoints`
+(restate the full accumulated list — the key is last-writer-wins).
+
 ## Verification-only briefs
 
 If the brief is marked verification-only: check each acceptance criterion against the worktree, run a quick smoke check where cheap, and make NO code changes if everything holds. Answer with the verification result per criterion. If a criterion is NOT satisfied, implement only what is missing and say so.
