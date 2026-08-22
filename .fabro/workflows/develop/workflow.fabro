@@ -40,6 +40,11 @@ digraph Develop {
     ]
 
     // Evidence: deterministic capture of what the read-only reviewer needs.
+    // Compact and critical-first (integrity header, seed-work file list,
+    // complete seed-work diff, then loop-churn counts and worktree): at the
+    // default `compact` fidelity a downstream node renders only the FIRST
+    // ~300 chars of command output, so ordering must front-load what review
+    // verifies. The reviewer below lifts that cap via summary:high.
     evidence [
         label="Evidence",
         shape=parallelogram,
@@ -52,6 +57,13 @@ digraph Develop {
     // Cannot modify the repo; judges purely from context (brief, summary,
     // gate result, evidence output).
     //
+    // fidelity="summary:high" is the evidence pipe: the default `compact`
+    // preamble truncates a command node's output to roughly the first 300
+    // characters (measured over four review cycles — the capture cut
+    // mid-header every time), which starved review of the diff.
+    // summary:high is "detailed summary including outputs" and carries the
+    // evidence capture in full.
+    //
     // No goal_gate: this node is legitimately skippable (tracker-empty runs
     // never reach it), and an unvisited goal-gate node fails the whole run
     // (engine semantics). Its genuine failures route to exit explicitly and
@@ -60,6 +72,7 @@ digraph Develop {
         label="Reviewer",
         shape=tab,
         prompt="@prompts/reviewer.md",
+        fidelity="summary:high",
         output_schema="routing",
         output_retries=2,
         max_visits=20

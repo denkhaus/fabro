@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"math/big"
 	"strings"
 	"testing"
@@ -51,7 +52,7 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.n); err != nil {
+			if err := run(&buf, tt.n, false); err != nil {
 				t.Fatalf("run(%d) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -68,18 +69,74 @@ func TestRun(t *testing.T) {
 	}
 }
 
+// wantJSONLine returns the canonical JSON line for index i, used to pin
+// the exact object shape {"index": <int>, "fib": "<string>"}.
+func wantJSONLine(i int) string {
+	b, err := json.Marshal(fibLine{Index: i, Fib: Fib(i).String()})
+	if err != nil {
+		panic("marshal fibLine: " + err.Error())
+	}
+	return string(b)
+}
+
+func TestRunJSON(t *testing.T) {
+	tests := []struct {
+		name      string
+		n         int
+		wantLines int
+	}{
+		{"json n=1 prints one object", 1, 1},
+		{"json n=10 prints ten objects", 10, 10},
+		// The default path in JSON mode still prints the first 100 numbers.
+		{"json default prints 100 objects", defaultCount, 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, tt.n, true); err != nil {
+				t.Fatalf("run(%d, json) returned error: %v", tt.n, err)
+			}
+			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+			if len(lines) != tt.wantLines {
+				t.Fatalf("run(%d, json) printed %d lines, want %d", tt.n, len(lines), tt.wantLines)
+			}
+			for i, line := range lines {
+				// Unmarshal each line and compare both fields.
+				var got fibLine
+				if err := json.Unmarshal([]byte(line), &got); err != nil {
+					t.Fatalf("line %d is not valid JSON (%q): %v", i+1, line, err)
+				}
+				if want := wantJSONLine(i + 1); line != want {
+					t.Errorf("line %d = %q, want exactly %q", i+1, line, want)
+				}
+				if got.Index != i+1 {
+					t.Errorf("line %d index = %d, want %d", i+1, got.Index, i+1)
+				}
+				if got.Fib != Fib(i+1).String() {
+					t.Errorf("line %d fib = %q, want %q", i+1, got.Fib, Fib(i+1).String())
+				}
+			}
+		})
+	}
+}
+
 func TestRunRejectsInvalidCount(t *testing.T) {
-	for _, n := range []int{0, -5} {
-		var buf bytes.Buffer
-		err := run(&buf, n)
-		if err == nil {
-			t.Fatalf("run(%d) succeeded, want error", n)
-		}
-		if !strings.Contains(err.Error(), "-n") {
-			t.Errorf("run(%d) error %q does not mention the -n flag", n, err.Error())
-		}
-		if buf.Len() != 0 {
-			t.Errorf("run(%d) wrote %q before failing, want no output", n, buf.String())
+	for _, mode := range []struct {
+		name   string
+		asJSON bool
+	}{{"text", false}, {"json", true}} {
+		for _, n := range []int{0, -5} {
+			var buf bytes.Buffer
+			err := run(&buf, n, mode.asJSON)
+			if err == nil {
+				t.Fatalf("run(%d, %s) succeeded, want error", n, mode.name)
+			}
+			if !strings.Contains(err.Error(), "-n") {
+				t.Errorf("run(%d, %s) error %q does not mention the -n flag", n, mode.name, err.Error())
+			}
+			if buf.Len() != 0 {
+				t.Errorf("run(%d, %s) wrote %q before failing, want no output", n, mode.name, buf.String())
+			}
 		}
 	}
 }
