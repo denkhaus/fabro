@@ -51,14 +51,18 @@ digraph Develop {
     // Reviewer: prompt node (shape=tab) — a single LLM call with NO tools.
     // Cannot modify the repo; judges purely from context (brief, summary,
     // gate result, evidence output).
+    //
+    // No goal_gate: this node is legitimately skippable (tracker-empty runs
+    // never reach it), and an unvisited goal-gate node fails the whole run
+    // (engine semantics). Its genuine failures route to exit explicitly and
+    // leave the seed open; the next run re-enters the review cycle.
     reviewer [
         label="Reviewer",
         shape=tab,
         prompt="@prompts/reviewer.md",
         output_schema="routing",
         output_retries=2,
-        max_visits=20,
-        goal_gate=true
+        max_visits=20
     ]
 
     start -> planner
