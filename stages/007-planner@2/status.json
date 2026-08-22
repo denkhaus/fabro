@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Precondition failed: Agent session failed: Invalid state: Unknown skill: /tmp",
+  "timestamp": "2026-08-22T17:12:00.766592761Z"
+}
