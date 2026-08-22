@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -52,7 +54,7 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.n, false); err != nil {
+			if err := run(&buf, tt.n, false, false); err != nil {
 				t.Fatalf("run(%d) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -93,7 +95,7 @@ func TestRunJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.n, true); err != nil {
+			if err := run(&buf, tt.n, true, false); err != nil {
 				t.Fatalf("run(%d, json) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -120,6 +122,82 @@ func TestRunJSON(t *testing.T) {
 	}
 }
 
+// prettyLine returns the expected -pretty text line for index i with
+// value v: the index right-aligned to the width of the largest index
+// (n) and the value right-aligned to the width of the largest value
+// (Fib(n)), separated by ": ". Expected lines are computed from this
+// width rule; F-values are hardcoded only for small n.
+func prettyLine(n, i int, v string) string {
+	return fmt.Sprintf("%*d: %*s", len(strconv.Itoa(n)), i, len(Fib(n).String()), v)
+}
+
+func TestRunPretty(t *testing.T) {
+	// F(1)..F(10); hardcoding F-values is allowed only for small n.
+	smallFibs := []string{"1", "1", "2", "3", "5", "8", "13", "21", "34", "55"}
+	for _, tt := range []struct {
+		name string
+		n    int
+	}{
+		{"pretty n=5 aligns columns by the 5th line", 5},
+		{"pretty n=10 aligns columns by the 10th line", 10},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, tt.n, false, true); err != nil {
+				t.Fatalf("run(%d, pretty) returned error: %v", tt.n, err)
+			}
+			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+			if len(lines) != tt.n {
+				t.Fatalf("run(%d, pretty) printed %d lines, want %d", tt.n, len(lines), tt.n)
+			}
+			for i, line := range lines {
+				if want := prettyLine(tt.n, i+1, smallFibs[i]); line != want {
+					t.Errorf("line %d = %q, want %q", i+1, line, want)
+				}
+			}
+		})
+	}
+
+	// The default path in pretty mode still prints the first 100
+	// numbers. The exact last line follows from the width rule alone:
+	// index right-aligned to len("100"), value to len(Fib(100)).
+	t.Run("pretty default prints 100 aligned numbers", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := run(&buf, defaultCount, false, true); err != nil {
+			t.Fatalf("run(default, pretty) returned error: %v", err)
+		}
+		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+		if len(lines) != defaultCount {
+			t.Fatalf("run(default, pretty) printed %d lines, want %d", len(lines), defaultCount)
+		}
+		want := prettyLine(defaultCount, defaultCount, Fib(defaultCount).String())
+		if got := lines[len(lines)-1]; got != want {
+			t.Errorf("last line = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestRunPrettyJSON(t *testing.T) {
+	// -pretty only affects text mode: with -json the output must be
+	// identical, line for line.
+	var jsonOnly, prettyJSON bytes.Buffer
+	if err := run(&jsonOnly, 3, true, false); err != nil {
+		t.Fatalf("run(3, json) returned error: %v", err)
+	}
+	if err := run(&prettyJSON, 3, true, true); err != nil {
+		t.Fatalf("run(3, json, pretty) returned error: %v", err)
+	}
+	if prettyJSON.String() != jsonOnly.String() {
+		t.Errorf("-pretty -json output = %q, want identical to -json: %q", prettyJSON.String(), jsonOnly.String())
+	}
+	lines := strings.Split(strings.TrimSuffix(prettyJSON.String(), "\n"), "\n")
+	for i, line := range lines {
+		if want := wantJSONLine(i + 1); line != want {
+			t.Errorf("line %d = %q, want exactly %q", i+1, line, want)
+		}
+	}
+}
+
 func TestRunRejectsInvalidCount(t *testing.T) {
 	for _, mode := range []struct {
 		name   string
@@ -127,7 +205,7 @@ func TestRunRejectsInvalidCount(t *testing.T) {
 	}{{"text", false}, {"json", true}} {
 		for _, n := range []int{0, -5} {
 			var buf bytes.Buffer
-			err := run(&buf, n, mode.asJSON)
+			err := run(&buf, n, mode.asJSON, false)
 			if err == nil {
 				t.Fatalf("run(%d, %s) succeeded, want error", n, mode.name)
 			}
