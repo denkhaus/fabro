@@ -9,7 +9,7 @@ for g in $graphs {
     let r = (fabro validate $g | complete)
     if $r.exit_code != 0 { print $r.stdout; print $r.stderr; exit 1 }
 }
-print $"($graphs | length) workflow(s) validated"
+print $"validated ($graphs | length) workflows"
 
 print "== nu-check (all workflow scripts) =="
 let scripts = (glob .fabro/workflows/*/scripts/*.nu)
@@ -21,7 +21,7 @@ for s in $scripts {
         exit 1
     }
 }
-print $"($scripts | length) script(s) syntax-clean"
+print $"syntax-clean ($scripts | length) scripts"
 
 print "== reviewer-agent (min_severity=warn) =="
 let review = (uv run --python 3.12 --no-project python -c "
