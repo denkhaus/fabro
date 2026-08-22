@@ -47,3 +47,15 @@ push = true
 
 [run.meta_branch]
 push = true
+
+# Autonomous merge-back for platform runs (same as product world): run
+# -> PR against the base branch -> auto-merge on green checks.
+[run.pull_request]
+enabled = true
+draft = false
+auto_merge = true
+merge_strategy = "squash"
+
+[run.integrations.github.permissions]
+contents = "write"
+pull_requests = "write"
