@@ -18,6 +18,7 @@ use fabro_types::settings::server::{GithubIntegrationStrategy, LogDestination, W
 use fabro_types::settings::{
     GithubIntegrationSettings, ObjectStoreSettings, ServerListenSettings, ServerNamespace,
 };
+use fabro_util::error as error_util;
 use fabro_util::terminal::Styles;
 use object_store::aws::{AmazonS3Builder, AmazonS3ConfigKey};
 use object_store::client::{HttpClient, HttpConnector};
@@ -40,7 +41,7 @@ use crate::server::{
 };
 use crate::server_secrets::{ServerSecrets, process_env_snapshot};
 use crate::startup::{migrate_startup_vault, resolve_startup, validate_startup_configuration};
-use crate::{migrations, static_files};
+use crate::{blob_activation, migrations, static_files};
 
 pub const DEFAULT_TCP_PORT: u16 = 32276;
 type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -773,12 +774,23 @@ where
     } else {
         None
     };
-    let store = Arc::new(fabro_store::Database::new(
+    let activated = blob_activation::activate_blob_storage(
+        &database,
+        &sqlite_path,
         object_store,
         slatedb_prefix,
         flush_interval,
         cache_path,
-    ));
+    )
+    .await
+    .map_err(|err| {
+        error!(
+            error = %error_util::collect_chain(&err).join(": "),
+            "SQLite blob storage activation failed"
+        );
+        anyhow::Error::new(err).context("activating SQLite blob storage")
+    })?;
+    let store = activated.into_store();
     let auth_code_store = store.auth_codes().await?;
     // Refresh tokens now live in SQLite. Nothing reads the old records and no
     // reaper collects them any more, so clear them out once rather than

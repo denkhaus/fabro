@@ -119,6 +119,7 @@ impl<R: Record> Repository<R> {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) async fn exists(&self, id: &R::Id) -> Result<bool> {
         Ok(self.db.get(key_for_id::<R>(id)?).await?.is_some())
     }

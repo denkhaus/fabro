@@ -771,6 +771,7 @@ mod tests {
             "",
             Duration::from_millis(1),
             None,
+            fabro_store::test_support::test_blob_store(),
         ));
         let run_store = store.create_run(&run_id).await.unwrap();
         append_event(&run_store, &run_id, &Event::RunCreated {

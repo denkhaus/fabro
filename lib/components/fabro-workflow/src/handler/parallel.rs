@@ -974,6 +974,7 @@ mod tests {
             "",
             Duration::from_millis(1),
             None,
+            fabro_store::test_support::test_blob_store(),
         ))
     }
 

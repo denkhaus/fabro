@@ -11,7 +11,7 @@ use fabro_interview::AutoApproveInterviewer;
 use fabro_model::Catalog;
 #[cfg(feature = "test-support")]
 use fabro_model::ProviderId;
-use fabro_store::{ArtifactStore, Database, RunProjection};
+use fabro_store::{ArtifactStore, RunProjection, test_support as store_test_support};
 use object_store::local::LocalFileSystem;
 
 use crate::artifact_upload::ArtifactSink;
@@ -175,15 +175,18 @@ async fn initialized(
     let store_dir = test_store_dir(&run_options.run_dir);
     let _ = std::fs::remove_dir_all(&store_dir);
     std::fs::create_dir_all(&store_dir).expect("failed to create local test run store dir");
-    let store = Arc::new(Database::new(
-        Arc::new(
-            LocalFileSystem::new_with_prefix(&store_dir)
-                .expect("failed to create local test run store"),
-        ),
-        "",
-        Duration::from_millis(1),
-        None,
-    ));
+    let store = Arc::new(
+        store_test_support::test_database(
+            Arc::new(
+                LocalFileSystem::new_with_prefix(&store_dir)
+                    .expect("failed to create local test run store"),
+            ),
+            "",
+            Duration::from_millis(1),
+            None,
+        )
+        .expect("failed to create test database"),
+    );
     let inner_store = store
         .create_run(&run_options.run_id)
         .await

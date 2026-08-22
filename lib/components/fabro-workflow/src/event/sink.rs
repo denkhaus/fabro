@@ -298,6 +298,7 @@ mod tests {
             "",
             std::time::Duration::from_millis(1),
             None,
+            fabro_store::test_support::test_blob_store(),
         );
         let run_store = store.create_run(&fixtures::RUN_7).await.unwrap();
         append_event(&run_store, &fixtures::RUN_7, &Event::RunCreated {

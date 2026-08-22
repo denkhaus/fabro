@@ -845,7 +845,13 @@ mod tests {
 
     async fn make_run_store(label: &str) -> fabro_store::RunDatabase {
         let object_store = Arc::new(InMemory::new());
-        let store = Database::new(object_store, "runs/", Duration::from_millis(1), None);
+        let store = Database::new(
+            object_store,
+            "runs/",
+            Duration::from_millis(1),
+            None,
+            fabro_store::test_support::test_blob_store(),
+        );
         store.create_run(&test_run_id(label)).await.unwrap()
     }
 

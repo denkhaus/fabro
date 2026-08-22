@@ -200,6 +200,7 @@ async fn test_run_store(run_id: &RunId) -> fabro_store::RunDatabase {
         "",
         Duration::from_millis(1),
         None,
+        fabro_store::test_support::test_blob_store(),
     ));
     store.create_run(run_id).await.unwrap()
 }

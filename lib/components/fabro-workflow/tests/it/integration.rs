@@ -123,6 +123,7 @@ fn load_run_checkpoint(run_dir: &Path) -> Result<Checkpoint, Box<dyn std::error:
         "",
         Duration::from_millis(1),
         None,
+        fabro_store::test_support::test_blob_store(),
     ));
     let state = if tokio::runtime::Handle::try_current().is_ok() {
         std::thread::spawn(
@@ -253,6 +254,7 @@ fn resolve_checkpoint_text(
                 "",
                 Duration::from_millis(1),
                 None,
+                fabro_store::test_support::test_blob_store(),
             ));
             let run_id = if uses_shared_store {
                 run_dir
@@ -7826,6 +7828,7 @@ async fn workflow_run_with_vault_only_openai_codex_builds_pr_body() {
         "",
         Duration::from_millis(1),
         None,
+        fabro_store::test_support::test_blob_store(),
     ));
     let run_store = store.open_run_reader(&run_options.run_id).await.unwrap();
     let run_store_handle: fabro_workflow::runtime_store::RunStoreHandle = run_store.into();

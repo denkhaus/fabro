@@ -91,15 +91,16 @@ mod tests {
     use tokio::task::JoinSet;
 
     use super::{AuthCode, AuthCodeStore};
-    use crate::Database;
+    use crate::test_support;
 
     async fn store() -> Arc<AuthCodeStore> {
-        let db = Database::new(
+        let db = test_support::test_database(
             Arc::new(InMemory::new()),
             "",
             Duration::from_millis(1),
             None,
-        );
+        )
+        .unwrap();
         db.auth_codes().await.unwrap()
     }
 

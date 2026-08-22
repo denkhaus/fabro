@@ -717,6 +717,7 @@ mod tests {
             "",
             Duration::from_millis(1),
             None,
+            fabro_store::test_support::test_blob_store(),
         ))
     }
 
@@ -2350,6 +2351,7 @@ reasoning = false
             "",
             Duration::from_millis(1),
             None,
+            fabro_store::test_support::test_blob_store(),
         ));
         let automation = fabro_types::AutomationRef {
             id:         "nightly".to_string(),
@@ -2410,6 +2412,7 @@ reasoning = false
             "",
             Duration::from_millis(1),
             None,
+            fabro_store::test_support::test_blob_store(),
         ));
         let created = create(
             store.as_ref(),

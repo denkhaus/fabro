@@ -890,7 +890,7 @@ mod tests {
     use object_store::memory::InMemory;
     use serde_json::json;
 
-    use crate::{Database, Error, EventPayload, keys};
+    use crate::{Error, EventPayload, keys, test_support as store_test_support};
 
     fn stage_prompt_payload(run_id: &RunId, idx: u32, node_id: Option<&str>) -> EventPayload {
         stage_prompt_payload_for_stage(run_id, idx, node_id, None)
@@ -965,7 +965,9 @@ mod tests {
 
     async fn fresh_run() -> super::RunDatabase {
         let object_store = Arc::new(InMemory::new());
-        let store = Database::new(object_store, "", Duration::from_millis(1), None);
+        let store =
+            store_test_support::test_database(object_store, "", Duration::from_millis(1), None)
+                .unwrap();
         let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
         let run = store.create_run(&run_id).await.unwrap();
         run.append_event(&run_created_payload(&run_id))
@@ -1175,7 +1177,9 @@ mod tests {
     #[tokio::test]
     async fn recover_latest_seq_returns_zero_for_empty_history() {
         let object_store = Arc::new(InMemory::new());
-        let store = Database::new(object_store, "", Duration::from_millis(1), None);
+        let store =
+            store_test_support::test_database(object_store, "", Duration::from_millis(1), None)
+                .unwrap();
         let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
         let run = store.create_run(&run_id).await.unwrap();
 
@@ -1226,7 +1230,13 @@ mod tests {
     #[tokio::test]
     async fn list_events_before_with_limit_serves_newest_page_from_cold_cache() {
         let object_store = Arc::new(InMemory::new());
-        let store = Database::new(object_store.clone(), "", Duration::from_millis(1), None);
+        let store = store_test_support::test_database(
+            object_store.clone(),
+            "",
+            Duration::from_millis(1),
+            None,
+        )
+        .unwrap();
         let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
         let run = store.create_run(&run_id).await.unwrap();
         run.append_event(&run_created_payload(&run_id))
@@ -1238,7 +1248,9 @@ mod tests {
                 .unwrap();
         }
 
-        let reopened = Database::new(object_store, "", Duration::from_millis(1), None);
+        let reopened =
+            store_test_support::test_database(object_store, "", Duration::from_millis(1), None)
+                .unwrap();
         let reader = reopened.open_run_reader(&run_id).await.unwrap();
 
         let events = reader.list_events_before_with_limit(None, 2).await.unwrap();

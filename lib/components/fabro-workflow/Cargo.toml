@@ -75,6 +75,7 @@ tempfile = "3"
 toml.workspace = true
 fabro-vault = { path = "../../foundation/fabro-vault" }
 [dev-dependencies]
+fabro-store = { path = "../fabro-store", features = ["test-support"] }
 fabro-auth = { path = "../../foundation/fabro-auth", features = ["test-support"] }
 fabro-github = { path = "../fabro-github", features = ["test-support"] }
 base64.workspace = true

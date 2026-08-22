@@ -1,10 +1,13 @@
+#[cfg(test)]
 use std::sync::Arc;
 
 use bytes::Bytes;
 use fabro_types::BlobHash;
 use sqlx::SqlitePool;
 
-use crate::record::{RawBytesCodec, Record, Repository};
+#[cfg(test)]
+use crate::record::Repository;
+use crate::record::{RawBytesCodec, Record};
 use crate::{Error, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,15 +36,15 @@ impl Record for Blob {
     }
 }
 
-/// Which storage engine holds the blobs.
+/// Temporary backend split for compatibility tests.
 ///
-/// This enum is a transition vehicle, not a permanent abstraction: `Slate`
-/// preserves current production behavior while the SQLite backend rolls out.
-/// Once runtime blob storage switches to SQLite and legacy blobs are
-/// imported, delete the `Slate` arm (and this enum) and inline the SQLite
-/// implementation into [`BlobStore`]. The SQLite arm's semantics — verified
-/// reads and loud failure on hash conflicts — are the intended end state.
+/// Production compiles only the SQLite arm. The Slate arm remains test-only
+/// while the startup import bridge is supported, so tests can exercise the
+/// old-source boundary directly. Delete the Slate arm (and this enum) with the
+/// separately authorized compatibility cleanup, then inline SQLite into
+/// [`BlobStore`].
 enum BlobBackend {
+    #[cfg(test)]
     Slate(Repository<Blob>),
     Sqlite(SqlitePool),
 }
@@ -53,6 +56,7 @@ pub struct BlobStore {
 impl std::fmt::Debug for BlobStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let backend = match &self.backend {
+            #[cfg(test)]
             BlobBackend::Slate(_) => "slate",
             BlobBackend::Sqlite(_) => "sqlite",
         };
@@ -71,14 +75,23 @@ impl BlobStore {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn from_slate(db: Arc<slatedb::Db>) -> Self {
         Self {
             backend: BlobBackend::Slate(Repository::new(db)),
         }
     }
 
+    #[cfg_attr(
+        not(test),
+        expect(
+            clippy::unnecessary_wraps,
+            reason = "the temporary Slate test backend has no SQLite pool"
+        )
+    )]
     pub(crate) fn sqlite_pool_for_legacy_import(&self) -> Option<&SqlitePool> {
         match &self.backend {
+            #[cfg(test)]
             BlobBackend::Slate(_) => None,
             BlobBackend::Sqlite(pool) => Some(pool),
         }
@@ -86,6 +99,7 @@ impl BlobStore {
 
     pub async fn write(&self, bytes: &[u8]) -> Result<BlobHash> {
         match &self.backend {
+            #[cfg(test)]
             BlobBackend::Slate(repo) => {
                 let blob = Blob(Bytes::copy_from_slice(bytes));
                 let id = blob.id();
@@ -122,6 +136,7 @@ impl BlobStore {
 
     pub async fn read(&self, blob_hash: &BlobHash) -> Result<Option<Bytes>> {
         match &self.backend {
+            #[cfg(test)]
             BlobBackend::Slate(repo) => Ok(repo.get(blob_hash).await?.map(|blob| blob.0)),
             BlobBackend::Sqlite(pool) => {
                 let stored: Option<Vec<u8>> =
@@ -144,6 +159,7 @@ impl BlobStore {
 
     pub async fn exists(&self, blob_hash: &BlobHash) -> Result<bool> {
         match &self.backend {
+            #[cfg(test)]
             BlobBackend::Slate(repo) => repo.exists(blob_hash).await,
             BlobBackend::Sqlite(pool) => {
                 let exists: bool =
@@ -160,26 +176,24 @@ impl BlobStore {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::time::Duration;
 
     use bytes::Bytes;
     use fabro_types::BlobHash;
     use object_store::memory::InMemory;
 
     use super::BlobStore;
+    use crate::Error;
     use crate::keys::SlateKey;
-    use crate::{Database, Error};
 
     type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
     async fn slate_store() -> Arc<BlobStore> {
-        let db = Database::new(
-            Arc::new(InMemory::new()),
-            "",
-            Duration::from_millis(1),
-            None,
+        let raw_db = Arc::new(
+            slatedb::Db::open("blob-store-tests", Arc::new(InMemory::new()))
+                .await
+                .unwrap(),
         );
-        db.blobs().await.unwrap()
+        Arc::new(BlobStore::from_slate(raw_db))
     }
 
     async fn raw_slate_store(name: &str) -> (Arc<slatedb::Db>, BlobStore) {

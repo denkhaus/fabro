@@ -22,7 +22,7 @@ use fabro_model::catalog::{LlmCatalogSettings, ProviderCatalogSettings};
 use fabro_model::{Catalog, ProviderId};
 use fabro_sandbox::SandboxProviderRegistry;
 use fabro_static::EnvVars;
-use fabro_store::{ArtifactStore, Database};
+use fabro_store::{ArtifactStore, Database, test_support as store_test_support};
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::EnvironmentProvider;
 use fabro_types::{AuthMethod, IdpIdentity, ServerSettings};
@@ -544,6 +544,7 @@ pub fn test_store_bundle() -> (Arc<Database>, ArtifactStore) {
         "",
         Duration::from_millis(1),
         None,
+        store_test_support::test_blob_store(),
     ));
     let artifact_store = ArtifactStore::new(object_store, "artifacts");
     (store, artifact_store)

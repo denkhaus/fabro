@@ -43,7 +43,7 @@ pub struct Database {
     cache_path: Option<PathBuf>,
     db: Arc<OnceCell<slatedb::Db>>,
     active_runs: Arc<Mutex<HashMap<RunId, Arc<RunDatabaseInner>>>>,
-    blobs: Arc<OnceCell<Arc<BlobStore>>>,
+    blobs: Arc<BlobStore>,
     catalog_index: Arc<OnceCell<Arc<RunCatalogIndex>>>,
     auth_codes: Arc<OnceCell<Arc<AuthCodeStore>>>,
     projection_cache: Arc<RunProjectionCache>,
@@ -67,6 +67,7 @@ impl Database {
         base_prefix: impl Into<String>,
         flush_interval: Duration,
         cache_path: Option<PathBuf>,
+        blobs: Arc<BlobStore>,
     ) -> Self {
         Self {
             object_store,
@@ -75,7 +76,7 @@ impl Database {
             cache_path,
             db: Arc::new(OnceCell::new()),
             active_runs: Arc::new(Mutex::new(HashMap::new())),
-            blobs: Arc::new(OnceCell::new()),
+            blobs,
             catalog_index: Arc::new(OnceCell::new()),
             auth_codes: Arc::new(OnceCell::new()),
             projection_cache: Arc::new(RunProjectionCache::default()),
@@ -143,7 +144,7 @@ impl Database {
             *run_id,
             self.open_db().await?,
             read_only,
-            self.blobs().await?,
+            self.blobs(),
             Arc::clone(&self.projection_cache),
             Arc::clone(&self.run_summary_store),
         )
@@ -438,15 +439,9 @@ impl Database {
         Ok(Arc::clone(store))
     }
 
-    pub async fn blobs(&self) -> Result<Arc<BlobStore>> {
-        let store = self
-            .blobs
-            .get_or_try_init(|| async {
-                let db = Arc::new(self.open_db().await?);
-                Ok::<_, Error>(Arc::new(BlobStore::from_slate(db)))
-            })
-            .await?;
-        Ok(Arc::clone(store))
+    #[must_use]
+    pub fn blobs(&self) -> Arc<BlobStore> {
+        Arc::clone(&self.blobs)
     }
 
     /// Delete every record under the retired `auth/refresh` prefix.
@@ -569,12 +564,13 @@ mod tests {
 
     fn make_store() -> (Arc<dyn ObjectStore>, Database) {
         let object_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
-        let store = Database::new(
+        let store = store_test_support::test_database(
             object_store.clone(),
             "runs/",
             Duration::from_millis(1),
             None,
-        );
+        )
+        .unwrap();
         (object_store, store)
     }
 
@@ -1050,7 +1046,13 @@ mod tests {
             .unwrap();
         assert_ne!(stale.title, "Committed title");
 
-        let reopened = Database::new(object_store, "runs/", Duration::from_millis(1), None);
+        let reopened = store_test_support::test_database(
+            object_store,
+            "runs/",
+            Duration::from_millis(1),
+            None,
+        )
+        .unwrap();
         reopened.attach_run_summary_store(Arc::clone(&repaired_summaries));
         reopened.warm_projection_cache().await.unwrap();
         let repaired = repaired_summaries
@@ -1508,7 +1510,9 @@ mod tests {
         let run = store.create_run(&test_run_id("run-1")).await.unwrap();
         append_completed(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
 
-        let reopened = Database::new(object_store, "runs", Duration::from_millis(1), None);
+        let reopened =
+            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None)
+                .unwrap();
         let summary = reopened
             .list_runs(&ListRunsQuery::default(), Utc::now())
             .await
@@ -1528,7 +1532,9 @@ mod tests {
         append_completed(&run_1, "run-1", dt("2026-03-27T12:00:00Z")).await;
         append_running(&run_2, "run-2", dt("2026-03-27T12:00:10Z")).await;
 
-        let reopened = Database::new(object_store, "runs", Duration::from_millis(1), None);
+        let reopened =
+            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None)
+                .unwrap();
         reopened.warm_projection_cache().await.unwrap();
 
         let entries = reopened
@@ -1592,7 +1598,9 @@ mod tests {
             .await
             .unwrap();
 
-        let reopened = Database::new(object_store, "runs", Duration::from_millis(1), None);
+        let reopened =
+            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None)
+                .unwrap();
         reopened.warm_projection_cache().await.unwrap();
 
         let entries = reopened
@@ -1654,7 +1662,9 @@ mod tests {
             .await
             .unwrap();
 
-        let reopened = Database::new(object_store, "runs", Duration::from_millis(1), None);
+        let reopened =
+            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None)
+                .unwrap();
         let unreadable = reopened.list_unreadable_runs().await.unwrap();
 
         assert_eq!(unreadable.len(), 1);
@@ -1850,7 +1860,9 @@ mod tests {
         let run = store.create_run(&test_run_id("run-1")).await.unwrap();
         append_completed(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
 
-        let reopened = Database::new(object_store, "runs", Duration::from_millis(1), None);
+        let reopened =
+            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None)
+                .unwrap();
         let (_directory, summaries) = make_summary_store().await;
         reopened.attach_run_summary_store(Arc::clone(&summaries));
         reopened.warm_projection_cache().await.unwrap();
@@ -1872,7 +1884,9 @@ mod tests {
         let run = store.create_run(&run_id).await.unwrap();
         append_completed(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
 
-        let reopened = Database::new(object_store, "runs", Duration::from_millis(1), None);
+        let reopened =
+            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None)
+                .unwrap();
         reopened.warm_projection_cache().await.unwrap();
 
         // If opening or projecting the run starts at the beginning, this
@@ -1941,12 +1955,13 @@ mod tests {
             .await
             .unwrap();
 
-        let reopened = Database::new(
+        let reopened = store_test_support::test_database(
             Arc::clone(&object_store),
             "runs/",
             Duration::from_millis(1),
             None,
-        );
+        )
+        .unwrap();
         let fresh_writer = reopened.open_run(&run_id).await.unwrap();
         fresh_writer
             .append_event(&event_payload(

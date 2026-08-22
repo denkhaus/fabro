@@ -339,6 +339,21 @@ fn select_storage_disk<'a>(
         .max_by_key(|disk| disk.mount_point.components().count())
 }
 
+pub(crate) fn available_space_for_path(storage_path: &Path) -> Option<u64> {
+    let disks = Disks::new_with_refreshed_list();
+    let candidates = disks
+        .list()
+        .iter()
+        .map(|disk| DiskCandidate {
+            mount_point:     disk.mount_point().to_path_buf(),
+            filesystem:      disk.file_system().to_string_lossy().to_string(),
+            total_bytes:     disk.total_space(),
+            available_bytes: disk.available_space(),
+        })
+        .collect::<Vec<_>>();
+    select_storage_disk(storage_path, &candidates).map(|disk| disk.available_bytes)
+}
+
 fn percent(used: u64, total: u64) -> Option<f64> {
     if total == 0 {
         return None;

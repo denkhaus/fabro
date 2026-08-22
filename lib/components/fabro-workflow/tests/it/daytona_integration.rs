@@ -74,6 +74,7 @@ fn load_run_checkpoint(run_dir: &Path) -> Result<Checkpoint, Box<dyn std::error:
         "",
         std::time::Duration::from_millis(1),
         None,
+        fabro_store::test_support::test_blob_store(),
     ));
     let state = if tokio::runtime::Handle::try_current().is_ok() {
         std::thread::spawn(
@@ -173,7 +174,13 @@ async fn resolve_checkpoint_text(
     }
 
     let object_store = Arc::new(LocalFileSystem::new_with_prefix(test_store_dir(run_dir))?);
-    let store = Database::new(object_store, "", std::time::Duration::from_millis(1), None);
+    let store = Database::new(
+        object_store,
+        "",
+        std::time::Duration::from_millis(1),
+        None,
+        fabro_store::test_support::test_blob_store(),
+    );
     let run = store.open_run_reader(run_id).await?;
     let run_store = RunStoreHandle::from(run);
     Ok(artifact::resolve_text_or_blob_ref_str(current, &run_store).await?)
