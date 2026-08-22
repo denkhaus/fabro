@@ -1,0 +1,13 @@
+Re-claiming `fabro-8d26` (review cycle 1, no deadlock): the verdict was `changes_requested` solely because the evidence capture truncated the diff, so this pass is verification-only. I also appended the evidence-truncation painpoint to `.fabro/run-painpoints.jsonl`.
+
+Claimed a seed:
+{
+  "outcome": "succeeded",
+  "preferred_next_label": "Seed claimed",
+  "context_updates": {
+    "current_seed_id": "fabro-8d26",
+    "current_seed_title": "gofib: add -version flag",
+    "current_seed_brief": "RE-PLAN (verification-only). The previous review verdict was changes_requested ONLY because the evidence capture truncated mid-diff; the reviewer explicitly stated no code change is required if the implementation matches. The acceptance criteria appear already satisfied in the worktree. Verify each one against `/workspace/fabro/main.go` and `/workspace/fabro/main_test.go`; make NO changes if all hold — only fix minimally if a criterion actually fails. Acceptance criteria: - package-level `const Version = \"1.3.0\"` in `main.go`; - bool flag `version` registered via a flag.FlagSet in the per-call FlagSet inside `runApp`; - `-version` prints exactly one line `gofib 1.3.0` to stdout and exits 0, before any output mode runs; - precedence: `gofib -version -pretty` and `gofib -version -json -n 5` also print only the version line; - `main_test.go` has a table-driven TestRunAppVersion with cases -version alone, -version -json -n 5, -version -pretty, asserting the single version line and exit 0, plus TestRunAppDispatch passthrough guards; - runApp exit-code mapping preserved: -h/help exits 0, flag parse error exits 2, run error exits 1 (this bundled main() refactor is a behavior risk — keep it intact); - no external dependencies; `just qualitygate` green; `go run . -version` prints `gofib 1.3.0`. Review feedback to address: none of the source was visible in the last evidence capture — the fix is a complete re-capture by the evidence stage, not a code change.",
+    "workflow_painpoints": ["develop/evidence: at summary:high the capture was truncated mid-diff (119 lines omitted) and the omitted span contained the ENTIRE main.go diff plus the first half of main_test.go — the seed-work source, the most critical review artifact. Fix: guarantee seed-work diffs are never elided (raise the line budget for source diffs, or elide loop-churn/test tails before seed-work source); run 01M0NTS5XCXJ4V88M9MQWKD83G. (Planner re-appended to .fabro/run-painpoints.jsonl because the file was empty.)"]
+  }
+}
