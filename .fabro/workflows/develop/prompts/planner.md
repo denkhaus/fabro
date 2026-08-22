@@ -28,7 +28,7 @@ If `sd ready` returns nothing and no seed is in progress for this effort, the tr
 
 Do not implement anything yourself. Do not review. Planning and tracker writes only.
 
-When you write text that flows into context (briefs, feedback), wrap absolute paths in backticks (e.g. `/tmp/x`): bare paths followed by a space crash later agent stages, which parse them as skill references.
+When you write text that flows into context (briefs, feedback), wrap absolute paths in backticks. Never write a bare slash-word surrounded by spaces — later agent stages parse such tokens as skill references and crash on them.
 
 ## Outcome contract
 

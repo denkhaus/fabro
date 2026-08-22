@@ -34,7 +34,7 @@ If the seed turns out to be unimplementable as specified, route Blocked and desc
 
 ## Output hygiene — hard rule
 
-- Wrap every absolute path in backticks (e.g. `/tmp/build`, `$HOME/.cache`) in your summary, feedback, and any text you emit. A bare path like ` /tmp ` followed by a space crashes downstream agent stages: they parse such tokens as skill references. Backticks prevent that.
+- Wrap every absolute path in backticks (e.g. a slash-path like the OS temp dir, `$HOME/.cache`) in your summary, feedback, and any text you emit. Never write a bare slash-word surrounded by spaces — agent stages parse such tokens as skill references and crash on them. Backticks prevent that.
 
 ## Outcome contract
 
