@@ -569,8 +569,7 @@ mod tests {
             "runs/",
             Duration::from_millis(1),
             None,
-        )
-        .unwrap();
+        );
         (object_store, store)
     }
 
@@ -1051,8 +1050,7 @@ mod tests {
             "runs/",
             Duration::from_millis(1),
             None,
-        )
-        .unwrap();
+        );
         reopened.attach_run_summary_store(Arc::clone(&repaired_summaries));
         reopened.warm_projection_cache().await.unwrap();
         let repaired = repaired_summaries
@@ -1511,8 +1509,7 @@ mod tests {
         append_completed(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
 
         let reopened =
-            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None)
-                .unwrap();
+            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None);
         let summary = reopened
             .list_runs(&ListRunsQuery::default(), Utc::now())
             .await
@@ -1533,8 +1530,7 @@ mod tests {
         append_running(&run_2, "run-2", dt("2026-03-27T12:00:10Z")).await;
 
         let reopened =
-            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None)
-                .unwrap();
+            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None);
         reopened.warm_projection_cache().await.unwrap();
 
         let entries = reopened
@@ -1599,8 +1595,7 @@ mod tests {
             .unwrap();
 
         let reopened =
-            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None)
-                .unwrap();
+            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None);
         reopened.warm_projection_cache().await.unwrap();
 
         let entries = reopened
@@ -1663,8 +1658,7 @@ mod tests {
             .unwrap();
 
         let reopened =
-            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None)
-                .unwrap();
+            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None);
         let unreadable = reopened.list_unreadable_runs().await.unwrap();
 
         assert_eq!(unreadable.len(), 1);
@@ -1861,8 +1855,7 @@ mod tests {
         append_completed(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
 
         let reopened =
-            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None)
-                .unwrap();
+            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None);
         let (_directory, summaries) = make_summary_store().await;
         reopened.attach_run_summary_store(Arc::clone(&summaries));
         reopened.warm_projection_cache().await.unwrap();
@@ -1885,8 +1878,7 @@ mod tests {
         append_completed(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
 
         let reopened =
-            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None)
-                .unwrap();
+            store_test_support::test_database(object_store, "runs", Duration::from_millis(1), None);
         reopened.warm_projection_cache().await.unwrap();
 
         // If opening or projecting the run starts at the beginning, this
@@ -1960,8 +1952,7 @@ mod tests {
             "runs/",
             Duration::from_millis(1),
             None,
-        )
-        .unwrap();
+        );
         let fresh_writer = reopened.open_run(&run_id).await.unwrap();
         fresh_writer
             .append_event(&event_payload(

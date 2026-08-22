@@ -265,8 +265,7 @@ mod tests {
             "",
             Duration::from_millis(1),
             None,
-        )
-        .unwrap();
+        );
         let blobs = database.blobs();
         let versions = WorkflowVersionStore::new(Arc::clone(&blobs));
         (blobs, versions)

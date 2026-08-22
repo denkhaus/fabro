@@ -41,11 +41,9 @@ pub fn test_blob_store() -> Arc<BlobStore> {
             .idle_timeout(None)
             .after_connect(|connection, _metadata| {
                 Box::pin(async move {
-                    sqlx::query(include_str!(
-                        "../../../../foundation/fabro-db/migrations/2026081301_blobs.sql"
-                    ))
-                    .execute(&mut *connection)
-                    .await?;
+                    sqlx::query(fabro_db::BLOBS_MIGRATION_SQL)
+                        .execute(&mut *connection)
+                        .await?;
                     Ok(())
                 })
             })
@@ -56,19 +54,20 @@ pub fn test_blob_store() -> Arc<BlobStore> {
 
 /// Builds a Slate-backed run database using the process-wide test blob
 /// authority and its signed SQLite blob table.
+#[must_use]
 pub fn test_database(
     object_store: Arc<dyn ObjectStore>,
     base_prefix: impl Into<String>,
     flush_interval: Duration,
     cache_path: Option<PathBuf>,
-) -> Result<Database> {
-    Ok(Database::new(
+) -> Database {
+    Database::new(
         object_store,
         base_prefix,
         flush_interval,
         cache_path,
         test_blob_store(),
-    ))
+    )
 }
 
 /// Seeds one canonical row in the legacy SlateDB blob keyspace.

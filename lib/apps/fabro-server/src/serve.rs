@@ -18,7 +18,6 @@ use fabro_types::settings::server::{GithubIntegrationStrategy, LogDestination, W
 use fabro_types::settings::{
     GithubIntegrationSettings, ObjectStoreSettings, ServerListenSettings, ServerNamespace,
 };
-use fabro_util::error as error_util;
 use fabro_util::terminal::Styles;
 use object_store::aws::{AmazonS3Builder, AmazonS3ConfigKey};
 use object_store::client::{HttpClient, HttpConnector};
@@ -774,7 +773,7 @@ where
     } else {
         None
     };
-    let activated = blob_activation::activate_blob_storage(
+    let store = blob_activation::activate_blob_storage(
         &database,
         &sqlite_path,
         object_store,
@@ -783,14 +782,7 @@ where
         cache_path,
     )
     .await
-    .map_err(|err| {
-        error!(
-            error = %error_util::collect_chain(&err).join(": "),
-            "SQLite blob storage activation failed"
-        );
-        anyhow::Error::new(err).context("activating SQLite blob storage")
-    })?;
-    let store = activated.into_store();
+    .context("activating SQLite blob storage")?;
     let auth_code_store = store.auth_codes().await?;
     // Refresh tokens now live in SQLite. Nothing reads the old records and no
     // reaper collects them any more, so clear them out once rather than

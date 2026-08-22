@@ -646,7 +646,7 @@ mod tests {
     use fabro_core::state::ExecutionState;
     use fabro_graphviz::graph::types::{AttrValue, Edge, Graph, Node};
     use fabro_model::Catalog;
-    use fabro_store::{Database, EventEnvelope, RunDatabase, RunProjection};
+    use fabro_store::{EventEnvelope, RunDatabase, RunProjection};
     use fabro_types::run_event::{MetadataSnapshotFailureKind, MetadataSnapshotPhase};
     use fabro_types::{BlobHash, EventBody, RunEvent, WorkflowSettings, fixtures, test_support};
     use object_store::memory::InMemory;
@@ -766,12 +766,11 @@ mod tests {
     }
 
     async fn run_store(run_id: fabro_types::RunId) -> RunDatabase {
-        let store = Arc::new(Database::new(
+        let store = Arc::new(fabro_store::test_support::test_database(
             Arc::new(InMemory::new()),
             "",
             Duration::from_millis(1),
             None,
-            fabro_store::test_support::test_blob_store(),
         ));
         let run_store = store.create_run(&run_id).await.unwrap();
         append_event(&run_store, &run_id, &Event::RunCreated {

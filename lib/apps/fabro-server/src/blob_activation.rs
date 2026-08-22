@@ -6,7 +6,6 @@
 //! complete and Scott explicitly approves its removal. The date is an
 //! eligibility floor, never an automatic deletion trigger.
 
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,37 +23,6 @@ use crate::server::resource_sampler;
 const DISK_HEADROOM_BYTES: u64 = 64 * 1024 * 1024;
 const BACKUP_SUFFIX: &str = ".pre-blob-activation.bak";
 const STAGING_SUFFIX: &str = ".tmp";
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct BlobDiskPreflight {
-    backup_required:      bool,
-    legacy_bytes:         u64,
-    backup_reserve:       u64,
-    required_free_bytes:  u64,
-    available_free_bytes: u64,
-}
-
-#[derive(Debug)]
-struct BlobActivationReport {
-    preflight:    BlobDiskPreflight,
-    backup_path:  Option<PathBuf>,
-    import:       fabro_store::LegacyBlobImportReport,
-    verification: fabro_store::LegacyBlobVerificationReport,
-}
-
-#[derive(Debug)]
-pub(crate) struct ActivatedBlobStorage {
-    store:  Arc<fabro_store::Database>,
-    report: BlobActivationReport,
-}
-
-impl ActivatedBlobStorage {
-    pub(crate) fn into_store(self) -> Arc<fabro_store::Database> {
-        let Self { store, report } = self;
-        let _ = report;
-        store
-    }
-}
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum BlobActivationError {
@@ -150,14 +118,14 @@ pub(crate) async fn activate_blob_storage(
     slatedb_prefix: String,
     flush_interval: Duration,
     cache_path: Option<PathBuf>,
-) -> Result<ActivatedBlobStorage, BlobActivationError> {
+) -> Result<Arc<fabro_store::Database>, BlobActivationError> {
     let canonical_path = fs::canonicalize(sqlite_path).await.map_err(|source| {
         BlobActivationError::Canonicalize {
             path: sqlite_path.to_path_buf(),
             source,
         }
     })?;
-    let backup_path = append_to_path(&canonical_path, BACKUP_SUFFIX);
+    let backup_path = fabro_db::append_to_path(&canonical_path, BACKUP_SUFFIX);
     info!(
         database_path = %canonical_path.display(),
         backup_path = %backup_path.display(),
@@ -191,19 +159,15 @@ pub(crate) async fn activate_blob_storage(
     } else {
         0
     };
-    let preflight = compute_disk_preflight(
-        inventory.bytes,
-        backup_required,
-        backup_reserve,
-        available_free_bytes,
-    )?;
+    let required_free_bytes =
+        compute_disk_preflight(inventory.bytes, backup_reserve, available_free_bytes)?;
     debug!(
         legacy_rows = inventory.rows,
         legacy_bytes = inventory.bytes,
-        backup_required = preflight.backup_required,
-        backup_reserve = preflight.backup_reserve,
-        required_free_bytes = preflight.required_free_bytes,
-        available_free_bytes = preflight.available_free_bytes,
+        backup_required,
+        backup_reserve,
+        required_free_bytes,
+        available_free_bytes,
         "Checked SQLite blob activation disk capacity"
     );
 
@@ -227,33 +191,27 @@ pub(crate) async fn activate_blob_storage(
     validate_live_integrity(database.pool()).await?;
     final_truncate_checkpoint(database.pool()).await?;
 
-    let report = BlobActivationReport {
-        preflight,
-        backup_path: retained_backup,
-        import,
-        verification,
-    };
     info!(
         legacy_rows = inventory.rows,
-        legacy_bytes = report.preflight.legacy_bytes,
-        imported_rows = report.import.imported_rows,
-        existing_rows = report.import.existing_rows,
-        matched_rows = report.verification.matched_rows,
-        target_rows = report.verification.target_rows,
-        passive_checkpoints = report.import.passive_checkpoints,
-        backup_required = report.preflight.backup_required,
-        backup_path = ?report.backup_path,
+        legacy_bytes = inventory.bytes,
+        imported_rows = import.imported_rows,
+        existing_rows = import.existing_rows,
+        matched_rows = verification.matched_rows,
+        target_rows = verification.target_rows,
+        passive_checkpoints = import.passive_checkpoints,
+        backup_required,
+        backup_path = ?retained_backup,
         "Activated SQLite blob storage"
     );
-    Ok(ActivatedBlobStorage { store, report })
+    Ok(store)
 }
 
+/// Fail-closed disk capacity check; returns the required free bytes.
 fn compute_disk_preflight(
     legacy_bytes: u64,
-    backup_required: bool,
     backup_reserve: u64,
     available_free_bytes: u64,
-) -> Result<BlobDiskPreflight, BlobActivationError> {
+) -> Result<u64, BlobActivationError> {
     let half = legacy_bytes
         .checked_add(1)
         .ok_or(BlobActivationError::DiskRequirementOverflow)?
@@ -269,13 +227,7 @@ fn compute_disk_preflight(
             available_bytes: available_free_bytes,
         });
     }
-    Ok(BlobDiskPreflight {
-        backup_required,
-        legacy_bytes,
-        backup_reserve,
-        required_free_bytes,
-        available_free_bytes,
-    })
+    Ok(required_free_bytes)
 }
 
 async fn backup_exists(path: &Path) -> Result<bool, BlobActivationError> {
@@ -292,7 +244,7 @@ async fn backup_exists(path: &Path) -> Result<bool, BlobActivationError> {
 async fn sqlite_file_set_bytes(path: &Path) -> Result<u64, BlobActivationError> {
     let mut total = required_file_bytes(path).await?;
     for suffix in ["-wal", "-shm"] {
-        let sibling = append_to_path(path, suffix);
+        let sibling = fabro_db::append_to_path(path, suffix);
         let bytes = optional_file_bytes(&sibling).await?;
         total = total
             .checked_add(bytes)
@@ -326,8 +278,13 @@ async fn create_backup(
     pool: &sqlx::SqlitePool,
     backup_path: &Path,
 ) -> Result<(), BlobActivationError> {
-    let staging_path = append_to_path(backup_path, STAGING_SUFFIX);
-    remove_file_if_exists(&staging_path).await?;
+    let staging_path = fabro_db::append_to_path(backup_path, STAGING_SUFFIX);
+    fabro_db::remove_file_if_exists(&staging_path)
+        .await
+        .map_err(|source| BlobActivationError::RemoveStaging {
+            path: staging_path.clone(),
+            source,
+        })?;
     let staging_target =
         staging_path
             .to_str()
@@ -342,18 +299,21 @@ async fn create_backup(
             path: staging_path.clone(),
             source,
         })?;
-    set_private_permissions(&staging_path).await?;
+    fabro_db::set_private_permissions(&staging_path)
+        .await
+        .map_err(|source| BlobActivationError::SetBackupPermissions {
+            path: staging_path.clone(),
+            source,
+        })?;
     validate_backup(&staging_path).await?;
 
     let publish_staging = staging_path.clone();
     let publish_backup = backup_path.to_path_buf();
-    let outcome = spawn_blocking(move || {
+    let already_exists = spawn_blocking(move || {
         let staging = tempfile::TempPath::from_path(publish_staging);
         match staging.persist_noclobber(&publish_backup) {
-            Ok(()) => Ok(PublishOutcome::Published),
-            Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
-                Ok(PublishOutcome::AlreadyExists)
-            }
+            Ok(()) => Ok(false),
+            Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => Ok(true),
             Err(error) => Err(error.error),
         }
     })
@@ -364,30 +324,16 @@ async fn create_backup(
         source,
     })?;
 
-    if outcome == PublishOutcome::AlreadyExists {
+    // The staging copy was validated just before the atomic rename, so only a
+    // concurrently published file still needs its own validation.
+    if already_exists {
         debug!(
             backup_path = %backup_path.display(),
             "Reusing concurrently published SQLite blob activation backup"
         );
+        validate_backup(backup_path).await?;
     }
-    validate_backup(backup_path).await
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum PublishOutcome {
-    Published,
-    AlreadyExists,
-}
-
-async fn remove_file_if_exists(path: &Path) -> Result<(), BlobActivationError> {
-    match fs::remove_file(path).await {
-        Ok(()) => Ok(()),
-        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(source) => Err(BlobActivationError::RemoveStaging {
-            path: path.to_path_buf(),
-            source,
-        }),
-    }
+    Ok(())
 }
 
 async fn validate_backup(path: &Path) -> Result<(), BlobActivationError> {
@@ -416,27 +362,29 @@ async fn validate_backup(path: &Path) -> Result<(), BlobActivationError> {
             path: path.to_path_buf(),
             source,
         })?;
-    let mut rows = sqlx::query_scalar::<_, String>("PRAGMA integrity_check").fetch(&mut connection);
-    let first = rows
-        .try_next()
+    let ok = integrity_check_is_ok(&mut connection)
         .await
         .map_err(|source| BlobActivationError::BackupIntegrity {
             path: path.to_path_buf(),
             source,
         })?;
-    let second = rows
-        .try_next()
-        .await
-        .map_err(|source| BlobActivationError::BackupIntegrity {
-            path: path.to_path_buf(),
-            source,
-        })?;
-    if first.as_deref() != Some("ok") || second.is_some() {
+    if !ok {
         return Err(BlobActivationError::BackupIntegrityFailed {
             path: path.to_path_buf(),
         });
     }
     Ok(())
+}
+
+/// Returns whether `PRAGMA integrity_check` reports exactly one `ok` row.
+async fn integrity_check_is_ok<'a, E>(executor: E) -> Result<bool, sqlx::Error>
+where
+    E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
+{
+    let mut rows = sqlx::query_scalar::<_, String>("PRAGMA integrity_check").fetch(executor);
+    let first = rows.try_next().await?;
+    let second = rows.try_next().await?;
+    Ok(first.as_deref() == Some("ok") && second.is_none())
 }
 
 #[cfg(unix)]
@@ -462,34 +410,11 @@ fn validate_private_permissions(
     Ok(())
 }
 
-#[cfg(unix)]
-async fn set_private_permissions(path: &Path) -> Result<(), BlobActivationError> {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-        .await
-        .map_err(|source| BlobActivationError::SetBackupPermissions {
-            path: path.to_path_buf(),
-            source,
-        })
-}
-
-#[cfg(not(unix))]
-async fn set_private_permissions(_path: &Path) -> Result<(), BlobActivationError> {
-    Ok(())
-}
-
 async fn validate_live_integrity(pool: &sqlx::SqlitePool) -> Result<(), BlobActivationError> {
-    let mut rows = sqlx::query_scalar::<_, String>("PRAGMA integrity_check").fetch(pool);
-    let first = rows
-        .try_next()
+    let ok = integrity_check_is_ok(pool)
         .await
         .map_err(BlobActivationError::LiveIntegrity)?;
-    let second = rows
-        .try_next()
-        .await
-        .map_err(BlobActivationError::LiveIntegrity)?;
-    if first.as_deref() != Some("ok") || second.is_some() {
+    if !ok {
         return Err(BlobActivationError::LiveIntegrityFailed);
     }
     Ok(())
@@ -506,25 +431,19 @@ async fn final_truncate_checkpoint(pool: &sqlx::SqlitePool) -> Result<(), BlobAc
     Ok(())
 }
 
-fn append_to_path(path: &Path, suffix: &str) -> PathBuf {
-    let mut value = OsString::from(path.as_os_str());
-    value.push(suffix);
-    PathBuf::from(value)
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    use fabro_db::append_to_path;
     use object_store::ObjectStore;
     use object_store::memory::InMemory;
     use tokio::fs;
 
     use super::{
         BACKUP_SUFFIX, BlobActivationError, DISK_HEADROOM_BYTES, activate_blob_storage,
-        append_to_path, compute_disk_preflight, create_backup, sqlite_file_set_bytes,
-        validate_backup,
+        compute_disk_preflight, create_backup, sqlite_file_set_bytes, validate_backup,
     };
 
     type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
@@ -535,12 +454,11 @@ mod tests {
         let backup_reserve = 10;
         let required = backup_reserve + legacy_bytes + 2 + DISK_HEADROOM_BYTES;
 
-        let preflight = compute_disk_preflight(legacy_bytes, true, backup_reserve, required)
+        let required_free_bytes = compute_disk_preflight(legacy_bytes, backup_reserve, required)
             .expect("exact equality must pass");
-        assert_eq!(preflight.required_free_bytes, required);
-        assert_eq!(preflight.backup_reserve, backup_reserve);
+        assert_eq!(required_free_bytes, required);
 
-        let error = compute_disk_preflight(legacy_bytes, true, backup_reserve, required - 1)
+        let error = compute_disk_preflight(legacy_bytes, backup_reserve, required - 1)
             .expect_err("one byte below must fail");
         assert!(matches!(
             error,
@@ -549,18 +467,16 @@ mod tests {
     }
 
     #[test]
-    fn disk_preflight_uses_zero_backup_reserve_when_not_required() {
-        let preflight =
-            compute_disk_preflight(2, false, 0, u64::MAX).expect("available capacity should pass");
-        assert!(!preflight.backup_required);
-        assert_eq!(preflight.backup_reserve, 0);
-        assert_eq!(preflight.required_free_bytes, 3 + DISK_HEADROOM_BYTES);
+    fn disk_preflight_requires_only_headroom_without_a_backup_reserve() {
+        let required_free_bytes =
+            compute_disk_preflight(2, 0, u64::MAX).expect("available capacity should pass");
+        assert_eq!(required_free_bytes, 3 + DISK_HEADROOM_BYTES);
     }
 
     #[test]
     fn disk_preflight_fails_closed_on_overflow() {
-        let error = compute_disk_preflight(u64::MAX, true, 1, u64::MAX)
-            .expect_err("overflow must fail closed");
+        let error =
+            compute_disk_preflight(u64::MAX, 1, u64::MAX).expect_err("overflow must fail closed");
         assert!(matches!(
             error,
             BlobActivationError::DiskRequirementOverflow
@@ -656,12 +572,12 @@ mod tests {
             "activation-test",
             Duration::from_millis(1),
             None,
-        )?;
+        );
         let legacy_bytes = b"legacy-blob";
         let legacy_hash = fabro_store::test_support::put_legacy_blob(&source, legacy_bytes).await?;
         drop(source);
 
-        let cold = activate_blob_storage(
+        let store = activate_blob_storage(
             &database,
             &sqlite_path,
             Arc::clone(&object_store),
@@ -670,7 +586,6 @@ mod tests {
             None,
         )
         .await?;
-        let store = cold.into_store();
         assert_eq!(
             store.blobs().read(&legacy_hash).await?.as_deref(),
             Some(legacy_bytes.as_slice())
@@ -702,11 +617,7 @@ mod tests {
         .await?;
         assert_eq!(fs::read(&backup_path).await?, original_backup);
         assert_eq!(
-            warm.into_store()
-                .blobs()
-                .read(&sqlite_only_hash)
-                .await?
-                .as_deref(),
+            warm.blobs().read(&sqlite_only_hash).await?.as_deref(),
             Some(sqlite_only_bytes.as_slice())
         );
         Ok(())
@@ -738,7 +649,7 @@ mod tests {
 
         assert!(!append_to_path(&sqlite_path, BACKUP_SUFFIX).exists());
         assert_eq!(
-            activated.into_store().blobs().read(&hash).await?.as_deref(),
+            activated.blobs().read(&hash).await?.as_deref(),
             Some(bytes.as_slice())
         );
         Ok(())
@@ -756,7 +667,7 @@ mod tests {
             "invalid-backup-test",
             Duration::from_millis(1),
             None,
-        )?;
+        );
         fabro_store::test_support::put_legacy_blob(&source, b"must-not-import").await?;
         drop(source);
 

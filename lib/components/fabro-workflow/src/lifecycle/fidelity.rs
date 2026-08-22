@@ -411,7 +411,6 @@ mod tests {
 
     use fabro_core::graph::Graph as CoreGraph;
     use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
-    use fabro_store::Database;
     use fabro_types::fixtures;
     use object_store::memory::InMemory;
 
@@ -462,12 +461,11 @@ mod tests {
     }
 
     async fn test_lifecycle(graph: &WorkflowGraph, run_dir: &Path) -> FidelityLifecycle {
-        let store = Arc::new(Database::new(
+        let store = Arc::new(fabro_store::test_support::test_database(
             Arc::new(InMemory::new()),
             "",
             Duration::from_millis(1),
             None,
-            fabro_store::test_support::test_blob_store(),
         ));
         let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
         let sandbox: Arc<dyn Sandbox> =

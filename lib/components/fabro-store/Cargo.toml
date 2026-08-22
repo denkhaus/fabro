@@ -12,9 +12,10 @@ doctest = false
 workspace = true
 
 [features]
-test-support = []
+test-support = ["dep:fabro-db"]
 
 [dependencies]
+fabro-db = { path = "../../foundation/fabro-db", optional = true }
 fabro-types = { path = "../../foundation/fabro-types" }
 fabro-util = { path = "../../foundation/fabro-util" }
 hex.workspace = true

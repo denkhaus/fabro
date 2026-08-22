@@ -175,18 +175,15 @@ async fn initialized(
     let store_dir = test_store_dir(&run_options.run_dir);
     let _ = std::fs::remove_dir_all(&store_dir);
     std::fs::create_dir_all(&store_dir).expect("failed to create local test run store dir");
-    let store = Arc::new(
-        store_test_support::test_database(
-            Arc::new(
-                LocalFileSystem::new_with_prefix(&store_dir)
-                    .expect("failed to create local test run store"),
-            ),
-            "",
-            Duration::from_millis(1),
-            None,
-        )
-        .expect("failed to create test database"),
-    );
+    let store = Arc::new(store_test_support::test_database(
+        Arc::new(
+            LocalFileSystem::new_with_prefix(&store_dir)
+                .expect("failed to create local test run store"),
+        ),
+        "",
+        Duration::from_millis(1),
+        None,
+    ));
     let inner_store = store
         .create_run(&run_options.run_id)
         .await

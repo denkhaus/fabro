@@ -22,12 +22,11 @@ use crate::helpers::{response_json, response_status, settings_from_toml};
 fn test_app(source: &str) -> (axum::Router, Arc<AppState>) {
     let settings = settings_from_toml(source);
     let object_store: Arc<dyn object_store::ObjectStore> = Arc::new(InMemory::new());
-    let store = Arc::new(Database::new(
+    let store = Arc::new(fabro_store::test_support::test_database(
         Arc::clone(&object_store),
         "",
         Duration::from_millis(1),
         None,
-        fabro_store::test_support::test_blob_store(),
     ));
     let artifact_store = ArtifactStore::new(object_store, "artifacts");
     let auth_mode =

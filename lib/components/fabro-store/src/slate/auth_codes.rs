@@ -99,8 +99,7 @@ mod tests {
             "",
             Duration::from_millis(1),
             None,
-        )
-        .unwrap();
+        );
         db.auth_codes().await.unwrap()
     }
 

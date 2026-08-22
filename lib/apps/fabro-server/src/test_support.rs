@@ -539,12 +539,11 @@ pub fn test_app_state_with_store(
 
 pub fn test_store_bundle() -> (Arc<Database>, ArtifactStore) {
     let object_store: Arc<dyn object_store::ObjectStore> = Arc::new(MemoryObjectStore::new());
-    let store = Arc::new(fabro_store::Database::new(
+    let store = Arc::new(store_test_support::test_database(
         Arc::clone(&object_store),
         "",
         Duration::from_millis(1),
         None,
-        store_test_support::test_blob_store(),
     ));
     let artifact_store = ArtifactStore::new(object_store, "artifacts");
     (store, artifact_store)

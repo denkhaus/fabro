@@ -966,8 +966,7 @@ mod tests {
     async fn fresh_run() -> super::RunDatabase {
         let object_store = Arc::new(InMemory::new());
         let store =
-            store_test_support::test_database(object_store, "", Duration::from_millis(1), None)
-                .unwrap();
+            store_test_support::test_database(object_store, "", Duration::from_millis(1), None);
         let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
         let run = store.create_run(&run_id).await.unwrap();
         run.append_event(&run_created_payload(&run_id))
@@ -1178,8 +1177,7 @@ mod tests {
     async fn recover_latest_seq_returns_zero_for_empty_history() {
         let object_store = Arc::new(InMemory::new());
         let store =
-            store_test_support::test_database(object_store, "", Duration::from_millis(1), None)
-                .unwrap();
+            store_test_support::test_database(object_store, "", Duration::from_millis(1), None);
         let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
         let run = store.create_run(&run_id).await.unwrap();
 
@@ -1235,8 +1233,7 @@ mod tests {
             "",
             Duration::from_millis(1),
             None,
-        )
-        .unwrap();
+        );
         let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
         let run = store.create_run(&run_id).await.unwrap();
         run.append_event(&run_created_payload(&run_id))
@@ -1249,8 +1246,7 @@ mod tests {
         }
 
         let reopened =
-            store_test_support::test_database(object_store, "", Duration::from_millis(1), None)
-                .unwrap();
+            store_test_support::test_database(object_store, "", Duration::from_millis(1), None);
         let reader = reopened.open_run_reader(&run_id).await.unwrap();
 
         let events = reader.list_events_before_with_limit(None, 2).await.unwrap();
