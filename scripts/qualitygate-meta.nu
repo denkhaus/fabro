@@ -2,6 +2,9 @@
 # Platform quality gate (ADR-0004): fabro validate over every workflow,
 # nu-check over every workflow script, reviewer-agent at warn threshold.
 
+print "== workflow sync (meta <-> product) =="
+nu .fabro/workflows/develop/scripts/sync-check.nu
+
 print "== fabro validate (all workflows) =="
 let graphs = (glob .fabro/workflows/*/workflow.fabro)
 if ($graphs | is-empty) { print "no workflows found"; exit 1 }
