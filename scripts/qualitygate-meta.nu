@@ -40,8 +40,10 @@ def check-validate []: nothing -> bool {
 }
 
 def check-scripts []: nothing -> bool {
-    print "== nu-check (all workflow scripts) =="
-    let scripts = (glob .fabro/workflows/*/scripts/*.nu)
+    print "== nu-check (all nu scripts) =="
+    # ADR-0006: every nu script in this world's tree — workflow scripts
+    # and root scripts alike must parse.
+    let scripts = [(glob .fabro/workflows/*/scripts/*.nu) (glob scripts/*.nu)] | flatten
     if ($scripts | is-empty) {
         print "no workflow scripts found"
         return false
