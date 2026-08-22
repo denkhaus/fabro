@@ -2,8 +2,10 @@
 
 This file provides guidance to AI agents working in this repository.
 
-The `denkhaus-lab` branch is a minimal workflow playground: `.fabro/` workflows,
-project config, and tooling setup only. There is no application source code here.
+The `meta/denkhaus-lab` branch is the platform world: the develop workflow and
+its assets, the platform seed tracker (`fabro-meta-*`), the painpoint mailbox,
+and the reviewer-agent. No product code lives here; the product world is the
+`denkhaus-lab` branch. See CONTEXT.md for the two-world vocabulary.
 
 ## Agent skills
 
