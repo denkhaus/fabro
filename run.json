@@ -375,7 +375,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-22T16:37:57.634897957Z",
-  "last_event_at": "2026-08-22T16:40:51.043550309Z",
+  "last_event_at": "2026-08-22T16:43:44.149683672Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -657,9 +657,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 193,
       "checkpoint": {
-        "timestamp": "2026-08-22T16:40:51.061701410Z",
+        "timestamp": "2026-08-22T16:41:00.722100888Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
@@ -669,35 +669,205 @@
         ],
         "node_retries": {},
         "context_values": {
+          "thread.implementer.current_node": "tester",
+          "internal.work_dir": "/workspace/fabro",
+          "response.implementer": "Implementation complete. Summary of this pass:\n\n**Files created** (per seed `fabro-f487` spec):\n- `go.mod` — module `gofib`, `go 1.27`, stdlib only\n- `main.go` — package main; `Fib(n int) *big.Int` (iterative, `math/big`) + `main` printing lines `1: 1` … `100: 354224848179261915075`\n- `fib_test.go` — table-driven `TestFib` covering F(1)=1, F(2)=1, F(10)=55, F(100)=354224848179261915075 (string-built `big.Int` since it exceeds int64)\n\n**Smoke checks passed** (full gate left to the tester step): `go vet`, `go test`, `gofmt -l` empty, `go build`, and `go run .` emits exactly 100 lines with correct values. Build artifact binary removed; one failure learning recorded in mulch (`SetString` two-value form in Go 1.27). Seed left open for the Reviewer.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Created go.mod (module gofib, go 1.27), main.go (package main with unit-testable Fib(n int) *big.Int using math/big; main prints the first 100 Fibonacci numbers prefixed by index), and fib_test.go (table-driven TestFib for F(1), F(2), F(10), F(100), with F(100) built from a string). Smoke checks green: gofmt/vet/build/test clean and `go run .` outputs exactly 100 correct lines. Stdlib only; build artifact removed.\"\n  }\n}",
+          "current_seed_id": "fabro-f487",
+          "graph.rankdir": "LR",
+          "last_response": "Implementation complete. Summary of this pass:\n\n**Files created** (per seed `fabro-f487` spec):\n- `go.mod` — module `gofib`, `go 1.27`, stdlib only\n- `main.go` — package main; `Fib(n int) *big.Int",
+          "internal.retry_count.start": 0,
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "response.planner": "Seed `fabro-f487` claimed and set to `in_progress`.\n\n**Implementation brief — fabro-f487: gofib: Go CLI printing the first 100 Fibonacci numbers**\n\nBuild a small Go CLI named `gofib` at the repository root. Requirements:\n- Go module `gofib` at repo root (`go.mod`, Go 1.27), stdlib only — no external dependencies.\n- `package main` in `main.go`; the `gofib` command prints the first 100 Fibonacci numbers, one per line, prefixed with index: `1: 1`, `2: 1`, `3: 2`, … `100: 354224848179261915075`.\n- F(100) overflows int64 — use `math/big`.\n- Fibonacci computation lives in a separate unit-testable function `Fib(n int) *big.Int`.\n- Add `fib_test.go` with table-driven tests covering F(1), F(2), F(10), F(100).\n- Acceptance: `go run .` prints exactly 100 correct lines, and `just qualitygate` passes (gofmt clean, `go vet`, `go build ./...`, `go test ./...`).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-f487\",\n    \"current_seed_title\": \"gofib: Go CLI printing the first 100 Fibonacci numbers\",\n    \"current_seed_brief\": \"Build a Go CLI 'gofib' at the repo root: Go module 'gofib' (go 1.27, stdlib only), package main in main.go printing the first 100 Fibonacci numbers one per line prefixed with index (e.g. '1: 1' ... '100: 354224848179261915075'). Use math/big since F(100) exceeds int64; expose the computation as a testable Fib(n int) *big.Int function. Include fib_test.go with table-driven tests for F(1), F(2), F(10), F(100). Done when 'go run .' prints exactly 100 correct lines and 'just qualitygate' (gofmt, go vet, go build ./..., go test ./...) is green.\"\n  }\n}",
+          "current_seed_brief": "Build a Go CLI 'gofib' at the repo root: Go module 'gofib' (go 1.27, stdlib only), package main in main.go printing the first 100 Fibonacci numbers one per line prefixed with index (e.g. '1: 1' ... '100: 354224848179261915075'). Use math/big since F(100) exceeds int64; expose the computation as a testable Fib(n int) *big.Int function. Include fib_test.go with table-driven tests for F(1), F(2), F(10), F(100). Done when 'go run .' prints exactly 100 correct lines and 'just qualitygate' (gofmt, go vet, go build ./..., go test ./...) is green.",
+          "failure_signature": "",
+          "internal.node_visit_count": 1,
+          "failure_class": "",
+          "internal.fidelity": "compact",
+          "thread.planner.current_node": "implementer",
+          "last_stage": "implementer",
+          "internal.retry_count.tester": 0,
+          "internal.thread_id": "implementer",
+          "graph.max_node_visits": "40",
+          "current_seed_title": "gofib: Go CLI printing the first 100 Fibonacci numbers",
+          "implementation_summary": "Created go.mod (module gofib, go 1.27), main.go (package main with unit-testable Fib(n int) *big.Int using math/big; main prints the first 100 Fibonacci numbers prefixed by index), and fib_test.go (table-driven TestFib for F(1), F(2), F(10), F(100), with F(100) built from a string). Smoke checks green: gofmt/vet/build/test clean and `go run .` outputs exactly 100 correct lines. Stdlib only; build artifact removed.",
+          "thread.start.current_node": "planner",
+          "internal.retry_count.implementer": 0,
+          "internal.run_id": "01M0N5AVYXR7K8PPMGCQRZF90X",
+          "command.output": "blob://sha256/29c99a89d281b40700a0ded800954cfc15b2c499c400782821aa5d7960e922e0",
+          "current_node": "tester",
+          "internal.retry_count.planner": 0,
+          "outcome": "succeeded",
+          "preferred_label": "Implemented"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/29c99a89d281b40700a0ded800954cfc15b2c499c400782821aa5d7960e922e0"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/gate.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1044,
+              "active_time_ms": 1044
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Build a Go CLI 'gofib' at the repo root: Go module 'gofib' (go 1.27, stdlib only), package main in main.go printing the first 100 Fibonacci numbers one per line prefixed with index (e.g. '1: 1' ... '100: 354224848179261915075'). Use math/big since F(100) exceeds int64; expose the computation as a testable Fib(n int) *big.Int function. Include fib_test.go with table-driven tests for F(1), F(2), F(10), F(100). Done when 'go run .' prints exactly 100 correct lines and 'just qualitygate' (gofmt, go vet, go build ./..., go test ./...) is green.",
+              "last_response": "Seed `fabro-f487` claimed and set to `in_progress`.\n\n**Implementation brief — fabro-f487: gofib: Go CLI printing the first 100 Fibonacci numbers**\n\nBuild a small Go CLI named `gofib` at the reposito",
+              "current_seed_title": "gofib: Go CLI printing the first 100 Fibonacci numbers",
+              "last_stage": "planner",
+              "response.planner": "Seed `fabro-f487` claimed and set to `in_progress`.\n\n**Implementation brief — fabro-f487: gofib: Go CLI printing the first 100 Fibonacci numbers**\n\nBuild a small Go CLI named `gofib` at the repository root. Requirements:\n- Go module `gofib` at repo root (`go.mod`, Go 1.27), stdlib only — no external dependencies.\n- `package main` in `main.go`; the `gofib` command prints the first 100 Fibonacci numbers, one per line, prefixed with index: `1: 1`, `2: 1`, `3: 2`, … `100: 354224848179261915075`.\n- F(100) overflows int64 — use `math/big`.\n- Fibonacci computation lives in a separate unit-testable function `Fib(n int) *big.Int`.\n- Add `fib_test.go` with table-driven tests covering F(1), F(2), F(10), F(100).\n- Acceptance: `go run .` prints exactly 100 correct lines, and `just qualitygate` passes (gofmt clean, `go vet`, `go build ./...`, `go test ./...`).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-f487\",\n    \"current_seed_title\": \"gofib: Go CLI printing the first 100 Fibonacci numbers\",\n    \"current_seed_brief\": \"Build a Go CLI 'gofib' at the repo root: Go module 'gofib' (go 1.27, stdlib only), package main in main.go printing the first 100 Fibonacci numbers one per line prefixed with index (e.g. '1: 1' ... '100: 354224848179261915075'). Use math/big since F(100) exceeds int64; expose the computation as a testable Fib(n int) *big.Int function. Include fib_test.go with table-driven tests for F(1), F(2), F(10), F(100). Done when 'go run .' prints exactly 100 correct lines and 'just qualitygate' (gofmt, go vet, go build ./..., go test ./...) is green.\"\n  }\n}",
+              "current_seed_id": "fabro-f487"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 5344,
+                    "output_tokens": 616,
+                    "reasoning_tokens": 72,
+                    "cache_read_tokens": 9728,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 13035
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 22846,
+              "tool_time_ms": 641,
+              "active_time_ms": 23487
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_stage": "implementer",
+              "last_response": "Implementation complete. Summary of this pass:\n\n**Files created** (per seed `fabro-f487` spec):\n- `go.mod` — module `gofib`, `go 1.27`, stdlib only\n- `main.go` — package main; `Fib(n int) *big.Int",
+              "implementation_summary": "Created go.mod (module gofib, go 1.27), main.go (package main with unit-testable Fib(n int) *big.Int using math/big; main prints the first 100 Fibonacci numbers prefixed by index), and fib_test.go (table-driven TestFib for F(1), F(2), F(10), F(100), with F(100) built from a string). Smoke checks green: gofmt/vet/build/test clean and `go run .` outputs exactly 100 correct lines. Stdlib only; build artifact removed.",
+              "response.implementer": "Implementation complete. Summary of this pass:\n\n**Files created** (per seed `fabro-f487` spec):\n- `go.mod` — module `gofib`, `go 1.27`, stdlib only\n- `main.go` — package main; `Fib(n int) *big.Int` (iterative, `math/big`) + `main` printing lines `1: 1` … `100: 354224848179261915075`\n- `fib_test.go` — table-driven `TestFib` covering F(1)=1, F(2)=1, F(10)=55, F(100)=354224848179261915075 (string-built `big.Int` since it exceeds int64)\n\n**Smoke checks passed** (full gate left to the tester step): `go vet`, `go test`, `gofmt -l` empty, `go build`, and `go run .` emits exactly 100 lines with correct values. Build artifact binary removed; one failure learning recorded in mulch (`SetString` two-value form in Go 1.27). Seed left open for the Reviewer.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Created go.mod (module gofib, go 1.27), main.go (package main with unit-testable Fib(n int) *big.Int using math/big; main prints the first 100 Fibonacci numbers prefixed by index), and fib_test.go (table-driven TestFib for F(1), F(2), F(10), F(100), with F(100) built from a string). Smoke checks green: gofmt/vet/build/test clean and `go run .` outputs exactly 100 correct lines. Stdlib only; build artifact removed.\"\n  }\n}"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 11175,
+                    "output_tokens": 2040,
+                    "reasoning_tokens": 1639,
+                    "cache_read_tokens": 113344,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 61281
+            },
+            "files_touched": [
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/go.mod",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 111189,
+              "tool_time_ms": 13426,
+              "active_time_ms": 124615
+            }
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "b5923285a8fba45a590f7df0a6579e642edee0ae",
+        "node_visits": {
+          "tester": 1,
+          "planner": 1,
+          "implementer": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/gofib b/gofib\nnew file mode 100755\nindex 0000000..98f2581\nBinary files /dev/null and b/gofib differ\n",
+        "summary": {
+          "files_changed": 6,
+          "additions": 60,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-22T16:43:44.167568465Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
           "current_seed_title": "gofib: Go CLI printing the first 100 Fibonacci numbers",
           "thread.planner.current_node": "implementer",
           "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
           "internal.retry_count.implementer": 0,
+          "thread.tester.current_node": "reviewer",
+          "closed_seed_id": "fabro-f487",
           "current_seed_brief": "Build a Go CLI 'gofib' at the repo root: Go module 'gofib' (go 1.27, stdlib only), package main in main.go printing the first 100 Fibonacci numbers one per line prefixed with index (e.g. '1: 1' ... '100: 354224848179261915075'). Use math/big since F(100) exceeds int64; expose the computation as a testable Fib(n int) *big.Int function. Include fib_test.go with table-driven tests for F(1), F(2), F(10), F(100). Done when 'go run .' prints exactly 100 correct lines and 'just qualitygate' (gofmt, go vet, go build ./..., go test ./...) is green.",
           "current_seed_id": "fabro-f487",
+          "review_verdict": "approved",
           "graph.rankdir": "LR",
           "internal.work_dir": "/workspace/fabro",
           "graph.max_node_visits": "40",
           "internal.retry_count.start": 0,
-          "last_stage": "implementer",
-          "current_node": "tester",
+          "last_stage": "reviewer",
+          "current_node": "reviewer",
           "implementation_summary": "Created go.mod (module gofib, go 1.27), main.go (package main with unit-testable Fib(n int) *big.Int using math/big; main prints the first 100 Fibonacci numbers prefixed by index), and fib_test.go (table-driven TestFib for F(1), F(2), F(10), F(100), with F(100) built from a string). Smoke checks green: gofmt/vet/build/test clean and `go run .` outputs exactly 100 correct lines. Stdlib only; build artifact removed.",
           "response.implementer": "Implementation complete. Summary of this pass:\n\n**Files created** (per seed `fabro-f487` spec):\n- `go.mod` — module `gofib`, `go 1.27`, stdlib only\n- `main.go` — package main; `Fib(n int) *big.Int` (iterative, `math/big`) + `main` printing lines `1: 1` … `100: 354224848179261915075`\n- `fib_test.go` — table-driven `TestFib` covering F(1)=1, F(2)=1, F(10)=55, F(100)=354224848179261915075 (string-built `big.Int` since it exceeds int64)\n\n**Smoke checks passed** (full gate left to the tester step): `go vet`, `go test`, `gofmt -l` empty, `go build`, and `go run .` emits exactly 100 lines with correct values. Build artifact binary removed; one failure learning recorded in mulch (`SetString` two-value form in Go 1.27). Seed left open for the Reviewer.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Created go.mod (module gofib, go 1.27), main.go (package main with unit-testable Fib(n int) *big.Int using math/big; main prints the first 100 Fibonacci numbers prefixed by index), and fib_test.go (table-driven TestFib for F(1), F(2), F(10), F(100), with F(100) built from a string). Smoke checks green: gofmt/vet/build/test clean and `go run .` outputs exactly 100 correct lines. Stdlib only; build artifact removed.\"\n  }\n}",
-          "internal.thread_id": "implementer",
+          "internal.thread_id": "tester",
+          "internal.retry_count.reviewer": 0,
           "response.planner": "Seed `fabro-f487` claimed and set to `in_progress`.\n\n**Implementation brief — fabro-f487: gofib: Go CLI printing the first 100 Fibonacci numbers**\n\nBuild a small Go CLI named `gofib` at the repository root. Requirements:\n- Go module `gofib` at repo root (`go.mod`, Go 1.27), stdlib only — no external dependencies.\n- `package main` in `main.go`; the `gofib` command prints the first 100 Fibonacci numbers, one per line, prefixed with index: `1: 1`, `2: 1`, `3: 2`, … `100: 354224848179261915075`.\n- F(100) overflows int64 — use `math/big`.\n- Fibonacci computation lives in a separate unit-testable function `Fib(n int) *big.Int`.\n- Add `fib_test.go` with table-driven tests covering F(1), F(2), F(10), F(100).\n- Acceptance: `go run .` prints exactly 100 correct lines, and `just qualitygate` passes (gofmt clean, `go vet`, `go build ./...`, `go test ./...`).\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-f487\",\n    \"current_seed_title\": \"gofib: Go CLI printing the first 100 Fibonacci numbers\",\n    \"current_seed_brief\": \"Build a Go CLI 'gofib' at the repo root: Go module 'gofib' (go 1.27, stdlib only), package main in main.go printing the first 100 Fibonacci numbers one per line prefixed with index (e.g. '1: 1' ... '100: 354224848179261915075'). Use math/big since F(100) exceeds int64; expose the computation as a testable Fib(n int) *big.Int function. Include fib_test.go with table-driven tests for F(1), F(2), F(10), F(100). Done when 'go run .' prints exactly 100 correct lines and 'just qualitygate' (gofmt, go vet, go build ./..., go test ./...) is green.\"\n  }\n}",
           "internal.fidelity": "compact",
           "thread.start.current_node": "planner",
           "internal.run_id": "01M0N5AVYXR7K8PPMGCQRZF90X",
           "failure_class": "",
           "internal.node_visit_count": 1,
-          "last_response": "Implementation complete. Summary of this pass:\n\n**Files created** (per seed `fabro-f487` spec):\n- `go.mod` — module `gofib`, `go 1.27`, stdlib only\n- `main.go` — package main; `Fib(n int) *big.Int",
+          "last_response": "Review complete. Summary of the audit against seed `fabro-f487`:\n\n**Requirements — all verified:**\n1. ✅ `go.mod`: module `gofib`, `go 1.27`\n2. ✅ `go run .` prints exactly 100 lines, format `i: v",
           "internal.retry_count.planner": 0,
+          "response.reviewer": "Review complete. Summary of the audit against seed `fabro-f487`:\n\n**Requirements — all verified:**\n1. ✅ `go.mod`: module `gofib`, `go 1.27`\n2. ✅ `go run .` prints exactly 100 lines, format `i: v` (`1: 1`, `2: 1`, `3: 2`, …, `100: 354224848179261915075`); spot-checked F(10)=55, F(50)=12586269025\n3. ✅ `math/big` used (correct iterative algorithm, F(1)=F(2)=1 base)\n4. ✅ `package main` in `main.go`; separate unit-testable `Fib(n int) *big.Int`\n5. ✅ `fib_test.go` table-driven covering F(1), F(2), F(10), F(100) with F(100) built from string\n6. ✅ stdlib only (`fmt`, `math/big`, `testing`)\n7. ✅ Quality gate green — re-ran it myself after my cleanup: gofmt/vet/build/test all pass\n\n**One deviation found and fixed (non-blocking for the seed spec):** the tester commit `b592328` had swept the 2.6MB `gofib` build artifact into git (the gate's `go build` regenerates it after the implementer's cleanup, and the stage auto-commit captured it). I untracked the binary, added a root `.gitignore`, and confirmed a subsequent gate run leaves the tree clean. Recorded the failure in mulch (`git` domain) so future passes ignore build artifacts.\n\n**Seed closed:** `sd close fabro-f487` succeeded and synced; `sd ready` now reports 0 open issues.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Approved\",\n  \"context_updates\": {\n    \"review_verdict\": \"approved\",\n    \"closed_seed_id\": \"fabro-f487\"\n  }\n}",
           "failure_signature": "",
           "thread.implementer.current_node": "tester",
           "command.output": "blob://sha256/29c99a89d281b40700a0ded800954cfc15b2c499c400782821aa5d7960e922e0",
           "outcome": "succeeded",
           "internal.retry_count.tester": 0,
-          "preferred_label": "Implemented"
+          "preferred_label": "Approved"
         },
         "node_outcomes": {
           "start": {
@@ -800,14 +970,54 @@
               "tool_time_ms": 13426,
               "active_time_ms": 124615
             }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_stage": "reviewer",
+              "last_response": "Review complete. Summary of the audit against seed `fabro-f487`:\n\n**Requirements — all verified:**\n1. ✅ `go.mod`: module `gofib`, `go 1.27`\n2. ✅ `go run .` prints exactly 100 lines, format `i: v",
+              "review_verdict": "approved",
+              "closed_seed_id": "fabro-f487",
+              "response.reviewer": "Review complete. Summary of the audit against seed `fabro-f487`:\n\n**Requirements — all verified:**\n1. ✅ `go.mod`: module `gofib`, `go 1.27`\n2. ✅ `go run .` prints exactly 100 lines, format `i: v` (`1: 1`, `2: 1`, `3: 2`, …, `100: 354224848179261915075`); spot-checked F(10)=55, F(50)=12586269025\n3. ✅ `math/big` used (correct iterative algorithm, F(1)=F(2)=1 base)\n4. ✅ `package main` in `main.go`; separate unit-testable `Fib(n int) *big.Int`\n5. ✅ `fib_test.go` table-driven covering F(1), F(2), F(10), F(100) with F(100) built from string\n6. ✅ stdlib only (`fmt`, `math/big`, `testing`)\n7. ✅ Quality gate green — re-ran it myself after my cleanup: gofmt/vet/build/test all pass\n\n**One deviation found and fixed (non-blocking for the seed spec):** the tester commit `b592328` had swept the 2.6MB `gofib` build artifact into git (the gate's `go build` regenerates it after the implementer's cleanup, and the stage auto-commit captured it). I untracked the binary, added a root `.gitignore`, and confirmed a subsequent gate run leaves the tree clean. Recorded the failure in mulch (`git` domain) so future passes ignore build artifacts.\n\n**Seed closed:** `sd close fabro-f487` succeeded and synced; `sd ready` now reports 0 open issues.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Approved\",\n  \"context_updates\": {\n    \"review_verdict\": \"approved\",\n    \"closed_seed_id\": \"fabro-f487\"\n  }\n}"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14411,
+                    "output_tokens": 1699,
+                    "reasoning_tokens": 3757,
+                    "cache_read_tokens": 99328,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 69994
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 147019,
+              "tool_time_ms": 3791,
+              "active_time_ms": 150810
+            }
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "planner",
         "node_visits": {
           "implementer": 1,
           "start": 1,
           "tester": 1,
-          "planner": 1
+          "planner": 1,
+          "reviewer": 1
         }
       },
       "diff": {}
@@ -844,7 +1054,12 @@
       "first_event_seq": 186,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/gate.nu",
+        "failure_reason": null,
+        "timestamp": "2026-08-22T16:40:51.060137560Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": {
@@ -869,6 +1084,12 @@
       "started_at": "2026-08-22T16:40:49.991893754Z",
       "handler": "command",
       "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 1052,
+        "inference_time_ms": 0,
+        "tool_time_ms": 1044,
+        "active_time_ms": 1044
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -878,7 +1099,7 @@
         "cache_write_tokens": 0
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "succeeded"
     },
     "implementer@1": {
       "first_event_seq": 63,
@@ -1083,6 +1304,201 @@
       },
       "agent_control": "running",
       "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 196,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-22T16:41:00.741855260Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "live_inference_ms": 158087,
+      "live_tool_ms": 4590,
+      "usage": {
+        "input_tokens": 14411,
+        "output_tokens": 1699,
+        "total_tokens": 119195,
+        "reasoning_tokens": 3757,
+        "cache_read_tokens": 99328,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 69994
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 14122,
+        "usage_percent": 1.3467788696289062,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-08-22T16:43:44.148366387Z",
+        "event_seq": 289,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1136,
+            "usage_percent": 0.10833740234375
+          },
+          {
+            "category": "tools",
+            "tokens": 1549,
+            "usage_percent": 0.14772415161132812
+          },
+          {
+            "category": "memory",
+            "tokens": 1265,
+            "usage_percent": 0.12063980102539062
+          },
+          {
+            "category": "conversation",
+            "tokens": 10166,
+            "usage_percent": 0.9695053100585938
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "running"
     },
     "start@1": {
       "first_event_seq": 23,
