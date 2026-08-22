@@ -1,0 +1,118 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..9a15fce
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,2 @@
++# Build output from `go build ./...` (main package binary lands in repo root)
++/gofib
+diff --git a/.mulch/expertise/gofib.jsonl b/.mulch/expertise/gofib.jsonl
+new file mode 100644
+index 0000000..ce3ca99
+--- /dev/null
++++ b/.mulch/expertise/gofib.jsonl
+@@ -0,0 +1 @@
++{"type":"convention","classification":"tactical","recorded_at":"2026-08-22T16:59:26.484Z","evidence":{"commit":"8981a17def37cdcafcb3374a2420229f5bbeb83c"},"content":"The quality gate runs 'go build ./...' from the repo root; since the root is a Go main package (module gofib), that drops a 'gofib' binary into the worktree.","id":"mx-08feea"}
+diff --git a/.mulch/mulch.config.yaml b/.mulch/mulch.config.yaml
+index 7bdcc73..1d5cd96 100644
+--- a/.mulch/mulch.config.yaml
++++ b/.mulch/mulch.config.yaml
+@@ -7,6 +7,7 @@ domains:
+   git: {}
+   environments: {}
+   testing: {}
++  gofib: {}
+ governance:
+   max_entries: 100
+   warn_entries: 150
+diff --git a/fib_test.go b/fib_test.go
+new file mode 100644
+index 0000000..c2511b0
+--- /dev/null
++++ b/fib_test.go
+@@ -0,0 +1,36 @@
++package main
++
++import (
++	"math/big"
++	"testing"
++)
++
++func TestFib(t *testing.T) {
++	f100, ok := new(big.Int).SetString("354224848179261915075", 10)
++	if !ok {
++		t.Fatal("test fixture: F(100) literal is not a valid decimal number")
++	}
++
++	tests := []struct {
++		name string
++		n    int
++		want *big.Int
++	}{
++		{"F(1)", 1, big.NewInt(1)},
++		{"F(2)", 2, big.NewInt(1)},
++		{"F(10)", 10, big.NewInt(55)},
++		{"F(100)", 100, f100},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			got := Fib(tt.n)
++			if got == nil {
++				t.Fatalf("Fib(%d) = nil, want %s", tt.n, tt.want)
++			}
++			if got.Cmp(tt.want) != 0 {
++				t.Errorf("Fib(%d) = %s, want %s", tt.n, got, tt.want)
++			}
++		})
++	}
++}
+diff --git a/go.mod b/go.mod
+new file mode 100644
+index 0000000..2de7a44
+--- /dev/null
++++ b/go.mod
+@@ -0,0 +1,3 @@
++module gofib
++
++go 1.27
+diff --git a/main.go b/main.go
+new file mode 100644
+index 0000000..89b9b22
+--- /dev/null
++++ b/main.go
+@@ -0,0 +1,34 @@
++// Command gofib prints the first 100 Fibonacci numbers, one per line,
++// each prefixed with its 1-based index: "<index>: <value>".
++package main
++
++import (
++	"fmt"
++	"math/big"
++)
++
++// defaultCount is how many Fibonacci numbers gofib prints when run
++// without arguments.
++const defaultCount = 100
++
++// Fib returns the n-th Fibonacci number, 1-indexed: Fib(1) = 1,
++// Fib(2) = 1, Fib(3) = 2, ... It uses math/big because Fibonacci
++// numbers quickly outgrow int64 (F(93) is the last that fits).
++// Fib returns nil for n < 1.
++func Fib(n int) *big.Int {
++	if n < 1 {
++		return nil
++	}
++	a, b := big.NewInt(0), big.NewInt(1)
++	for range n - 1 {
++		a.Add(a, b)
++		a, b = b, a
++	}
++	return b
++}
++
++func main() {
++	for i := 1; i <= defaultCount; i++ {
++		fmt.Printf("%d: %v\n", i, Fib(i))
++	}
++}
