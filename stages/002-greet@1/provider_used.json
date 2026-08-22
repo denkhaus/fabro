@@ -1,0 +1,5 @@
+{
+  "mode": "agent",
+  "provider": "venice",
+  "model": "glm-5.3"
+}
