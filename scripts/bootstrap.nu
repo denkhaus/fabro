@@ -2,14 +2,38 @@
 # Bootstrap the platform toolchain beyond what mise provides.
 # Called by `just bootstrap` from the [run.prepare] step (after `mise install`).
 
-bun install -g @os-eco/seeds-cli@0.5.15 @os-eco/mulch-cli@0.10.7
+const NPM_CLIS = [
+    "@os-eco/seeds-cli@0.5.15"
+    "@os-eco/mulch-cli@0.10.7"
+]
 
-# Sanity: every tool the platform world relies on must resolve.
-sd --version
-ml --version
-nu --version
-just --version
-fabro --version
-uv --version
+# Every tool the platform world relies on; each must resolve and --version.
+def required-tools []: nothing -> list<string> {
+    [sd ml nu just fabro uv]
+}
 
-print "bootstrap ok"
+# Run `<tool> --version` and print its version line. False (with a message)
+# when the tool is missing or errors — bun-installed shims count on PATH.
+def verify-tool [name: string]: nothing -> bool {
+    let res = (do { ^$name --version } | complete)
+    if $res.exit_code != 0 {
+        print $"missing or broken tool: ($name)"
+        false
+    } else {
+        print ($res.stdout | str trim)
+        true
+    }
+}
+
+def main []: nothing -> nothing {
+    # npm-distributed CLIs land via `bun install -g` because mise's aube/npm
+    # backend demands interactive confirmation; the runner image pins
+    # BUN_INSTALL to a directory already on PATH.
+    bun install -g ...$NPM_CLIS
+
+    let broken = (required-tools | where {|tool| not (verify-tool $tool) })
+    if ($broken | is-not-empty) {
+        error make --unspanned {msg: $"bootstrap failed: missing tools \(($broken | str join ', ')\)"}
+    }
+    print "bootstrap ok"
+}
