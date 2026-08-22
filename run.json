@@ -440,7 +440,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-22T17:34:13.891224333Z",
-  "last_event_at": "2026-08-22T17:34:54.239318507Z",
+  "last_event_at": "2026-08-22T17:34:58.570345501Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -481,9 +481,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 71,
       "checkpoint": {
-        "timestamp": "2026-08-22T17:34:54.255896760Z",
+        "timestamp": "2026-08-22T17:34:58.570241532Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -491,26 +491,26 @@
         ],
         "node_retries": {},
         "context_values": {
-          "current_node": "planner",
+          "internal.retry_count.start": 0,
+          "last_stage": "planner",
+          "internal.node_visit_count": 1,
+          "response.planner": "The tracker state is fully confirmed:\n\n- **No `review_verdict`** in context — nothing to handle from a previous pass.\n- **`sd ready`**: 0 unblocked open seeds.\n- **`sd list`**: 0 open seeds, 0 in-progress seeds.\n- **Raw `.seeds/issues.jsonl`**: exactly two seeds exist (`fabro-f487` gofib CLI, `fabro-759d` -n flag), both **closed** with closed timestamps — their feedback loops completed.\n- **No plans, no blocked issues.**\n\nEvery seed is closed and no seed is in progress for this effort. The goal — develop seed-by-seed until no open seed remains — holds. There is no work to claim, and per my contract I do not invent new seeds; only the goal-owner's tracker defines work.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Tracker empty\",\n  \"context_updates\": {\n    \"review_verdict\": \"\"\n  }\n}",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.run_id": "01M0N8HSA6TT3C2DXH19WWKZRP",
           "failure_class": "",
+          "failure_signature": "",
+          "outcome": "succeeded",
+          "graph.max_node_visits": "40",
+          "preferred_label": "Tracker empty",
+          "thread.start.current_node": "planner",
+          "last_response": "The tracker state is fully confirmed:\n\n- **No `review_verdict`** in context — nothing to handle from a previous pass.\n- **`sd ready`**: 0 unblocked open seeds.\n- **`sd list`**: 0 open seeds, 0 in-pr",
+          "review_verdict": "",
           "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
           "graph.rankdir": "LR",
-          "internal.node_visit_count": 1,
-          "last_response": "The tracker state is fully confirmed:\n\n- **No `review_verdict`** in context — nothing to handle from a previous pass.\n- **`sd ready`**: 0 unblocked open seeds.\n- **`sd list`**: 0 open seeds, 0 in-pr",
           "internal.retry_count.planner": 0,
-          "thread.start.current_node": "planner",
-          "internal.retry_count.start": 0,
-          "failure_signature": "",
-          "preferred_label": "Tracker empty",
-          "internal.run_id": "01M0N8HSA6TT3C2DXH19WWKZRP",
           "internal.thread_id": "start",
-          "review_verdict": "",
-          "graph.max_node_visits": "40",
-          "last_stage": "planner",
-          "outcome": "succeeded",
-          "internal.work_dir": "/workspace/fabro",
-          "response.planner": "The tracker state is fully confirmed:\n\n- **No `review_verdict`** in context — nothing to handle from a previous pass.\n- **`sd ready`**: 0 unblocked open seeds.\n- **`sd list`**: 0 open seeds, 0 in-progress seeds.\n- **Raw `.seeds/issues.jsonl`**: exactly two seeds exist (`fabro-f487` gofib CLI, `fabro-759d` -n flag), both **closed** with closed timestamps — their feedback loops completed.\n- **No plans, no blocked issues.**\n\nEvery seed is closed and no seed is in progress for this effort. The goal — develop seed-by-seed until no open seed remains — holds. There is no work to claim, and per my contract I do not invent new seeds; only the goal-owner's tracker defines work.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Tracker empty\",\n  \"context_updates\": {\n    \"review_verdict\": \"\"\n  }\n}",
-          "internal.fidelity": "compact"
+          "internal.fidelity": "compact",
+          "current_node": "planner"
         },
         "node_outcomes": {
           "planner": {
@@ -557,15 +557,81 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "453f31d41fb2d52d1aaad79957a229004ee0f8c6",
         "node_visits": {
-          "start": 1,
-          "planner": 1
+          "planner": 1,
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-08-22T17:34:58.595612198Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 41959,
+      "inference_time_ms": 32869,
+      "tool_time_ms": 1332,
+      "active_time_ms": 34201
+    },
+    "failure": {
+      "reason": "workflow_error",
+      "detail": {
+        "message": "goal gate unsatisfied for node reviewer and no retry target",
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "453f31d41fb2d52d1aaad79957a229004ee0f8c6",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 35677,
+          "inference_time_ms": 32869,
+          "tool_time_ms": 1332,
+          "active_time_ms": 34201
+        },
+        "billing_usd_micros": 25634,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 8890,
+      "output_tokens": 516,
+      "total_tokens": 40131,
+      "reasoning_tokens": 709,
+      "cache_read_tokens": 30016,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 25634
+    },
+    "total_retries": 0,
+    "diff": {
+      "summary": {
+        "files_changed": 0,
+        "additions": 0,
+        "deletions": 0
+      }
+    }
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -596,7 +662,12 @@
       "first_event_seq": 26,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-08-22T17:34:54.255726263Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -610,8 +681,12 @@
       "started_at": "2026-08-22T17:34:15.842019141Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 35588,
-      "live_tool_ms": 1330,
+      "timing": {
+        "wall_time_ms": 35677,
+        "inference_time_ms": 32869,
+        "tool_time_ms": 1332,
+        "active_time_ms": 34201
+      },
       "usage": {
         "input_tokens": 8890,
         "output_tokens": 516,
@@ -948,7 +1023,7 @@
         "warnings": []
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "succeeded"
     },
     "start@1": {
       "first_event_seq": 22,
