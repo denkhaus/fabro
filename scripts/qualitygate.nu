@@ -22,6 +22,26 @@ def check-sync []: nothing -> bool {
     true
 }
 
+def check-scripts []: nothing -> bool {
+    print "== nu-check (all nu scripts) =="
+    # ADR-0006 (meta): every nu script in this world's tree must parse —
+    # the product gate and the workflow both execute these scripts.
+    let scripts = [(glob .fabro/workflows/*/scripts/*.nu) (glob scripts/*.nu)] | flatten
+    if ($scripts | is-empty) {
+        print "no nu scripts found"
+        return false
+    }
+    let broken = ($scripts | each {|s|
+        if (try { nu-check $s } catch { false }) { null } else { {script: $s} }
+    } | compact)
+    if ($broken | is-not-empty) {
+        $broken | each {|b| print $"script failed nu-check: ($b.script)" }
+        return false
+    }
+    print $"syntax-clean ($scripts | length) scripts"
+    true
+}
+
 def check-large-files []: nothing -> bool {
     print "== tracked large files =="
     let big = (
@@ -82,6 +102,7 @@ def check-go-build []: nothing -> bool {
 
 def main []: nothing -> nothing {
     if not (check-sync) { exit 1 }
+    if not (check-scripts) { exit 1 }
     if not (check-large-files) { exit 1 }
     if not (check-gofmt) { exit 1 }
     if not (check-go-build) { exit 1 }
