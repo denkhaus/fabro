@@ -129,16 +129,24 @@ script = "echo done"
 
 #### Hook events
 
-| Event | Fires | Payload | Blocking |
-| --- | --- | --- | --- |
-| `run_start` | before the run begins executing | — | yes (aborts the run) |
-| `stage_start` | before a stage executes | node | yes (fails the stage) |
-| `stage_complete` | after a stage finishes successfully | node, status | no (observer) |
-| `stage_failed` | after a stage finishes in failure | node, status, failure_reason | no (observer) |
-| `edge_selected` | after the engine picks the next edge | node, edge label | no (observer) |
-| `checkpoint_saved` | after a checkpoint is durably persisted | node | no (observer) |
-| `run_complete` | after the run reaches a terminal success | — | no (observer) |
-| `run_failed` | after the run reaches a terminal failure | — | no (observer) |
+| Event | Fires | Blocking by default |
+| --- | --- | --- |
+| `run_start` | before the run begins executing | yes (aborts the run) |
+| `stage_start` | before a stage executes | yes (fails the stage) |
+| `stage_complete` | after a stage finishes successfully | no (observer) |
+| `stage_failed` | after a stage finishes in failure | no (observer) |
+| `stage_retrying` | when a failed stage enters its retry loop | no (observer) |
+| `edge_selected` | after the engine picks the outgoing edge | no (observer) |
+| `parallel_start` | before a parallel node fans out | no (observer) |
+| `parallel_complete` | after every parallel branch finished | no (observer) |
+| `sandbox_ready` | after the run sandbox is up | no (observer) |
+| `sandbox_cleanup` | before the sandbox is torn down | no (observer) |
+| `checkpoint_saved` | after a checkpoint is durably persisted | no (observer) |
+| `pre_tool_use` | before an agent tool call executes | yes (can veto the call) |
+| `post_tool_use` | after a successful agent tool call | no (observer) |
+| `post_tool_use_failure` | after a failed agent tool call | no (observer) |
+| `run_complete` | after the run reaches terminal success | no (observer) |
+| `run_failed` | after the run reaches terminal failure | no (observer) |
 
 Hooks are observers with veto power on the blocking events; they cannot
 mutate run state. Host-side hooks run outside the sandbox (`sandbox =
