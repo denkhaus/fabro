@@ -1,0 +1,24 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..e925d37
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1 @@
++gofib
+diff --git a/.mulch/expertise/git.jsonl b/.mulch/expertise/git.jsonl
+index e69de29..2025d27 100644
+--- a/.mulch/expertise/git.jsonl
++++ b/.mulch/expertise/git.jsonl
+@@ -0,0 +1 @@
++{"type":"failure","classification":"tactical","recorded_at":"2026-08-22T16:43:14.153Z","evidence":{"commit":"11fb4e2ce3a70f62fa42f0e1545422ae28c20b7e"},"description":"Fabro per-stage auto-commit swept the 'gofib' binary (2.6MB build artifact from qualitygate's 'go build') into git in the tester commit. Implementer's 'build artifact removed' step is undone by the gate regenerating it before commit.","resolution":"Root .gitignore now ignores 'gofib'; binary untracked from the index. Future stages leave clean trees.","id":"mx-86930e"}
+diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl
+index 7f967c4..78fb867 100644
+--- a/.seeds/issues.jsonl
++++ b/.seeds/issues.jsonl
+@@ -1 +1 @@
+-{"id":"fabro-f487","title":"gofib: Go CLI printing the first 100 Fibonacci numbers","status":"in_progress","type":"feature","priority":2,"createdAt":"2026-08-22T16:19:22.896Z","updatedAt":"2026-08-22T16:38:11.081Z","description":"Build a small Go CLI named gofib in this repository.\n\nRequirements:\n- Go module 'gofib' at the repository root (go.mod, go 1.27).\n- Command 'gofib' prints the first 100 Fibonacci numbers, one per line, prefixed with their index, e.g. '1: 1', '2: 1', '3: 2', ... up to '100: 354224848179261915075'.\n- F(100) exceeds int64: use math/big.\n- Package main lives in main.go; the Fibonacci computation lives in a separate function Fib(n int) *big.Int so it is unit-testable.\n- Add fib_test.go with table-driven tests covering F(1), F(2), F(10), F(100).\n- No external dependencies (stdlib only).\n- 'just qualitygate' must pass: gofmt clean, go vet, go build ./..., go test ./...\n\nDone when: running 'go run .' prints exactly 100 lines with correct values and the quality gate is green.","labels":["ready-for-agent"]}
++{"id":"fabro-f487","title":"gofib: Go CLI printing the first 100 Fibonacci numbers","status":"closed","type":"feature","priority":2,"createdAt":"2026-08-22T16:19:22.896Z","updatedAt":"2026-08-22T16:43:06.780Z","description":"Build a small Go CLI named gofib in this repository.\n\nRequirements:\n- Go module 'gofib' at the repository root (go.mod, go 1.27).\n- Command 'gofib' prints the first 100 Fibonacci numbers, one per line, prefixed with their index, e.g. '1: 1', '2: 1', '3: 2', ... up to '100: 354224848179261915075'.\n- F(100) exceeds int64: use math/big.\n- Package main lives in main.go; the Fibonacci computation lives in a separate function Fib(n int) *big.Int so it is unit-testable.\n- Add fib_test.go with table-driven tests covering F(1), F(2), F(10), F(100).\n- No external dependencies (stdlib only).\n- 'just qualitygate' must pass: gofmt clean, go vet, go build ./..., go test ./...\n\nDone when: running 'go run .' prints exactly 100 lines with correct values and the quality gate is green.","labels":["ready-for-agent"],"closedAt":"2026-08-22T16:43:06.780Z"}
+diff --git a/gofib b/gofib
+deleted file mode 100755
+index 98f2581..0000000
+Binary files a/gofib and /dev/null differ
