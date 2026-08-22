@@ -96,10 +96,6 @@ fn is_blank_value(val: Option<&serde_json::Value>) -> bool {
     val.and_then(|v| v.as_str()).is_some_and(str::is_empty)
 }
 
-fn is_context_key_excluded(key: &str) -> bool {
-    keys::is_preamble_hidden_key(key)
-}
-
 fn format_value(val: &serde_json::Value) -> String {
     match val.as_str() {
         Some(s) => s.to_string(),
@@ -272,7 +268,7 @@ fn append_filtered_context(
     let mut context_keys: Vec<&String> = snapshot
         .keys()
         .filter(|k| {
-            !is_context_key_excluded(k)
+            !keys::is_preamble_hidden_key(k)
                 && !rendered_keys.contains(*k)
                 && !is_blank_value(snapshot.get(*k))
         })
@@ -298,7 +294,7 @@ fn append_filtered_context_table(
     let mut context_keys: Vec<&String> = snapshot
         .keys()
         .filter(|k| {
-            !is_context_key_excluded(k)
+            !keys::is_preamble_hidden_key(k)
                 && !rendered_keys.contains(*k)
                 && !is_blank_value(snapshot.get(*k))
         })
@@ -1595,29 +1591,29 @@ mod tests {
         );
     }
 
-    // --- is_context_key_excluded ---
+    // --- is_preamble_hidden_key ---
 
     #[test]
-    fn is_context_key_excluded_checks() {
-        assert!(is_context_key_excluded(keys::INTERNAL_FIDELITY));
-        assert!(is_context_key_excluded(&keys::retry_count_key("plan")));
-        assert!(is_context_key_excluded(keys::CURRENT_NODE));
-        assert!(is_context_key_excluded(keys::CURRENT_PREAMBLE));
-        assert!(is_context_key_excluded(&keys::graph_attr_key(
+    fn is_preamble_hidden_key_checks() {
+        assert!(keys::is_preamble_hidden_key(keys::INTERNAL_FIDELITY));
+        assert!(keys::is_preamble_hidden_key(&keys::retry_count_key("plan")));
+        assert!(keys::is_preamble_hidden_key(keys::CURRENT_NODE));
+        assert!(keys::is_preamble_hidden_key(keys::CURRENT_PREAMBLE));
+        assert!(keys::is_preamble_hidden_key(&keys::graph_attr_key(
             "default_fidelity"
         )));
-        assert!(is_context_key_excluded(keys::GRAPH_GOAL));
-        assert!(is_context_key_excluded(&keys::thread_current_node_key(
-            "main"
-        )));
-        assert!(is_context_key_excluded(&keys::response_key("plan")));
-        assert!(is_context_key_excluded(keys::OUTCOME));
-        assert!(is_context_key_excluded(keys::LAST_STAGE));
-        assert!(is_context_key_excluded(keys::LAST_RESPONSE));
-        assert!(is_context_key_excluded(keys::PREFERRED_LABEL));
-        assert!(!is_context_key_excluded("user.name"));
-        assert!(!is_context_key_excluded("custom.key"));
-        assert!(!is_context_key_excluded(keys::COMMAND_OUTPUT));
+        assert!(keys::is_preamble_hidden_key(keys::GRAPH_GOAL));
+        assert!(keys::is_preamble_hidden_key(
+            &keys::thread_current_node_key("main")
+        ));
+        assert!(keys::is_preamble_hidden_key(&keys::response_key("plan")));
+        assert!(keys::is_preamble_hidden_key(keys::OUTCOME));
+        assert!(keys::is_preamble_hidden_key(keys::LAST_STAGE));
+        assert!(keys::is_preamble_hidden_key(keys::LAST_RESPONSE));
+        assert!(keys::is_preamble_hidden_key(keys::PREFERRED_LABEL));
+        assert!(!keys::is_preamble_hidden_key("user.name"));
+        assert!(!keys::is_preamble_hidden_key("custom.key"));
+        assert!(!keys::is_preamble_hidden_key(keys::COMMAND_OUTPUT));
     }
 
     // --- meta node filtering ---

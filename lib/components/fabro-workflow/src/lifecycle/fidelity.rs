@@ -175,7 +175,7 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
         );
 
         // 4. Preamble building: if Full, empty preamble; otherwise build from context
-        let resolved_context = artifact::resolve_context_for_execution(
+        let mut resolved_values = artifact::resolved_context_snapshot(
             &state.context,
             &self.run_store,
             &*self.sandbox,
@@ -194,14 +194,23 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
 
         // The resolved copies exist only to render prompt preambles, so bound
         // what any one value may contribute before the builders see them.
-        artifact::demote_large_values_for_prompt(
-            &resolved_context,
-            &mut resolved_outcomes,
-            &self.run_store,
-            &*self.sandbox,
-            &self.run_dir,
-        )
-        .await;
+        // Full renders no preamble and Truncate renders no context values, so
+        // there is nothing to bound — except for a parallel node, whose branch
+        // stash may render at a richer fidelity.
+        let preamble_renders_values =
+            !matches!(fidelity, keys::Fidelity::Full | keys::Fidelity::Truncate)
+                || gv_node.handler_type() == Some("parallel");
+        if preamble_renders_values {
+            artifact::demote_large_values_for_prompt(
+                &mut resolved_values,
+                &mut resolved_outcomes,
+                &self.run_store,
+                &*self.sandbox,
+                &self.run_dir,
+            )
+            .await;
+        }
+        let resolved_context = Context::from_values(resolved_values);
 
         let preamble = build_preamble(
             fidelity,

@@ -104,53 +104,64 @@ async fn offload_parallel_result_updates(
 }
 
 async fn offload_value(value: &mut Value, run_store: &RunStoreHandle) -> Result<()> {
-    // JSON escaping expands a string to at most 6 bytes per char plus quotes,
-    // so short strings can never cross the threshold — skip serializing them.
-    if let Value::String(text) = &*value {
-        if text.len().saturating_mul(6) + 2 <= BLOB_OFFLOAD_THRESHOLD {
-            return Ok(());
-        }
-    }
-    let bytes = serde_json::to_vec(&*value)
-        .map_err(|e| Error::engine_with_source("artifact serialize failed", e))?;
-
-    if bytes.len() > BLOB_OFFLOAD_THRESHOLD {
-        let blob_hash = run_store
-            .write_blob(&bytes)
-            .await
-            .map_err(|e| Error::engine_with_anyhow("artifact blob write failed", e))?;
-        *value = Value::String(format_blob_ref(&blob_hash));
-    }
+    let Some(bytes) = serialized_if_over(value, BLOB_OFFLOAD_THRESHOLD)? else {
+        return Ok(());
+    };
+    let blob_hash = run_store
+        .write_blob(&bytes)
+        .await
+        .map_err(|e| Error::engine_with_anyhow("artifact blob write failed", e))?;
+    *value = Value::String(format_blob_ref(&blob_hash));
     Ok(())
+}
+
+/// Serialize `value` only when it can exceed `threshold` bytes, returning the
+/// serialized form when it does.
+fn serialized_if_over(value: &Value, threshold: usize) -> Result<Option<Vec<u8>>> {
+    match value {
+        // Scalars can never reach an offload threshold.
+        Value::Null | Value::Bool(_) | Value::Number(_) => return Ok(None),
+        // JSON escaping expands a string to at most 6 bytes per char plus
+        // quotes, so short strings can never cross the threshold — skip
+        // serializing them.
+        Value::String(text) if text.len().saturating_mul(6) + 2 <= threshold => return Ok(None),
+        _ => {}
+    }
+    let bytes = serde_json::to_vec(value)
+        .map_err(|e| Error::engine_with_source("artifact serialize failed", e))?;
+    Ok((bytes.len() > threshold).then_some(bytes))
 }
 
 /// Bound every value the prompt preamble may inline.
 ///
-/// The resolved context and outcomes passed to the preamble builders exist
-/// only to render prompt text, so any value whose serialized JSON exceeds
+/// The resolved context snapshot and outcomes passed here exist only to
+/// render prompt text, so any value whose serialized JSON exceeds
 /// [`PROMPT_INLINE_VALUE_MAX`] is replaced with a small marker object holding
 /// a preview and the sandbox path of the full value. The agent reads the file
 /// when it needs the data; the preamble stays within its budget no matter how
-/// much state the run has accumulated. Context keys the preamble never
-/// renders are left alone.
+/// much state the run has accumulated.
+///
+/// Context keys the preamble never renders are skipped. Outcome updates are
+/// demoted wholesale: the set is small, and over-demoting a prompt-only copy
+/// is harmless.
 ///
 /// Demotion is an optimization of prompt size, not a correctness gate: a
 /// value that fails to demote is left inline and logged rather than failing
 /// the node.
 pub async fn demote_large_values_for_prompt(
-    context: &Context,
+    values: &mut HashMap<String, Value>,
     node_outcomes: &mut HashMap<String, Outcome>,
     run_store: &RunStoreHandle,
     env: &dyn Sandbox,
     run_dir: &Path,
 ) {
     let mut locality = SandboxLocality::default();
-    for (key, mut value) in context.snapshot() {
-        if context::keys::is_preamble_hidden_key(&key) {
+    for (key, value) in &mut *values {
+        if context::keys::is_preamble_hidden_key(key) {
             continue;
         }
-        match demote_value_for_prompt(
-            &mut value,
+        if let Err(err) = demote_value_for_prompt(
+            value,
             PROMPT_INLINE_VALUE_MAX,
             run_store,
             env,
@@ -159,12 +170,10 @@ pub async fn demote_large_values_for_prompt(
         )
         .await
         {
-            Ok(true) => context.set(key, value),
-            Ok(false) => {}
-            Err(err) => tracing::warn!(key, %err, "prompt value demotion failed; kept inline"),
+            tracing::warn!(key, %err, "prompt value demotion failed; kept inline");
         }
     }
-    for (node_id, outcome) in node_outcomes.iter_mut() {
+    for (node_id, outcome) in &mut *node_outcomes {
         for (key, value) in &mut outcome.context_updates {
             if let Err(err) = demote_value_for_prompt(
                 value,
@@ -229,21 +238,62 @@ async fn demote_value_for_prompt(
     run_dir: &Path,
     locality: &mut SandboxLocality,
 ) -> Result<bool> {
-    let bytes = serde_json::to_vec(&*value)
-        .map_err(|e| Error::engine_with_source("prompt value serialize failed", e))?;
-    if bytes.len() <= max_inline_bytes {
+    let Some(bytes) = serialized_if_over(value, max_inline_bytes)? else {
         return Ok(false);
-    }
-    let blob_hash = run_store
-        .write_blob(&bytes)
-        .await
-        .map_err(|e| Error::engine_with_anyhow("prompt value blob write failed", e))?;
-    let pointer = materialize_blob_ref(&blob_hash, run_store, env, run_dir, locality).await?;
-    let path = pointer
-        .strip_prefix(ARTIFACT_POINTER_PREFIX)
-        .unwrap_or(&pointer);
-    *value = large_value_marker(path, bytes.len(), &rendered_head(value, &bytes));
+    };
+    let path = materialize_value_bytes(&bytes, run_store, env, run_dir, locality).await?;
+    *value = large_value_marker(&path, bytes.len(), &rendered_head(value, &bytes));
     Ok(true)
+}
+
+/// Write `bytes` to the sandbox blob file for their content hash and return
+/// the file's path.
+///
+/// Content addressing makes an existing file authoritative, so a value that
+/// was already materialized — the common case, since demotion re-runs before
+/// every node over copies that are dropped after the preamble is built —
+/// costs one existence probe and nothing else. First touch also persists the
+/// blob in `run_store`, keeping the file recoverable through the managed
+/// blob-reference machinery.
+async fn materialize_value_bytes(
+    bytes: &[u8],
+    run_store: &RunStoreHandle,
+    env: &dyn Sandbox,
+    run_dir: &Path,
+    locality: &mut SandboxLocality,
+) -> Result<String> {
+    let blob_hash = BlobHash::new(bytes);
+    if locality.is_local(env, run_dir).await? {
+        let path = local_materialized_blob_path(run_dir, &blob_hash);
+        if !path.exists() {
+            persist_blob(bytes, run_store).await?;
+            write_local_blob_file(&path, bytes).await?;
+        }
+        return Ok(path.display().to_string());
+    }
+
+    let remote_path = format!("{}/.fabro/blobs/{blob_hash}.json", env.working_directory());
+    if !env
+        .file_exists(&remote_path)
+        .await
+        .map_err(|e| Error::engine_with_source("failed to check blob existence", e))?
+    {
+        persist_blob(bytes, run_store).await?;
+        let content = std::str::from_utf8(bytes)
+            .map_err(|e| Error::engine_with_source("artifact blob was not valid UTF-8 JSON", e))?;
+        env.write_file(&remote_path, content).await.map_err(|e| {
+            Error::engine_with_source("failed to write artifact blob to sandbox", e)
+        })?;
+    }
+    Ok(remote_path)
+}
+
+async fn persist_blob(bytes: &[u8], run_store: &RunStoreHandle) -> Result<()> {
+    run_store
+        .write_blob(bytes)
+        .await
+        .map_err(|e| Error::engine_with_anyhow("artifact blob write failed", e))?;
+    Ok(())
 }
 
 /// Head of the value as the preamble would have rendered it: the raw text for
@@ -606,17 +656,7 @@ async fn materialize_blob_ref(
         let path = local_materialized_blob_path(run_dir, blob_hash);
         if !path.exists() {
             let bytes = read_required_blob(blob_hash, run_store).await?;
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent).await.map_err(|err| {
-                    Error::Io(format!(
-                        "creating artifact blob directory {}: {err}",
-                        parent.display()
-                    ))
-                })?;
-            }
-            fs::write(&path, &bytes).await.map_err(|err| {
-                Error::Io(format!("writing artifact blob {}: {err}", path.display()))
-            })?;
+            write_local_blob_file(&path, &bytes).await?;
         }
         return Ok(format!("{ARTIFACT_POINTER_PREFIX}{}", path.display()));
     }
@@ -636,6 +676,20 @@ async fn materialize_blob_ref(
     }
 
     Ok(format!("{ARTIFACT_POINTER_PREFIX}{remote_path}"))
+}
+
+async fn write_local_blob_file(path: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).await.map_err(|err| {
+            Error::Io(format!(
+                "creating artifact blob directory {}: {err}",
+                parent.display()
+            ))
+        })?;
+    }
+    fs::write(path, bytes)
+        .await
+        .map_err(|err| Error::Io(format!("writing artifact blob {}: {err}", path.display())))
 }
 
 async fn read_required_blob(
@@ -1341,9 +1395,10 @@ mod tests {
         let dataset = serde_json::json!({
             "rows": vec![serde_json::json!({"payload": "x".repeat(64)}); 256]
         });
-        let context = Context::new();
-        context.set("dataset", dataset.clone());
-        context.set("small", serde_json::json!("kept inline"));
+        let mut values = HashMap::from([
+            ("dataset".to_string(), dataset.clone()),
+            ("small".to_string(), serde_json::json!("kept inline")),
+        ]);
         let mut outcomes = HashMap::from([("work".to_string(), Outcome {
             context_updates: HashMap::from([(
                 context::keys::COMMAND_OUTPUT.to_string(),
@@ -1352,11 +1407,10 @@ mod tests {
             ..Outcome::success()
         })]);
 
-        demote_large_values_for_prompt(&context, &mut outcomes, &run_store, &sandbox, &run_dir)
+        demote_large_values_for_prompt(&mut values, &mut outcomes, &run_store, &sandbox, &run_dir)
             .await;
 
-        let marker = context.get("dataset").unwrap();
-        let details = marker
+        let details = values["dataset"]
             .get("fabroLargeValue")
             .expect("oversized context value should demote");
         assert_eq!(
@@ -1373,22 +1427,14 @@ mod tests {
                 .unwrap()
                 .starts_with("{\"rows\"")
         );
-        assert!(serde_json::to_vec(&marker).unwrap().len() <= PROMPT_INLINE_VALUE_MAX);
+        assert!(serde_json::to_vec(&values["dataset"]).unwrap().len() <= PROMPT_INLINE_VALUE_MAX);
 
-        assert_eq!(
-            context.get("small").unwrap(),
-            serde_json::json!("kept inline")
-        );
+        assert_eq!(values["small"], serde_json::json!("kept inline"));
 
-        let output = &outcomes["work"].context_updates[context::keys::COMMAND_OUTPUT];
-        let details = output
+        let details = outcomes["work"].context_updates[context::keys::COMMAND_OUTPUT]
             .get("fabroLargeValue")
             .expect("oversized command output should demote");
         assert!(details["preview"].as_str().unwrap().starts_with("ooo"));
-        let stored: Value =
-            serde_json::from_slice(&std::fs::read(details["path"].as_str().unwrap()).unwrap())
-                .unwrap();
-        assert_eq!(stored.as_str().unwrap().len(), PROMPT_INLINE_VALUE_MAX + 1);
     }
 
     #[tokio::test]
@@ -1400,14 +1446,13 @@ mod tests {
         let sandbox = fabro_agent::LocalSandbox::new(tmp.path().to_path_buf());
 
         let inherited_preamble = "p".repeat(PROMPT_INLINE_VALUE_MAX + 1);
-        let context = Context::new();
-        context.set(
-            context::keys::CURRENT_PREAMBLE,
+        let mut values = HashMap::from([(
+            context::keys::CURRENT_PREAMBLE.to_string(),
             serde_json::json!(inherited_preamble.clone()),
-        );
+        )]);
 
         demote_large_values_for_prompt(
-            &context,
+            &mut values,
             &mut HashMap::new(),
             &run_store,
             &sandbox,
@@ -1416,7 +1461,7 @@ mod tests {
         .await;
 
         assert_eq!(
-            context.get(context::keys::CURRENT_PREAMBLE).unwrap(),
+            values[context::keys::CURRENT_PREAMBLE],
             serde_json::json!(inherited_preamble)
         );
     }

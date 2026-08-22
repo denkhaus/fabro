@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use fabro_config::RunScratch;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_graphviz::parser::parse;
 use fabro_interview::{
@@ -10345,9 +10346,17 @@ async fn downstream_local_execution_resolves_response_blob_refs_as_text() {
 
     // The downstream handler saw the full inline text, so resolution itself
     // did not swap the value for a file reference. Prompt-preamble demotion
-    // may still materialize the oversized response under `runtime/blobs`.
+    // materializes the oversized response for preamble use, confined to the
+    // run's blob directory.
     let captured_value = captured.lock().unwrap().first().cloned().unwrap();
     assert_eq!(captured_value, "x".repeat(150 * 1024));
+    assert!(
+        RunScratch::new(dir.path())
+            .runtime_dir()
+            .join("blobs")
+            .exists(),
+        "prompt demotion materializes the oversized response under runtime/blobs"
+    );
 }
 
 #[tokio::test]
@@ -10421,14 +10430,16 @@ async fn downstream_remote_execution_resolves_response_blob_refs_as_text() {
     // directory, but nowhere else.
     let captured_value = captured.lock().unwrap().first().cloned().unwrap();
     assert_eq!(captured_value, "x".repeat(150 * 1024));
+    let written = remote_env.written.lock().unwrap();
     assert!(
-        remote_env
-            .written
-            .lock()
-            .unwrap()
+        !written.is_empty(),
+        "prompt demotion materializes the oversized response into the sandbox"
+    );
+    assert!(
+        written
             .iter()
             .all(|(path, _)| path.contains("/.fabro/blobs/")),
-        "resolution should write nothing outside the sandbox blob directory"
+        "nothing is written outside the sandbox blob directory"
     );
 }
 

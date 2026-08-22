@@ -73,10 +73,7 @@ pub mod keys {
     /// already present.
     #[must_use]
     pub(crate) fn is_preamble_hidden_key(key: &str) -> bool {
-        key.starts_with(INTERNAL_PREFIX)
-            || key.starts_with(CURRENT_PREFIX)
-            || key.starts_with(GRAPH_PREFIX)
-            || key.starts_with(THREAD_PREFIX)
+        is_engine_internal_key(key)
             || key.starts_with(RESPONSE_PREFIX)
             || key == OUTCOME
             || key == LAST_STAGE
