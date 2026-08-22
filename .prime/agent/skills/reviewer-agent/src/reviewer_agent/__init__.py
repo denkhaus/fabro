@@ -350,7 +350,7 @@ PROMPT_ONLY_SHAPES = {"tab"}             # single LLM call, no tools (docs/fabro
 # project that happens to be called "fabro"
 PLATFORM_FABRO_PATTERNS = (
     r"\.fabro\b", r"\.fabro/", r"docs\.fabro\.sh", r"Fabro-", r"fabro/run/",
-    r"fabro/meta/", r"fabro\(", r"\bfabro\b(?=\s*(?:workflow|run|CLI|server|checkpoint))",
+    r"fabro/meta/", r"fabro\\?\(", r"\bfabro\b(?=\s*(?:workflow|run|CLI|server|checkpoint))",
 )
 
 
