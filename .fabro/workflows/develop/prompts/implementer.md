@@ -28,6 +28,10 @@ The Planner put the claimed seed in the context (`current_seed_id`, `current_see
 
 If the seed turns out to be unimplementable as specified, route Blocked and describe precisely what blocks you.
 
+## Output hygiene — hard rule
+
+- Wrap every absolute path in backticks (e.g. `/tmp/build`, `$HOME/.cache`) in your summary, feedback, and any text you emit. A bare path like ` /tmp ` followed by a space crashes downstream agent stages: they parse such tokens as skill references. Backticks prevent that.
+
 ## Outcome contract
 
 - `succeeded`: implementation written, tests updated, no artifacts left behind, ready for the quality gate.

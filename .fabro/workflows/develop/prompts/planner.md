@@ -28,6 +28,8 @@ If `sd ready` returns nothing and no seed is in progress for this effort, the tr
 
 Do not implement anything yourself. Do not review. Planning and tracker writes only.
 
+When you write text that flows into context (briefs, feedback), wrap absolute paths in backticks (e.g. `/tmp/x`): bare paths followed by a space crash later agent stages, which parse them as skill references.
+
 ## Outcome contract
 
 - `succeeded`: a seed is claimed (fresh or re-planned) and its brief is in the context.
