@@ -29,7 +29,7 @@ stop_on_terminal = true
 timeout = "5m"
 
 [[run.prepare.steps]]
-script = "mise install && bun install -g @os-eco/seeds-cli@0.5.15 @os-eco/mulch-cli@0.10.7 && lefthook install && sd --version && ml --version && nu --version && betterleaks --version"
+script = "mise install"
 
 # Default model for all project runs.
 [run.model]
