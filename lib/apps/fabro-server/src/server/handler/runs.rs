@@ -60,7 +60,7 @@ use crate::run_compiler::{
 use crate::run_files::{list_run_commits, list_run_files};
 use crate::run_intent::{
     EnvironmentSelectionError, RunIntentAdmissionError, lower_workflow_closure,
-    pin_workflow_environment_authority, validate_target,
+    pin_workflow_environment_authority,
 };
 use crate::run_manifest;
 use crate::run_selector::{ResolveRunError, resolve_run_by_selector};
@@ -587,6 +587,22 @@ async fn create_run_from_intent(
     actor: Principal,
     headers: HeaderMap,
 ) -> Response {
+    // Validate the pure, in-memory request facts before paying for
+    // blob-store reads and closure lowering.
+    let validated_target = match intent.target.validate() {
+        Ok(target) => target,
+        Err(error) => return run_intent_admission_error(error.into()),
+    };
+    let environment_id = match select_intent_environment_id(
+        &state,
+        intent
+            .environment_id
+            .as_deref()
+            .unwrap_or(DEFAULT_ENVIRONMENT_ID),
+    ) {
+        Ok(id) => id,
+        Err(error) => return run_intent_admission_error(error.into()),
+    };
     let blobs = match state.store_ref().blobs().await {
         Ok(blobs) => blobs,
         Err(source) => {
@@ -609,20 +625,6 @@ async fn create_run_from_intent(
     };
     let mut lowered = match lower_workflow_closure(&closure) {
         Ok(lowered) => lowered,
-        Err(error) => return run_intent_admission_error(error.into()),
-    };
-    let validated_target = match validate_target(intent.target) {
-        Ok(target) => target,
-        Err(error) => return run_intent_admission_error(error.into()),
-    };
-    let environment_id = match select_intent_environment_id(
-        &state,
-        intent
-            .environment_id
-            .as_deref()
-            .unwrap_or(DEFAULT_ENVIRONMENT_ID),
-    ) {
-        Ok(id) => id,
         Err(error) => return run_intent_admission_error(error.into()),
     };
     if let Some(layer) = lowered.workflow_layer.as_mut() {

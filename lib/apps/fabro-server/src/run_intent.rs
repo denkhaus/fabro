@@ -6,8 +6,7 @@ use fabro_config::{RunGoalLayer, SettingsLayer};
 use fabro_environment::{EnvironmentId, EnvironmentValidationError};
 use fabro_types::settings::InterpString;
 use fabro_types::{
-    DirtyStatus, GitContext, GitHubRepositorySlug, ManifestPath, RunTarget, SandboxProviderKind,
-    WorkflowPath, WorkflowVersionId, normalize_git_commit_sha, repository,
+    ManifestPath, SandboxProviderKind, TargetValidationError, WorkflowPath, WorkflowVersionId,
 };
 use fabro_workflow::workflow_bundle::{BundledWorkflow, ParsedWorkflowConfig, WorkflowBundle};
 use fabro_workflow_version::LoadedWorkflowVersionClosure;
@@ -101,61 +100,6 @@ pub(crate) enum WorkflowClosureLoweringError {
         #[source]
         source: Box<RunCompilerError>,
     },
-}
-
-#[derive(Debug, Error, PartialEq, Eq)]
-pub(crate) enum TargetValidationError {
-    #[error("target repository must be a valid GitHub owner/name slug")]
-    Repository,
-    #[error("target branch must be a non-empty branch name, not a ref or commit selector")]
-    Branch,
-    #[error("target SHA must be exactly 40 ASCII hexadecimal characters")]
-    Sha,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ValidatedGitTarget {
-    pub(crate) target: RunTarget,
-    pub(crate) git:    GitContext,
-}
-
-pub(crate) fn validate_target(
-    target: RunTarget,
-) -> Result<ValidatedGitTarget, TargetValidationError> {
-    match target {
-        RunTarget::Git { repo, branch, sha } => {
-            let slug =
-                GitHubRepositorySlug::try_new(&repo).ok_or(TargetValidationError::Repository)?;
-            let selector = format!("heads/{branch}");
-            if branch.is_empty()
-                || branch.starts_with("heads/")
-                || branch.starts_with("tags/")
-                || branch.starts_with("refs/")
-                || normalize_git_commit_sha(&branch).is_some()
-                || !repository::is_valid_github_ref_selector(&selector)
-            {
-                return Err(TargetValidationError::Branch);
-            }
-            let sha = sha
-                .map(|sha| normalize_git_commit_sha(&sha).ok_or(TargetValidationError::Sha))
-                .transpose()?;
-            let repo = format!("{}/{}", slug.owner(), slug.repo());
-            let origin_url = format!("https://github.com/{repo}");
-            Ok(ValidatedGitTarget {
-                target: RunTarget::Git {
-                    repo,
-                    branch: branch.clone(),
-                    sha: sha.clone(),
-                },
-                git:    GitContext {
-                    origin_url,
-                    branch,
-                    sha,
-                    dirty: DirtyStatus::Clean,
-                },
-            })
-        }
-    }
 }
 
 pub(crate) fn lower_workflow_closure(
@@ -621,24 +565,5 @@ mod tests {
             error,
             WorkflowClosureLoweringError::InvalidMount { .. }
         ));
-    }
-
-    #[test]
-    fn target_validation_normalizes_sha_without_network_resolution() {
-        let validated = validate_target(RunTarget::Git {
-            repo:   "fabro-sh/fabro".to_string(),
-            branch: "feature/run-intent".to_string(),
-            sha:    Some("ABCDEF0123456789ABCDEF0123456789ABCDEF01".to_string()),
-        })
-        .unwrap();
-
-        assert_eq!(
-            validated.git.sha.as_deref(),
-            Some("abcdef0123456789abcdef0123456789abcdef01")
-        );
-        assert_eq!(
-            validated.git.origin_url,
-            "https://github.com/fabro-sh/fabro"
-        );
     }
 }

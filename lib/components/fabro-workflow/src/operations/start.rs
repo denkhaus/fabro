@@ -22,8 +22,8 @@ use fabro_types::settings::run::{
     RunPrepareSettings as ResolvedRunPrepareSettings,
 };
 use fabro_types::{
-    GitHubRepositorySlug, ManifestPath, RunId, RunRunnableSource, RunSpec, RunTarget,
-    SandboxProviderKind, normalize_git_commit_sha, repository,
+    ManifestPath, RunId, RunRunnableSource, RunSpec, SandboxProviderKind, TargetValidationError,
+    normalize_git_commit_sha,
 };
 use fabro_util::error::collect_chain;
 use fabro_vault::Vault;
@@ -479,9 +479,9 @@ impl RunSession {
                 config:           resolve_docker_config(resolved, secret_lookup)?,
                 github_app:       services.github_app.clone(),
                 run_id:           Some(record.run_id),
-                clone_origin_url: clone_source.origin_url.clone(),
-                clone_branch:     clone_source.branch.clone(),
-                clone_commit_sha: clone_source.commit_sha.clone(),
+                clone_origin_url: clone_source.origin_url,
+                clone_branch:     clone_source.branch,
+                clone_commit_sha: clone_source.commit_sha,
             },
             SandboxProviderKind::Daytona => {
                 let api_key = vault_guard
@@ -491,9 +491,9 @@ impl RunSession {
                     config: Box::new(resolve_daytona_config(resolved)),
                     github_app: services.github_app.clone(),
                     run_id: Some(record.run_id),
-                    clone_origin_url: clone_source.origin_url.clone(),
-                    clone_branch: clone_source.branch.clone(),
-                    clone_commit_sha: clone_source.commit_sha.clone(),
+                    clone_origin_url: clone_source.origin_url,
+                    clone_branch: clone_source.branch,
+                    clone_commit_sha: clone_source.commit_sha,
                     api_key,
                 }
             }
@@ -587,53 +587,44 @@ fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
         });
     };
 
-    match target {
-        RunTarget::Git { repo, branch, sha } => {
-            let slug = GitHubRepositorySlug::try_new(repo).ok_or_else(|| {
-                Error::engine("persisted Git run target has an invalid repository slug")
-            })?;
-            let selector = format!("heads/{branch}");
-            if branch.starts_with("heads/")
-                || branch.starts_with("tags/")
-                || branch.starts_with("refs/")
-                || normalize_git_commit_sha(branch).is_some()
-                || !repository::is_valid_github_ref_selector(&selector)
-            {
-                return Err(Error::engine(
-                    "persisted Git run target has an invalid branch",
-                ));
+    // The Git-target grammar is owned by `RunTarget::validate` in fabro-types;
+    // admission accepts targets through the same rules this start path
+    // re-derives the clone source from.
+    let validated = target.clone().validate().map_err(|error| {
+        Error::engine(match error {
+            TargetValidationError::Repository => {
+                "persisted Git run target has an invalid repository slug"
             }
-            let sha = sha
-                .as_deref()
-                .map(|value| {
-                    normalize_git_commit_sha(value)
-                        .ok_or_else(|| Error::engine("persisted Git run target has an invalid SHA"))
-                })
-                .transpose()?;
-            let expected_origin = format!("https://github.com/{}/{}", slug.owner(), slug.repo());
-            let git = record.git.as_ref().ok_or_else(|| {
-                Error::engine("persisted Git run target is missing its Git projection")
-            })?;
-            let projected_sha = git
-                .sha
-                .as_deref()
-                .map(|value| {
-                    normalize_git_commit_sha(value)
-                        .ok_or_else(|| Error::engine("persisted Git projection has an invalid SHA"))
-                })
-                .transpose()?;
-            if git.origin_url != expected_origin || git.branch != *branch || projected_sha != sha {
-                return Err(Error::engine(
-                    "persisted Git run target disagrees with its Git projection",
-                ));
-            }
-            Ok(CloneSourceForRun {
-                origin_url: Some(expected_origin),
-                branch:     Some(branch.clone()),
-                commit_sha: sha,
-            })
-        }
+            TargetValidationError::Branch => "persisted Git run target has an invalid branch",
+            TargetValidationError::Sha => "persisted Git run target has an invalid SHA",
+        })
+    })?;
+    let git = record
+        .git
+        .as_ref()
+        .ok_or_else(|| Error::engine("persisted Git run target is missing its Git projection"))?;
+    let projected_sha = git
+        .sha
+        .as_deref()
+        .map(|value| {
+            normalize_git_commit_sha(value)
+                .ok_or_else(|| Error::engine("persisted Git projection has an invalid SHA"))
+        })
+        .transpose()?;
+    let expected = validated.git;
+    if git.origin_url != expected.origin_url
+        || git.branch != expected.branch
+        || projected_sha != expected.sha
+    {
+        return Err(Error::engine(
+            "persisted Git run target disagrees with its Git projection",
+        ));
     }
+    Ok(CloneSourceForRun {
+        origin_url: Some(expected.origin_url),
+        branch:     Some(expected.branch),
+        commit_sha: expected.sha,
+    })
 }
 
 async fn configured_providers_for_start(
@@ -1212,7 +1203,8 @@ mod tests {
         RunPrepareSettings,
     };
     use fabro_types::{
-        BilledModelUsage, ManifestPath, StageTiming, WorkflowSettings, fixtures, test_support,
+        BilledModelUsage, ManifestPath, RunTarget, StageTiming, WorkflowSettings, fixtures,
+        test_support,
     };
     use fabro_vault::SecretType;
     use object_store::memory::InMemory;

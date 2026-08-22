@@ -97,3 +97,65 @@ fn git_commit_sha_normalization_is_exact_and_pure() {
         assert_eq!(normalize_git_commit_sha(invalid), None);
     }
 }
+
+#[test]
+fn target_validation_normalizes_sha_without_network_resolution() {
+    let validated = RunTarget::Git {
+        repo:   "fabro-sh/fabro".to_string(),
+        branch: "feature/run-intent".to_string(),
+        sha:    Some("ABCDEF0123456789ABCDEF0123456789ABCDEF01".to_string()),
+    }
+    .validate()
+    .unwrap();
+
+    assert_eq!(
+        validated.git.sha.as_deref(),
+        Some("abcdef0123456789abcdef0123456789abcdef01")
+    );
+    assert_eq!(
+        validated.git.origin_url,
+        "https://github.com/fabro-sh/fabro"
+    );
+    assert_eq!(validated.target, RunTarget::Git {
+        repo:   "fabro-sh/fabro".to_string(),
+        branch: "feature/run-intent".to_string(),
+        sha:    Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
+    });
+}
+
+#[test]
+fn target_validation_rejects_invalid_grammar() {
+    use fabro_types::TargetValidationError;
+
+    let validate = |repo: &str, branch: &str, sha: Option<&str>| {
+        RunTarget::Git {
+            repo:   repo.to_string(),
+            branch: branch.to_string(),
+            sha:    sha.map(str::to_string),
+        }
+        .validate()
+    };
+
+    assert_eq!(
+        validate("not-a-slug", "main", None).unwrap_err(),
+        TargetValidationError::Repository
+    );
+    for branch in [
+        "",
+        "heads/main",
+        "tags/v1",
+        "refs/heads/main",
+        "abcdef0123456789abcdef0123456789abcdef01",
+        "bad..branch",
+    ] {
+        assert_eq!(
+            validate("fabro-sh/fabro", branch, None).unwrap_err(),
+            TargetValidationError::Branch,
+            "{branch:?}"
+        );
+    }
+    assert_eq!(
+        validate("fabro-sh/fabro", "main", Some("short")).unwrap_err(),
+        TargetValidationError::Sha
+    );
+}

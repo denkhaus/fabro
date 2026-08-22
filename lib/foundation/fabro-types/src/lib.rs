@@ -130,7 +130,9 @@ pub use run_event::{
 };
 pub use run_failure::RunFailure;
 pub use run_id::{RunId, fixtures};
-pub use run_intent::{RunIntent, RunIntentArgs, RunTarget};
+pub use run_intent::{
+    RunIntent, RunIntentArgs, RunTarget, TargetValidationError, ValidatedGitTarget,
+};
 pub use run_projection::{
     ActivatedSkill, AgentControlState, CheckpointRecord, McpServerProjection, McpServerStatus,
     PendingInterviewRecord, RunProjection, SkillsProjection, StageContextWindow,
