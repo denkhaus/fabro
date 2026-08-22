@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "LLM error: Network error: error sending request for url (https://api.z.ai/api/coding/paas/v4/chat/completions)",
+  "timestamp": "2026-08-22T20:46:08.977118723Z"
+}
