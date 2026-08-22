@@ -55,10 +55,13 @@ Use `sd plan` when work is large or ambiguous enough that an LLM benefits from s
 - `sd plan outcome <pl-id> --result success|partial|failure` — Record outcome (storage-only)
 - `sd plan review <pl-id> --by <name>` — Record reviewer (informational)
 
-### Before You Finish
-1. Close completed issues: `sd close <id>`
-2. File issues for remaining work: `sd create --title "..."`
-3. Sync and push: `sd sync && git push`
+### Before You Finish — for HUMAN sessions
+The develop workflow stages have their own role rules that OVERRIDE this
+section inside runs: only the planner closes seeds; implementer/reviewer
+never run `sd close`, `sd sync`, or `git push` (checkpoints are automatic;
+the merge-back happens via run PRs). Outside runs (interactive work),
+the usual rules apply: `sd close <id>`, `sd create --title "..."`,
+`sd sync && git push`.
 <!-- seeds:end -->
 
 <!-- mulch:start -->
