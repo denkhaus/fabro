@@ -127,6 +127,23 @@ event = "run_complete"
 script = "echo done"
 ```
 
+#### Hook events
+
+| Event | Fires | Payload | Blocking |
+| --- | --- | --- | --- |
+| `run_start` | before the run begins executing | — | yes (aborts the run) |
+| `stage_start` | before a stage executes | node | yes (fails the stage) |
+| `stage_complete` | after a stage finishes successfully | node, status | no (observer) |
+| `stage_failed` | after a stage finishes in failure | node, status, failure_reason | no (observer) |
+| `edge_selected` | after the engine picks the next edge | node, edge label | no (observer) |
+| `checkpoint_saved` | after a checkpoint is durably persisted | node | no (observer) |
+| `run_complete` | after the run reaches a terminal success | — | no (observer) |
+| `run_failed` | after the run reaches a terminal failure | — | no (observer) |
+
+Hooks are observers with veto power on the blocking events; they cannot
+mutate run state. Host-side hooks run outside the sandbox (`sandbox =
+false`), sandbox-side hooks run in the workflow environment.
+
 ## Sections
 
 ### `[run.model]`
