@@ -9,5 +9,9 @@ product CONTEXT.md carries a pointer to this branch for platform vocabulary
 mixed state that motivated this split (the two-world work itself was
 documented identically on both branches for a day before this ADR).
 
-This extends ADR-0003: the sync scope is workflow assets and reviewer code
-only; documentation of decisions follows the world that owns them.
+This extends ADR-0003: platform-only assets on meta are the reviewer-agent
+(`.prime/agent/skills/`), the engine docs snapshot (`docs/fabro/`), and the
+review reports (`docs/reviews/`) — the platform reviews the product, so
+review tooling and its output live where the review happens, not in the
+scanned world. Product reviews are written with meta's reviewer code and
+stored on meta with a header naming the scanned product commit.

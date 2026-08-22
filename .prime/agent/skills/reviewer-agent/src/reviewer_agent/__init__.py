@@ -1205,15 +1205,19 @@ def save_report(
     root: str | Path,
     workflow: str | None,
     report_dir: str | Path = "docs/reviews",
+    scanned_root: str | Path | None = None,
 ) -> Path:
     """Persist a markdown report under `<root>/<report_dir>/`.
 
-    Filename: `<workflow|all>-review-<shortsha>.md`. A header comment records
-    the reviewed commit so the report stays attributable when the branch moves.
-    Returns the path of the written file.
+    Filename: `<workflow|all>-review-<shortsha>.md`. The header records the
+    reviewed commit (from `scanned_root` when given, else `root`) so the
+    report stays attributable when the branch moves. This separation exists
+    because reviews live on the platform world while the scanned repo may be
+    the product world. Returns the path of the written file.
     """
     root_path = Path(root).resolve()
-    branch, sha = _git_info(root_path)
+    scanned = Path(scanned_root).resolve() if scanned_root else root_path
+    branch, sha = _git_info(scanned)
     from datetime import date
     today = date.today().isoformat()
 
@@ -1327,7 +1331,8 @@ def run(
             out.append(f"- `{f.ref()}` {f.title}{extra}")
     report = "\n".join(out)
     if format == "markdown" and report_dir:
-        out_path = save_report(report, root_path, workflow, report_dir)
+        out_path = save_report(report, root_path, workflow, report_dir,
+                               scanned_root=root_path)
         report = f"{report}\n\nSaved to: `{out_path.relative_to(root_path)}`"
     return report
 

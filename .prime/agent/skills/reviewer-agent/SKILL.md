@@ -61,6 +61,7 @@ Full rule catalog with severity and docs citations:
   or seed identifier.
 - Pure stdlib; runs offline. Docs citations reference the local documentation
   snapshot in `docs/fabro/` of the scanned repo.
-- Reports are persisted into the scanned repo under `docs/reviews/`
-  (default) so they are versioned next to the code they judge; the returned
-  markdown ends with a `Saved to:` footer naming the file.
+- Reviews are platform assets: they live under `docs/reviews/` on the
+  platform world's repo, even when the scanned root is the product world —
+  pass `scanned_root` to `save_report` so the header names the scanned
+  product commit. The returned markdown ends with a `Saved to:` footer.

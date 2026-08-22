@@ -1,11 +1,10 @@
-# Workflow assets sync meta -> product, never the other way
+# The whole .fabro/workflows tree is canonical on meta and synced identical
 
-`.fabro/workflows/` and `.prime/agent/skills/` (the reviewer code)
-are canonical on `meta/denkhaus-lab` and copied to the product branch
-with a path-scoped sync. Everything else is per-world on
-purpose: the product justfile and root scripts/ gate product code; the
-platform justfile and root scripts/ lint workflow assets; `.mise.toml`
-differs because the two worlds provision different toolchains (product:
-go + just; platform: fabro + uv + just). `.seeds/` is never synced (see
-ADR-0001). The justfile is never synced — the gate is each world's own
-contract.
+`.fabro/workflows/` (every workflow, prompts, scripts) is canonical on
+`meta/denkhaus-lab` and copied 1:1 to the product branch; the two trees
+must never differ. Platform-only assets never sync to the product branch:
+`.prime/` (reviewer-agent), `docs/fabro/` (engine docs snapshot),
+`docs/reviews/` (review reports). Per-world on purpose: the justfile and
+root `scripts/` gate different things (product code vs workflow lint);
+`.mise.toml` provisions different toolchains (go vs fabro+uv). `.seeds/`
+is never synced (ADR-0001). Decisions documentation is per-world (ADR-0005).

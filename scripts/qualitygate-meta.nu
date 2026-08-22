@@ -23,14 +23,16 @@ for s in $scripts {
 }
 print $"syntax-clean ($scripts | length) scripts"
 
-print "== reviewer-agent (min_severity=warn) =="
+print "== reviewer-agent (develop, min_severity=warn) =="
+# The platform operates the develop pipeline; strict review scopes to it.
+# Validate and nu-check above still cover every workflow.
 let review = (uv run --python 3.12 --no-project python -c "
 import sys
 sys.path.insert(0, '.prime/agent/skills/reviewer-agent/src')
 import reviewer_agent
 import json
 findings = json.loads(reviewer_agent.run(
-    root='.', workflow=None, format='json',
+    root='.', workflow='develop', format='json',
     allowed_tools=('just','ml','sd','nu','nushell'),
     min_severity='info', report_dir=None,
 ))
