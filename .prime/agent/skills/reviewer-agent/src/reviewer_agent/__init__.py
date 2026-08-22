@@ -435,7 +435,10 @@ def check_agnosticity(
                          "package.json", "bun.lock", "cargo.lock", "rust-toolchain",
                          "rust-toolchain.toml", "mise.toml", ".mise.toml",
                          "pyproject.toml", "requirements.txt", "dockerfile",
-                         "docker-compose.yaml", "docker-compose.yml", ".env.example"}
+                         "docker-compose.yaml", "docker-compose.yml", ".env.example",
+                         # dev-loop interface contracts (ADR-0002 mailbox,
+                         # staged painpoints) defined by convention, not layout
+                         "painpoints.jsonl", "run-painpoints.jsonl"}
             for tf in external_files:
                 base = Path(tf).name
                 if len(base) < 5 or base.lower() in universal:

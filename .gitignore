@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 .venv/
 *.lock
+.fabro/run-painpoints.jsonl

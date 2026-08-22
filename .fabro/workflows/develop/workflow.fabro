@@ -78,10 +78,22 @@ digraph Develop {
         max_visits=20
     ]
 
+    // Refiner: deterministic painpoint delivery (ADR-0002). Lifts staged
+    // painpoints into the platform mailbox; never fails the goal gate.
+    refiner [
+        label="Painpoint Delivery",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/refiner.nu",
+        timeout="2m",
+        max_retries=0
+    ]
+
     start -> planner
 
-    planner -> exit        [label="Tracker empty", condition="preferred_label=\"Tracker empty\" || outcome=failed"]
+    planner -> refiner   [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    planner -> exit      [label="Planner failed", condition="outcome=failed"]
     planner -> implementer [label="Seed claimed"]
+    refiner -> exit
 
     implementer -> planner  [label="Blocked", condition="outcome=failed"]
     implementer -> tester   [label="Implemented"]
