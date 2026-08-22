@@ -28,18 +28,35 @@ let base = if ($checkpoints | is-empty) {
 } else {
     git rev-parse $"($checkpoints | last)^"
 }
+if ($checkpoints | is-empty) {
+    print "NO RUN BASE — no checkpoint commits found for this run."
+    print "The diff below is empty or misleading; treat this evidence as unreliable."
+    print ""
+}
 
 print "== changed files since run base =="
 git diff --stat $base HEAD
 
 print ""
-print "== full diff (bounded to 100k chars) =="
-let diff = (git diff $base HEAD | str join "\n")
-if ($diff | str length) > 100000 {
-    print (sanitize ($diff | str substring 0..99999))
-    print "... (diff truncated)"
-} else {
-    print (sanitize $diff)
+print "== full diff (per-file, 100k char budget) =="
+let changed = (git diff --name-only --diff-filter=ACMRT $base HEAD | lines)
+mut budget = 100000
+mut shown = 0
+for f in $changed {
+    let file_diff = (git diff $base HEAD -- $f | str join "\n")
+    let cost = ($file_diff | str length)
+    if $cost > $budget {
+        print $"--- ($f): NOT SHOWN (budget exhausted, ($cost) chars) ---"
+        continue
+    }
+    $budget = ($budget - $cost)
+    $shown = ($shown + 1)
+    print (sanitize $file_diff)
+}
+let omitted = (($changed | length) - $shown)
+if $omitted > 0 {
+    print ""
+    print $"($omitted) file(s) omitted beyond the budget — tail unseen; treat approval accordingly."
 }
 
 print ""
@@ -49,6 +66,17 @@ git status --short
 print ""
 print "== tracker state =="
 sd list --format json
+
+print ""
+print "== in-progress seed specs (authoritative) =="
+# The reviewer must judge against the seed description itself, not only the
+# planner's brief. Capture the full spec of every in_progress seed.
+let ids = (sd list --status in_progress --format json | from json | get issues.id)
+if ($ids | is-empty) {
+    print "(no seed in progress)"
+} else {
+    for id in $ids { sd show $id }
+}
 
 print ""
 print "== evidence complete =="

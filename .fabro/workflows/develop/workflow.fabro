@@ -28,11 +28,13 @@ digraph Develop {
         max_visits=10
     ]
 
-    // Tester: deterministic quality gate, no agent.
+    // Tester: deterministic quality gate, no agent. The host project defines
+    // the gate as a `qualitygate` recipe in its justfile; the workflow stays
+    // agnostic about what the gate checks.
     tester [
         label="Quality Gate",
         shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/gate.nu",
+        script="just qualitygate",
         timeout="10m",
         max_retries=0
     ]
@@ -55,7 +57,8 @@ digraph Develop {
         prompt="@prompts/reviewer.md",
         output_schema="routing",
         output_retries=2,
-        max_visits=20
+        max_visits=20,
+        goal_gate=true
     ]
 
     start -> planner
@@ -74,4 +77,5 @@ digraph Develop {
 
     reviewer -> planner [label="Approved", condition="preferred_label=\"Approved\""]
     reviewer -> planner [label="Changes requested"]
+    reviewer -> exit [label="Reviewer failed", condition="outcome=failed"]
 }

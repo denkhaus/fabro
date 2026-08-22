@@ -13,17 +13,21 @@ The Planner put the claimed seed in the context (`current_seed_id`, `current_see
 ## Your job this pass
 
 1. Re-read the seed requirements from `sd show <current_seed_id>`. The seed description is the specification; follow it literally.
-2. Implement it in the current worktree: create and edit files, keep the project's conventions (toolchain via mise, commands via just, scripts in nu).
+2. Implement it in the current worktree: create and edit files, keep the project's conventions (commands run through its `just` recipes).
 3. Write or update tests exactly as the seed demands.
 4. Do NOT run the full quality gate yourself — the deterministic tester step after you does that. A quick smoke check (build, single test) is fine.
 5. Do NOT close the seed and do NOT review — the Reviewer decides, the Planner closes.
 6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced.
 
+## Verification-only briefs
+
+If the brief is marked verification-only: check each acceptance criterion against the worktree, run a quick smoke check where cheap, and make NO code changes if everything holds. Answer with the verification result per criterion. If a criterion is NOT satisfied, implement only what is missing and say so.
+
 ## Artifact hygiene — hard rules
 
-- NEVER commit build outputs, compiled binaries, or other generated artifacts. The quality gate fails deterministically if any tracked file exceeds 1 MB.
-- Keep binaries out of the worktree: build into a temporary directory (e.g. `go build -o /tmp/...`) or remove the binary before finishing.
-- Add entries to `.gitignore` for build outputs the project generates.
+- NEVER commit build outputs, compiled binaries, or other generated artifacts. The project's quality gate rejects tracked generated files deterministically.
+- Keep binaries out of the worktree: build into a temporary directory outside it, or remove the binary before finishing.
+- Add build outputs the project generates to its ignore file.
 - Only source, config, and documentation belong in commits.
 
 If the seed turns out to be unimplementable as specified, route Blocked and describe precisely what blocks you.

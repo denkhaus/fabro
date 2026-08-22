@@ -22,7 +22,7 @@ Clear the verdict from your mind after handling it — the next review pass will
 3. Claim it: `sd update <id> --status in_progress`.
 4. Write the implementation brief into the context: seed id, title, requirements distilled from its description, plus any review feedback if this is a re-plan.
 
-Before claiming, sanity-check the top candidate against the worktree: if its acceptance criteria are already visibly satisfied (the implementation exists and looks complete), the tracker is stale from a previous run — close that seed (`sd close <id>`) and pick the next one instead of re-implementing finished work.
+If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.
 
 If `sd ready` returns nothing and no seed is in progress for this effort, the tracker is empty — route Tracker empty instead of inventing work.
 
@@ -34,7 +34,7 @@ When you write text that flows into context (briefs, feedback), wrap absolute pa
 
 Both routes are successes — planning succeeded either way. The label decides what happens next.
 
-- `succeeded` + "Seed claimed": a seed is claimed (fresh or re-planned) and its brief is in the context.
+- `succeeded` + "Seed claimed": a seed is claimed (fresh, re-planned, or verification-only) and its brief is in the context. A verification-only brief says: "The acceptance criteria appear already satisfied. Verify each one against the worktree; make NO changes if all hold." 
 - `succeeded` + "Tracker empty": the effort is complete — every seed is closed and the goal holds.
 
 `failed` is reserved for genuine planner errors (cannot read the tracker, invalid routing after retries). Never use `failed` to mean "no more work".
@@ -46,7 +46,7 @@ Claimed a seed:
   "outcome": "succeeded",
   "preferred_next_label": "Seed claimed",
   "context_updates": {
-    "current_seed_id": "<the seed id, e.g. fabro-f487>",
+    "current_seed_id": "<the seed id, e.g. proj-a1b2>",
     "current_seed_title": "<its title>",
     "current_seed_brief": "<one short paragraph: what must be built, acceptance criteria, review feedback if re-plan>"
   }
