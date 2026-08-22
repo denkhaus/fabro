@@ -1,0 +1,15 @@
+Seed claimed. The existing CLI in `/workspace/fabro/main.go` has `run(w, count, asJSON)` with plain `"%d: %v\n"` text output — the brief below extends it with a `-pretty` aligned-column mode plus table-driven tests in `/workspace/fabro/fib_test.go`.
+
+**Brief for the Implementer (seed `fabro-0879`):**
+
+Add a `-pretty` bool flag (flag package) to gofib. Pretty text mode prints two right-aligned columns separated by `": "` — index padded to the width of the largest index printed, value padded to the width of the largest value; widths come from the last line actually printed (n-dependent: for `-n 5` from the 5th line). Example block for default n: `"   1:                    1"`, `"  10:                   55"`, `" 100:  354224848179261915075"`. `-pretty` composes with `-n`, is ignored in `-json` mode (JSON Lines objects unchanged — document this in the flag usage text), and default output without `-pretty` stays exactly `"<index>: <value>"` with single spaces. Extend `run()` in `/workspace/fabro/main.go` (it currently takes `(w io.Writer, count int, asJSON bool)`) and update `/workspace/fabro/fib_test.go` with table-driven tests: pretty+n=5 (exact 5 lines including padding), pretty default (100 lines, exact last line), pretty+json identical lines to plain `-json` for n=3 — compute expected strings in tests, no hardcoded F-values beyond small n. No external dependencies; `just qualitygate` must pass.
+
+{
+  "outcome": "succeeded",
+  "preferred_next_label": "Seed claimed",
+  "context_updates": {
+    "current_seed_id": "fabro-0879",
+    "current_seed_title": "gofib: add -pretty flag for aligned column output",
+    "current_seed_brief": "Add a -pretty bool flag to the gofib CLI in `/workspace/fabro/main.go`. Pretty TEXT mode: two right-aligned columns separated by ': ' — index column padded to the width of the largest index printed, value column padded to the width of the largest value; widths derive from the last line actually printed (n-dependent, e.g. for -n 5 from the 5th line; sample lines: '   1:                    1', '  10:                   55', ' 100: 354224848179261915075'). -pretty composes with -n; in -json mode it is ignored (JSON Lines objects {\"index\":<int>,\"fib\":\"<string>\"} unchanged) and this must be documented in the flag usage text. Default output without -pretty stays exactly '<index>: <value>' with single spaces. Extend run() (currently run(w io.Writer, count int, asJSON bool) error) and add table-driven tests in `/workspace/fabro/fib_test.go`: pretty+n=5 exact 5 lines including padding, pretty default (assert 100 lines and exact last line), pretty+json produces identical lines to plain -json for n=3; compute expected strings in tests, no hardcoded F-values beyond small n. No external dependencies; 'just qualitygate' must pass. Acceptance: 'go run . -pretty -n 5' prints the exact aligned 5-line block with widths from the 5th line, and the gate is green."
+  }
+}
