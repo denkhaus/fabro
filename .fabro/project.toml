@@ -1,0 +1,49 @@
+_version = 1
+
+# Platform meta branch: workflows, scripts, platform seeds, and the
+# painpoint mailbox. Product code lives on the product branch (ADR-0001).
+
+# Lean mise-based environment: ubuntu:24.04 + mise only (no baked-in toolchain).
+[run.environment]
+id = "mise"
+
+[environments.mise]
+provider = "docker"
+
+[environments.mise.image]
+docker = "fabro-runner:mise"
+
+[environments.mise.resources]
+cpu = 8
+memory = "16GB"
+
+[environments.mise.network]
+mode = "allow_all"
+
+[environments.mise.lifecycle]
+stop_on_terminal = true
+
+# Bootstrap workspace tooling BEFORE any stage runs: mise reads .mise.toml,
+# bun -g installs the npm CLIs into BUN_INSTALL (already on the image PATH).
+[run.prepare]
+timeout = "5m"
+
+[[run.prepare.steps]]
+script = "mise install"
+
+# Tooling beyond mise (npm CLIs via bun, toolchain checks) lives in
+# scripts/bootstrap.nu — no inline shell in config files.
+[[run.prepare.steps]]
+script = "just bootstrap"
+
+# Default model for all project runs.
+[run.model]
+provider = "zai"
+name = "glm-5.3"
+
+# Dev-cycle test: push checkpoint branches to the fork.
+[run.run_branch]
+push = true
+
+[run.meta_branch]
+push = true

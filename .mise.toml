@@ -1,0 +1,12 @@
+# Platform toolchain for the meta branch. Lean runner image + mise; product
+# tools (go, ...) intentionally absent — this world only lints workflows.
+#
+# fabro is pinned to the nightly the lab runs, so `fabro validate` in the
+# platform gate accepts the same graph syntax the product runs use.
+[tools]
+bun = "1.4.0"
+"aqua:nushell/nushell" = "0.115.0"
+just = "1.58.0"
+"ubi:fabro-sh/fabro" = "v0.333.0-nightly.0"
+# uv provides prebuilt CPython for the reviewer-agent (stdlib-only skill).
+"ubi:astral-sh/uv" = "latest"
