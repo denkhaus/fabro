@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "review deadlock: fabro-8d26 has completed 2 review cycles with byte-identical changes_requested verdicts caused solely by deterministic evidence-capture truncation at summary:high ('119 lines omitted' spanning the entire main.go diff and half of main_test.go), not by code defects. The reviewer verified the code meets every acceptance criterion and explicitly stated another verification-only pass cannot change the outcome; the planner may not edit platform workflow assets (evidence.nu / capture budgets) and the implementer may not touch verified-correct product code. Cycle 3 therefore cannot converge — escalated via the painpoint channel instead of burning another review round. Seed left open (in_progress) for human resolution: either fix the capture to never elide seed-work source diffs, or review/approve fabro-8d26 on direct worktree inspection.",
+  "timestamp": "2026-08-22T23:01:35.527914542Z"
+}
