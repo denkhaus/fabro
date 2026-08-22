@@ -1,7 +1,0 @@
-digraph Smoke {
-    start [shape = Mdiamond;label = "Start";];
-    ping [shape = parallelogram;label = "Ping";script = "echo slack smoke";];
-    done [shape = Msquare;label = "Done";];
-    
-    start -> ping -> done;
-}
