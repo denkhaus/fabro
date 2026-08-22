@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "LLM error: Configuration error: model provider 'venice' is unavailable",
+  "timestamp": "2026-08-22T11:47:07.980625124Z"
+}
