@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Precondition failed: Agent session failed: Invalid state: Only one skill reference per input is allowed",
+  "timestamp": "2026-08-22T16:59:58.256768689Z"
+}
