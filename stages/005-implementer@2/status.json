@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Precondition failed: Agent session failed: Invalid state: Unknown skill: /gofib",
+  "timestamp": "2026-08-22T16:59:52.663076655Z"
+}
