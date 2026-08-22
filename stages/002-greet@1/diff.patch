@@ -1,0 +1,11 @@
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000..2af6ab8
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,5 @@
++# fabro
++
++Hello from Fabro —
++a workflow speaks its first words,
++steps hum into place.
