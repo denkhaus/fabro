@@ -19,6 +19,19 @@ use crate::runtime_store::RunStoreHandle;
 /// Threshold above which values are persisted as blobs (100KB).
 const BLOB_OFFLOAD_THRESHOLD: usize = 100 * 1024;
 
+/// Largest serialized JSON one context or outcome value may contribute to a
+/// prompt preamble before it is demoted to a preview plus a file reference.
+const PROMPT_INLINE_VALUE_MAX: usize = 8 * 1024;
+
+/// Largest serialized JSON one `for_each` item may contribute to a branch
+/// prompt before it is demoted. The item is the branch's work assignment, so
+/// its budget is deliberately more generous than [`PROMPT_INLINE_VALUE_MAX`].
+const PROMPT_INLINE_ITEM_MAX: usize = 64 * 1024;
+
+/// Rendered head carried inline by a demotion marker so the reader can tell
+/// what the value is without opening the file.
+const LARGE_VALUE_PREVIEW_CHARS: usize = 600;
+
 /// Prefix used to identify artifact pointer strings in context values.
 const ARTIFACT_POINTER_PREFIX: &str = "file://";
 
@@ -109,6 +122,154 @@ async fn offload_value(value: &mut Value, run_store: &RunStoreHandle) -> Result<
         *value = Value::String(format_blob_ref(&blob_hash));
     }
     Ok(())
+}
+
+/// Bound every value the prompt preamble may inline.
+///
+/// The resolved context and outcomes passed to the preamble builders exist
+/// only to render prompt text, so any value whose serialized JSON exceeds
+/// [`PROMPT_INLINE_VALUE_MAX`] is replaced with a small marker object holding
+/// a preview and the sandbox path of the full value. The agent reads the file
+/// when it needs the data; the preamble stays within its budget no matter how
+/// much state the run has accumulated. Context keys the preamble never
+/// renders are left alone.
+///
+/// Demotion is an optimization of prompt size, not a correctness gate: a
+/// value that fails to demote is left inline and logged rather than failing
+/// the node.
+pub async fn demote_large_values_for_prompt(
+    context: &Context,
+    node_outcomes: &mut HashMap<String, Outcome>,
+    run_store: &RunStoreHandle,
+    env: &dyn Sandbox,
+    run_dir: &Path,
+) {
+    let mut locality = SandboxLocality::default();
+    for (key, mut value) in context.snapshot() {
+        if context::keys::is_preamble_hidden_key(&key) {
+            continue;
+        }
+        match demote_value_for_prompt(
+            &mut value,
+            PROMPT_INLINE_VALUE_MAX,
+            run_store,
+            env,
+            run_dir,
+            &mut locality,
+        )
+        .await
+        {
+            Ok(true) => context.set(key, value),
+            Ok(false) => {}
+            Err(err) => tracing::warn!(key, %err, "prompt value demotion failed; kept inline"),
+        }
+    }
+    for (node_id, outcome) in node_outcomes.iter_mut() {
+        for (key, value) in &mut outcome.context_updates {
+            if let Err(err) = demote_value_for_prompt(
+                value,
+                PROMPT_INLINE_VALUE_MAX,
+                run_store,
+                env,
+                run_dir,
+                &mut locality,
+            )
+            .await
+            {
+                tracing::warn!(
+                    node_id,
+                    key,
+                    %err,
+                    "prompt value demotion failed; kept inline"
+                );
+            }
+        }
+    }
+}
+
+/// Bound every `for_each` item rendered into a branch prompt.
+///
+/// Items above [`PROMPT_INLINE_ITEM_MAX`] are demoted the same way as context
+/// values; the branch reads the file for its full assignment. An item that
+/// fails to demote is left inline and logged.
+pub async fn demote_large_items_for_prompt(
+    items: &mut [Value],
+    run_store: &RunStoreHandle,
+    env: &dyn Sandbox,
+    run_dir: &Path,
+) {
+    let mut locality = SandboxLocality::default();
+    for (index, item) in items.iter_mut().enumerate() {
+        if let Err(err) = demote_value_for_prompt(
+            item,
+            PROMPT_INLINE_ITEM_MAX,
+            run_store,
+            env,
+            run_dir,
+            &mut locality,
+        )
+        .await
+        {
+            tracing::warn!(index, %err, "for_each item demotion failed; kept inline");
+        }
+    }
+}
+
+/// Replace `value` with a preview-plus-path marker when its serialized JSON
+/// exceeds `max_inline_bytes`. Returns whether the value was demoted.
+///
+/// The full value is persisted as a content-addressed blob and materialized
+/// as a real file in the sandbox, so the marker's `path` is readable by the
+/// agent that receives the prompt.
+async fn demote_value_for_prompt(
+    value: &mut Value,
+    max_inline_bytes: usize,
+    run_store: &RunStoreHandle,
+    env: &dyn Sandbox,
+    run_dir: &Path,
+    locality: &mut SandboxLocality,
+) -> Result<bool> {
+    let bytes = serde_json::to_vec(&*value)
+        .map_err(|e| Error::engine_with_source("prompt value serialize failed", e))?;
+    if bytes.len() <= max_inline_bytes {
+        return Ok(false);
+    }
+    let blob_hash = run_store
+        .write_blob(&bytes)
+        .await
+        .map_err(|e| Error::engine_with_anyhow("prompt value blob write failed", e))?;
+    let pointer = materialize_blob_ref(&blob_hash, run_store, env, run_dir, locality).await?;
+    let path = pointer
+        .strip_prefix(ARTIFACT_POINTER_PREFIX)
+        .unwrap_or(&pointer);
+    *value = large_value_marker(path, bytes.len(), &rendered_head(value, &bytes));
+    Ok(true)
+}
+
+/// Head of the value as the preamble would have rendered it: the raw text for
+/// strings, compact JSON otherwise.
+fn rendered_head(value: &Value, serialized: &[u8]) -> String {
+    if let Some(text) = value.as_str() {
+        return text.chars().take(LARGE_VALUE_PREVIEW_CHARS).collect();
+    }
+    // Four bytes covers the widest UTF-8 character, so this slice always
+    // holds at least LARGE_VALUE_PREVIEW_CHARS characters of the rendering.
+    let head = &serialized[..serialized.len().min(LARGE_VALUE_PREVIEW_CHARS * 4)];
+    String::from_utf8_lossy(head)
+        .chars()
+        .take(LARGE_VALUE_PREVIEW_CHARS)
+        .collect()
+}
+
+fn large_value_marker(path: &str, bytes: usize, preview: &str) -> Value {
+    serde_json::json!({
+        "fabroLargeValue": {
+            "bytes": bytes,
+            "path": path,
+            "hint": "too large to inline; read this file for the full value",
+            "preview": preview,
+        }
+    })
 }
 
 /// Extract the file path from an artifact pointer value.
@@ -1167,5 +1328,96 @@ mod tests {
         assert_eq!(updates["name"], serde_json::json!("Alice"));
         assert_eq!(updates["count"], serde_json::json!(42));
         assert_eq!(updates["nested"], serde_json::json!({"a": 1}));
+    }
+
+    #[tokio::test]
+    async fn demote_replaces_oversized_prompt_values_with_preview_markers() {
+        let run_store: RunStoreHandle = make_run_store("prompt-demote").await.into();
+        let tmp = tempfile::tempdir().unwrap();
+        let run_dir = tmp.path().join("run");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let sandbox = fabro_agent::LocalSandbox::new(tmp.path().to_path_buf());
+
+        let dataset = serde_json::json!({
+            "rows": vec![serde_json::json!({"payload": "x".repeat(64)}); 256]
+        });
+        let context = Context::new();
+        context.set("dataset", dataset.clone());
+        context.set("small", serde_json::json!("kept inline"));
+        let mut outcomes = HashMap::from([("work".to_string(), Outcome {
+            context_updates: HashMap::from([(
+                context::keys::COMMAND_OUTPUT.to_string(),
+                serde_json::json!("o".repeat(PROMPT_INLINE_VALUE_MAX + 1)),
+            )]),
+            ..Outcome::success()
+        })]);
+
+        demote_large_values_for_prompt(&context, &mut outcomes, &run_store, &sandbox, &run_dir)
+            .await;
+
+        let marker = context.get("dataset").unwrap();
+        let details = marker
+            .get("fabroLargeValue")
+            .expect("oversized context value should demote");
+        assert_eq!(
+            usize::try_from(details["bytes"].as_u64().unwrap()).unwrap(),
+            serde_json::to_vec(&dataset).unwrap().len()
+        );
+        let stored: Value =
+            serde_json::from_slice(&std::fs::read(details["path"].as_str().unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(stored, dataset);
+        assert!(
+            details["preview"]
+                .as_str()
+                .unwrap()
+                .starts_with("{\"rows\"")
+        );
+        assert!(serde_json::to_vec(&marker).unwrap().len() <= PROMPT_INLINE_VALUE_MAX);
+
+        assert_eq!(
+            context.get("small").unwrap(),
+            serde_json::json!("kept inline")
+        );
+
+        let output = &outcomes["work"].context_updates[context::keys::COMMAND_OUTPUT];
+        let details = output
+            .get("fabroLargeValue")
+            .expect("oversized command output should demote");
+        assert!(details["preview"].as_str().unwrap().starts_with("ooo"));
+        let stored: Value =
+            serde_json::from_slice(&std::fs::read(details["path"].as_str().unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(stored.as_str().unwrap().len(), PROMPT_INLINE_VALUE_MAX + 1);
+    }
+
+    #[tokio::test]
+    async fn demote_skips_keys_the_preamble_never_renders() {
+        let run_store: RunStoreHandle = make_run_store("prompt-demote-hidden").await.into();
+        let tmp = tempfile::tempdir().unwrap();
+        let run_dir = tmp.path().join("run");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let sandbox = fabro_agent::LocalSandbox::new(tmp.path().to_path_buf());
+
+        let inherited_preamble = "p".repeat(PROMPT_INLINE_VALUE_MAX + 1);
+        let context = Context::new();
+        context.set(
+            context::keys::CURRENT_PREAMBLE,
+            serde_json::json!(inherited_preamble.clone()),
+        );
+
+        demote_large_values_for_prompt(
+            &context,
+            &mut HashMap::new(),
+            &run_store,
+            &sandbox,
+            &run_dir,
+        )
+        .await;
+
+        assert_eq!(
+            context.get(context::keys::CURRENT_PREAMBLE).unwrap(),
+            serde_json::json!(inherited_preamble)
+        );
     }
 }

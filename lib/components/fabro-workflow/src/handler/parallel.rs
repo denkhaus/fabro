@@ -160,6 +160,7 @@ async fn build_branch_plan(
     node: &Node,
     context: &Context,
     graph: &Graph,
+    run_dir: &Path,
     services: &EngineServices,
     simulated: bool,
 ) -> Result<BranchPlan, Outcome> {
@@ -252,14 +253,34 @@ async fn build_branch_plan(
         )));
     }
 
+    // Labels come from the full items; demotion below may replace an
+    // oversized item with a preview-plus-path marker before it is rendered
+    // into the branch prompt.
+    let mut items = items;
+    let labels: Vec<String> = items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| item_label(item, index))
+        .collect();
+    if !simulated {
+        artifact::demote_large_items_for_prompt(
+            &mut items,
+            &services.run.run_store,
+            &*services.run.sandbox,
+            run_dir,
+        )
+        .await;
+    }
+
     Ok(BranchPlan {
         work_items:         items
             .into_iter()
+            .zip(labels)
             .enumerate()
-            .map(|(index, item)| BranchWorkItem {
+            .map(|(index, (item, label))| BranchWorkItem {
                 index,
                 target_id: target_id.clone(),
-                item_label: Some(item_label(&item, index)),
+                item_label: Some(label),
                 item: Some(item),
             })
             .collect(),
@@ -332,10 +353,11 @@ async fn run_branches(
     simulated: bool,
 ) -> Result<Outcome, Error> {
     let parallel_start = Instant::now();
-    let branch_plan = match build_branch_plan(node, context, graph, services, simulated).await {
-        Ok(plan) => plan,
-        Err(outcome) => return Ok(outcome),
-    };
+    let branch_plan =
+        match build_branch_plan(node, context, graph, run_dir, services, simulated).await {
+            Ok(plan) => plan,
+            Err(outcome) => return Ok(outcome),
+        };
     let is_for_each = branch_plan.is_for_each();
     let BranchPlan {
         work_items,
@@ -1646,6 +1668,69 @@ mod tests {
         assert_eq!(
             labels,
             std::collections::HashSet::from(["alpha", "beta", "2"])
+        );
+    }
+
+    #[tokio::test]
+    async fn for_each_demotes_oversized_items_before_prompt_render() {
+        let captures = Arc::new(Mutex::new(Vec::new()));
+        let handler = ItemRecordingHandler {
+            captures:    Arc::clone(&captures),
+            active:      Arc::new(AtomicUsize::new(0)),
+            max_active:  Arc::new(AtomicUsize::new(0)),
+            delay:       Duration::ZERO,
+            fail_marker: None,
+        };
+        let store = test_store();
+        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
+        let run_dir = tempfile::tempdir().unwrap();
+        let mut services = make_services();
+        services.registry = Arc::new(super::super::HandlerRegistry::new(Box::new(handler)));
+        services.run = services
+            .run
+            .with_run_store(run_store.into())
+            .with_sandbox(Arc::new(fabro_agent::LocalSandbox::new(
+                run_dir.path().to_path_buf(),
+            )));
+        let (node, graph) = for_each_graph("context.items", 2);
+        let context = test_context();
+        let oversized_payload = "x".repeat(65 * 1024);
+        context.set(
+            "items",
+            serde_json::json!([
+                {"name": "small", "path": "src/auth.rs"},
+                {"name": "huge", "payload": oversized_payload}
+            ]),
+        );
+
+        let outcome = ParallelHandler
+            .execute(&node, &context, &graph, run_dir.path(), &services)
+            .await
+            .unwrap();
+        assert_eq!(outcome.status, StageOutcome::Succeeded);
+
+        let captures = captures.lock().unwrap();
+        let small = captures
+            .iter()
+            .find(|capture| capture.prompt.contains("src/auth.rs"))
+            .expect("small item renders inline");
+        assert!(!small.prompt.contains("fabroLargeValue"));
+
+        let huge = captures
+            .iter()
+            .find(|capture| capture.prompt.contains("fabroLargeValue"))
+            .expect("oversized item demotes to a marker");
+        assert!(!huge.prompt.contains(&oversized_payload));
+        assert!(huge.prompt.len() < 8 * 1024);
+
+        // The label still comes from the full item, not the marker.
+        let results: Vec<ParallelBranchResult> =
+            serde_json::from_value(outcome.context_updates[keys::PARALLEL_RESULTS].clone())
+                .unwrap();
+        assert!(
+            results
+                .iter()
+                .any(|result| result.item_label.as_deref() == Some("huge"))
         );
     }
 

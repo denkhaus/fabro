@@ -183,7 +183,7 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
         )
         .await
         .map_err(|err| CoreError::Other(err.to_string()))?;
-        let resolved_outcomes = artifact::resolve_outcomes_for_execution(
+        let mut resolved_outcomes = artifact::resolve_outcomes_for_execution(
             &state.node_outcomes,
             &self.run_store,
             &*self.sandbox,
@@ -191,6 +191,17 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
         )
         .await
         .map_err(|err| CoreError::Other(err.to_string()))?;
+
+        // The resolved copies exist only to render prompt preambles, so bound
+        // what any one value may contribute before the builders see them.
+        artifact::demote_large_values_for_prompt(
+            &resolved_context,
+            &mut resolved_outcomes,
+            &self.run_store,
+            &*self.sandbox,
+            &self.run_dir,
+        )
+        .await;
 
         let preamble = build_preamble(
             fidelity,

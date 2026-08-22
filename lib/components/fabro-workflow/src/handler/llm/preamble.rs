@@ -97,15 +97,7 @@ fn is_blank_value(val: Option<&serde_json::Value>) -> bool {
 }
 
 fn is_context_key_excluded(key: &str) -> bool {
-    key.starts_with(keys::INTERNAL_PREFIX)
-        || key.starts_with(keys::CURRENT_PREFIX)
-        || key.starts_with(keys::GRAPH_PREFIX)
-        || key.starts_with(keys::THREAD_PREFIX)
-        || key.starts_with(keys::RESPONSE_PREFIX)
-        || key == keys::OUTCOME
-        || key == keys::LAST_STAGE
-        || key == keys::LAST_RESPONSE
-        || key == keys::PREFERRED_LABEL
+    keys::is_preamble_hidden_key(key)
 }
 
 fn format_value(val: &serde_json::Value) -> String {
