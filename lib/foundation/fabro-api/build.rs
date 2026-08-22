@@ -325,21 +325,6 @@ fn main() {
             &[],
         ),
         (
-            "SearchIntegrationSettings",
-            "fabro_types::settings::server::SearchIntegrationSettings",
-            &[],
-        ),
-        (
-            "SearchProvider",
-            "fabro_types::settings::server::SearchProvider",
-            &[],
-        ),
-        (
-            "VeniceSearchEngine",
-            "fabro_types::settings::server::VeniceSearchEngine",
-            &[],
-        ),
-        (
             "IntegrationWebhooksSettings",
             "fabro_types::settings::server::IntegrationWebhooksSettings",
             &[],

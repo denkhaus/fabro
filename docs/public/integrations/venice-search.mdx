@@ -3,9 +3,9 @@ title: "Venice Search"
 description: "Give Fabro agents web search capabilities via Venice's augment/search API"
 ---
 
-Fabro's [`web_search`](/agents/tools#web_search) tool lets agents search the web during workflow execution. The default backend is [Brave Search](/integrations/brave-search). Set `[server.integrations.search].provider = "venice"` to use [Venice Search](https://docs.venice.ai/api-reference/endpoint/augment/search) instead, reusing the same `VENICE_API_KEY` already used for the Venice LLM provider.
+Fabro's [`web_search`](/agents/tools#web_search) tool lets agents search the web during workflow execution. Fabro uses [Venice Search](https://docs.venice.ai/api-reference/endpoint/augment/search) automatically when `VENICE_API_KEY` is available and a direct [Brave Search](/integrations/brave-search) key is not.
 
-Agents keep calling `web_search`. Only the HTTP backend changes.
+Venice Search reuses the same `VENICE_API_KEY` as the Venice LLM provider. Agents keep calling `web_search`; only the HTTP backend changes.
 
 ## Setup
 
@@ -17,30 +17,25 @@ fabro provider login --provider venice
 fabro secret set VENICE_API_KEY venice-...
 ```
 
-2. Select Venice as the search backend:
+Fabro prefers direct Brave Search whenever `BRAVE_SEARCH_API_KEY` is also present. To select Venice, leave that key unset or remove it:
 
-```toml title="settings.toml"
-[server.integrations.search]
-provider = "venice"
-# venice_engine = "brave"   # default: Firecrawl ZDR, billed as Venice credits
-# venice_engine = "google"  # anonymized proxy
+```bash
+fabro secret rm BRAVE_SEARCH_API_KEY
 ```
 
-`provider = "brave"` (the default) talks to Brave Search directly and still needs `BRAVE_SEARCH_API_KEY`. `venice_engine = "brave"` is Brave **through Venice**, not the direct Brave backend.
-
-3. Verify the key is working:
+2. Verify the key is working:
 
 ```bash
 fabro doctor
 ```
 
-The doctor output should show **Web Search** as `venice: configured and reachable`. If `VENICE_API_KEY` is missing, web search is reported as a warning — workflows still run, but the `web_search` tool is omitted from the agent's tool set.
+The doctor output should show **Web Search** as `venice: configured and reachable`. If neither Venice nor Brave is configured, web search is reported as a warning. Workflows still run, but the `web_search` tool is omitted from the agent's tool set.
 
 The Fabro server reads this key from the vault only. It does not read `VENICE_API_KEY` from process env or `server.env`.
 
 ## How it works
 
-Agents call the `web_search` tool with a query string. Fabro `POST`s to Venice `https://api.venice.ai/api/v1/augment/search` and returns numbered results with title, URL, description, and date when Venice includes one:
+Agents call the `web_search` tool with a query string. Fabro `POST`s to Venice `https://api.venice.ai/api/v1/augment/search` with the Brave search engine and returns numbered results with title, URL, description, and date when Venice includes one:
 
 ```
 1. Rust Lang
@@ -51,7 +46,7 @@ Agents call the `web_search` tool with a query string. Fabro `POST`s to Venice `
 
 Venice Search is billed by Venice at $0.01 per request and is rate-limited to 20 requests per minute on the Venice side. Queries longer than 400 characters are rejected before the HTTP call.
 
-If `VENICE_API_KEY` is not configured in the vault, the tool is not registered. Failed calls return an error; Fabro does not fall back to Brave.
+If `VENICE_API_KEY` is absent but `BRAVE_SEARCH_API_KEY` exists, Fabro uses direct Brave Search. If neither key exists, the tool is not registered. After selecting Venice, a failed call returns an error; Fabro does not retry through direct Brave Search.
 
 See the [`web_search` tool reference](/agents/tools#web_search) for parameters and details.
 
@@ -79,6 +74,6 @@ See the [`web_search` tool reference](/agents/tools#web_search) for parameters a
     Full `web_search` tool reference — parameters, output format, and error handling.
   </Card>
   <Card title="Brave Search" icon="globe" href="/integrations/brave-search">
-    Direct Brave Search backend (the default when `provider` is unset).
+    Direct Brave Search backend, preferred whenever its key is configured.
   </Card>
 </Columns>

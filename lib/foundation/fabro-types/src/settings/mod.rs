@@ -46,11 +46,10 @@ pub use run::{
 };
 pub use server::{
     GithubIntegrationSettings, IntegrationWebhooksSettings, LogDestination, ObjectStoreSettings,
-    SearchIntegrationSettings, SearchProvider, ServerApiSettings, ServerArtifactsSettings,
-    ServerAuthGithubSettings, ServerAuthMethod, ServerAuthSettings, ServerIntegrationsSettings,
-    ServerListenSettings, ServerLoggingSettings, ServerNamespace, ServerSchedulerSettings,
-    ServerSlateDbSettings, ServerStorageSettings, ServerWebSettings, SlackIntegrationSettings,
-    VeniceSearchEngine,
+    ServerApiSettings, ServerArtifactsSettings, ServerAuthGithubSettings, ServerAuthMethod,
+    ServerAuthSettings, ServerIntegrationsSettings, ServerListenSettings, ServerLoggingSettings,
+    ServerNamespace, ServerSchedulerSettings, ServerSlateDbSettings, ServerStorageSettings,
+    ServerWebSettings, SlackIntegrationSettings,
 };
 pub use size::{ParseSizeError, Size};
 pub use workflow::WorkflowNamespace;

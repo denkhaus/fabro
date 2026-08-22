@@ -50,14 +50,14 @@ fn html_to_markdown(text: &str) -> String {
     converter.convert(text).unwrap_or_else(|_| text.to_string())
 }
 
-/// Name of the Brave-backed web search tool. Profiles look this up in their own
-/// registry to decide whether to advertise web search in the system prompt, so
-/// availability and prompt guidance cannot drift apart.
+/// Name of the credential-backed web search tool. Profiles look this up in
+/// their own registry to decide whether to advertise web search in the system
+/// prompt, so availability and prompt guidance cannot drift apart.
 pub const WEB_SEARCH_TOOL_NAME: &str = "web_search";
 
 /// Registers the core tools shared by all provider profiles: `read_file`,
 /// `write_file`, `shell`, `grep`, `glob`, and `web_fetch`. `web_search` is
-/// included when a Brave Search API key is configured.
+/// included when a Brave or Venice Search API key is configured.
 ///
 /// The shell tool captures its default and max timeouts from `options`.
 pub fn register_core_tools(
@@ -83,7 +83,7 @@ pub(crate) fn register_discovery_and_web_tools(
     registry.register(make_web_fetch_tool(summarizer));
 }
 
-/// Register `web_search` when the selected search provider is configured.
+/// Register `web_search` when a search provider credential is configured.
 ///
 /// Separate from [`register_discovery_and_web_tools`] for profiles that offer
 /// search without fabro's discovery tools.

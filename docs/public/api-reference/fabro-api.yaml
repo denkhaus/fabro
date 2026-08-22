@@ -14231,14 +14231,12 @@ components:
 
     ServerIntegrationsSettings:
       type: object
-      required: [github, slack, search]
+      required: [github, slack]
       properties:
         github:
           $ref: "#/components/schemas/GithubIntegrationSettings"
         slack:
           $ref: "#/components/schemas/SlackIntegrationSettings"
-        search:
-          $ref: "#/components/schemas/SearchIntegrationSettings"
 
     GithubIntegrationSettings:
       type: object
@@ -14277,23 +14275,6 @@ components:
           type: boolean
         default_channel:
           type: ["string", "null"]
-
-    SearchIntegrationSettings:
-      type: object
-      required: [provider, venice_engine]
-      properties:
-        provider:
-          $ref: "#/components/schemas/SearchProvider"
-        venice_engine:
-          $ref: "#/components/schemas/VeniceSearchEngine"
-
-    SearchProvider:
-      type: string
-      enum: [brave, venice]
-
-    VeniceSearchEngine:
-      type: string
-      enum: [brave, google]
 
     IntegrationWebhooksSettings:
       type: object

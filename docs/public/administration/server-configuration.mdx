@@ -334,22 +334,6 @@ Tailscale Services and Tailscale Funnel are different ingress features. Services
 
 Incoming webhooks are authenticated only by GitHub's `X-Hub-Signature-256` HMAC signature, not by Fabro's bearer/session auth.
 
-### `[server.integrations.search]` section
-
-Select the HTTP backend for the built-in [`web_search`](/agents/tools#web_search) tool. Brave remains the default when this table is absent.
-
-```toml title="settings.toml"
-[server.integrations.search]
-provider = "brave"           # "brave" (default) | "venice"
-venice_engine = "brave"      # venice-only: "brave" | "google"
-```
-
-- `provider = "brave"`: direct Brave Search. Requires vault `BRAVE_SEARCH_API_KEY`. See [Brave Search](/integrations/brave-search).
-- `provider = "venice"`: Venice `POST /api/v1/augment/search`. Requires vault `VENICE_API_KEY` (the same key as the Venice LLM provider). See [Venice Search](/integrations/venice-search).
-- `venice_engine = "brave"` is Brave **through Venice** (Firecrawl ZDR, billed as Venice credits). Direct Brave remains `provider = "brave"`.
-
-The tool is registered only when the selected provider is configured. Failed calls do not fall back between backends.
-
 ### `[run.checkpoint]` section
 
 Configure checkpoint behavior for all runs.
@@ -421,11 +405,13 @@ fabro secret set BRAVE_SEARCH_API_KEY BSA...
 fabro secret set VENICE_API_KEY venice-...
 ```
 
+The built-in [`web_search`](/agents/tools#web_search) tool selects its backend from these credentials. It uses direct Brave Search when `BRAVE_SEARCH_API_KEY` exists. Otherwise it uses Venice Search when `VENICE_API_KEY` exists. When neither exists, the tool is not registered.
+
 | Variable | Description |
 |---|---|
 | `DAYTONA_API_KEY` | Daytona cloud sandbox API key |
-| `BRAVE_SEARCH_API_KEY` | Brave Search API key (`web_search` when `provider = "brave"`) |
-| `VENICE_API_KEY` | Venice API key (LLM provider, and `web_search` when `provider = "venice"`) |
+| `BRAVE_SEARCH_API_KEY` | Brave Search API key; the preferred `web_search` backend when present |
+| `VENICE_API_KEY` | Venice API key; used by the Venice LLM provider and by `web_search` when no Brave key exists |
 
 ### Server authentication
 

@@ -7,8 +7,8 @@ use fabro_types::settings::run::{
     ApprovalMode, EnvironmentNetworkMode, EnvironmentProvider, MergeStrategy, RunMode,
 };
 use fabro_types::settings::server::{
-    GithubIntegrationStrategy, LogDestination, ObjectStoreProvider, SearchProvider,
-    ServerAuthMethod, VeniceSearchEngine, WebhookStrategy,
+    GithubIntegrationStrategy, LogDestination, ObjectStoreProvider, ServerAuthMethod,
+    WebhookStrategy,
 };
 use fabro_types::settings::{Duration, InterpString, Size};
 
@@ -82,9 +82,7 @@ impl_combine_or_option!(
     GithubIntegrationStrategy,
     LogDestination,
     ObjectStoreProvider,
-    SearchProvider,
     ServerAuthMethod,
-    VeniceSearchEngine,
     WebhookStrategy,
     LogFilter,
     AgentProfileKind,

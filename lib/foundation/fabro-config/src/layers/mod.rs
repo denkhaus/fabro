@@ -39,8 +39,8 @@ pub use run::{
 };
 pub use server::{
     GithubIntegrationLayer, IntegrationWebhooksLayer, ObjectStoreLocalLayer, ObjectStoreS3Layer,
-    SearchIntegrationLayer, ServerApiLayer, ServerArtifactsLayer, ServerAuthGithubLayer,
-    ServerAuthLayer, ServerIntegrationsLayer, ServerLayer, ServerListenLayer, ServerLoggingLayer,
+    ServerApiLayer, ServerArtifactsLayer, ServerAuthGithubLayer, ServerAuthLayer,
+    ServerIntegrationsLayer, ServerLayer, ServerListenLayer, ServerLoggingLayer,
     ServerSandboxLayer, ServerSandboxProviderLayer, ServerSandboxProvidersLayer,
     ServerSchedulerLayer, ServerSlateDbLayer, ServerStorageLayer, ServerWebLayer,
     SlackIntegrationLayer,

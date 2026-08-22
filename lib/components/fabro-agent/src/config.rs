@@ -6,7 +6,6 @@ use fabro_llm::types::{ReasoningEffort, Speed};
 use fabro_mcp::config::McpServerSettings;
 use fabro_model::AgentProfileKind;
 use fabro_types::PermissionLevel;
-use fabro_types::settings::SearchIntegrationSettings;
 
 /// Callback invoked before each tool execution. Return `Ok(())` to allow,
 /// `Err(message)` to deny with the given message.
@@ -105,7 +104,6 @@ impl ToolHookCallback for ToolApprovalAdapter {
 pub struct ToolSecrets {
     pub brave_search_api_key: Option<String>,
     pub venice_api_key:       Option<String>,
-    pub search:               SearchIntegrationSettings,
 }
 
 impl std::fmt::Debug for ToolSecrets {
@@ -116,7 +114,6 @@ impl std::fmt::Debug for ToolSecrets {
                 &self.brave_search_api_key.is_some(),
             )
             .field("venice_search_configured", &self.venice_api_key.is_some())
-            .field("search_provider", &self.search.provider.as_str())
             .finish()
     }
 }
@@ -355,15 +352,13 @@ mod tests {
     fn tool_secrets_debug_redacts_values() {
         let secrets = ToolSecrets {
             brave_search_api_key: Some("brave-secret-value".to_string()),
-            venice_api_key: Some("venice-secret-value".to_string()),
-            ..ToolSecrets::default()
+            venice_api_key:       Some("venice-secret-value".to_string()),
         };
 
         let debug = format!("{secrets:?}");
 
         assert!(debug.contains("brave_search_configured: true"));
         assert!(debug.contains("venice_search_configured: true"));
-        assert!(debug.contains("search_provider: \"brave\""));
         assert!(!debug.contains("brave-secret-value"));
         assert!(!debug.contains("venice-secret-value"));
     }

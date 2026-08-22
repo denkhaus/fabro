@@ -86,7 +86,6 @@ pub use types::{
     AgentEvent, McpToolSummary, MemoryFileSummary, Message, SessionEvent, SessionState,
     SkillActivationSource, SkillSummary,
 };
-pub use web_search::search_settings_from_disk;
 
 #[cfg(test)]
 #[allow(

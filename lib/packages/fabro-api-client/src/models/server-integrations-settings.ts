@@ -18,13 +18,9 @@
 import type { GithubIntegrationSettings } from './github-integration-settings';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { SearchIntegrationSettings } from './search-integration-settings';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { SlackIntegrationSettings } from './slack-integration-settings';
 
 export interface ServerIntegrationsSettings {
     'github': GithubIntegrationSettings;
     'slack': SlackIntegrationSettings;
-    'search': SearchIntegrationSettings;
 }

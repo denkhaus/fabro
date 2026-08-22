@@ -441,8 +441,6 @@ models/saved-query.ts
 models/secret-list-response.ts
 models/secret-metadata.ts
 models/secret-type.ts
-models/search-integration-settings.ts
-models/search-provider.ts
 models/server-api-settings.ts
 models/server-artifacts-settings.ts
 models/server-auth-github-settings.ts
@@ -534,7 +532,6 @@ models/user-response.ts
 models/validate-response.ts
 models/variable-list-response.ts
 models/variable.ts
-models/venice-search-engine.ts
 models/vnc-preview-response.ts
 models/webhook-strategy.ts
 models/workflow-detail-response.ts

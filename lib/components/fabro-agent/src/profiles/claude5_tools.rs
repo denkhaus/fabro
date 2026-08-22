@@ -116,28 +116,19 @@ pub(crate) fn make_bash_tool(options: &NativeToolOptions) -> RegisteredTool {
 
 #[must_use]
 pub(crate) fn make_web_search_tool(backend: SearchBackend) -> RegisteredTool {
-    let includes_engine = backend.includes_engine_param();
     let mut tool = web_search::make_web_search_tool(backend);
-    let mut properties = serde_json::json!({
-        "query": {
-            "type": "string",
-            "description": "The web search query."
-        }
-    });
-    if includes_engine {
-        properties["engine"] = serde_json::json!({
-            "type": "string",
-            "enum": ["brave", "google"],
-            "description": "Venice search engine. brave is ZDR (default); google is an anonymized proxy."
-        });
-    }
     tool.definition = definition(
         NativeTool::WebSearch,
         "Search the web when current external information is needed. Returns result titles, URLs, \
          and descriptions; use WebFetch to inspect a specific URL.",
         serde_json::json!({
             "type": "object",
-            "properties": properties,
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The web search query."
+                }
+            },
             "required": ["query"],
             "additionalProperties": false
         }),
@@ -468,7 +459,6 @@ mod tests {
     use std::collections::BTreeSet;
     use std::sync::Mutex;
 
-    use fabro_types::settings::VeniceSearchEngine;
     use serde_json::json;
     use tokio_util::sync::CancellationToken;
 
@@ -553,11 +543,8 @@ mod tests {
             &["query"],
         );
         assert_schema(
-            &make_web_search_tool(SearchBackend::venice(
-                "key".to_string(),
-                VeniceSearchEngine::Brave,
-            )),
-            &["engine", "query"],
+            &make_web_search_tool(SearchBackend::venice("key".to_string())),
+            &["query"],
             &["query"],
         );
 

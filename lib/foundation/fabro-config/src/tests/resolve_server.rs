@@ -4,8 +4,8 @@
 )]
 
 use fabro_types::settings::server::{
-    GithubIntegrationStrategy, LogDestination, ObjectStoreSettings, SearchProvider,
-    ServerAuthMethod, ServerListenSettings, ServerNamespace, VeniceSearchEngine,
+    GithubIntegrationStrategy, LogDestination, ObjectStoreSettings, ServerAuthMethod,
+    ServerListenSettings, ServerNamespace,
 };
 use fabro_util::Home;
 use temp_env::with_var;
@@ -127,10 +127,6 @@ fn resolved_server_integrations_disable_slack_when_config_is_absent() {
                 "enabled": false,
                 "default_channel": null,
             },
-            "search": {
-                "provider": "brave",
-                "venice_engine": "brave",
-            },
         })
     );
 }
@@ -174,43 +170,6 @@ default_channel = "#releases"
             "enabled": true,
             "default_channel": "#releases",
         })
-    );
-}
-
-#[test]
-fn resolve_search_defaults_to_brave_when_config_is_absent() {
-    let settings = resolve_server(&parse(
-        r"
-_version = 1
-",
-    ));
-
-    assert_eq!(settings.integrations.search.provider, SearchProvider::Brave);
-    assert_eq!(
-        settings.integrations.search.venice_engine,
-        VeniceSearchEngine::Brave
-    );
-}
-
-#[test]
-fn resolve_search_provider_venice_and_google_engine() {
-    let settings = resolve_server(&parse(
-        r#"
-_version = 1
-
-[server.integrations.search]
-provider = "venice"
-venice_engine = "google"
-"#,
-    ));
-
-    assert_eq!(
-        settings.integrations.search.provider,
-        SearchProvider::Venice
-    );
-    assert_eq!(
-        settings.integrations.search.venice_engine,
-        VeniceSearchEngine::Google
     );
 }
 

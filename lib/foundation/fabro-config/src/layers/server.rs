@@ -1,8 +1,8 @@
 //! Sparse `[server]` settings layer definitions.
 
 use fabro_types::settings::server::{
-    GithubIntegrationStrategy, LogDestination, ObjectStoreProvider, SearchProvider,
-    ServerAuthMethod, VeniceSearchEngine, WebhookStrategy,
+    GithubIntegrationStrategy, LogDestination, ObjectStoreProvider, ServerAuthMethod,
+    WebhookStrategy,
 };
 use fabro_types::settings::{Duration, InterpString};
 use serde::{Deserialize, Serialize};
@@ -206,8 +206,6 @@ pub struct ServerIntegrationsLayer {
     pub github: Option<GithubIntegrationLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slack:  Option<SlackIntegrationLayer>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub search: Option<SearchIntegrationLayer>,
 }
 
 /// `[server.integrations.github]` — GitHub App, credentials, and inbound
@@ -237,16 +235,6 @@ pub struct SlackIntegrationLayer {
     pub enabled:         Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_channel: Option<String>,
-}
-
-/// `[server.integrations.search]` — backend for the built-in `web_search` tool.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
-#[serde(deny_unknown_fields)]
-pub struct SearchIntegrationLayer {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider:      Option<SearchProvider>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub venice_engine: Option<VeniceSearchEngine>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]

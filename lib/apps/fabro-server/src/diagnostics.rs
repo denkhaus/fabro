@@ -12,8 +12,8 @@ use fabro_model::{Catalog, ProviderId};
 use fabro_redact::redact_string;
 use fabro_sandbox::{DockerSandboxProvider, daytona};
 use fabro_static::EnvVars;
+use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::server::GithubIntegrationStrategy;
-use fabro_types::settings::{SearchProvider, ServerAuthMethod};
 use fabro_util::check_report::{CheckDetail, CheckResult, CheckSection, CheckStatus};
 use fabro_util::dev_token::validate_dev_token_format;
 use fabro_util::session_secret;
@@ -758,17 +758,7 @@ fn check_storage_dir_path(path: &std::path::Path) -> CheckResult {
 }
 
 async fn check_web_search(state: &AppState) -> CheckResult {
-    let search = state.server_settings().server.integrations.search;
-    match search.provider {
-        SearchProvider::Brave => check_brave_search(state).await,
-        SearchProvider::Venice => check_venice_search(state).await,
-    }
-}
-
-const WEB_SEARCH_CHECK_NAME: &str = "Web Search";
-
-async fn check_brave_search(state: &AppState) -> CheckResult {
-    let api_key = match diagnostic_secret(
+    let brave_api_key = match diagnostic_secret(
         state,
         WEB_SEARCH_CHECK_NAME,
         EnvVars::BRAVE_SEARCH_API_KEY,
@@ -778,18 +768,33 @@ async fn check_brave_search(state: &AppState) -> CheckResult {
         Ok(value) => value,
         Err(result) => return result,
     };
-    let Some(api_key) = api_key else {
-        return CheckResult {
-            name:        WEB_SEARCH_CHECK_NAME.to_string(),
-            status:      CheckStatus::Warning,
-            summary:     "brave: optional, not configured".to_string(),
-            details:     Vec::new(),
-            remediation: Some(
-                "Run `fabro secret set BRAVE_SEARCH_API_KEY` to enable web search".to_string(),
-            ),
-        };
-    };
+    if let Some(api_key) = brave_api_key {
+        return check_brave_search(api_key).await;
+    }
 
+    let venice_api_key =
+        match diagnostic_secret(state, WEB_SEARCH_CHECK_NAME, EnvVars::VENICE_API_KEY).await {
+            Ok(value) => value,
+            Err(result) => return result,
+        };
+    if let Some(api_key) = venice_api_key {
+        return check_venice_search(api_key).await;
+    }
+
+    CheckResult {
+        name:        WEB_SEARCH_CHECK_NAME.to_string(),
+        status:      CheckStatus::Warning,
+        summary:     "optional, not configured".to_string(),
+        details:     Vec::new(),
+        remediation: Some(
+            "Run `fabro secret set BRAVE_SEARCH_API_KEY` or `fabro secret set VENICE_API_KEY` to enable web search".to_string(),
+        ),
+    }
+}
+
+const WEB_SEARCH_CHECK_NAME: &str = "Web Search";
+
+async fn check_brave_search(api_key: String) -> CheckResult {
     let http = match http_client_or_check(WEB_SEARCH_CHECK_NAME, CheckStatus::Warning) {
         Ok(http) => http,
         Err(result) => return result,
@@ -807,24 +812,7 @@ async fn check_brave_search(state: &AppState) -> CheckResult {
     match_web_search_probe(probe, "brave", "BRAVE_SEARCH_API_KEY")
 }
 
-async fn check_venice_search(state: &AppState) -> CheckResult {
-    let api_key =
-        match diagnostic_secret(state, WEB_SEARCH_CHECK_NAME, EnvVars::VENICE_API_KEY).await {
-            Ok(value) => value,
-            Err(result) => return result,
-        };
-    let Some(api_key) = api_key else {
-        return CheckResult {
-            name:        WEB_SEARCH_CHECK_NAME.to_string(),
-            status:      CheckStatus::Warning,
-            summary:     "venice: optional, not configured".to_string(),
-            details:     Vec::new(),
-            remediation: Some(
-                "Run `fabro secret set VENICE_API_KEY` to enable web search".to_string(),
-            ),
-        };
-    };
-
+async fn check_venice_search(api_key: String) -> CheckResult {
     let http = match http_client_or_check(WEB_SEARCH_CHECK_NAME, CheckStatus::Warning) {
         Ok(http) => http,
         Err(result) => return result,
@@ -833,7 +821,11 @@ async fn check_venice_search(state: &AppState) -> CheckResult {
     let probe = timeout(EXTERNAL_SERVICE_PROBE_TIMEOUT, async move {
         http.post("https://api.venice.ai/api/v1/augment/search")
             .bearer_auth(api_key)
-            .json(&serde_json::json!({ "query": "test", "limit": 1 }))
+            .json(&serde_json::json!({
+                "query": "test",
+                "limit": 1,
+                "search_provider": "brave",
+            }))
             .send()
             .await
             .map_err(anyhow::Error::new)
@@ -1256,7 +1248,7 @@ enabled = false
     }
 
     #[tokio::test]
-    async fn check_web_search_ignores_env_backed_api_key() {
+    async fn check_web_search_ignores_env_backed_brave_api_key() {
         let state = TestAppStateBuilder::new()
             .env_lookup(|name| {
                 (name == EnvVars::BRAVE_SEARCH_API_KEY).then(|| "brave-from-env".to_string())
@@ -1267,29 +1259,18 @@ enabled = false
 
         assert_eq!(result.name, "Web Search");
         assert_eq!(result.status, CheckStatus::Warning);
-        assert_eq!(result.summary, "brave: optional, not configured");
+        assert_eq!(result.summary, "optional, not configured");
         assert_eq!(
             result.remediation.as_deref(),
-            Some("Run `fabro secret set BRAVE_SEARCH_API_KEY` to enable web search")
+            Some(
+                "Run `fabro secret set BRAVE_SEARCH_API_KEY` or `fabro secret set VENICE_API_KEY` to enable web search"
+            )
         );
     }
 
     #[tokio::test]
-    async fn check_web_search_venice_ignores_env_backed_api_key() {
-        let settings = fabro_config::ServerSettingsBuilder::from_toml(
-            r#"
-_version = 1
-
-[server.auth]
-methods = ["dev-token"]
-
-[server.integrations.search]
-provider = "venice"
-"#,
-        )
-        .expect("venice search settings should parse");
+    async fn check_web_search_ignores_env_backed_venice_api_key() {
         let state = TestAppStateBuilder::new()
-            .runtime_settings(settings, RunLayer::default())
             .env_lookup(|name| {
                 (name == EnvVars::VENICE_API_KEY).then(|| "venice-from-env".to_string())
             })
@@ -1299,11 +1280,42 @@ provider = "venice"
 
         assert_eq!(result.name, "Web Search");
         assert_eq!(result.status, CheckStatus::Warning);
-        assert_eq!(result.summary, "venice: optional, not configured");
+        assert_eq!(result.summary, "optional, not configured");
         assert_eq!(
             result.remediation.as_deref(),
-            Some("Run `fabro secret set VENICE_API_KEY` to enable web search")
+            Some(
+                "Run `fabro secret set BRAVE_SEARCH_API_KEY` or `fabro secret set VENICE_API_KEY` to enable web search"
+            )
         );
+    }
+
+    #[tokio::test]
+    async fn check_web_search_prefers_brave_when_both_vault_keys_exist() {
+        let state = TestAppStateBuilder::new()
+            .vault_entries([
+                (EnvVars::BRAVE_SEARCH_API_KEY, "invalid\n"),
+                (EnvVars::VENICE_API_KEY, "invalid\n"),
+            ])
+            .build();
+
+        let result = check_web_search(&state).await;
+
+        assert_eq!(result.name, "Web Search");
+        assert_eq!(result.status, CheckStatus::Warning);
+        assert_eq!(result.summary, "brave: connectivity error");
+    }
+
+    #[tokio::test]
+    async fn check_web_search_uses_venice_when_brave_vault_key_is_absent() {
+        let state = TestAppStateBuilder::new()
+            .vault_entries([(EnvVars::VENICE_API_KEY, "invalid\n")])
+            .build();
+
+        let result = check_web_search(&state).await;
+
+        assert_eq!(result.name, "Web Search");
+        assert_eq!(result.status, CheckStatus::Warning);
+        assert_eq!(result.summary, "venice: connectivity error");
     }
 
     #[tokio::test]

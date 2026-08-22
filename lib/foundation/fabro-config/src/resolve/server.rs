@@ -2,12 +2,12 @@ use std::path::Path;
 
 use fabro_types::settings::server::{
     GithubIntegrationSettings, GithubIntegrationStrategy, IntegrationWebhooksSettings,
-    ObjectStoreProvider, ObjectStoreSettings, SearchIntegrationSettings, ServerApiSettings,
-    ServerArtifactsSettings, ServerAuthGithubSettings, ServerAuthMethod, ServerAuthSettings,
-    ServerIntegrationsSettings, ServerListenSettings, ServerLoggingSettings, ServerNamespace,
-    ServerSandboxProviderSettings, ServerSandboxProvidersSettings, ServerSandboxSettings,
-    ServerSchedulerSettings, ServerSlateDbSettings, ServerStorageSettings, ServerWebSettings,
-    SlackIntegrationSettings, WebhookStrategy,
+    ObjectStoreProvider, ObjectStoreSettings, ServerApiSettings, ServerArtifactsSettings,
+    ServerAuthGithubSettings, ServerAuthMethod, ServerAuthSettings, ServerIntegrationsSettings,
+    ServerListenSettings, ServerLoggingSettings, ServerNamespace, ServerSandboxProviderSettings,
+    ServerSandboxProvidersSettings, ServerSandboxSettings, ServerSchedulerSettings,
+    ServerSlateDbSettings, ServerStorageSettings, ServerWebSettings, SlackIntegrationSettings,
+    WebhookStrategy,
 };
 use fabro_util::Home;
 
@@ -375,13 +375,6 @@ fn resolve_integrations(layer: Option<&ServerIntegrationsLayer>) -> ServerIntegr
                     }
                 },
             ),
-        search: layer
-            .and_then(|integrations| integrations.search.as_ref())
-            .map(|search| SearchIntegrationSettings {
-                provider:      search.provider.unwrap_or_default(),
-                venice_engine: search.venice_engine.unwrap_or_default(),
-            })
-            .unwrap_or_default(),
     }
 }
 

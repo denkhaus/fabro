@@ -242,7 +242,6 @@ pub struct ServerLoggingSettings {
 pub struct ServerIntegrationsSettings {
     pub github: GithubIntegrationSettings,
     pub slack:  SlackIntegrationSettings,
-    pub search: SearchIntegrationSettings,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -268,75 +267,6 @@ impl Default for SlackIntegrationSettings {
             default_channel: None,
         }
     }
-}
-
-/// Backend used by the built-in `web_search` tool.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    strum::EnumString,
-    strum::IntoStaticStr,
-)]
-#[serde(rename_all = "lowercase")]
-#[strum(serialize_all = "lowercase")]
-pub enum SearchProvider {
-    #[default]
-    Brave,
-    Venice,
-}
-
-impl SearchProvider {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Brave => "brave",
-            Self::Venice => "venice",
-        }
-    }
-}
-
-/// Venice `/augment/search` engine. `brave` is Firecrawl ZDR; `google` is an
-/// anonymized proxy. Direct Brave Search remains [`SearchProvider::Brave`].
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    strum::EnumString,
-    strum::IntoStaticStr,
-)]
-#[serde(rename_all = "lowercase")]
-#[strum(serialize_all = "lowercase")]
-pub enum VeniceSearchEngine {
-    #[default]
-    Brave,
-    Google,
-}
-
-impl VeniceSearchEngine {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Brave => "brave",
-            Self::Google => "google",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SearchIntegrationSettings {
-    pub provider:      SearchProvider,
-    pub venice_engine: VeniceSearchEngine,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

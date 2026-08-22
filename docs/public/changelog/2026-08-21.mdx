@@ -5,6 +5,6 @@ date: "2026-08-21"
 
 ## Venice search backend for `web_search`
 
-The built-in `web_search` tool now has a second HTTP backend. Brave Search remains the default. Set `[server.integrations.search].provider = "venice"` to send queries to Venice `POST /api/v1/augment/search`, reusing vault `VENICE_API_KEY`. Failed calls do not fall back between providers.
+The built-in `web_search` tool now supports Venice as an automatic alternative to direct Brave Search. Fabro uses `BRAVE_SEARCH_API_KEY` when present. Otherwise it uses `VENICE_API_KEY` with Venice's Brave search engine. If neither key is present, the tool is not registered. Failed calls do not fall back between providers.
 
 See [Venice Search](/integrations/venice-search) and [Brave Search](/integrations/brave-search).

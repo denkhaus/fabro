@@ -1,14 +1,13 @@
 //! Built-in `web_search` backends.
 //!
-//! Agents always call the same tool. The HTTP backend is selected by
-//! `[server.integrations.search].provider`.
+//! Agents always call the same tool. Brave is preferred when its credential
+//! is present; otherwise Venice is used when its credential is present.
 
 use std::fmt::Write;
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use fabro_llm::types::ToolDefinition;
-use fabro_types::settings::{SearchIntegrationSettings, SearchProvider, VeniceSearchEngine};
 
 use crate::config::ToolSecrets;
 use crate::tool_registry::{RegisteredTool, ToolSource};
@@ -29,7 +28,6 @@ pub(crate) enum SearchBackend {
     },
     Venice {
         api_key:    String,
-        engine:     VeniceSearchEngine,
         search_url: String,
     },
 }
@@ -37,15 +35,13 @@ pub(crate) enum SearchBackend {
 impl SearchBackend {
     #[must_use]
     pub(crate) fn from_secrets(secrets: &ToolSecrets) -> Option<Self> {
-        match secrets.search.provider {
-            SearchProvider::Brave => secrets
-                .brave_search_api_key
-                .as_ref()
-                .map(|api_key| Self::brave(api_key.clone())),
-            SearchProvider::Venice => secrets
-                .venice_api_key
-                .as_ref()
-                .map(|api_key| Self::venice(api_key.clone(), secrets.search.venice_engine)),
+        match (
+            secrets.brave_search_api_key.as_ref(),
+            secrets.venice_api_key.as_ref(),
+        ) {
+            (Some(api_key), _) => Some(Self::brave(api_key.clone())),
+            (None, Some(api_key)) => Some(Self::venice(api_key.clone())),
+            (None, None) => None,
         }
     }
 
@@ -58,25 +54,14 @@ impl SearchBackend {
     }
 
     #[must_use]
-    pub(crate) fn venice(api_key: String, engine: VeniceSearchEngine) -> Self {
+    pub(crate) fn venice(api_key: String) -> Self {
         Self::Venice {
             api_key,
-            engine,
             search_url: VENICE_SEARCH_URL.to_string(),
         }
     }
 
-    #[must_use]
-    pub(crate) fn includes_engine_param(&self) -> bool {
-        matches!(self, Self::Venice { .. })
-    }
-
-    async fn search(
-        &self,
-        query: &str,
-        max_results: u64,
-        engine_override: Option<VeniceSearchEngine>,
-    ) -> Result<String, String> {
+    async fn search(&self, query: &str, max_results: u64) -> Result<String, String> {
         match self {
             Self::Brave {
                 api_key,
@@ -84,7 +69,6 @@ impl SearchBackend {
             } => search_brave(api_key, search_url, query, max_results).await,
             Self::Venice {
                 api_key,
-                engine,
                 search_url,
             } => {
                 if query.chars().count() > VENICE_QUERY_MAX_CHARS {
@@ -92,8 +76,7 @@ impl SearchBackend {
                         "query exceeds Venice Search maximum of {VENICE_QUERY_MAX_CHARS} characters"
                     ));
                 }
-                let engine = engine_override.unwrap_or(*engine);
-                search_venice(api_key, search_url, query, max_results, engine).await
+                search_venice(api_key, search_url, query, max_results).await
             }
         }
     }
@@ -150,7 +133,6 @@ async fn search_venice(
     search_url: &str,
     query: &str,
     max_results: u64,
-    engine: VeniceSearchEngine,
 ) -> Result<String, String> {
     let limit = max_results.clamp(1, MAX_RESULTS);
     let resp = search_http_client()
@@ -161,7 +143,7 @@ async fn search_venice(
         .json(&serde_json::json!({
             "query": query,
             "limit": limit,
-            "search_provider": engine.as_str(),
+            "search_provider": "brave",
         }))
         .send()
         .await
@@ -277,16 +259,6 @@ fn optional_json_str(value: &serde_json::Value, key: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn parse_engine_arg(args: &serde_json::Value) -> Result<Option<VeniceSearchEngine>, String> {
-    let Some(value) = args.get("engine").and_then(serde_json::Value::as_str) else {
-        return Ok(None);
-    };
-    value
-        .parse()
-        .map(Some)
-        .map_err(|_| format!("Invalid engine `{value}`; expected `brave` or `google`"))
-}
-
 fn max_results_arg(args: &serde_json::Value) -> u64 {
     args.get("max_results")
         .and_then(serde_json::Value::as_u64)
@@ -296,25 +268,16 @@ fn max_results_arg(args: &serde_json::Value) -> u64 {
 
 #[must_use]
 pub(crate) fn make_web_search_tool(backend: SearchBackend) -> RegisteredTool {
-    let mut properties = serde_json::json!({
-        "query": {"type": "string", "description": "Search query"},
-        "max_results": {"type": "integer", "description": "Maximum number of results (default 5, max 20)"}
-    });
-    if backend.includes_engine_param() {
-        properties["engine"] = serde_json::json!({
-            "type": "string",
-            "enum": ["brave", "google"],
-            "description": "Venice search engine. `brave` is ZDR (default); `google` is an anonymized proxy."
-        });
-    }
-
     RegisteredTool {
         definition: ToolDefinition {
             name:        WEB_SEARCH_TOOL_NAME.into(),
             description: "Search the web when current external information is needed. Returns result titles, URLs, and descriptions; use web_fetch for a specific URL.".into(),
             parameters:  serde_json::json!({
                 "type": "object",
-                "properties": properties,
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "max_results": {"type": "integer", "description": "Maximum number of results (default 5, max 20)"}
+                },
                 "required": ["query"]
             }),
         },
@@ -322,10 +285,7 @@ pub(crate) fn make_web_search_tool(backend: SearchBackend) -> RegisteredTool {
             let backend = backend.clone();
             Box::pin(async move {
                 let query = required_str(&args, "query")?;
-                let engine = parse_engine_arg(&args)?;
-                backend
-                    .search(query, max_results_arg(&args), engine)
-                    .await
+                backend.search(query, max_results_arg(&args)).await
             })
         }),
         source:     ToolSource::Native,
@@ -338,19 +298,10 @@ pub(crate) fn make_web_search_tool_with_api_key(api_key: String) -> RegisteredTo
     make_web_search_tool(SearchBackend::brave(api_key))
 }
 
-#[must_use]
-pub fn search_settings_from_disk() -> SearchIntegrationSettings {
-    fabro_config::ServerSettingsBuilder::load_default()
-        .ok()
-        .map(|settings| settings.server.integrations.search)
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
-    use fabro_types::settings::{SearchIntegrationSettings, SearchProvider, VeniceSearchEngine};
     use httpmock::Method::{GET, POST};
     use httpmock::MockServer;
     use tokio_util::sync::CancellationToken;
@@ -361,14 +312,10 @@ mod tests {
     use crate::test_support::MockSandbox;
     use crate::tool_registry::ToolContext;
 
-    fn secrets(brave: Option<&str>, venice: Option<&str>, provider: SearchProvider) -> ToolSecrets {
+    fn secrets(brave: Option<&str>, venice: Option<&str>) -> ToolSecrets {
         ToolSecrets {
             brave_search_api_key: brave.map(str::to_string),
             venice_api_key:       venice.map(str::to_string),
-            search:               SearchIntegrationSettings {
-                provider,
-                venice_engine: VeniceSearchEngine::Brave,
-            },
         }
     }
 
@@ -387,39 +334,26 @@ mod tests {
     }
 
     #[test]
-    fn from_secrets_registers_brave_by_default_when_brave_key_is_present() {
-        let backend = SearchBackend::from_secrets(&secrets(
-            Some("brave-key"),
-            Some("venice-key"),
-            SearchProvider::Brave,
-        ));
+    fn from_secrets_prefers_brave_when_both_keys_are_present() {
+        let backend = SearchBackend::from_secrets(&secrets(Some("brave-key"), Some("venice-key")));
         assert!(matches!(backend, Some(SearchBackend::Brave { .. })));
     }
 
     #[test]
-    fn from_secrets_omits_brave_when_key_missing() {
-        assert!(
-            SearchBackend::from_secrets(&secrets(None, Some("venice-key"), SearchProvider::Brave))
-                .is_none()
-        );
+    fn from_secrets_registers_brave_when_only_brave_key_is_present() {
+        let backend = SearchBackend::from_secrets(&secrets(Some("brave-key"), None));
+        assert!(matches!(backend, Some(SearchBackend::Brave { .. })));
     }
 
     #[test]
-    fn from_secrets_registers_venice_when_selected_and_key_present() {
-        let backend = SearchBackend::from_secrets(&secrets(
-            Some("brave-key"),
-            Some("venice-key"),
-            SearchProvider::Venice,
-        ));
+    fn from_secrets_registers_venice_when_only_venice_key_is_present() {
+        let backend = SearchBackend::from_secrets(&secrets(None, Some("venice-key")));
         assert!(matches!(backend, Some(SearchBackend::Venice { .. })));
     }
 
     #[test]
-    fn from_secrets_omits_venice_when_key_missing() {
-        assert!(
-            SearchBackend::from_secrets(&secrets(Some("brave-key"), None, SearchProvider::Venice))
-                .is_none()
-        );
+    fn from_secrets_omits_search_when_both_keys_are_missing() {
+        assert!(SearchBackend::from_secrets(&secrets(None, None)).is_none());
     }
 
     #[test]
@@ -466,26 +400,14 @@ mod tests {
     }
 
     #[test]
-    fn venice_schema_includes_engine_and_brave_schema_does_not() {
+    fn brave_and_venice_use_the_same_tool_schema() {
         let brave = make_web_search_tool(SearchBackend::brave("key".into()));
-        let venice = make_web_search_tool(SearchBackend::venice(
-            "key".into(),
-            VeniceSearchEngine::Brave,
-        ));
-        assert!(
-            brave.definition.parameters["properties"]
-                .get("engine")
-                .is_none()
-        );
-        assert!(
-            venice.definition.parameters["properties"]
-                .get("engine")
-                .is_some()
-        );
+        let venice = make_web_search_tool(SearchBackend::venice("key".into()));
+        assert_eq!(brave.definition.parameters, venice.definition.parameters);
     }
 
     #[tokio::test]
-    async fn venice_search_posts_augment_search_and_maps_engine() {
+    async fn venice_search_posts_augment_search_with_brave_engine() {
         let server = MockServer::start();
         let mock = server.mock(|when, then| {
             when.method(POST)
@@ -494,7 +416,7 @@ mod tests {
                 .json_body(serde_json::json!({
                     "query": "fabro",
                     "limit": 3,
-                    "search_provider": "google"
+                    "search_provider": "brave"
                 }));
             then.status(200).json_body(serde_json::json!({
                 "query": "fabro",
@@ -507,7 +429,7 @@ mod tests {
             }));
         });
 
-        let mut backend = SearchBackend::venice("venice-key".into(), VeniceSearchEngine::Brave);
+        let mut backend = SearchBackend::venice("venice-key".into());
         if let SearchBackend::Venice { search_url, .. } = &mut backend {
             *search_url = format!("{}/api/v1/augment/search", server.base_url());
         }
@@ -516,8 +438,7 @@ mod tests {
             &tool,
             serde_json::json!({
                 "query": "fabro",
-                "max_results": 3,
-                "engine": "google"
+                "max_results": 3
             }),
         )
         .await
@@ -539,7 +460,7 @@ mod tests {
                 .json_body(serde_json::json!({"results": []}));
         });
 
-        let mut backend = SearchBackend::venice("venice-key".into(), VeniceSearchEngine::Brave);
+        let mut backend = SearchBackend::venice("venice-key".into());
         if let SearchBackend::Venice { search_url, .. } = &mut backend {
             *search_url = format!("{}/api/v1/augment/search", server.base_url());
         }
@@ -567,7 +488,7 @@ mod tests {
                     then.status(status).body("error");
                 }),
             };
-            let mut backend = SearchBackend::venice("venice-key".into(), VeniceSearchEngine::Brave);
+            let mut backend = SearchBackend::venice("venice-key".into());
             if let SearchBackend::Venice { search_url, .. } = &mut backend {
                 *search_url = format!("{}/api/v1/augment/search", server.base_url());
             }
