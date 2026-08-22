@@ -697,18 +697,16 @@ impl Client {
     }
 
     pub async fn create_run_from_manifest(&self, manifest: types::RunManifest) -> Result<RunId> {
-        let response = self
-            .send_api(
-                |client| async move { client.create_run().body(manifest.clone()).send().await },
-            )
-            .await?;
-        let status = response.into_inner();
-        Ok(status.id)
+        self.submit_create_run(manifest.into()).await
     }
 
     pub async fn create_run_from_intent(&self, intent: types::RunIntent) -> Result<RunId> {
+        self.submit_create_run(intent.into()).await
+    }
+
+    async fn submit_create_run(&self, body: types::CreateRunRequest) -> Result<RunId> {
         let response = self
-            .send_api(|client| async move { client.create_run().body(intent.clone()).send().await })
+            .send_api(|client| async move { client.create_run().body(body.clone()).send().await })
             .await?;
         let status = response.into_inner();
         Ok(status.id)
