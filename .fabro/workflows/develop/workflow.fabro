@@ -17,7 +17,8 @@ digraph Develop {
         output_retries=2,
         max_visits=20,
         goal_gate=true,
-        retry_policy="standard"
+        retry_policy="standard",
+        reasoning_effort="medium"
     ]
 
     // Implementer: builds exactly what the claimed seed specifies.
@@ -84,6 +85,9 @@ digraph Develop {
 
     // Refiner: deterministic painpoint delivery (ADR-0002). Lifts staged
     // painpoints into the platform mailbox; never fails the goal gate.
+    // Fan-in point: EVERY exit-bound path routes through here, so staged
+    // painpoints are delivered no matter how the run ends (review of run
+    // 01M0NJZGX7BMJAJC3CZJZ0RNT0: only Tracker-empty delivered before).
     refiner [
         label="Painpoint Delivery",
         shape=parallelogram,
@@ -95,7 +99,7 @@ digraph Develop {
     start -> planner
 
     planner -> refiner   [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
-    planner -> exit      [label="Planner failed", condition="outcome=failed"]
+    planner -> refiner   [label="Planner failed", condition="outcome=failed"]
     planner -> implementer [label="Seed claimed"]
     refiner -> exit
 
@@ -106,9 +110,9 @@ digraph Develop {
     tester -> implementer [label="Gate red"]
 
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
-    evidence -> exit      [label="Capture failed (seed stays open for the next run)"]
+    evidence -> refiner  [label="Capture failed (seed stays open for the next run)"]
 
     reviewer -> planner [label="Approved", condition="preferred_label=\"Approved\""]
     reviewer -> planner [label="Changes requested"]
-    reviewer -> exit [label="Reviewer failed", condition="outcome=failed"]
+    reviewer -> refiner [label="Reviewer failed", condition="outcome=failed"]
 }
