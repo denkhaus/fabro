@@ -3,6 +3,9 @@
 # Called by `just qualitygate`; the develop workflow's tester step goes
 # through the same target, so there is exactly one gate definition.
 
+print "== workflow sync (product <-> meta) =="
+nu .fabro/workflows/develop/scripts/sync-check.nu
+
 print "== tracked large files =="
 let big = (
     git ls-files
