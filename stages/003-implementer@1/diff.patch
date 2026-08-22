@@ -1,0 +1,140 @@
+diff --git a/.mulch/expertise/gofib.jsonl b/.mulch/expertise/gofib.jsonl
+new file mode 100644
+index 0000000..a978bf1
+--- /dev/null
++++ b/.mulch/expertise/gofib.jsonl
+@@ -0,0 +1 @@
++{"type":"pattern","classification":"tactical","recorded_at":"2026-08-22T17:10:28.450Z","evidence":{"seeds":"fabro-759d","commit":"802b69be5b96ee07d2af8abf553e0f7ff5205750"},"name":"thin-main-runnable-core","description":"gofib CLI testability: keep main() as a thin flag.Parse + error-exit shim and put all output logic in run(w io.Writer, count int) error, so tests exercise CLI behavior (counts, formats, invalid -n values) via bytes.Buffer instead of os/exec subprocesses. New flags should validate in run and surface errors through main's stderr+exit-1 path.","files":[".mulch/mulch.config.yaml","fib_test.go","main.go"],"id":"mx-d4cf38"}
+diff --git a/.mulch/mulch.config.yaml b/.mulch/mulch.config.yaml
+index 7bdcc73..1d5cd96 100644
+--- a/.mulch/mulch.config.yaml
++++ b/.mulch/mulch.config.yaml
+@@ -7,6 +7,7 @@ domains:
+   git: {}
+   environments: {}
+   testing: {}
++  gofib: {}
+ governance:
+   max_entries: 100
+   warn_entries: 150
+diff --git a/fib_test.go b/fib_test.go
+index 817075b..24e6603 100644
+--- a/fib_test.go
++++ b/fib_test.go
+@@ -1,7 +1,9 @@
+ package main
+ 
+ import (
++	"bytes"
+ 	"math/big"
++	"strings"
+ 	"testing"
+ )
+ 
+@@ -30,3 +32,54 @@ func TestFib(t *testing.T) {
+ 		}
+ 	}
+ }
++
++func TestRun(t *testing.T) {
++	tests := []struct {
++		name      string
++		n         int
++		wantLines int
++		wantFirst string
++		wantLast  string
++	}{
++		{"n=1 prints one number", 1, 1, "1: 1", "1: 1"},
++		{"n=10 prints ten numbers", 10, 10, "1: 1", "10: 55"},
++		// The default path must keep printing the first 100 numbers;
++		// F(100) exceeds int64, so its value comes from a string literal.
++		{"default prints 100 numbers", defaultCount, 100,
++			"1: 1", "100: " + mustBig("354224848179261915075").String()},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			var buf bytes.Buffer
++			if err := run(&buf, tt.n); err != nil {
++				t.Fatalf("run(%d) returned error: %v", tt.n, err)
++			}
++			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
++			if len(lines) != tt.wantLines {
++				t.Fatalf("run(%d) printed %d lines, want %d", tt.n, len(lines), tt.wantLines)
++			}
++			if lines[0] != tt.wantFirst {
++				t.Errorf("first line = %q, want %q", lines[0], tt.wantFirst)
++			}
++			if lines[len(lines)-1] != tt.wantLast {
++				t.Errorf("last line = %q, want %q", lines[len(lines)-1], tt.wantLast)
++			}
++		})
++	}
++}
++
++func TestRunRejectsInvalidCount(t *testing.T) {
++	for _, n := range []int{0, -5} {
++		var buf bytes.Buffer
++		err := run(&buf, n)
++		if err == nil {
++			t.Fatalf("run(%d) succeeded, want error", n)
++		}
++		if !strings.Contains(err.Error(), "-n") {
++			t.Errorf("run(%d) error %q does not mention the -n flag", n, err.Error())
++		}
++		if buf.Len() != 0 {
++			t.Errorf("run(%d) wrote %q before failing, want no output", n, buf.String())
++		}
++	}
++}
+diff --git a/main.go b/main.go
+index 4f81d24..a5c7695 100644
+--- a/main.go
++++ b/main.go
+@@ -1,12 +1,19 @@
+-// Command gofib prints the first 100 Fibonacci numbers, one per line,
+-// prefixed with the index: "1: 1", "2: 1", "3: 2", ...
++// Command gofib prints Fibonacci numbers, one per line, prefixed with
++// the index: "1: 1", "2: 1", "3: 2", ... By default it prints the first
++// 100; the -n flag changes how many are printed.
+ package main
+ 
+ import (
++	"flag"
+ 	"fmt"
++	"io"
+ 	"math/big"
++	"os"
+ )
+ 
++// defaultCount is how many numbers gofib prints when -n is omitted.
++const defaultCount = 100
++
+ // Fib returns the n-th Fibonacci number, with F(1) = F(2) = 1.
+ func Fib(n int) *big.Int {
+ 	a, b := big.NewInt(0), big.NewInt(1)
+@@ -16,8 +23,23 @@ func Fib(n int) *big.Int {
+ 	return a
+ }
+ 
++// run writes the first count Fibonacci numbers to w as "<index>: <value>".
++// It returns an error when count < 1.
++func run(w io.Writer, count int) error {
++	if count < 1 {
++		return fmt.Errorf("invalid value %d for flag -n: must be >= 1", count)
++	}
++	for i := 1; i <= count; i++ {
++		fmt.Fprintf(w, "%d: %v\n", i, Fib(i))
++	}
++	return nil
++}
++
+ func main() {
+-	for i := 1; i <= 100; i++ {
+-		fmt.Printf("%d: %v\n", i, Fib(i))
++	n := flag.Int("n", defaultCount, "how many Fibonacci numbers to print (must be >= 1; default 100)")
++	flag.Parse()
++	if err := run(os.Stdout, *n); err != nil {
++		fmt.Fprintln(os.Stderr, err)
++		os.Exit(1)
+ 	}
+ }
