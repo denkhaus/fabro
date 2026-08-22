@@ -20,6 +20,18 @@
 const LOOP_PREFIXES = [".fabro/" ".mulch/" ".seeds/" ".prime/" "docs/" "scripts/"]
 const LOOP_ROOTS = ["justfile" "AGENTS.md" "CONTEXT.md" ".gitignore" "lefthook.yml" "go.sum"]
 
+# HARD OUTPUT BUDGET: the engine demotes preamble values over 8KB
+# (artifact.rs PROMPT_INLINE_VALUE_MAX) to a 300-char preview + blob path a
+# tool-less reviewer can never read (painpoint #2 in the mailbox, run
+# 01M0NGQXB67674XQ5YCR1MB4BN). This script therefore keeps its ENTIRE
+# output under budget: fixed sections render first, the diff gets the
+# remainder, files are cut at whole-file boundaries, and every cut is
+# disclosed so review can reject on exact grounds. Chars, not bytes: JSON
+# escaping inflates newlines/quotes, so the margin below 8192 is deliberate.
+const OUTPUT_BUDGET = 6800
+const SPEC_CAP = 2200
+const TAIL_RESERVE = 700
+
 # ---------------------------------------------------------------------------
 # helpers — resolve facts
 # ---------------------------------------------------------------------------
@@ -98,15 +110,14 @@ def in-progress-seed []: nothing -> any {
 # section printers — one evidence section each (output text is contract)
 # ---------------------------------------------------------------------------
 
-def print-integrity [
+def integrity-section [
     base_short: string
     seed_desc: string
     seed_rows: list
     churn_rows: list
     wt_label: string
-]: nothing -> nothing {
-    print $"evidence: base=($base_short) seed=($seed_desc)"
-    print (integrity-line $seed_rows $churn_rows $wt_label)
+]: nothing -> string {
+    $"evidence: base=($base_short) seed=($seed_desc)\n(integrity-line $seed_rows $churn_rows $wt_label)\n"
 }
 
 # The integrity line, for callers that need it (main reprints it at the end).
@@ -120,62 +131,80 @@ def integrity-line [
     $"integrity: seed-work=($seed_files | length) files +(total $seed_rows add)/-(total $seed_rows del) | loop-churn=($churn_files | length) files +(total $churn_rows add)/-(total $churn_rows del) | worktree=($wt_label)"
 }
 
-def print-seed-spec [wip: any]: nothing -> nothing {
-    if $wip != null {
-        print ""
-        print "== in-progress seed spec (authoritative — judge against this, not the brief) =="
-        print $wip.description
+def spec-section [wip: any]: nothing -> string {
+    if $wip == null { return "" }
+    let head = "\n== in-progress seed spec (authoritative — judge against this, not the brief) ==\n"
+    let desc = ($wip.description | str trim -r -c "\n")
+    if ($desc | str length) > $SPEC_CAP {
+        let cut = (($desc | str length) - $SPEC_CAP)
+        $head + ($desc | str substring 0..($SPEC_CAP - 1)) + "\n(spec truncated: " + ($cut | into string) + " chars cut — judge the visible part only)\n"
+    } else {
+        $head + $desc + "\n"
     }
 }
 
-def print-seed-work-files [seed_rows: list]: nothing -> nothing {
-    print ""
-    print "== seed work: changed files (review scope — complete diff below) =="
+def seed-work-files-section [seed_rows: list]: nothing -> string {
+    let head = "\n== seed work: changed files (review scope — complete diff below) ==\n"
     if ($seed_rows | is-empty) {
-        print "(none — no project source changed since run base)"
+        $head + "(none — no project source changed since run base)\n"
     } else {
-        $seed_rows | each {|r| print $"($r.path) +($r.add)/-($r.del)"}
+        let lines = ($seed_rows | each {|r| $"($r.path) +($r.add)/-($r.del)" } | str join "\n")
+        $"($head)($lines)\n"
     }
 }
 
 # `complete` keeps stdout as one raw string: the list-of-lines split +
 # str join round-trip once injected a stray newline mid-line (observed
 # once, never reproduced) — raw capture rules that class out.
-def print-seed-work-diff [base: string, seed_rows: list]: nothing -> nothing {
-    print ""
-    print "== seed work: complete diff (git diff -U1 against run base, files above) =="
+# Whole-file budgeting: a file is included completely or not at all; the
+# first non-fitting file stops the walk, the rest is disclosed as omitted.
+def diff-section [base: string, seed_rows: list, allowance: int]: nothing -> string {
+    let head = "\n== seed work: complete diff (git diff -U1 against run base, files above) ==\n"
     let seed_files = ($seed_rows | get -o path | default [])
     if ($seed_files | is-empty) {
-        print "(no seed-work files to diff)"
-        return
+        return ($head + "(no seed-work files to diff)\n")
     }
-    let res = (do { git diff -U1 $base -- ...$seed_files } | complete)
-    if $res.exit_code != 0 {
-        print $"git diff failed: ($res.stderr)"
-    } else if ($res.stdout | str length) == 0 {
-        print "(empty diff)"
+    mut used = 0
+    mut parts = []
+    mut included = []
+    for f in $seed_files {
+        let res = (do { git diff -U1 $base -- $f } | complete)
+        if $res.exit_code != 0 {
+            continue
+        }
+        let text = (sanitize ($res.stdout | str trim -r -c "\n"))
+        let cost = ($text | str length)
+        if ($used + $cost) > $allowance { break }
+        $used = ($used + $cost)
+        $parts = ($parts | append $"($text)\n")
+        $included = ($included | append $f)
+    }
+    let omitted = ($seed_files | where {|f| $f not-in $included })
+    let body = ($parts | str join)
+    if ($omitted | is-empty) {
+        $head + $body
     } else {
-        print (sanitize ($res.stdout | str trim -r -c "\n"))
+        $head + $body + "\n(budget cut: " + ($omitted | length | into string) + " of " + ($seed_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
     }
 }
 
-def print-loop-churn [churn_rows: list]: nothing -> nothing {
-    print ""
-    print "== loop churn (dev-loop machinery: workflow/scripts/tracker/expertise/config; counts only, not seed work) =="
+def loop-churn-section [churn_rows: list]: nothing -> string {
+    let head = "\n== loop churn (dev-loop machinery: workflow/scripts/tracker/expertise/config; counts only, not seed work) ==\n"
     if ($churn_rows | is-empty) {
-        print "(none)"
+        $head + "(none)\n"
     } else {
-        $churn_rows | each {|r| print $"($r.path) +($r.add)/-($r.del)"}
+        let lines = ($churn_rows | each {|r| $"($r.path) +($r.add)/-($r.del)" } | str join "\n")
+        $"($head)($lines)\n"
     }
 }
 
-def print-worktree [wt_lines: list<string>]: nothing -> nothing {
-    print ""
-    print "== working tree == git status --porcelain (untracked files show here; they are in NO diff above) =="
+def worktree-section [wt_lines: list<string>]: nothing -> string {
+    let head = "\n== working tree == git status --porcelain (untracked files show here; they are in NO diff above) ==\n"
     if ($wt_lines | is-empty) {
-        print "(clean)"
+        $head + "(clean)\n"
     } else {
-        $wt_lines | each {|l| print (sanitize $l)}
+        let lines = ($wt_lines | each {|l| sanitize $l } | str join "\n")
+        $"($head)($lines)\n"
     }
 }
 
@@ -185,11 +214,9 @@ def print-worktree [wt_lines: list<string>]: nothing -> nothing {
 
 def main []: nothing -> nothing {
     let base = (run-base)
-    if not $base.grounded {
-        print "NO RUN BASE — no checkpoint commits found for this run."
-        print "The diff below is empty or misleading; treat this evidence as unreliable."
-        print ""
-    }
+    let no_base_note = (if not $base.grounded {
+        "NO RUN BASE — no checkpoint commits found for this run.\nThe diff below is empty or misleading; treat this evidence as unreliable.\n\n"
+    } else { "" })
 
     let rows = (numstat-rows $base.base)
     let seed_rows = ($rows | where {|r| not (is-loop-path $r.path)} | sort-by path)
@@ -199,15 +226,28 @@ def main []: nothing -> nothing {
     let wip = (in-progress-seed)
     let seed_desc = (if $wip == null { "none-in-progress" } else { $"($wip.id): ($wip.title)" })
 
-    # Critical-first order: header, spec, seed-work list + diff, then the
-    # tail sections a truncation cuts first.
-    print-integrity $base.short $seed_desc $seed_rows $churn_rows $wt.label
-    print-seed-spec $wip
-    print-seed-work-files $seed_rows
-    print-seed-work-diff $base.base $seed_rows
-    print-loop-churn $churn_rows
-    print-worktree $wt.lines
+    # Fixed sections first, each under its own cap…
+    let integrity = (integrity-section $base.short $seed_desc $seed_rows $churn_rows $wt.label)
+    let spec = (spec-section $wip)
+    let files = (seed-work-files-section $seed_rows)
+    let churn = (loop-churn-section $churn_rows)
+    let worktree = (worktree-section $wt.lines)
 
+    # …then the diff gets whatever remains under the hard output budget
+    # (tail sections reserved so a cut lands in the diff, never in them).
+    let spent = (($no_base_note | str length) + ($integrity | str length) + ($spec | str length) + ($files | str length))
+    let allowance: int = $OUTPUT_BUDGET - $spent - $TAIL_RESERVE
+    let diff = (diff-section $base.base $seed_rows $allowance)
+
+    # Critical-first emission; the budget above guarantees the whole
+    # capture stays under the engine's 8KB demote threshold.
+    print ($no_base_note | str trim -r -c "\n")
+    print $integrity
+    print $spec
+    print $files
+    print $diff
+    print $churn
+    print $worktree
     # Duplicate of the header line: survives a tail-anchored truncation too.
     print ""
     print (integrity-line $seed_rows $churn_rows $wt.label)
