@@ -1,0 +1,110 @@
+digraph Develop {
+    graph [
+        goal="Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+        rankdir=LR,
+        max_node_visits=40
+    ]
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    // Planner: reads the seeds tracker, handles the last review verdict,
+    // decides what is implemented next and hands a brief to the implementer.
+    planner [
+        label="Planner",
+        prompt="@prompts/planner.md",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=20,
+        goal_gate=true
+    ]
+
+    // Implementer: builds exactly what the claimed seed specifies.
+    implementer [
+        label="Implementer",
+        prompt="@prompts/implementer.md",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=10
+    ]
+
+    // Tester: deterministic quality gate, no agent. The host project defines
+    // the gate as a `qualitygate` recipe in its justfile; the workflow stays
+    // agnostic about what the gate checks.
+    tester [
+        label="Quality Gate",
+        shape=parallelogram,
+        script="just qualitygate",
+        timeout="10m",
+        max_retries=0
+    ]
+
+    // Evidence: deterministic capture of what the read-only reviewer needs.
+    // Compact and critical-first (integrity header, seed-work file list,
+    // complete seed-work diff, then loop-churn counts and worktree): at the
+    // default `compact` fidelity a downstream node renders only the FIRST
+    // ~300 chars of command output, so ordering must front-load what review
+    // verifies. The reviewer below lifts that cap via summary:high.
+    evidence [
+        label="Evidence",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/evidence.nu",
+        timeout="2m",
+        max_retries=0
+    ]
+
+    // Reviewer: prompt node (shape=tab) — a single LLM call with NO tools.
+    // Cannot modify the repo; judges purely from context (brief, summary,
+    // gate result, evidence output).
+    //
+    // fidelity="summary:high" is the evidence pipe: the default `compact`
+    // preamble truncates a command node's output to roughly the first 300
+    // characters (measured over four review cycles — the capture cut
+    // mid-header every time), which starved review of the diff.
+    // summary:high is "detailed summary including outputs" and carries the
+    // evidence capture in full.
+    //
+    // No goal_gate: this node is legitimately skippable (tracker-empty runs
+    // never reach it), and an unvisited goal-gate node fails the whole run
+    // (engine semantics). Its genuine failures route to exit explicitly and
+    // leave the seed open; the next run re-enters the review cycle.
+    reviewer [
+        label="Reviewer",
+        shape=tab,
+        prompt="@prompts/reviewer.md",
+        fidelity="summary:high",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=20
+    ]
+
+    // Refiner: deterministic painpoint delivery (ADR-0002). Lifts staged
+    // painpoints into the platform mailbox; never fails the goal gate.
+    refiner [
+        label="Painpoint Delivery",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/refiner.nu",
+        timeout="2m",
+        max_retries=0
+    ]
+
+    start -> planner
+
+    planner -> refiner   [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    planner -> exit      [label="Planner failed", condition="outcome=failed"]
+    planner -> implementer [label="Seed claimed"]
+    refiner -> exit
+
+    implementer -> planner  [label="Blocked", condition="outcome=failed"]
+    implementer -> tester   [label="Implemented"]
+
+    tester -> evidence    [label="Gate green", condition="outcome=succeeded"]
+    tester -> implementer [label="Gate red"]
+
+    evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
+    evidence -> implementer [label="Capture failed"]
+
+    reviewer -> planner [label="Approved", condition="preferred_label=\"Approved\""]
+    reviewer -> planner [label="Changes requested"]
+    reviewer -> exit [label="Reviewer failed", condition="outcome=failed"]
+}
