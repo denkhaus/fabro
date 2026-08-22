@@ -25,7 +25,8 @@ digraph Develop {
         prompt="@prompts/implementer.md",
         output_schema="routing",
         output_retries=2,
-        max_visits=10
+        max_visits=10,
+        fidelity="summary:high"
     ]
 
     // Tester: deterministic quality gate, no agent. The host project defines
@@ -36,7 +37,7 @@ digraph Develop {
         shape=parallelogram,
         script="just qualitygate",
         timeout="10m",
-        max_retries=0
+        max_retries=1
     ]
 
     // Evidence: deterministic capture of what the read-only reviewer needs.
@@ -50,7 +51,7 @@ digraph Develop {
         shape=parallelogram,
         script="nu .fabro/workflows/develop/scripts/evidence.nu",
         timeout="2m",
-        max_retries=0
+        max_retries=1
     ]
 
     // Reviewer: prompt node (shape=tab) — a single LLM call with NO tools.
@@ -102,7 +103,7 @@ digraph Develop {
     tester -> implementer [label="Gate red"]
 
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
-    evidence -> implementer [label="Capture failed"]
+    evidence -> exit      [label="Capture failed (seed stays open for the next run)"]
 
     reviewer -> planner [label="Approved", condition="preferred_label=\"Approved\""]
     reviewer -> planner [label="Changes requested"]

@@ -15,12 +15,15 @@ If context contains `review_verdict` from the previous pass, act on it before pl
 
 Clear the verdict from your mind after handling it — the next review pass will set a fresh one.
 
-## Then: pick the next seed
+## Review-cycle guard
+
+Count the review cycles this seed has been through (each `changes_requested` verdict for the same seed is one cycle). After the THIRD cycle on the same seed, do not hand it to the implementer again unchanged: route Blocked with `failure_reason` naming the deadlock, so the seed stays open for a human instead of burning the visit budget.
 
 1. Run `sd ready` to list unblocked open seeds; `sd list --format json` for the full picture if needed.
 2. Pick the highest-priority unblocked seed that serves the goal. If two compete, prefer the one with fewest blockers.
 3. Claim it: `sd update <id> --status in_progress`.
 4. Write the implementation brief into the context: seed id, title, requirements distilled from its description, plus any review feedback if this is a re-plan.
+5. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong.
 
 If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.
 

@@ -8,7 +8,13 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 ## Input
 
-The Planner put the claimed seed in the context (`current_seed_id`, `current_seed_title`, `current_seed_brief`). If the brief is thin, fetch the full seed yourself: `sd show <id>`. If the brief carries review feedback, fixing those deviations IS this pass's job.
+The Planner put the claimed seed in the context (`current_seed_id`, `current_seed_title`, `current_seed_brief`) — read it there FIRST; it is authoritative for what to build. If the brief is thin, fetch the full seed: `sd show <current_seed_id>`.
+
+Tracker mechanics (sd is installed and authoritative):
+- The seed is ALREADY `in_progress` — the Planner claimed it. Do NOT claim, close, or re-status seeds; that is the Planner's role.
+- `sd ready` lists only OPEN unblocked seeds — it will NOT show your seed. Use `sd show <id>`, never `sd ready`, to look up your seed.
+- Never parse `.seeds/issues.jsonl` by hand (python/jq/cat): `sd show <id> --format json` is the supported path; raw-file parsing wastes calls and drifts from the tool's data model.
+- If the brief carries review feedback, fixing those deviations IS this pass's job.
 
 ## Your job this pass
 
