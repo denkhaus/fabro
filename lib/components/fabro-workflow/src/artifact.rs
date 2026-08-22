@@ -30,10 +30,33 @@ const PROMPT_INLINE_ITEM_MAX: usize = 64 * 1024;
 
 /// Rendered head carried inline by a demotion marker so the reader can tell
 /// what the value is without opening the file.
-const LARGE_VALUE_PREVIEW_CHARS: usize = 600;
+const LARGE_VALUE_PREVIEW_CHARS: usize = 300;
+
+const LARGE_VALUE_MARKER_KEY: &str = "fabroLargeValue";
+const LARGE_VALUE_HINT: &str = "too large to inline; read this file for the full value";
 
 /// Prefix used to identify artifact pointer strings in context values.
 const ARTIFACT_POINTER_PREFIX: &str = "file://";
+
+/// Prompt-facing details held by an internal large-value marker.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PromptLargeValue<'a> {
+    pub bytes:   u64,
+    pub path:    &'a str,
+    pub preview: &'a str,
+}
+
+impl PromptLargeValue<'_> {
+    /// Concise metadata shown next to the context key or stage-output label.
+    #[must_use]
+    pub(crate) fn location_summary(self) -> String {
+        format!(
+            "{}; full value: `{}`",
+            format_prompt_bytes(self.bytes),
+            self.path
+        )
+    }
+}
 
 /// Offload context values exceeding the blob threshold into the blob store.
 ///
@@ -316,10 +339,41 @@ fn large_value_marker(path: &str, bytes: usize, preview: &str) -> Value {
         "fabroLargeValue": {
             "bytes": bytes,
             "path": path,
-            "hint": "too large to inline; read this file for the full value",
+            "hint": LARGE_VALUE_HINT,
             "preview": preview,
         }
     })
+}
+
+/// Read the prompt-facing fields from a marker created by
+/// [`demote_large_values_for_prompt`] or [`demote_large_items_for_prompt`].
+#[must_use]
+pub(crate) fn prompt_large_value(value: &Value) -> Option<PromptLargeValue<'_>> {
+    let marker = value.get(LARGE_VALUE_MARKER_KEY)?.as_object()?;
+    if marker.get("hint")?.as_str()? != LARGE_VALUE_HINT {
+        return None;
+    }
+    Some(PromptLargeValue {
+        bytes:   marker.get("bytes")?.as_u64()?,
+        path:    marker.get("path")?.as_str()?,
+        preview: marker.get("preview")?.as_str()?,
+    })
+}
+
+fn format_prompt_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    const GB: u64 = 1024 * MB;
+
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 /// Extract the file path from an artifact pointer value.
@@ -1426,6 +1480,10 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .starts_with("{\"rows\"")
+        );
+        assert_eq!(
+            details["preview"].as_str().unwrap().chars().count(),
+            LARGE_VALUE_PREVIEW_CHARS
         );
         assert!(serde_json::to_vec(&values["dataset"]).unwrap().len() <= PROMPT_INLINE_VALUE_MAX);
 
