@@ -11,5 +11,5 @@ name = "stage-journal"
 event = "stage_complete"
 script = "nu .fabro/workflows/develop/scripts/stage-journal.nu"
 blocking = false
-timeout_ms = 10000
+timeout = "10s"
 sandbox = true
