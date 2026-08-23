@@ -10,7 +10,7 @@ description = "HTTP server for Fabro pipelines"
 doctest = false
 
 [features]
-test-support = []
+test-support = ["fabro-store/test-support"]
 
 [[test]]
 name = "it"

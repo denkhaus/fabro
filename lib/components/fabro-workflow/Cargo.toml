@@ -14,7 +14,7 @@ readme = "README.md"
 doctest = false
 
 [features]
-test-support = ["fabro-auth/test-support"]
+test-support = ["fabro-auth/test-support", "fabro-store/test-support"]
 
 [lints]
 workspace = true
