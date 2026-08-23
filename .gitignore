@@ -14,3 +14,4 @@ apps/
 lib/
 node_modules/
 tmp/
+.fabro/journal/

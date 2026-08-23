@@ -36,13 +36,10 @@ When you write text that flows into context (briefs, feedback), wrap absolute pa
 ## Painpoint channel
 
 If planning revealed friction in the dev loop itself (workflow, scripts,
-gate), do not fix platform assets — append one JSON line to
-`.fabro/run-painpoints.jsonl` (create if missing; append, never rewrite):
-{"stage": "planner", "text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}
-and mirror the same entries in `context_updates.workflow_painpoints`
-(restate the full accumulated list — the key is last-writer-wins). The
-deterministic refiner step delivers them to the platform mailbox at the end
-of the run.
+gate), do not fix platform assets — emit it in your JSON under
+`context_updates.journal`, e.g.
+{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}]}}.
+The engine records it durably per stage (no restating, no rewriting).
 
 ## Outcome contract
 
