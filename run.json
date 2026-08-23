@@ -232,7 +232,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-23T22:05:05.198649930Z",
-  "last_event_at": "2026-08-23T22:05:33.871259574Z",
+  "last_event_at": "2026-08-23T22:05:39.012563461Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -272,9 +272,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 61,
       "checkpoint": {
-        "timestamp": "2026-08-23T22:05:33.918603873Z",
+        "timestamp": "2026-08-23T22:05:38.066282743Z",
         "current_node": "greet",
         "completed_nodes": [
           "start",
@@ -282,23 +282,23 @@
         ],
         "node_retries": {},
         "context_values": {
+          "thread.start.current_node": "greet",
+          "last_stage": "greet",
+          "graph.rankdir": "LR",
           "internal.retry_count.start": 0,
-          "internal.retry_count.greet": 0,
-          "internal.fidelity": "compact",
+          "current_node": "greet",
+          "failure_signature": "",
           "last_response": "Done. Created `README.md` with a short intro and this haiku:\n\n> Hello from fabro —\n> seeds sprout to Fibonacci,\n> numbers bloom in lines.\n\nThe 5-7-5 nods to the develop workflow (seeds) and gofib's ",
-          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+          "outcome": "succeeded",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.greet": 0,
           "internal.run_id": "01M0RAFNKSW0MBT2C2WM6Z2CJG",
           "internal.thread_id": "start",
+          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
           "failure_class": "",
-          "graph.rankdir": "LR",
-          "internal.node_visit_count": 1,
-          "outcome": "succeeded",
-          "thread.start.current_node": "greet",
-          "current_node": "greet",
-          "last_stage": "greet",
-          "response.greet": "Done. Created `README.md` with a short intro and this haiku:\n\n> Hello from fabro —\n> seeds sprout to Fibonacci,\n> numbers bloom in lines.\n\nThe 5-7-5 nods to the develop workflow (seeds) and gofib's one-line-per-number text mode. As requested, I didn't build, test, or run any project tooling — just the single edit, left uncommitted.",
-          "failure_signature": "",
-          "internal.work_dir": "/workspace/fabro"
+          "response.greet": "Done. Created `README.md` with a short intro and this haiku:\n\n> Hello from fabro —\n> seeds sprout to Fibonacci,\n> numbers bloom in lines.\n\nThe 5-7-5 nods to the develop workflow (seeds) and gofib's one-line-per-number text mode. As requested, I didn't build, test, or run any project tooling — just the single edit, left uncommitted."
         },
         "node_outcomes": {
           "start": {
@@ -346,15 +346,86 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "392bb12ac463fa294d6ae057880a64b382e2a0dc",
         "node_visits": {
           "greet": 1,
           "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/README.md b/README.md\nnew file mode 100644\nindex 0000000..7f791d8\n--- /dev/null\n+++ b/README.md\n@@ -0,0 +1,10 @@\n+# fabro lab\n+\n+Product world branch hosting **gofib** — a small Go CLI printing Fibonacci\n+numbers. Built seed-by-seed by the develop workflow.\n+\n+## Hello\n+\n+Hello from fabro —\n+seeds sprout to Fibonacci,\n+numbers bloom in lines.\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 10,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-08-23T22:05:38.095819917Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 31671,
+      "inference_time_ms": 23181,
+      "tool_time_ms": 376,
+      "active_time_ms": 23557
+    },
+    "failure": {
+      "reason": "publish_failed",
+      "detail": {
+        "message": "failed to create pull request",
+        "causes": [
+          "LLM generation failed: No object generated: Failed to parse response as JSON: expected value at line 1 column 1"
+        ],
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "392bb12ac463fa294d6ae057880a64b382e2a0dc",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "greet",
+        "stage_label": "greet",
+        "timing": {
+          "wall_time_ms": 25036,
+          "inference_time_ms": 23181,
+          "tool_time_ms": 376,
+          "active_time_ms": 23557
+        },
+        "billing_usd_micros": 17924,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 6962,
+      "output_tokens": 261,
+      "total_tokens": 25743,
+      "reasoning_tokens": 536,
+      "cache_read_tokens": 17984,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 17924
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/README.md b/README.md\nnew file mode 100644\nindex 0000000..7f791d8\n--- /dev/null\n+++ b/README.md\n@@ -0,0 +1,10 @@\n+# fabro lab\n+\n+Product world branch hosting **gofib** — a small Go CLI printing Fibonacci\n+numbers. Built seed-by-seed by the develop workflow.\n+\n+## Hello\n+\n+Hello from fabro —\n+seeds sprout to Fibonacci,\n+numbers bloom in lines.\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 10,
+        "deletions": 0
+      }
+    }
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -420,7 +491,12 @@
       "first_event_seq": 26,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: greet",
+        "failure_reason": null,
+        "timestamp": "2026-08-23T22:05:33.918106138Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -434,8 +510,12 @@
       "started_at": "2026-08-23T22:05:07.670404606Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 24376,
-      "live_tool_ms": 377,
+      "timing": {
+        "wall_time_ms": 25036,
+        "inference_time_ms": 23181,
+        "tool_time_ms": 376,
+        "active_time_ms": 23557
+      },
       "usage": {
         "input_tokens": 6962,
         "output_tokens": 261,
@@ -772,7 +852,43 @@
         "warnings": []
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 64,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-23T22:05:38.066881426Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-23T22:05:38.066650087Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
     }
   }
 }
