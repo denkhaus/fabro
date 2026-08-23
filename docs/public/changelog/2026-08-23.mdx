@@ -1,7 +1,15 @@
 ---
-title: "More reliable Daytona snapshot activation"
+title: "Empty run workspaces and more reliable Daytona activation"
 date: "2026-08-23"
 ---
+
+Version-backed run intents can now use `{ "kind": "none" }` when a workflow
+should start without a repository. The target creates an empty Docker or
+Daytona workspace and suppresses cloning even when the resolved workflow
+settings enable it.
+
+Local environments reject the `none` target. Server-managed Local scratch
+workspaces remain a separate future capability.
 
 ## More
 

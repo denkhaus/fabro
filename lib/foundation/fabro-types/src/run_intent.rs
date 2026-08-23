@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 use crate::{DirtyStatus, GitContext, GitHubRepositorySlug, RunId, WorkflowVersionId, repository};
@@ -37,8 +38,8 @@ pub struct RunIntentArgs {
 }
 
 /// Requested workspace content, independent of sandbox placement.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RunTarget {
     Git {
         repo:   String,
@@ -46,16 +47,73 @@ pub enum RunTarget {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         sha:    Option<String>,
     },
+    None,
+}
+
+// Serde's derived internally tagged unit variants accept sibling fields even
+// with `deny_unknown_fields`, so deserialize through strict arm-specific maps.
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum RunTargetKindWire {
+    Git,
+    None,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GitRunTargetWire {
+    kind:   RunTargetKindWire,
+    repo:   String,
+    branch: String,
+    #[serde(default)]
+    sha:    Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NoneRunTargetWire {
+    kind: RunTargetKindWire,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RunTargetWire {
+    Git(GitRunTargetWire),
+    None(NoneRunTargetWire),
+}
+
+impl<'de> Deserialize<'de> for RunTarget {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match RunTargetWire::deserialize(deserializer)? {
+            RunTargetWire::Git(wire) => match wire.kind {
+                RunTargetKindWire::Git => Ok(Self::Git {
+                    repo:   wire.repo,
+                    branch: wire.branch,
+                    sha:    wire.sha,
+                }),
+                RunTargetKindWire::None => {
+                    Err(D::Error::custom("none target must not contain Git fields"))
+                }
+            },
+            RunTargetWire::None(wire) => match wire.kind {
+                RunTargetKindWire::None => Ok(Self::None),
+                RunTargetKindWire::Git => Err(D::Error::custom(
+                    "git target requires repository and branch fields",
+                )),
+            },
+        }
+    }
 }
 
 impl RunTarget {
-    /// Validates the target's grammar without any network resolution and
-    /// derives its operational Git projection.
+    /// Validates and canonicalizes the target without any network resolution.
     ///
-    /// This is the single owner of the Git-target grammar: admission uses it
-    /// to reject invalid targets, and sandbox start re-derives the clone
-    /// source from the persisted target through the same rules.
-    pub fn validate(self) -> Result<ValidatedGitTarget, TargetValidationError> {
+    /// Git targets include their derived operational Git projection. Targets
+    /// without a repository return no projection.
+    pub fn validate(self) -> Result<ValidatedRunTarget, TargetValidationError> {
         match self {
             Self::Git { repo, branch, sha } => {
                 let slug = GitHubRepositorySlug::try_new(&repo)
@@ -83,21 +141,25 @@ impl RunTarget {
                     sha:        sha.clone(),
                     dirty:      DirtyStatus::Clean,
                 };
-                Ok(ValidatedGitTarget {
+                Ok(ValidatedRunTarget {
                     target: Self::Git { repo, branch, sha },
-                    git,
+                    git:    Some(git),
                 })
             }
+            Self::None => Ok(ValidatedRunTarget {
+                target: Self::None,
+                git:    None,
+            }),
         }
     }
 }
 
-/// A [`RunTarget`] whose grammar has been validated, together with the
-/// operational Git projection derived from it.
+/// A [`RunTarget`] whose grammar has been validated, together with its
+/// optional operational Git projection.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidatedGitTarget {
+pub struct ValidatedRunTarget {
     pub target: RunTarget,
-    pub git:    GitContext,
+    pub git:    Option<GitContext>,
 }
 
 /// A [`RunTarget`] that failed grammar validation.

@@ -22,7 +22,8 @@ use fabro_types::settings::run::{
     RunPrepareSettings as ResolvedRunPrepareSettings,
 };
 use fabro_types::{
-    ManifestPath, RunId, RunRunnableSource, RunSpec, SandboxProviderKind, TargetValidationError,
+    ManifestPath, RunId, RunRunnableSource, RunSpec, RunTarget, SandboxProviderKind,
+    TargetValidationError,
 };
 use fabro_util::error::collect_chain;
 use fabro_vault::Vault;
@@ -418,6 +419,12 @@ impl RunSession {
         let sandbox_provider =
             resolve_sandbox_provider(resolved).effective_for(resolved.execution.mode);
         let clone_source = clone_source_for_run(record)?;
+        let target_requires_empty_workspace = target_requires_empty_workspace(record);
+        let runtime_origin_url = if target_requires_empty_workspace {
+            None
+        } else {
+            record.repo_origin_url().map(str::to_string)
+        };
         let catalog = Arc::clone(&services.catalog);
         let configured =
             configured_providers_for_start(&services.vault, Arc::clone(&catalog)).await;
@@ -457,10 +464,18 @@ impl RunSession {
 
         let sandbox = match sandbox_provider {
             SandboxProviderKind::Local => {
-                if record.target.is_some() {
-                    return Err(Error::engine(
-                        "persisted Git run targets require a clone-based sandbox provider",
-                    ));
+                match record.target.as_ref() {
+                    Some(RunTarget::Git { .. }) => {
+                        return Err(Error::engine(
+                            "persisted Git run targets require a clone-based sandbox provider",
+                        ));
+                    }
+                    Some(RunTarget::None) => {
+                        return Err(Error::engine(
+                            "persisted none run targets require a clone-based sandbox provider",
+                        ));
+                    }
+                    None => {}
                 }
                 let working_directory = local_working_directory_from_environment(
                     &resolved.environment,
@@ -474,20 +489,26 @@ impl RunSession {
                 })?;
                 SandboxSpec::Local { working_directory }
             }
-            SandboxProviderKind::Docker => SandboxSpec::Docker {
-                config:           resolve_docker_config(resolved, secret_lookup)?,
-                github_app:       services.github_app.clone(),
-                run_id:           Some(record.run_id),
-                clone_origin_url: clone_source.origin_url,
-                clone_branch:     clone_source.branch,
-                clone_commit_sha: clone_source.commit_sha,
-            },
+            SandboxProviderKind::Docker => {
+                let mut config = resolve_docker_config(resolved, secret_lookup)?;
+                config.skip_clone |= target_requires_empty_workspace;
+                SandboxSpec::Docker {
+                    config,
+                    github_app: services.github_app.clone(),
+                    run_id: Some(record.run_id),
+                    clone_origin_url: clone_source.origin_url,
+                    clone_branch: clone_source.branch,
+                    clone_commit_sha: clone_source.commit_sha,
+                }
+            }
             SandboxProviderKind::Daytona => {
                 let api_key = vault_guard
                     .get(EnvVars::DAYTONA_API_KEY)
                     .map(str::to_string);
+                let mut config = resolve_daytona_config(resolved);
+                config.skip_clone |= target_requires_empty_workspace;
                 SandboxSpec::Daytona {
-                    config: Box::new(resolve_daytona_config(resolved)),
+                    config: Box::new(config),
                     github_app: services.github_app.clone(),
                     run_id: Some(record.run_id),
                     clone_origin_url: clone_source.origin_url,
@@ -509,7 +530,7 @@ impl RunSession {
         let sandbox_env = SandboxEnvSpec {
             toml_env,
             github_integration,
-            origin_url: record.repo_origin_url().map(str::to_string),
+            origin_url: runtime_origin_url.clone(),
         };
 
         let interviewer: Arc<dyn Interviewer> = if resolved.execution.approval == ApprovalMode::Auto
@@ -559,7 +580,7 @@ impl RunSession {
             stop_on_terminal: resolved.environment.lifecycle.stop_on_terminal,
             pr_config,
             pr_github_app: services.github_app,
-            pr_origin_url: record.repo_origin_url().map(str::to_string),
+            pr_origin_url: runtime_origin_url,
             pr_model: llm.model,
             workflow_path,
             workflow_bundle,
@@ -577,6 +598,10 @@ struct CloneSourceForRun {
     commit_sha: Option<String>,
 }
 
+fn target_requires_empty_workspace(record: &RunSpec) -> bool {
+    matches!(record.target.as_ref(), Some(RunTarget::None))
+}
+
 fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
     let Some(target) = &record.target else {
         return Ok(CloneSourceForRun {
@@ -585,6 +610,14 @@ fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
             commit_sha: None,
         });
     };
+
+    if matches!(target, RunTarget::None) {
+        return Ok(CloneSourceForRun {
+            origin_url: None,
+            branch:     None,
+            commit_sha: None,
+        });
+    }
 
     // The Git-target grammar is owned by `RunTarget::validate` in fabro-types;
     // admission accepts targets through the same rules, and this start path
@@ -600,10 +633,13 @@ fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
             TargetValidationError::Sha => "persisted Git run target has an invalid SHA",
         })
     })?;
+    let git = validated.git.ok_or_else(|| {
+        Error::engine("persisted run target has no supported clone-source projection")
+    })?;
     Ok(CloneSourceForRun {
-        origin_url: Some(validated.git.origin_url),
-        branch:     Some(validated.git.branch),
-        commit_sha: validated.git.sha,
+        origin_url: Some(git.origin_url),
+        branch:     Some(git.branch),
+        commit_sha: git.sha,
     })
 }
 
@@ -1176,11 +1212,12 @@ mod tests {
         EnvironmentImageLayer, EnvironmentNetworkLayer, EnvironmentResourcesLayer, RunCloneLayer,
         RunEnvironmentLayer, RunExecutionLayer, RunLayer, StickyMap, WorkflowSettingsBuilder,
     };
+    use fabro_sandbox::test_support::MockSandbox;
     use fabro_store::Database;
     use fabro_types::settings::InterpString;
     use fabro_types::settings::run::{
-        McpTransport as ResolvedMcpTransport, PreparedStep, PreparedStepRun, RunMode,
-        RunPrepareSettings,
+        EnvironmentProvider, McpTransport as ResolvedMcpTransport, PreparedStep, PreparedStepRun,
+        RunMode, RunPrepareSettings,
     };
     use fabro_types::{
         BilledModelUsage, ManifestPath, RunTarget, StageTiming, WorkflowSettings, fixtures,
@@ -1766,6 +1803,163 @@ reasoning = false
         assert!(err.causes()[0].contains("DEPLOY_TOKEN"));
     }
 
+    #[tokio::test]
+    async fn run_session_new_none_target_forces_empty_docker_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
+        let mut settings = settings_from_run_layer(RunLayer {
+            clone: Some(RunCloneLayer {
+                enabled: Some(true),
+                depth:   None,
+            }),
+            ..RunLayer::default()
+        });
+        settings.run.environment.provider = EnvironmentProvider::Docker;
+        settings.run.environment.image.docker = Some("buildpack-deps:noble".to_string());
+        let (persisted, store) = persisted_workflow_with_settings_and_target(
+            MINIMAL_DOT,
+            &storage_root,
+            settings,
+            Some(RunTarget::None),
+        )
+        .await;
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+
+        let session = RunSession::new(
+            &persisted,
+            test_start_services(&store, &storage_root, emitter, registry).await,
+        )
+        .await
+        .unwrap();
+
+        let RunSession {
+            sandbox,
+            sandbox_env,
+            pr_origin_url,
+            ..
+        } = session;
+        let runtime = sandbox
+            .to_run_sandbox_instance(&MockSandbox::linux(), fixtures::RUN_1)
+            .runtime;
+        assert_eq!(runtime.repo_cloned, Some(false));
+        assert_eq!(runtime.clone_origin_url, None);
+        assert_eq!(runtime.clone_branch, None);
+        assert_eq!(runtime.primary_repo_path, None);
+        assert_eq!(runtime.primary_repo_link, None);
+        let SandboxSpec::Docker {
+            config,
+            clone_origin_url,
+            clone_branch,
+            clone_commit_sha,
+            ..
+        } = sandbox
+        else {
+            panic!("none target should retain the selected Docker provider");
+        };
+        assert!(config.skip_clone);
+        assert_eq!(clone_origin_url, None);
+        assert_eq!(clone_branch, None);
+        assert_eq!(clone_commit_sha, None);
+        assert_eq!(sandbox_env.origin_url, None);
+        assert_eq!(pr_origin_url, None);
+    }
+
+    #[tokio::test]
+    async fn run_session_new_none_target_forces_empty_daytona_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
+        let mut settings = settings_from_run_layer(RunLayer {
+            clone: Some(RunCloneLayer {
+                enabled: Some(true),
+                depth:   None,
+            }),
+            ..RunLayer::default()
+        });
+        settings.run.environment.provider = EnvironmentProvider::Daytona;
+        settings.run.environment.image.docker = None;
+        let (persisted, store) = persisted_workflow_with_settings_and_target(
+            MINIMAL_DOT,
+            &storage_root,
+            settings,
+            Some(RunTarget::None),
+        )
+        .await;
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+        let vault = Arc::new(AsyncRwLock::new(start_vault(&[(
+            EnvVars::DAYTONA_API_KEY,
+            "test-daytona-key",
+            SecretType::Token,
+        )])));
+
+        let session = RunSession::new(&persisted, StartServices {
+            vault,
+            ..test_start_services(&store, &storage_root, emitter, registry).await
+        })
+        .await
+        .unwrap();
+
+        let RunSession {
+            sandbox,
+            sandbox_env,
+            pr_origin_url,
+            ..
+        } = session;
+        let runtime = sandbox
+            .to_run_sandbox_instance(&MockSandbox::linux(), fixtures::RUN_1)
+            .runtime;
+        assert_eq!(runtime.repo_cloned, Some(false));
+        assert_eq!(runtime.clone_origin_url, None);
+        assert_eq!(runtime.clone_branch, None);
+        assert_eq!(runtime.primary_repo_path, None);
+        assert_eq!(runtime.primary_repo_link, None);
+        let SandboxSpec::Daytona {
+            config,
+            clone_origin_url,
+            clone_branch,
+            clone_commit_sha,
+            ..
+        } = sandbox
+        else {
+            panic!("none target should retain the selected Daytona provider");
+        };
+        assert!(config.skip_clone);
+        assert_eq!(clone_origin_url, None);
+        assert_eq!(clone_branch, None);
+        assert_eq!(clone_commit_sha, None);
+        assert_eq!(sandbox_env.origin_url, None);
+        assert_eq!(pr_origin_url, None);
+    }
+
+    #[tokio::test]
+    async fn run_session_new_rejects_persisted_none_target_with_local_provider() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
+        let mut settings = settings_from_run_layer(RunLayer::default());
+        settings.run.environment.provider = EnvironmentProvider::Local;
+        let (persisted, store) = persisted_workflow_with_settings_and_target(
+            MINIMAL_DOT,
+            &storage_root,
+            settings,
+            Some(RunTarget::None),
+        )
+        .await;
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+
+        let Err(error) = RunSession::new(
+            &persisted,
+            test_start_services(&store, &storage_root, emitter, registry).await,
+        )
+        .await
+        else {
+            panic!("persisted none target with Local should fail before sandbox creation");
+        };
+
+        assert!(error.to_string().contains("none run targets require"));
+    }
+
     #[test]
     fn runtime_docker_config_maps_environment_hints() {
         let settings = settings_from_run_layer(RunLayer {
@@ -1839,6 +2033,15 @@ reasoning = false
         storage_root: &Path,
         settings: WorkflowSettings,
     ) -> (Persisted, Arc<Database>) {
+        persisted_workflow_with_settings_and_target(dot, storage_root, settings, None).await
+    }
+
+    async fn persisted_workflow_with_settings_and_target(
+        dot: &str,
+        storage_root: &Path,
+        settings: WorkflowSettings,
+        target: Option<RunTarget>,
+    ) -> (Persisted, Arc<Database>) {
         let store = memory_store();
         let created = crate::operations::create(
             &store,
@@ -1856,7 +2059,7 @@ reasoning = false
                 workflow_slug: Some("test".to_string()),
                 workflow_path: None,
                 workflow_bundle: None,
-                target: None,
+                target,
                 submitted_manifest_bytes: None,
                 run_id: Some(fixtures::RUN_1),
                 title: None,
@@ -2675,6 +2878,25 @@ reasoning = false
 
         assert_eq!(source.commit_sha, None);
         assert_eq!(source.branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn none_target_forces_an_empty_clone_source_and_workspace() {
+        let mut spec = test_support::test_run_spec();
+        spec.target = Some(RunTarget::None);
+        spec.git = Some(fabro_types::GitContext {
+            origin_url: "https://github.com/fabro-sh/fabro".to_string(),
+            branch:     "main".to_string(),
+            sha:        Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
+            dirty:      fabro_types::DirtyStatus::Clean,
+        });
+
+        let source = clone_source_for_run(&spec).unwrap();
+
+        assert_eq!(source.origin_url, None);
+        assert_eq!(source.branch, None);
+        assert_eq!(source.commit_sha, None);
+        assert!(target_requires_empty_workspace(&spec));
     }
 
     #[test]

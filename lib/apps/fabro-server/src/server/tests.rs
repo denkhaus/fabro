@@ -3718,6 +3718,88 @@ docker = "workflow-owned:latest"
 }
 
 #[tokio::test]
+async fn post_runs_run_intent_creates_submitted_none_target_without_git_projection() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let body = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": { "kind": "none" },
+            "args": {}
+        }),
+    )
+    .await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    assert_eq!(body["lifecycle"]["status"]["kind"], "submitted");
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    let events = run_store.list_events().await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.event.event_name())
+            .collect::<Vec<_>>(),
+        vec!["run.created", "run.submitted"]
+    );
+    let projection = run_store.state().await.unwrap();
+    assert_eq!(projection.spec.target, Some(fabro_types::RunTarget::None));
+    assert_eq!(
+        projection.spec.workflow_version_id,
+        Some(workflow_version_id)
+    );
+    assert_eq!(projection.spec.source_directory, None);
+    assert_eq!(projection.spec.git, None);
+    assert!(projection.spec.settings.run.clone.enabled);
+    assert_eq!(projection.spec.manifest_blob, None);
+    assert!(projection.spec.definition_blob.is_some());
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_accepts_none_target_with_ready_daytona_environment() {
+    let state = TestAppStateBuilder::new()
+        .default_environment_provider(Some(EnvironmentProvider::Daytona))
+        .vault_entries([
+            (fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key"),
+            (
+                fabro_static::EnvVars::DAYTONA_API_KEY,
+                "test-daytona-api-key",
+            ),
+        ])
+        .build();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let body = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": { "kind": "none" },
+            "args": {}
+        }),
+    )
+    .await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    let projection = state
+        .stores
+        .runs
+        .open_run_reader(&run_id)
+        .await
+        .unwrap()
+        .state()
+        .await
+        .unwrap();
+    assert_eq!(projection.spec.target, Some(fabro_types::RunTarget::None));
+    assert_eq!(
+        projection.spec.settings.run.environment.provider,
+        EnvironmentProvider::Daytona
+    );
+    assert_eq!(projection.spec.source_directory, None);
+    assert_eq!(projection.spec.git, None);
+}
+
+#[tokio::test]
 async fn post_runs_run_intent_dispatches_errors_without_changing_legacy_lane() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
@@ -3876,6 +3958,47 @@ async fn post_runs_run_intent_maps_missing_version_environment_and_target_errors
 }
 
 #[tokio::test]
+async fn post_runs_run_intent_rejects_none_target_with_local_environment_before_persistence() {
+    let state = TestAppStateBuilder::new()
+        .default_environment_provider(Some(EnvironmentProvider::Local))
+        .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .build();
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "workflow_version_id": workflow_version_id,
+                        "target": { "kind": "none" },
+                        "args": {}
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+    assert_eq!(body["errors"][0]["code"], "target_environment_unsupported");
+    assert!(state.runs.lock().expect("runs lock poisoned").is_empty());
+    assert!(
+        state
+            .stores
+            .run_summaries
+            .list_identities()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn post_runs_run_intent_rejects_disabled_or_unready_sandbox_integrations() {
     let disabled_state = test_app_state_with_options(
         server_settings_from_toml(
@@ -3894,33 +4017,48 @@ enabled = false
     );
     let disabled_version_id = store_workflow_version(&disabled_state, MINIMAL_DOT, None).await;
     let disabled_app = crate::test_support::build_test_router(Arc::clone(&disabled_state));
-    let intent = json!({
-        "workflow_version_id": disabled_version_id,
-        "target": {
+    for target in [
+        json!({
             "kind": "git",
             "repo": "fabro-sh/fabro",
             "branch": "feature/run-intent"
-        },
-        "args": {}
-    });
-    let response = disabled_app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(api("/runs"))
-                .header("content-type", "application/json")
-                .body(Body::from(intent.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let body = response_json!(response, StatusCode::SERVICE_UNAVAILABLE).await;
-    assert_eq!(body["errors"][0]["code"], "integration_unavailable");
+        }),
+        json!({ "kind": "none" }),
+    ] {
+        let intent = json!({
+            "workflow_version_id": disabled_version_id,
+            "target": target,
+            "args": {}
+        });
+        let response = disabled_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api("/runs"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(intent.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::SERVICE_UNAVAILABLE).await;
+        assert_eq!(body["errors"][0]["code"], "integration_unavailable");
+    }
     assert!(
         disabled_state
             .runs
             .lock()
             .expect("runs lock poisoned")
+            .is_empty()
+    );
+    assert!(
+        disabled_state
+            .stores
+            .run_summaries
+            .list_identities()
+            .await
+            .unwrap()
             .is_empty()
     );
 
@@ -3930,33 +4068,48 @@ enabled = false
         .build();
     let daytona_version_id = store_workflow_version(&daytona_state, MINIMAL_DOT, None).await;
     let daytona_app = crate::test_support::build_test_router(Arc::clone(&daytona_state));
-    let intent = json!({
-        "workflow_version_id": daytona_version_id,
-        "target": {
+    for target in [
+        json!({
             "kind": "git",
             "repo": "fabro-sh/fabro",
             "branch": "feature/run-intent"
-        },
-        "args": {}
-    });
-    let response = daytona_app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(api("/runs"))
-                .header("content-type", "application/json")
-                .body(Body::from(intent.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let body = response_json!(response, StatusCode::SERVICE_UNAVAILABLE).await;
-    assert_eq!(body["errors"][0]["code"], "integration_unavailable");
+        }),
+        json!({ "kind": "none" }),
+    ] {
+        let intent = json!({
+            "workflow_version_id": daytona_version_id,
+            "target": target,
+            "args": {}
+        });
+        let response = daytona_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api("/runs"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(intent.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, StatusCode::SERVICE_UNAVAILABLE).await;
+        assert_eq!(body["errors"][0]["code"], "integration_unavailable");
+    }
     assert!(
         daytona_state
             .runs
             .lock()
             .expect("runs lock poisoned")
+            .is_empty()
+    );
+    assert!(
+        daytona_state
+            .stores
+            .run_summaries
+            .list_identities()
+            .await
+            .unwrap()
             .is_empty()
     );
 }

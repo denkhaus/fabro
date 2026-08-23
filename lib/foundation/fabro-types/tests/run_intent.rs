@@ -50,6 +50,28 @@ fn run_intent_round_trips_the_strict_git_shape() {
 }
 
 #[test]
+fn run_intent_round_trips_the_strict_none_shape() {
+    let mut intent = intent();
+    intent.target = RunTarget::None;
+
+    let value = serde_json::to_value(&intent).expect("intent should serialize");
+
+    assert_eq!(value["target"], json!({ "kind": "none" }));
+    assert_eq!(
+        serde_json::from_value::<RunIntent>(value).expect("intent should deserialize"),
+        intent
+    );
+}
+
+#[test]
+fn run_intent_none_target_rejects_unknown_fields() {
+    let mut value = serde_json::to_value(intent()).expect("intent should serialize");
+    value["target"] = json!({ "kind": "none", "unexpected": true });
+
+    assert!(serde_json::from_value::<RunIntent>(value).is_err());
+}
+
+#[test]
 fn run_intent_rejects_unknown_fields_at_every_object_boundary() {
     let value = serde_json::to_value(intent()).expect("intent should serialize");
 
@@ -107,20 +129,27 @@ fn target_validation_normalizes_sha_without_network_resolution() {
     }
     .validate()
     .unwrap();
+    let git = validated
+        .git
+        .expect("Git target should produce a Git projection");
 
     assert_eq!(
-        validated.git.sha.as_deref(),
+        git.sha.as_deref(),
         Some("abcdef0123456789abcdef0123456789abcdef01")
     );
-    assert_eq!(
-        validated.git.origin_url,
-        "https://github.com/fabro-sh/fabro"
-    );
+    assert_eq!(git.origin_url, "https://github.com/fabro-sh/fabro");
     assert_eq!(validated.target, RunTarget::Git {
         repo:   "fabro-sh/fabro".to_string(),
         branch: "feature/run-intent".to_string(),
         sha:    Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
     });
+}
+
+#[test]
+fn run_intent_none_target_validates_without_a_git_projection() {
+    let validated = RunTarget::None.validate().unwrap();
+    assert_eq!(validated.target, RunTarget::None);
+    assert_eq!(validated.git, None);
 }
 
 #[test]

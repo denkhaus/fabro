@@ -18,9 +18,6 @@
 import type { GitContext } from './git-context';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { GitRunTarget } from './git-run-target';
-// May contain unused imports in some cases
-// @ts-ignore
 import type { ManifestConfig } from './manifest-config';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -34,6 +31,9 @@ import type { RunIntentArgs } from './run-intent-args';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { RunManifest } from './run-manifest';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { RunTarget } from './run-target';
 
 /**
  * @type CreateRunRequest

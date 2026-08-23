@@ -475,6 +475,11 @@ pub async fn persist_create_run(
         source_directory,
         labels,
     } = materialized;
+    let (source_directory, git) = if matches!(target.as_ref(), Some(RunTarget::None)) {
+        (None, None)
+    } else {
+        (Some(source_directory), git)
+    };
     let persisted_run_dir = run_dir.clone();
     let persisted = spawn_blocking(move || {
         let run_spec = RunSpec {
@@ -486,7 +491,7 @@ pub async fn persist_create_run(
             workflow_version_id,
             target,
             automation,
-            source_directory: Some(source_directory),
+            source_directory,
             labels,
             provenance,
             manifest_blob: None,
@@ -2269,6 +2274,52 @@ reasoning = false
             created.persisted.run_spec().source_directory.as_deref(),
             Some(workspace.to_string_lossy().as_ref())
         );
+    }
+
+    #[tokio::test]
+    async fn create_none_target_omits_the_source_directory_projection() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage_root = dir.path().join("storage");
+        let store = memory_store();
+        let created = create(
+            &store,
+            CreateRunInput {
+                workflow: WorkflowInput::DotSource {
+                    source:   MINIMAL_DOT.to_string(),
+                    base_dir: None,
+                },
+                settings: test_default_settings(),
+                vars: HashMap::new(),
+                cwd: dir.path().to_path_buf(),
+                workflow_slug: None,
+                workflow_path: None,
+                workflow_bundle: None,
+                target: Some(RunTarget::None),
+                submitted_manifest_bytes: None,
+                run_id: Some(fixtures::RUN_2),
+                title: None,
+                automation: None,
+                git: Some(fabro_types::GitContext {
+                    origin_url: "https://github.com/fabro-sh/fabro".to_string(),
+                    branch:     "main".to_string(),
+                    sha:        None,
+                    dirty:      fabro_types::DirtyStatus::Clean,
+                }),
+                fork_source_ref: None,
+                parent_id: None,
+                provenance: test_support::test_run_provenance(),
+                configured_providers: test_provider_ids(),
+                web_url: None,
+            },
+            storage_root,
+            test_catalog(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(created.persisted.run_spec().source_directory, None);
+        assert_eq!(created.persisted.run_spec().target, Some(RunTarget::None));
+        assert_eq!(created.persisted.run_spec().git, None);
     }
 
     #[tokio::test]

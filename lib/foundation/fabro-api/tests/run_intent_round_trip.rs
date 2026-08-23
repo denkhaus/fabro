@@ -42,6 +42,25 @@ fn run_intent_round_trips_the_openapi_shape() {
     assert_eq!(serde_json::to_value(api).unwrap(), value);
 }
 
+#[test]
+fn run_intent_none_target_round_trips_the_openapi_shape() {
+    let intent = RunIntent {
+        workflow_version_id: test_support::test_workflow_version_id(),
+        target:              RunTarget::None,
+        args:                RunIntentArgs::default(),
+        environment_id:      Some("default".to_string()),
+        parent_id:           None,
+        title:               None,
+        goal:                None,
+    };
+
+    let value = serde_json::to_value(&intent).unwrap();
+    let api: ApiRunIntent = serde_json::from_value(value.clone()).unwrap();
+
+    assert_eq!(value["target"], json!({ "kind": "none" }));
+    assert_eq!(serde_json::to_value(api).unwrap(), value);
+}
+
 fn assert_same_type<T: 'static, U: 'static>() {
     assert_eq!(
         TypeId::of::<T>(),

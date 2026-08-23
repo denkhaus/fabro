@@ -28,7 +28,7 @@ use fabro_store::{
 };
 use fabro_types::{
     AutomationRef, ManifestPath, Principal, Run, RunClientProvenance, RunId, RunProvenance,
-    RunServerProvenance, RunStatusKind, SandboxProviderKind, StageContextWindow,
+    RunServerProvenance, RunStatusKind, RunTarget, SandboxProviderKind, StageContextWindow,
     StageContextWindowStaleness, StageContextWindowUnavailableReason, StageHandler,
     StageModelUsage, StageProjection, SystemActorKind, json_scalar_to_toml_value, parse_blob_ref,
 };
@@ -611,9 +611,11 @@ async fn create_run_from_intent(
     // Validate the pure, in-memory request facts before paying for
     // blob-store reads and closure lowering.
     let validated_target = match intent.target.validate() {
-        Ok(target) => target,
+        Ok(validated) => validated,
         Err(error) => return run_intent_admission_error(error.into()),
     };
+    let target = validated_target.target;
+    let git = validated_target.git;
     let environment_id = match select_intent_environment_id(
         &state,
         intent
@@ -716,11 +718,11 @@ async fn create_run_from_intent(
         run_id: None,
         title,
         parent_id: intent.parent_id,
-        git: Some(validated_target.git),
+        git,
         storage_root: state.server_storage_dir(),
         workflow_slug: None,
         workflow_version_id: Some(intent.workflow_version_id),
-        target: Some(validated_target.target),
+        target: Some(target.clone()),
         provenance: run_provenance(&headers, &actor),
         web_url: None,
         submitted_manifest_bytes: None,
@@ -746,7 +748,7 @@ async fn create_run_from_intent(
         Ok(prepared) => prepared,
         Err(error) => return run_intent_admission_error(error.into()),
     };
-    if let Err(error) = validate_intent_environment(&state, prepared.settings()).await {
+    if let Err(error) = validate_intent_environment(&state, prepared.settings(), &target).await {
         return run_intent_admission_error(error.into());
     }
     let (prepared, run_id) = prepared.resolve_run_id();
@@ -1014,7 +1016,7 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
                 error.to_string(),
                 "environment_not_found",
             ),
-            EnvironmentSelectionError::TargetUnsupported => intent_error(
+            EnvironmentSelectionError::TargetUnsupported { .. } => intent_error(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 error.to_string(),
                 "target_environment_unsupported",
@@ -1070,16 +1072,29 @@ fn select_intent_environment_id(
 async fn validate_intent_environment(
     state: &AppState,
     settings: &fabro_types::WorkflowSettings,
+    target: &RunTarget,
 ) -> Result<(), EnvironmentSelectionError> {
     let provider = run_manifest::effective_sandbox_provider(&settings.run);
     let image = &settings.run.environment.image;
-    let incompatible = match provider {
-        SandboxProviderKind::Local => true,
+    let image_incompatible = match provider {
+        SandboxProviderKind::Local => false,
         SandboxProviderKind::Docker => image.docker.is_none() && image.dockerfile.is_some(),
         SandboxProviderKind::Daytona => image.docker.is_some(),
     };
-    if incompatible || !settings.run.clone.enabled {
-        return Err(EnvironmentSelectionError::TargetUnsupported);
+    let target_incompatible = match target {
+        RunTarget::Git { .. } => {
+            provider == SandboxProviderKind::Local || !settings.run.clone.enabled
+        }
+        RunTarget::None => provider == SandboxProviderKind::Local,
+    };
+    if image_incompatible || target_incompatible {
+        let detail = match target {
+            RunTarget::Git { .. } => {
+                "Git targets require a compatible clone-enabled Docker or Daytona environment"
+            }
+            RunTarget::None => "none targets require a compatible Docker or Daytona environment",
+        };
+        return Err(EnvironmentSelectionError::TargetUnsupported { detail });
     }
     if let Some(detail) =
         run_manifest::sandbox_provider_policy_error(&state.server_settings(), provider)
