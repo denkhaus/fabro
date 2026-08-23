@@ -3,7 +3,10 @@ _version = 1
 # Lab branch: workflows only, no repo code, no AGENTS.md — clean conditions
 # for exercising the run -> push -> pull dev cycle.
 
-# Lean mise-based environment: ubuntu:24.04 + mise only (no baked-in toolchain).
+# Runner image as config: fabro builds .fabro/Dockerfile.mise on demand,
+# tags it fabro-runner-<sha12>, and rebuilds only when the file changes.
+# Toolchain is baked in (fabro-meta-a7c3): per-run mise install becomes
+# a no-op version check instead of ~24.5s setup.
 [run.environment]
 id = "mise"
 
@@ -11,7 +14,7 @@ id = "mise"
 provider = "docker"
 
 [environments.mise.image]
-docker = "fabro-runner:mise"
+dockerfile = { path = "Dockerfile.mise" }
 
 [environments.mise.resources]
 cpu = 8

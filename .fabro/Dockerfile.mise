@@ -1,0 +1,47 @@
+# Lab runner image, built on demand by fabro (image.dockerfile).
+#
+# Content-hash tagged by fabro (fabro-runner-<sha12>) and rebuilt only
+# when this file changes; docker layer cache keeps incremental rebuilds
+# cheap. The build context is EMPTY (fabro limitation): .mise.toml cannot
+# be COPY'd, so the toolset below mirrors [tools] in .mise.toml — keep
+# both in sync (bun/nushell/go/just versions MUST match).
+#
+# Restores what fabro-meta-a7c3 asked for: tools baked in, per-run
+# `mise install` becomes a no-op version check instead of ~24.5s setup.
+FROM ubuntu:24.04
+
+ARG MISE_VERSION=v2026.8.10
+
+ENV MISE_DATA_DIR=/mise \
+    BUN_INSTALL=/mise/bun-global \
+    PATH=/usr/local/bin:/mise/shims:/mise/bun-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Sandbox requirements (bash, git) + mise itself.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends bash git ca-certificates curl xz-utils; \
+    rm -rf /var/lib/apt/lists/*; \
+    curl -fsSL "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64" \
+        -o /usr/local/bin/mise; \
+    chmod +x /usr/local/bin/mise; \
+    mise --version
+
+# Workspace toolset, mirroring .mise.toml [tools] (see header note).
+# Explicit tool@version args — no config file needed in the empty context.
+RUN mise install \
+        bun@1.4.0 \
+        aqua:nushell/nushell@0.115.0 \
+        go@1.27.0 \
+        just@1.58.0 \
+    && mise exec -- bun --version \
+    && mise exec -- nu --version \
+    && mise exec -- go version \
+    && mise exec -- just --version
+
+# npm-distributed CLIs into the pinned BUN_INSTALL dir (see
+# scripts/bootstrap.nu): sd + ml available without per-run install.
+RUN mise exec -- bun install -g \
+        @os-eco/seeds-cli@0.5.15 \
+        @os-eco/mulch-cli@0.10.7 \
+    && sd --version \
+    && ml --version
