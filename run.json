@@ -232,7 +232,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-23T22:51:50.455477869Z",
-  "last_event_at": "2026-08-23T22:52:10.951001319Z",
+  "last_event_at": "2026-08-23T22:52:17.174227175Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -272,9 +272,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 61,
       "checkpoint": {
-        "timestamp": "2026-08-23T22:52:11.029640332Z",
+        "timestamp": "2026-08-23T22:52:15.904270972Z",
         "current_node": "greet",
         "completed_nodes": [
           "start",
@@ -282,23 +282,23 @@
         ],
         "node_retries": {},
         "context_values": {
-          "failure_class": "",
-          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
-          "internal.thread_id": "start",
-          "internal.retry_count.start": 0,
-          "thread.start.current_node": "greet",
-          "last_response": "Done — created `/workspace/fabro/README.md` with a hello haiku:\n\n> Hello, world, from code —\n> a small thought, seeded and grown,\n> merged before the dawn.\n\nPer your instructions, I skipped builds",
-          "internal.run_id": "01M0RD0E5YHARC4691X7HKGJTX",
-          "failure_signature": "",
-          "response.greet": "Done — created `/workspace/fabro/README.md` with a hello haiku:\n\n> Hello, world, from code —\n> a small thought, seeded and grown,\n> merged before the dawn.\n\nPer your instructions, I skipped builds, tests, and project tooling (`sd`, `ml`, etc.) — this was edit-only.",
-          "outcome": "succeeded",
-          "internal.work_dir": "/workspace/fabro",
           "last_stage": "greet",
-          "internal.fidelity": "compact",
-          "internal.node_visit_count": 1,
-          "graph.rankdir": "LR",
+          "failure_signature": "",
+          "internal.retry_count.greet": 0,
           "current_node": "greet",
-          "internal.retry_count.greet": 0
+          "internal.run_id": "01M0RD0E5YHARC4691X7HKGJTX",
+          "last_response": "Done — created `/workspace/fabro/README.md` with a hello haiku:\n\n> Hello, world, from code —\n> a small thought, seeded and grown,\n> merged before the dawn.\n\nPer your instructions, I skipped builds",
+          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "internal.thread_id": "start",
+          "thread.start.current_node": "greet",
+          "response.greet": "Done — created `/workspace/fabro/README.md` with a hello haiku:\n\n> Hello, world, from code —\n> a small thought, seeded and grown,\n> merged before the dawn.\n\nPer your instructions, I skipped builds, tests, and project tooling (`sd`, `ml`, etc.) — this was edit-only.",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.node_visit_count": 1
         },
         "node_outcomes": {
           "start": {
@@ -346,15 +346,86 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "4bd8c0516afa559cc0e64d3695ceba244fa66171",
         "node_visits": {
           "start": 1,
           "greet": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/README.md b/README.md\nnew file mode 100644\nindex 0000000..5328456\n--- /dev/null\n+++ b/README.md\n@@ -0,0 +1,7 @@\n+# fabro\n+\n+Hello, world, from code —\n+\n+a small thought, seeded and grown,\n+\n+merged before the dawn.\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 7,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-08-23T22:52:15.940050940Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 25408,
+      "inference_time_ms": 15733,
+      "tool_time_ms": 449,
+      "active_time_ms": 16182
+    },
+    "failure": {
+      "reason": "publish_failed",
+      "detail": {
+        "message": "failed to create pull request",
+        "causes": [
+          "LLM generation failed: No object generated: Failed to parse response as JSON: expected value at line 1 column 1"
+        ],
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "4bd8c0516afa559cc0e64d3695ceba244fa66171",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "greet",
+        "stage_label": "greet",
+        "timing": {
+          "wall_time_ms": 18049,
+          "inference_time_ms": 15733,
+          "tool_time_ms": 449,
+          "active_time_ms": 16182
+        },
+        "billing_usd_micros": 14617,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 6175,
+      "output_tokens": 180,
+      "total_tokens": 23913,
+      "reasoning_tokens": 150,
+      "cache_read_tokens": 17408,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 14617
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/README.md b/README.md\nnew file mode 100644\nindex 0000000..5328456\n--- /dev/null\n+++ b/README.md\n@@ -0,0 +1,7 @@\n+# fabro\n+\n+Hello, world, from code —\n+\n+a small thought, seeded and grown,\n+\n+merged before the dawn.\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 7,
+        "deletions": 0
+      }
+    }
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -380,11 +451,52 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 64,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-23T22:52:15.904666203Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-23T22:52:15.904635948Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "greet@1": {
       "first_event_seq": 28,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: greet",
+        "failure_reason": null,
+        "timestamp": "2026-08-23T22:52:11.029292804Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -398,8 +510,12 @@
       "started_at": "2026-08-23T22:51:52.911090348Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 15775,
-      "live_tool_ms": 448,
+      "timing": {
+        "wall_time_ms": 18049,
+        "inference_time_ms": 15733,
+        "tool_time_ms": 449,
+        "active_time_ms": 16182
+      },
       "usage": {
         "input_tokens": 6175,
         "output_tokens": 180,
@@ -736,7 +852,7 @@
         "warnings": []
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "succeeded"
     },
     "start@1": {
       "first_event_seq": 24,
