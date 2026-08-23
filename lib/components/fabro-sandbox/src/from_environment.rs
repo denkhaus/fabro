@@ -6,16 +6,16 @@
 use std::path::{Path, PathBuf};
 
 use fabro_types::settings::ResolveError;
-#[cfg(feature = "daytona")]
+#[cfg(any(feature = "docker", feature = "daytona"))]
 use fabro_types::settings::run::DockerfileSource as ResolvedDockerfileSource;
 use fabro_types::settings::run::{
     EnvironmentNetworkMode, RunCloneSettings, RunEnvironmentSettings,
 };
 
+#[cfg(any(feature = "docker", feature = "daytona"))]
+use crate::config::DockerfileSource as SandboxDockerfileSource;
 #[cfg(feature = "daytona")]
-use crate::config::{
-    DaytonaNetwork, DaytonaSnapshotSettings, DockerfileSource as SandboxDockerfileSource,
-};
+use crate::config::{DaytonaNetwork, DaytonaSnapshotSettings};
 #[cfg(feature = "daytona")]
 use crate::daytona::DaytonaConfig;
 #[cfg(feature = "docker")]
@@ -98,6 +98,19 @@ pub fn docker_config_from_environment_with_secrets(
     Ok(docker_config_from_environment_env(settings, clone, env))
 }
 
+/// Convert a resolved settings dockerfile source into the sandbox-layer
+/// representation. Shared by the daytona snapshot and docker runner-image
+/// mappings so the two providers treat sources identically.
+#[cfg(any(feature = "docker", feature = "daytona"))]
+fn sandbox_dockerfile_source(dockerfile: &ResolvedDockerfileSource) -> SandboxDockerfileSource {
+    match dockerfile {
+        ResolvedDockerfileSource::Inline(text) => SandboxDockerfileSource::Inline(text.clone()),
+        ResolvedDockerfileSource::Path { path } => {
+            SandboxDockerfileSource::Path { path: path.clone() }
+        }
+    }
+}
+
 #[cfg(feature = "docker")]
 fn docker_config_from_environment_env(
     settings: &RunEnvironmentSettings,
@@ -117,6 +130,11 @@ fn docker_config_from_environment_env(
             .docker
             .clone()
             .unwrap_or(default_options.image),
+        dockerfile: settings
+            .image
+            .dockerfile
+            .as_ref()
+            .map(sandbox_dockerfile_source),
         network_mode: match settings.network.mode {
             EnvironmentNetworkMode::Block => Some("none".to_string()),
             EnvironmentNetworkMode::AllowAll | EnvironmentNetworkMode::CidrAllowList => {
@@ -183,8 +201,8 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use fabro_types::settings::run::{
-        EnvironmentImageSettings, EnvironmentLifecycleSettings, EnvironmentNetworkSettings,
-        EnvironmentProvider, EnvironmentResourcesSettings,
+        DockerfileSource, EnvironmentImageSettings, EnvironmentLifecycleSettings,
+        EnvironmentNetworkSettings, EnvironmentProvider, EnvironmentResourcesSettings,
     };
 
     use super::*;
@@ -201,6 +219,68 @@ mod tests {
             labels: HashMap::new(),
             env: HashMap::new(),
         }
+    }
+
+    #[cfg(feature = "docker")]
+    #[test]
+    fn docker_config_carries_inline_dockerfile_for_runner_build() {
+        let mut settings = run_environment(EnvironmentProvider::Docker);
+        settings.image.dockerfile = Some(DockerfileSource::Inline(
+            "FROM buildpack-deps:noble\nRUN apt-get update && apt-get install -y ripgrep\n"
+                .to_string(),
+        ));
+
+        let options = docker_config_from_environment(&settings, &RunCloneSettings::default());
+
+        assert_eq!(
+            options.dockerfile,
+            Some(SandboxDockerfileSource::Inline(
+                "FROM buildpack-deps:noble\nRUN apt-get update && apt-get install -y ripgrep\n"
+                    .to_string()
+            )),
+            "inline dockerfile content must travel with the options to the sandbox"
+        );
+    }
+
+    #[cfg(feature = "docker")]
+    #[test]
+    fn docker_config_carries_path_dockerfile_for_late_resolution() {
+        let mut settings = run_environment(EnvironmentProvider::Docker);
+        settings.image.dockerfile = Some(DockerfileSource::Path {
+            path: "Dockerfile".to_string(),
+        });
+
+        let options = docker_config_from_environment(&settings, &RunCloneSettings::default());
+
+        assert_eq!(
+            options.dockerfile,
+            Some(SandboxDockerfileSource::Path {
+                path: "Dockerfile".to_string(),
+            })
+        );
+    }
+
+    #[cfg(feature = "docker")]
+    #[test]
+    fn docker_config_uses_image_docker_when_no_dockerfile() {
+        let mut settings = run_environment(EnvironmentProvider::Docker);
+        settings.image.docker = Some("registry.example/team/runner:2".to_string());
+
+        let options = docker_config_from_environment(&settings, &RunCloneSettings::default());
+
+        assert_eq!(options.image, "registry.example/team/runner:2");
+        assert_eq!(options.dockerfile, None);
+    }
+
+    #[cfg(feature = "docker")]
+    #[test]
+    fn docker_config_defaults_when_neither_image_nor_dockerfile() {
+        let settings = run_environment(EnvironmentProvider::Docker);
+
+        let options = docker_config_from_environment(&settings, &RunCloneSettings::default());
+
+        assert_eq!(options.image, "buildpack-deps:noble");
+        assert_eq!(options.dockerfile, None);
     }
 
     #[test]

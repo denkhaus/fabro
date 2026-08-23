@@ -2978,6 +2978,7 @@ dependencies = [
  "async-trait",
  "base64",
  "bollard",
+ "bytes",
  "chrono",
  "daytona-api-client",
  "daytona-sdk",

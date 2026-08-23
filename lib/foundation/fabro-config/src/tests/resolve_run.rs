@@ -658,6 +658,58 @@ dockerfile = { path = "Dockerfile" }
 }
 
 #[test]
+fn docker_dockerfile_without_image_ref_resolves() {
+    let settings = workflow_settings_from_toml_with_catalog(
+        r#"
+_version = 1
+
+[run.environment]
+id = "box"
+"#,
+        r#"
+[environments.box]
+provider = "docker"
+
+[environments.box.image]
+dockerfile = { path = "Dockerfile" }
+"#,
+    )
+    .expect("docker dockerfile should not need a prebuilt image")
+    .run;
+
+    assert_eq!(settings.environment.provider, EnvironmentProvider::Docker);
+    assert!(settings.environment.image.docker.is_none());
+    assert!(settings.environment.image.dockerfile.is_some());
+}
+
+#[test]
+fn docker_image_docker_and_dockerfile_errors() {
+    let err = workflow_settings_from_toml_with_catalog(
+        r#"
+_version = 1
+
+[run.environment]
+id = "box"
+"#,
+        r#"
+[environments.box]
+provider = "docker"
+
+[environments.box.image]
+docker = "ubuntu:24.04"
+dockerfile = "FROM ubuntu:24.04"
+"#,
+    )
+    .expect_err("docker should reject ambiguous image source");
+
+    let message = err.to_string();
+    assert!(
+        message.contains("image.docker") && message.contains("image.dockerfile"),
+        "expected docker both-set diagnostic, got: {message}"
+    );
+}
+
+#[test]
 fn daytona_image_docker_errors() {
     let err = workflow_settings_from_toml_with_catalog(
         r#"

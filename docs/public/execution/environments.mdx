@@ -213,7 +213,7 @@ Install seeds a `default` environment into SQLite. It is a normal persisted envi
 | Environment field | Local | Docker | Daytona |
 |---|---|---|---|
 | `image.docker` | Ignored | Docker image | Error |
-| `image.dockerfile` | Ignored | Warning; ignored | Snapshot Dockerfile; Fabro computes the snapshot name |
+| `image.dockerfile` | Ignored | Auto-built image tagged `fabro-runner-<sha12>`; reused while the content hash matches | Snapshot Dockerfile; Fabro computes the snapshot name |
 | `resources.cpu` | Warning; ignored | `cpu_quota = cpu * 100000` | Snapshot CPU |
 | `resources.memory` | Warning; ignored | Container memory limit | Snapshot memory |
 | `resources.disk` | Warning; ignored | Warning; ignored | Snapshot disk |
@@ -261,6 +261,21 @@ mode = "block"
 Docker and Daytona are clone-based providers. When a run has a GitHub origin, Fabro clones it into the provider workspace with a history depth of 100. Set `[run.clone] enabled = false` to start with an empty workspace. Set `[run.clone] depth = 0` to clone full history. Docker and Daytona ignore `cwd`; use the provider-owned workspace layout and `run.working_dir` for repository-relative commands.
 
 The image must provide `/bin/bash`; Fabro evaluates every sandbox command with it and has no `sh` fallback. Commands run in a **non-login** shell, so login profiles (`/etc/profile.d/*.sh`, `~/.bash_profile`, and `nvm`/`rbenv`/`sdkman` initializers) are not sourced — put anything they set into the Dockerfile's `ENV` instead. Fabro verifies Bash during initialization and again on resume, and fails with remediation rather than reporting the sandbox ready.
+
+Instead of a finished `image.docker`, define the runner image as configuration with `image.dockerfile`. Fabro builds it on first use, tags it `fabro-runner-<sha12>` from the Dockerfile content hash, and reuses that image on every later run while the content is unchanged — the same caching discipline Daytona applies to snapshots. Setting both `image.docker` and `image.dockerfile` on one environment is a configuration error.
+
+```toml title="workflow.toml"
+[environments.ci]
+provider = "docker"
+
+[environments.ci.image]
+dockerfile = "FROM buildpack-deps:noble\nRUN apt-get update && apt-get install -y ripgrep"
+
+# or reference a Dockerfile bundled with the workflow:
+# dockerfile = { path = "Dockerfile.runner" }
+```
+
+The Dockerfile builds with an **empty context**: `COPY`/`ADD` cannot reference repository files, and the `path` form must point at a file bundled in the workflow (Fabro inlines it before the run starts). Build failures surface as sandbox initialization errors including the daemon's build output. Images built this way carry the `sh.fabro.managed` label; removing stale `fabro-runner-*` images after dockerfile changes is a manual `docker rmi` today.
 
 ## Daytona
 
