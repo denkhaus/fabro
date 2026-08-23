@@ -230,7 +230,33 @@ The preamble includes:
 
 Internal keys (prefixed with `internal.`, `current`, `graph.`, `thread.`, `response.`) are excluded from preambles to avoid noise.
 
-## Artifact offloading
+### Stage scoping (deny-list)
+
+A node can omit specific stages' history sections from its own preamble with the `preamble_stages_ignore` attribute — a comma-separated list of node ids:
+
+```dot
+reviewer [
+    prompt="@prompts/review.md",
+    preamble_stages_ignore="planner,refiner"
+]
+```
+
+The filter is render-only: the context store, routing, and `response.{node_id}` keys are untouched, and the ignored stages' context updates (their working material) still render in the `## Context` section. A role that only needs freshly produced evidence can therefore stop re-reading verbose upstream responses as review loops accumulate cycles.
+
+Referencing a node id that does not exist produces a validation warning (the run proceeds; the entry simply never matches).
+
+### Preamble aggregate budget
+
+Per-value demotion (see [Artifact offloading](#artifact-offloading)) bounds each context value alone. The **aggregate budget** bounds what all of them contribute together: once the serialized sizes of preamble-visible values exceed the budget, Fabro demotes the fattest values largest-first (values of 1KB or less are never demoted by this pass, so ids, enums, and short contract values stay inline) until the total fits. This keeps prompts constant-size in review loops where every cycle adds another mid-sized response — no single value ever crosses the per-value threshold, but the sum grows without bound.
+
+The default budget is 12KB per preamble. Workflows can raise or lower it graph-wide:
+
+```dot
+digraph {
+  graph [goal="...", preamble_budget_kb=32]
+  // 32KB aggregate budget for every node's preamble in this workflow
+}
+```
 
 When a stage produces a large output (over 100KB of serialized JSON), Fabro stores the serialized bytes in a global content-addressed blob store and replaces the context value with a durable blob ref. Command output is always finalized into a blob ref after command completion, even when it is small or empty:
 

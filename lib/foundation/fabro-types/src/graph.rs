@@ -287,6 +287,21 @@ impl Node {
         self.str_attr("fidelity")
     }
 
+    /// Node ids whose stage-history sections this node's prompt preamble
+    /// omits (comma-separated deny-list, render-only). Split and trimmed;
+    /// empty entries are dropped. See the workflow docs for semantics.
+    #[must_use]
+    pub fn preamble_stages_ignore(&self) -> Vec<&str> {
+        self.str_attr("preamble_stages_ignore")
+            .map(|list| {
+                list.split(',')
+                    .map(str::trim)
+                    .filter(|entry| !entry.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     #[must_use]
     pub fn thread_id(&self) -> Option<&str> {
         self.str_attr("thread_id")
@@ -548,6 +563,26 @@ impl Graph {
     /// Graph-level `default_thread`.
     pub fn default_thread(&self) -> Option<&str> {
         self.attrs.get("default_thread").and_then(AttrValue::as_str)
+    }
+
+    /// Graph-level `preamble_budget_kb`: the aggregate serialized budget all
+    /// preamble values may contribute before the aggregate demote pass
+    /// starts replacing the fattest values with preview markers. Defaults
+    /// to 12 (see `DEFAULT_PREAMBLE_VALUE_BUDGET` in fabro-workflow).
+    /// Values below 1 are ignored (the default applies).
+    ///
+    /// An integer attribute:
+    ///
+    /// ```text
+    /// digraph {
+    ///   graph [preamble_budget_kb=32]
+    /// }
+    /// ```
+    pub fn preamble_budget_kb(&self) -> Option<usize> {
+        self.attrs
+            .get("preamble_budget_kb")
+            .and_then(AttrValue::as_i64)
+            .and_then(|kb| usize::try_from(kb).ok().filter(|kb| *kb >= 1))
     }
 
     /// Graph-level `loop_restart_signature_limit` (default 3).

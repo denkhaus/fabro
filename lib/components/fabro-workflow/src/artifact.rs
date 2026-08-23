@@ -23,6 +23,19 @@ const BLOB_OFFLOAD_THRESHOLD: usize = 100 * 1024;
 /// prompt preamble before it is demoted to a preview plus a file reference.
 const PROMPT_INLINE_VALUE_MAX: usize = 8 * 1024;
 
+/// Default aggregate budget: total serialized bytes all preamble values may
+/// contribute before the aggregate pass starts demoting. The per-value pass
+/// catches single fat values; this catches the accumulation case — many
+/// mid-sized values (e.g. one response per loop cycle) growing the preamble
+/// without any single value crossing [`PROMPT_INLINE_VALUE_MAX`]. Workflows
+/// can override it per node via the `preamble_budget_kb` attribute.
+pub(crate) const DEFAULT_PREAMBLE_VALUE_BUDGET: usize = 12 * 1024;
+
+/// Values at or below this size are never demoted by the aggregate pass.
+/// Contract keys, ids, and enums stay inline for free without a keep-list;
+/// only genuinely fat values pay the preview-plus-file-reference cost.
+const PREAMBLE_DEMOTE_FLOOR: usize = 1024;
+
 /// Largest serialized JSON one `for_each` item may contribute to a branch
 /// prompt before it is demoted. The item is the branch's work assignment, so
 /// its budget is deliberately more generous than [`PROMPT_INLINE_VALUE_MAX`].
@@ -174,6 +187,7 @@ fn serialized_if_over(value: &Value, threshold: usize) -> Result<Option<Vec<u8>>
 pub async fn demote_large_values_for_prompt(
     values: &mut HashMap<String, Value>,
     node_outcomes: &mut HashMap<String, Outcome>,
+    budget: usize,
     run_store: &RunStoreHandle,
     env: &dyn Sandbox,
     run_dir: &Path,
@@ -217,6 +231,148 @@ pub async fn demote_large_values_for_prompt(
             }
         }
     }
+    demote_until_within_budget(
+        values,
+        node_outcomes,
+        budget,
+        run_store,
+        env,
+        run_dir,
+        &mut locality,
+    )
+    .await;
+}
+
+/// Demote values largest-first until the aggregate serialized size of all
+/// preamble-visible values fits the aggregate budget.
+///
+/// The per-value pass bounds each contribution alone; this pass bounds the
+/// sum, which is what actually reaches the model. Candidates are ordered by
+/// serialized size (descending), so the fattest values pay the demotion cost
+/// first and small contract values (below [`PREAMBLE_DEMOTE_FLOOR`]) never
+/// do. Demotion failures are logged and the value stays inline, matching the
+/// per-value pass's degradation semantics.
+async fn demote_until_within_budget(
+    values: &mut HashMap<String, Value>,
+    node_outcomes: &mut HashMap<String, Outcome>,
+    budget: usize,
+    run_store: &RunStoreHandle,
+    env: &dyn Sandbox,
+    run_dir: &Path,
+    locality: &mut SandboxLocality,
+) {
+    fn is_large_value_marker(value: &Value) -> bool {
+        value
+            .as_object()
+            .is_some_and(|map| map.contains_key(LARGE_VALUE_MARKER_KEY))
+    }
+
+    // Collect (size, locator) for demotable candidates, largest first.
+    enum Locator {
+        Context(String),
+        Outcome(String, String),
+    }
+
+    let mut total: usize = values
+        .values()
+        .chain(
+            node_outcomes
+                .values()
+                .flat_map(|outcome| outcome.context_updates.values()),
+        )
+        .map(|value| serialized_size(value))
+        .sum();
+    if total <= budget {
+        return;
+    }
+
+    let mut candidates: Vec<(usize, Locator)> = Vec::new();
+    for (key, value) in &*values {
+        if context::keys::is_preamble_hidden_key(key)
+            || is_large_value_marker(value)
+            || value
+                .as_str()
+                .is_some_and(|s| s.len() <= PREAMBLE_DEMOTE_FLOOR)
+        {
+            continue;
+        }
+        let size = serialized_size(value);
+        if size > PREAMBLE_DEMOTE_FLOOR {
+            candidates.push((size, Locator::Context(key.clone())));
+        }
+    }
+    for (node_id, outcome) in &*node_outcomes {
+        for (key, value) in outcome.context_updates.iter() {
+            if is_large_value_marker(value)
+                || value
+                    .as_str()
+                    .is_some_and(|s| s.len() <= PREAMBLE_DEMOTE_FLOOR)
+            {
+                continue;
+            }
+            let size = serialized_size(value);
+            if size > PREAMBLE_DEMOTE_FLOOR {
+                candidates.push((size, Locator::Outcome(node_id.clone(), key.clone())));
+            }
+        }
+    }
+    candidates.sort_by_key(|&(size, _)| std::cmp::Reverse(size));
+
+    for (size, locator) in candidates {
+        if total <= budget {
+            break;
+        }
+        let target: Option<(&mut Value, String)> = match &locator {
+            Locator::Context(key) => values.get_mut(key).map(|value| (value, key.clone())),
+            Locator::Outcome(node_id, key) => node_outcomes
+                .get_mut(node_id)
+                .and_then(|outcome| outcome.context_updates.get_mut(key))
+                .map(|value| (value, format!("{node_id}.{key}"))),
+        };
+        let Some((value, label)) = target else {
+            continue;
+        };
+        match demote_value_for_prompt(
+            value,
+            // Demote regardless of single-value size: the aggregate is over.
+            PREAMBLE_DEMOTE_FLOOR,
+            run_store,
+            env,
+            run_dir,
+            locality,
+        )
+        .await
+        {
+            Ok(demoted) if demoted => {
+                tracing::debug!(
+                    key = %label,
+                    demoted_bytes = size,
+                    total_bytes = total,
+                    budget,
+                    "aggregate preamble budget demoted value"
+                );
+                let after = serialized_size(value);
+                total = total.saturating_sub(size).saturating_add(after);
+            }
+            Ok(_) => {}
+            Err(err) => {
+                tracing::warn!(key = %label, %err, "aggregate demotion failed; kept inline");
+            }
+        }
+    }
+    if total > budget {
+        tracing::warn!(
+            total_bytes = total,
+            budget,
+            "preamble values exceed aggregate budget even after demotion; keeping remainder inline"
+        );
+    }
+}
+
+/// Serialized JSON size of a preamble value, or zero when serialization
+/// fails (a value that cannot be serialized contributes nothing to a prompt).
+fn serialized_size(value: &Value) -> usize {
+    serde_json::to_vec(value).map_or(0, |bytes| bytes.len())
 }
 
 /// Bound every `for_each` item rendered into a branch prompt.
@@ -1461,8 +1617,15 @@ mod tests {
             ..Outcome::success()
         })]);
 
-        demote_large_values_for_prompt(&mut values, &mut outcomes, &run_store, &sandbox, &run_dir)
-            .await;
+        demote_large_values_for_prompt(
+            &mut values,
+            &mut outcomes,
+            DEFAULT_PREAMBLE_VALUE_BUDGET,
+            &run_store,
+            &sandbox,
+            &run_dir,
+        )
+        .await;
 
         let details = values["dataset"]
             .get("fabroLargeValue")
@@ -1496,6 +1659,180 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn aggregate_budget_demotes_accumulated_mid_sized_values() {
+        // The accumulation case: several values, each below
+        // PROMPT_INLINE_VALUE_MAX, together exceeding the aggregate budget.
+        // The per-value pass leaves them inline; the aggregate pass demotes
+        // largest-first until the sum fits.
+        let run_store: RunStoreHandle = make_run_store("prompt-demote-agg").await.into();
+        let tmp = tempfile::tempdir().unwrap();
+        let run_dir = tmp.path().join("run");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let sandbox = fabro_agent::LocalSandbox::new(tmp.path().to_path_buf());
+
+        let mut values = HashMap::new();
+        values.insert(
+            "response_alpha".to_string(),
+            serde_json::json!("a".repeat(7 * 1024)),
+        );
+        values.insert(
+            "response_beta".to_string(),
+            serde_json::json!("b".repeat(5 * 1024)),
+        );
+        values.insert(
+            "response_gamma".to_string(),
+            serde_json::json!("c".repeat(5 * 1024)),
+        );
+        let mut outcomes = HashMap::new();
+
+        demote_large_values_for_prompt(
+            &mut values,
+            &mut outcomes,
+            DEFAULT_PREAMBLE_VALUE_BUDGET,
+            &run_store,
+            &sandbox,
+            &run_dir,
+        )
+        .await;
+
+        let total: usize = values.values().map(serialized_size).sum();
+        assert!(
+            total <= DEFAULT_PREAMBLE_VALUE_BUDGET,
+            "aggregate should fit budget, got {total}"
+        );
+        // Largest value demoted first; the smallest of the three stays.
+        assert!(
+            values["response_alpha"]
+                .get(LARGE_VALUE_MARKER_KEY)
+                .is_some(),
+            "largest value must demote"
+        );
+        assert!(
+            values["response_beta"].as_str().is_some(),
+            "demotion stops once the budget is met"
+        );
+    }
+
+    #[tokio::test]
+    async fn aggregate_budget_never_demotes_small_contract_values() {
+        let run_store: RunStoreHandle = make_run_store("prompt-demote-agg-floor").await.into();
+        let tmp = tempfile::tempdir().unwrap();
+        let run_dir = tmp.path().join("run");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let sandbox = fabro_agent::LocalSandbox::new(tmp.path().to_path_buf());
+
+        let mut values = HashMap::new();
+        values.insert(
+            "current_seed_id".to_string(),
+            serde_json::json!("fabro-6a78"),
+        );
+        values.insert("current_stage".to_string(), serde_json::json!("review"));
+        values.insert(
+            "response_alpha".to_string(),
+            serde_json::json!("a".repeat(6 * 1024)),
+        );
+        values.insert(
+            "response_beta".to_string(),
+            serde_json::json!("b".repeat(6 * 1024)),
+        );
+        values.insert(
+            "response_gamma".to_string(),
+            serde_json::json!("c".repeat(6 * 1024)),
+        );
+        let mut outcomes = HashMap::new();
+
+        demote_large_values_for_prompt(
+            &mut values,
+            &mut outcomes,
+            DEFAULT_PREAMBLE_VALUE_BUDGET,
+            &run_store,
+            &sandbox,
+            &run_dir,
+        )
+        .await;
+
+        assert_eq!(values["current_seed_id"], serde_json::json!("fabro-6a78"));
+        assert_eq!(values["current_stage"], serde_json::json!("review"));
+        let total: usize = values.values().map(serialized_size).sum();
+        assert!(total <= DEFAULT_PREAMBLE_VALUE_BUDGET, "got {total}");
+    }
+
+    #[tokio::test]
+    async fn aggregate_budget_noop_when_sum_fits() {
+        let run_store: RunStoreHandle = make_run_store("prompt-demote-agg-ok").await.into();
+        let tmp = tempfile::tempdir().unwrap();
+        let run_dir = tmp.path().join("run");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let sandbox = fabro_agent::LocalSandbox::new(tmp.path().to_path_buf());
+
+        let mut values = HashMap::from([
+            ("a".to_string(), serde_json::json!("x".repeat(2 * 1024))),
+            ("b".to_string(), serde_json::json!("y".repeat(2 * 1024))),
+        ]);
+        let mut outcomes = HashMap::new();
+
+        demote_large_values_for_prompt(
+            &mut values,
+            &mut outcomes,
+            DEFAULT_PREAMBLE_VALUE_BUDGET,
+            &run_store,
+            &sandbox,
+            &run_dir,
+        )
+        .await;
+
+        assert!(values["a"].as_str().is_some());
+        assert!(values["b"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn aggregate_budget_demotes_outcome_updates_largest_first() {
+        // Outcome context_updates participate in the aggregate: a loop that
+        // accumulates one mid-sized response per stage demotes them as they
+        // push the total over budget — the observed 25.6k preamble case.
+        let run_store: RunStoreHandle = make_run_store("prompt-demote-agg-outcome").await.into();
+        let tmp = tempfile::tempdir().unwrap();
+        let run_dir = tmp.path().join("run");
+        std::fs::create_dir_all(&run_dir).unwrap();
+        let sandbox = fabro_agent::LocalSandbox::new(tmp.path().to_path_buf());
+
+        let mut values = HashMap::new();
+        let mut outcomes: HashMap<String, Outcome> = HashMap::new();
+        for node in ["planner", "implementer", "reviewer"] {
+            let mut outcome = Outcome::success();
+            outcome.context_updates.insert(
+                context::keys::response_key(node).to_string(),
+                serde_json::json!(format!("{node}: {}", "r".repeat(6 * 1024))),
+            );
+            outcomes.insert(node.to_string(), outcome);
+        }
+
+        demote_large_values_for_prompt(
+            &mut values,
+            &mut outcomes,
+            DEFAULT_PREAMBLE_VALUE_BUDGET,
+            &run_store,
+            &sandbox,
+            &run_dir,
+        )
+        .await;
+
+        let total: usize = outcomes
+            .values()
+            .flat_map(|o| o.context_updates.values())
+            .map(serialized_size)
+            .sum();
+        assert!(total <= DEFAULT_PREAMBLE_VALUE_BUDGET, "got {total}");
+        // At least the largest response was demoted to a marker.
+        let demoted = outcomes
+            .values()
+            .flat_map(|o| o.context_updates.values())
+            .filter(|v| v.get(LARGE_VALUE_MARKER_KEY).is_some())
+            .count();
+        assert!(demoted >= 1, "expected at least one demoted marker");
+    }
+
+    #[tokio::test]
     async fn demote_skips_keys_the_preamble_never_renders() {
         let run_store: RunStoreHandle = make_run_store("prompt-demote-hidden").await.into();
         let tmp = tempfile::tempdir().unwrap();
@@ -1512,6 +1849,7 @@ mod tests {
         demote_large_values_for_prompt(
             &mut values,
             &mut HashMap::new(),
+            DEFAULT_PREAMBLE_VALUE_BUDGET,
             &run_store,
             &sandbox,
             &run_dir,
