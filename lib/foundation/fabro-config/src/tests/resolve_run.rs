@@ -1,6 +1,6 @@
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::{
-    ApprovalMode, EnvironmentNetworkMode, EnvironmentProvider, RunGoal, RunMode,
+    ApprovalMode, DockerfileSource, EnvironmentNetworkMode, EnvironmentProvider, RunGoal, RunMode,
 };
 
 use crate::{MergeMap, SettingsLayer};
@@ -630,6 +630,77 @@ mode = "block"
             && message.contains("local environments cannot enforce"),
         "expected local blocked-network diagnostic, got: {message}"
     );
+}
+
+#[test]
+fn docker_dockerfile_layer_overrides_lower_layer_image_docker() {
+    // Regression: a server-stored environment registered with image.docker
+    // (environments API) must not collide with a higher layer switching the
+    // same environment id to image.dockerfile. The higher layer wins and the
+    // merged environment carries only the dockerfile.
+    let settings = workflow_settings_from_toml_with_catalog(
+        r#"
+_version = 1
+
+[run.environment]
+id = "mise"
+
+[environments.mise]
+provider = "docker"
+
+[environments.mise.image]
+dockerfile = "FROM ubuntu:24.04"
+"#,
+        r#"
+[environments.mise]
+provider = "docker"
+
+[environments.mise.image]
+docker = "fabro-runner:mise"
+"#,
+    )
+    .expect("higher-layer dockerfile should suppress lower-layer docker");
+
+    assert_eq!(settings.run.environment.provider, EnvironmentProvider::Docker);
+    assert_eq!(settings.run.environment.image.docker.as_deref(), None);
+    assert_eq!(
+        settings.run.environment.image.dockerfile,
+        Some(DockerfileSource::Inline("FROM ubuntu:24.04".to_string()))
+    );
+}
+
+#[test]
+fn docker_image_docker_layer_overrides_lower_layer_dockerfile() {
+    // Symmetric case: a higher layer pinning a finished image.docker
+    // suppresses a lower-layer dockerfile instead of colliding with it.
+    let settings = workflow_settings_from_toml_with_catalog(
+        r#"
+_version = 1
+
+[run.environment]
+id = "mise"
+
+[environments.mise]
+provider = "docker"
+
+[environments.mise.image]
+docker = "fabro-runner:mise"
+"#,
+        r#"
+[environments.mise]
+provider = "docker"
+
+[environments.mise.image]
+dockerfile = "FROM ubuntu:24.04"
+"#,
+    )
+    .expect("higher-layer docker should suppress lower-layer dockerfile");
+
+    assert_eq!(
+        settings.run.environment.image.docker.as_deref(),
+        Some("fabro-runner:mise")
+    );
+    assert_eq!(settings.run.environment.image.dockerfile, None);
 }
 
 #[test]
