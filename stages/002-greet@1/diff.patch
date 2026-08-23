@@ -1,0 +1,19 @@
+diff --git a/README.md b/README.md
+index 73a1e4ff..40c17094 100644
+--- a/README.md
++++ b/README.md
+@@ -180,6 +180,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development wo
+ 
+ ---
+ 
++## Haiku
++
++> Graphs define the work,
++> agents turn each node to code.
++> Humans gate, then rest.
++
++---
++
+ ## License
+ 
+ Fabro is licensed under the [MIT License](LICENSE.md).

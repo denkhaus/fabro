@@ -212,7 +212,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-23T21:54:27.432901522Z",
-  "last_event_at": "2026-08-23T21:55:39.190724831Z",
+  "last_event_at": "2026-08-23T21:55:43.460020765Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -252,9 +252,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 84,
       "checkpoint": {
-        "timestamp": "2026-08-23T21:55:39.242300951Z",
+        "timestamp": "2026-08-23T21:55:43.459627602Z",
         "current_node": "greet",
         "completed_nodes": [
           "start",
@@ -262,23 +262,23 @@
         ],
         "node_retries": {},
         "context_values": {
-          "current_node": "greet",
-          "thread.start.current_node": "greet",
-          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
-          "internal.run_id": "01M0R9VV3D3H7D0TQHFWQP09YT",
-          "graph.rankdir": "LR",
-          "response.greet": "Done! Here's the wrap-up:\n\n## 👋 Hello!\n\nThis session itself was the demo — I was executing the `hello` workflow from `.fabro/workflows/hello/workflow.fabro`:\n\n| Stage | What happened |\n|---|---|\n| **Start** | Workflow engine admitted the run, goal: *\"Say hello and demonstrate a basic Fabro workflow\"* |\n| **Greet** | Agent stage (me) received the prompt *\"Add a haiku to the README\"* and did the work |\n| **Exit** | Run completes with this summary |\n\nThat's the simplest possible Fabro graph — `start -> greet -> exit` — the same shape as the [hello-world tutorial](https://docs.fabro.sh/tutorials/hello-world), just with real tools doing real file edits along the way.\n\n## 🌸 The haiku\n\nAdded to the end of `README.md`:\n\n> Graphs define the work,\n> agents turn each node to code.\n> Humans gate, then rest.\n\n(5-7-5, and it happens to summarize the whole product: workflows-as-graphs, agent execution, human gates.)\n\n**Files changed:** `README.md` (+8 lines). No commit made — the workflow engine's checkpointing owns that if this run is being tracked by the server.",
-          "internal.retry_count.greet": 0,
-          "outcome": "succeeded",
-          "last_response": "Done! Here's the wrap-up:\n\n## 👋 Hello!\n\nThis session itself was the demo — I was executing the `hello` workflow from `.fabro/workflows/hello/workflow.fabro`:\n\n| Stage | What happened |\n|---|---|\n",
-          "failure_class": "",
-          "internal.fidelity": "compact",
           "internal.thread_id": "start",
+          "internal.retry_count.greet": 0,
           "internal.work_dir": "/workspace/fabro",
-          "last_stage": "greet",
-          "internal.node_visit_count": 1,
+          "outcome": "succeeded",
           "internal.retry_count.start": 0,
-          "failure_signature": ""
+          "failure_class": "",
+          "failure_signature": "",
+          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+          "last_response": "Done! Here's the wrap-up:\n\n## 👋 Hello!\n\nThis session itself was the demo — I was executing the `hello` workflow from `.fabro/workflows/hello/workflow.fabro`:\n\n| Stage | What happened |\n|---|---|\n",
+          "thread.start.current_node": "greet",
+          "current_node": "greet",
+          "internal.run_id": "01M0R9VV3D3H7D0TQHFWQP09YT",
+          "response.greet": "Done! Here's the wrap-up:\n\n## 👋 Hello!\n\nThis session itself was the demo — I was executing the `hello` workflow from `.fabro/workflows/hello/workflow.fabro`:\n\n| Stage | What happened |\n|---|---|\n| **Start** | Workflow engine admitted the run, goal: *\"Say hello and demonstrate a basic Fabro workflow\"* |\n| **Greet** | Agent stage (me) received the prompt *\"Add a haiku to the README\"* and did the work |\n| **Exit** | Run completes with this summary |\n\nThat's the simplest possible Fabro graph — `start -> greet -> exit` — the same shape as the [hello-world tutorial](https://docs.fabro.sh/tutorials/hello-world), just with real tools doing real file edits along the way.\n\n## 🌸 The haiku\n\nAdded to the end of `README.md`:\n\n> Graphs define the work,\n> agents turn each node to code.\n> Humans gate, then rest.\n\n(5-7-5, and it happens to summarize the whole product: workflows-as-graphs, agent execution, human gates.)\n\n**Files changed:** `README.md` (+8 lines). No commit made — the workflow engine's checkpointing owns that if this run is being tracked by the server.",
+          "internal.fidelity": "compact",
+          "graph.rankdir": "LR",
+          "last_stage": "greet",
+          "internal.node_visit_count": 1
         },
         "node_outcomes": {
           "greet": {
@@ -326,15 +326,76 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "9ae5e56279caae4b5635092835ea3342d2ce9148",
         "node_visits": {
-          "greet": 1,
-          "start": 1
+          "start": 1,
+          "greet": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/README.md b/README.md\nindex 73a1e4ff..40c17094 100644\n--- a/README.md\n+++ b/README.md\n@@ -180,6 +180,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development wo\n \n ---\n \n+## Haiku\n+\n+> Graphs define the work,\n+> agents turn each node to code.\n+> Humans gate, then rest.\n+\n+---\n+\n ## License\n \n Fabro is licensed under the [MIT License](LICENSE.md).\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 8,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-08-23T21:55:43.492049702Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 69355,
+      "inference_time_ms": 60384,
+      "tool_time_ms": 1994,
+      "active_time_ms": 62378
+    },
+    "final_git_commit_sha": "9ae5e56279caae4b5635092835ea3342d2ce9148",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "greet",
+        "stage_label": "greet",
+        "timing": {
+          "wall_time_ms": 63179,
+          "inference_time_ms": 60384,
+          "tool_time_ms": 1994,
+          "active_time_ms": 62378
+        },
+        "billing_usd_micros": 59789,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 16369,
+      "output_tokens": 1060,
+      "total_tokens": 108575,
+      "reasoning_tokens": 2058,
+      "cache_read_tokens": 89088,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 59789
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/README.md b/README.md\nindex 73a1e4ff..40c17094 100644\n--- a/README.md\n+++ b/README.md\n@@ -180,6 +180,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development wo\n \n ---\n \n+## Haiku\n+\n+> Graphs define the work,\n+> agents turn each node to code.\n+> Humans gate, then rest.\n+\n+---\n+\n ## License\n \n Fabro is licensed under the [MIT License](LICENSE.md).\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 8,
+        "deletions": 0
+      }
+    }
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -361,6 +422,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 87,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-23T21:55:43.460020765Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-23T21:55:43.459878770Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 16,
       "prompt": null,
@@ -401,7 +498,12 @@
       "first_event_seq": 20,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: greet",
+        "failure_reason": null,
+        "timestamp": "2026-08-23T21:55:39.241781735Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -415,8 +517,12 @@
       "started_at": "2026-08-23T21:54:29.372094373Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 67056,
-      "live_tool_ms": 1988,
+      "timing": {
+        "wall_time_ms": 63179,
+        "inference_time_ms": 60384,
+        "tool_time_ms": 1994,
+        "active_time_ms": 62378
+      },
       "usage": {
         "input_tokens": 16369,
         "output_tokens": 1060,
@@ -613,7 +719,7 @@
         "warnings": []
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "succeeded"
     }
   }
 }
