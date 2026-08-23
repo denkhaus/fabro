@@ -26,7 +26,7 @@ digraph Develop {
         max_visits=20,
         goal_gate=true,
         retry_policy="standard",
-        reasoning_effort="medium",
+        reasoning_effort="high",
         preamble_stages_ignore="planner,implementer,evidence"
     ]
 
