@@ -1,5 +1,6 @@
 #!/usr/bin/env nu
-# Capture review evidence for the read-only reviewer (prompt node, no tools).
+# Capture review evidence for the reviewer (read-only by policy; tools
+# available for verification).
 #
 # PIPE FACTS, measured over four review cycles: at the default `compact`
 # fidelity a downstream prompt node renders only the FIRST ~300 characters
@@ -20,14 +21,16 @@
 const LOOP_PREFIXES = [".fabro/" ".mulch/" ".seeds/" ".prime/" "docs/" "scripts/"]
 const LOOP_ROOTS = ["justfile" "AGENTS.md" "CONTEXT.md" ".gitignore" "lefthook.yml" "go.sum"]
 
-# HARD OUTPUT BUDGET: the engine demotes preamble values over 8KB
-# (artifact.rs PROMPT_INLINE_VALUE_MAX) to a 300-char preview + blob path a
-# tool-less reviewer can never read (painpoint #2 in the mailbox, run
-# 01M0NGQXB67674XQ5YCR1MB4BN). This script therefore keeps its ENTIRE
-# output under budget: fixed sections render first, the diff gets the
-# remainder, files are cut at whole-file boundaries, and every cut is
-# disclosed so review can reject on exact grounds. Chars, not bytes: JSON
-# escaping inflates newlines/quotes, so the margin below 8192 is deliberate.
+# OUTPUT BUDGET context (engine state 2026-08-23): two layers bound what
+# reaches the reviewer prompt — per-value demotion at 8KB
+# (PROMPT_INLINE_VALUE_MAX) and an AGGREGATE budget (12KB default,
+# graph-level preamble_budget_kb). Values over either arrive as a
+# preview-plus-blobref marker; the blob file is materialized in the
+# sandbox and the reviewer (read-only tools) can and must read it. This
+# script still self-budgets to 6.8k chars: staying under the per-value
+# threshold keeps the capture inline whenever the aggregate budget
+# allows, so the common case needs no blob round-trip. Critical-first
+# ordering keeps the most important sections intact under any cut.
 const OUTPUT_BUDGET = 6800
 const SPEC_CAP = 2200
 const TAIL_RESERVE = 700

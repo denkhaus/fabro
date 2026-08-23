@@ -72,9 +72,11 @@ digraph Develop {
         max_retries=1
     ]
 
-    // Reviewer: prompt node (shape=tab) — a single LLM call with NO tools.
-    // Cannot modify the repo; judges purely from context (brief, summary,
-    // gate result, evidence output).
+    // Reviewer: prompt node (shape=tab) — read-only BY POLICY, not by
+    // capability. Tools available for verification (reading blob refs,
+    // read-only git); never for modification. Judges primarily from
+    // context (brief, summary, gate result, evidence), falling back to
+    // tools when the context is incomplete.
     //
     // fidelity="summary:high" is the evidence pipe: the default `compact`
     // preamble truncates a command node's output to roughly the first 300
