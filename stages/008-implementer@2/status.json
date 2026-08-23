@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Run wurde auf Benutzeranweisung beendet ('beende den run'), bevor die Verifikation abgeschlossen war. Zusätzlich fiel die Sandbox mitten in der Verifikation aus (Docker 409: container not running), sodass fib_test.go nicht gelesen und keine Smoke-Checks (go build/test, go run . -version) ausgeführt werden konnten. Der Seed fabro-8d26 ist laut Teilprüfung weiterhin implementiert (main.go Kriterien 1-4 verifiziert); offen ist nur die Restverifikation der Testdatei und des Smoke-Checks durch die nachfolgenden Stages.",
+  "timestamp": "2026-08-23T15:10:30.670095446Z"
+}
