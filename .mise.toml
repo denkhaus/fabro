@@ -7,16 +7,16 @@
 #   BUN_INSTALL is pinned to a PATH dir by the runner image for exactly this.
 # - nushell and betterleaks come from the aqua registry; lefthook has a
 #   native mise backend.
-# - lefthook pinned to 2.0.16: 2.1.x pulls GitHub artifact attestations,
-#   which verify through the Sigstore TUF repository and broke on the
-#   runner image's mise 2026.8.10 (rotated TUF root, transport errors).
-#   2.0.x uses plain checksums — no external Sigstore dependency. Run
-#   evidence: 01M0QDMSDRZQ setup.failed. Permanent fix (baking the
-#   toolchain into the image) tracked in fabro-meta-a7c3.
+# - lefthook TEMPORARILY REMOVED: the aqua backend verifies GitHub
+#   artifact attestations through the Sigstore TUF repository, and that
+#   fetch fails intermittently from run sandboxes (runs 01M0QDMSDRZQ,
+#   01M0QFC53P6D; both 2.0.x and 2.1.x attest — betterleaks hit the same
+#   wall on the next retry). lefthook belongs to a complete quality gate;
+#   we run without it until the on-demand image build feature exists
+#   (bake the toolchain into the image, fabro-meta-a7c3), then restore it.
 [tools]
 bun = "1.4.0"
 "aqua:nushell/nushell" = "0.115.0"
 "aqua:betterleaks/betterleaks" = "1.8.1"
-lefthook = "2.0.16"
 go = "1.27.0"
 just = "1.58.0"
