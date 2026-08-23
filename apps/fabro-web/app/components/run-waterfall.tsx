@@ -11,6 +11,10 @@ import {
   stageStatusTone,
 } from "../lib/stage-sidebar";
 import { deriveRunPhases, type RunPhase } from "../lib/run-phases";
+import {
+  sandboxActivitySpans,
+  type SandboxActivitySpan,
+} from "../lib/sandbox-activity";
 import { useTickingNow } from "../lib/time";
 import type { EventEnvelope } from "@qltysh/fabro-api-client";
 
@@ -24,7 +28,7 @@ interface WaterfallProps {
 
 interface Row {
   key: string;
-  kind: "phase" | "stage";
+  kind: "phase" | "sandbox" | "stage";
   label: string;
   startMs: number;
   endMs: number | null;
@@ -105,6 +109,56 @@ function phaseRow(phase: RunPhase, nowMs: number): Row {
   };
 }
 
+function sandboxPopover(
+  span: SandboxActivitySpan,
+  durationMs: number | null,
+  inFlight: boolean,
+): ReactNode {
+  return (
+    <>
+      <PopoverHeader>{span.label}</PopoverHeader>
+      <PopoverRows>
+        <PopoverRow label="Started">
+          {formatAbsoluteTs(new Date(span.startMs).toISOString())}
+        </PopoverRow>
+        <PopoverRow label={inFlight ? "Elapsed" : "Duration"}>
+          <span className="font-mono">
+            {durationMs != null ? formatDurationMs(durationMs) : "--"}
+          </span>
+        </PopoverRow>
+        {span.failed && (
+          <PopoverRow label="Outcome">
+            <span className="text-coral">failed</span>
+          </PopoverRow>
+        )}
+      </PopoverRows>
+    </>
+  );
+}
+
+function sandboxRow(span: SandboxActivitySpan, index: number, nowMs: number): Row {
+  const endMs = span.endMs;
+  const inFlight = endMs == null;
+  const closedEnd = endMs ?? nowMs;
+  const rawDuration = closedEnd - span.startMs;
+  const durationMs = rawDuration >= 0 ? rawDuration : null;
+  return {
+    key: `sandbox:${span.kind}:${index}`,
+    kind: "sandbox",
+    label: span.label,
+    startMs: span.startMs,
+    endMs,
+    durationMs,
+    barClass: span.failed
+      ? "bg-coral"
+      : inFlight
+        ? "bg-amber animate-pulse"
+        : "bg-amber",
+    href: null,
+    popover: sandboxPopover(span, durationMs, inFlight),
+  };
+}
+
 function stagePopover(
   stage: RunStage,
   durationMs: number | null,
@@ -169,6 +223,9 @@ function buildRows({
   nowMs: number;
 }): Row[] {
   const phases = deriveRunPhases(events, createdAtIso).map((p) => phaseRow(p, nowMs));
+  const sandboxRows = sandboxActivitySpans(events).map((span, index) =>
+    sandboxRow(span, index, nowMs),
+  );
   const stageRows: Row[] = [];
   for (const stage of stages) {
     if (!isVisibleStage(stage.node_id)) continue;
@@ -176,7 +233,7 @@ function buildRows({
     if (row) stageRows.push(row);
   }
   stageRows.sort((a, b) => a.startMs - b.startMs);
-  return [...phases, ...stageRows];
+  return [...phases, ...sandboxRows, ...stageRows];
 }
 
 export function RunWaterfall({

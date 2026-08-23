@@ -38,6 +38,7 @@ import {
 import { classNames } from "../../lib/class-names";
 import { useRunPullRequest } from "../../lib/queries";
 import { sandboxRuntime } from "../../lib/run-sandbox-lifecycle";
+import { useSandboxActivity } from "../../hooks/use-sandbox-activity";
 import { ActionsMenu, type ActionsMenuProps } from "./actions";
 import type { RunDetailRun } from "./model";
 
@@ -70,6 +71,10 @@ export function RunDetailHeader({
     summary.lifecycle.status.kind === "failed" ||
     summary.lifecycle.archived ||
     summary.lifecycle.error != null;
+  const sandboxActivity = useSandboxActivity(
+    runId,
+    summary.lifecycle.status.kind === "starting",
+  );
   const showWorkflowPopover =
     summary.workflow.node_count > 0 ||
     summary.workflow.edge_count > 0 ||
@@ -78,6 +83,17 @@ export function RunDetailHeader({
     <span className="flex items-center gap-1.5">
       <span className={`size-2 rounded-full ${run.statusDot}`} />
       <span className={`font-medium ${run.statusText}`}>{run.statusLabel}</span>
+      {sandboxActivity && (
+        <span className="flex items-center gap-1.5 font-mono text-xs text-fg-muted">
+          <span className="size-1.5 animate-pulse rounded-full bg-amber" />
+          <span>{sandboxActivity.label}</span>
+          {sandboxActivity.firstBuild && (
+            <span className="text-fg-muted/70">
+              · first build can take a few minutes
+            </span>
+          )}
+        </span>
+      )}
     </span>
   );
   const repoChip = (
