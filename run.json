@@ -497,7 +497,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-23T17:29:36.750494284Z",
-  "last_event_at": "2026-08-23T17:34:03.358758180Z",
+  "last_event_at": "2026-08-23T17:34:08.901155385Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1352,9 +1352,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 259,
       "checkpoint": {
-        "timestamp": "2026-08-23T17:34:03.654870108Z",
+        "timestamp": "2026-08-23T17:34:07.813361599Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -1367,89 +1367,46 @@
         ],
         "node_retries": {},
         "context_values": {
-          "last_response": "Closed `fabro-8d26` after its approved review; `sd ready` and `sd list` both show zero open seeds — the tracker is empty and the goal is achieved.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_labe",
-          "thread.start.current_node": "planner",
-          "internal.retry_count.evidence": 0,
-          "response.planner": "Closed `fabro-8d26` after its approved review; `sd ready` and `sd list` both show zero open seeds — the tracker is empty and the goal is achieved.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Tracker empty\",\n  \"context_updates\": {\n    \"review_verdict\": \"\"\n  }\n}",
-          "internal.retry_count.implementer": 0,
-          "internal.retry_count.reviewer": 0,
-          "failure_class": "",
-          "outcome": "succeeded",
-          "thread.evidence.current_node": "reviewer",
-          "review_verdict": "",
           "internal.thread_id": "reviewer",
-          "implementation_summary": "In `/workspace/fabro/main.go`: added package const `Version = \"1.3.0\"`, threaded a `version bool` into `run()` whose check prints `gofib <Version>` and returns nil before the `-n` validation (so `-version -n 0` wins), registered the `-version` flag in `main()`, and updated doc comments. In `/workspace/fabro/fib_test.go`: updated all 7 existing `run()` call sites and added table-driven `TestRunVersion` (version alone, with `-json -n 5`, with `-pretty`, with invalid `-n 0`; each asserts the single `gofib 1.3.0` line and nil error). Smoke checks green: gofmt/vet/test pass, all four `-version` invocation shapes print only the version line with exit 0, no artifacts left in the worktree.",
-          "thread.planner.current_node": "implementer",
-          "internal.retry_count.planner": 0,
-          "current_seed_title": "gofib: add -version flag",
           "review_feedback": "Approved. Evidence integrity is consistent (seed-work = 2 files +51/-11, matching exactly the two files named in the seed spec: main.go and fib_test.go; loop-churn 1 file +1/-1 is loop machinery only; worktree clean, no untracked artifacts). Every visible seed requirement is satisfied: package const Version = \"1.3.0\"; bool `version` flag registered via the flag package in main() so `gofib -version` is usable; version check prints `gofib 1.3.0` and returns nil before -n validation so the flag works without -n and wins over an invalid -n; doc comments updated; all existing run() call sites updated for the new signature (in-scope consequence of threading the flag into run()); new table-driven TestRunVersion covers version alone, with - -n 5, with -pretty, and with invalid -n 0, each asserting the single version line and nil error. Quality gate was green (gofmt, build, vet, go test) and the summary makes no claims the evidence contradicts. No scope creep, no dead code, no hygiene issues visible. Painpoint (minor, informational): this pass the evidence and brief arrived only as blob-ref previews in context; the retry contract then permitted JSON-only output, which blocks the fallback blob read the reviewer instructions require — suggest the engine inline at least the full seed spec (not just its preview) in the preamble so a verdict never depends on a read that the retry format forbids.",
-          "internal.retry_count.start": 0,
-          "thread.reviewer.current_node": "planner",
-          "graph.rankdir": "LR",
-          "internal.work_dir": "/workspace/fabro",
-          "current_node": "planner",
-          "preferred_label": "Tracker empty",
-          "internal.run_id": "01M0QTNF6GWHGPKHSQ2Y2PB8CQ",
+          "thread.evidence.current_node": "reviewer",
           "internal.fidelity": "compact",
-          "last_stage": "planner",
-          "response.reviewer": "{\"outcome\":\"succeeded\",\"preferred_next_label\":\"Approved\",\"context_updates\":{\"review_verdict\":\"approved\",\"review_feedback\":\"Approved. Evidence integrity is consistent (seed-work = 2 files +51/-11, matching exactly the two files named in the seed spec: main.go and fib_test.go; loop-churn 1 file +1/-1 is loop machinery only; worktree clean, no untracked artifacts). Every visible seed requirement is satisfied: package const Version = \\\"1.3.0\\\"; bool `version` flag registered via the flag package in main() so `gofib -version` is usable; version check prints `gofib 1.3.0` and returns nil before -n validation so the flag works without -n and wins over an invalid -n; doc comments updated; all existing run() call sites updated for the new signature (in-scope consequence of threading the flag into run()); new table-driven TestRunVersion covers version alone, with - -n 5, with -pretty, and with invalid -n 0, each asserting the single version line and nil error. Quality gate was green (gofmt, build, vet, go test) and the summary makes no claims the evidence contradicts. No scope creep, no dead code, no hygiene issues visible. Painpoint (minor, informational): this pass the evidence and brief arrived only as blob-ref previews in context; the retry contract then permitted JSON-only output, which blocks the fallback blob read the reviewer instructions require — suggest the engine inline at least the full seed spec (not just its preview) in the preamble so a verdict never depends on a read that the retry format forbids.\"}}",
-          "graph.max_node_visits": "40",
-          "graph.preamble_budget_kb": "12",
-          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
-          "current_seed_brief": "Add a -version flag to the gofib CLI in `/workspace/fabro/main.go` (and tests in `/workspace/fabro/fib_test.go`). Acceptance criteria:\n- New bool flag `version` registered via the flag package in main(): usable as `gofib -version`.\n- Package-level const `Version = \"1.3.0\"` in main.go.\n- With -version, print exactly one line to stdout: `gofib 1.3.0` (i.e. `gofib <Version>`), then exit 0.\n- -version takes precedence over all output modes: `gofib -version -pretty` and `gofib -version -json -n 5` print only the version line. Ambiguity resolved: check -version BEFORE any -n validation (current code rejects -n < 1 in run() before printing), so the version check must happen ahead of that error path — `gofib -version -n 0` still prints the version line and exits 0.\n- Add a table-driven test (extend `fib_test.go`) covering: -version alone, and -version combined with -json; each case asserts the single line `gofib 1.3.0` on stdout and success (no error / exit 0). Test run()-level or main-level behavior — since main() is untested today, the natural shape is threading the version flag into run() or an equivalent testable seam; keep it minimal.\n- No external dependencies; `just qualitygate` in `/workspace/fabro` must pass.\nDone when `go run . -version` prints `gofib 1.3.0` and the gate is green.",
-          "failure_signature": "",
-          "internal.node_visit_count": 2,
-          "current_seed_id": "fabro-8d26",
-          "thread.tester.current_node": "evidence",
-          "thread.implementer.current_node": "tester",
-          "command.output": "blob://sha256/3949cc6cf4a6a585982c928ddbfadae3b1758ab123995a70a385f1a395f54d07",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.evidence": 0,
+          "internal.retry_count.start": 0,
           "internal.retry_count.tester": 0,
-          "response.implementer": "Implementation complete. Summary of this pass:\n\n**`/workspace/fabro/main.go`**\n- Added package-level const `Version = \"1.3.0\"`.\n- `run()` gained a `version bool` parameter; when set it prints exactly `gofib <Version>\\n` and returns nil. The check sits **before** the `count < 1` validation, so `gofib -version -n 0` still prints the version line and exits 0, per the brief's ambiguity resolution.\n- `main()` registers the `-version` bool flag via the flag package and threads it into `run()`.\n- Updated the package and `run()` doc comments.\n\n**`/workspace/fabro/fib_test.go`**\n- All 7 existing `run()` call sites updated for the new parameter.\n- New table-driven `TestRunVersion` covering: `-version` alone, `-version -json -n 5`, `-version -pretty`, and `-version -n 0` (precedence over validation) — each asserts the single line `gofib 1.3.0` and nil error.\n\n**Smoke checks (gate left to the tester step):** `gofmt` clean, `go vet` clean, `go test ./...` passes; `go run . -version`, `-version -pretty`, `-version -json -n 5`, and `-version -n 0` all print only `gofib 1.3.0` with exit 0; normal modes unaffected; no binary left in the worktree (used `go run .`, which builds into the Go cache); `git status` shows only the two intended files modified. No new mulch insight surfaced — the applied thin-main pattern was already recorded (`mx-d4cf38`); no painpoints.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"In `/workspace/fabro/main.go`: added package const `Version = \\\"1.3.0\\\"`, threaded a `version bool` into `run()` whose check prints `gofib <Version>` and returns nil before the `-n` validation (so `-version -n 0` wins), registered the `-version` flag in `main()`, and updated doc comments. In `/workspace/fabro/fib_test.go`: updated all 7 existing `run()` call sites and added table-driven `TestRunVersion` (version alone, with `-json -n 5`, with `-pretty`, with invalid `-n 0`; each asserts the single `gofib 1.3.0` line and nil error). Smoke checks green: gofmt/vet/test pass, all four `-version` invocation shapes print only the version line with exit 0, no artifacts left in the worktree.\"\n  }\n}"
+          "response.planner": "Closed `fabro-8d26` after its approved review; `sd ready` and `sd list` both show zero open seeds — the tracker is empty and the goal is achieved.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Tracker empty\",\n  \"context_updates\": {\n    \"review_verdict\": \"\"\n  }\n}",
+          "current_node": "planner",
+          "response.implementer": "Implementation complete. Summary of this pass:\n\n**`/workspace/fabro/main.go`**\n- Added package-level const `Version = \"1.3.0\"`.\n- `run()` gained a `version bool` parameter; when set it prints exactly `gofib <Version>\\n` and returns nil. The check sits **before** the `count < 1` validation, so `gofib -version -n 0` still prints the version line and exits 0, per the brief's ambiguity resolution.\n- `main()` registers the `-version` bool flag via the flag package and threads it into `run()`.\n- Updated the package and `run()` doc comments.\n\n**`/workspace/fabro/fib_test.go`**\n- All 7 existing `run()` call sites updated for the new parameter.\n- New table-driven `TestRunVersion` covering: `-version` alone, `-version -json -n 5`, `-version -pretty`, and `-version -n 0` (precedence over validation) — each asserts the single line `gofib 1.3.0` and nil error.\n\n**Smoke checks (gate left to the tester step):** `gofmt` clean, `go vet` clean, `go test ./...` passes; `go run . -version`, `-version -pretty`, `-version -json -n 5`, and `-version -n 0` all print only `gofib 1.3.0` with exit 0; normal modes unaffected; no binary left in the worktree (used `go run .`, which builds into the Go cache); `git status` shows only the two intended files modified. No new mulch insight surfaced — the applied thin-main pattern was already recorded (`mx-d4cf38`); no painpoints.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"In `/workspace/fabro/main.go`: added package const `Version = \\\"1.3.0\\\"`, threaded a `version bool` into `run()` whose check prints `gofib <Version>` and returns nil before the `-n` validation (so `-version -n 0` wins), registered the `-version` flag in `main()`, and updated doc comments. In `/workspace/fabro/fib_test.go`: updated all 7 existing `run()` call sites and added table-driven `TestRunVersion` (version alone, with `-json -n 5`, with `-pretty`, with invalid `-n 0`; each asserts the single `gofib 1.3.0` line and nil error). Smoke checks green: gofmt/vet/test pass, all four `-version` invocation shapes print only the version line with exit 0, no artifacts left in the worktree.\"\n  }\n}",
+          "implementation_summary": "In `/workspace/fabro/main.go`: added package const `Version = \"1.3.0\"`, threaded a `version bool` into `run()` whose check prints `gofib <Version>` and returns nil before the `-n` validation (so `-version -n 0` wins), registered the `-version` flag in `main()`, and updated doc comments. In `/workspace/fabro/fib_test.go`: updated all 7 existing `run()` call sites and added table-driven `TestRunVersion` (version alone, with `-json -n 5`, with `-pretty`, with invalid `-n 0`; each asserts the single `gofib 1.3.0` line and nil error). Smoke checks green: gofmt/vet/test pass, all four `-version` invocation shapes print only the version line with exit 0, no artifacts left in the worktree.",
+          "current_seed_title": "gofib: add -version flag",
+          "command.output": "blob://sha256/3949cc6cf4a6a585982c928ddbfadae3b1758ab123995a70a385f1a395f54d07",
+          "internal.retry_count.planner": 0,
+          "graph.preamble_budget_kb": "12",
+          "internal.retry_count.reviewer": 0,
+          "outcome": "succeeded",
+          "graph.max_node_visits": "40",
+          "preferred_label": "Tracker empty",
+          "review_verdict": "",
+          "thread.tester.current_node": "evidence",
+          "last_stage": "planner",
+          "internal.run_id": "01M0QTNF6GWHGPKHSQ2Y2PB8CQ",
+          "internal.node_visit_count": 2,
+          "failure_class": "",
+          "current_seed_brief": "Add a -version flag to the gofib CLI in `/workspace/fabro/main.go` (and tests in `/workspace/fabro/fib_test.go`). Acceptance criteria:\n- New bool flag `version` registered via the flag package in main(): usable as `gofib -version`.\n- Package-level const `Version = \"1.3.0\"` in main.go.\n- With -version, print exactly one line to stdout: `gofib 1.3.0` (i.e. `gofib <Version>`), then exit 0.\n- -version takes precedence over all output modes: `gofib -version -pretty` and `gofib -version -json -n 5` print only the version line. Ambiguity resolved: check -version BEFORE any -n validation (current code rejects -n < 1 in run() before printing), so the version check must happen ahead of that error path — `gofib -version -n 0` still prints the version line and exits 0.\n- Add a table-driven test (extend `fib_test.go`) covering: -version alone, and -version combined with -json; each case asserts the single line `gofib 1.3.0` on stdout and success (no error / exit 0). Test run()-level or main-level behavior — since main() is untested today, the natural shape is threading the version flag into run() or an equivalent testable seam; keep it minimal.\n- No external dependencies; `just qualitygate` in `/workspace/fabro` must pass.\nDone when `go run . -version` prints `gofib 1.3.0` and the gate is green.",
+          "graph.rankdir": "LR",
+          "internal.retry_count.implementer": 0,
+          "thread.implementer.current_node": "tester",
+          "thread.planner.current_node": "implementer",
+          "thread.reviewer.current_node": "planner",
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "thread.start.current_node": "planner",
+          "failure_signature": "",
+          "last_response": "Closed `fabro-8d26` after its approved review; `sd ready` and `sd list` both show zero open seeds — the tracker is empty and the goal is achieved.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_labe",
+          "current_seed_id": "fabro-8d26",
+          "response.reviewer": "{\"outcome\":\"succeeded\",\"preferred_next_label\":\"Approved\",\"context_updates\":{\"review_verdict\":\"approved\",\"review_feedback\":\"Approved. Evidence integrity is consistent (seed-work = 2 files +51/-11, matching exactly the two files named in the seed spec: main.go and fib_test.go; loop-churn 1 file +1/-1 is loop machinery only; worktree clean, no untracked artifacts). Every visible seed requirement is satisfied: package const Version = \\\"1.3.0\\\"; bool `version` flag registered via the flag package in main() so `gofib -version` is usable; version check prints `gofib 1.3.0` and returns nil before -n validation so the flag works without -n and wins over an invalid -n; doc comments updated; all existing run() call sites updated for the new signature (in-scope consequence of threading the flag into run()); new table-driven TestRunVersion covers version alone, with - -n 5, with -pretty, and with invalid -n 0, each asserting the single version line and nil error. Quality gate was green (gofmt, build, vet, go test) and the summary makes no claims the evidence contradicts. No scope creep, no dead code, no hygiene issues visible. Painpoint (minor, informational): this pass the evidence and brief arrived only as blob-ref previews in context; the retry contract then permitted JSON-only output, which blocks the fallback blob read the reviewer instructions require — suggest the engine inline at least the full seed spec (not just its preview) in the preamble so a verdict never depends on a read that the retry format forbids.\"}}"
         },
         "node_outcomes": {
-          "reviewer": {
-            "status": "succeeded",
-            "preferred_label": "Approved",
-            "context_updates": {
-              "review_feedback": "Approved. Evidence integrity is consistent (seed-work = 2 files +51/-11, matching exactly the two files named in the seed spec: main.go and fib_test.go; loop-churn 1 file +1/-1 is loop machinery only; worktree clean, no untracked artifacts). Every visible seed requirement is satisfied: package const Version = \"1.3.0\"; bool `version` flag registered via the flag package in main() so `gofib -version` is usable; version check prints `gofib 1.3.0` and returns nil before -n validation so the flag works without -n and wins over an invalid -n; doc comments updated; all existing run() call sites updated for the new signature (in-scope consequence of threading the flag into run()); new table-driven TestRunVersion covers version alone, with - -n 5, with -pretty, and with invalid -n 0, each asserting the single version line and nil error. Quality gate was green (gofmt, build, vet, go test) and the summary makes no claims the evidence contradicts. No scope creep, no dead code, no hygiene issues visible. Painpoint (minor, informational): this pass the evidence and brief arrived only as blob-ref previews in context; the retry contract then permitted JSON-only output, which blocks the fallback blob read the reviewer instructions require — suggest the engine inline at least the full seed spec (not just its preview) in the preamble so a verdict never depends on a read that the retry format forbids.",
-              "last_stage": "reviewer",
-              "last_response": "{\"outcome\":\"succeeded\",\"preferred_next_label\":\"Approved\",\"context_updates\":{\"review_verdict\":\"approved\",\"review_feedback\":\"Approved. Evidence integrity is consistent (seed-work = 2 files +51/-11, matc",
-              "response.reviewer": "{\"outcome\":\"succeeded\",\"preferred_next_label\":\"Approved\",\"context_updates\":{\"review_verdict\":\"approved\",\"review_feedback\":\"Approved. Evidence integrity is consistent (seed-work = 2 files +51/-11, matching exactly the two files named in the seed spec: main.go and fib_test.go; loop-churn 1 file +1/-1 is loop machinery only; worktree clean, no untracked artifacts). Every visible seed requirement is satisfied: package const Version = \\\"1.3.0\\\"; bool `version` flag registered via the flag package in main() so `gofib -version` is usable; version check prints `gofib 1.3.0` and returns nil before -n validation so the flag works without -n and wins over an invalid -n; doc comments updated; all existing run() call sites updated for the new signature (in-scope consequence of threading the flag into run()); new table-driven TestRunVersion covers version alone, with - -n 5, with -pretty, and with invalid -n 0, each asserting the single version line and nil error. Quality gate was green (gofmt, build, vet, go test) and the summary makes no claims the evidence contradicts. No scope creep, no dead code, no hygiene issues visible. Painpoint (minor, informational): this pass the evidence and brief arrived only as blob-ref previews in context; the retry contract then permitted JSON-only output, which blocks the fallback blob read the reviewer instructions require — suggest the engine inline at least the full seed spec (not just its preview) in the preamble so a verdict never depends on a read that the retry format forbids.\"}}",
-              "review_verdict": "approved"
-            },
-            "notes": "Stage completed: reviewer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 3398,
-                    "output_tokens": 458,
-                    "reasoning_tokens": 1178,
-                    "cache_read_tokens": 3136,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 12770
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 22636,
-              "tool_time_ms": 0,
-              "active_time_ms": 22636
-            }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -1530,6 +1487,24 @@
               "active_time_ms": 14550
             }
           },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/3949cc6cf4a6a585982c928ddbfadae3b1758ab123995a70a385f1a395f54d07"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 412,
+              "active_time_ms": 412
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "tester": {
             "status": "succeeded",
             "context_updates": {
@@ -1544,35 +1519,177 @@
               "active_time_ms": 1032
             }
           },
-          "evidence": {
+          "reviewer": {
             "status": "succeeded",
+            "preferred_label": "Approved",
             "context_updates": {
-              "command.output": "blob://sha256/3949cc6cf4a6a585982c928ddbfadae3b1758ab123995a70a385f1a395f54d07"
+              "review_feedback": "Approved. Evidence integrity is consistent (seed-work = 2 files +51/-11, matching exactly the two files named in the seed spec: main.go and fib_test.go; loop-churn 1 file +1/-1 is loop machinery only; worktree clean, no untracked artifacts). Every visible seed requirement is satisfied: package const Version = \"1.3.0\"; bool `version` flag registered via the flag package in main() so `gofib -version` is usable; version check prints `gofib 1.3.0` and returns nil before -n validation so the flag works without -n and wins over an invalid -n; doc comments updated; all existing run() call sites updated for the new signature (in-scope consequence of threading the flag into run()); new table-driven TestRunVersion covers version alone, with - -n 5, with -pretty, and with invalid -n 0, each asserting the single version line and nil error. Quality gate was green (gofmt, build, vet, go test) and the summary makes no claims the evidence contradicts. No scope creep, no dead code, no hygiene issues visible. Painpoint (minor, informational): this pass the evidence and brief arrived only as blob-ref previews in context; the retry contract then permitted JSON-only output, which blocks the fallback blob read the reviewer instructions require — suggest the engine inline at least the full seed spec (not just its preview) in the preamble so a verdict never depends on a read that the retry format forbids.",
+              "last_stage": "reviewer",
+              "last_response": "{\"outcome\":\"succeeded\",\"preferred_next_label\":\"Approved\",\"context_updates\":{\"review_verdict\":\"approved\",\"review_feedback\":\"Approved. Evidence integrity is consistent (seed-work = 2 files +51/-11, matc",
+              "response.reviewer": "{\"outcome\":\"succeeded\",\"preferred_next_label\":\"Approved\",\"context_updates\":{\"review_verdict\":\"approved\",\"review_feedback\":\"Approved. Evidence integrity is consistent (seed-work = 2 files +51/-11, matching exactly the two files named in the seed spec: main.go and fib_test.go; loop-churn 1 file +1/-1 is loop machinery only; worktree clean, no untracked artifacts). Every visible seed requirement is satisfied: package const Version = \\\"1.3.0\\\"; bool `version` flag registered via the flag package in main() so `gofib -version` is usable; version check prints `gofib 1.3.0` and returns nil before -n validation so the flag works without -n and wins over an invalid -n; doc comments updated; all existing run() call sites updated for the new signature (in-scope consequence of threading the flag into run()); new table-driven TestRunVersion covers version alone, with - -n 5, with -pretty, and with invalid -n 0, each asserting the single version line and nil error. Quality gate was green (gofmt, build, vet, go test) and the summary makes no claims the evidence contradicts. No scope creep, no dead code, no hygiene issues visible. Painpoint (minor, informational): this pass the evidence and brief arrived only as blob-ref previews in context; the retry contract then permitted JSON-only output, which blocks the fallback blob read the reviewer instructions require — suggest the engine inline at least the full seed spec (not just its preview) in the preamble so a verdict never depends on a read that the retry format forbids.\"}}",
+              "review_verdict": "approved"
             },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 3398,
+                    "output_tokens": 458,
+                    "reasoning_tokens": 1178,
+                    "cache_read_tokens": 3136,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 12770
+            },
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 412,
-              "active_time_ms": 412
+              "inference_time_ms": 22636,
+              "tool_time_ms": 0,
+              "active_time_ms": 22636
             }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "ee9ca759125510ed984ee0c36dd81674c6fc7bfc",
         "node_visits": {
-          "reviewer": 1,
-          "implementer": 1,
-          "planner": 2,
           "evidence": 1,
-          "start": 1,
-          "tester": 1
+          "planner": 2,
+          "reviewer": 1,
+          "tester": 1,
+          "implementer": 1,
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex bcf57af..97cbd5c 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -2,5 +2,5 @@\n {\"id\":\"fabro-759d\",\"title\":\"gofib: add -n flag to control how many Fibonacci numbers are printed\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-22T16:55:52.153Z\",\"updatedAt\":\"2026-08-22T17:21:09.781Z\",\"description\":\"Extend the existing gofib CLI with a -n flag.\\n\\nRequirements:\\n- Default behavior unchanged: 'gofib' prints the first 100 Fibonacci numbers, one per line, '<index>: <value>'.\\n- 'gofib -n 10' prints exactly the first 10 numbers in the same format.\\n- Use the flag package (stdlib). The flag must be named n, usage text must explain the default.\\n- n must be >= 1; invalid values (0, negative) cause a non-zero exit with an error message on stderr.\\n- Extend fib_test.go: table-driven tests for n=1, n=10, and the default path; one test for the error case (n=0) asserting non-zero exit and stderr message (use os/exec or extract the run logic for testability).\\n- No external dependencies. 'just qualitygate' must pass.\\n\\nDone when: 'go run . -n 5' prints exactly 5 lines with correct values and the gate is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-22T17:21:09.781Z\"}\n {\"id\":\"fabro-a1f5\",\"title\":\"gofib: add -json flag for machine-readable output\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-22T17:55:44.876Z\",\"updatedAt\":\"2026-08-22T18:51:51.057Z\",\"description\":\"Extend the gofib CLI with a -json output mode.\\n\\nRequirements:\\n- New bool flag 'json' via the flag package: 'gofib -json' or 'gofib -json -n 5'.\\n- JSON mode emits one JSON object per line (JSON Lines), each object exactly:\\n  {\\\"index\\\": <int>, \\\"fib\\\": \\\"<value-as-string>\\\"}\\n- fib values are big numbers; serialize them as strings to stay JSON-safe.\\n- Text mode (default) unchanged: '<index>: <value>'.\\n- Both flags combine: -json -n 10 emits exactly 10 JSON lines.\\n- Invalid usage (n < 1) still exits non-zero with stderr error, in both modes.\\n- Extend fib_test.go: table-driven tests for run() covering json+n=1,\\n  json default, and combined -json -n 10; assert exact JSON lines\\n  (unmarshal each line and compare fields).\\n- No external dependencies (stdlib only: encoding/json allowed).\\n- 'just qualitygate' must pass.\\n\\nDone when: 'go run . -json -n 5' emits exactly 5 valid JSON lines with\\ncorrect fib values and the gate is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-22T18:51:51.057Z\"}\n {\"id\":\"fabro-0879\",\"title\":\"gofib: add -pretty flag for aligned column output\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-22T19:50:57.960Z\",\"updatedAt\":\"2026-08-22T20:51:51.893Z\",\"description\":\"Extend the gofib CLI with a -pretty output mode.\\n\\nRequirements:\\n- New bool flag 'pretty' via the flag package: 'gofib -pretty', 'gofib -pretty -n 10', and 'gofib -pretty -json' are all valid.\\n- Pretty TEXT mode: two aligned columns, right-aligned index and value:\\n    '   1:                    1'\\n    '   2:                    1'\\n    '  10:                   55'\\n    ' 100:  354224848179261915075'\\n  The index column width is the width of the largest index; the value column width is the width of the largest value. Both right-aligned, separated by ': '.\\n- The largest index/value depend on n: for -n 5 the widths come from the 5th line, not the 100th.\\n- Pretty JSON mode: JSON Lines, same objects as -json ({\\\"index\\\":<int>,\\\"fib\\\":\\\"<string>\\\"}); -pretty only affects text mode. Document this in the flag usage text.\\n- -pretty with -n: both combine (pretty text for exactly n numbers).\\n- Default output (no -pretty) unchanged: '<index>: <value>' with single spaces.\\n- Extend fib_test.go: table-driven tests for run() covering pretty+n=5 (exact expected 5 lines including padding), pretty default (assert line count 100 and the exact last line), pretty+json (identical lines to -json for n=3). Compute expected strings in tests, do not hardcode F-values beyond small n.\\n- No external dependencies. 'just qualitygate' must pass.\\n\\nDone when: 'go run . -pretty -n 5' prints the exact aligned 5-line block above (widths from the 5th line) and the gate is green.\\n\\nMerged from run 01M0NJZGX7BMJAJC3CZJZ0RNT0 (implementer + gate green; reviewer died on z.ai broken pipe, transient_infra — human override, output manually verified: -pretty -n 10/-n 12/default widths correct).\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-22T20:51:51.722Z\"}\n-{\"id\":\"fabro-8d26\",\"title\":\"gofib: add -version flag\",\"status\":\"in_progress\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-22T21:01:17.873Z\",\"updatedAt\":\"2026-08-23T17:30:16.014Z\",\"description\":\"Add a -version flag to the gofib CLI.\\n\\nRequirements:\\n- New bool flag 'version' via the flag package: 'gofib -version'.\\n- With -version, print exactly one line to stdout: 'gofib <semver>' with\\n  semver taken from a package-level const Version = \\\"1.3.0\\\", then exit 0.\\n- -version takes precedence over all output modes: 'gofib -version -pretty'\\n  and 'gofib -version -json -n 5' also print only the version line.\\n- Add a table-driven test covering run() or main-level behavior for\\n  -version alone and -version combined with -json (assert the single\\n  version line and exit 0).\\n- No external dependencies. 'just qualitygate' must pass.\\n\\nDone when: 'go run . -version' prints 'gofib 1.3.0' and the gate is green.\",\"labels\":[\"ready-for-agent\"]}\n+{\"id\":\"fabro-8d26\",\"title\":\"gofib: add -version flag\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-22T21:01:17.873Z\",\"updatedAt\":\"2026-08-23T17:33:54.942Z\",\"description\":\"Add a -version flag to the gofib CLI.\\n\\nRequirements:\\n- New bool flag 'version' via the flag package: 'gofib -version'.\\n- With -version, print exactly one line to stdout: 'gofib <semver>' with\\n  semver taken from a package-level const Version = \\\"1.3.0\\\", then exit 0.\\n- -version takes precedence over all output modes: 'gofib -version -pretty'\\n  and 'gofib -version -json -n 5' also print only the version line.\\n- Add a table-driven test covering run() or main-level behavior for\\n  -version alone and -version combined with -json (assert the single\\n  version line and exit 0).\\n- No external dependencies. 'just qualitygate' must pass.\\n\\nDone when: 'go run . -version' prints 'gofib 1.3.0' and the gate is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-23T17:33:54.942Z\"}\n {\"id\":\"fabro-d810\",\"title\":\"Develop workflow: adopt preamble stage scoping + budget (prove a85b/facd/6a78 fixes in the loop)\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-08-23T10:56:49.844Z\",\"updatedAt\":\"2026-08-23T15:29:56.696Z\",\"description\":\"CLOSED (rescoped 2026-08-23): the workflow-adoption half is DONE and\\nverified in the worktree (scoping+budget synced: 17e1fb8/965fbc8/e579afe;\\nprompts aligned: d153c0372). The remaining acceptance (recording preamble\\nsizes across >=3 cycles under the rebuilt binary) is NOT executable from\\nthe product sandbox (no fabro CLI, no run events, no meta access) — it\\nlived in the wrong world and permanently blocked the planner tracker\\n(observed run 01M0QJ5FNE9, planner painpoint). The measurement moved to\\nthe platform world: fabro-29f7 gate step 3 records the numbers. Closing\\nhere prevents the eternal ready-but-unclaimable state.\",\"labels\":[\"review-tool-option\"],\"closedAt\":\"2026-08-23T15:29:56.696Z\"}\n",
+        "summary": {
+          "files_changed": 3,
+          "additions": 52,
+          "deletions": 12
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-08-23T17:34:07.869690420Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 245919,
+      "inference_time_ms": 192541,
+      "tool_time_ms": 16358,
+      "active_time_ms": 208899
+    },
+    "failure": {
+      "reason": "publish_failed",
+      "detail": {
+        "message": "failed to create pull request",
+        "causes": [
+          "LLM generation failed: No object generated: Failed to parse response as JSON: expected value at line 1 column 1"
+        ],
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "ee9ca759125510ed984ee0c36dd81674c6fc7bfc",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 57088,
+          "inference_time_ms": 52080,
+          "tool_time_ms": 2178,
+          "active_time_ms": 54258
+        },
+        "billing_usd_micros": 50707,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 132008,
+          "inference_time_ms": 117825,
+          "tool_time_ms": 12736,
+          "active_time_ms": 130561
+        },
+        "billing_usd_micros": 117586,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 1041,
+          "inference_time_ms": 0,
+          "tool_time_ms": 1032,
+          "active_time_ms": 1032
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 419,
+          "inference_time_ms": 0,
+          "tool_time_ms": 412,
+          "active_time_ms": 412
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 22706,
+          "inference_time_ms": 22636,
+          "tool_time_ms": 0,
+          "active_time_ms": 22636
+        },
+        "billing_usd_micros": 12770,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 45029,
+      "output_tokens": 5138,
+      "total_tokens": 324173,
+      "reasoning_tokens": 5846,
+      "cache_read_tokens": 268160,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 181063
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 5498418..97cbd5c 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -2,5 +2,5 @@\n {\"id\":\"fabro-759d\",\"title\":\"gofib: add -n flag to control how many Fibonacci numbers are printed\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-22T16:55:52.153Z\",\"updatedAt\":\"2026-08-22T17:21:09.781Z\",\"description\":\"Extend the existing gofib CLI with a -n flag.\\n\\nRequirements:\\n- Default behavior unchanged: 'gofib' prints the first 100 Fibonacci numbers, one per line, '<index>: <value>'.\\n- 'gofib -n 10' prints exactly the first 10 numbers in the same format.\\n- Use the flag package (stdlib). The flag must be named n, usage text must explain the default.\\n- n must be >= 1; invalid values (0, negative) cause a non-zero exit with an error message on stderr.\\n- Extend fib_test.go: table-driven tests for n=1, n=10, and the default path; one test for the error case (n=0) asserting non-zero exit and stderr message (use os/exec or extract the run logic for testability).\\n- No external dependencies. 'just qualitygate' must pass.\\n\\nDone when: 'go run . -n 5' prints exactly 5 lines with correct values and the gate is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-22T17:21:09.781Z\"}\n {\"id\":\"fabro-a1f5\",\"title\":\"gofib: add -json flag for machine-readable output\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-22T17:55:44.876Z\",\"updatedAt\":\"2026-08-22T18:51:51.057Z\",\"description\":\"Extend the gofib CLI with a -json output mode.\\n\\nRequirements:\\n- New bool flag 'json' via the flag package: 'gofib -json' or 'gofib -json -n 5'.\\n- JSON mode emits one JSON object per line (JSON Lines), each object exactly:\\n  {\\\"index\\\": <int>, \\\"fib\\\": \\\"<value-as-string>\\\"}\\n- fib values are big numbers; serialize them as strings to stay JSON-safe.\\n- Text mode (default) unchanged: '<index>: <value>'.\\n- Both flags combine: -json -n 10 emits exactly 10 JSON lines.\\n- Invalid usage (n < 1) still exits non-zero with stderr error, in both modes.\\n- Extend fib_test.go: table-driven tests for run() covering json+n=1,\\n  json default, and combined -json -n 10; assert exact JSON lines\\n  (unmarshal each line and compare fields).\\n- No external dependencies (stdlib only: encoding/json allowed).\\n- 'just qualitygate' must pass.\\n\\nDone when: 'go run . -json -n 5' emits exactly 5 valid JSON lines with\\ncorrect fib values and the gate is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-22T18:51:51.057Z\"}\n {\"id\":\"fabro-0879\",\"title\":\"gofib: add -pretty flag for aligned column output\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-22T19:50:57.960Z\",\"updatedAt\":\"2026-08-22T20:51:51.893Z\",\"description\":\"Extend the gofib CLI with a -pretty output mode.\\n\\nRequirements:\\n- New bool flag 'pretty' via the flag package: 'gofib -pretty', 'gofib -pretty -n 10', and 'gofib -pretty -json' are all valid.\\n- Pretty TEXT mode: two aligned columns, right-aligned index and value:\\n    '   1:                    1'\\n    '   2:                    1'\\n    '  10:                   55'\\n    ' 100:  354224848179261915075'\\n  The index column width is the width of the largest index; the value column width is the width of the largest value. Both right-aligned, separated by ': '.\\n- The largest index/value depend on n: for -n 5 the widths come from the 5th line, not the 100th.\\n- Pretty JSON mode: JSON Lines, same objects as -json ({\\\"index\\\":<int>,\\\"fib\\\":\\\"<string>\\\"}); -pretty only affects text mode. Document this in the flag usage text.\\n- -pretty with -n: both combine (pretty text for exactly n numbers).\\n- Default output (no -pretty) unchanged: '<index>: <value>' with single spaces.\\n- Extend fib_test.go: table-driven tests for run() covering pretty+n=5 (exact expected 5 lines including padding), pretty default (assert line count 100 and the exact last line), pretty+json (identical lines to -json for n=3). Compute expected strings in tests, do not hardcode F-values beyond small n.\\n- No external dependencies. 'just qualitygate' must pass.\\n\\nDone when: 'go run . -pretty -n 5' prints the exact aligned 5-line block above (widths from the 5th line) and the gate is green.\\n\\nMerged from run 01M0NJZGX7BMJAJC3CZJZ0RNT0 (implementer + gate green; reviewer died on z.ai broken pipe, transient_infra — human override, output manually verified: -pretty -n 10/-n 12/default widths correct).\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-22T20:51:51.722Z\"}\n-{\"id\":\"fabro-8d26\",\"title\":\"gofib: add -version flag\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-22T21:01:17.873Z\",\"updatedAt\":\"2026-08-22T21:01:17.873Z\",\"description\":\"Add a -version flag to the gofib CLI.\\n\\nRequirements:\\n- New bool flag 'version' via the flag package: 'gofib -version'.\\n- With -version, print exactly one line to stdout: 'gofib <semver>' with\\n  semver taken from a package-level const Version = \\\"1.3.0\\\", then exit 0.\\n- -version takes precedence over all output modes: 'gofib -version -pretty'\\n  and 'gofib -version -json -n 5' also print only the version line.\\n- Add a table-driven test covering run() or main-level behavior for\\n  -version alone and -version combined with -json (assert the single\\n  version line and exit 0).\\n- No external dependencies. 'just qualitygate' must pass.\\n\\nDone when: 'go run . -version' prints 'gofib 1.3.0' and the gate is green.\",\"labels\":[\"ready-for-agent\"]}\n+{\"id\":\"fabro-8d26\",\"title\":\"gofib: add -version flag\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-22T21:01:17.873Z\",\"updatedAt\":\"2026-08-23T17:33:54.942Z\",\"description\":\"Add a -version flag to the gofib CLI.\\n\\nRequirements:\\n- New bool flag 'version' via the flag package: 'gofib -version'.\\n- With -version, print exactly one line to stdout: 'gofib <semver>' with\\n  semver taken from a package-level const Version = \\\"1.3.0\\\", then exit 0.\\n- -version takes precedence over all output modes: 'gofib -version -pretty'\\n  and 'gofib -version -json -n 5' also print only the version line.\\n- Add a table-driven test covering run() or main-level behavior for\\n  -version alone and -version combined with -json (assert the single\\n  version line and exit 0).\\n- No external dependencies. 'just qualitygate' must pass.\\n\\nDone when: 'go run . -version' prints 'gofib 1.3.0' and the gate is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-23T17:33:54.942Z\"}\n {\"id\":\"fabro-d810\",\"title\":\"Develop workflow: adopt preamble stage scoping + budget (prove a85b/facd/6a78 fixes in the loop)\",\"status\":\"closed\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-08-23T10:56:49.844Z\",\"updatedAt\":\"2026-08-23T15:29:56.696Z\",\"description\":\"CLOSED (rescoped 2026-08-23): the workflow-adoption half is DONE and\\nverified in the worktree (scoping+budget synced: 17e1fb8/965fbc8/e579afe;\\nprompts aligned: d153c0372). The remaining acceptance (recording preamble\\nsizes across >=3 cycles under the rebuilt binary) is NOT executable from\\nthe product sandbox (no fabro CLI, no run events, no meta access) — it\\nlived in the wrong world and permanently blocked the planner tracker\\n(observed run 01M0QJ5FNE9, planner painpoint). The measurement moved to\\nthe platform world: fabro-29f7 gate step 3 records the numbers. Closing\\nhere prevents the eternal ready-but-unclaimable state.\",\"labels\":[\"review-tool-option\"],\"closedAt\":\"2026-08-23T15:29:56.696Z\"}\ndiff --git a/fib_test.go b/fib_test.go\nindex 1659124..4626976 100644\n--- a/fib_test.go\n+++ b/fib_test.go\n@@ -54,7 +54,7 @@ func TestRun(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.n, false, false); err != nil {\n+\t\t\tif err := run(&buf, tt.n, false, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d) returned error: %v\", tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -95,7 +95,7 @@ func TestRunJSON(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.n, true, false); err != nil {\n+\t\t\tif err := run(&buf, tt.n, true, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, json) returned error: %v\", tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -143,7 +143,7 @@ func TestRunPretty(t *testing.T) {\n \t} {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.n, false, true); err != nil {\n+\t\t\tif err := run(&buf, tt.n, false, true, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, pretty) returned error: %v\", tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -163,7 +163,7 @@ func TestRunPretty(t *testing.T) {\n \t// index right-aligned to len(\"100\"), value to len(Fib(100)).\n \tt.Run(\"pretty default prints 100 aligned numbers\", func(t *testing.T) {\n \t\tvar buf bytes.Buffer\n-\t\tif err := run(&buf, defaultCount, false, true); err != nil {\n+\t\tif err := run(&buf, defaultCount, false, true, false); err != nil {\n \t\t\tt.Fatalf(\"run(default, pretty) returned error: %v\", err)\n \t\t}\n \t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -181,10 +181,10 @@ func TestRunPrettyJSON(t *testing.T) {\n \t// -pretty only affects text mode: with -json the output must be\n \t// identical, line for line.\n \tvar jsonOnly, prettyJSON bytes.Buffer\n-\tif err := run(&jsonOnly, 3, true, false); err != nil {\n+\tif err := run(&jsonOnly, 3, true, false, false); err != nil {\n \t\tt.Fatalf(\"run(3, json) returned error: %v\", err)\n \t}\n-\tif err := run(&prettyJSON, 3, true, true); err != nil {\n+\tif err := run(&prettyJSON, 3, true, true, false); err != nil {\n \t\tt.Fatalf(\"run(3, json, pretty) returned error: %v\", err)\n \t}\n \tif prettyJSON.String() != jsonOnly.String() {\n@@ -205,7 +205,7 @@ func TestRunRejectsInvalidCount(t *testing.T) {\n \t}{{\"text\", false}, {\"json\", true}} {\n \t\tfor _, n := range []int{0, -5} {\n \t\t\tvar buf bytes.Buffer\n-\t\t\terr := run(&buf, n, mode.asJSON, false)\n+\t\t\terr := run(&buf, n, mode.asJSON, false, false)\n \t\t\tif err == nil {\n \t\t\t\tt.Fatalf(\"run(%d, %s) succeeded, want error\", n, mode.name)\n \t\t\t}\n@@ -218,3 +218,32 @@ func TestRunRejectsInvalidCount(t *testing.T) {\n \t\t}\n \t}\n }\n+\n+func TestRunVersion(t *testing.T) {\n+\t// -version must win over every other flag combination: the only\n+\t// output is the single line \"gofib <Version>\". It is checked before\n+\t// the -n validation in run(), so even an invalid count still prints\n+\t// the version line and succeeds.\n+\ttests := []struct {\n+\t\tname   string\n+\t\tcount  int\n+\t\tasJSON bool\n+\t\tpretty bool\n+\t}{\n+\t\t{\"version alone\", defaultCount, false, false},\n+\t\t{\"version with -json -n 5\", 5, true, false},\n+\t\t{\"version with -pretty\", defaultCount, false, true},\n+\t\t{\"version with invalid -n 0\", 0, false, false},\n+\t}\n+\tfor _, tt := range tests {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tvar buf bytes.Buffer\n+\t\t\tif err := run(&buf, tt.count, tt.asJSON, tt.pretty, true); err != nil {\n+\t\t\t\tt.Fatalf(\"run(version) returned error: %v\", err)\n+\t\t\t}\n+\t\t\tif want := \"gofib \" + Version + \"\\n\"; buf.String() != want {\n+\t\t\t\tt.Errorf(\"run(version) wrote %q, want exactly %q\", buf.String(), want)\n+\t\t\t}\n+\t\t})\n+\t}\n+}\ndiff --git a/main.go b/main.go\nindex 47c896f..9dd76ef 100644\n--- a/main.go\n+++ b/main.go\n@@ -2,7 +2,8 @@\n // the index: \"1: 1\", \"2: 1\", \"3: 2\", ... By default it prints the first\n // 100; the -n flag changes how many are printed, -json switches to\n // JSON Lines output, and -pretty aligns the text columns (it has no\n-// effect with -json).\n+// effect with -json). The -version flag prints \"gofib <Version>\" and\n+// takes precedence over every other flag.\n package main\n \n import (\n@@ -18,6 +19,9 @@ import (\n // defaultCount is how many numbers gofib prints when -n is omitted.\n const defaultCount = 100\n \n+// Version is gofib's semantic version, reported by the -version flag.\n+const Version = \"1.3.0\"\n+\n // fibLine is the JSON object emitted once per number in -json mode.\n // The Fibonacci value is a string because it can exceed int64.\n type fibLine struct {\n@@ -39,9 +43,15 @@ func Fib(n int) *big.Int {\n // the index to the width of the largest index printed and the value to\n // the width of the largest value printed, separated by \": \". In JSON\n // mode each line is one JSON object {\"index\": <int>, \"fib\": \"<value>\"}\n-// (JSON Lines) and pretty has no effect. It returns an error when\n+// (JSON Lines) and pretty has no effect. With version set it prints only\n+// the single line \"gofib <Version>\" and every other flag (including an\n+// invalid count) is ignored. Otherwise it returns an error when\n // count < 1.\n-func run(w io.Writer, count int, asJSON, pretty bool) error {\n+func run(w io.Writer, count int, asJSON, pretty, version bool) error {\n+\tif version {\n+\t\tfmt.Fprintf(w, \"gofib %s\\n\", Version)\n+\t\treturn nil\n+\t}\n \tif count < 1 {\n \t\treturn fmt.Errorf(\"invalid value %d for flag -n: must be >= 1\", count)\n \t}\n@@ -71,8 +81,9 @@ func main() {\n \tn := flag.Int(\"n\", defaultCount, \"how many Fibonacci numbers to print (must be >= 1; default 100)\")\n \tasJSON := flag.Bool(\"json\", false, \"emit JSON Lines instead of text: one {\\\"index\\\": i, \\\"fib\\\": \\\"value\\\"} object per number\")\n \tpretty := flag.Bool(\"pretty\", false, \"align text output into two right-aligned columns sized to the largest index and value (no effect with -json)\")\n+\tversion := flag.Bool(\"version\", false, \"print \\\"gofib <version>\\\" and exit; takes precedence over all other flags\")\n \tflag.Parse()\n-\tif err := run(os.Stdout, *n, *asJSON, *pretty); err != nil {\n+\tif err := run(os.Stdout, *n, *asJSON, *pretty, *version); err != nil {\n \t\tfmt.Fprintln(os.Stderr, err)\n \t\tos.Exit(1)\n \t}\n",
+      "summary": {
+        "files_changed": 3,
+        "additions": 52,
+        "deletions": 12
+      }
+    }
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -1599,15 +1716,15 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
-    "start@1": {
-      "first_event_seq": 23,
+    "exit@1": {
+      "first_event_seq": 262,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
         "notes": null,
         "failure_reason": null,
-        "timestamp": "2026-08-23T17:29:38.688265107Z"
+        "timestamp": "2026-08-23T17:34:07.813672545Z"
       },
       "provider_used": null,
       "diff": null,
@@ -1615,8 +1732,8 @@
       "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-08-23T17:29:38.675746077Z",
-      "handler": "start",
+      "started_at": "2026-08-23T17:34:07.813645608Z",
+      "handler": "exit",
       "graph_visit": 1,
       "timing": {
         "wall_time_ms": 0,
@@ -2048,374 +2165,6 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "planner@2": {
-      "first_event_seq": 229,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Stage completed: planner",
-        "failure_reason": null,
-        "timestamp": "2026-08-23T17:34:03.358758180Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "high"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-08-23T17:33:44.535485803Z",
-      "handler": "agent",
-      "graph_visit": 2,
-      "timing": {
-        "wall_time_ms": 15898,
-        "inference_time_ms": 13925,
-        "tool_time_ms": 625,
-        "active_time_ms": 14550
-      },
-      "usage": {
-        "input_tokens": 7925,
-        "output_tokens": 153,
-        "total_tokens": 23558,
-        "reasoning_tokens": 184,
-        "cache_read_tokens": 15296,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 16551
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "skills": {
-        "available": [
-          {
-            "name": "ask-matt",
-            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
-          },
-          {
-            "name": "claude-handoff",
-            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
-          },
-          {
-            "name": "code-review",
-            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
-          },
-          {
-            "name": "codebase-design",
-            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
-          },
-          {
-            "name": "diagnosing-bugs",
-            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
-          },
-          {
-            "name": "domain-modeling",
-            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
-          },
-          {
-            "name": "git-guardrails-claude-code",
-            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
-          },
-          {
-            "name": "grill-me",
-            "description": "A relentless interview to sharpen a plan or design."
-          },
-          {
-            "name": "grill-with-docs",
-            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
-          },
-          {
-            "name": "grilling",
-            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
-          },
-          {
-            "name": "handoff",
-            "description": "Compact the current conversation into a handoff document for another agent to pick up."
-          },
-          {
-            "name": "implement",
-            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
-          },
-          {
-            "name": "implement-spec",
-            "description": "\"Implement a specification in code.\""
-          },
-          {
-            "name": "improve-codebase-architecture",
-            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
-          },
-          {
-            "name": "loop-me",
-            "description": "Grill me about specs for the workflows I want to build, within this workspace."
-          },
-          {
-            "name": "migrate-to-shoehorn",
-            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
-          },
-          {
-            "name": "prototype",
-            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
-          },
-          {
-            "name": "research",
-            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
-          },
-          {
-            "name": "resolving-merge-conflicts",
-            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
-          },
-          {
-            "name": "scaffold-exercises",
-            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
-          },
-          {
-            "name": "setup-matt-pocock-skills",
-            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
-          },
-          {
-            "name": "setup-pre-commit",
-            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
-          },
-          {
-            "name": "setup-ts-deep-modules",
-            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
-          },
-          {
-            "name": "tdd",
-            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
-          },
-          {
-            "name": "teach",
-            "description": "Teach the user a new skill or concept, within this workspace."
-          },
-          {
-            "name": "to-questionnaire",
-            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
-          },
-          {
-            "name": "to-spec",
-            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
-          },
-          {
-            "name": "to-tickets",
-            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
-          },
-          {
-            "name": "triage",
-            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
-          },
-          {
-            "name": "wait-what",
-            "description": "\"Stop. That last message did not land: re-pitch it.\""
-          },
-          {
-            "name": "wayfinder",
-            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
-          },
-          {
-            "name": "wizard",
-            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
-          },
-          {
-            "name": "writing-beats",
-            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
-          },
-          {
-            "name": "writing-for-agents",
-            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
-          },
-          {
-            "name": "writing-fragments",
-            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
-          },
-          {
-            "name": "writing-shape",
-            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
-          }
-        ],
-        "activated": []
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "use_skill",
-          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
-          "source": {
-            "kind": "skill"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 7879,
-        "usage_percent": 0.7513999938964844,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-08-23T17:34:03.342352131Z",
-        "event_seq": 252,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1139,
-            "usage_percent": 0.10862350463867188
-          },
-          {
-            "category": "tools",
-            "tokens": 1535,
-            "usage_percent": 0.14638900756835938
-          },
-          {
-            "category": "skills",
-            "tokens": 1552,
-            "usage_percent": 0.14801025390625
-          },
-          {
-            "category": "memory",
-            "tokens": 1263,
-            "usage_percent": 0.12044906616210938
-          },
-          {
-            "category": "conversation",
-            "tokens": 2384,
-            "usage_percent": 0.22735595703125
-          },
-          {
-            "category": "other",
-            "tokens": 6,
-            "usage_percent": 0.00057220458984375
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "implementer@1": {
       "first_event_seq": 85,
       "prompt": null,
@@ -2783,6 +2532,93 @@
       "agent_control": "running",
       "state": "succeeded"
     },
+    "evidence@1": {
+      "first_event_seq": 209,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-08-23T17:33:07.507336824Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/3949cc6cf4a6a585982c928ddbfadae3b1758ab123995a70a385f1a395f54d07",
+        "exit_code": 0,
+        "duration_ms": 412,
+        "termination": "exited",
+        "output_bytes": 6005,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 6005,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-08-23T17:33:07.074548572Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 419,
+        "inference_time_ms": 0,
+        "tool_time_ms": 412,
+        "active_time_ms": 412
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 23,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-23T17:29:38.688265107Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-23T17:29:38.675746077Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "tester@1": {
       "first_event_seq": 199,
       "prompt": null,
@@ -2834,53 +2670,370 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "evidence@1": {
-      "first_event_seq": 209,
+    "planner@2": {
+      "first_event_seq": 229,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "notes": "Stage completed: planner",
         "failure_reason": null,
-        "timestamp": "2026-08-23T17:33:07.507336824Z"
+        "timestamp": "2026-08-23T17:34:03.358758180Z"
       },
-      "provider_used": null,
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "high"
+      },
       "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
-        "language": "shell",
-        "timeout_ms": 120000
-      },
-      "script_timing": {
-        "output": "blob://sha256/3949cc6cf4a6a585982c928ddbfadae3b1758ab123995a70a385f1a395f54d07",
-        "exit_code": 0,
-        "duration_ms": 412,
-        "termination": "exited",
-        "output_bytes": 6005,
-        "live_streaming": true
-      },
+      "script_invocation": null,
+      "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "output_bytes": 6005,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-08-23T17:33:07.074548572Z",
-      "handler": "command",
-      "graph_visit": 1,
+      "started_at": "2026-08-23T17:33:44.535485803Z",
+      "handler": "agent",
+      "graph_visit": 2,
       "timing": {
-        "wall_time_ms": 419,
-        "inference_time_ms": 0,
-        "tool_time_ms": 412,
-        "active_time_ms": 412
+        "wall_time_ms": 15898,
+        "inference_time_ms": 13925,
+        "tool_time_ms": 625,
+        "active_time_ms": 14550
       },
       "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
+        "input_tokens": 7925,
+        "output_tokens": 153,
+        "total_tokens": 23558,
+        "reasoning_tokens": 184,
+        "cache_read_tokens": 15296,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 16551
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "ask-matt",
+            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
+          },
+          {
+            "name": "claude-handoff",
+            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
+          },
+          {
+            "name": "code-review",
+            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
+          },
+          {
+            "name": "codebase-design",
+            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
+          },
+          {
+            "name": "diagnosing-bugs",
+            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
+          },
+          {
+            "name": "domain-modeling",
+            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
+          },
+          {
+            "name": "git-guardrails-claude-code",
+            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
+          },
+          {
+            "name": "grill-me",
+            "description": "A relentless interview to sharpen a plan or design."
+          },
+          {
+            "name": "grill-with-docs",
+            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
+          },
+          {
+            "name": "grilling",
+            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
+          },
+          {
+            "name": "handoff",
+            "description": "Compact the current conversation into a handoff document for another agent to pick up."
+          },
+          {
+            "name": "implement",
+            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
+          },
+          {
+            "name": "implement-spec",
+            "description": "\"Implement a specification in code.\""
+          },
+          {
+            "name": "improve-codebase-architecture",
+            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
+          },
+          {
+            "name": "loop-me",
+            "description": "Grill me about specs for the workflows I want to build, within this workspace."
+          },
+          {
+            "name": "migrate-to-shoehorn",
+            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
+          },
+          {
+            "name": "prototype",
+            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
+          },
+          {
+            "name": "research",
+            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
+          },
+          {
+            "name": "resolving-merge-conflicts",
+            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
+          },
+          {
+            "name": "scaffold-exercises",
+            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
+          },
+          {
+            "name": "setup-matt-pocock-skills",
+            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
+          },
+          {
+            "name": "setup-pre-commit",
+            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
+          },
+          {
+            "name": "setup-ts-deep-modules",
+            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
+          },
+          {
+            "name": "tdd",
+            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
+          },
+          {
+            "name": "teach",
+            "description": "Teach the user a new skill or concept, within this workspace."
+          },
+          {
+            "name": "to-questionnaire",
+            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
+          },
+          {
+            "name": "to-spec",
+            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
+          },
+          {
+            "name": "to-tickets",
+            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
+          },
+          {
+            "name": "triage",
+            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
+          },
+          {
+            "name": "wait-what",
+            "description": "\"Stop. That last message did not land: re-pitch it.\""
+          },
+          {
+            "name": "wayfinder",
+            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
+          },
+          {
+            "name": "wizard",
+            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
+          },
+          {
+            "name": "writing-beats",
+            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
+          },
+          {
+            "name": "writing-for-agents",
+            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
+          },
+          {
+            "name": "writing-fragments",
+            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
+          },
+          {
+            "name": "writing-shape",
+            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 7879,
+        "usage_percent": 0.7513999938964844,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-08-23T17:34:03.342352131Z",
+        "event_seq": 252,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1139,
+            "usage_percent": 0.10862350463867188
+          },
+          {
+            "category": "tools",
+            "tokens": 1535,
+            "usage_percent": 0.14638900756835938
+          },
+          {
+            "category": "skills",
+            "tokens": 1552,
+            "usage_percent": 0.14801025390625
+          },
+          {
+            "category": "memory",
+            "tokens": 1263,
+            "usage_percent": 0.12044906616210938
+          },
+          {
+            "category": "conversation",
+            "tokens": 2384,
+            "usage_percent": 0.22735595703125
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
