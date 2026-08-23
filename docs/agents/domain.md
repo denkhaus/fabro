@@ -12,28 +12,26 @@ to one CONTEXT.md per context. The contexts:
 | --- | --- | --- |
 | Engine | `lib/` (Rust workspace: apps/components/foundation) | run, stage, checkpoint, sandbox, workflow engine vocabulary |
 | Web | `apps/fabro-web`, `lib/packages/fabro-api-client` | SPA, API client, run/session UI vocabulary |
-| Lab | branch-scoped: `denkhaus-lab` + `meta/denkhaus-lab` | workflow dogfooding; see below |
+| Lab | `denkhaus-lab` branch + `docs/lab/` on `denkhaus` | workflow dogfooding; gofib product world |
 | Marketing/docs | `apps/marketing`, `docs/public` | site and public docs vocabulary |
 
-## The Lab contexts live on branches, not in the working tree
+## The Lab contexts
 
-The lab is a two-world architecture; both worlds keep their glossaries on
-their own branches:
-
-- `origin/denkhaus-lab:CONTEXT.md` — gofib product glossary (gofib, Fib,
-  text/JSON mode, count flag, quality gate).
-- `origin/meta/denkhaus-lab:CONTEXT.md` — dev-loop vocabulary (painpoint,
-  mailbox, refiner, platform/product seed) plus ADRs in `docs/adr/` on that
-  branch.
-
-Read them with `git show origin/<branch>:CONTEXT.md`. Do not duplicate their
-terms into root docs; link to the branch instead.
+- **Product world**: the `denkhaus-lab` branch — gofib CLI plus its
+  `CONTEXT.md` (gofib, Fib, text/JSON mode, count flag, quality gate).
+  Read with `git show origin/denkhaus-lab:CONTEXT.md`. Do not duplicate
+  its terms into root docs.
+- **Platform world (rescued)**: `docs/lab/` on `denkhaus` — the retired
+  meta branch's durable home. ADRs 0001–0008 live in `docs/lab/adr/`
+  (numbering continues there: ADR-0009+), the engine docs snapshot in
+  `docs/lab/fabro/`, review reports in `docs/lab/reviews/`. New lab
+  platform decisions go to `docs/lab/adr/`.
 
 ## Before exploring, read these
 
 - `CONTEXT-MAP.md` at the repo root if it exists; then the per-context CONTEXT.md relevant to the topic.
 - `docs/adr/` at the repo root (system-wide decisions) — created lazily; absence is fine.
-- Lab work: the two branch-scoped CONTEXT.md files above and `docs/adr/` on `meta/denkhaus-lab`.
+- Lab work: `origin/denkhaus-lab:CONTEXT.md` and `docs/lab/adr/` in this tree.
 
 If any of these files don't exist, proceed silently. Don't flag their absence;
 don't suggest creating them upfront. `/domain-modeling` (reached via
