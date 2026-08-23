@@ -3,3 +3,6 @@ __pycache__/
 .venv/
 *.lock
 .fabro/run-painpoints.jsonl
+
+# platform build artifacts leak into this worktree on branch switch
+target/
