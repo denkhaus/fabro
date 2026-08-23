@@ -293,3 +293,18 @@ ml sync                                                                     # va
 
 Skip if no insight surfaced. Unrecorded learnings are lost; ritual filler records are also noise.
 <!-- mulch:end -->
+
+
+## Agent skills
+
+### Issue tracker
+
+Work is tracked in Seeds (`sd` CLI, git-native in `.seeds/`), not GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage labels, unchanged. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context: engine (`lib/`), web (`apps/fabro-web`), lab (branch-scoped `denkhaus-lab`/`meta/denkhaus-lab`), marketing (`apps/marketing`). See `docs/agents/domain.md`.
