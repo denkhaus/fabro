@@ -11,6 +11,13 @@ digraph Develop {
 
     // Planner: reads the seeds tracker, handles the last review verdict,
     // decides what is implemented next and hands a brief to the implementer.
+    //
+    // preamble_stages_ignore="planner,implementer,evidence": the planner
+    // keeps ONLY the tester and reviewer history sections — they are the
+    // cycle counters (3x review verdict / 3x gate-red => Blocked, see the
+    // prompt's cycle guards). Seed brief and review verdict arrive as
+    // context keys; the implementer's response and the evidence capture
+    // are not planning inputs.
     planner [
         label="Planner",
         prompt="@prompts/planner.md",
@@ -19,10 +26,16 @@ digraph Develop {
         max_visits=20,
         goal_gate=true,
         retry_policy="standard",
-        reasoning_effort="medium"
+        reasoning_effort="medium",
+        preamble_stages_ignore="planner,implementer,evidence"
     ]
 
     // Implementer: builds exactly what the claimed seed specifies.
+    //
+    // preamble_stages_ignore="planner,reviewer,implementer": the brief and
+    // review feedback arrive as context keys; the implementer keeps the
+    // tester section (gate log on gate-red bounces) and the evidence
+    // section, and can always re-run the gate itself (it has tools).
     implementer [
         label="Implementer",
         prompt="@prompts/implementer.md",
@@ -30,7 +43,8 @@ digraph Develop {
         output_retries=2,
         max_visits=10,
         fidelity="summary:high",
-        retry_policy="standard"
+        retry_policy="standard",
+        preamble_stages_ignore="planner,reviewer,implementer"
     ]
 
     // Tester: deterministic quality gate, no agent. The host project defines
@@ -69,13 +83,15 @@ digraph Develop {
     // summary:high is "detailed summary including outputs" and carries the
     // evidence capture in full.
     //
-    // preamble_stages_ignore="planner": the reviewer judges from the seed
-    // spec, the gate result, and the evidence capture of ITS OWN cycle —
-    // not from the planner's verbose response, which every loop cycle
-    // re-delivered (25.6k preamble at cycle 3). Render-only: the planner's
-    // context updates (seed_brief) still reach the reviewer via the
-    // ## Context section; the evidence node is NOT ignored, so summary:high
-    // keeps carrying the capture in full.
+    // preamble_stages_ignore="planner,implementer,reviewer": the reviewer
+    // keeps EXACTLY two history sections — tester (its only view of the
+    // gate result; the evidence capture does not include gate output) and
+    // evidence (the full capture pipe). Seed spec and implementation
+    // summary arrive as context keys. Dropped: the planner's and
+    // implementer's verbose responses and the reviewer's own past verdicts
+    // — the accumulation that produced the 25.6k preamble at cycle 3.
+    // Render-only: ignored stages' context updates (seed_brief) still
+    // reach the reviewer via the ## Context section.
     //
     // No goal_gate: this node is legitimately skippable (tracker-empty runs
     // never reach it), and an unvisited goal-gate node fails the whole run
@@ -86,7 +102,7 @@ digraph Develop {
         shape=tab,
         prompt="@prompts/reviewer.md",
         fidelity="summary:high",
-        preamble_stages_ignore="planner",
+        preamble_stages_ignore="planner,implementer,reviewer",
         output_schema="routing",
         output_retries=2,
         max_visits=20,
