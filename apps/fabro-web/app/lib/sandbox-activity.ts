@@ -31,6 +31,7 @@ export interface SandboxActivity {
 export interface SandboxActivitySpan {
   kind: SandboxActivityKind;
   label: string;
+  detail: string | null;
   startMs: number;
   endMs: number | null;
   failed: boolean;
@@ -38,7 +39,10 @@ export interface SandboxActivitySpan {
 
 interface OpenSpan {
   kind: SandboxActivityKind;
+  /** Short span label for dense views (waterfall rows). */
   label: string;
+  /** Image name for build/pull activities; drives the verbose header label. */
+  detail: string | null;
   startMs: number;
   endMs: number | null;
 }
@@ -70,11 +74,13 @@ function buildOpen(
 ): OpenSpan | null {
   const ms = tsOf(event);
   if (ms == null) return null;
-  const image = nameOf(event);
-  const verb = kind === "building" ? "Build" : "Pull";
+  // Waterfall rows are narrow: use the short "runner image" wording there
+  // and keep the full tag for the run header, which has the space for it.
+  const label = kind === "building" ? "Build runner image" : "Pull image";
   return {
     kind,
-    label: image != null ? `${verb} image ${image}` : `${verb} image`,
+    label,
+    detail: nameOf(event),
     startMs: ms,
     endMs: null,
   };
@@ -87,25 +93,23 @@ function simpleOpen(
   const ms = tsOf(event);
   if (ms == null) return null;
   const label = kind === "cloning" ? "Clone repository" : "Setup workspace";
-  return { kind, label, startMs: ms, endMs: null };
+  return { kind, label, detail: null, startMs: ms, endMs: null };
 }
 
 function currentLabel(open: OpenSpan): string {
+  const image = open.detail;
   switch (open.kind) {
     case "building":
-      return open.label.replace(/^Build/, "Building");
+      return image != null
+        ? `Building image ${image}`
+        : "Building runner image";
     case "pulling":
-      return open.label.replace(/^Pull/, "Pulling");
+      return image != null ? `Pulling image ${image}` : "Pulling image";
     case "cloning":
       return "Cloning repository";
     case "setting-up":
       return "Setting up workspace";
   }
-}
-
-function detailOf(open: OpenSpan): string | null {
-  const image = open.label.match(/image (\S+)$/)?.[1];
-  return image ?? null;
 }
 
 /**
@@ -120,7 +124,7 @@ export function currentSandboxActivity(
   return {
     kind: open.kind,
     label: currentLabel(open),
-    detail: detailOf(open),
+    detail: open.detail,
     firstBuild: open.kind === "building",
     startMs: open.startMs,
   };
