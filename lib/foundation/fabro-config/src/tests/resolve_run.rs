@@ -661,7 +661,10 @@ docker = "fabro-runner:mise"
     )
     .expect("higher-layer dockerfile should suppress lower-layer docker");
 
-    assert_eq!(settings.run.environment.provider, EnvironmentProvider::Docker);
+    assert_eq!(
+        settings.run.environment.provider,
+        EnvironmentProvider::Docker
+    );
     assert_eq!(settings.run.environment.image.docker.as_deref(), None);
     assert_eq!(
         settings.run.environment.image.dockerfile,

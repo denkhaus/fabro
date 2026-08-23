@@ -776,7 +776,17 @@ impl DockerSandbox {
             match result {
                 Ok(info) => infos.push(info),
                 Err(err) => {
-                    return Err(crate::Error::docker_image_build(tag.clone(), err));
+                    // The daemon can close the build stream on failure
+                    // instead of delivering a final error frame; surface
+                    // any already-collected build error alongside the
+                    // transport error so root causes stay visible.
+                    return match first_build_stream_error(&infos) {
+                        Some(error) => Err(crate::Error::docker_image_build_stream(
+                            tag.clone(),
+                            format!("stream error ({err}); last build error: {error}"),
+                        )),
+                        None => Err(crate::Error::docker_image_build(tag.clone(), err)),
+                    };
                 }
             }
         }
