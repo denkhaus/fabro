@@ -10,13 +10,13 @@ use bytes::Bytes;
 use fabro_types::BlobHash;
 use futures::TryStreamExt as _;
 use sqlx::pool::PoolConnection;
-use sqlx::{Acquire as _, Sqlite};
+use sqlx::{Acquire as _, Sqlite, SqlitePool};
 #[cfg(test)]
 use tokio::sync::Barrier;
 use tracing::debug;
 
+use crate::Database;
 use crate::keys::SlateKey;
-use crate::{BlobStore, Database};
 
 const MAX_BATCH_ROWS: usize = 100;
 const MAX_BATCH_BYTES: u64 = 1024 * 1024;
@@ -158,8 +158,6 @@ impl StdError for LegacyBlobVerificationError {
 #[derive(strum::IntoStaticStr, thiserror::Error)]
 #[strum(serialize_all = "snake_case")]
 enum LegacyBlobVerificationFailure {
-    #[error("the legacy blob verification target is not backed by SQLite")]
-    WrongTargetBackend,
     #[error("opening the legacy blob source")]
     OpenSource(#[source] crate::Error),
     #[error("opening the legacy blob scan")]
@@ -281,9 +279,6 @@ impl StdError for LegacyBlobImportError {
 #[derive(strum::IntoStaticStr, thiserror::Error)]
 #[strum(serialize_all = "snake_case")]
 enum LegacyBlobImportFailure {
-    #[error("the legacy blob import target is not backed by SQLite")]
-    WrongTargetBackend,
-
     #[error("opening the legacy blob source")]
     OpenSource(#[source] crate::Error),
 
@@ -576,10 +571,10 @@ impl Database {
     /// blob row independently.
     pub async fn verify_legacy_blobs_in(
         &self,
-        target: &BlobStore,
+        pool: &SqlitePool,
     ) -> std::result::Result<LegacyBlobVerificationReport, LegacyBlobVerificationError> {
         let mut report = LegacyBlobVerificationReport::default();
-        let result = self.run_legacy_blob_verification(target, &mut report).await;
+        let result = self.run_legacy_blob_verification(pool, &mut report).await;
         match result {
             Ok(()) => Ok(report),
             Err(failure) => Err(LegacyBlobVerificationError { report, failure }),
@@ -588,12 +583,9 @@ impl Database {
 
     async fn run_legacy_blob_verification(
         &self,
-        target: &BlobStore,
+        pool: &SqlitePool,
         report: &mut LegacyBlobVerificationReport,
     ) -> Result<(), LegacyBlobVerificationFailure> {
-        let pool = target
-            .sqlite_pool_for_legacy_import()
-            .ok_or(LegacyBlobVerificationFailure::WrongTargetBackend)?;
         let source = self
             .open_db()
             .await
@@ -679,20 +671,20 @@ impl Database {
     /// cleanup fails.
     pub async fn import_legacy_blobs_into(
         &self,
-        target: &BlobStore,
+        pool: &SqlitePool,
     ) -> std::result::Result<LegacyBlobImportReport, LegacyBlobImportError> {
-        self.import_legacy_blobs_with_controls(target, &ImportControls::default())
+        self.import_legacy_blobs_with_controls(pool, &ImportControls::default())
             .await
     }
 
     async fn import_legacy_blobs_with_controls(
         &self,
-        target: &BlobStore,
+        pool: &SqlitePool,
         controls: &ImportControls,
     ) -> std::result::Result<LegacyBlobImportReport, LegacyBlobImportError> {
         let mut report = LegacyBlobImportReport::default();
         let result = self
-            .run_legacy_blob_import(target, controls, &mut report)
+            .run_legacy_blob_import(pool, controls, &mut report)
             .await;
 
         match result {
@@ -709,13 +701,10 @@ impl Database {
 
     async fn run_legacy_blob_import(
         &self,
-        target: &BlobStore,
+        pool: &SqlitePool,
         controls: &ImportControls,
         report: &mut LegacyBlobImportReport,
     ) -> Result<(), LegacyBlobImportFailure> {
-        let pool = target
-            .sqlite_pool_for_legacy_import()
-            .ok_or(LegacyBlobImportFailure::WrongTargetBackend)?;
         let mut connection = pool
             .acquire()
             .await
@@ -1221,7 +1210,7 @@ mod tests {
         }
 
         async fn import(&self) -> TestResult<LegacyBlobImportReport> {
-            Ok(self.source.import_legacy_blobs_into(&self.target).await?)
+            Ok(self.source.import_legacy_blobs_into(&self.sqlite).await?)
         }
     }
 
@@ -1338,7 +1327,7 @@ mod tests {
 
         let report = context
             .source
-            .verify_legacy_blobs_in(&context.target)
+            .verify_legacy_blobs_in(&context.sqlite)
             .await?;
 
         assert_eq!(report.source_rows, 1);
@@ -1360,7 +1349,7 @@ mod tests {
 
         let error = context
             .source
-            .verify_legacy_blobs_in(&context.target)
+            .verify_legacy_blobs_in(&context.sqlite)
             .await
             .expect_err("a missing destination row must fail verification");
 
@@ -1390,7 +1379,7 @@ mod tests {
         drop(connection);
         let error = malformed_hash
             .source
-            .verify_legacy_blobs_in(&malformed_hash.target)
+            .verify_legacy_blobs_in(&malformed_hash.sqlite)
             .await
             .expect_err("malformed SQLite hashes must fail verification");
         assert_eq!(error.report().invalid_target_rows, 1);
@@ -1401,7 +1390,7 @@ mod tests {
             .await?;
         let error = mismatched_bytes
             .source
-            .verify_legacy_blobs_in(&mismatched_bytes.target)
+            .verify_legacy_blobs_in(&mismatched_bytes.sqlite)
             .await
             .expect_err("SQLite bytes must match their hash");
         assert_eq!(error.report().invalid_target_rows, 1);
@@ -1433,7 +1422,7 @@ mod tests {
 
             let error = context
                 .source
-                .import_legacy_blobs_into(&context.target)
+                .import_legacy_blobs_into(&context.sqlite)
                 .await
                 .expect_err("noncanonical key should fail import");
 
@@ -1463,7 +1452,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_into(&context.target)
+            .import_legacy_blobs_into(&context.sqlite)
             .await
             .expect_err("digest mismatch should fail import");
 
@@ -1488,7 +1477,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_into(&context.target)
+            .import_legacy_blobs_into(&context.sqlite)
             .await
             .expect_err("invalid row should stop the import");
 
@@ -1529,7 +1518,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_into(&context.target)
+            .import_legacy_blobs_into(&context.sqlite)
             .await
             .expect_err("differing destination row should fail import");
 
@@ -1557,7 +1546,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_into(&context.target)
+            .import_legacy_blobs_into(&context.sqlite)
             .await
             .expect_err("last-row conflict should interrupt import");
 
@@ -1673,7 +1662,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_with_controls(&context.target, &controls)
+            .import_legacy_blobs_with_controls(&context.sqlite, &controls)
             .await
             .expect_err("injected passive checkpoint should fail import");
 
@@ -1703,7 +1692,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_with_controls(&context.target, &controls)
+            .import_legacy_blobs_with_controls(&context.sqlite, &controls)
             .await
             .expect_err("injected source transport failure should stop import");
 
@@ -1737,7 +1726,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_with_controls(&context.target, &controls)
+            .import_legacy_blobs_with_controls(&context.sqlite, &controls)
             .await
             .expect_err("both injected failures should fail import");
 
@@ -1773,7 +1762,7 @@ mod tests {
         failure.put_raw(invalid_key, b"invalid").await?;
         failure
             .source
-            .import_legacy_blobs_into(&failure.target)
+            .import_legacy_blobs_into(&failure.sqlite)
             .await
             .expect_err("invalid source should fail import");
         assert_eq!(failure.automatic_checkpoint().await?, 41);
@@ -1814,11 +1803,11 @@ mod tests {
         };
         let task = tokio::spawn({
             let source = source.clone();
-            let target = Arc::clone(&target);
+            let pool = pool.clone();
             async move {
                 let mut report = LegacyBlobImportReport::default();
                 source
-                    .run_legacy_blob_import(&target, &controls, &mut report)
+                    .run_legacy_blob_import(&pool, &controls, &mut report)
                     .await
             }
         });
@@ -1848,7 +1837,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_with_controls(&context.target, &controls)
+            .import_legacy_blobs_with_controls(&context.sqlite, &controls)
             .await
             .expect_err("injected restoration failure should fail import");
 
@@ -1865,27 +1854,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn slate_backed_target_is_rejected_before_scanning() -> TestResult<()> {
-        let context = TestContext::new().await?;
-        context.put_blob(b"never-scanned").await?;
-        let slate_target = BlobStore::from_slate(Arc::new(context.source_db.clone()));
-
-        let error = context
-            .source
-            .import_legacy_blobs_into(&slate_target)
-            .await
-            .expect_err("Slate target should be rejected");
-
-        assert_eq!(*error.report(), LegacyBlobImportReport::default());
-        assert!(matches!(
-            &error.failure,
-            LegacyBlobImportFailure::WrongTargetBackend
-        ));
-        assert_eq!(context.destination_rows().await?, 0);
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn logs_and_error_rendering_expose_counts_but_not_row_data() -> TestResult<()> {
         let context = TestContext::new().await?;
         let sensitive_key_fragment = "sensitive-invalid-legacy-key";
@@ -1897,7 +1865,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_into(&context.target)
+            .import_legacy_blobs_into(&context.sqlite)
             .with_subscriber(capture.clone())
             .await
             .expect_err("invalid key should fail import");

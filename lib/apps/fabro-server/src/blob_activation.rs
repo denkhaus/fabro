@@ -181,11 +181,11 @@ pub(crate) async fn activate_blob_storage(
     };
 
     let import = store
-        .import_legacy_blobs_into(&blob_store)
+        .import_legacy_blobs_into(database.pool())
         .await
         .map_err(|source| BlobActivationError::Import(Box::new(source)))?;
     let verification = store
-        .verify_legacy_blobs_in(&blob_store)
+        .verify_legacy_blobs_in(database.pool())
         .await
         .map_err(|source| BlobActivationError::Verification(Box::new(source)))?;
     validate_live_integrity(database.pool()).await?;

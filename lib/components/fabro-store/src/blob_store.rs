@@ -82,21 +82,6 @@ impl BlobStore {
         }
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            clippy::unnecessary_wraps,
-            reason = "the temporary Slate test backend has no SQLite pool"
-        )
-    )]
-    pub(crate) fn sqlite_pool_for_legacy_import(&self) -> Option<&SqlitePool> {
-        match &self.backend {
-            #[cfg(test)]
-            BlobBackend::Slate(_) => None,
-            BlobBackend::Sqlite(pool) => Some(pool),
-        }
-    }
-
     pub async fn write(&self, bytes: &[u8]) -> Result<BlobHash> {
         match &self.backend {
             #[cfg(test)]
