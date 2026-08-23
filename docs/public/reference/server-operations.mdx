@@ -59,8 +59,10 @@ On startup, Fabro activates SQLite as the only live content-addressed blob
 store before it opens routes, schedulers, workers, webhooks, reapers, or the
 ready callback. The activation inventories the exact legacy SlateDB blob
 prefix, checks disk headroom sized to the rows not yet imported (a warm
-restart with nothing left to import only needs a small fixed headroom),
-imports in bounded transactions, compares every legacy blob byte-for-byte
+restart with nothing left to import only needs a small fixed headroom; on
+filesystems whose free space cannot be determined the check is skipped with
+a warning), imports in bounded transactions, compares every legacy blob
+byte-for-byte
 with SQLite, runs a live SQLite integrity check, and completes a final WAL
 checkpoint. Boots that import new rows additionally re-verify every legacy
 blob against SQLite and validate every SQLite blob row independently. Any

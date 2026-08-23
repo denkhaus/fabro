@@ -16,7 +16,7 @@ use sqlx::Connection as _;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use tokio::fs;
 use tokio::task::{JoinError, spawn_blocking};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::server::resource_sampler;
 
@@ -52,8 +52,6 @@ pub(crate) enum BlobActivationError {
     },
     #[error("activation backup integrity check did not return exactly one ok result at {path}")]
     BackupIntegrityFailed { path: PathBuf },
-    #[error("no filesystem mount matched the SQLite database path {path}")]
-    UnknownFilesystem { path: PathBuf },
     #[error("reading SQLite file metadata at {path}")]
     SqliteMetadata {
         path:   PathBuf,
@@ -150,33 +148,42 @@ pub(crate) async fn activate_blob_storage(
         validate_backup(&backup_path).await?;
     }
     let backup_required = inventory.rows > 0 && !backup_exists;
-    let available_free_bytes = resource_sampler::available_space_for_path(&canonical_path)
-        .ok_or_else(|| BlobActivationError::UnknownFilesystem {
-            path: canonical_path.clone(),
-        })?;
-    let backup_reserve = if backup_required {
-        sqlite_file_set_bytes(&canonical_path).await?
+    // The resource sampler treats a path with no matching mount as an
+    // unsupported-but-benign condition (tmpfs or squashfs roots, network
+    // filesystems, an unreadable mount table), so the preflight does too:
+    // skipping the capacity check must not block a boot the import itself
+    // could complete.
+    if let Some(available_free_bytes) = resource_sampler::available_space_for_path(&canonical_path)
+    {
+        let backup_reserve = if backup_required {
+            sqlite_file_set_bytes(&canonical_path).await?
+        } else {
+            0
+        };
+        // Only the rows the import still has to copy need new space; rows
+        // already present in SQLite cost nothing on a warm restart.
+        let required_free_bytes = compute_disk_preflight(
+            inventory.pending_bytes,
+            backup_reserve,
+            available_free_bytes,
+        )?;
+        debug!(
+            legacy_rows = inventory.rows,
+            legacy_bytes = inventory.bytes,
+            pending_rows = inventory.pending_rows,
+            pending_bytes = inventory.pending_bytes,
+            backup_required,
+            backup_reserve,
+            required_free_bytes,
+            available_free_bytes,
+            "Checked SQLite blob activation disk capacity"
+        );
     } else {
-        0
-    };
-    // Only the rows the import still has to copy need new space; rows already
-    // present in SQLite cost nothing on a warm restart.
-    let required_free_bytes = compute_disk_preflight(
-        inventory.pending_bytes,
-        backup_reserve,
-        available_free_bytes,
-    )?;
-    debug!(
-        legacy_rows = inventory.rows,
-        legacy_bytes = inventory.bytes,
-        pending_rows = inventory.pending_rows,
-        pending_bytes = inventory.pending_bytes,
-        backup_required,
-        backup_reserve,
-        required_free_bytes,
-        available_free_bytes,
-        "Checked SQLite blob activation disk capacity"
-    );
+        warn!(
+            database_path = %canonical_path.display(),
+            "No filesystem mount matched the SQLite database path; skipping the blob activation disk preflight"
+        );
+    }
 
     let retained_backup = if backup_exists {
         Some(backup_path)
