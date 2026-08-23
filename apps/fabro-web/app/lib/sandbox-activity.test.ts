@@ -51,6 +51,14 @@ describe("currentSandboxActivity", () => {
     });
   });
 
+  test("building without an image name falls back to the short label", () => {
+    const activity = currentSandboxActivity([
+      makeEvent("sandbox.snapshot.creating", T_CREATING, 1),
+    ]);
+    expect(activity?.label).toBe("Building runner image");
+    expect(activity?.detail).toBe(null);
+  });
+
   test("pulling image while snapshot.pulling is in flight", () => {
     const activity = currentSandboxActivity([
       makeEvent("sandbox.snapshot.pulling", T_PULLING, 1, {
@@ -138,7 +146,8 @@ describe("sandboxActivitySpans", () => {
     expect(spans).toEqual([
       {
         kind: "building",
-        label: "Build image fabro-runner-03237792691a",
+        label: "Build runner image",
+        detail: "fabro-runner-03237792691a",
         startMs: Date.parse(T_CREATING),
         endMs: Date.parse(T_READY),
         failed: false,
@@ -155,7 +164,8 @@ describe("sandboxActivitySpans", () => {
     expect(spans).toEqual([
       {
         kind: "building",
-        label: "Build image fabro-runner-03237792691a",
+        label: "Build runner image",
+        detail: "fabro-runner-03237792691a",
         startMs: Date.parse(T_CREATING),
         endMs: null,
         failed: false,
@@ -171,6 +181,7 @@ describe("sandboxActivitySpans", () => {
         error: "boom",
       }),
     ]);
+    expect(spans[0]?.label).toBe("Build runner image");
     expect(spans[0]?.failed).toBe(true);
     expect(spans[0]?.endMs).toBe(Date.parse(T_READY));
   });
@@ -196,6 +207,7 @@ describe("sandboxActivitySpans", () => {
       {
         kind: "cloning",
         label: "Clone repository",
+        detail: null,
         startMs: Date.parse(T_GIT_START),
         endMs: Date.parse(T_GIT_DONE),
         failed: true,
