@@ -565,6 +565,26 @@ impl Graph {
         self.attrs.get("default_thread").and_then(AttrValue::as_str)
     }
 
+    /// Graph-level `preamble_budget_kb`: the aggregate serialized budget all
+    /// preamble values may contribute before the aggregate demote pass
+    /// starts replacing the fattest values with preview markers. Defaults
+    /// to 12 (see `DEFAULT_PREAMBLE_VALUE_BUDGET` in fabro-workflow).
+    /// Values below 1 are ignored (the default applies).
+    ///
+    /// An integer attribute:
+    ///
+    /// ```text
+    /// digraph {
+    ///   graph [preamble_budget_kb=32]
+    /// }
+    /// ```
+    pub fn preamble_budget_kb(&self) -> Option<usize> {
+        self.attrs
+            .get("preamble_budget_kb")
+            .and_then(AttrValue::as_i64)
+            .and_then(|kb| usize::try_from(kb).ok().filter(|kb| *kb >= 1))
+    }
+
     /// Graph-level `loop_restart_signature_limit` (default 3).
     /// When the same failure signature repeats this many times, the pipeline
     /// aborts.

@@ -201,9 +201,14 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
             !matches!(fidelity, keys::Fidelity::Full | keys::Fidelity::Truncate)
                 || gv_node.handler_type() == Some("parallel");
         if preamble_renders_values {
+            let budget = self
+                .graph
+                .preamble_budget_kb()
+                .map_or(artifact::DEFAULT_PREAMBLE_VALUE_BUDGET, |kb| kb * 1024);
             artifact::demote_large_values_for_prompt(
                 &mut resolved_values,
                 &mut resolved_outcomes,
+                budget,
                 &self.run_store,
                 &*self.sandbox,
                 &self.run_dir,
@@ -701,6 +706,48 @@ mod tests {
         assert!(
             preamble.contains("seed_brief"),
             "non-response updates stay visible via Context section: {preamble}"
+        );
+    }
+
+    #[tokio::test]
+    async fn graph_preamble_budget_kb_overrides_default() {
+        // Graph-level attribute: with a 1KB budget the aggregate pass demotes
+        // mid-sized values the 12KB default would keep inline.
+        let mut graph = Graph::new("budget");
+        graph
+            .attrs
+            .insert("preamble_budget_kb".to_string(), AttrValue::Integer(1));
+        let mut start = Node::new("start");
+        start
+            .attrs
+            .insert("shape".to_string(), str_attr("Mdiamond"));
+        let mut work = Node::new("work");
+        work.attrs.insert("prompt".to_string(), str_attr("do work"));
+        graph.nodes.insert(start.id.clone(), start);
+        graph.nodes.insert(work.id.clone(), work);
+        graph.edges.push(Edge::new("start", "work"));
+        let workflow_graph = WorkflowGraph(Arc::new(graph));
+
+        let run_dir = tempfile::tempdir().unwrap();
+        let lifecycle = test_lifecycle(&workflow_graph, run_dir.path()).await;
+        let state: WfRunState = ExecutionState::new(&workflow_graph).unwrap();
+
+        // Two 2KB values: over the 1KB graph budget, under every per-value
+        // threshold — only the aggregate pass can demote them.
+        state
+            .context
+            .set("response_alpha", serde_json::json!("a".repeat(2 * 1024)));
+        state
+            .context
+            .set("response_beta", serde_json::json!("b".repeat(2 * 1024)));
+
+        let work_node = workflow_graph.get_node("work").unwrap();
+        lifecycle.before_node(&work_node, &state).await.unwrap();
+
+        let preamble = state.context.get_string(keys::CURRENT_PREAMBLE, "");
+        assert!(
+            preamble.contains("fabroLargeValue") || preamble.contains("full value:"),
+            "aggregate pass should demote at 1KB graph budget: {preamble}"
         );
     }
 
