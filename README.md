@@ -180,6 +180,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development wo
 
 ---
 
+## Haiku
+
+> Graphs define the work,
+> agents turn each node to code.
+> Humans gate, then rest.
+
+---
+
 ## License
 
 Fabro is licensed under the [MIT License](LICENSE.md).
