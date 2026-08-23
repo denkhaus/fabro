@@ -174,8 +174,14 @@ async fn initialized(
     std::fs::create_dir_all(&run_options.run_dir).expect("failed to create run dir");
     let store_dir = test_store_dir(&run_options.run_dir);
     let _ = std::fs::remove_dir_all(&store_dir);
+    let blob_store_path = store_test_support::test_blob_store_path(&store_dir);
+    for suffix in ["", "-wal", "-shm"] {
+        let mut sibling = blob_store_path.clone().into_os_string();
+        sibling.push(suffix);
+        let _ = std::fs::remove_file(sibling);
+    }
     std::fs::create_dir_all(&store_dir).expect("failed to create local test run store dir");
-    let store = Arc::new(store_test_support::test_database(
+    let store = Arc::new(store_test_support::test_database_with_blobs(
         Arc::new(
             LocalFileSystem::new_with_prefix(&store_dir)
                 .expect("failed to create local test run store"),
@@ -183,6 +189,7 @@ async fn initialized(
         "",
         Duration::from_millis(1),
         None,
+        store_test_support::test_blob_store_at(&store_dir),
     ));
     let inner_store = store
         .create_run(&run_options.run_id)
