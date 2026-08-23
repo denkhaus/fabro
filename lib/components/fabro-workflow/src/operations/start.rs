@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -22,13 +22,14 @@ use fabro_types::settings::run::{
     RunPrepareSettings as ResolvedRunPrepareSettings,
 };
 use fabro_types::{
-    ManifestPath, RunId, RunRunnableSource, RunSpec, SandboxProviderKind, TargetValidationError,
+    ManifestPath, RunId, RunRunnableSource, RunSpec, RunTarget, SandboxProviderKind,
+    TargetValidationError,
 };
 use fabro_util::error::collect_chain;
 use fabro_vault::Vault;
 use tokio::runtime::Handle;
 use tokio::sync::RwLock as AsyncRwLock;
-use tokio::time;
+use tokio::{fs, time};
 use tokio_util::sync::CancellationToken;
 
 use crate::artifact_upload::ArtifactSink;
@@ -461,26 +462,40 @@ impl RunSession {
             .collect::<Result<Vec<_>, _>>()?;
 
         let sandbox = match sandbox_provider {
-            SandboxProviderKind::Local => {
-                if let Some(target) = &record.target {
-                    return Err(Error::engine(format!(
-                        "persisted {} run targets require a clone-based sandbox provider",
-                        target.kind_name()
-                    )));
+            SandboxProviderKind::Local => match record.target.as_ref() {
+                Some(RunTarget::Git { .. }) => {
+                    return Err(Error::engine(
+                        "persisted Git run targets require a clone-based sandbox provider",
+                    ));
                 }
-                let working_directory = local_working_directory_from_environment(
-                    &resolved.environment,
-                    record.source_directory.as_deref().map(Path::new),
-                )
-                .map_err(|err| {
-                    Error::engine_with_source(
-                        "Failed to resolve local environment working directory",
-                        err,
+                Some(RunTarget::None {}) => {
+                    return Err(Error::engine(
+                        "persisted none run targets require a clone-based sandbox provider",
+                    ));
+                }
+                Some(RunTarget::Folder { path }) => SandboxSpec::Local {
+                    working_directory: folder_working_directory_from_record(record, path).await?,
+                },
+                None => {
+                    let working_directory = local_working_directory_from_environment(
+                        &resolved.environment,
+                        record.source_directory.as_deref().map(Path::new),
                     )
-                })?;
-                SandboxSpec::Local { working_directory }
-            }
+                    .map_err(|err| {
+                        Error::engine_with_source(
+                            "Failed to resolve local environment working directory",
+                            err,
+                        )
+                    })?;
+                    SandboxSpec::Local { working_directory }
+                }
+            },
             SandboxProviderKind::Docker => {
+                if matches!(record.target.as_ref(), Some(RunTarget::Folder { .. })) {
+                    return Err(Error::engine(
+                        "persisted folder run targets require the Local sandbox provider",
+                    ));
+                }
                 let mut config = resolve_docker_config(resolved, secret_lookup)?;
                 config.skip_clone |= clone_source.skip_clone;
                 SandboxSpec::Docker {
@@ -493,6 +508,11 @@ impl RunSession {
                 }
             }
             SandboxProviderKind::Daytona => {
+                if matches!(record.target.as_ref(), Some(RunTarget::Folder { .. })) {
+                    return Err(Error::engine(
+                        "persisted folder run targets require the Local sandbox provider",
+                    ));
+                }
                 let api_key = vault_guard
                     .get(EnvVars::DAYTONA_API_KEY)
                     .map(str::to_string);
@@ -592,6 +612,61 @@ struct CloneSourceForRun {
     skip_clone: bool,
 }
 
+async fn folder_working_directory_from_record(
+    record: &RunSpec,
+    target_path: &str,
+) -> Result<PathBuf, Error> {
+    let target = Path::new(target_path);
+    if !target.is_absolute() {
+        return Err(Error::engine(
+            "persisted folder run target path must be absolute",
+        ));
+    }
+
+    let source_directory = record.source_directory.as_deref().ok_or_else(|| {
+        Error::engine("persisted folder run target is missing its source-directory projection")
+    })?;
+    if source_directory != target_path {
+        return Err(Error::engine(
+            "persisted folder run target disagrees with its source-directory projection",
+        ));
+    }
+
+    let canonical = fs::canonicalize(target).await.map_err(|source| {
+        Error::engine_with_source(
+            "persisted folder run target path could not be canonicalized",
+            source,
+        )
+    })?;
+    let canonical_text = canonical.to_str().ok_or_else(|| {
+        Error::engine("persisted folder run target canonical path is not valid UTF-8")
+    })?;
+    if canonical_text != target_path {
+        return Err(Error::engine(
+            "persisted folder run target path is no longer canonical",
+        ));
+    }
+
+    let metadata = fs::symlink_metadata(&canonical).await.map_err(|source| {
+        Error::engine_with_source(
+            "persisted folder run target path could not be inspected",
+            source,
+        )
+    })?;
+    if metadata.file_type().is_symlink() {
+        return Err(Error::engine(
+            "persisted folder run target path was redirected during startup",
+        ));
+    }
+    if !metadata.is_dir() {
+        return Err(Error::engine(
+            "persisted folder run target path is not a directory",
+        ));
+    }
+
+    Ok(canonical)
+}
+
 fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
     let Some(target) = &record.target else {
         return Ok(CloneSourceForRun {
@@ -616,7 +691,9 @@ fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
             TargetValidationError::Sha => "persisted Git run target has an invalid SHA",
         })
     })?;
-    // A target with no Git projection (`none`) asks for an empty workspace.
+    // A target with no Git projection (`none` or `folder`) supplies no clone
+    // source. Folder targets only reach the Local provider, where `skip_clone`
+    // is unused.
     Ok(match validated.git {
         Some(git) => CloneSourceForRun {
             origin_url: Some(git.origin_url),
@@ -1950,6 +2027,213 @@ reasoning = false
         assert!(error.to_string().contains("none run targets require"));
     }
 
+    #[tokio::test]
+    async fn run_session_new_folder_target_uses_canonical_path_over_environment_cwd() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
+        let folder = temp.path().join("folder-target");
+        let environment_cwd = temp.path().join("environment-cwd");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::create_dir_all(&environment_cwd).unwrap();
+        let canonical_folder = folder.canonicalize().unwrap();
+        let canonical_text = canonical_folder.to_str().unwrap().to_string();
+        let mut settings = settings_from_run_layer(RunLayer::default());
+        settings.run.environment.provider = EnvironmentProvider::Local;
+        settings.run.environment.cwd = Some(environment_cwd.to_string_lossy().into_owned());
+        let (persisted, store) =
+            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
+        let persisted = persisted_with_target_projection(
+            persisted,
+            RunTarget::Folder {
+                path: canonical_text.clone(),
+            },
+            Some(canonical_text),
+        );
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+
+        let session = RunSession::new(
+            &persisted,
+            test_start_services(&store, &storage_root, emitter, registry).await,
+        )
+        .await
+        .unwrap();
+
+        let SandboxSpec::Local { working_directory } = session.sandbox else {
+            panic!("folder target should retain the selected Local provider");
+        };
+        assert_eq!(working_directory, canonical_folder);
+        assert_ne!(working_directory, environment_cwd);
+    }
+
+    #[tokio::test]
+    async fn run_session_new_folder_target_rejects_clone_based_providers() {
+        for provider in [EnvironmentProvider::Docker, EnvironmentProvider::Daytona] {
+            let temp = tempfile::tempdir().unwrap();
+            let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
+            let folder = temp.path().join("folder-target");
+            std::fs::create_dir_all(&folder).unwrap();
+            let canonical_folder = folder.canonicalize().unwrap();
+            let canonical_text = canonical_folder.to_str().unwrap().to_string();
+            let mut settings = settings_from_run_layer(RunLayer::default());
+            settings.run.environment.provider = provider;
+            settings.run.environment.image.docker = match provider {
+                EnvironmentProvider::Docker => Some("buildpack-deps:noble".to_string()),
+                EnvironmentProvider::Daytona | EnvironmentProvider::Local => None,
+            };
+            let (persisted, store) =
+                persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
+            let persisted = persisted_with_target_projection(
+                persisted,
+                RunTarget::Folder {
+                    path: canonical_text.clone(),
+                },
+                Some(canonical_text),
+            );
+            let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+            let registry = Arc::new(test_registry());
+
+            let Err(error) = RunSession::new(
+                &persisted,
+                test_start_services(&store, &storage_root, emitter, registry).await,
+            )
+            .await
+            else {
+                panic!("folder target with a clone-based provider should fail closed");
+            };
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("folder run targets require the Local sandbox provider")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn run_session_new_legacy_local_run_still_prefers_environment_cwd() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
+        let environment_cwd = temp.path().join("environment-cwd");
+        std::fs::create_dir_all(&environment_cwd).unwrap();
+        let mut settings = settings_from_run_layer(RunLayer::default());
+        settings.run.environment.provider = EnvironmentProvider::Local;
+        settings.run.environment.cwd = Some(environment_cwd.to_string_lossy().into_owned());
+        let (persisted, store) =
+            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, settings).await;
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+
+        let session = RunSession::new(
+            &persisted,
+            test_start_services(&store, &storage_root, emitter, registry).await,
+        )
+        .await
+        .unwrap();
+
+        let SandboxSpec::Local { working_directory } = session.sandbox else {
+            panic!("legacy Local run should retain the selected Local provider");
+        };
+        assert_eq!(working_directory, environment_cwd);
+    }
+
+    #[tokio::test]
+    async fn folder_target_start_rejects_projection_drift() {
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().join("folder-target");
+        std::fs::create_dir_all(&folder).unwrap();
+        let canonical_folder = folder.canonicalize().unwrap();
+        let canonical_text = canonical_folder.to_str().unwrap().to_string();
+        let mut record = test_folder_run_spec(&canonical_text);
+
+        record.source_directory = None;
+        let missing_error = folder_working_directory_from_record(&record, &canonical_text)
+            .await
+            .expect_err("missing source-directory projection should fail");
+        assert!(missing_error.to_string().contains("missing"));
+
+        record.source_directory = Some(temp.path().to_string_lossy().into_owned());
+        let drift_error = folder_working_directory_from_record(&record, &canonical_text)
+            .await
+            .expect_err("mismatched source-directory projection should fail");
+        assert!(drift_error.to_string().contains("disagrees"));
+    }
+
+    #[tokio::test]
+    async fn folder_target_start_rejects_relative_and_noncanonical_paths() {
+        let relative = "relative/folder";
+        let relative_record = test_folder_run_spec(relative);
+        let relative_error = folder_working_directory_from_record(&relative_record, relative)
+            .await
+            .expect_err("relative persisted target should fail");
+        assert!(relative_error.to_string().contains("must be absolute"));
+
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().join("folder-target");
+        std::fs::create_dir_all(&folder).unwrap();
+        let canonical_folder = folder.canonicalize().unwrap();
+        let noncanonical = canonical_folder
+            .join("..")
+            .join(canonical_folder.file_name().unwrap());
+        let noncanonical_text = noncanonical.to_str().unwrap();
+        let noncanonical_record = test_folder_run_spec(noncanonical_text);
+
+        let error = folder_working_directory_from_record(&noncanonical_record, noncanonical_text)
+            .await
+            .expect_err("noncanonical persisted target should fail");
+        assert!(error.to_string().contains("no longer canonical"));
+    }
+
+    #[tokio::test]
+    async fn folder_target_start_rejects_disappeared_or_retyped_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().join("folder-target");
+        std::fs::create_dir_all(&folder).unwrap();
+        let canonical_folder = folder.canonicalize().unwrap();
+        let canonical_text = canonical_folder.to_str().unwrap().to_string();
+        let record = test_folder_run_spec(&canonical_text);
+
+        std::fs::remove_dir(&canonical_folder).unwrap();
+        let missing_error = folder_working_directory_from_record(&record, &canonical_text)
+            .await
+            .expect_err("disappeared folder target should fail");
+        assert!(
+            missing_error
+                .to_string()
+                .contains("could not be canonicalized")
+        );
+        assert!(!missing_error.causes().is_empty());
+
+        fs::write(&canonical_folder, "not a directory")
+            .await
+            .unwrap();
+        let file_error = folder_working_directory_from_record(&record, &canonical_text)
+            .await
+            .expect_err("folder target replaced by a file should fail");
+        assert!(file_error.to_string().contains("is not a directory"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn folder_target_start_rejects_redirected_path() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().join("folder-target");
+        let redirected = temp.path().join("redirected-target");
+        std::fs::create_dir_all(&folder).unwrap();
+        let canonical_folder = folder.canonicalize().unwrap();
+        let canonical_text = canonical_folder.to_str().unwrap().to_string();
+        let record = test_folder_run_spec(&canonical_text);
+        std::fs::rename(&canonical_folder, &redirected).unwrap();
+        symlink(&redirected, &canonical_folder).unwrap();
+
+        let error = folder_working_directory_from_record(&record, &canonical_text)
+            .await
+            .expect_err("redirected folder target should fail");
+        assert!(error.to_string().contains("no longer canonical"));
+    }
+
     #[test]
     fn runtime_docker_config_maps_environment_hints() {
         let settings = settings_from_run_layer(RunLayer {
@@ -2067,6 +2351,26 @@ reasoning = false
         .await
         .unwrap();
         (created.persisted, store)
+    }
+
+    fn persisted_with_target_projection(
+        persisted: Persisted,
+        target: RunTarget,
+        source_directory: Option<String>,
+    ) -> Persisted {
+        let (graph, source, diagnostics, run_dir, mut run_spec) = persisted.into_parts();
+        run_spec.target = Some(target);
+        run_spec.source_directory = source_directory;
+        Persisted::new(graph, source, diagnostics, run_dir, run_spec)
+    }
+
+    fn test_folder_run_spec(path: &str) -> RunSpec {
+        let mut record = test_support::test_run_spec();
+        record.target = Some(RunTarget::Folder {
+            path: path.to_string(),
+        });
+        record.source_directory = Some(path.to_string());
+        record
     }
 
     async fn persisted_workflow(dot: &str, storage_root: &Path) -> (Persisted, Arc<Database>) {

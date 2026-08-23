@@ -5,7 +5,8 @@ use anyhow::Context as _;
 pub use fabro_checkpoint::META_BRANCH_PREFIX;
 pub use fabro_checkpoint::author::GitAuthor;
 use fabro_checkpoint::git::Store;
-use fabro_types::WorkflowSettings;
+use fabro_redact::DisplaySafeUrl;
+use fabro_types::{DirtyStatus, GitContext, WorkflowSettings};
 use tokio::task::{JoinError, spawn_blocking};
 use tokio::time::timeout;
 
@@ -13,6 +14,106 @@ use crate::error::{Error, Result};
 
 /// Branch prefix for workflow run branches (e.g. `fabro/run/{run_id}`).
 pub const RUN_BRANCH_PREFIX: &str = "fabro/run/";
+
+/// A local checkout could not be inspected without changing it.
+#[derive(Debug, thiserror::Error)]
+pub enum GitObservationError {
+    #[error("failed to discover the local Git repository")]
+    Discover {
+        #[source]
+        source: git2::Error,
+    },
+    #[error("failed to read the local Git repository HEAD")]
+    Head {
+        #[source]
+        source: git2::Error,
+    },
+    #[error("failed to read the local Git repository origin")]
+    Origin {
+        #[source]
+        source: git2::Error,
+    },
+    #[error("failed to read the local Git repository status")]
+    Status {
+        #[source]
+        source: git2::Error,
+    },
+}
+
+/// Observe the current branch, commit, origin, and dirty state of a local
+/// checkout without invoking Git commands, contacting a remote, or mutating
+/// the repository. Non-repositories, unborn repositories, and detached HEADs
+/// have no usable [`GitContext`] and return `Ok(None)`.
+pub fn observe_git_context(
+    path: &Path,
+) -> std::result::Result<Option<GitContext>, GitObservationError> {
+    let repo = match git2::Repository::discover(path) {
+        Ok(repo) => repo,
+        Err(source) if source.code() == git2::ErrorCode::NotFound => return Ok(None),
+        Err(source) => return Err(GitObservationError::Discover { source }),
+    };
+    let head = match repo.head() {
+        Ok(head) => head,
+        Err(source)
+            if matches!(
+                source.code(),
+                git2::ErrorCode::NotFound | git2::ErrorCode::UnbornBranch
+            ) =>
+        {
+            return Ok(None);
+        }
+        Err(source) => return Err(GitObservationError::Head { source }),
+    };
+    if !head.is_branch() {
+        return Ok(None);
+    }
+    let Some(branch) = head.shorthand().filter(|branch| !branch.is_empty()) else {
+        return Ok(None);
+    };
+    let branch = branch.to_string();
+    let sha = head.target().map(|oid| oid.to_string());
+    drop(head);
+
+    let origin_url = match repo.find_remote("origin") {
+        Ok(remote) => remote.url().map(sanitized_origin_url).unwrap_or_default(),
+        Err(source) if source.code() == git2::ErrorCode::NotFound => String::new(),
+        Err(source) => return Err(GitObservationError::Origin { source }),
+    };
+    let mut status_options = git2::StatusOptions::new();
+    status_options
+        .include_untracked(true)
+        .no_refresh(true)
+        .update_index(false);
+    let statuses = repo
+        .statuses(Some(&mut status_options))
+        .map_err(|source| GitObservationError::Status { source })?;
+    let dirty = if statuses
+        .iter()
+        .any(|entry| entry.status() != git2::Status::CURRENT)
+    {
+        DirtyStatus::Dirty
+    } else {
+        DirtyStatus::Clean
+    };
+
+    Ok(Some(GitContext {
+        origin_url,
+        branch,
+        sha,
+        dirty,
+    }))
+}
+
+fn sanitized_origin_url(value: &str) -> String {
+    let normalized = fabro_github::normalize_repo_origin_url(value);
+    let Ok(url) = DisplaySafeUrl::parse(&normalized) else {
+        return String::new();
+    };
+    let mut url = url.without_credentials().into_owned();
+    url.set_query(None);
+    url.set_fragment(None);
+    fabro_github::normalize_repo_origin_url(url.as_str())
+}
 
 pub fn git_author_from_settings(settings: &WorkflowSettings) -> GitAuthor {
     settings
@@ -302,6 +403,84 @@ mod tests {
             .current_dir(dir)
             .output()
             .unwrap();
+    }
+
+    #[test]
+    fn observe_git_context_is_read_only_and_reports_local_state() {
+        let dir = tempfile::tempdir().unwrap();
+        init_repo(dir.path());
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        repo.remote("origin", "git@github.com:fabro-sh/fabro.git")
+            .unwrap();
+        drop(repo);
+        let git_dir = dir.path().join(".git");
+        let head_before = fs::read(git_dir.join("HEAD")).unwrap();
+        let index_before = fs::read(git_dir.join("index")).unwrap();
+        let config_before = fs::read(git_dir.join("config")).unwrap();
+
+        let observed = observe_git_context(dir.path()).unwrap().unwrap();
+        assert!(!observed.branch.is_empty());
+        assert_eq!(observed.origin_url, "https://github.com/fabro-sh/fabro");
+        assert_eq!(observed.sha.as_deref().map(str::len), Some(40));
+        assert_eq!(observed.dirty, DirtyStatus::Clean);
+        assert_eq!(fs::read(git_dir.join("HEAD")).unwrap(), head_before);
+        assert_eq!(fs::read(git_dir.join("index")).unwrap(), index_before);
+        assert_eq!(fs::read(git_dir.join("config")).unwrap(), config_before);
+        assert!(!git_dir.join("HEAD.lock").exists());
+        assert!(!git_dir.join("index.lock").exists());
+        assert!(!git_dir.join("config.lock").exists());
+
+        fs::write(dir.path().join("untracked.txt"), "changed").unwrap();
+        let observed = observe_git_context(dir.path()).unwrap().unwrap();
+        assert_eq!(observed.dirty, DirtyStatus::Dirty);
+        assert_eq!(fs::read(git_dir.join("HEAD")).unwrap(), head_before);
+        assert_eq!(fs::read(git_dir.join("index")).unwrap(), index_before);
+        assert_eq!(fs::read(git_dir.join("config")).unwrap(), config_before);
+    }
+
+    #[test]
+    fn observe_git_context_never_persists_remote_credentials() {
+        let dir = tempfile::tempdir().unwrap();
+        init_repo(dir.path());
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        repo.remote(
+            "origin",
+            "http://run-user:secret@example.com/acme/widgets.git?token=secret#fragment",
+        )
+        .unwrap();
+        drop(repo);
+
+        let observed = observe_git_context(dir.path()).unwrap().unwrap();
+
+        assert_eq!(observed.origin_url, "http://example.com/acme/widgets");
+        assert!(!observed.origin_url.contains("secret"));
+        assert!(!observed.origin_url.contains("token"));
+    }
+
+    #[test]
+    fn observe_git_context_accepts_a_non_repository() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(observe_git_context(dir.path()).unwrap(), None);
+    }
+
+    #[test]
+    fn observe_git_context_handles_unborn_detached_and_nested_checkouts() {
+        let unborn = tempfile::tempdir().unwrap();
+        git2::Repository::init(unborn.path()).unwrap();
+        assert_eq!(observe_git_context(unborn.path()).unwrap(), None);
+
+        let dir = tempfile::tempdir().unwrap();
+        init_repo(dir.path());
+        let nested = dir.path().join("nested");
+        fs::create_dir(&nested).unwrap();
+        let observed = observe_git_context(&nested).unwrap().unwrap();
+        assert!(observed.origin_url.is_empty());
+        assert!(!observed.branch.is_empty());
+
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let head = repo.head().unwrap().target().unwrap();
+        repo.set_head_detached(head).unwrap();
+        assert_eq!(observe_git_context(dir.path()).unwrap(), None);
     }
 
     fn test_store() -> Arc<Database> {

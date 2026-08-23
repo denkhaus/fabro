@@ -171,6 +171,11 @@ impl PreparedRun {
         &self.layered.settings
     }
 
+    pub(crate) fn with_git(mut self, git: Option<GitContext>) -> Self {
+        self.layered.metadata.git = git;
+        self
+    }
+
     pub(crate) fn with_identity(
         mut self,
         run_id: Option<RunId>,

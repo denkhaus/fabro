@@ -1,6 +1,6 @@
 use anyhow::Result as AnyResult;
 use fabro_store::{Database, RunProjection, RunProjectionReducer};
-use fabro_types::{EventBody, EventEnvelope, ForkSourceRef, RunId};
+use fabro_types::{EventBody, EventEnvelope, ForkSourceRef, RunId, RunTarget};
 
 use super::timeline::{ForkTarget, RunTimeline, TimelineEntry, build_timeline};
 use crate::error::Error;
@@ -47,6 +47,7 @@ pub async fn fork_run(
         .state()
         .await
         .map_err(|err| Error::engine(err.to_string()))?;
+    validate_target_support(state.spec.target.as_ref())?;
     let timeline = build_timeline(&state).map_err(|err| Error::engine(err.to_string()))?;
     let entry = resolve_fork_entry(&timeline, &source_run_id, input.target.as_ref())
         .map_err(|err| Error::Validation(err.to_string()))?;
@@ -98,6 +99,16 @@ pub async fn fork_run(
             visit:              entry.visit,
         },
     })
+}
+
+fn validate_target_support(target: Option<&RunTarget>) -> std::result::Result<(), Error> {
+    if matches!(target, Some(RunTarget::Folder { .. })) {
+        return Err(Error::Validation(
+            "Local folder runs execute in place without Git checkpoints; cannot fork or rewind"
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_source_spec(spec: &RunSpec, checkpoint_sha: &str) -> std::result::Result<(), Error> {
@@ -300,6 +311,17 @@ mod tests {
             Duration::from_millis(1),
             None,
         )
+    }
+
+    #[test]
+    fn folder_targets_report_that_fork_and_rewind_are_unsupported() {
+        let target = RunTarget::Folder {
+            path: "/canonical/project".to_string(),
+        };
+
+        let error = validate_target_support(Some(&target)).unwrap_err();
+
+        assert!(error.to_string().contains("cannot fork or rewind"));
     }
 
     #[test]
