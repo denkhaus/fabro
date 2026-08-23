@@ -7,20 +7,6 @@ and the product seed tracker (`fabro-*`). Workflow assets are synced from the
 platform world (`meta/denkhaus-lab`); platform criticism goes through the
 painpoint channel, never through edits to workflow assets. See CONTEXT.md.
 
-## Agent skills
-
-### Issue tracker
-
-Issues are tracked with seeds (`sd` CLI, `.seeds/issues.jsonl`). See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default Matt Pocock label vocabulary, identity-mapped. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
-
 <!-- seeds:start -->
 ## Issue Tracking (Seeds)
 <!-- seeds-onboard:v0.5.15 -->
