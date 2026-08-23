@@ -62,13 +62,14 @@ prefix, checks disk headroom sized to the rows not yet imported (a warm
 restart with nothing left to import only needs a small fixed headroom; on
 filesystems whose free space cannot be determined the check is skipped with
 a warning), imports in bounded transactions, compares every legacy blob
-byte-for-byte
-with SQLite, runs a live SQLite integrity check, and completes a final WAL
-checkpoint. Boots that import new rows additionally re-verify every legacy
-blob against SQLite and validate every SQLite blob row independently. Any
-failure stops startup. Rows committed by an interrupted import are retained so the
-next startup can resume, but the legacy source is never modified and there is
-no fallback or dual read/write path.
+byte-for-byte with SQLite, runs a live SQLite integrity check, and completes a
+final WAL checkpoint. Boots that import new rows additionally re-verify every
+legacy blob against SQLite and validate every SQLite blob row independently.
+Any failure stops startup. Warm boots that import no rows skip that full target
+scan: the import pass has already byte-compared every retained legacy row, and
+SQLite-only blobs are hash-validated when read. Rows committed by an interrupted
+import are retained so the next startup can resume, but the legacy source is
+never modified and there is no fallback or dual read/write path.
 
 For a non-empty legacy inventory, the first activation also creates the
 private sibling backup
@@ -78,17 +79,17 @@ A valid retained backup is revalidated on every warm restart and is preserved
 as the original pre-activation safety artifact. It is not a promise that an
 older binary can safely resume after the activated server has accepted new
 work; recovery after that boundary is forward-only. Empty legacy inventories
-do not need this backup, but startup still validates every SQLite blob row.
+do not need this backup.
 
 Keep both the unchanged legacy `blobs/sha256` prefix and the private activation
 backup for at least 30 consecutive calendar days after the first successful
 production activation. Cleanup is eligible only after a successful cold
-activation, a later fully verified warm restart, and 30 days of production
-observation with no unresolved inventory, import, verification, integrity,
-backup, or checkpoint failure. Scott must review that evidence and explicitly
-authorize a separate cleanup change. Day 30 is only the earliest eligibility
-date; nothing is deleted automatically, and incomplete evidence extends the
-support window.
+activation, a later warm restart that revalidates the backup and byte-compares
+every retained legacy blob against SQLite, and 30 days of production observation
+with no unresolved inventory, import, verification, integrity, backup, or
+checkpoint failure. Scott must review that evidence and explicitly authorize a
+separate cleanup change. Day 30 is only the earliest eligibility date; nothing
+is deleted automatically, and incomplete evidence extends the support window.
 
 ## Submitting runs
 
