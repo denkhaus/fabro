@@ -232,7 +232,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-23T22:04:13.732528239Z",
-  "last_event_at": "2026-08-23T22:04:37.324378847Z",
+  "last_event_at": "2026-08-23T22:04:42.624821242Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -272,9 +272,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 55,
       "checkpoint": {
-        "timestamp": "2026-08-23T22:04:37.380183236Z",
+        "timestamp": "2026-08-23T22:04:41.618178560Z",
         "current_node": "greet",
         "completed_nodes": [
           "start",
@@ -282,23 +282,23 @@
         ],
         "node_retries": {},
         "context_values": {
-          "current_node": "greet",
           "thread.start.current_node": "greet",
-          "internal.retry_count.greet": 0,
-          "graph.rankdir": "LR",
-          "internal.node_visit_count": 1,
-          "internal.run_id": "01M0RAB7Z3S1DZ124Z8HQGHXPN",
-          "failure_signature": "",
-          "internal.work_dir": "/workspace/fabro",
-          "internal.fidelity": "compact",
           "internal.retry_count.start": 0,
-          "failure_class": "",
-          "last_stage": "greet",
-          "internal.thread_id": "start",
-          "response.greet": "Done. README.md didn't exist, so I created it with a short haiku:\n\n> Agents wake, plan, build —\n> each small step leaves a mark here,\n> the run remembers.\n\nPer your instructions, I skipped all builds, tests, and project tooling (`sd`/`ml`) — this was a single-file, edit-only change, ready to commit whenever you like.",
+          "outcome": "succeeded",
           "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.node_visit_count": 1,
+          "internal.thread_id": "start",
+          "internal.retry_count.greet": 0,
+          "failure_class": "",
+          "internal.fidelity": "compact",
+          "graph.rankdir": "LR",
+          "failure_signature": "",
+          "current_node": "greet",
           "last_response": "Done. README.md didn't exist, so I created it with a short haiku:\n\n> Agents wake, plan, build —\n> each small step leaves a mark here,\n> the run remembers.\n\nPer your instructions, I skipped all build",
-          "outcome": "succeeded"
+          "internal.run_id": "01M0RAB7Z3S1DZ124Z8HQGHXPN",
+          "last_stage": "greet",
+          "response.greet": "Done. README.md didn't exist, so I created it with a short haiku:\n\n> Agents wake, plan, build —\n> each small step leaves a mark here,\n> the run remembers.\n\nPer your instructions, I skipped all builds, tests, and project tooling (`sd`/`ml`) — this was a single-file, edit-only change, ready to commit whenever you like."
         },
         "node_outcomes": {
           "start": {
@@ -346,15 +346,86 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "aade0b7681abdc3a7c10b5fde893dc4f049609b9",
         "node_visits": {
-          "start": 1,
-          "greet": 1
+          "greet": 1,
+          "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/README.md b/README.md\nnew file mode 100644\nindex 0000000..f3af8ce\n--- /dev/null\n+++ b/README.md\n@@ -0,0 +1,7 @@\n+# fabro\n+\n+A haiku:\n+\n+Agents wake, plan, build —\n+each small step leaves a mark here,\n+the run remembers.\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 7,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-08-23T22:04:41.650020461Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 26722,
+      "inference_time_ms": 18046,
+      "tool_time_ms": 265,
+      "active_time_ms": 18311
+    },
+    "failure": {
+      "reason": "publish_failed",
+      "detail": {
+        "message": "failed to create pull request",
+        "causes": [
+          "Authentication failed creating pull request (403)"
+        ],
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "aade0b7681abdc3a7c10b5fde893dc4f049609b9",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "greet",
+        "stage_label": "greet",
+        "timing": {
+          "wall_time_ms": 19982,
+          "inference_time_ms": 18046,
+          "tool_time_ms": 265,
+          "active_time_ms": 18311
+        },
+        "billing_usd_micros": 13586,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 6125,
+      "output_tokens": 173,
+      "total_tokens": 18104,
+      "reasoning_tokens": 286,
+      "cache_read_tokens": 11520,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 13586
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/README.md b/README.md\nnew file mode 100644\nindex 0000000..f3af8ce\n--- /dev/null\n+++ b/README.md\n@@ -0,0 +1,7 @@\n+# fabro\n+\n+A haiku:\n+\n+Agents wake, plan, build —\n+each small step leaves a mark here,\n+the run remembers.\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 7,
+        "deletions": 0
+      }
+    }
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -384,7 +455,12 @@
       "first_event_seq": 27,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: greet",
+        "failure_reason": null,
+        "timestamp": "2026-08-23T22:04:37.379629964Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -398,8 +474,12 @@
       "started_at": "2026-08-23T22:04:16.218167627Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 19209,
-      "live_tool_ms": 265,
+      "timing": {
+        "wall_time_ms": 19982,
+        "inference_time_ms": 18046,
+        "tool_time_ms": 265,
+        "active_time_ms": 18311
+      },
       "usage": {
         "input_tokens": 6125,
         "output_tokens": 173,
@@ -736,7 +816,43 @@
         "warnings": []
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 58,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-23T22:04:41.618494015Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-23T22:04:41.618408342Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
     },
     "start@1": {
       "first_event_seq": 23,
