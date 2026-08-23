@@ -40,7 +40,7 @@ use crate::server::{
 };
 use crate::server_secrets::{ServerSecrets, process_env_snapshot};
 use crate::startup::{migrate_startup_vault, resolve_startup, validate_startup_configuration};
-use crate::{blob_activation, migrations, static_files};
+use crate::{migrations, static_files};
 
 pub const DEFAULT_TCP_PORT: u16 = 32276;
 type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
@@ -773,7 +773,7 @@ where
     } else {
         None
     };
-    let store = blob_activation::activate_blob_storage(
+    let store = migrations::activate_blob_storage(
         &database,
         &sqlite_path,
         object_store,

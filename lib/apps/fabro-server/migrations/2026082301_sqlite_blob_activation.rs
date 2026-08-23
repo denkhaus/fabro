@@ -20,6 +20,12 @@ use tracing::{debug, info, warn};
 
 use crate::server::resource_sampler;
 
+/// Earliest date this bridge becomes eligible for removal, assuming the first
+/// production activation happens no earlier than this change ships. Removal
+/// additionally requires the evidence and explicit approval described in the
+/// module docs; the date alone never triggers deletion.
+pub(crate) const REMOVAL_DEADLINE: &str = "2026-09-22";
+
 const DISK_HEADROOM_BYTES: u64 = 64 * 1024 * 1024;
 const BACKUP_SUFFIX: &str = ".pre-blob-activation.bak";
 const STAGING_SUFFIX: &str = ".tmp";
@@ -204,6 +210,7 @@ pub(crate) async fn activate_blob_storage(
         passive_checkpoints = import.passive_checkpoints,
         backup_required,
         backup_path = ?retained_backup,
+        removal_deadline = REMOVAL_DEADLINE,
         "Activated SQLite blob storage"
     );
     Ok(store)
