@@ -54,7 +54,7 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.n, false, false); err != nil {
+			if err := run(&buf, tt.n, false, false, false); err != nil {
 				t.Fatalf("run(%d) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -95,7 +95,7 @@ func TestRunJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.n, true, false); err != nil {
+			if err := run(&buf, tt.n, true, false, false); err != nil {
 				t.Fatalf("run(%d, json) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -143,7 +143,7 @@ func TestRunPretty(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.n, false, true); err != nil {
+			if err := run(&buf, tt.n, false, true, false); err != nil {
 				t.Fatalf("run(%d, pretty) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -163,7 +163,7 @@ func TestRunPretty(t *testing.T) {
 	// index right-aligned to len("100"), value to len(Fib(100)).
 	t.Run("pretty default prints 100 aligned numbers", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := run(&buf, defaultCount, false, true); err != nil {
+		if err := run(&buf, defaultCount, false, true, false); err != nil {
 			t.Fatalf("run(default, pretty) returned error: %v", err)
 		}
 		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -181,10 +181,10 @@ func TestRunPrettyJSON(t *testing.T) {
 	// -pretty only affects text mode: with -json the output must be
 	// identical, line for line.
 	var jsonOnly, prettyJSON bytes.Buffer
-	if err := run(&jsonOnly, 3, true, false); err != nil {
+	if err := run(&jsonOnly, 3, true, false, false); err != nil {
 		t.Fatalf("run(3, json) returned error: %v", err)
 	}
-	if err := run(&prettyJSON, 3, true, true); err != nil {
+	if err := run(&prettyJSON, 3, true, true, false); err != nil {
 		t.Fatalf("run(3, json, pretty) returned error: %v", err)
 	}
 	if prettyJSON.String() != jsonOnly.String() {
@@ -205,7 +205,7 @@ func TestRunRejectsInvalidCount(t *testing.T) {
 	}{{"text", false}, {"json", true}} {
 		for _, n := range []int{0, -5} {
 			var buf bytes.Buffer
-			err := run(&buf, n, mode.asJSON, false)
+			err := run(&buf, n, mode.asJSON, false, false)
 			if err == nil {
 				t.Fatalf("run(%d, %s) succeeded, want error", n, mode.name)
 			}
@@ -216,5 +216,40 @@ func TestRunRejectsInvalidCount(t *testing.T) {
 				t.Errorf("run(%d, %s) wrote %q before failing, want no output", n, mode.name, buf.String())
 			}
 		}
+	}
+}
+
+func TestRunVersion(t *testing.T) {
+	// -version takes precedence over every other mode: whatever the
+	// other flags say, the output is the single line "gofib <Version>"
+	// and the call succeeds (the exit-0 path). This includes the
+	// count<1 validation, which -version outranks.
+	for _, tt := range []struct {
+		name   string
+		count  int
+		asJSON bool
+		pretty bool
+	}{
+		{"version alone", defaultCount, false, false},
+		{"version with -json -n 5", 5, true, false},
+		{"version with -pretty", 10, false, true},
+		// Spec: precedence over ALL modes includes the count validation:
+		// -version -n 0 must still print only the version line, exit 0.
+		{"version with -n 0", 0, false, false},
+		{"version with -json -n 0", 0, true, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, tt.count, tt.asJSON, tt.pretty, true); err != nil {
+				t.Fatalf("run(version) returned error: %v", err)
+			}
+			want := "gofib " + Version + "\n"
+			if got := buf.String(); got != want {
+				t.Errorf("run(version) output = %q, want exactly %q", got, want)
+			}
+			if n := strings.Count(buf.String(), "\n"); n != 1 {
+				t.Errorf("run(version) printed %d lines, want exactly 1", n)
+			}
+		})
 	}
 }
