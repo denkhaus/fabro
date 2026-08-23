@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "LLM error: Invalid request: model 'glm-5.3' does not support reasoning_effort 'medium'; allowed values: low, high, max",
+  "timestamp": "2026-08-23T14:57:40.020024054Z"
+}

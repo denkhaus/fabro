@@ -515,7 +515,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-23T14:57:36.443807190Z",
-  "last_event_at": "2026-08-23T14:57:39.998287856Z",
+  "last_event_at": "2026-08-23T14:57:47.725974910Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -557,9 +557,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 43,
       "checkpoint": {
-        "timestamp": "2026-08-23T14:57:40.020197477Z",
+        "timestamp": "2026-08-23T14:57:47.483012341Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -567,22 +567,22 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.node_visit_count": 1,
+          "failure_signature": "planner|deterministic|api_deterministic|unknown|invalid_request",
           "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
-          "failure_class": "deterministic",
-          "graph.preamble_budget_kb": "12",
-          "outcome": "failed",
-          "internal.fidelity": "compact",
-          "current_node": "planner",
           "graph.rankdir": "LR",
-          "internal.retry_count.planner": 0,
-          "internal.work_dir": "/workspace/fabro",
-          "internal.run_id": "01M0QJ01P9E6EKX8S6TQN91G8E",
-          "graph.max_node_visits": "40",
-          "internal.retry_count.start": 0,
+          "current_node": "planner",
           "thread.start.current_node": "planner",
+          "internal.work_dir": "/workspace/fabro",
           "internal.thread_id": "start",
-          "failure_signature": "planner|deterministic|api_deterministic|unknown|invalid_request"
+          "outcome": "failed",
+          "graph.preamble_budget_kb": "12",
+          "internal.run_id": "01M0QJ01P9E6EKX8S6TQN91G8E",
+          "internal.fidelity": "compact",
+          "internal.retry_count.planner": 0,
+          "failure_class": "deterministic",
+          "internal.retry_count.start": 0,
+          "graph.max_node_visits": "40",
+          "internal.node_visit_count": 1
         },
         "node_outcomes": {
           "start": {
@@ -600,9 +600,89 @@
           }
         },
         "next_node_id": "refiner",
+        "git_commit_sha": "dfb266ed6e1902da975f9a3687c92887f3fbf9b6",
+        "loop_failure_signatures": {
+          "planner|deterministic|api_deterministic|unknown|invalid_request": 1
+        },
         "node_visits": {
           "start": 1,
           "planner": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-23T14:57:47.743365303Z",
+        "current_node": "refiner",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "refiner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "command.output": "blob://sha256/c74383e69e06dd96bbc8b55356b81314f3aa0539c6cc99a61bac27d99fa64e61",
+          "internal.retry_count.refiner": 0,
+          "internal.node_visit_count": 1,
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "failure_class": "",
+          "graph.preamble_budget_kb": "12",
+          "outcome": "succeeded",
+          "internal.fidelity": "compact",
+          "current_node": "refiner",
+          "graph.rankdir": "LR",
+          "internal.retry_count.planner": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "internal.run_id": "01M0QJ01P9E6EKX8S6TQN91G8E",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.start": 0,
+          "thread.start.current_node": "planner",
+          "internal.thread_id": "planner",
+          "failure_signature": "",
+          "thread.planner.current_node": "refiner"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "failed",
+            "failure": {
+              "message": "LLM error: Invalid request: model 'glm-5.3' does not support reasoning_effort 'medium'; allowed values: low, high, max",
+              "category": "deterministic",
+              "signature": "api_deterministic|unknown|invalid_request"
+            },
+            "usage": null
+          },
+          "refiner": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/c74383e69e06dd96bbc8b55356b81314f3aa0539c6cc99a61bac27d99fa64e61"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/refiner.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 215,
+              "active_time_ms": 215
+            }
+          }
+        },
+        "next_node_id": "exit",
+        "node_visits": {
+          "start": 1,
+          "planner": 1,
+          "refiner": 1
         }
       },
       "diff": {}
@@ -675,7 +755,12 @@
       "first_event_seq": 27,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "failed",
+        "notes": null,
+        "failure_reason": "LLM error: Invalid request: model 'glm-5.3' does not support reasoning_effort 'medium'; allowed values: low, high, max",
+        "timestamp": "2026-08-23T14:57:40.020024054Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -690,6 +775,12 @@
       "started_at": "2026-08-23T14:57:38.504761764Z",
       "handler": "agent",
       "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 1497,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -976,14 +1067,45 @@
           "invoked": false
         }
       ],
-      "inference": {
-        "session_id": "2fe83e36-5578-4e0b-9c6e-1b76bdb017ce",
-        "started_at": "2026-08-23T14:57:39.997569697Z",
-        "requested_model": {
-          "provider": "zai",
-          "model_id": "glm-5.3"
-        },
-        "retries": 0
+      "agent_control": "running",
+      "state": "failed"
+    },
+    "refiner@1": {
+      "first_event_seq": 46,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/refiner.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/refiner.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/c74383e69e06dd96bbc8b55356b81314f3aa0539c6cc99a61bac27d99fa64e61",
+        "exit_code": 0,
+        "duration_ms": 215,
+        "termination": "exited",
+        "output_bytes": 44,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 44,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-08-23T14:57:47.505524358Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "running"
