@@ -17,6 +17,7 @@ mod node_model_known;
 mod orphan_custom_outcome;
 mod parallel_branch;
 mod parallel_branch_inert_attribute;
+mod preamble_stages_ignore_targets_exist;
 mod prompt_on_llm_nodes;
 mod random_selection_no_conditions;
 mod reachability;
@@ -53,6 +54,7 @@ pub fn built_in_rules() -> Vec<Box<dyn LintRule>> {
         type_known::rule(),
         backend_valid::rule(),
         fidelity_valid::rule(),
+        preamble_stages_ignore_targets_exist::rule(),
         retry_target_exists::rule(),
         goal_gate_has_retry::rule(),
         prompt_on_llm_nodes::rule(),

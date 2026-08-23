@@ -287,6 +287,21 @@ impl Node {
         self.str_attr("fidelity")
     }
 
+    /// Node ids whose stage-history sections this node's prompt preamble
+    /// omits (comma-separated deny-list, render-only). Split and trimmed;
+    /// empty entries are dropped. See the workflow docs for semantics.
+    #[must_use]
+    pub fn preamble_stages_ignore(&self) -> Vec<&str> {
+        self.str_attr("preamble_stages_ignore")
+            .map(|list| {
+                list.split(',')
+                    .map(str::trim)
+                    .filter(|entry| !entry.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     #[must_use]
     pub fn thread_id(&self) -> Option<&str> {
         self.str_attr("thread_id")

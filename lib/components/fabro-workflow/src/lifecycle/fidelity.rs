@@ -212,26 +212,55 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
         }
         let resolved_context = Context::from_values(resolved_values);
 
+        // Per-node stage scoping (deny-list): omit ignored stages' history
+        // sections from THIS node's preamble. Render-only — the context
+        // store, routing, and `response.*` keys stay untouched, and the
+        // ignored stages' context updates still render in the Context
+        // section of the preamble.
+        let ignored_stages: std::collections::HashSet<&str> =
+            gv_node.preamble_stages_ignore().into_iter().collect();
+        let scoped: (Vec<String>, HashMap<String, Outcome>);
+        let (completed_nodes, node_outcomes): (&[String], &HashMap<String, Outcome>) =
+            if ignored_stages.is_empty() {
+                (&state.completed_nodes, &resolved_outcomes)
+            } else {
+                scoped = (
+                    state
+                        .completed_nodes
+                        .iter()
+                        .filter(|id| !ignored_stages.contains(id.as_str()))
+                        .cloned()
+                        .collect(),
+                    resolved_outcomes
+                        .iter()
+                        .filter(|(id, _)| !ignored_stages.contains(id.as_str()))
+                        .map(|(id, outcome)| (id.clone(), outcome.clone()))
+                        .collect(),
+                );
+                (&scoped.0, &scoped.1)
+            };
+
         let preamble = build_preamble(
             fidelity,
             &resolved_context,
             &self.graph,
-            &state.completed_nodes,
-            &resolved_outcomes,
+            completed_nodes,
+            node_outcomes,
         );
         state
             .context
             .set(keys::CURRENT_PREAMBLE, serde_json::json!(preamble));
 
         // 5. Parallel nodes: pre-render per-branch preambles into the stash that
-        //    ParallelHandler consumes at fan-out.
+        //    ParallelHandler consumes at fan-out. Branch preambles inherit the parent
+        //    node's stage scoping.
         if gv_node.handler_type() == Some("parallel") {
             let branch_preambles = self.build_parallel_branch_preambles(
                 node.id(),
                 fidelity,
                 &resolved_context,
-                &resolved_outcomes,
-                &state.completed_nodes,
+                node_outcomes,
+                completed_nodes,
             );
             state.context.set(
                 keys::INTERNAL_PARALLEL_BRANCH_PREAMBLES,
@@ -593,6 +622,85 @@ mod tests {
         assert_eq!(
             state.context.get(keys::INTERNAL_PARALLEL_BRANCH_PREAMBLES),
             Some(serde_json::Value::Null)
+        );
+    }
+
+    #[tokio::test]
+    async fn preamble_stages_ignore_omits_stage_sections_render_only() {
+        // Deny-list scoping: the reviewer's preamble omits the ignored
+        // planner stage's history section, but the context store keeps the
+        // planner's context updates (the seed brief) — they render in the
+        // Context section instead.
+        let mut graph = Graph::new("scoped");
+        let mut start = Node::new("start");
+        start
+            .attrs
+            .insert("shape".to_string(), str_attr("Mdiamond"));
+        let mut planner = Node::new("planner");
+        planner
+            .attrs
+            .insert("prompt".to_string(), str_attr("plan it"));
+        planner
+            .attrs
+            .insert("fidelity".to_string(), str_attr("summary:high"));
+        let mut reviewer = Node::new("reviewer");
+        reviewer
+            .attrs
+            .insert("prompt".to_string(), str_attr("review it"));
+        reviewer
+            .attrs
+            .insert("preamble_stages_ignore".to_string(), str_attr("planner"));
+
+        graph.nodes.insert(start.id.clone(), start);
+        graph.nodes.insert(planner.id.clone(), planner);
+        graph.nodes.insert(reviewer.id.clone(), reviewer);
+        graph.edges.push(Edge::new("start", "planner"));
+        graph.edges.push(Edge::new("planner", "reviewer"));
+        let workflow_graph = WorkflowGraph(Arc::new(graph));
+
+        let run_dir = tempfile::tempdir().unwrap();
+        let lifecycle = test_lifecycle(&workflow_graph, run_dir.path()).await;
+        let mut state: WfRunState = ExecutionState::new(&workflow_graph).unwrap();
+
+        state
+            .context
+            .set("seed_brief", serde_json::json!("the brief"));
+        let mut planner_outcome = Outcome::default();
+        planner_outcome.context_updates.insert(
+            keys::response_key("planner"),
+            serde_json::json!("verbose planner response text"),
+        );
+        planner_outcome
+            .context_updates
+            .insert("seed_brief".to_string(), serde_json::json!("the brief"));
+        state
+            .node_outcomes
+            .insert("planner".to_string(), planner_outcome);
+        state.completed_nodes.push("planner".to_string());
+
+        let reviewer_node = workflow_graph.get_node("reviewer").unwrap();
+        lifecycle.before_node(&reviewer_node, &state).await.unwrap();
+
+        let preamble = state.context.get_string(keys::CURRENT_PREAMBLE, "");
+        assert!(
+            !preamble.contains("verbose planner response"),
+            "ignored stage response must not render: {preamble}"
+        );
+        assert!(
+            !preamble.contains("## Stage: planner"),
+            "ignored stage section must be omitted: {preamble}"
+        );
+        // Context store untouched: routing/state still sees the updates.
+        let updates = state
+            .node_outcomes
+            .get("planner")
+            .map_or(0, |o| o.context_updates.len());
+        assert!(updates > 0, "context store must keep planner updates");
+        // The seed brief (planner context_update) still reaches the
+        // reviewer through the Context section.
+        assert!(
+            preamble.contains("seed_brief"),
+            "non-response updates stay visible via Context section: {preamble}"
         );
     }
 

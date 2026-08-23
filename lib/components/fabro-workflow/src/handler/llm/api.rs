@@ -2568,6 +2568,7 @@ reasoning = false
             env:                 Arc::new(LocalSandbox::new(PathBuf::from("."))),
             cancel:              CancellationToken::new(),
             tool_env_provider:   None,
+            write_locks:         None,
             session_id:          None,
             root_session_id:     None,
             tool_call_id:        None,

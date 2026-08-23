@@ -230,6 +230,21 @@ The preamble includes:
 
 Internal keys (prefixed with `internal.`, `current`, `graph.`, `thread.`, `response.`) are excluded from preambles to avoid noise.
 
+### Stage scoping (deny-list)
+
+A node can omit specific stages' history sections from its own preamble with the `preamble_stages_ignore` attribute — a comma-separated list of node ids:
+
+```dot
+reviewer [
+    prompt="@prompts/review.md",
+    preamble_stages_ignore="planner,refiner"
+]
+```
+
+The filter is render-only: the context store, routing, and `response.{node_id}` keys are untouched, and the ignored stages' context updates (their working material) still render in the `## Context` section. A role that only needs freshly produced evidence can therefore stop re-reading verbose upstream responses as review loops accumulate cycles.
+
+Referencing a node id that does not exist produces a validation warning (the run proceeds; the entry simply never matches).
+
 ## Artifact offloading
 
 When a stage produces a large output (over 100KB of serialized JSON), Fabro stores the serialized bytes in a global content-addressed blob store and replaces the context value with a durable blob ref. Command output is always finalized into a blob ref after command completion, even when it is small or empty:
