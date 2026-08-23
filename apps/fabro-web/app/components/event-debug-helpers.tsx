@@ -4,6 +4,7 @@ export type DebugCategory =
   | "agent"
   | "command"
   | "lifecycle"
+  | "sandbox"
   | "human"
   | "system";
 
@@ -11,6 +12,7 @@ export const DEBUG_CATEGORIES: readonly DebugCategory[] = [
   "agent",
   "command",
   "lifecycle",
+  "sandbox",
   "human",
   "system",
 ] as const;
@@ -26,12 +28,14 @@ const PREFIX_TO_CATEGORY: Record<string, DebugCategory> = {
   loop: "lifecycle",
   prompt: "lifecycle",
   interview: "human",
+  sandbox: "sandbox",
 };
 
 const CATEGORY_LABEL: Record<DebugCategory, string> = {
   agent: "Agent",
   command: "Command",
   lifecycle: "Lifecycle",
+  sandbox: "Sandbox",
   human: "Human",
   system: "System",
 };
@@ -40,6 +44,7 @@ const CATEGORY_TONE: Record<DebugCategory, string> = {
   agent: "bg-teal-500/15 text-teal-500",
   command: "bg-mint/15 text-mint",
   lifecycle: "bg-amber/15 text-amber",
+  sandbox: "bg-ice-300/15 text-ice-300",
   human: "bg-coral/15 text-coral",
   system: "bg-overlay-strong text-fg-3",
 };
@@ -48,6 +53,7 @@ const CATEGORY_COLOR: Record<DebugCategory, string> = {
   agent: "var(--color-teal-500)",
   command: "var(--color-mint)",
   lifecycle: "var(--color-amber)",
+  sandbox: "var(--color-ice-300)",
   human: "var(--color-coral)",
   system: "var(--color-ice-300)",
 };
