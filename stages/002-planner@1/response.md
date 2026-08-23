@@ -1,0 +1,14 @@
+Claimed fabro-8d26 (priority-2, zero blockers). Priority-1 fabro-d810 was deliberately not claimed: its workflow edits are already synced into the worktree, but its DONE condition requires recorded preamble measurements under the rebuilt denkhaus binary — unobtainable from this sandbox (no `fabro` CLI, no run events, no meta world), so claiming it would deadlock the implementer; logged as a painpoint instead.
+
+{
+  "outcome": "succeeded",
+  "preferred_next_label": "Seed claimed",
+  "context_updates": {
+    "current_seed_id": "fabro-8d26",
+    "current_seed_title": "gofib: add -version flag",
+    "current_seed_brief": "Add a -version flag to the gofib CLI in `main.go` (module gofib, stdlib only). Acceptance criteria: - Add package-level `const Version = \"1.3.0\"` in `main.go`. - Register a new bool flag `version` via the flag package so `gofib -version` works. - With -version, print exactly one line to stdout — `gofib 1.3.0` — then exit 0; no other output. - -version takes precedence over all output modes: `gofib -version -pretty` and `gofib -version -json -n 5` also print only the version line. Chosen reading (spec ambiguity resolved): precedence also outranks the count<1 validation, i.e. `gofib -version -n 0` still prints only the version line with exit 0, because the spec says precedence over ALL modes; cover this in a test. - Table-driven test in `fib_test.go` style covering the chosen seam (a `run()` parameter or a small main-level helper) for -version alone and -version combined with -json, asserting the single version line and the exit-0/success path. - No external dependencies; go.mod unchanged. - `just qualitygate` must pass — run it before declaring Implemented. Done when `go run . -version` prints exactly `gofib 1.3.0`.",
+    "workflow_painpoints": [
+      "Seed fabro-d810 (priority 1) shows as ready but its remaining acceptance (recorded preamble-size numbers across >=3 cycles under the rebuilt denkhaus binary) is not executable from the lab sandbox: no fabro CLI, no run-event store in .fabro/, no meta world access; its workflow-edit portion is already synced into the worktree (commits 17e1fb8/965fbc8/e579afe) but the seed forbids closing without recorded numbers. Cross-world prerequisite (denkhaus fabro-29f7 rebuild) is not modeled as a blocker, so every planner pass re-trips over it and a naive claim would deadlock the implementer. Suggestion: either add a sd dep to fabro-d810 blocking on the denkhaus-side sequence, or re-scope the seed into a lab-side verification checklist whose inputs (run-event exports) are staged into the repo."
+    ]
+  }
+}
