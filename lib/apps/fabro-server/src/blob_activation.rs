@@ -105,8 +105,6 @@ pub(crate) enum BlobActivationError {
     LiveIntegrityFailed,
     #[error("running the final SQLite WAL truncate checkpoint")]
     FinalCheckpoint(#[source] sqlx::Error),
-    #[error("the final SQLite WAL truncate checkpoint could not complete")]
-    FinalCheckpointBusy,
 }
 
 pub(crate) async fn activate_blob_storage(
@@ -449,7 +447,11 @@ async fn final_truncate_checkpoint(pool: &sqlx::SqlitePool) -> Result<(), BlobAc
         .await
         .map_err(BlobActivationError::FinalCheckpoint)?;
     if busy != 0 {
-        return Err(BlobActivationError::FinalCheckpointBusy);
+        // A concurrent reader (a backup tool, a replication agent, an
+        // operator shell) can keep the WAL from truncating. An untruncated
+        // WAL threatens no data integrity, so it must not block startup; a
+        // later checkpoint truncates once the reader is gone.
+        warn!("The final SQLite WAL truncate checkpoint could not complete; continuing startup");
     }
     Ok(())
 }
@@ -466,7 +468,8 @@ mod tests {
 
     use super::{
         BACKUP_SUFFIX, BlobActivationError, DISK_HEADROOM_BYTES, activate_blob_storage,
-        compute_disk_preflight, create_backup, sqlite_file_set_bytes, validate_backup,
+        compute_disk_preflight, create_backup, final_truncate_checkpoint, sqlite_file_set_bytes,
+        validate_backup,
     };
 
     type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
@@ -675,6 +678,58 @@ mod tests {
             activated.blobs().read(&hash).await?.as_deref(),
             Some(bytes.as_slice())
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn busy_final_checkpoint_warns_and_does_not_fail_startup() -> TestResult<()> {
+        use sqlx::Connection as _;
+        use sqlx::sqlite::{
+            SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePoolOptions,
+        };
+
+        let directory = tempfile::tempdir()?;
+        let sqlite_path = directory.path().join("fabro.sqlite3");
+        let database = fabro_db::Database::connect(&sqlite_path).await?;
+        database.migrate().await?;
+        sqlx::query("INSERT INTO blobs (hash, data) VALUES (?, ?)")
+            .bind(fabro_types::BlobHash::new(b"wal-content").to_string())
+            .bind(b"wal-content".as_slice())
+            .execute(database.pool())
+            .await?;
+
+        // A reader holding an open snapshot models a backup tool or operator
+        // shell that outlives the checkpoint's busy timeout.
+        let reader_options = SqliteConnectOptions::new()
+            .filename(&sqlite_path)
+            .read_only(true)
+            .create_if_missing(false);
+        let mut reader = SqliteConnection::connect_with(&reader_options).await?;
+        sqlx::query("BEGIN").execute(&mut reader).await?;
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM blobs")
+            .fetch_one(&mut reader)
+            .await?;
+
+        // A short busy timeout keeps the blocked truncate from stalling the
+        // test for the production pool's full five seconds.
+        let checkpoint_options = SqliteConnectOptions::new()
+            .filename(&sqlite_path)
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(Duration::from_millis(50))
+            .create_if_missing(false);
+        let checkpoint_pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(checkpoint_options)
+            .await?;
+
+        final_truncate_checkpoint(&checkpoint_pool).await?;
+
+        // The reader really did block the truncate: the WAL was not reset.
+        let wal_bytes = fs::metadata(append_to_path(&sqlite_path, "-wal"))
+            .await?
+            .len();
+        assert!(wal_bytes > 0, "the WAL should remain untruncated");
+        drop(reader);
         Ok(())
     }
 
