@@ -114,6 +114,19 @@ impl Database {
                     snapshot_path.display()
                 )
             })?;
+        #[cfg(unix)]
+        {
+            let published_path = snapshot_path.clone();
+            spawn_blocking(move || sync_parent_directory(&published_path))
+                .await
+                .context("joining the snapshot directory sync task")?
+                .with_context(|| {
+                    format!(
+                        "syncing the directory of pre-migration snapshot {}",
+                        snapshot_path.display()
+                    )
+                })?;
+        }
 
         info!(
             database = %database_path.display(),
@@ -228,6 +241,12 @@ pub enum SnapshotStagingError {
         #[source]
         source: std::io::Error,
     },
+    #[error("flushing snapshot staging file {path} to disk")]
+    Sync {
+        path:   PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 /// Writes a consistent single-file copy of the live pool to `staging_path`.
@@ -266,6 +285,39 @@ pub async fn write_snapshot_to_staging(
             path: staging_path.to_path_buf(),
             source,
         })?;
+    // The staging file must be durable before the caller renames it into a
+    // path that later recovery logic treats as a complete snapshot.
+    let sync_result = match fs::File::open(staging_path).await {
+        Ok(file) => file.sync_all().await,
+        Err(source) => Err(source),
+    };
+    sync_result.map_err(|source| SnapshotStagingError::Sync {
+        path: staging_path.to_path_buf(),
+        source,
+    })?;
+    Ok(())
+}
+
+/// Flushes the directory entry metadata for `path`'s parent so a rename into
+/// that directory survives power loss. No-op off Unix, where a directory
+/// cannot be opened for syncing.
+#[cfg(unix)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "directory fds have no async open; callers run this on a blocking thread"
+)]
+pub fn sync_parent_directory(path: &Path) -> std::io::Result<()> {
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+    std::fs::File::open(parent)?.sync_all()
+}
+
+/// Flushes the directory entry metadata for `path`'s parent so a rename into
+/// that directory survives power loss. No-op off Unix, where a directory
+/// cannot be opened for syncing.
+#[cfg(not(unix))]
+pub fn sync_parent_directory(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 

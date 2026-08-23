@@ -292,7 +292,13 @@ async fn create_backup(
     let already_exists = spawn_blocking(move || {
         let staging = tempfile::TempPath::from_path(publish_staging);
         match staging.persist_noclobber(&publish_backup) {
-            Ok(()) => Ok(false),
+            Ok(()) => {
+                // Make the rename's directory entry durable: the retained
+                // backup is the documented rollback artifact, so it must not
+                // vanish in a crash after the import has already committed.
+                fabro_db::sync_parent_directory(&publish_backup)?;
+                Ok(false)
+            }
             Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => Ok(true),
             Err(error) => Err(error.error),
         }
