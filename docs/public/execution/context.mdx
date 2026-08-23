@@ -245,6 +245,8 @@ The filter is render-only: the context store, routing, and `response.{node_id}` 
 
 Referencing a node id that does not exist produces a validation warning (the run proceeds; the entry simply never matches).
 
+**Limitation — parallel branch targets:** branch preambles are pre-rendered from the parent `parallel` node, so `preamble_stages_ignore` set on a *branch target* node is silently ignored. Set it on the **parent parallel node** to scope all branch preambles; prompt-carrying fan-in nodes and all sequential nodes honor their own attribute as usual.
+
 ### Preamble aggregate budget
 
 Per-value demotion (see [Artifact offloading](#artifact-offloading)) bounds each context value alone. The **aggregate budget** bounds what all of them contribute together: once the serialized sizes of preamble-visible values exceed the budget, Fabro demotes the fattest values largest-first (values of 1KB or less are never demoted by this pass, so ids, enums, and short contract values stay inline) until the total fits. This keeps prompts constant-size in review loops where every cycle adds another mid-sized response — no single value ever crosses the per-value threshold, but the sum grows without bound.
