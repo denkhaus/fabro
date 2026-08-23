@@ -92,33 +92,12 @@ impl Database {
         let database_path = connect_options.get_filename();
         let snapshot_path = pre_migration_snapshot_path(database_path);
 
-        // VACUUM INTO produces a consistent single-file copy from the live
-        // pool, so the snapshot needs no -wal/-shm siblings to restore. It
-        // writes to a staging file that is renamed into place afterwards, so
-        // a failure mid-copy never leaves a partial file at the snapshot
-        // path.
+        // The snapshot is staged and then renamed into place, so a failure
+        // mid-copy never leaves a partial file at the snapshot path.
         let staging_path = append_to_path(&snapshot_path, ".tmp");
-        remove_file_if_exists(&staging_path)
+        write_snapshot_to_staging(&self.pool, &staging_path)
             .await
-            .with_context(|| {
-                format!(
-                    "removing stale snapshot staging file {}",
-                    staging_path.display()
-                )
-            })?;
-        let staging_target = staging_path
-            .to_str()
-            .context("snapshot staging path is not valid UTF-8")?;
-        sqlx::query("VACUUM INTO ?")
-            .bind(staging_target)
-            .execute(&self.pool)
-            .await
-            .with_context(|| {
-                format!("writing pre-migration snapshot {}", staging_path.display())
-            })?;
-        set_private_permissions(&staging_path)
-            .await
-            .with_context(|| format!("setting permissions on {}", staging_path.display()))?;
+            .context("staging the pre-migration snapshot")?;
         remove_file_if_exists(&snapshot_path)
             .await
             .with_context(|| {
@@ -226,8 +205,72 @@ async fn applied_migration_versions(pool: &DbPool) -> anyhow::Result<HashSet<i64
         .collect())
 }
 
+/// Error writing a consistent single-file SQLite snapshot to a staging path.
+#[derive(Debug, thiserror::Error)]
+pub enum SnapshotStagingError {
+    #[error("removing stale snapshot staging file {path}")]
+    RemoveStale {
+        path:   PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("snapshot staging path is not valid UTF-8 at {path}")]
+    NonUtf8Path { path: PathBuf },
+    #[error("writing SQLite snapshot {path}")]
+    Write {
+        path:   PathBuf,
+        #[source]
+        source: sqlx::Error,
+    },
+    #[error("setting private permissions on snapshot staging file {path}")]
+    SetPermissions {
+        path:   PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+/// Writes a consistent single-file copy of the live pool to `staging_path`.
+///
+/// `VACUUM INTO` produces a snapshot that needs no `-wal`/`-shm` siblings to
+/// restore. Any stale staging file is removed first and the copy is
+/// restricted to private permissions. The caller publishes the staging file
+/// into its final path and owns the durability of that rename.
+pub async fn write_snapshot_to_staging(
+    pool: &DbPool,
+    staging_path: &Path,
+) -> Result<(), SnapshotStagingError> {
+    remove_file_if_exists(staging_path)
+        .await
+        .map_err(|source| SnapshotStagingError::RemoveStale {
+            path: staging_path.to_path_buf(),
+            source,
+        })?;
+    let staging_target =
+        staging_path
+            .to_str()
+            .ok_or_else(|| SnapshotStagingError::NonUtf8Path {
+                path: staging_path.to_path_buf(),
+            })?;
+    sqlx::query("VACUUM INTO ?")
+        .bind(staging_target)
+        .execute(pool)
+        .await
+        .map_err(|source| SnapshotStagingError::Write {
+            path: staging_path.to_path_buf(),
+            source,
+        })?;
+    set_private_permissions(staging_path)
+        .await
+        .map_err(|source| SnapshotStagingError::SetPermissions {
+            path: staging_path.to_path_buf(),
+            source,
+        })?;
+    Ok(())
+}
+
 /// Removes `path`, treating an already-missing file as success.
-pub async fn remove_file_if_exists(path: &Path) -> std::io::Result<()> {
+async fn remove_file_if_exists(path: &Path) -> std::io::Result<()> {
     match fs::remove_file(path).await {
         Ok(()) => Ok(()),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -237,7 +280,7 @@ pub async fn remove_file_if_exists(path: &Path) -> std::io::Result<()> {
 
 /// Restricts `path` to owner-only access (0o600). No-op off Unix.
 #[cfg(unix)]
-pub async fn set_private_permissions(path: &Path) -> std::io::Result<()> {
+async fn set_private_permissions(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
     fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).await
@@ -245,7 +288,7 @@ pub async fn set_private_permissions(path: &Path) -> std::io::Result<()> {
 
 /// Restricts `path` to owner-only access (0o600). No-op off Unix.
 #[cfg(not(unix))]
-pub async fn set_private_permissions(_path: &Path) -> std::io::Result<()> {
+async fn set_private_permissions(_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 

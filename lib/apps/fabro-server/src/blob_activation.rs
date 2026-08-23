@@ -67,26 +67,8 @@ pub(crate) enum BlobActivationError {
         required_bytes:  u64,
         available_bytes: u64,
     },
-    #[error("removing stale activation backup staging file {path}")]
-    RemoveStaging {
-        path:   PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
-    #[error("activation backup staging path is not valid UTF-8 at {path}")]
-    NonUtf8StagingPath { path: PathBuf },
-    #[error("writing the pre-activation SQLite backup at {path}")]
-    WriteBackup {
-        path:   PathBuf,
-        #[source]
-        source: sqlx::Error,
-    },
-    #[error("setting private permissions on activation backup staging file {path}")]
-    SetBackupPermissions {
-        path:   PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
+    #[error("staging the pre-activation SQLite backup")]
+    StageBackup(#[source] fabro_db::SnapshotStagingError),
     #[error("joining the activation backup publication task")]
     JoinBackupPublication(#[source] JoinError),
     #[error("publishing the activation backup at {path} without overwriting")]
@@ -300,32 +282,9 @@ async fn create_backup(
     backup_path: &Path,
 ) -> Result<(), BlobActivationError> {
     let staging_path = fabro_db::append_to_path(backup_path, STAGING_SUFFIX);
-    fabro_db::remove_file_if_exists(&staging_path)
+    fabro_db::write_snapshot_to_staging(pool, &staging_path)
         .await
-        .map_err(|source| BlobActivationError::RemoveStaging {
-            path: staging_path.clone(),
-            source,
-        })?;
-    let staging_target =
-        staging_path
-            .to_str()
-            .ok_or_else(|| BlobActivationError::NonUtf8StagingPath {
-                path: staging_path.clone(),
-            })?;
-    sqlx::query("VACUUM INTO ?")
-        .bind(staging_target)
-        .execute(pool)
-        .await
-        .map_err(|source| BlobActivationError::WriteBackup {
-            path: staging_path.clone(),
-            source,
-        })?;
-    fabro_db::set_private_permissions(&staging_path)
-        .await
-        .map_err(|source| BlobActivationError::SetBackupPermissions {
-            path: staging_path.clone(),
-            source,
-        })?;
+        .map_err(BlobActivationError::StageBackup)?;
     validate_backup(&staging_path).await?;
 
     let publish_staging = staging_path.clone();
@@ -581,7 +540,10 @@ mod tests {
             .await
             .expect_err("a closed pool must fail backup creation");
 
-        assert!(matches!(error, BlobActivationError::WriteBackup { .. }));
+        assert!(matches!(
+            error,
+            BlobActivationError::StageBackup(fabro_db::SnapshotStagingError::Write { .. })
+        ));
         assert!(!backup_path.exists());
         Ok(())
     }
