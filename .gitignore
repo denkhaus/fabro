@@ -5,3 +5,6 @@ gofib
 
 # prime harness state — reviewer code is canonical on meta
 .prime/
+
+# platform build artifacts leak into this worktree on branch switch
+target/
