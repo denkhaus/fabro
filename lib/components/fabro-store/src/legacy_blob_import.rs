@@ -79,8 +79,6 @@ enum LegacyBlobInventoryFailure {
     ReadSourceScan(#[source] slatedb::Error),
     #[error("a legacy blob key is not canonical")]
     InvalidSourceKey,
-    #[error("legacy blob bytes do not match their key digest")]
-    SourceDigestMismatch,
     #[error("a legacy blob inventory counter overflowed")]
     CounterOverflow,
 }
@@ -520,7 +518,11 @@ struct BatchReport {
 }
 
 impl Database {
-    /// Strictly inventories the exact legacy SlateDB blob keyspace.
+    /// Inventories the exact legacy SlateDB blob keyspace.
+    ///
+    /// Keys must be canonical, but value digests are not rehashed here: the
+    /// inventory only sizes the keyspace, and the import pass validates every
+    /// digest before any row is persisted.
     pub async fn legacy_blob_inventory(
         &self,
     ) -> std::result::Result<LegacyBlobInventory, LegacyBlobInventoryError> {
@@ -555,14 +557,8 @@ impl Database {
                 &mut report.bytes,
                 inventory_usize_to_u64(entry.value.len())?,
             )?;
-            validate_source_entry_common(&entry.key, &entry.value, &prefix).map_err(|failure| {
-                match failure {
-                    SourceEntryFailure::InvalidKey => LegacyBlobInventoryFailure::InvalidSourceKey,
-                    SourceEntryFailure::DigestMismatch => {
-                        LegacyBlobInventoryFailure::SourceDigestMismatch
-                    }
-                }
-            })?;
+            parse_source_key(&entry.key, &prefix)
+                .ok_or(LegacyBlobInventoryFailure::InvalidSourceKey)?;
         }
         Ok(())
     }
@@ -856,16 +852,18 @@ fn parse_canonical_hash(value: &str) -> Option<BlobHash> {
     canonical.then(|| value.parse().ok()).flatten()
 }
 
+fn parse_source_key(key: &[u8], prefix: &[u8]) -> Option<BlobHash> {
+    let suffix = key.strip_prefix(prefix)?;
+    let hash_text = std::str::from_utf8(suffix).ok()?;
+    parse_canonical_hash(hash_text)
+}
+
 fn validate_source_entry_common(
     key: &[u8],
     value: &[u8],
     prefix: &[u8],
 ) -> Result<BlobHash, SourceEntryFailure> {
-    let suffix = key
-        .strip_prefix(prefix)
-        .ok_or(SourceEntryFailure::InvalidKey)?;
-    let hash_text = std::str::from_utf8(suffix).map_err(|_| SourceEntryFailure::InvalidKey)?;
-    let hash = parse_canonical_hash(hash_text).ok_or(SourceEntryFailure::InvalidKey)?;
+    let hash = parse_source_key(key, prefix).ok_or(SourceEntryFailure::InvalidKey)?;
     if BlobHash::new(value) != hash {
         return Err(SourceEntryFailure::DigestMismatch);
     }

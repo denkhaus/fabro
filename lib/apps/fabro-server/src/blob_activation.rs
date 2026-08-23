@@ -184,10 +184,19 @@ pub(crate) async fn activate_blob_storage(
         .import_legacy_blobs_into(database.pool())
         .await
         .map_err(|source| BlobActivationError::Import(Box::new(source)))?;
-    let verification = store
-        .verify_legacy_blobs_in(database.pool())
-        .await
-        .map_err(|source| BlobActivationError::Verification(Box::new(source)))?;
+    // The import pass already validates every legacy digest and byte-compares
+    // every already-present row on each boot, so the independent verification
+    // sweep only needs to double-check boots that actually inserted rows.
+    let verification = if import.imported_rows > 0 {
+        Some(
+            store
+                .verify_legacy_blobs_in(database.pool())
+                .await
+                .map_err(|source| BlobActivationError::Verification(Box::new(source)))?,
+        )
+    } else {
+        None
+    };
     validate_live_integrity(database.pool()).await?;
     final_truncate_checkpoint(database.pool()).await?;
 
@@ -196,8 +205,8 @@ pub(crate) async fn activate_blob_storage(
         legacy_bytes = inventory.bytes,
         imported_rows = import.imported_rows,
         existing_rows = import.existing_rows,
-        matched_rows = verification.matched_rows,
-        target_rows = verification.target_rows,
+        matched_rows = verification.as_ref().map(|report| report.matched_rows),
+        target_rows = verification.as_ref().map(|report| report.target_rows),
         passive_checkpoints = import.passive_checkpoints,
         backup_required,
         backup_path = ?retained_backup,
@@ -624,7 +633,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn empty_inventory_skips_backup_but_validates_sqlite_rows() -> TestResult<()> {
+    async fn empty_inventory_skips_backup_and_serves_existing_sqlite_rows() -> TestResult<()> {
         let directory = tempfile::tempdir()?;
         let sqlite_path = directory.path().join("fabro.sqlite3");
         let database = fabro_db::Database::connect(&sqlite_path).await?;
