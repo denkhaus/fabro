@@ -24,12 +24,10 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 ## Painpoint channel
 
 If judging this pass revealed friction in the evidence or the loop itself,
-note it. You have read-only tools but do not write the staged file:
-emit your painpoints inside `context_updates.workflow_painpoints`
-(restating the full accumulated list — last-writer-wins; the planner
-carries them into `.fabro/run-painpoints.jsonl` next pass). Until the
-message-bus replaces this relay, restating is mandatory and omission
-silently deletes earlier entries.
+note it. You have read-only tools but do not write journal files: emit
+your findings in your JSON under `context_updates.journal`, e.g.
+{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained>"}]}}.
+The engine records it durably (no restating, no last-writer-wins relay).
 
 ## Decision
 

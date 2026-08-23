@@ -30,11 +30,10 @@ Tracker mechanics (sd is installed and authoritative):
 You build the PRODUCT. Never modify workflow assets or repo wiring:
 `.fabro/`, `scripts/`, `justfile`, `.mise.toml`, `AGENTS.md`, `CONTEXT.md`,
 `docs/`. When your work reveals friction in these (a script bug, a prompt
-gap, a gate blind spot), do NOT fix it here. Instead append one JSON line to
-`.fabro/run-painpoints.jsonl` (create if missing; append, never rewrite):
-{"stage": "implementer", "text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}
-and mirror the same entries in `context_updates.workflow_painpoints`
-(restate the full accumulated list — the key is last-writer-wins).
+gap, a gate blind spot), do NOT fix it here. Emit it in your JSON under
+`context_updates.journal`, e.g.
+{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}]}}.
+The engine records it durably per stage (no restating, no rewriting).
 
 ## Verification-only briefs
 

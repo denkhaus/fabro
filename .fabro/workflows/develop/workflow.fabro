@@ -111,25 +111,18 @@ digraph Develop {
         retry_policy="standard"
     ]
 
-    // Refiner: deterministic painpoint delivery (ADR-0002). Lifts staged
-    // painpoints into the platform mailbox; never fails the goal gate.
-    // Fan-in point: EVERY exit-bound path routes through here, so staged
-    // painpoints are delivered no matter how the run ends (review of run
-    // 01M0NJZGX7BMJAJC3CZJZ0RNT0: only Tracker-empty delivered before).
-    refiner [
-        label="Painpoint Delivery",
-        shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/refiner.nu",
-        timeout="2m",
-        max_retries=0
-    ]
+    // Refiner REMOVED (seed fabro-176b, ADR-0009 candidate): painpoint
+    // delivery no longer needs an in-graph fan-in node. The stage-journal
+    // hook writes .fabro/journal/<node>@<visit>.json at every stage
+    // completion; the checkpoint carries it durably; the platform-side
+    // improve workflow scans run branches for journals. Delivery is
+    // intrinsic — no exit-bound path can miss it.
 
     start -> planner
 
-    planner -> refiner   [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
-    planner -> refiner   [label="Planner failed", condition="outcome=failed"]
+    planner -> exit        [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    planner -> exit        [label="Planner failed", condition="outcome=failed"]
     planner -> implementer [label="Seed claimed"]
-    refiner -> exit
 
     implementer -> planner  [label="Blocked", condition="outcome=failed"]
     implementer -> tester   [label="Implemented"]
@@ -138,9 +131,9 @@ digraph Develop {
     tester -> implementer [label="Gate red"]
 
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
-    evidence -> refiner  [label="Capture failed (seed stays open for the next run)"]
+    evidence -> exit     [label="Capture failed (seed stays open for the next run)"]
 
     reviewer -> planner [label="Approved", condition="preferred_label=\"Approved\""]
     reviewer -> planner [label="Changes requested"]
-    reviewer -> refiner [label="Reviewer failed", condition="outcome=failed"]
+    reviewer -> exit    [label="Reviewer failed", condition="outcome=failed"]
 }
