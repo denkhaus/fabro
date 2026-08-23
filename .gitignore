@@ -6,3 +6,9 @@ __pycache__/
 
 # platform build artifacts leak into this worktree on branch switch
 target/
+
+# platform artifacts leaking into this worktree on branch switch
+apps/
+lib/
+node_modules/
+tmp/
