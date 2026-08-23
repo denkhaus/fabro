@@ -25,8 +25,12 @@ const PASSIVE_CHECKPOINT_BYTES: u64 = 8 * 1024 * 1024;
 /// Aggregate size and row count of the exact legacy blob keyspace.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct LegacyBlobInventory {
-    pub rows:  u64,
-    pub bytes: u64,
+    pub rows:          u64,
+    pub bytes:         u64,
+    /// Legacy rows whose hash is not yet present in the SQLite blobs table.
+    pub pending_rows:  u64,
+    /// Bytes belonging to [`Self::pending_rows`].
+    pub pending_bytes: u64,
 }
 
 /// A failed strict inventory and the aggregate progress observed before it.
@@ -79,6 +83,8 @@ enum LegacyBlobInventoryFailure {
     ReadSourceScan(#[source] slatedb::Error),
     #[error("a legacy blob key is not canonical")]
     InvalidSourceKey,
+    #[error("reading a SQLite blob row for the legacy inventory")]
+    ReadDestination(#[source] sqlx::Error),
     #[error("a legacy blob inventory counter overflowed")]
     CounterOverflow,
 }
@@ -518,16 +524,20 @@ struct BatchReport {
 }
 
 impl Database {
-    /// Inventories the exact legacy SlateDB blob keyspace.
+    /// Inventories the exact legacy SlateDB blob keyspace against the SQLite
+    /// blobs table in `pool`.
     ///
     /// Keys must be canonical, but value digests are not rehashed here: the
     /// inventory only sizes the keyspace, and the import pass validates every
-    /// digest before any row is persisted.
+    /// digest before any row is persisted. Rows whose hash the blobs table
+    /// does not contain yet are reported as pending so callers can size the
+    /// remaining import work.
     pub async fn legacy_blob_inventory(
         &self,
+        pool: &SqlitePool,
     ) -> std::result::Result<LegacyBlobInventory, LegacyBlobInventoryError> {
         let mut report = LegacyBlobInventory::default();
-        let result = self.run_legacy_blob_inventory(&mut report).await;
+        let result = self.run_legacy_blob_inventory(pool, &mut report).await;
         match result {
             Ok(()) => Ok(report),
             Err(failure) => Err(LegacyBlobInventoryError { report, failure }),
@@ -536,6 +546,7 @@ impl Database {
 
     async fn run_legacy_blob_inventory(
         &self,
+        pool: &SqlitePool,
         report: &mut LegacyBlobInventory,
     ) -> Result<(), LegacyBlobInventoryFailure> {
         let source = self
@@ -553,12 +564,20 @@ impl Database {
             .map_err(LegacyBlobInventoryFailure::ReadSourceScan)?
         {
             inventory_checked_add(&mut report.rows, 1)?;
-            inventory_checked_add(
-                &mut report.bytes,
-                inventory_usize_to_u64(entry.value.len())?,
-            )?;
-            parse_source_key(&entry.key, &prefix)
+            let value_bytes = inventory_usize_to_u64(entry.value.len())?;
+            inventory_checked_add(&mut report.bytes, value_bytes)?;
+            let hash = parse_source_key(&entry.key, &prefix)
                 .ok_or(LegacyBlobInventoryFailure::InvalidSourceKey)?;
+            let imported: bool =
+                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM blobs WHERE hash = ?)")
+                    .bind(hash.to_string())
+                    .fetch_one(pool)
+                    .await
+                    .map_err(LegacyBlobInventoryFailure::ReadDestination)?;
+            if !imported {
+                inventory_checked_add(&mut report.pending_rows, 1)?;
+                inventory_checked_add(&mut report.pending_bytes, value_bytes)?;
+            }
         }
         Ok(())
     }
@@ -1305,10 +1324,36 @@ mod tests {
             )
             .await?;
 
-        let inventory = context.source.legacy_blob_inventory().await?;
+        let inventory = context
+            .source
+            .legacy_blob_inventory(&context.sqlite)
+            .await?;
 
         assert_eq!(inventory.rows, 2);
         assert_eq!(inventory.bytes, 4);
+        assert_eq!(inventory.pending_rows, 2);
+        assert_eq!(inventory.pending_bytes, 4);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn inventory_reports_already_imported_rows_as_not_pending() -> TestResult<()> {
+        let context = TestContext::new().await?;
+        context.put_blob(b"imported-before-inventory").await?;
+        context.import().await?;
+        context.put_blob(b"still-pending").await?;
+
+        let inventory = context
+            .source
+            .legacy_blob_inventory(&context.sqlite)
+            .await?;
+
+        assert_eq!(inventory.rows, 2);
+        assert_eq!(inventory.pending_rows, 1);
+        assert_eq!(
+            inventory.pending_bytes,
+            u64::try_from(b"still-pending".len())?
+        );
         Ok(())
     }
 

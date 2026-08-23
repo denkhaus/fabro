@@ -142,7 +142,7 @@ pub(crate) async fn activate_blob_storage(
     ));
 
     let inventory = store
-        .legacy_blob_inventory()
+        .legacy_blob_inventory(database.pool())
         .await
         .map_err(BlobActivationError::Inventory)?;
     let backup_exists = backup_exists(&backup_path).await?;
@@ -159,11 +159,18 @@ pub(crate) async fn activate_blob_storage(
     } else {
         0
     };
-    let required_free_bytes =
-        compute_disk_preflight(inventory.bytes, backup_reserve, available_free_bytes)?;
+    // Only the rows the import still has to copy need new space; rows already
+    // present in SQLite cost nothing on a warm restart.
+    let required_free_bytes = compute_disk_preflight(
+        inventory.pending_bytes,
+        backup_reserve,
+        available_free_bytes,
+    )?;
     debug!(
         legacy_rows = inventory.rows,
         legacy_bytes = inventory.bytes,
+        pending_rows = inventory.pending_rows,
+        pending_bytes = inventory.pending_bytes,
         backup_required,
         backup_reserve,
         required_free_bytes,
@@ -217,16 +224,16 @@ pub(crate) async fn activate_blob_storage(
 
 /// Fail-closed disk capacity check; returns the required free bytes.
 fn compute_disk_preflight(
-    legacy_bytes: u64,
+    pending_bytes: u64,
     backup_reserve: u64,
     available_free_bytes: u64,
 ) -> Result<u64, BlobActivationError> {
-    let half = legacy_bytes
+    let half = pending_bytes
         .checked_add(1)
         .ok_or(BlobActivationError::DiskRequirementOverflow)?
         / 2;
     let required_free_bytes = backup_reserve
-        .checked_add(legacy_bytes)
+        .checked_add(pending_bytes)
         .and_then(|value| value.checked_add(half))
         .and_then(|value| value.checked_add(DISK_HEADROOM_BYTES))
         .ok_or(BlobActivationError::DiskRequirementOverflow)?;
@@ -459,15 +466,15 @@ mod tests {
 
     #[test]
     fn disk_preflight_passes_at_equality_and_fails_one_byte_below() {
-        let legacy_bytes = 3;
+        let pending_bytes = 3;
         let backup_reserve = 10;
-        let required = backup_reserve + legacy_bytes + 2 + DISK_HEADROOM_BYTES;
+        let required = backup_reserve + pending_bytes + 2 + DISK_HEADROOM_BYTES;
 
-        let required_free_bytes = compute_disk_preflight(legacy_bytes, backup_reserve, required)
+        let required_free_bytes = compute_disk_preflight(pending_bytes, backup_reserve, required)
             .expect("exact equality must pass");
         assert_eq!(required_free_bytes, required);
 
-        let error = compute_disk_preflight(legacy_bytes, backup_reserve, required - 1)
+        let error = compute_disk_preflight(pending_bytes, backup_reserve, required - 1)
             .expect_err("one byte below must fail");
         assert!(matches!(
             error,
