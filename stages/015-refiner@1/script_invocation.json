@@ -1,0 +1,6 @@
+{
+  "script": "nu .fabro/workflows/develop/scripts/refiner.nu",
+  "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/refiner.nu",
+  "language": "shell",
+  "timeout_ms": 120000
+}

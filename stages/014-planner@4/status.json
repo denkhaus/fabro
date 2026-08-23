@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Acceptance deadlock (platform-side prerequisite, not a planner error): the only open seed fabro-d810 ('Develop workflow: adopt preamble stage scoping + budget') has its workflow-edit portion already implemented and synced in the worktree (commits 17e1fb8/965fbc8/e579afe; verified `preamble_budget_kb=12` at `.fabro/workflows/develop/workflow.fabro` line 6 and per-node `preamble_stages_ignore` at lines 30/47/105), but its remaining acceptance — recorded preamble-size numbers across >=3 cycles under the rebuilt denkhaus binary, asserted via run events or fabro ask — is not executable from the lab sandbox (verified: no fabro CLI on PATH, no run-event store under `.fabro/`, no meta world in `/workspace`), and the seed's own Do-NOT section forbids closing before numbers are recorded. Claiming it would deadlock the implementer or force a dishonest close of an upstream-PR evidence gate; no planner->Blocked edge exists in the graph, so the hold rides outcome=failed. The seed stays open for a human; painpoints filed with fix suggestions (model the denkhaus fabro-29f7 rebuild as a blocker, stage run-event exports into the repo, add a planner Blocked edge).",
+  "timestamp": "2026-08-23T15:21:36.149934354Z"
+}
