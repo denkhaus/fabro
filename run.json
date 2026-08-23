@@ -203,14 +203,137 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M0R9VV3D3H7D0TQHFWQP09YT",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-08-23T21:54:27.432849602Z",
+    "run_branch": "fabro/run/01M0R9VV3D3H7D0TQHFWQP09YT",
+    "base_sha": "ea08ce4b8407fdbd6c5c4936599e2f129402873f"
   },
-  "status_updated_at": "2026-08-23T21:54:11.459135743Z",
-  "last_event_at": "2026-08-23T21:54:26.725950078Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-08-23T21:54:27.432901522Z",
+  "last_event_at": "2026-08-23T21:55:39.190724831Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 19,
+      "checkpoint": {
+        "timestamp": "2026-08-23T21:54:29.358104262Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+          "internal.retry_count.start": 0,
+          "internal.thread_id": null,
+          "outcome": "succeeded",
+          "internal.fidelity": "compact",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01M0R9VV3D3H7D0TQHFWQP09YT",
+          "graph.rankdir": "LR",
+          "current_node": "start",
+          "failure_class": "",
+          "failure_signature": ""
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "greet",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-23T21:55:39.242300951Z",
+        "current_node": "greet",
+        "completed_nodes": [
+          "start",
+          "greet"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "current_node": "greet",
+          "thread.start.current_node": "greet",
+          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+          "internal.run_id": "01M0R9VV3D3H7D0TQHFWQP09YT",
+          "graph.rankdir": "LR",
+          "response.greet": "Done! Here's the wrap-up:\n\n## 👋 Hello!\n\nThis session itself was the demo — I was executing the `hello` workflow from `.fabro/workflows/hello/workflow.fabro`:\n\n| Stage | What happened |\n|---|---|\n| **Start** | Workflow engine admitted the run, goal: *\"Say hello and demonstrate a basic Fabro workflow\"* |\n| **Greet** | Agent stage (me) received the prompt *\"Add a haiku to the README\"* and did the work |\n| **Exit** | Run completes with this summary |\n\nThat's the simplest possible Fabro graph — `start -> greet -> exit` — the same shape as the [hello-world tutorial](https://docs.fabro.sh/tutorials/hello-world), just with real tools doing real file edits along the way.\n\n## 🌸 The haiku\n\nAdded to the end of `README.md`:\n\n> Graphs define the work,\n> agents turn each node to code.\n> Humans gate, then rest.\n\n(5-7-5, and it happens to summarize the whole product: workflows-as-graphs, agent execution, human gates.)\n\n**Files changed:** `README.md` (+8 lines). No commit made — the workflow engine's checkpointing owns that if this run is being tracked by the server.",
+          "internal.retry_count.greet": 0,
+          "outcome": "succeeded",
+          "last_response": "Done! Here's the wrap-up:\n\n## 👋 Hello!\n\nThis session itself was the demo — I was executing the `hello` workflow from `.fabro/workflows/hello/workflow.fabro`:\n\n| Stage | What happened |\n|---|---|\n",
+          "failure_class": "",
+          "internal.fidelity": "compact",
+          "internal.thread_id": "start",
+          "internal.work_dir": "/workspace/fabro",
+          "last_stage": "greet",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.start": 0,
+          "failure_signature": ""
+        },
+        "node_outcomes": {
+          "greet": {
+            "status": "succeeded",
+            "context_updates": {
+              "last_stage": "greet",
+              "last_response": "Done! Here's the wrap-up:\n\n## 👋 Hello!\n\nThis session itself was the demo — I was executing the `hello` workflow from `.fabro/workflows/hello/workflow.fabro`:\n\n| Stage | What happened |\n|---|---|\n",
+              "response.greet": "Done! Here's the wrap-up:\n\n## 👋 Hello!\n\nThis session itself was the demo — I was executing the `hello` workflow from `.fabro/workflows/hello/workflow.fabro`:\n\n| Stage | What happened |\n|---|---|\n| **Start** | Workflow engine admitted the run, goal: *\"Say hello and demonstrate a basic Fabro workflow\"* |\n| **Greet** | Agent stage (me) received the prompt *\"Add a haiku to the README\"* and did the work |\n| **Exit** | Run completes with this summary |\n\nThat's the simplest possible Fabro graph — `start -> greet -> exit` — the same shape as the [hello-world tutorial](https://docs.fabro.sh/tutorials/hello-world), just with real tools doing real file edits along the way.\n\n## 🌸 The haiku\n\nAdded to the end of `README.md`:\n\n> Graphs define the work,\n> agents turn each node to code.\n> Humans gate, then rest.\n\n(5-7-5, and it happens to summarize the whole product: workflows-as-graphs, agent execution, human gates.)\n\n**Files changed:** `README.md` (+8 lines). No commit made — the workflow engine's checkpointing owns that if this run is being tracked by the server."
+            },
+            "notes": "Stage completed: greet",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16369,
+                    "output_tokens": 1060,
+                    "reasoning_tokens": 2058,
+                    "cache_read_tokens": 89088,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 59789
+            },
+            "files_touched": [
+              "/workspace/fabro/README.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 60384,
+              "tool_time_ms": 1994,
+              "active_time_ms": 62378
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "exit",
+        "node_visits": {
+          "greet": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -237,5 +360,260 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 16,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-23T21:54:29.357332118Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-23T21:54:29.343979943Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "greet@1": {
+      "first_event_seq": 20,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-23T21:54:29.372094373Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "live_inference_ms": 67056,
+      "live_tool_ms": 1988,
+      "usage": {
+        "input_tokens": 16369,
+        "output_tokens": 1060,
+        "total_tokens": 108575,
+        "reasoning_tokens": 2058,
+        "cache_read_tokens": 89088,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 59789
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "rust-style-guide",
+            "description": "Apply this Rust style guide when writing, reviewing, refactoring, or configuring Rust code for this project. Covers Rust 2024/MSRV, library vs application conventions, public API design, errors, panics, ownership and cloning, async/Tokio/concurrency, tracing, rustfmt/Clippy, testing with nextest, and unsafe/macro policy. Also use when setting up new Rust projects, investigating Rust performance, verifying library releases, or reviewing Rust code changes."
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 16105,
+        "usage_percent": 1.5358924865722656,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-08-23T21:55:39.185886915Z",
+        "event_seq": 76,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1187,
+            "usage_percent": 0.11320114135742188
+          },
+          {
+            "category": "tools",
+            "tokens": 1525,
+            "usage_percent": 0.14543533325195312
+          },
+          {
+            "category": "skills",
+            "tokens": 218,
+            "usage_percent": 0.02079010009765625
+          },
+          {
+            "category": "memory",
+            "tokens": 5479,
+            "usage_percent": 0.5225181579589844
+          },
+          {
+            "category": "conversation",
+            "tokens": 7690,
+            "usage_percent": 0.7333755493164062
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "running"
+    }
+  }
 }
