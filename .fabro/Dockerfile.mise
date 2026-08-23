@@ -27,16 +27,19 @@ RUN set -eux; \
     mise --version
 
 # Workspace toolset, mirroring .mise.toml [tools] (see header note).
-# Explicit tool@version args — no config file needed in the empty context.
-RUN mise install \
+# `mise use -g` sets global defaults (needed: shims resolve versions from
+# config; the empty context has no .mise.toml to copy) and installs. The
+# workspace .mise.toml pins the same versions for runs, so per-run
+# `mise install` stays a no-op check.
+RUN mise use -g \
         bun@1.4.0 \
         aqua:nushell/nushell@0.115.0 \
         go@1.27.0 \
         just@1.58.0 \
-    && mise exec -- bun --version \
-    && mise exec -- nu --version \
-    && mise exec -- go version \
-    && mise exec -- just --version
+    && bun --version \
+    && nu --version \
+    && go version \
+    && just --version
 
 # npm-distributed CLIs into the pinned BUN_INSTALL dir (see
 # scripts/bootstrap.nu): sd + ml available without per-run install.
