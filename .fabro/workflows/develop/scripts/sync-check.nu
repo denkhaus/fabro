@@ -46,6 +46,23 @@ def counterpart-ref [branch: string]: nothing -> any {
     if $remote.exit_code == 0 { $"origin/($branch)" } else { null }
 }
 
+# Platform-exclusive paths that must NEVER exist on a world branch
+# (product or meta worlds are not the platform repo). A leak here means a
+# commit landed in the wrong branch — fail loudly, ignore-files are not
+# enough (ignored clutter still wastes disk and confuses agents).
+const PLATFORM_EXCLUSIVE = [".github", ".cargo", "apps", "lib", "node_modules", "tmp", "target", "docs/agents", "docs/internal", "docs/public", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml", "clippy.toml", "deny.toml"]
+
+def leak-guard []: nothing -> nothing {
+    let tracked = (git ls-tree -r --name-only HEAD | lines)
+    let leaks = ($tracked | where {|path| ($PLATFORM_EXCLUSIVE | any {|p| $path == $p or ($path | str starts-with $"($p)/")})})
+    if ($leaks | is-not-empty) {
+        print "sync-check: PLATFORM LEAK — platform-only paths tracked on this world branch:"
+        $leaks | each {|p| print $"  ($p)"}
+        print "remove them (git rm) — they belong to the platform repo, not this world"
+        exit 1
+    }
+}
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -66,6 +83,8 @@ def main []: nothing -> nothing {
         print $"sync-check: counterpart branch ($other) not found — skip (single-world repo?)"
         return
     }
+
+    leak-guard
 
     let drift = (git diff $ref HEAD -- $SCOPE | lines | length)
     if $drift > 0 {

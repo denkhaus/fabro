@@ -2,7 +2,8 @@ digraph Develop {
     graph [
         goal="Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
         rankdir=LR,
-        max_node_visits=40
+        max_node_visits=40,
+        preamble_budget_kb=12
     ]
 
     start [shape=Mdiamond, label="Start"]
@@ -68,6 +69,14 @@ digraph Develop {
     // summary:high is "detailed summary including outputs" and carries the
     // evidence capture in full.
     //
+    // preamble_stages_ignore="planner": the reviewer judges from the seed
+    // spec, the gate result, and the evidence capture of ITS OWN cycle —
+    // not from the planner's verbose response, which every loop cycle
+    // re-delivered (25.6k preamble at cycle 3). Render-only: the planner's
+    // context updates (seed_brief) still reach the reviewer via the
+    // ## Context section; the evidence node is NOT ignored, so summary:high
+    // keeps carrying the capture in full.
+    //
     // No goal_gate: this node is legitimately skippable (tracker-empty runs
     // never reach it), and an unvisited goal-gate node fails the whole run
     // (engine semantics). Its genuine failures route to exit explicitly and
@@ -77,6 +86,7 @@ digraph Develop {
         shape=tab,
         prompt="@prompts/reviewer.md",
         fidelity="summary:high",
+        preamble_stages_ignore="planner",
         output_schema="routing",
         output_retries=2,
         max_visits=20,
