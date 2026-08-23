@@ -9,7 +9,7 @@ graph = "workflow.fabro"
 [[run.hooks]]
 name = "stage-journal"
 event = "stage_complete"
-command = "nu .fabro/workflows/develop/scripts/stage-journal.nu"
+script = "nu .fabro/workflows/develop/scripts/stage-journal.nu"
 blocking = false
 timeout_ms = 10000
 sandbox = true
