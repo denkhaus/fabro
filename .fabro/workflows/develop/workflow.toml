@@ -6,7 +6,7 @@ graph = "workflow.fabro"
 # Stage journal (seed fabro-176b): one durable JSON per stage execution,
 # engine provenance, checkpointed with the run. Non-blocking; failures
 # must never affect the run (side-effect only).
-[[hooks]]
+[[run.hooks]]
 name = "stage-journal"
 event = "stage_complete"
 command = "nu .fabro/workflows/develop/scripts/stage-journal.nu"
