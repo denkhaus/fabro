@@ -78,7 +78,7 @@ use crate::{Error, Result, keys};
 /// stores.
 ///
 /// This type is intentionally `pub(crate)`: callers should interact through a
-/// named store such as `AuthCodeStore` or `RefreshTokenStore`, which can add
+/// named store such as `AuthCodeStore` or `BlobStore`, which can add
 /// domain-specific behavior on top of the generic storage primitives here.
 pub(crate) struct Repository<R: Record> {
     db:      Arc<Db>,

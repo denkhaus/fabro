@@ -4,7 +4,7 @@ use std::path::Path;
 use fabro_types::RunId;
 
 #[cfg(test)]
-use crate::RunSummaryStore;
+use crate::{AuthSessionStore, RunSummaryStore};
 use crate::{Database, Result};
 
 /// Writes an event without append validation to model a log corrupted by an
@@ -18,6 +18,16 @@ pub async fn put_unvalidated_run_event(
     database
         .put_unvalidated_run_event(run_id, seq, payload)
         .await
+}
+
+#[cfg(test)]
+pub(crate) async fn sqlite_auth_session_store() -> (tempfile::TempDir, AuthSessionStore) {
+    let directory = tempfile::tempdir().unwrap();
+    let database = fabro_db::Database::connect(directory.path().join("fabro.sqlite3"))
+        .await
+        .unwrap();
+    database.migrate().await.unwrap();
+    (directory, AuthSessionStore::new(database.clone_pool()))
 }
 
 #[cfg(test)]
