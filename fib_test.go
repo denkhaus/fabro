@@ -54,7 +54,7 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, 0, tt.n, false, false, false); err != nil {
+			if err := run(&buf, 0, tt.n, 0, false, false, false); err != nil {
 				t.Fatalf("run(%d) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -95,7 +95,7 @@ func TestRunStart(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.start, tt.n, false, false, false); err != nil {
+			if err := run(&buf, tt.start, tt.n, 0, false, false, false); err != nil {
 				t.Fatalf("run(%d, %d) returned error: %v", tt.start, tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -136,7 +136,7 @@ func TestRunJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, 0, tt.n, true, false, false); err != nil {
+			if err := run(&buf, 0, tt.n, 0, true, false, false); err != nil {
 				t.Fatalf("run(%d, json) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -169,7 +169,7 @@ func TestRunJSON(t *testing.T) {
 func TestRunStartJSON(t *testing.T) {
 	const start, n = 10, 5
 	var buf bytes.Buffer
-	if err := run(&buf, start, n, true, false, false); err != nil {
+	if err := run(&buf, start, n, 0, true, false, false); err != nil {
 		t.Fatalf("run(%d, %d, json) returned error: %v", start, n, err)
 	}
 	out := buf.String()
@@ -219,7 +219,7 @@ func TestRunPretty(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, 0, tt.n, false, true, false); err != nil {
+			if err := run(&buf, 0, tt.n, 0, false, true, false); err != nil {
 				t.Fatalf("run(%d, pretty) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -239,7 +239,7 @@ func TestRunPretty(t *testing.T) {
 	// index right-aligned to len("100"), value to len(Fib(100)).
 	t.Run("pretty default prints 100 aligned numbers", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := run(&buf, 0, defaultCount, false, true, false); err != nil {
+		if err := run(&buf, 0, defaultCount, 0, false, true, false); err != nil {
 			t.Fatalf("run(default, pretty) returned error: %v", err)
 		}
 		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -261,7 +261,7 @@ func TestRunStartPretty(t *testing.T) {
 	fibs := map[int]string{8: "21", 9: "34", 10: "55", 11: "89", 12: "144"}
 	const start, n = 8, 5
 	var buf bytes.Buffer
-	if err := run(&buf, start, n, false, true, false); err != nil {
+	if err := run(&buf, start, n, 0, false, true, false); err != nil {
 		t.Fatalf("run(%d, %d, pretty) returned error: %v", start, n, err)
 	}
 	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -282,10 +282,10 @@ func TestRunPrettyJSON(t *testing.T) {
 	// -pretty only affects text mode: with -json the output must be
 	// identical, line for line.
 	var jsonOnly, prettyJSON bytes.Buffer
-	if err := run(&jsonOnly, 0, 3, true, false, false); err != nil {
+	if err := run(&jsonOnly, 0, 3, 0, true, false, false); err != nil {
 		t.Fatalf("run(3, json) returned error: %v", err)
 	}
-	if err := run(&prettyJSON, 0, 3, true, true, false); err != nil {
+	if err := run(&prettyJSON, 0, 3, 0, true, true, false); err != nil {
 		t.Fatalf("run(3, json, pretty) returned error: %v", err)
 	}
 	if prettyJSON.String() != jsonOnly.String() {
@@ -306,7 +306,7 @@ func TestRunRejectsInvalidCount(t *testing.T) {
 	}{{"text", false}, {"json", true}} {
 		for _, n := range []int{0, -5} {
 			var buf bytes.Buffer
-			err := run(&buf, 0, n, mode.asJSON, false, false)
+			err := run(&buf, 0, n, 0, mode.asJSON, false, false)
 			if err == nil {
 				t.Fatalf("run(%d, %s) succeeded, want error", n, mode.name)
 			}
@@ -330,7 +330,7 @@ func TestRunRejectsInvalidStart(t *testing.T) {
 	}{{"text", false}, {"json", true}} {
 		for _, start := range []int{-1, -5} {
 			var buf bytes.Buffer
-			err := run(&buf, start, 5, mode.asJSON, false, false)
+			err := run(&buf, start, 5, 0, mode.asJSON, false, false)
 			if err == nil {
 				t.Fatalf("run(%d, 5, %s) succeeded, want error", start, mode.name)
 			}
@@ -348,31 +348,142 @@ func TestRunRejectsInvalidStart(t *testing.T) {
 func TestRunVersion(t *testing.T) {
 	// -version must win over every other flag combination: the only
 	// output is the single line "gofib <Version>". It is checked before
-	// the -n and -start validation in run(), so even an invalid count
-	// or start still prints the version line and succeeds.
+	// the -n, -start, and -limit validation in run(), so even an
+	// invalid count, start, or limit still prints the version line and
+	// succeeds.
 	tests := []struct {
 		name   string
 		start  int
 		count  int
+		limit  int
 		asJSON bool
 		pretty bool
 	}{
-		{"version alone", 0, defaultCount, false, false},
-		{"version with -json -n 5", 0, 5, true, false},
-		{"version with -pretty", 0, defaultCount, false, true},
-		{"version with invalid -n 0", 0, 0, false, false},
-		{"version with -start 10", 10, 5, false, false},
-		{"version with invalid -start -1", -1, 5, false, false},
+		{"version alone", 0, defaultCount, 0, false, false},
+		{"version with -json -n 5", 0, 5, 0, true, false},
+		{"version with -pretty", 0, defaultCount, 0, false, true},
+		{"version with invalid -n 0", 0, 0, 0, false, false},
+		{"version with -start 10", 10, 5, 0, false, false},
+		{"version with invalid -start -1", -1, 5, 0, false, false},
+		{"version with -limit 3", 0, defaultCount, 3, false, false},
+		{"version with invalid -limit -1", 0, 5, -1, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.start, tt.count, tt.asJSON, tt.pretty, true); err != nil {
+			if err := run(&buf, tt.start, tt.count, tt.limit, tt.asJSON, tt.pretty, true); err != nil {
 				t.Fatalf("run(version) returned error: %v", err)
 			}
 			if want := "gofib " + Version + "\n"; buf.String() != want {
 				t.Errorf("run(version) wrote %q, want exactly %q", buf.String(), want)
 			}
 		})
+	}
+}
+
+// TestRunLimit pins the -limit semantics: a positive limit caps the
+// largest index printed (0, the default, is the "no limit" sentinel,
+// mirroring -start's 0), the output is the intersection of -start,
+// -n, and -limit, and a limit below start yields empty output and
+// success — not an error.
+func TestRunLimit(t *testing.T) {
+	tests := []struct {
+		name      string
+		start     int
+		n         int
+		limit     int
+		asJSON    bool
+		wantLines int
+		wantFirst string
+		wantLast  string
+	}{
+		// limit 0 (unset or explicit) means no limit at all.
+		{"limit 0 means no limit", 0, 5, 0, false, 5, "1: 1", "5: 5"},
+		// A huge -n is capped by the limit and finishes immediately:
+		// no index above the limit is ever computed or printed.
+		{"limit caps a huge -n", 0, 100000, 10, false, 10, "1: 1", "10: 55"},
+		// A limit at or above the range changes nothing.
+		{"limit above the range changes nothing", 0, 5, 50, false, 5, "1: 1", "5: 5"},
+		{"limit equal to the last index changes nothing", 0, 5, 5, false, 5, "1: 1", "5: 5"},
+		// Intersection with -start: start <= index <= min(start+n-1, limit).
+		{"limit and start intersect", 5, 10, 7, false, 3, "5: 5", "7: 13"},
+		// limit < start (both positive): zero lines, exit 0.
+		{"limit below start prints nothing", 10, 5, 3, false, 0, "", ""},
+		// -json on the reduced set: one object per surviving index.
+		{"limit with -json", 0, 5, 2, true, 2, wantJSONLine(1), wantJSONLine(2)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, tt.start, tt.n, tt.limit, tt.asJSON, false, false); err != nil {
+				t.Fatalf("run(%d, %d, %d) returned error: %v", tt.start, tt.n, tt.limit, err)
+			}
+			if tt.wantLines == 0 {
+				if buf.Len() != 0 {
+					t.Fatalf("run(%d, %d, %d) wrote %q, want empty output", tt.start, tt.n, tt.limit, buf.String())
+				}
+				return
+			}
+			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+			if len(lines) != tt.wantLines {
+				t.Fatalf("run(%d, %d, %d) printed %d lines, want %d", tt.start, tt.n, tt.limit, len(lines), tt.wantLines)
+			}
+			if lines[0] != tt.wantFirst {
+				t.Errorf("first line = %q, want %q", lines[0], tt.wantFirst)
+			}
+			if lines[len(lines)-1] != tt.wantLast {
+				t.Errorf("last line = %q, want %q", lines[len(lines)-1], tt.wantLast)
+			}
+		})
+	}
+
+	// -pretty on the reduced set: the columns are sized from the
+	// limit-capped last index (here 10 and Fib(10) = 55), not from
+	// start+n-1 (which would be 12 and Fib(12) = 144).
+	// F(8)..F(10); hardcoding F-values is allowed only for small n.
+	prettyFibs := map[int]string{8: "21", 9: "34", 10: "55"}
+	t.Run("limit with -pretty sizes columns from the capped last index", func(t *testing.T) {
+		const start, n, limit = 8, 5, 10
+		var buf bytes.Buffer
+		if err := run(&buf, start, n, limit, false, true, false); err != nil {
+			t.Fatalf("run(%d, %d, %d, pretty) returned error: %v", start, n, limit, err)
+		}
+		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+		if len(lines) != 3 {
+			t.Fatalf("run(%d, %d, %d, pretty) printed %d lines, want 3", start, n, limit, len(lines))
+		}
+		for i, line := range lines {
+			idx := start + i
+			// Widths come from the capped last index (10) and its
+			// value (Fib(10) = 55), not from start+n-1.
+			if want := prettyLine(limit, idx, prettyFibs[idx]); line != want {
+				t.Errorf("line %d = %q, want %q", i+1, line, want)
+			}
+		}
+	})
+}
+
+// TestRunRejectsInvalidLimit pins the -limit validation contract: a
+// negative limit exits non-zero with the exact -start-style error
+// message and writes no output first.
+func TestRunRejectsInvalidLimit(t *testing.T) {
+	for _, mode := range []struct {
+		name   string
+		asJSON bool
+	}{{"text", false}, {"json", true}} {
+		for _, limit := range []int{-1, -5} {
+			var buf bytes.Buffer
+			err := run(&buf, 0, 5, limit, mode.asJSON, false, false)
+			if err == nil {
+				t.Fatalf("run(0, 5, %d, %s) succeeded, want error", limit, mode.name)
+			}
+			want := fmt.Sprintf("invalid value %d for flag -limit: must be >= 0", limit)
+			if err.Error() != want {
+				t.Errorf("run(0, 5, %d, %s) error = %q, want exactly %q", limit, mode.name, err.Error(), want)
+			}
+			if buf.Len() != 0 {
+				t.Errorf("run(0, 5, %d, %s) wrote %q before failing, want no output", limit, mode.name, buf.String())
+			}
+		}
 	}
 }
