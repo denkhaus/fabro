@@ -72,6 +72,7 @@ pub(crate) fn repo_symlink_command(layout: &GitHubRepoLayout) -> String {
     )
 }
 
+#[cfg(any(feature = "docker", test))]
 pub(crate) fn exact_repository_init_command(clone_url: &str, checkout_path: &str) -> String {
     format!(
         "{git} init -- {path} && git -C {path} remote add origin {origin}",
@@ -87,6 +88,7 @@ pub(crate) fn exact_repository_init_command(clone_url: &str, checkout_path: &str
 /// The fetch names the commit directly rather than the branch. No layer proves
 /// that the submitted commit belongs to the submitted branch: the branch names
 /// the working branch, while a fetchable exact commit is checked out as-is.
+#[cfg(any(feature = "docker", test))]
 pub(crate) fn exact_fetch_command(
     checkout_path: &str,
     fetch_source: &str,
@@ -105,6 +107,7 @@ pub(crate) fn exact_fetch_command(
 
 /// Leading-space ` --depth N` fragment for a Git command, or empty when
 /// `depth` is `None` to fetch full history.
+#[cfg(any(feature = "docker", test))]
 pub(crate) fn depth_argument(depth: Option<usize>) -> String {
     depth.map_or_else(String::new, |depth| format!(" --depth {depth}"))
 }
@@ -139,6 +142,7 @@ pub(crate) fn exact_head_revision_command(checkout_path: &str) -> String {
 
 /// Check out the admitted branch and print the resulting HEAD in one shell
 /// command; stdout is the `rev-parse HEAD` output for [`verify_exact_head`].
+#[cfg(any(feature = "docker", test))]
 pub(crate) fn exact_checkout_verify_command(
     checkout_path: &str,
     branch: &str,

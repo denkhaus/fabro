@@ -22,6 +22,14 @@ pub use todo::*;
 
 use crate::{ParallelBranchId, Principal, RunId, StageId};
 
+/// Maximum accepted body size for `POST /runs/{id}/events`.
+///
+/// Producers that embed large payloads in an event (serialized tool output in
+/// particular) must budget against this limit, leaving headroom for the rest
+/// of the event envelope. The agent layer reserves half of it for serialized
+/// tool output.
+pub const MAX_RUN_EVENT_BODY_BYTES: usize = 3 * 1024 * 1024;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunNoticeLevel {
@@ -2458,6 +2466,9 @@ mod tests {
                 "duration_ms": 12,
                 "streams_separated": true,
                 "exec_output_tail": {"stdout": "out", "stderr": "err"},
+                "output_bytes_observed": 150,
+                "output_bytes_retained": 100,
+                "output_bytes_omitted": 50,
                 "visit": 1
             }
         });
@@ -2472,6 +2483,9 @@ mod tests {
         assert_eq!(props.termination, CommandTermination::Exited);
         assert_eq!(props.duration_ms, 12);
         assert!(props.streams_separated);
+        assert_eq!(props.output_bytes_observed, Some(150));
+        assert_eq!(props.output_bytes_retained, Some(100));
+        assert_eq!(props.output_bytes_omitted, Some(50));
         assert_eq!(
             props.exec_output_tail.as_ref().unwrap().stdout.as_deref(),
             Some("out")
@@ -2483,12 +2497,15 @@ mod tests {
     #[test]
     fn agent_tool_process_completed_omits_absent_exit_code_and_output_tail() {
         let body = EventBody::AgentToolProcessCompleted(AgentToolProcessCompletedProps {
-            exit_code:         None,
-            termination:       CommandTermination::TimedOut,
-            duration_ms:       10_000,
-            streams_separated: false,
-            exec_output_tail:  None,
-            visit:             1,
+            exit_code:             None,
+            termination:           CommandTermination::TimedOut,
+            duration_ms:           10_000,
+            streams_separated:     false,
+            exec_output_tail:      None,
+            output_bytes_observed: None,
+            output_bytes_retained: None,
+            output_bytes_omitted:  None,
+            visit:                 1,
         });
 
         let value = serde_json::to_value(&body).unwrap();
@@ -2499,6 +2516,9 @@ mod tests {
         let properties = value["properties"].as_object().unwrap();
         assert!(!properties.contains_key("exit_code"));
         assert!(!properties.contains_key("exec_output_tail"));
+        assert!(!properties.contains_key("output_bytes_observed"));
+        assert!(!properties.contains_key("output_bytes_retained"));
+        assert!(!properties.contains_key("output_bytes_omitted"));
 
         let parsed: EventBody = serde_json::from_value(value).unwrap();
         assert_eq!(parsed, body);

@@ -5,6 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "docker")]
 use fabro_types::settings::ResolveError;
 #[cfg(feature = "daytona")]
 use fabro_types::settings::run::DockerfileSource as ResolvedDockerfileSource;
@@ -164,7 +165,6 @@ pub fn local_working_directory_from_environment(
     )))
 }
 
-#[cfg(feature = "docker")]
 #[cfg(feature = "daytona")]
 fn duration_to_minutes_i32(duration: std::time::Duration) -> i32 {
     let minutes = duration.as_secs() / 60;

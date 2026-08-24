@@ -11409,6 +11409,79 @@ async fn append_run_event_rejects_run_id_mismatch() {
 }
 
 #[tokio::test]
+async fn append_run_event_accepts_a_body_larger_than_two_mib() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_run(&app, MINIMAL_DOT).await;
+    let payload = json!({
+        "id": "evt-large-agent-output",
+        "ts": "2026-08-24T12:00:00Z",
+        "run_id": run_id,
+        "event": "agent.tool.completed",
+        "properties": {
+            "tool_name": "shell",
+            "tool_call_id": "call-large",
+            "output": "x".repeat(2 * 1024 * 1024),
+            "is_error": false,
+            "visit": 1
+        }
+    })
+    .to_string();
+    assert!(payload.len() > 2 * 1024 * 1024);
+    assert!(payload.len() < 3 * 1024 * 1024);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/events")))
+                .header("content-type", "application/json")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_status!(response, StatusCode::OK).await;
+}
+
+#[tokio::test]
+async fn append_run_event_rejects_a_body_larger_than_three_mib() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_run(&app, MINIMAL_DOT).await;
+    let payload = json!({
+        "id": "evt-oversized-agent-output",
+        "ts": "2026-08-24T12:00:00Z",
+        "run_id": run_id,
+        "event": "agent.tool.completed",
+        "properties": {
+            "tool_name": "shell",
+            "tool_call_id": "call-oversized",
+            "output": "x".repeat(3 * 1024 * 1024),
+            "is_error": false,
+            "visit": 1
+        }
+    })
+    .to_string();
+    assert!(payload.len() > 3 * 1024 * 1024);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/events")))
+                .header("content-type", "application/json")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_status!(response, StatusCode::PAYLOAD_TOO_LARGE).await;
+}
+
+#[tokio::test]
 async fn append_run_event_rejects_reserved_archive_event() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));

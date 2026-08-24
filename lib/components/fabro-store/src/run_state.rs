@@ -1762,13 +1762,16 @@ mod tests {
 
         fn tool_completed(tool_call_id: &str) -> EventBody {
             EventBody::AgentToolCompleted(AgentToolCompletedProps {
-                tool_name:    "Bash".to_string(),
-                tool_call_id: tool_call_id.to_string(),
-                output:       json!("ok"),
-                is_error:     false,
-                visit:        1,
-                tool_result:  None,
-                turn_id:      None,
+                tool_name:             "Bash".to_string(),
+                tool_call_id:          tool_call_id.to_string(),
+                output:                json!("ok"),
+                is_error:              false,
+                visit:                 1,
+                output_bytes_observed: None,
+                output_bytes_retained: None,
+                output_bytes_omitted:  None,
+                tool_result:           None,
+                turn_id:               None,
             })
         }
 
