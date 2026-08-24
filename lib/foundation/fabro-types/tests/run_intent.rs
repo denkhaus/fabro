@@ -142,6 +142,9 @@ fn target_validation_rejects_invalid_grammar() {
     );
     for branch in [
         "",
+        "HEAD",
+        "-main",
+        ".main",
         "heads/main",
         "tags/v1",
         "refs/heads/main",

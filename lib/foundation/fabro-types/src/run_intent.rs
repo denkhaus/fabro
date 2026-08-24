@@ -60,13 +60,15 @@ impl RunTarget {
             Self::Git { repo, branch, sha } => {
                 let slug = GitHubRepositorySlug::try_new(&repo)
                     .ok_or(TargetValidationError::Repository)?;
-                let selector = format!("heads/{branch}");
-                if branch.is_empty()
+                // The selector grammar is checked on the bare branch name so
+                // its leading-character rules apply to the branch itself, not
+                // to a `heads/`-prefixed selector that would mask them.
+                if branch == "HEAD"
                     || branch.starts_with("heads/")
                     || branch.starts_with("tags/")
                     || branch.starts_with("refs/")
                     || repository::normalize_git_commit_sha(&branch).is_some()
-                    || !repository::is_valid_github_ref_selector(&selector)
+                    || !repository::is_valid_github_ref_selector(&branch)
                 {
                     return Err(TargetValidationError::Branch);
                 }
@@ -76,7 +78,7 @@ impl RunTarget {
                     })
                     .transpose()?;
                 let git = GitContext {
-                    origin_url: format!("https://github.com/{}/{}", slug.owner(), slug.repo()),
+                    origin_url: slug.https_url(),
                     branch:     branch.clone(),
                     sha:        sha.clone(),
                     dirty:      DirtyStatus::Clean,
