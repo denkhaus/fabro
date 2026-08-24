@@ -16,6 +16,11 @@ digraph Develop {
     ]
 
     start [shape=Mdiamond, label="Start"]
+    // Exit kinds (fabro-b907, ADR-0010): distinct soft exits classify the
+    // terminal event — deadlock -> FailureReason::Deadlock (work preserved:
+    // seeds stay open, commits pushed; a human decides), soft -> SoftStop
+    // (infrastructure hiccup; the next run re-enters). Natural completion
+    // and hard errors stay on the untyped exit.
     exit  [shape=Msquare, label="Exit"]
 
     // Planner: reads the seeds tracker, handles the last review verdict,
@@ -165,7 +170,7 @@ digraph Develop {
     // matching edge — the guard could never fire. Seed stays open for a
     // human; only an approved review closes it. Listed BEFORE the generic
     // outcome=failed edge so the specific label wins the routing.
-    planner -> exit        [label="Blocked (seed stays open for a human)", condition="preferred_label=\"Blocked\""]
+    planner -> exit [kind="deadlock", label="Blocked (seed stays open for a human)", condition="preferred_label=\"Blocked\""]
     planner -> exit        [label="Planner failed", condition="outcome=failed"]
     planner -> implementer [label="Seed claimed"]
 
@@ -181,9 +186,9 @@ digraph Develop {
     // notifications. Failure exits the run (notifying); the seed stays open
     // for the next run to re-enter the cycle.
     // (engine rule: a node needs one unconditional edge; an unmatched
-    // capture outcome retries once then falls through here — failure
-    // semantics identical, the seed stays open either way)
-    evidence -> exit     [label="Capture failed (seed stays open for the next run)"]
+    // capture outcome retries once then falls through here) — SOFT exit:
+    // infrastructure hiccup, work preserved, the next run re-enters.
+    evidence -> exit [kind="soft", label="Capture failed (next run re-enters)"]
 
     reviewer -> closeout  [label="Approved", condition="preferred_label=\"Approved\""]
     reviewer -> planner   [label="Changes requested"]
@@ -193,12 +198,12 @@ digraph Develop {
     // (~3.5 min, 5 visits observed). Re-capture only; the reviewer prompt
     // bounds this to one retry per seed, then it must decide.
     reviewer -> evidence  [label="Verification blocked", condition="preferred_label=\"Verification blocked\""]
-    reviewer -> exit      [label="Reviewer failed", condition="outcome=failed"]
+    reviewer -> exit [kind="soft", label="Reviewer failed (next run re-enters)", condition="outcome=failed"]
 
     // Closeout routing: the script's routing output decides — Tracker
     // empty exits, More seeds re-enters the planner on a FRESH claim.
     // Failure keeps the seed open for the next run.
     closeout -> exit      [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
     closeout -> planner   [label="More seeds"]
-    closeout -> exit      [label="Closeout failed (seed stays open for the next run)", condition="outcome=failed"]
+    closeout -> exit [kind="soft", label="Closeout failed (seed stays open)", condition="outcome=failed"]
 }
