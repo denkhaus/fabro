@@ -1,0 +1,22 @@
+diff --git a/.fabro/journal/reviewer@3.json b/.fabro/journal/reviewer@3.json
+new file mode 100644
+index 0000000..a6caba8
+--- /dev/null
++++ b/.fabro/journal/reviewer@3.json
+@@ -0,0 +1,15 @@
++{
++  "$schema": "fabro-journal-v1",
++  "run_id": "01M0T2GW0PTNF3CHNQKHER1271",
++  "node": "reviewer",
++  "visit": 3,
++  "status": "succeeded",
++  "ts": "2026-08-24T14:33:07Z",
++  "data": {
++    "painpoints": [
++      {
++        "text": "Evidence capture budget cut omitted 2 of 3 seed-work diffs (main.go, fib_test.go) while keeping the README diff — the least critical file for review. I recovered the implementation diff with `git diff <run-base> -- <seed-work files>`, but the review hinged on exactly the files that were cut. When the budget forces omissions, prioritize implementation/source files over docs in the capture, or grow the seed-work diff budget — the complete diff of changed source files is the primary review artifact and 'critical-first' ordering should not end with docs-only coverage."
++      }
++    ]
++  }
++}
+\ No newline at end of file
