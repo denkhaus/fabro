@@ -93,6 +93,20 @@ $ echo $?
 0
 ```
 
+`-seed i` switches gofib into lookup mode: print **only** the
+Fibonacci number at index `i`, exactly one line, in the active output
+mode. It overrides the range flags (`-n`, `-start`, `-limit`), and —
+like `-version` — it makes their validation a no-op, so even an
+otherwise-invalid combination still prints the single entry:
+
+```
+$ gofib -seed 10 -n 5 -start 2
+10: 55
+
+$ gofib -seed 10 -json
+{"index":10,"fib":"55"}
+```
+
 JSON mode (`-json`) emits JSON Lines — one object per number, never a
 JSON array. `fib` is a string (ADR-0001) because F(100) overflows
 int64:
@@ -149,6 +163,7 @@ $ echo $?
 | `-n <int>` | Count flag: how many numbers to print. Default `100`; must be `>= 1`, otherwise gofib exits non-zero with an error on stderr. Combines with JSON mode. |
 | `-start <int>` | Start flag: index of the first number printed. Default `0`, which behaves like `1` (gofib's indices are 1-based), so unset output is unchanged — plain `gofib` still starts `1: 1` and ends `100: 354224848179261915075`. `-start s -n k` prints exactly `k` lines with indices `s..s+k-1`: `-start` never changes what `-n` counts. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr. Combines with `-json` (the `index` field carries the actual index) and `-pretty` (columns sized to the largest index and value actually printed). |
 | `-limit <int>` | Cap flag: the largest index gofib will print, independent of `-start` and `-n`. Default `0`, which means **no limit** (the sentinel mirrors `-start`'s `0`-default). The output is the intersection of the three range flags — `start <= index <= min(start+n-1, limit)`, at most `-n` lines — so e.g. `gofib -n 100000 -limit 5` prints exactly 5 lines, instantly. `-limit < start` (both positive) is **not an error**: gofib prints nothing and exits `0`. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr (`invalid value -1 for flag -limit: must be >= 0`). Combines with `-json` (one object per surviving index) and `-pretty` (columns sized to the capped range, not `start+n-1`). |
+| `-seed <int>` | Lookup flag: print **only** the Fibonacci number at this index — exactly one line in the active output mode (`i: <value>`, or one JSON object, or a single `-pretty` row sized from that sole index). Default `0` is the unset **sentinel** (mirroring `-start`): plain `gofib` output is unchanged. **Precedence**: a positive `-seed` overrides `-n`, `-start`, and `-limit` so only index `i` prints — e.g. `gofib -seed 10 -n 5 -start 2` prints exactly `10: 55` — and, like `-version`, it skips the range-flag validation, so an otherwise-invalid combination such as `-seed 10 -n 0` still prints the single entry. `-version` still wins over everything. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr (`invalid value -1 for flag -seed: must be >= 0`). |
 | `-json` | JSON mode: emit JSON Lines instead of text — one `{"index":<int>,"fib":"<string>"}` object per number. `fib` is a string by decision (ADR-0001), since F(100) overflows int64. Never a JSON array. |
 | `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. **No effect with `-json`** — JSON Lines have no columns to align. |
 | `-version` | Prints exactly `gofib 1.3.0` (from the `Version` const in `main.go`) and takes precedence over every other flag — even an otherwise-invalid combination like `-version -n 0 -json` prints the version and exits `0`. |
