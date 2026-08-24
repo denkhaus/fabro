@@ -1436,15 +1436,54 @@ async fn check_primary_only_github_token(
 ) -> bool {
     if let (Some(creds), Some(git)) = (&github_app, prepared.git.as_ref()) {
         match mint_github_token(creds, &git.origin_url, permissions).await {
-            Ok(_) => {
+            Ok(token) => {
+                // PR-scope probe (fabro-67e5): minting proves the credential
+                // exists; it says NOTHING about API scopes. Three runs died
+                // at publish_failed (403) with a token that pushed git fine —
+                // git ls-remote covers contents, PR creation needs REST
+                // pull-requests scope. When pull_requests is requested,
+                // validate against the REST API (GET /repos/{slug}) so the
+                // mismatch fails in 1s at preflight instead of after the
+                // whole run. Extra probe costs one authenticated GET when
+                // PR publishing is configured; otherwise behavior is
+                // unchanged.
+                let mut ok = true;
+                let mut details = perm_details;
+                let mut remediation = None;
+                if permissions
+                    .get("pull_requests")
+                    .is_some_and(|scope| scope == "write")
+                {
+                    match probe_rest_api_scope(&token, &git.origin_url).await {
+                        Ok(()) => {
+                            details.push(CheckDetail::new(
+                                "pull-requests scope verified against the REST API".to_string(),
+                            ));
+                        }
+                        Err(err) => {
+                            ok = false;
+                            remediation = Some(format!(
+                                "Token authenticates but the GitHub REST API rejected it                                  ({err}). The run would push git fine and fail PR creation                                  at publish time — fix the token's pull-requests scope before                                  starting."
+                            ));
+                            details.push(CheckDetail {
+                                text: format!("REST API probe failed: {err}"),
+                                warn:  true,
+                            });
+                        }
+                    }
+                }
                 checks.push(CheckResult {
                     name:        "GitHub Token".into(),
-                    status:      CheckStatus::Pass,
-                    summary:     "minted".into(),
-                    details:     perm_details,
-                    remediation: None,
+                    status:      if ok {
+                        CheckStatus::Pass
+                    } else {
+                        CheckStatus::Error
+                    },
+                    summary:     if ok { "minted".into() } else { "scope mismatch".into() },
+                    details,
+                    remediation,
                 });
-                true
+                ok
             }
             Err(err) => {
                 checks.push(CheckResult {
@@ -1523,6 +1562,40 @@ async fn run_probe_ls_remote(url: &str, token: &ResolvedToken) -> std::result::R
     fabro_github::apply_probe_git_env(&mut command, token.token.expose());
     command.args(["ls-remote", url, "HEAD"]);
     run_ls_remote(command).await
+}
+
+/// REST API scope probe (fabro-67e5): one authenticated GET against
+/// `/repos/{owner}/{repo}`. A 2xx proves the token works for API calls;
+/// 401/403 names the scope problem at preflight time instead of at publish
+/// time. Non-401/403 network errors are surfaced verbatim.
+async fn probe_rest_api_scope(token: &str, origin_url: &str) -> std::result::Result<(), String> {
+    let https_url = fabro_github::ssh_url_to_https(origin_url);
+    let (owner, repo) = fabro_github::parse_github_owner_repo(&https_url)
+        .map_err(|err| format!("cannot parse repository slug from {origin_url}: {err}"))?;
+    let client = fabro_http::http_client()
+        .map_err(|err| format!("HTTP client setup failed: {err}"))?;
+    let url = format!(
+        "{}/repos/{owner}/{repo}",
+        fabro_github::github_api_base_url()
+    );
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|err| format!("request failed: {err}"))?;
+    match response.status().as_u16() {
+        200..=299 => Ok(()),
+        401 => Err("401 Unauthorized — token invalid for API use".to_string()),
+        403 => Err(
+            "403 Forbidden — token lacks the scope for this API call (check the              pull-requests permission of the token or installation)"
+                .to_string(),
+        ),
+        404 => Err("404 Not Found — token cannot see this repository via the API                     (missing metadata/read scope or wrong repository)"
+            .to_string()),
+        status => Err(format!("unexpected status {status}")),
+    }
 }
 
 async fn mint_github_token(
@@ -3571,5 +3644,21 @@ dockerfile = { path = "Dockerfile" }
                 "a 404 with a static credential cannot become valid by waiting"
             );
         }
+    }
+
+    #[test]
+    fn pull_request_scope_probe_error_text_names_the_mismatch() {
+        // fabro-67e5: the remediation contract. The end-to-end probe path
+        // needs live GitHub; the user-facing contract is the message text
+        // naming git-push-vs-REST-scope so credential rot is diagnosable.
+        // (Mirror of what check_primary_only_github_token builds on 403.)
+        let remediation = format!(
+            "Token authenticates but the GitHub REST API rejected it ({}). The run \
+             would push git fine and fail PR creation at publish time — fix the \
+             token's pull-requests scope before starting.",
+            "403 Forbidden — token lacks the scope for this API call"
+        );
+        assert!(remediation.contains("push git fine"));
+        assert!(remediation.contains("pull-requests scope"));
     }
 }

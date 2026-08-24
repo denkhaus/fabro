@@ -1224,6 +1224,7 @@ fn server_bind_title(bind: &Bind) -> String {
               test uses tokio::net::TcpListener separately"
 )]
 mod tests {
+    use fabro_static::EnvVars;
     use std::io;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -1639,8 +1640,32 @@ strategy = "token"
         drop(mem_store);
     }
 
+    #[expect(
+        unsafe_code,
+        reason = "test-only env pin/restoration against the install-test leak (see install.rs)"
+    )]
     #[test]
     fn build_slatedb_store_uses_configured_local_root() {
+        // Env pin: install tests set FABRO_TEST_IN_MEMORY_STORE=1 process-wide
+        // without restoring; this test asserts a LOCAL root gets created,
+        // which InMemory short-circuits. Pin off, restore after.
+        struct InMemoryStorePin(std::option::Option<std::ffi::OsString>);
+        impl Drop for InMemoryStorePin {
+            fn drop(&mut self) {
+                // Safety: test-only env restore (see fn-level expect).
+                unsafe {
+                    if let Some(value) = self.0.take() {
+                        std::env::set_var(EnvVars::FABRO_TEST_IN_MEMORY_STORE, value);
+                    } else {
+                        std::env::remove_var(EnvVars::FABRO_TEST_IN_MEMORY_STORE);
+                    }
+                }
+            }
+        }
+        let previous = std::env::var_os(EnvVars::FABRO_TEST_IN_MEMORY_STORE);
+        // Safety: test-only (see fn-level expect).
+        unsafe { std::env::set_var(EnvVars::FABRO_TEST_IN_MEMORY_STORE, "0") };
+        let _guard = InMemoryStorePin(previous);
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("custom-slatedb");
         let resolved = server_settings(&format!(
@@ -1701,8 +1726,33 @@ disk_cache = true
         assert!(store.is_ok(), "injected static credentials should build");
     }
 
+    #[expect(
+        unsafe_code,
+        reason = "test-only env pin/restoration against cross-test leaks (see install.rs)"
+    )]
     #[test]
     fn build_object_store_from_settings_rejects_partial_static_credentials() {
+        // Env pin: this test asserts the S3 static-credential ERROR, which
+        // the InMemory shortcut (env set) skips — it failed with a returned
+        // InMemory store. Install tests leak env=1 process-wide; pin OFF,
+        // restore after.
+        struct InMemoryStorePin(std::option::Option<std::ffi::OsString>);
+        impl Drop for InMemoryStorePin {
+            fn drop(&mut self) {
+                // Safety: test-only env restore (see fn-level expect).
+                unsafe {
+                    if let Some(value) = self.0.take() {
+                        std::env::set_var(EnvVars::FABRO_TEST_IN_MEMORY_STORE, value);
+                    } else {
+                        std::env::remove_var(EnvVars::FABRO_TEST_IN_MEMORY_STORE);
+                    }
+                }
+            }
+        }
+        let previous = std::env::var_os(EnvVars::FABRO_TEST_IN_MEMORY_STORE);
+        // Safety: test-only (see fn-level expect).
+        unsafe { std::env::set_var(EnvVars::FABRO_TEST_IN_MEMORY_STORE, "0") };
+        let _guard = InMemoryStorePin(previous);
         let settings = ObjectStoreSettings::S3 {
             bucket:     "fabro-data".to_string(),
             region:     "us-east-1".to_string(),

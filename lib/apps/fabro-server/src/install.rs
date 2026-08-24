@@ -2592,9 +2592,36 @@ mod tests {
         );
     }
 
+    #[expect(
+        unsafe_code,
+        reason = "test-only env pin/restoration, same allowance as for_test_with_paths"
+    )]
     #[tokio::test]
     async fn write_artifact_store_metadata_creates_marker_in_overridden_storage_root() {
         use object_store::path::Path as ObjectPath;
+
+        // Upstream isolation gap: InstallAppState::for_test (used by earlier
+        // tests in this binary) sets FABRO_TEST_IN_MEMORY_STORE=1
+        // process-wide and never restores it, silently switching this test's
+        // LocalFileSystem to InMemory (NoDataInMemory). Pin the intended
+        // store explicitly for this test and restore afterwards.
+        struct InMemoryStorePin(std::option::Option<std::ffi::OsString>);
+        impl Drop for InMemoryStorePin {
+            fn drop(&mut self) {
+                // Safety: test-only env restore (see fn-level expect).
+                unsafe {
+                    if let Some(value) = self.0.take() {
+                        std::env::set_var(EnvVars::FABRO_TEST_IN_MEMORY_STORE, value);
+                    } else {
+                        std::env::remove_var(EnvVars::FABRO_TEST_IN_MEMORY_STORE);
+                    }
+                }
+            }
+        }
+        let previous = std::env::var_os(EnvVars::FABRO_TEST_IN_MEMORY_STORE);
+        // Safety: test-only (see fn-level expect).
+        unsafe { std::env::set_var(EnvVars::FABRO_TEST_IN_MEMORY_STORE, "0") };
+        let _guard = InMemoryStorePin(previous);
 
         let dir = tempfile::tempdir().unwrap();
         let settings = fabro_config::ServerSettingsBuilder::from_toml(
