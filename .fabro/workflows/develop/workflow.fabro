@@ -36,6 +36,12 @@ digraph Develop {
     // review feedback arrive as context keys; the implementer keeps the
     // tester section (gate log on gate-red bounces) and the evidence
     // section, and can always re-run the gate itself (it has tools).
+    // reasoning_effort="low": run 01M0T9B7T6 measured 8.2k reasoning
+    // tokens / 203s / $0.213 of $0.35 total for a fully-resolved brief.
+    // The planner (reasoning high) does the ambiguity resolution; the
+    // implementer executes a checkable bullet list — low effort keeps the
+    // PASS/FAIL report quality (proven across runs) at a fraction of the
+    // cost. glm-5.3 does not reliably honor medium on this call path.
     implementer [
         label="Implementer",
         prompt="@prompts/implementer.md",
@@ -43,6 +49,7 @@ digraph Develop {
         output_retries=2,
         max_visits=10,
         fidelity="summary:high",
+        reasoning_effort="low",
         retry_policy="standard",
         preamble_stages_ignore="planner,reviewer,implementer"
     ]

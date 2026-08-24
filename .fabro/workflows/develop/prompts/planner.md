@@ -19,6 +19,18 @@ Clear the verdict from your mind after handling it — the next review pass will
 
 Count the cycles this seed has been through. Each `changes_requested` verdict for the same seed is one review cycle; each gate-red bounce back to the implementer on the same seed is one gate cycle. After the THIRD review cycle on one seed, or the THIRD consecutive gate-red on one seed: do not hand it to the implementer again unchanged. Route Blocked with `failure_reason` naming the deadlock (review deadlock or gate deadlock), so the seed stays open for a human instead of burning the visit budget. A gate deadlock usually means the implementer is 'fixing' a gate that fails for platform reasons — escalate, don't loop.
 
+## sd command reference (exact — never invent flags)
+
+| Command | Purpose |
+|---|---|
+| `sd ready` | Unblocked open seeds — start here. If it answers the question, do NOT also run `sd list`. |
+| `sd list --format json` | Full tracker picture (only when `sd ready` was not enough). |
+| `sd show <id> --format json` | One seed in full (the supported path — never parse `.seeds/issues.jsonl` by hand). |
+| `sd update <id> --status <status>` | Claim / re-status. Takes NO `--format` flag (observed failure, run 01M0T9B7T6: `unknown option '--format'`). |
+| `sd close <id>` | Close a seed — only after an approved review. |
+
+## Plan the next seed
+
 1. Run `sd ready` to list unblocked open seeds; `sd list --format json` for the full picture if needed.
 2. Pick the highest-priority unblocked seed that serves the goal. If two compete, prefer the one with fewest blockers.
 3. Claim it: `sd update <id> --status in_progress`.
