@@ -3,7 +3,11 @@ digraph Develop {
         goal="Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
         rankdir=LR,
         max_node_visits=40,
-        preamble_budget_kb=12,
+        // 24 KB (was 12): the reviewer's context usage peaked at 1.9% of
+        // the 1M window while a 14 KB evidence capture got blob-ref'd,
+        // forcing a tool round-trip per review. The window is not the
+        // constraint; the blob detour is (first auto-merge run review).
+        preamble_budget_kb=24,
         // Deterministic cycle guards (fabro-45d0): engine injects
         // seed_cycles = { node -> completed visits since current_seed_id
         // last changed value }. The planner reads counts instead of
@@ -113,10 +117,18 @@ digraph Develop {
     // never reach it), and an unvisited goal-gate node fails the whole run
     // (engine semantics). Its genuine failures route to exit explicitly and
     // leave the seed open; the next run re-enters the review cycle.
+    // reasoning_effort="low": 3,424 reasoning tokens (more than planner
+    // OR implementer) for a checklist verification — $0.059, second
+    // costliest stage (first auto-merge run). The inline PASS/FAIL report
+    // and the evidence capture do the heavy lifting; low keeps live
+    // verification (blob reads, byte-compares) which is tool work, not
+    // reasoning. Re-measure next run; revert to high if verification
+    // quality degrades (false approvals, more Verification-blocked).
     reviewer [
         label="Reviewer",
         prompt="@prompts/reviewer.md",
         fidelity="summary:high",
+        reasoning_effort="low",
         preamble_stages_ignore="planner,implementer,reviewer",
         output_schema="routing",
         output_retries=2,
@@ -131,9 +143,23 @@ digraph Develop {
     // improve workflow scans run branches for journals. Delivery is
     // intrinsic — no exit-bound path can miss it.
 
+    // Closeout: DETERMINISTIC post-approval bookkeeping (ADR-0010). Never
+    // an LLM — run 01M0… measured planner@2 at 21s / $0.021 / ~7% wall
+    // time for pure `sd close` + tracker reads. Script closes the approved
+    // seed, then emits tracker_empty=true|false via context update; the
+    // edges below route on it. Read-only failure keeps the seed open for
+    // the next run.
+    closeout [
+        label="Closeout",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/closeout.nu",
+        output_schema="routing",
+        timeout="1m",
+        max_retries=1
+    ]
+
     start -> planner
 
-    planner -> exit        [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
     // Cycle-guard exit (run 01M0SS23MJ): the planner prompt routes Blocked
     // after the third review/gate cycle on one seed, but the graph had no
     // matching edge — the guard could never fire. Seed stays open for a
@@ -150,9 +176,16 @@ digraph Develop {
     tester -> implementer [label="Gate red"]
 
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
+    // Explicit outcome condition: an unconditional fallback edge makes the
+    // terminal semantics of a twice-failed capture invisible to routing and
+    // notifications. Failure exits the run (notifying); the seed stays open
+    // for the next run to re-enter the cycle.
+    // (engine rule: a node needs one unconditional edge; an unmatched
+    // capture outcome retries once then falls through here — failure
+    // semantics identical, the seed stays open either way)
     evidence -> exit     [label="Capture failed (seed stays open for the next run)"]
 
-    reviewer -> planner   [label="Approved", condition="preferred_label=\"Approved\""]
+    reviewer -> closeout  [label="Approved", condition="preferred_label=\"Approved\""]
     reviewer -> planner   [label="Changes requested"]
     // Fast re-review path (run 01M0SS23MJ): a procedural rejection
     // ("verification could not be completed" — evidence delivery, not code)
@@ -161,4 +194,11 @@ digraph Develop {
     // bounds this to one retry per seed, then it must decide.
     reviewer -> evidence  [label="Verification blocked", condition="preferred_label=\"Verification blocked\""]
     reviewer -> exit      [label="Reviewer failed", condition="outcome=failed"]
+
+    // Closeout routing: the script's routing output decides — Tracker
+    // empty exits, More seeds re-enters the planner on a FRESH claim.
+    // Failure keeps the seed open for the next run.
+    closeout -> exit      [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    closeout -> planner   [label="More seeds"]
+    closeout -> exit      [label="Closeout failed (seed stays open for the next run)", condition="outcome=failed"]
 }
