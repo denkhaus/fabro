@@ -173,6 +173,8 @@ impl DockerBuildPlan {
             .arg(format!("fabro-docker-zig-{arch}:/opt/zig"))
             .arg("-v")
             .arg(format!("fabro-docker-cargo-tools-{arch}:/opt/cargo-tools"))
+            .arg("-v")
+            .arg(format!("fabro-docker-rustup-{arch}:/opt/rustup-home"))
             .arg("-w")
             .arg("/src")
             .arg("-e")
@@ -231,6 +233,7 @@ fn build_script(target: &str, zig_arch: &str) -> String {
          if [ ! -x /opt/zig/zig-linux-{zig_arch}-{ZIG_VERSION}/zig ]; then \
          curl -fsSL https://ziglang.org/download/{ZIG_VERSION}/zig-linux-{zig_arch}-{ZIG_VERSION}.tar.xz | tar -xJ -C /opt/zig; \
          fi; \
+         export RUSTUP_HOME=/opt/rustup-home; \
          export PATH=/opt/cargo-tools/bin:/opt/zig/zig-linux-{zig_arch}-{ZIG_VERSION}:$PATH; \
          if ! command -v cargo-zigbuild >/dev/null; then \
          cargo install --locked --root /opt/cargo-tools cargo-zigbuild; \
