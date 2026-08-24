@@ -1,0 +1,111 @@
+# gofib
+
+gofib is a Go CLI printing Fibonacci numbers. By default it prints the
+first 100, one per line, prefixed with the index. Module `gofib`
+(package `main` in `main.go`).
+
+## Install / build
+
+The workspace toolchain (Go, just, nushell, bun) is managed with
+[mise](https://mise.jdx.dev/), and project commands are thin `just`
+recipes:
+
+```
+mise install      # install the pinned toolchain (.mise.toml)
+just bootstrap    # bootstrap workspace tooling
+```
+
+Build and run from the repo root:
+
+```
+go build -o /tmp/gofib .
+/tmp/gofib -n 5
+```
+
+The deterministic quality gate (format, vet, build, test) is:
+
+```
+just qualitygate
+```
+
+## Usage
+
+Text mode (the default) prints one `<index>: <value>` line per number:
+
+```
+$ gofib -n 5
+1: 1
+2: 1
+3: 2
+4: 3
+5: 5
+```
+
+With no count flag, gofib prints the first 100 — F(100) already exceeds
+int64, which is why values are computed with `math/big`:
+
+```
+$ gofib | tail -1
+100: 354224848179261915075
+```
+
+JSON mode (`-json`) emits JSON Lines — one object per number, never a
+JSON array. `fib` is a string (ADR-0001) because F(100) overflows
+int64:
+
+```
+$ gofib -n 3 -json
+{"index":1,"fib":"1"}
+{"index":2,"fib":"1"}
+{"index":3,"fib":"2"}
+
+$ gofib -json | tail -1
+{"index":100,"fib":"354224848179261915075"}
+```
+
+`-pretty` aligns text-mode output into two right-aligned columns sized
+to the largest index and value printed:
+
+```
+$ gofib -n 12 -pretty
+ 1:   1
+ 2:   1
+ 3:   2
+ 4:   3
+ 5:   5
+ 6:   8
+ 7:  13
+ 8:  21
+ 9:  34
+10:  55
+11:  89
+12: 144
+```
+
+`-version` prints the version and exits:
+
+```
+$ gofib -version
+gofib 1.3.0
+```
+
+An invalid count fails with a non-zero exit and an error on stderr:
+
+```
+$ gofib -n 0
+invalid value 0 for flag -n: must be >= 1
+$ echo $?
+1
+```
+
+## Flag reference
+
+| Flag | Meaning |
+|------|---------|
+| `-n <int>` | Count flag: how many numbers to print. Default `100`; must be `>= 1`, otherwise gofib exits non-zero with an error on stderr. Combines with JSON mode. |
+| `-json` | JSON mode: emit JSON Lines instead of text — one `{"index":<int>,"fib":"<string>"}` object per number. `fib` is a string by decision (ADR-0001), since F(100) overflows int64. Never a JSON array. |
+| `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. **No effect with `-json`** — JSON Lines have no columns to align. |
+| `-version` | Prints exactly `gofib 1.3.0` (from the `Version` const in `main.go`) and takes precedence over every other flag — even an otherwise-invalid combination like `-version -n 0 -json` prints the version and exits `0`. |
+
+`-pretty` and `-json` together is not an error; JSON mode simply wins
+and the output is identical to `-json` alone.
