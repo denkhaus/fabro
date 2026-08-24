@@ -221,7 +221,11 @@ def main []: nothing -> nothing {
         "NO RUN BASE — no checkpoint commits found for this run.\nThe diff below is empty or misleading; treat this evidence as unreliable.\n\n"
     } else { "" })
 
-    let rows = (numstat-rows $base.base)
+    # Journal files (.fabro/journal/<node>@<visit>.json) are meta context:
+    # run-machinery stage records about the workflow itself, consumed later
+    # by the platform-side improve workflow. They are NO review input —
+    # dropped here, so they appear in NO section and NO count.
+    let rows = (numstat-rows $base.base | where {|r| not ($r.path | str starts-with ".fabro/journal/")})
     let seed_rows = ($rows | where {|r| not (is-loop-path $r.path)} | sort-by path)
     let churn_rows = ($rows | where {|r| is-loop-path $r.path} | sort-by path)
 
