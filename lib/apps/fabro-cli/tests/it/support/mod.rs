@@ -48,6 +48,7 @@ pub(crate) fn run_projection_json(run_id: &str, status: &serde_json::Value) -> s
         graph_source: None,
         workflow_slug: Some("remote-workflow".to_string()),
         workflow_version_id: None,
+        target: None,
         automation: None,
         source_directory: Some("/srv/repo".to_string()),
         labels: std::collections::HashMap::default(),
