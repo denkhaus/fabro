@@ -1271,6 +1271,9 @@ fn agent_event_payload(event_turn_id: TurnId, event: AgentEvent) -> Option<Event
             tool_call_id,
             output,
             is_error,
+            output_bytes_observed,
+            output_bytes_retained,
+            output_bytes_omitted,
         } => Some(EventBody::RunSessionToolCallCompleted(
             RunSessionToolCallCompletedProps {
                 turn_id: event_turn_id,
@@ -1278,6 +1281,13 @@ fn agent_event_payload(event_turn_id: TurnId, event: AgentEvent) -> Option<Event
                 tool_call_id,
                 output,
                 is_error,
+                output_bytes_observed: Some(
+                    u64::try_from(output_bytes_observed).unwrap_or(u64::MAX),
+                ),
+                output_bytes_retained: Some(
+                    u64::try_from(output_bytes_retained).unwrap_or(u64::MAX),
+                ),
+                output_bytes_omitted: Some(u64::try_from(output_bytes_omitted).unwrap_or(u64::MAX)),
             },
         )),
         _ => None,

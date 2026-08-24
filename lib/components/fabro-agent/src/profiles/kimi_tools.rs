@@ -144,12 +144,13 @@ explicitly asked. Never run commands requiring superuser privileges unless expli
                     let _ = write!(out, "Command failed with exit code: {code}");
                 }
                 let is_success = result.is_success();
-                let out = retain_tool_output(
+                let retained = retain_tool_output(
                     &out,
                     MAX_RETAINED_TOOL_OUTPUT_BYTES,
                     streaming.output_capture().omitted_bytes,
-                )
-                .output;
+                );
+                ctx.record_tool_output_stats(retained.stats);
+                let out = retained.output;
                 emit_shell_process_completed(&ctx, streaming).await;
                 if is_success { Ok(out) } else { Err(out) }
             })

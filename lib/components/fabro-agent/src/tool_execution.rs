@@ -8,7 +8,7 @@ use tracing::debug;
 use crate::config::{SessionOptions, ToolHookCallback, ToolHookDecision};
 use crate::event::{Emitter, SessionBoundEmitter};
 use crate::question_tools::{self, AgentToolRuntime, is_question_tool};
-use crate::sandbox::Sandbox;
+use crate::sandbox::{OutputCaptureStats, Sandbox};
 use crate::session::ToolEnvProvider;
 use crate::tool_registry::{AgentEventEmitter, RegisteredTool, ToolContext, ToolRegistry};
 use crate::truncation::{MAX_RETAINED_TOOL_OUTPUT_BYTES, retain_tool_output, truncate_tool_output};
@@ -265,9 +265,15 @@ fn error_tool_result_with_events(
     message: &str,
 ) -> ToolResult {
     emit_tool_call_started(emitter, session_id, tc);
-    let result = retain_tool_result(&ToolResult::error(&tc.id, message));
-    emit_tool_call_result(emitter, session_id, tc, &result);
-    truncate_tool_result(&result, &tc.name, config)
+    let retained = retain_tool_result(&ToolResult::error(&tc.id, message), None);
+    emit_tool_call_result(
+        emitter,
+        session_id,
+        tc,
+        &retained.result,
+        retained.output_stats,
+    );
+    truncate_tool_result(&retained.result, &tc.name, config)
 }
 
 fn emit_tool_call_started(emitter: &Emitter, session_id: &str, tc: &ToolCall) {
@@ -278,15 +284,24 @@ fn emit_tool_call_started(emitter: &Emitter, session_id: &str, tc: &ToolCall) {
     });
 }
 
-fn emit_tool_call_result(emitter: &Emitter, session_id: &str, tc: &ToolCall, result: &ToolResult) {
+fn emit_tool_call_result(
+    emitter: &Emitter,
+    session_id: &str,
+    tc: &ToolCall,
+    result: &ToolResult,
+    output_stats: OutputCaptureStats,
+) {
     emitter.emit(session_id.to_owned(), AgentEvent::ToolCallOutputDelta {
         delta: result.content.to_string(),
     });
     emitter.emit(session_id.to_owned(), AgentEvent::ToolCallCompleted {
-        tool_name:    tc.name.clone(),
-        tool_call_id: tc.id.clone(),
-        output:       result.content.clone(),
-        is_error:     result.is_error,
+        tool_name:             tc.name.clone(),
+        tool_call_id:          tc.id.clone(),
+        output:                result.content.clone(),
+        is_error:              result.is_error,
+        output_bytes_observed: output_stats.observed_bytes,
+        output_bytes_retained: output_stats.retained_bytes,
+        output_bytes_omitted:  output_stats.omitted_bytes,
     });
 }
 
@@ -386,9 +401,15 @@ async fn execute_and_emit_one_tool_with_lookup(
     emit_tool_call_started(emitter, session_id, tc);
 
     if let Some(reason) = access_denial {
-        let result = retain_tool_result(&ToolResult::error(&tc.id, &reason));
-        emit_tool_call_result(emitter, session_id, tc, &result);
-        return truncate_tool_result(&result, &tc.name, config);
+        let retained = retain_tool_result(&ToolResult::error(&tc.id, &reason), None);
+        emit_tool_call_result(
+            emitter,
+            session_id,
+            tc,
+            &retained.result,
+            retained.output_stats,
+        );
+        return truncate_tool_result(&retained.result, &tc.name, config);
     }
 
     // Pre-tool-use hook
@@ -400,28 +421,34 @@ async fn execute_and_emit_one_tool_with_lookup(
         debug!(tool = %tc.name, hook_event = "pre_tool_use", ?decision, duration_ms = elapsed, "Tool hook complete");
 
         if let ToolHookDecision::Block { reason } = decision {
-            let result = retain_tool_result(&ToolResult::error(&tc.id, &reason));
-            emit_tool_call_result(emitter, session_id, tc, &result);
-            return truncate_tool_result(&result, &tc.name, config);
+            let retained = retain_tool_result(&ToolResult::error(&tc.id, &reason), None);
+            emit_tool_call_result(
+                emitter,
+                session_id,
+                tc,
+                &retained.result,
+                retained.output_stats,
+            );
+            return truncate_tool_result(&retained.result, &tc.name, config);
         }
     }
 
-    let result = retain_tool_result(
-        &execute_one_tool(
-            tc,
-            registered_tool,
-            env,
-            cancel_token,
-            emitter,
-            session_id,
-            root_session_id,
-            tool_env_provider,
-            agent_tool_runtime,
-        )
-        .await,
-    );
+    let executed = execute_one_tool(
+        tc,
+        registered_tool,
+        env,
+        cancel_token,
+        emitter,
+        session_id,
+        root_session_id,
+        tool_env_provider,
+        agent_tool_runtime,
+    )
+    .await;
+    let retained = retain_tool_result(&executed.result, executed.output_stats);
+    let result = retained.result;
 
-    emit_tool_call_result(emitter, session_id, tc, &result);
+    emit_tool_call_result(emitter, session_id, tc, &result, retained.output_stats);
 
     // Post-tool-use hooks
     if let Some(hooks) = tool_hooks {
@@ -448,22 +475,46 @@ async fn execute_and_emit_one_tool_with_lookup(
     truncate_tool_result(&result, &tc.name, config)
 }
 
+struct RetainedToolResult {
+    result:       ToolResult,
+    output_stats: OutputCaptureStats,
+}
+
 /// Bound model-native tool output before it reaches hooks, events, or history.
-fn retain_tool_result(result: &ToolResult) -> ToolResult {
-    let retained_content = match &result.content {
-        serde_json::Value::String(output) => serde_json::Value::String(
-            retain_tool_output(output, MAX_RETAINED_TOOL_OUTPUT_BYTES, 0).output,
-        ),
-        other => other.clone(),
+fn retain_tool_result(
+    result: &ToolResult,
+    previous_stats: Option<OutputCaptureStats>,
+) -> RetainedToolResult {
+    let (retained_content, output_stats) = match &result.content {
+        serde_json::Value::String(output) => {
+            let previously_omitted = previous_stats.map_or(0, |stats| stats.omitted_bytes);
+            let retained =
+                retain_tool_output(output, MAX_RETAINED_TOOL_OUTPUT_BYTES, previously_omitted);
+            (serde_json::Value::String(retained.output), retained.stats)
+        }
+        other => {
+            let byte_count = serde_json::to_vec(other)
+                .expect("serde_json::Value always serializes")
+                .len();
+            (other.clone(), OutputCaptureStats::complete(byte_count))
+        }
     };
 
-    ToolResult {
-        tool_call_id:     result.tool_call_id.clone(),
-        content:          retained_content,
-        is_error:         result.is_error,
-        image_data:       result.image_data.clone(),
-        image_media_type: result.image_media_type.clone(),
+    RetainedToolResult {
+        result: ToolResult {
+            tool_call_id:     result.tool_call_id.clone(),
+            content:          retained_content,
+            is_error:         result.is_error,
+            image_data:       result.image_data.clone(),
+            image_media_type: result.image_media_type.clone(),
+        },
+        output_stats,
     }
+}
+
+struct ExecutedToolResult {
+    result:       ToolResult,
+    output_stats: Option<OutputCaptureStats>,
 }
 
 /// Execute a single tool call: argument validation and execution.
@@ -481,23 +532,27 @@ async fn execute_one_tool(
     root_session_id: &str,
     tool_env_provider: Option<&Arc<dyn ToolEnvProvider>>,
     agent_tool_runtime: &AgentToolRuntime,
-) -> ToolResult {
+) -> ExecutedToolResult {
     match registered_tool {
         Some(tool) => {
             if tc.tool_type != "custom" {
                 if let Err(validation_error) =
                     validate_tool_args(&tool.definition.parameters, &tc.arguments)
                 {
-                    return ToolResult::error(&tc.id, validation_error);
+                    return ExecutedToolResult {
+                        result:       ToolResult::error(&tc.id, validation_error),
+                        output_stats: None,
+                    };
                 }
             }
 
+            let session_emitter = Arc::new(SessionBoundEmitter::new(
+                emitter.clone(),
+                session_id.to_owned(),
+                Some(tc.id.clone()),
+            ));
             let agent_event_emitter: Option<Arc<dyn AgentEventEmitter>> =
-                Some(Arc::new(SessionBoundEmitter {
-                    emitter:      emitter.clone(),
-                    session_id:   session_id.to_owned(),
-                    tool_call_id: Some(tc.id.clone()),
-                }));
+                Some(session_emitter.clone());
             let ctx = ToolContext {
                 env,
                 cancel: cancel_token,
@@ -508,14 +563,24 @@ async fn execute_one_tool(
                 agent_event_emitter,
             };
             let execution = (tool.executor)(tc.arguments.clone(), ctx);
-            match question_tools::scope_agent_tool_runtime(agent_tool_runtime.clone(), execution)
-                .await
+            let result = match question_tools::scope_agent_tool_runtime(
+                agent_tool_runtime.clone(),
+                execution,
+            )
+            .await
             {
                 Ok(output) => ToolResult::success(&tc.id, serde_json::json!(output)),
                 Err(err) => ToolResult::error(&tc.id, err),
+            };
+            ExecutedToolResult {
+                result,
+                output_stats: session_emitter.take_tool_output_stats(),
             }
         }
-        None => ToolResult::error(&tc.id, format!("Unknown tool: {}", tc.name)),
+        None => ExecutedToolResult {
+            result:       ToolResult::error(&tc.id, format!("Unknown tool: {}", tc.name)),
+            output_stats: None,
+        },
     }
 }
 
@@ -923,19 +988,37 @@ mod tests {
         let result_output = result.content.as_str().expect("string tool output");
         assert_eq!(result_output.len(), MAX_RETAINED_TOOL_OUTPUT_BYTES);
 
-        let completed_output = loop {
+        let completed = loop {
             let event = receiver.try_recv().expect("tool completion event");
-            if let AgentEvent::ToolCallCompleted { output, .. } = event.event {
-                break output;
+            if let AgentEvent::ToolCallCompleted {
+                output,
+                is_error,
+                output_bytes_observed,
+                output_bytes_retained,
+                output_bytes_omitted,
+                ..
+            } = event.event
+            {
+                break (
+                    output,
+                    is_error,
+                    output_bytes_observed,
+                    output_bytes_retained,
+                    output_bytes_omitted,
+                );
             }
         };
         assert_eq!(
-            completed_output
-                .as_str()
-                .expect("string event output")
-                .len(),
+            completed.0.as_str().expect("string event output").len(),
             MAX_RETAINED_TOOL_OUTPUT_BYTES
         );
+        assert!(!completed.1, "truncation must not make the tool an error");
+        assert_eq!(
+            completed.2,
+            MAX_RETAINED_TOOL_OUTPUT_BYTES + 100 + "echo: ".len()
+        );
+        assert_eq!(completed.3, MAX_RETAINED_TOOL_OUTPUT_BYTES);
+        assert_eq!(completed.4, 100 + "echo: ".len());
     }
 
     #[tokio::test]
@@ -1230,6 +1313,68 @@ mod tests {
         let result = run_shell_tool(exited(0), None, &emitter).await;
 
         assert!(!result.is_error);
+    }
+
+    #[tokio::test]
+    async fn shell_events_record_process_and_rendered_output_byte_counts() {
+        let output_len = MAX_RETAINED_TOOL_OUTPUT_BYTES + 1_000;
+        let emitter = Emitter::new();
+        let mut receiver = emitter.subscribe();
+        let result = run_shell_tool(
+            fabro_sandbox::ExecResult {
+                stdout:      "x".repeat(output_len),
+                stderr:      String::new(),
+                exit_code:   Some(0),
+                termination: fabro_types::CommandTermination::Exited,
+                duration_ms: 12,
+            },
+            None,
+            &emitter,
+        )
+        .await;
+
+        assert!(!result.is_error);
+        let events = drain(&mut receiver);
+        let process = events
+            .iter()
+            .find_map(|event| match &event.event {
+                AgentEvent::ToolProcessCompleted {
+                    output_bytes_observed,
+                    output_bytes_retained,
+                    output_bytes_omitted,
+                    ..
+                } => Some((
+                    *output_bytes_observed,
+                    *output_bytes_retained,
+                    *output_bytes_omitted,
+                )),
+                _ => None,
+            })
+            .expect("process event");
+        assert_eq!(process, (output_len, MAX_RETAINED_TOOL_OUTPUT_BYTES, 1_000));
+
+        let completed = events
+            .iter()
+            .find_map(|event| match &event.event {
+                AgentEvent::ToolCallCompleted {
+                    is_error,
+                    output_bytes_observed,
+                    output_bytes_retained,
+                    output_bytes_omitted,
+                    ..
+                } => Some((
+                    *is_error,
+                    *output_bytes_observed,
+                    *output_bytes_retained,
+                    *output_bytes_omitted,
+                )),
+                _ => None,
+            })
+            .expect("tool completion event");
+        assert!(!completed.0, "truncation must not make the tool an error");
+        assert!(completed.1 > output_len);
+        assert_eq!(completed.2, MAX_RETAINED_TOOL_OUTPUT_BYTES);
+        assert_eq!(completed.3, completed.1 - completed.2);
     }
 
     #[tokio::test]

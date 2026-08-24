@@ -320,7 +320,9 @@ pub(crate) async fn run_shell_command(
     cwd: Option<&str>,
 ) -> Result<String, String> {
     let streaming = execute_shell_command(ctx, command, timeout_ms, cwd).await?;
-    let text = render_shell_result(&streaming).output;
+    let retained = render_shell_result(&streaming);
+    ctx.record_tool_output_stats(retained.stats);
+    let text = retained.output;
     let is_success = streaming.result.is_success();
     emit_shell_process_completed(ctx, streaming).await;
 
@@ -342,6 +344,7 @@ pub(crate) async fn emit_shell_process_completed(
     let termination = streaming.result.termination;
     let duration_ms = streaming.result.duration_ms;
     let streams_separated = streaming.streams_separated;
+    let output_stats = streaming.output_capture();
     let result = streaming.result;
     let exec_output_tail =
         match task::spawn_blocking(move || result.default_redacted_output_tail()).await {
@@ -360,6 +363,9 @@ pub(crate) async fn emit_shell_process_completed(
         duration_ms,
         streams_separated,
         exec_output_tail,
+        output_bytes_observed: output_stats.observed_bytes,
+        output_bytes_retained: output_stats.retained_bytes,
+        output_bytes_omitted: output_stats.omitted_bytes,
     });
 }
 
@@ -1099,11 +1105,11 @@ mod tests {
             session_id: Some("test-session".to_string()),
             root_session_id: Some("test-session".to_string()),
             tool_call_id: Some("call_1".to_string()),
-            agent_event_emitter: Some(Arc::new(SessionBoundEmitter {
-                emitter:      emitter.clone(),
-                session_id:   "test-session".to_string(),
-                tool_call_id: Some("call_1".to_string()),
-            })),
+            agent_event_emitter: Some(Arc::new(SessionBoundEmitter::new(
+                emitter.clone(),
+                "test-session".to_string(),
+                Some("call_1".to_string()),
+            ))),
             ..shell_context(env)
         }
     }
@@ -1319,11 +1325,16 @@ mod tests {
                 duration_ms,
                 streams_separated,
                 exec_output_tail,
+                output_bytes_observed,
+                output_bytes_retained,
+                output_bytes_omitted,
             } => {
                 assert_eq!(exit_code, Some(7));
                 assert_eq!(termination, CommandTermination::Exited);
                 assert_eq!(duration_ms, 12);
                 assert!(streams_separated);
+                assert_eq!(output_bytes_observed, output_bytes_retained);
+                assert_eq!(output_bytes_omitted, 0);
                 let tail = exec_output_tail.expect("output tail");
                 assert_eq!(tail.stdout.as_deref(), Some("out"));
                 let stderr = tail.stderr.expect("stderr tail");

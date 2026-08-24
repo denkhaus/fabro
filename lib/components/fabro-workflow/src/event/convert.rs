@@ -23,6 +23,10 @@ fn stage_status_from_string(status: &str) -> StageOutcome {
     })
 }
 
+fn output_byte_count(value: usize) -> u64 {
+    u64::try_from(value).unwrap_or(u64::MAX)
+}
+
 /// Project the sandbox layer's runtime push attempts into the durable
 /// `git.push` attempt shape.
 ///
@@ -690,12 +694,18 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 tool_call_id,
                 output,
                 is_error,
+                output_bytes_observed,
+                output_bytes_retained,
+                output_bytes_omitted,
             } => EventBody::AgentToolCompleted(fabro_types::AgentToolCompletedProps {
                 tool_name:    tool_name.clone(),
                 tool_call_id: tool_call_id.clone(),
                 output:       output.clone(),
                 is_error:     *is_error,
                 visit:        *visit,
+                output_bytes_observed: Some(output_byte_count(*output_bytes_observed)),
+                output_bytes_retained: Some(output_byte_count(*output_bytes_retained)),
+                output_bytes_omitted:  Some(output_byte_count(*output_bytes_omitted)),
                 tool_result:  None,
                 turn_id:      None,
             }),
@@ -705,6 +715,9 @@ fn event_body_from_event(event: &Event) -> EventBody {
                 duration_ms,
                 streams_separated,
                 exec_output_tail,
+                output_bytes_observed,
+                output_bytes_retained,
+                output_bytes_omitted,
             } => EventBody::AgentToolProcessCompleted(
                 fabro_types::AgentToolProcessCompletedProps {
                     exit_code:         *exit_code,
@@ -712,6 +725,9 @@ fn event_body_from_event(event: &Event) -> EventBody {
                     duration_ms:       *duration_ms,
                     streams_separated: *streams_separated,
                     exec_output_tail:  exec_output_tail.clone(),
+                    output_bytes_observed: Some(output_byte_count(*output_bytes_observed)),
+                    output_bytes_retained: Some(output_byte_count(*output_bytes_retained)),
+                    output_bytes_omitted:  Some(output_byte_count(*output_bytes_omitted)),
                     visit:             *visit,
                 },
             ),
@@ -1620,11 +1636,14 @@ mod tests {
             stage:             "code".to_string(),
             visit:             2,
             event:             AgentEvent::ToolProcessCompleted {
-                exit_code:         Some(7),
-                termination:       ::fabro_types::CommandTermination::Exited,
-                duration_ms:       12,
-                streams_separated: true,
-                exec_output_tail:  Some(exec_tail()),
+                exit_code:             Some(7),
+                termination:           ::fabro_types::CommandTermination::Exited,
+                duration_ms:           12,
+                streams_separated:     true,
+                output_bytes_observed: 120,
+                output_bytes_retained: 100,
+                output_bytes_omitted:  20,
+                exec_output_tail:      Some(exec_tail()),
             },
             session_id:        Some("ses_child".to_string()),
             parent_session_id: Some("ses_parent".to_string()),
@@ -1651,6 +1670,9 @@ mod tests {
         assert_eq!(properties["termination"], "exited");
         assert_eq!(properties["duration_ms"], 12);
         assert_eq!(properties["streams_separated"], true);
+        assert_eq!(properties["output_bytes_observed"], 120);
+        assert_eq!(properties["output_bytes_retained"], 100);
+        assert_eq!(properties["output_bytes_omitted"], 20);
         assert_eq!(properties["exec_output_tail"]["stdout"], "last stdout line");
         assert_eq!(properties["visit"], 2);
     }
