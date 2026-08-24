@@ -632,7 +632,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-24T22:19:39.857188708Z",
-  "last_event_at": "2026-08-24T22:28:55.660982960Z",
+  "last_event_at": "2026-08-24T22:29:07.668692686Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -2201,9 +2201,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 448,
       "checkpoint": {
-        "timestamp": "2026-08-24T22:28:56.262781092Z",
+        "timestamp": "2026-08-24T22:29:04.963050392Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -2218,9 +2218,295 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.run_id": "01M0TXPX09279433MGWSWPVVP4",
+          "graph.rankdir": "LR",
+          "internal.thread_id": "planner",
+          "command.output": "blob://sha256/2c03dd81a681ee5903629f09ee3e5ce1b41c4872efd04a90e4135a70bfecd23e",
+          "thread.evidence.current_node": "reviewer",
+          "current_seed_id": "fabro-d920",
+          "thread.reviewer.current_node": "closeout",
+          "current_node": "implementer",
+          "internal.retry_count.implementer": 0,
+          "implementation_summary": "`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePretty`/`modeTable`) with `parseMode` (flag-style invalid-value error listing all four modes), `resolveMode` (shortcut resolution: unset `-format` keeps legacy JSON-wins semantics; explicit `-format` requires shortcut agreement, else an error naming both `-json`/`-pretty` and `-format`), `-format` flag registration, and `run()` grew a `format string` parameter (checked after `-version` so version precedence holds) with a `modeTable` print branch (values only, right-justified to the widest value). `fib_test.go`: all existing call sites updated to pass `\"\"` (legacy behavior unchanged and regression-pinned); new tests `TestRunFormatModes`, `TestRunFormatShortcutEquivalence`, `TestRunFormatConflicts`, `TestRunRejectsInvalidFormat`, `TestRunTableCombinations`, `TestRunFormatSeed`, `TestRunVersionFormat`. `README.md`: `-format` usage section with real captured output for every mode (built to `/workspace/tmp`-external `/tmp/gofib`, binary removed), plus shortcut/conflict/default/version-precedence examples and a full flag-table row; `-json`/`-pretty` rows updated to document shortcut semantics. Per-criterion report: - PASS `-format text|json|pretty|table`, invalid value exits non-zero with `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table`: main.go `parseMode` + `TestRunRejectsInvalidFormat` (exact-message pins). - PASS `-json`/`-pretty` remain shortcuts, legacy behavior unchanged incl. `-json -pretty` JSON-wins: main.go `resolveMode` unset-format path + existing tests pass with `\"\"` (TestRunJSON/TestRunPretty/TestRunPrettyJSON) + `TestRunFormatShortcutEquivalence` and legacy subtest in `TestRunFormatConflicts`. - PASS conflict rule both directions and vs `text`/`table`, agreeing combos accepted, no conflict check when `-format` unset: main.go `resolveMode` + `TestRunFormatConflicts` (6 conflict rows naming both flags, agreeing rows in `TestRunFormatShortcutEquivalence`). - PASS `table` mode values-only right-justified to widest value, no index, composes with `-start`/`-n`/`-limit`: main.go modeTable branch + `TestRunFormatModes` and `TestRunTableCombinations`. - PASS active mode applies in `-seed` lookup: `TestRunFormatSeed` (`-seed 10 -format json` == `-seed 10 -json`; `-seed 10 -format table` prints `55`). - PASS `-version` wins over invalid/conflicting `-format`: main.go version-first check + `TestRunVersionFormat` (incl. `-version -format xml` → `gofib 1.3.0`, exit 0). - PASS computation via existing `Fib(n)` only, flag-package registration, `run()` signature grew the mode parameter and all call sites updated: main.go. - PASS README flag-table `-format` row + real captured example per mode (captured from a built binary, not invented) + shortcut/conflict/default docs: `README.md`. - PASS table-driven tests covering all demanded cases: `fib_test.go` new tests listed above plus regression pins. - PASS `just qualitygate`: not run by me (tester's job); `go vet` + full `go test` were green before README-only edits, focused re-run green after; gofmt clean; no artifacts left (binary built to `/tmp` and removed; worktree shows only `README.md`, `fib_test.go`, `main.go` modified).",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3367,
+            "preview": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePre"
+          },
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3344,
+            "preview": "Claimed `fabro-d920`. The worktree matches the seed's assumptions (flag-package CLI, `run()` dispatch, README flag table), and I resolved three spec soft spots in the brief: agreeing shortcut+format c"
+          },
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "last_response": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePre",
+          "internal.retry_count.planner": 0,
+          "preferred_label": "Implemented",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.reviewer": 0,
+          "failure_class": "",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 1992,
+            "preview": "The evidence blob is complete and internally consistent. Verified against the authoritative seed spec:\n\n1. **Single-index printing** — main.go's lookup mode sets `start, count, limit = seed, 1, 0`, "
+          },
+          "failure_signature": "",
+          "internal.fidelity": "summary:high",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "last_stage": "implementer",
+          "internal.retry_count.tester": 0,
+          "current_seed_brief": "Add a `-format <mode>` flag to gofib (`/workspace/fabro/main.go`) that selects the output style globally — `text` (default), `json`, `pretty`, and new compact `table` mode — unifying the text/json/pretty matrix. Acceptance criteria: (1) `-format text|json|pretty|table`; an invalid value exits non-zero with a stderr error in the existing flag-error style that lists the valid modes (e.g. `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table`). (2) `-json` and `-pretty` remain SHORTCUTS: `-json` behaves exactly like `-format json`, `-pretty` like `-format pretty`; plain `-json`/`-pretty` behavior is UNCHANGED and pinned by regression tests (including `-json -pretty` with no `-format`: JSON wins, no error). (3) Conflict rule: when `-format` is EXPLICITLY set, any also-given shortcut must agree — `-pretty -format json`, `-json -format pretty`, and shortcut-vs-`text`/`table` combos exit non-zero with a stderr error naming both flags; agreeing combos (`-pretty -format pretty`, `-json -format json`) are accepted (annotated choice: spec forbids conflicts, agreement is not one); with `-format` unset there is NO conflict check — legacy `-json -pretty` keeps JSON-wins semantics (annotated: regression criterion demands existing behavior unchanged). (4) `table` mode: values only, one per line, right-justified to the width of the widest value printed; no index column; composes with `-start`/`-n`/`-limit` as usual. (5) The active mode applies in `-seed` lookup mode too: `-seed 10 -format json` equals `-seed 10 -json`, `-seed 10 -format table` prints just the value. (6) `-version` still wins over everything, including an INVALID `-format` value or a shortcut/format conflict — `-version -format xml` prints `gofib <Version>` and exits 0 (annotated choice: mirrors -version's ignore-invalid semantics). (7) Computation uses existing `Fib(n)` only; the flag is registered via the flag package; `run()` signature may grow the mode parameter and all existing call sites update. (8) `README.md` flag table gains the `-format` row plus a REAL captured example for EACH mode (build the binary and capture; do not invent output), and documents the shortcut, conflict, and default semantics. (9) Table-driven tests in `/workspace/fabro/fib_test.go` cover: each of the four modes, shortcut==format equivalence, conflict rejection (both shortcut directions plus vs `text` and `table`), invalid mode rejection, table+`-start`/`-n`/`-limit` combos, table with `-seed`, `-version` precedence over invalid/conflicting `-format`, and regression pins for existing `-json`/`-pretty` behavior. (10) `just qualitygate` green.",
+          "internal.seed_cycle_anchor": "fabro-d920",
+          "outcome": "succeeded",
+          "current_seed_title": "gofib: add -format flag for compact table output",
+          "thread.start.current_node": "planner",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.planner.current_node": "implementer",
+          "thread.implementer.current_node": "tester",
+          "graph.preamble_budget_kb": "24",
+          "internal.node_visit_count": 2,
+          "internal.retry_count.evidence": 0,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.closeout": 0,
+          "review_verdict": "approved",
+          "thread.closeout.current_node": "planner",
+          "thread.tester.current_node": "evidence"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "closeout": {
+            "status": "succeeded",
+            "preferred_label": "More seeds",
+            "context_updates": {
+              "command.output": "blob://sha256/2c03dd81a681ee5903629f09ee3e5ce1b41c4872efd04a90e4135a70bfecd23e"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 413,
+              "active_time_ms": 413
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePre",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3367,
+                "preview": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePre"
+              },
+              "implementation_summary": "`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePretty`/`modeTable`) with `parseMode` (flag-style invalid-value error listing all four modes), `resolveMode` (shortcut resolution: unset `-format` keeps legacy JSON-wins semantics; explicit `-format` requires shortcut agreement, else an error naming both `-json`/`-pretty` and `-format`), `-format` flag registration, and `run()` grew a `format string` parameter (checked after `-version` so version precedence holds) with a `modeTable` print branch (values only, right-justified to the widest value). `fib_test.go`: all existing call sites updated to pass `\"\"` (legacy behavior unchanged and regression-pinned); new tests `TestRunFormatModes`, `TestRunFormatShortcutEquivalence`, `TestRunFormatConflicts`, `TestRunRejectsInvalidFormat`, `TestRunTableCombinations`, `TestRunFormatSeed`, `TestRunVersionFormat`. `README.md`: `-format` usage section with real captured output for every mode (built to `/workspace/tmp`-external `/tmp/gofib`, binary removed), plus shortcut/conflict/default/version-precedence examples and a full flag-table row; `-json`/`-pretty` rows updated to document shortcut semantics. Per-criterion report: - PASS `-format text|json|pretty|table`, invalid value exits non-zero with `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table`: main.go `parseMode` + `TestRunRejectsInvalidFormat` (exact-message pins). - PASS `-json`/`-pretty` remain shortcuts, legacy behavior unchanged incl. `-json -pretty` JSON-wins: main.go `resolveMode` unset-format path + existing tests pass with `\"\"` (TestRunJSON/TestRunPretty/TestRunPrettyJSON) + `TestRunFormatShortcutEquivalence` and legacy subtest in `TestRunFormatConflicts`. - PASS conflict rule both directions and vs `text`/`table`, agreeing combos accepted, no conflict check when `-format` unset: main.go `resolveMode` + `TestRunFormatConflicts` (6 conflict rows naming both flags, agreeing rows in `TestRunFormatShortcutEquivalence`). - PASS `table` mode values-only right-justified to widest value, no index, composes with `-start`/`-n`/`-limit`: main.go modeTable branch + `TestRunFormatModes` and `TestRunTableCombinations`. - PASS active mode applies in `-seed` lookup: `TestRunFormatSeed` (`-seed 10 -format json` == `-seed 10 -json`; `-seed 10 -format table` prints `55`). - PASS `-version` wins over invalid/conflicting `-format`: main.go version-first check + `TestRunVersionFormat` (incl. `-version -format xml` → `gofib 1.3.0`, exit 0). - PASS computation via existing `Fib(n)` only, flag-package registration, `run()` signature grew the mode parameter and all call sites updated: main.go. - PASS README flag-table `-format` row + real captured example per mode (captured from a built binary, not invented) + shortcut/conflict/default docs: `README.md`. - PASS table-driven tests covering all demanded cases: `fib_test.go` new tests listed above plus regression pins. - PASS `just qualitygate`: not run by me (tester's job); `go vet` + full `go test` were green before README-only edits, focused re-run green after; gofmt clean; no artifacts left (binary built to `/tmp` and removed; worktree shows only `README.md`, `fib_test.go`, `main.go` modified)."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 35718,
+                    "output_tokens": 9325,
+                    "reasoning_tokens": 3204,
+                    "cache_read_tokens": 677568,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 281268
+            },
+            "files_touched": [
+              "/workspace/fabro/README.md",
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 186107,
+              "tool_time_ms": 9370,
+              "active_time_ms": 195477
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/ce80b61a8083ef1d8ec5c6174fed9fd267a7f2a2a9928771c30dd09eb54f97ee"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 554,
+              "active_time_ms": 554
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Add a `-format <mode>` flag to gofib (`/workspace/fabro/main.go`) that selects the output style globally — `text` (default), `json`, `pretty`, and new compact `table` mode — unifying the text/json/pretty matrix. Acceptance criteria: (1) `-format text|json|pretty|table`; an invalid value exits non-zero with a stderr error in the existing flag-error style that lists the valid modes (e.g. `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table`). (2) `-json` and `-pretty` remain SHORTCUTS: `-json` behaves exactly like `-format json`, `-pretty` like `-format pretty`; plain `-json`/`-pretty` behavior is UNCHANGED and pinned by regression tests (including `-json -pretty` with no `-format`: JSON wins, no error). (3) Conflict rule: when `-format` is EXPLICITLY set, any also-given shortcut must agree — `-pretty -format json`, `-json -format pretty`, and shortcut-vs-`text`/`table` combos exit non-zero with a stderr error naming both flags; agreeing combos (`-pretty -format pretty`, `-json -format json`) are accepted (annotated choice: spec forbids conflicts, agreement is not one); with `-format` unset there is NO conflict check — legacy `-json -pretty` keeps JSON-wins semantics (annotated: regression criterion demands existing behavior unchanged). (4) `table` mode: values only, one per line, right-justified to the width of the widest value printed; no index column; composes with `-start`/`-n`/`-limit` as usual. (5) The active mode applies in `-seed` lookup mode too: `-seed 10 -format json` equals `-seed 10 -json`, `-seed 10 -format table` prints just the value. (6) `-version` still wins over everything, including an INVALID `-format` value or a shortcut/format conflict — `-version -format xml` prints `gofib <Version>` and exits 0 (annotated choice: mirrors -version's ignore-invalid semantics). (7) Computation uses existing `Fib(n)` only; the flag is registered via the flag package; `run()` signature may grow the mode parameter and all existing call sites update. (8) `README.md` flag table gains the `-format` row plus a REAL captured example for EACH mode (build the binary and capture; do not invent output), and documents the shortcut, conflict, and default semantics. (9) Table-driven tests in `/workspace/fabro/fib_test.go` cover: each of the four modes, shortcut==format equivalence, conflict rejection (both shortcut directions plus vs `text` and `table`), invalid mode rejection, table+`-start`/`-n`/`-limit` combos, table with `-seed`, `-version` precedence over invalid/conflicting `-format`, and regression pins for existing `-json`/`-pretty` behavior. (10) `just qualitygate` green.",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3344,
+                "preview": "Claimed `fabro-d920`. The worktree matches the seed's assumptions (flag-package CLI, `run()` dispatch, README flag table), and I resolved three spec soft spots in the brief: agreeing shortcut+format c"
+              },
+              "last_response": "Claimed `fabro-d920`. The worktree matches the seed's assumptions (flag-package CLI, `run()` dispatch, README flag table), and I resolved three spec soft spots in the brief: agreeing shortcut+format c",
+              "last_stage": "planner",
+              "current_seed_id": "fabro-d920",
+              "current_seed_title": "gofib: add -format flag for compact table output"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15083,
+                    "output_tokens": 1054,
+                    "reasoning_tokens": 2348,
+                    "cache_read_tokens": 38016,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 45963
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 52898,
+              "tool_time_ms": 1036,
+              "active_time_ms": 53934
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_stage": "reviewer",
+              "review_verdict": "approved",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 1992,
+                "preview": "The evidence blob is complete and internally consistent. Verified against the authoritative seed spec:\n\n1. **Single-index printing** — main.go's lookup mode sets `start, count, limit = seed, 1, 0`, "
+              },
+              "last_response": "The evidence blob is complete and internally consistent. Verified against the authoritative seed spec:\n\n1. **Single-index printing** — main.go's lookup mode sets `start, count, limit = seed, 1, 0`, "
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14735,
+                    "output_tokens": 600,
+                    "reasoning_tokens": 144,
+                    "cache_read_tokens": 22272,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 29690
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 18222,
+              "tool_time_ms": 515,
+              "active_time_ms": 18737
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/0bb8fdd0899dec244b6543e56fcf325b817687d2a7f13596cf52c6c03ca50e3a"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1319,
+              "active_time_ms": 1319
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "57eb04a3a1ba913a0d829574e72f3ef2b4f4d330",
+        "node_visits": {
+          "tester": 1,
+          "closeout": 1,
+          "implementer": 2,
+          "evidence": 1,
+          "planner": 2,
+          "start": 1,
+          "reviewer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl b/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl\nindex aff4c7f..fd786f9 100644\n--- a/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl\n+++ b/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl\n@@ -6,3 +6,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:23:58Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:24:07Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"planner\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:25:13Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"implementer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:28:56Z\",\"data\":{}}\ndiff --git a/README.md b/README.md\nindex 8c5396c..d868c41 100644\n--- a/README.md\n+++ b/README.md\n@@ -107,6 +107,95 @@ $ gofib -seed 10 -json\n {\"index\":10,\"fib\":\"55\"}\n ```\n \n+`-format <mode>` selects the output style globally: `text` (the\n+default), `json`, `pretty`, or the compact `table` mode (values only,\n+one per line, right-justified to the width of the widest value\n+printed, no index column). It composes with `-start`, `-n`, `-limit`,\n+and `-seed` as usual:\n+\n+```\n+$ gofib -n 5 -format text\n+1: 1\n+2: 1\n+3: 2\n+4: 3\n+5: 5\n+\n+$ gofib -n 3 -format json\n+{\"index\":1,\"fib\":\"1\"}\n+{\"index\":2,\"fib\":\"1\"}\n+{\"index\":3,\"fib\":\"2\"}\n+\n+$ gofib -n 12 -format pretty\n+ 1:   1\n+ 2:   1\n+ 3:   2\n+ 4:   3\n+ 5:   5\n+ 6:   8\n+ 7:  13\n+ 8:  21\n+ 9:  34\n+10:  55\n+11:  89\n+12: 144\n+\n+$ gofib -n 12 -format table\n+  1\n+  1\n+  2\n+  3\n+  5\n+  8\n+ 13\n+ 21\n+ 34\n+ 55\n+ 89\n+144\n+\n+$ gofib -start 8 -n 5 -format table\n+ 21\n+ 34\n+ 55\n+ 89\n+144\n+\n+$ gofib -seed 10 -format table\n+55\n+```\n+\n+`-json` and `-pretty` are **shortcuts**: `-json` behaves exactly like\n+`-format json` and `-pretty` exactly like `-format pretty`. With\n+`-format` unset, plain `-json`/`-pretty` behavior is unchanged\n+(including `-json -pretty`, where JSON wins and there is no error).\n+But when `-format` is **explicitly set** (including to `text` or\n+`table`), any also-given shortcut must agree — a disagreement is an\n+error naming both flags:\n+\n+```\n+$ gofib -pretty -format json\n+flags -pretty and -format conflict: -pretty selects pretty but -format selects json\n+$ echo $?\n+1\n+\n+$ gofib -format xml\n+invalid value \"xml\" for flag -format: must be one of text, json, pretty, table\n+$ echo $?\n+1\n+```\n+\n+Agreeing combinations (`-pretty -format pretty`, `-json -format\n+json`) are accepted. `-version` still wins over everything — even an\n+invalid `-format` value or a shortcut/format conflict:\n+\n+```\n+$ gofib -version -format xml\n+gofib 1.3.0\n+$ echo $?\n+0\n+```\n+\n JSON mode (`-json`) emits JSON Lines — one object per number, never a\n JSON array. `fib` is a string (ADR-0001) because F(100) overflows\n int64:\n@@ -164,9 +253,11 @@ $ echo $?\n | `-start <int>` | Start flag: index of the first number printed. Default `0`, which behaves like `1` (gofib's indices are 1-based), so unset output is unchanged — plain `gofib` still starts `1: 1` and ends `100: 354224848179261915075`. `-start s -n k` prints exactly `k` lines with indices `s..s+k-1`: `-start` never changes what `-n` counts. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr. Combines with `-json` (the `index` field carries the actual index) and `-pretty` (columns sized to the largest index and value actually printed). |\n | `-limit <int>` | Cap flag: the largest index gofib will print, independent of `-start` and `-n`. Default `0`, which means **no limit** (the sentinel mirrors `-start`'s `0`-default). The output is the intersection of the three range flags — `start <= index <= min(start+n-1, limit)`, at most `-n` lines — so e.g. `gofib -n 100000 -limit 5` prints exactly 5 lines, instantly. `-limit < start` (both positive) is **not an error**: gofib prints nothing and exits `0`. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr (`invalid value -1 for flag -limit: must be >= 0`). Combines with `-json` (one object per surviving index) and `-pretty` (columns sized to the capped range, not `start+n-1`). |\n | `-seed <int>` | Lookup flag: print **only** the Fibonacci number at this index — exactly one line in the active output mode (`i: <value>`, or one JSON object, or a single `-pretty` row sized from that sole index). Default `0` is the unset **sentinel** (mirroring `-start`): plain `gofib` output is unchanged. **Precedence**: a positive `-seed` overrides `-n`, `-start`, and `-limit` so only index `i` prints — e.g. `gofib -seed 10 -n 5 -start 2` prints exactly `10: 55` — and, like `-version`, it skips the range-flag validation, so an otherwise-invalid combination such as `-seed 10 -n 0` still prints the single entry. `-version` still wins over everything. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr (`invalid value -1 for flag -seed: must be >= 0`). |\n-| `-json` | JSON mode: emit JSON Lines instead of text — one `{\"index\":<int>,\"fib\":\"<string>\"}` object per number. `fib` is a string by decision (ADR-0001), since F(100) overflows int64. Never a JSON array. |\n-| `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. **No effect with `-json`** — JSON Lines have no columns to align. |\n+| `-format <mode>` | Output-mode flag: selects the output style globally — `text` (the default), `json` (JSON Lines), `pretty` (right-aligned text columns), or `table` (compact: values only, one per line, right-justified to the width of the widest value printed, no index column). Composes with `-start`, `-n`, `-limit`, and `-seed` as usual. An invalid value exits non-zero with `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table` on stderr. `-json` and `-pretty` are **shortcuts** for `-format json` / `-format pretty`: with `-format` unset they keep their legacy meaning (plain `-json -pretty` is still not an error — JSON wins), but an explicitly set `-format` must **agree** with any also-given shortcut, so e.g. `-pretty -format json` exits non-zero with an error naming both flags (agreeing combos like `-json -format json` are fine). `-version` still wins over everything, including an invalid or conflicting `-format`. |\n+| `-json` | JSON mode: emit JSON Lines instead of text — one `{\"index\":<int>,\"fib\":\"<string>\"}` object per number. `fib` is a string by decision (ADR-0001), since F(100) overflows int64. Never a JSON array. Shortcut for `-format json`; conflicts with an explicit `-format` selecting another mode. |\n+| `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. Shortcut for `-format pretty`; conflicts with an explicit `-format` selecting another mode. |\n | `-version` | Prints exactly `gofib 1.3.0` (from the `Version` const in `main.go`) and takes precedence over every other flag — even an otherwise-invalid combination like `-version -n 0 -json` prints the version and exits `0`. |\n \n-`-pretty` and `-json` together is not an error; JSON mode simply wins\n-and the output is identical to `-json` alone.\n+With no `-format`, plain `-pretty` and `-json` together is not an\n+error; JSON mode simply wins and the output is identical to `-json`\n+alone.\ndiff --git a/fib_test.go b/fib_test.go\nindex d7e37b8..2759d72 100644\n--- a/fib_test.go\n+++ b/fib_test.go\n@@ -54,7 +54,7 @@ func TestRun(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, 0, tt.n, 0, 0, false, false, false); err != nil {\n+\t\t\tif err := run(&buf, 0, tt.n, 0, 0, \"\", false, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d) returned error: %v\", tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -95,7 +95,7 @@ func TestRunStart(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.start, tt.n, 0, 0, false, false, false); err != nil {\n+\t\t\tif err := run(&buf, tt.start, tt.n, 0, 0, \"\", false, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, %d) returned error: %v\", tt.start, tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -136,7 +136,7 @@ func TestRunJSON(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, 0, tt.n, 0, 0, true, false, false); err != nil {\n+\t\t\tif err := run(&buf, 0, tt.n, 0, 0, \"\", true, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, json) returned error: %v\", tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -169,7 +169,7 @@ func TestRunJSON(t *testing.T) {\n func TestRunStartJSON(t *testing.T) {\n \tconst start, n = 10, 5\n \tvar buf bytes.Buffer\n-\tif err := run(&buf, start, n, 0, 0, true, false, false); err != nil {\n+\tif err := run(&buf, start, n, 0, 0, \"\", true, false, false); err != nil {\n \t\tt.Fatalf(\"run(%d, %d, json) returned error: %v\", start, n, err)\n \t}\n \tout := buf.String()\n@@ -219,7 +219,7 @@ func TestRunPretty(t *testing.T) {\n \t} {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, 0, tt.n, 0, 0, false, true, false); err != nil {\n+\t\t\tif err := run(&buf, 0, tt.n, 0, 0, \"\", false, true, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, pretty) returned error: %v\", tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -239,7 +239,7 @@ func TestRunPretty(t *testing.T) {\n \t// index right-aligned to len(\"100\"), value to len(Fib(100)).\n \tt.Run(\"pretty default prints 100 aligned numbers\", func(t *testing.T) {\n \t\tvar buf bytes.Buffer\n-\t\tif err := run(&buf, 0, defaultCount, 0, 0, false, true, false); err != nil {\n+\t\tif err := run(&buf, 0, defaultCount, 0, 0, \"\", false, true, false); err != nil {\n \t\t\tt.Fatalf(\"run(default, pretty) returned error: %v\", err)\n \t\t}\n \t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -261,7 +261,7 @@ func TestRunStartPretty(t *testing.T) {\n \tfibs := map[int]string{8: \"21\", 9: \"34\", 10: \"55\", 11: \"89\", 12: \"144\"}\n \tconst start, n = 8, 5\n \tvar buf bytes.Buffer\n-\tif err := run(&buf, start, n, 0, 0, false, true, false); err != nil {\n+\tif err := run(&buf, start, n, 0, 0, \"\", false, true, false); err != nil {\n \t\tt.Fatalf(\"run(%d, %d, pretty) returned error: %v\", start, n, err)\n \t}\n \tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -282,10 +282,10 @@ func TestRunPrettyJSON(t *testing.T) {\n \t// -pretty only affects text mode: with -json the output must be\n \t// identical, line for line.\n \tvar jsonOnly, prettyJSON bytes.Buffer\n-\tif err := run(&jsonOnly, 0, 3, 0, 0, true, false, false); err != nil {\n+\tif err := run(&jsonOnly, 0, 3, 0, 0, \"\", true, false, false); err != nil {\n \t\tt.Fatalf(\"run(3, json) returned error: %v\", err)\n \t}\n-\tif err := run(&prettyJSON, 0, 3, 0, 0, true, true, false); err != nil {\n+\tif err := run(&prettyJSON, 0, 3, 0, 0, \"\", true, true, false); err != nil {\n \t\tt.Fatalf(\"run(3, json, pretty) returned error: %v\", err)\n \t}\n \tif prettyJSON.String() != jsonOnly.String() {\n@@ -306,7 +306,7 @@ func TestRunRejectsInvalidCount(t *testing.T) {\n \t}{{\"text\", false}, {\"json\", true}} {\n \t\tfor _, n := range []int{0, -5} {\n \t\t\tvar buf bytes.Buffer\n-\t\t\terr := run(&buf, 0, n, 0, 0, mode.asJSON, false, false)\n+\t\t\terr := run(&buf, 0, n, 0, 0, \"\", mode.asJSON, false, false)\n \t\t\tif err == nil {\n \t\t\t\tt.Fatalf(\"run(%d, %s) succeeded, want error\", n, mode.name)\n \t\t\t}\n@@ -330,7 +330,7 @@ func TestRunRejectsInvalidStart(t *testing.T) {\n \t}{{\"text\", false}, {\"json\", true}} {\n \t\tfor _, start := range []int{-1, -5} {\n \t\t\tvar buf bytes.Buffer\n-\t\t\terr := run(&buf, start, 5, 0, 0, mode.asJSON, false, false)\n+\t\t\terr := run(&buf, start, 5, 0, 0, \"\", mode.asJSON, false, false)\n \t\t\tif err == nil {\n \t\t\t\tt.Fatalf(\"run(%d, 5, %s) succeeded, want error\", start, mode.name)\n \t\t\t}\n@@ -374,7 +374,7 @@ func TestRunVersion(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.start, tt.count, tt.limit, tt.seed, tt.asJSON, tt.pretty, true); err != nil {\n+\t\t\tif err := run(&buf, tt.start, tt.count, tt.limit, tt.seed, \"\", tt.asJSON, tt.pretty, true); err != nil {\n \t\t\t\tt.Fatalf(\"run(version) returned error: %v\", err)\n \t\t\t}\n \t\t\tif want := \"gofib \" + Version + \"\\n\"; buf.String() != want {\n@@ -418,7 +418,7 @@ func TestRunLimit(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.start, tt.n, tt.limit, 0, tt.asJSON, false, false); err != nil {\n+\t\t\tif err := run(&buf, tt.start, tt.n, tt.limit, 0, \"\", tt.asJSON, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, %d, %d) returned error: %v\", tt.start, tt.n, tt.limit, err)\n \t\t\t}\n \t\t\tif tt.wantLines == 0 {\n@@ -448,7 +448,7 @@ func TestRunLimit(t *testing.T) {\n \tt.Run(\"limit with -pretty sizes columns from the capped last index\", func(t *testing.T) {\n \t\tconst start, n, limit = 8, 5, 10\n \t\tvar buf bytes.Buffer\n-\t\tif err := run(&buf, start, n, limit, 0, false, true, false); err != nil {\n+\t\tif err := run(&buf, start, n, limit, 0, \"\", false, true, false); err != nil {\n \t\t\tt.Fatalf(\"run(%d, %d, %d, pretty) returned error: %v\", start, n, limit, err)\n \t\t}\n \t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -476,7 +476,7 @@ func TestRunRejectsInvalidLimit(t *testing.T) {\n \t}{{\"text\", false}, {\"json\", true}} {\n \t\tfor _, limit := range []int{-1, -5} {\n \t\t\tvar buf bytes.Buffer\n-\t\t\terr := run(&buf, 0, 5, limit, 0, mode.asJSON, false, false)\n+\t\t\terr := run(&buf, 0, 5, limit, 0, \"\", mode.asJSON, false, false)\n \t\t\tif err == nil {\n \t\t\t\tt.Fatalf(\"run(0, 5, %d, %s) succeeded, want error\", limit, mode.name)\n \t\t\t}\n@@ -536,7 +536,7 @@ func TestRunSeed(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.start, tt.n, tt.limit, tt.seed, tt.asJSON, tt.pretty, false); err != nil {\n+\t\t\tif err := run(&buf, tt.start, tt.n, tt.limit, tt.seed, \"\", tt.asJSON, tt.pretty, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(seed=%d) returned error: %v\", tt.seed, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -565,7 +565,7 @@ func TestRunRejectsInvalidSeed(t *testing.T) {\n \t}{{\"text\", false}, {\"json\", true}} {\n \t\tfor _, seed := range []int{-1, -5} {\n \t\t\tvar buf bytes.Buffer\n-\t\t\terr := run(&buf, 0, 5, 0, seed, mode.asJSON, false, false)\n+\t\t\terr := run(&buf, 0, 5, 0, seed, \"\", mode.asJSON, false, false)\n \t\t\tif err == nil {\n \t\t\t\tt.Fatalf(\"run(seed=%d, %s) succeeded, want error\", seed, mode.name)\n \t\t\t}\n@@ -579,3 +579,250 @@ func TestRunRejectsInvalidSeed(t *testing.T) {\n \t\t}\n \t}\n }\n+\n+// TestRunFormatModes pins each -format mode's exact output for the\n+// same range (indices 8..12): text (\"<index>: <value>\"), json (one\n+// object per line), pretty (both columns right-aligned), and table\n+// (value only, right-justified to the widest value).\n+func TestRunFormatModes(t *testing.T) {\n+\tfor _, tt := range []struct {\n+\t\tname   string\n+\t\tformat string\n+\t\twant   string\n+\t}{\n+\t\t{\"text\", \"text\", \"8: 21\\n9: 34\\n10: 55\\n11: 89\\n12: 144\\n\"},\n+\t\t{\"json\", \"json\",\n+\t\t\twantJSONLine(8) + \"\\n\" + wantJSONLine(9) + \"\\n\" + wantJSONLine(10) + \"\\n\" + wantJSONLine(11) + \"\\n\" + wantJSONLine(12) + \"\\n\"},\n+\t\t{\"pretty\", \"pretty\", \" 8:  21\\n 9:  34\\n10:  55\\n11:  89\\n12: 144\\n\"},\n+\t\t{\"table\", \"table\", \" 21\\n 34\\n 55\\n 89\\n144\\n\"},\n+\t\t{\"empty format is text (unset sentinel)\", \"\", \"8: 21\\n9: 34\\n10: 55\\n11: 89\\n12: 144\\n\"},\n+\t} {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tvar buf bytes.Buffer\n+\t\t\tif err := run(&buf, 8, 5, 0, 0, tt.format, false, false, false); err != nil {\n+\t\t\t\tt.Fatalf(\"run(format=%q) returned error: %v\", tt.format, err)\n+\t\t\t}\n+\t\t\tif buf.String() != tt.want {\n+\t\t\t\tt.Errorf(\"run(format=%q) = %q, want %q\", tt.format, buf.String(), tt.want)\n+\t\t\t}\n+\t\t})\n+\t}\n+}\n+\n+// TestRunFormatShortcutEquivalence pins that -json and -pretty are\n+// pure shortcuts: their output is byte-identical to the corresponding\n+// -format mode, in both the range path and -seed lookup mode.\n+func TestRunFormatShortcutEquivalence(t *testing.T) {\n+\tfor _, tt := range []struct {\n+\t\tname   string\n+\t\tformat string\n+\t\tasJSON bool\n+\t\tpretty bool\n+\t\tseed   int\n+\t}{\n+\t\t{\"-json equals -format json (range)\", \"json\", true, false, 0},\n+\t\t{\"-pretty equals -format pretty (range)\", \"pretty\", false, true, 0},\n+\t\t{\"-json equals -format json (seed)\", \"json\", true, false, 10},\n+\t\t{\"-pretty equals -format pretty (seed)\", \"pretty\", false, true, 10},\n+\t\t{\"agreeing -json -format json is accepted\", \"json\", true, false, 0},\n+\t\t{\"agreeing -pretty -format pretty is accepted\", \"pretty\", false, true, 0},\n+\t} {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tvar viaFormat, viaShortcut bytes.Buffer\n+\t\t\tn := defaultCount\n+\t\t\tif err := run(&viaFormat, 0, n, 0, tt.seed, tt.format, false, false, false); err != nil {\n+\t\t\t\tt.Fatalf(\"run(format=%q) returned error: %v\", tt.format, err)\n+\t\t\t}\n+\t\t\tif err := run(&viaShortcut, 0, n, 0, tt.seed, \"\", tt.asJSON, tt.pretty, false); err != nil {\n+\t\t\t\tt.Fatalf(\"run(shortcut) returned error: %v\", err)\n+\t\t\t}\n+\t\t\tif viaFormat.String() != viaShortcut.String() {\n+\t\t\t\tt.Errorf(\"shortcut output %q != -format output %q\", viaShortcut.String(), viaFormat.String())\n+\t\t\t}\n+\t\t})\n+\t}\n+}\n+\n+// TestRunFormatConflicts pins the conflict rule: when -format is\n+// explicitly set, any also-given shortcut must agree. Both shortcut\n+// directions, plus shortcuts vs text and table, exit non-zero with a\n+// stderr error naming both flags and write no output. With -format\n+// unset there is no conflict check — legacy -json -pretty keeps its\n+// JSON-wins semantics (pinned by TestRunPrettyJSON).\n+func TestRunFormatConflicts(t *testing.T) {\n+\ttests := []struct {\n+\t\tname   string\n+\t\tformat string\n+\t\tasJSON bool\n+\t\tpretty bool\n+\t\twant   string\n+\t}{\n+\t\t{\"-pretty with -format json\", \"json\", false, true,\n+\t\t\t`flags -pretty and -format conflict: -pretty selects pretty but -format selects json`},\n+\t\t{\"-json with -format pretty\", \"pretty\", true, false,\n+\t\t\t`flags -json and -format conflict: -json selects json but -format selects pretty`},\n+\t\t{\"-json with -format text\", \"text\", true, false,\n+\t\t\t`flags -json and -format conflict: -json selects json but -format selects text`},\n+\t\t{\"-pretty with -format text\", \"text\", false, true,\n+\t\t\t`flags -pretty and -format conflict: -pretty selects pretty but -format selects text`},\n+\t\t{\"-json with -format table\", \"table\", true, false,\n+\t\t\t`flags -json and -format conflict: -json selects json but -format selects table`},\n+\t\t{\"-pretty with -format table\", \"table\", false, true,\n+\t\t\t`flags -pretty and -format conflict: -pretty selects pretty but -format selects table`},\n+\t}\n+\tfor _, tt := range tests {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tvar buf bytes.Buffer\n+\t\t\terr := run(&buf, 0, 5, 0, 0, tt.format, tt.asJSON, tt.pretty, false)\n+\t\t\tif err == nil {\n+\t\t\t\tt.Fatalf(\"run(format=%q) succeeded, want conflict error\", tt.format)\n+\t\t\t}\n+\t\t\tif err.Error() != tt.want {\n+\t\t\t\tt.Errorf(\"error = %q, want exactly %q\", err.Error(), tt.want)\n+\t\t\t}\n+\t\t\tif buf.Len() != 0 {\n+\t\t\t\tt.Errorf(\"wrote %q before failing, want no output\", buf.String())\n+\t\t\t}\n+\t\t})\n+\t}\n+\t// Legacy, no -format: -json -pretty is not an error (JSON wins).\n+\tt.Run(\"legacy -json -pretty without -format is not a conflict\", func(t *testing.T) {\n+\t\tvar buf bytes.Buffer\n+\t\tif err := run(&buf, 0, 3, 0, 0, \"\", true, true, false); err != nil {\n+\t\t\tt.Fatalf(\"run(-json -pretty, no -format) returned error: %v\", err)\n+\t\t}\n+\t\tif want := wantJSONLine(1) + \"\\n\" + wantJSONLine(2) + \"\\n\" + wantJSONLine(3) + \"\\n\"; buf.String() != want {\n+\t\t\tt.Errorf(\"output = %q, want %q\", buf.String(), want)\n+\t\t}\n+\t})\n+}\n+\n+// TestRunRejectsInvalidFormat pins the invalid-value contract: an\n+// unknown -format value exits non-zero with the flag-package-style\n+// error listing the valid modes and writes no output.\n+func TestRunRejectsInvalidFormat(t *testing.T) {\n+\tfor _, format := range []string{\"xml\", \"TEXT\", \"jso\"} {\n+\t\tvar buf bytes.Buffer\n+\t\terr := run(&buf, 0, 5, 0, 0, format, false, false, false)\n+\t\tif err == nil {\n+\t\t\tt.Fatalf(\"run(format=%q) succeeded, want error\", format)\n+\t\t}\n+\t\twant := fmt.Sprintf(\"invalid value %q for flag -format: must be one of text, json, pretty, table\", format)\n+\t\tif err.Error() != want {\n+\t\t\tt.Errorf(\"error = %q, want exactly %q\", err.Error(), want)\n+\t\t}\n+\t\tif buf.Len() != 0 {\n+\t\t\tt.Errorf(\"wrote %q before failing, want no output\", buf.String())\n+\t\t}\n+\t}\n+}\n+\n+// tableLine returns the expected -format table line for value v:\n+// right-justified to the width of the widest value printed, which is\n+// Fib(n) for the range ending at index n.\n+func tableLine(n int, v string) string {\n+\treturn fmt.Sprintf(\"%*s\", len(Fib(n).String()), v)\n+}\n+\n+// TestRunTableCombinations pins table mode composing with the range\n+// flags exactly like the other modes: -start shifts the window, -limit\n+// caps it (and the width follows the capped widest value), and a\n+// -seed lookup prints just the value.\n+func TestRunTableCombinations(t *testing.T) {\n+\tfor _, tt := range []struct {\n+\t\tname      string\n+\t\tstart     int\n+\t\tn         int\n+\t\tlimit     int\n+\t\tseed      int\n+\t\twantLines int\n+\t\twantFirst string\n+\t\twantLast  string\n+\t}{\n+\t\t{\"table with -start 8 -n 5\", 8, 5, 0, 0, 5, tableLine(12, \"21\"), tableLine(12, \"144\")},\n+\t\t{\"table with -limit caps the window\", 8, 5, 10, 0, 3, tableLine(10, \"21\"), tableLine(10, \"55\")},\n+\t\t{\"table with -limit below start is empty\", 10, 5, 7, 0, 0, \"\", \"\"},\n+\t\t{\"table with -seed prints just the value\", 0, defaultCount, 0, 12, 1, tableLine(12, \"144\"), tableLine(12, \"144\")},\n+\t\t{\"table with -seed 10\", 0, defaultCount, 0, 10, 1, tableLine(10, \"55\"), tableLine(10, \"55\")},\n+\t} {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tvar buf bytes.Buffer\n+\t\t\tif err := run(&buf, tt.start, tt.n, tt.limit, tt.seed, \"table\", false, false, false); err != nil {\n+\t\t\t\tt.Fatalf(\"run(table) returned error: %v\", err)\n+\t\t\t}\n+\t\t\tif tt.wantLines == 0 {\n+\t\t\t\tif buf.Len() != 0 {\n+\t\t\t\t\tt.Fatalf(\"wrote %q, want empty output\", buf.String())\n+\t\t\t\t}\n+\t\t\t\treturn\n+\t\t\t}\n+\t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n+\t\t\tif len(lines) != tt.wantLines {\n+\t\t\t\tt.Fatalf(\"printed %d lines, want %d\", len(lines), tt.wantLines)\n+\t\t\t}\n+\t\t\tif lines[0] != tt.wantFirst {\n+\t\t\t\tt.Errorf(\"first line = %q, want %q\", lines[0], tt.wantFirst)\n+\t\t\t}\n+\t\t\tif lines[len(lines)-1] != tt.wantLast {\n+\t\t\t\tt.Errorf(\"last line = %q, want %q\", lines[len(lines)-1], tt.wantLast)\n+\t\t\t}\n+\t\t})\n+\t}\n+}\n+\n+// TestRunFormatSeed pins that the active -format mode applies in -seed\n+// lookup mode too: -format json emits one object, -format table emits\n+// just the value.\n+func TestRunFormatSeed(t *testing.T) {\n+\tt.Run(\"-seed with -format json equals -seed -json\", func(t *testing.T) {\n+\t\tvar viaFormat, viaShortcut bytes.Buffer\n+\t\tif err := run(&viaFormat, 0, defaultCount, 0, 10, \"json\", false, false, false); err != nil {\n+\t\t\tt.Fatalf(\"run(-seed -format json) returned error: %v\", err)\n+\t\t}\n+\t\tif err := run(&viaShortcut, 0, defaultCount, 0, 10, \"\", true, false, false); err != nil {\n+\t\t\tt.Fatalf(\"run(-seed -json) returned error: %v\", err)\n+\t\t}\n+\t\tif viaFormat.String() != viaShortcut.String() {\n+\t\t\tt.Errorf(\"output %q != %q\", viaFormat.String(), viaShortcut.String())\n+\t\t}\n+\t\tif want := wantJSONLine(10) + \"\\n\"; viaFormat.String() != want {\n+\t\t\tt.Errorf(\"output = %q, want %q\", viaFormat.String(), want)\n+\t\t}\n+\t})\n+\tt.Run(\"-seed with -format table prints just the value\", func(t *testing.T) {\n+\t\tvar buf bytes.Buffer\n+\t\tif err := run(&buf, 0, defaultCount, 0, 10, \"table\", false, false, false); err != nil {\n+\t\t\tt.Fatalf(\"run(-seed -format table) returned error: %v\", err)\n+\t\t}\n+\t\tif buf.String() != \"55\\n\" {\n+\t\t\tt.Errorf(\"output = %q, want %q\", buf.String(), \"55\\n\")\n+\t\t}\n+\t})\n+}\n+\n+// TestRunVersionFormat pins -version's precedence over -format: even\n+// an invalid mode value or a shortcut/format conflict is ignored —\n+// the only output is the version line, exit 0.\n+func TestRunVersionFormat(t *testing.T) {\n+\tfor _, tt := range []struct {\n+\t\tname   string\n+\t\tformat string\n+\t\tasJSON bool\n+\t\tpretty bool\n+\t}{\n+\t\t{\"version with invalid -format xml\", \"xml\", false, false},\n+\t\t{\"version with -pretty -format json conflict\", \"json\", false, true},\n+\t\t{\"version with -json -format pretty conflict\", \"pretty\", true, false},\n+\t\t{\"version with -format table\", \"table\", false, false},\n+\t} {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tvar buf bytes.Buffer\n+\t\t\tif err := run(&buf, 0, 5, 0, 0, tt.format, tt.asJSON, tt.pretty, true); err != nil {\n+\t\t\t\tt.Fatalf(\"run(version) returned error: %v\", err)\n+\t\t\t}\n+\t\t\tif want := \"gofib \" + Version + \"\\n\"; buf.String() != want {\n+\t\t\t\tt.Errorf(\"wrote %q, want exactly %q\", buf.String(), want)\n+\t\t\t}\n+\t\t})\n+\t}\n+}\ndiff --git a/main.go b/main.go\nindex 04affd2..7d8a811 100644\n--- a/main.go\n+++ b/main.go\n@@ -4,11 +4,14 @@\n // first index printed (it does not change what -n counts), -limit caps\n // the largest index printed (it does not change what -n counts either;\n // 0, the default, means no limit), -seed prints only the Fibonacci\n-// number at a single index (0, the default, means unset), -json\n-// switches to JSON Lines\n-// output, and -pretty aligns the text columns (it has no effect with\n-// -json). The -version flag prints \"gofib <Version>\" and takes\n-// precedence over every other flag.\n+// number at a single index (0, the default, means unset), and -format\n+// selects the output mode globally: text (the default), json (JSON\n+// Lines), pretty (right-aligned text columns), or table (values only,\n+// right-justified). -json and -pretty are shortcuts for -format json\n+// and -format pretty: with -format unset they keep their legacy\n+// meaning (and plain -json -pretty lets JSON win), but an explicit\n+// -format must agree with any also-given shortcut. The -version flag\n+// prints \"gofib <Version>\" and takes precedence over every other flag.\n package main\n \n import (\n@@ -48,6 +51,79 @@ func Fib(n int) *big.Int {\n // -start preserves the historical output starting at index 1.\n const defaultStart = 1\n \n+// outputMode is the global output style selected by -format (with\n+// -json and -pretty acting as legacy shortcuts).\n+type outputMode int\n+\n+const (\n+\tmodeText outputMode = iota\n+\tmodeJSON\n+\tmodePretty\n+\tmodeTable\n+)\n+\n+// modeName returns the -format spelling of an output mode.\n+func modeName(m outputMode) string {\n+\tswitch m {\n+\tcase modeJSON:\n+\t\treturn \"json\"\n+\tcase modePretty:\n+\t\treturn \"pretty\"\n+\tcase modeTable:\n+\t\treturn \"table\"\n+\tdefault:\n+\t\treturn \"text\"\n+\t}\n+}\n+\n+// parseMode validates a -format value: the empty string (unset) and\n+// \"text\" both select the default text mode; anything outside the four\n+// modes is rejected with the flag-package-style error naming the valid\n+// values.\n+func parseMode(format string) (outputMode, error) {\n+\tswitch format {\n+\tcase \"\", \"text\":\n+\t\treturn modeText, nil\n+\tcase \"json\":\n+\t\treturn modeJSON, nil\n+\tcase \"pretty\":\n+\t\treturn modePretty, nil\n+\tcase \"table\":\n+\t\treturn modeTable, nil\n+\tdefault:\n+\t\treturn modeText, fmt.Errorf(\"invalid value %q for flag -format: must be one of text, json, pretty, table\", format)\n+\t}\n+}\n+\n+// resolveMode decides the active output mode from the -format value and\n+// the -json/-pretty shortcuts. With -format unset the shortcuts keep\n+// their legacy meaning — JSON wins over pretty, plain flags change\n+// nothing. With -format explicitly set (any non-empty value, including\n+// text and table) every also-given shortcut must agree with it;\n+// disagreement is an error naming both flags.\n+func resolveMode(format string, asJSON, pretty bool) (outputMode, error) {\n+\tmode, err := parseMode(format)\n+\tif err != nil {\n+\t\treturn modeText, err\n+\t}\n+\tif format == \"\" {\n+\t\tif asJSON {\n+\t\t\treturn modeJSON, nil\n+\t\t}\n+\t\tif pretty {\n+\t\t\treturn modePretty, nil\n+\t\t}\n+\t\treturn modeText, nil\n+\t}\n+\tif asJSON && mode != modeJSON {\n+\t\treturn modeText, fmt.Errorf(\"flags -json and -format conflict: -json selects json but -format selects %s\", modeName(mode))\n+\t}\n+\tif pretty && mode != modePretty {\n+\t\treturn modeText, fmt.Errorf(\"flags -pretty and -format conflict: -pretty selects pretty but -format selects %s\", modeName(mode))\n+\t}\n+\treturn mode, nil\n+}\n+\n // run writes at most count Fibonacci numbers to w, beginning at index\n // start (an unset -start value of 0 means the historical default of\n // 1), so it prints the indices start..start+count-1 and neither\n@@ -60,10 +136,17 @@ const defaultStart = 1\n // of the largest index printed and the value to the width of the\n // largest value printed (both sized from the limit-capped last\n // index), separated by \": \". In JSON mode each line is\n-// one JSON object {\"index\": <int>, \"fib\": \"<value>\"} (JSON Lines) and\n-// pretty has no effect. With version set it prints only the single\n+// one JSON object {\"index\": <int>, \"fib\": \"<value>\"} (JSON Lines).\n+// In table mode each line is the value alone, right-justified to the\n+// width of the largest value printed (no index column). The mode comes\n+// from format plus the -json/-pretty shortcuts via resolveMode: with\n+// format unset the shortcuts keep their legacy JSON-wins meaning; with\n+// format set (including text and table) a conflicting shortcut is an\n+// error naming both flags, and an invalid format value is rejected.\n+// With version set it prints only the single\n // line \"gofib <Version>\" and every other flag (including an invalid\n-// count, start, limit, or seed) is ignored. A positive seed selects\n+// count, start, limit, seed, or format, or a shortcut/format conflict)\n+// is ignored. A positive seed selects\n // lookup mode: only the single index seed prints (in the active\n // output mode, with -pretty sized from that sole index), it overrides\n // -n, -start, and -limit, and the range-flag validation is skipped —\n@@ -71,11 +154,15 @@ const defaultStart = 1\n // ignored. A negative seed is rejected; seed 0 is the unset sentinel.\n // Otherwise run returns an error when count < 1, start < 0, or\n // limit < 0.\n-func run(w io.Writer, start, count, limit, seed int, asJSON, pretty, version bool) error {\n+func run(w io.Writer, start, count, limit, seed int, format string, asJSON, pretty, version bool) error {\n \tif version {\n \t\tfmt.Fprintf(w, \"gofib %s\\n\", Version)\n \t\treturn nil\n \t}\n+\tmode, err := resolveMode(format, asJSON, pretty)\n+\tif err != nil {\n+\t\treturn err\n+\t}\n \tif seed < 0 {\n \t\treturn fmt.Errorf(\"invalid value %d for flag -seed: must be >= 0\", seed)\n \t}\n@@ -107,21 +194,27 @@ func run(w io.Writer, start, count, limit, seed int, asJSON, pretty, version boo\n \t\tlast = limit\n \t}\n \tenc := json.NewEncoder(w)\n-\t// Pretty text mode sizes its columns from the largest index and\n-\t// value printed: last and Fib(last).\n+\t// Pretty and table text modes size their columns from the largest\n+\t// index and value printed: last and Fib(last).\n \tidxW, valW := 0, 0\n-\tif pretty && !asJSON {\n+\tswitch mode {\n+\tcase modePretty:\n \t\tidxW = len(strconv.Itoa(last))\n \t\tvalW = len(Fib(last).String())\n+\tcase modeTable:\n+\t\tvalW = len(Fib(last).String())\n \t}\n \tfor i := start; i <= last; i++ {\n-\t\tif asJSON {\n+\t\tswitch mode {\n+\t\tcase modeJSON:\n \t\t\tif err := enc.Encode(fibLine{Index: i, Fib: Fib(i).String()}); err != nil {\n \t\t\t\treturn err\n \t\t\t}\n-\t\t} else if pretty {\n+\t\tcase modePretty:\n \t\t\tfmt.Fprintf(w, \"%*d: %*s\\n\", idxW, i, valW, Fib(i).String())\n-\t\t} else {\n+\t\tcase modeTable:\n+\t\t\tfmt.Fprintf(w, \"%*s\\n\", valW, Fib(i).String())\n+\t\tdefault:\n \t\t\tfmt.Fprintf(w, \"%d: %v\\n\", i, Fib(i))\n \t\t}\n \t}\n@@ -133,11 +226,12 @@ func main() {\n \tstart := flag.Int(\"start\", 0, \"index of the first Fibonacci number to print (must be >= 0; 0 starts at 1 like the default)\")\n \tlimit := flag.Int(\"limit\", 0, \"largest index to print (must be >= 0; 0 means no limit)\")\n \tseed := flag.Int(\"seed\", 0, \"print only the Fibonacci number at this index, overriding -n, -start, and -limit (must be >= 0; 0 means unset)\")\n-\tasJSON := flag.Bool(\"json\", false, \"emit JSON Lines instead of text: one {\\\"index\\\": i, \\\"fib\\\": \\\"value\\\"} object per number\")\n-\tpretty := flag.Bool(\"pretty\", false, \"align text output into two right-aligned columns sized to the largest index and value (no effect with -json)\")\n+\tformat := flag.String(\"format\", \"\", \"output mode: text, json, pretty, or table (default text); must agree with -json/-pretty when those are also set\")\n+\tasJSON := flag.Bool(\"json\", false, \"shortcut for -format json: emit JSON Lines instead of text (one {\\\"index\\\": i, \\\"fib\\\": \\\"value\\\"} object per number)\")\n+\tpretty := flag.Bool(\"pretty\", false, \"shortcut for -format pretty: align text output into two right-aligned columns sized to the largest index and value\")\n \tversion := flag.Bool(\"version\", false, \"print \\\"gofib <version>\\\" and exit; takes precedence over all other flags\")\n \tflag.Parse()\n-\tif err := run(os.Stdout, *start, *n, *limit, *seed, *asJSON, *pretty, *version); err != nil {\n+\tif err := run(os.Stdout, *start, *n, *limit, *seed, *format, *asJSON, *pretty, *version); err != nil {\n \t\tfmt.Fprintln(os.Stderr, err)\n \t\tos.Exit(1)\n \t}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 620,
+          "deletions": 53
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-24T22:29:08.209379005Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
           "internal.retry_count.planner": 0,
           "internal.run_id": "01M0TXPX09279433MGWSWPVVP4",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "graph.cycle_counter_reset_key": "current_seed_id",
           "thread.start.current_node": "planner",
           "graph.preamble_budget_kb": "24",
@@ -2256,14 +2542,15 @@
           "internal.retry_count.implementer": 0,
           "failure_class": "",
           "current_seed_brief": "Add a `-format <mode>` flag to gofib (`/workspace/fabro/main.go`) that selects the output style globally — `text` (default), `json`, `pretty`, and new compact `table` mode — unifying the text/json/pretty matrix. Acceptance criteria: (1) `-format text|json|pretty|table`; an invalid value exits non-zero with a stderr error in the existing flag-error style that lists the valid modes (e.g. `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table`). (2) `-json` and `-pretty` remain SHORTCUTS: `-json` behaves exactly like `-format json`, `-pretty` like `-format pretty`; plain `-json`/`-pretty` behavior is UNCHANGED and pinned by regression tests (including `-json -pretty` with no `-format`: JSON wins, no error). (3) Conflict rule: when `-format` is EXPLICITLY set, any also-given shortcut must agree — `-pretty -format json`, `-json -format pretty`, and shortcut-vs-`text`/`table` combos exit non-zero with a stderr error naming both flags; agreeing combos (`-pretty -format pretty`, `-json -format json`) are accepted (annotated choice: spec forbids conflicts, agreement is not one); with `-format` unset there is NO conflict check — legacy `-json -pretty` keeps JSON-wins semantics (annotated: regression criterion demands existing behavior unchanged). (4) `table` mode: values only, one per line, right-justified to the width of the widest value printed; no index column; composes with `-start`/`-n`/`-limit` as usual. (5) The active mode applies in `-seed` lookup mode too: `-seed 10 -format json` equals `-seed 10 -json`, `-seed 10 -format table` prints just the value. (6) `-version` still wins over everything, including an INVALID `-format` value or a shortcut/format conflict — `-version -format xml` prints `gofib <Version>` and exits 0 (annotated choice: mirrors -version's ignore-invalid semantics). (7) Computation uses existing `Fib(n)` only; the flag is registered via the flag package; `run()` signature may grow the mode parameter and all existing call sites update. (8) `README.md` flag table gains the `-format` row plus a REAL captured example for EACH mode (build the binary and capture; do not invent output), and documents the shortcut, conflict, and default semantics. (9) Table-driven tests in `/workspace/fabro/fib_test.go` cover: each of the four modes, shortcut==format equivalence, conflict rejection (both shortcut directions plus vs `text` and `table`), invalid mode rejection, table+`-start`/`-n`/`-limit` combos, table with `-seed`, `-version` precedence over invalid/conflicting `-format`, and regression pins for existing `-json`/`-pretty` behavior. (10) `just qualitygate` green.",
-          "internal.fidelity": "summary:high",
-          "command.output": "blob://sha256/2c03dd81a681ee5903629f09ee3e5ce1b41c4872efd04a90e4135a70bfecd23e",
+          "internal.fidelity": "compact",
+          "command.output": "blob://sha256/6e401af41c7f6c3f9152e6c04c124a68d2b4db426fde6084509abba5832f15b5",
           "implementation_summary": "`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePretty`/`modeTable`) with `parseMode` (flag-style invalid-value error listing all four modes), `resolveMode` (shortcut resolution: unset `-format` keeps legacy JSON-wins semantics; explicit `-format` requires shortcut agreement, else an error naming both `-json`/`-pretty` and `-format`), `-format` flag registration, and `run()` grew a `format string` parameter (checked after `-version` so version precedence holds) with a `modeTable` print branch (values only, right-justified to the widest value). `fib_test.go`: all existing call sites updated to pass `\"\"` (legacy behavior unchanged and regression-pinned); new tests `TestRunFormatModes`, `TestRunFormatShortcutEquivalence`, `TestRunFormatConflicts`, `TestRunRejectsInvalidFormat`, `TestRunTableCombinations`, `TestRunFormatSeed`, `TestRunVersionFormat`. `README.md`: `-format` usage section with real captured output for every mode (built to `/workspace/tmp`-external `/tmp/gofib`, binary removed), plus shortcut/conflict/default/version-precedence examples and a full flag-table row; `-json`/`-pretty` rows updated to document shortcut semantics. Per-criterion report: - PASS `-format text|json|pretty|table`, invalid value exits non-zero with `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table`: main.go `parseMode` + `TestRunRejectsInvalidFormat` (exact-message pins). - PASS `-json`/`-pretty` remain shortcuts, legacy behavior unchanged incl. `-json -pretty` JSON-wins: main.go `resolveMode` unset-format path + existing tests pass with `\"\"` (TestRunJSON/TestRunPretty/TestRunPrettyJSON) + `TestRunFormatShortcutEquivalence` and legacy subtest in `TestRunFormatConflicts`. - PASS conflict rule both directions and vs `text`/`table`, agreeing combos accepted, no conflict check when `-format` unset: main.go `resolveMode` + `TestRunFormatConflicts` (6 conflict rows naming both flags, agreeing rows in `TestRunFormatShortcutEquivalence`). - PASS `table` mode values-only right-justified to widest value, no index, composes with `-start`/`-n`/`-limit`: main.go modeTable branch + `TestRunFormatModes` and `TestRunTableCombinations`. - PASS active mode applies in `-seed` lookup: `TestRunFormatSeed` (`-seed 10 -format json` == `-seed 10 -json`; `-seed 10 -format table` prints `55`). - PASS `-version` wins over invalid/conflicting `-format`: main.go version-first check + `TestRunVersionFormat` (incl. `-version -format xml` → `gofib 1.3.0`, exit 0). - PASS computation via existing `Fib(n)` only, flag-package registration, `run()` signature grew the mode parameter and all call sites updated: main.go. - PASS README flag-table `-format` row + real captured example per mode (captured from a built binary, not invented) + shortcut/conflict/default docs: `README.md`. - PASS table-driven tests covering all demanded cases: `fib_test.go` new tests listed above plus regression pins. - PASS `just qualitygate`: not run by me (tester's job); `go vet` + full `go test` were green before README-only edits, focused re-run green after; gofmt clean; no artifacts left (binary built to `/tmp` and removed; worktree shows only `README.md`, `fib_test.go`, `main.go` modified).",
           "internal.work_dir": "/workspace/fabro",
-          "current_node": "implementer",
+          "current_node": "tester",
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "internal.seed_cycle_anchor": "fabro-d920",
           "last_stage": "implementer",
@@ -2287,15 +2574,15 @@
           "tester": {
             "status": "succeeded",
             "context_updates": {
-              "command.output": "blob://sha256/0bb8fdd0899dec244b6543e56fcf325b817687d2a7f13596cf52c6c03ca50e3a"
+              "command.output": "blob://sha256/6e401af41c7f6c3f9152e6c04c124a68d2b4db426fde6084509abba5832f15b5"
             },
             "notes": "Script completed: just qualitygate",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 1319,
-              "active_time_ms": 1319
+              "tool_time_ms": 2326,
+              "active_time_ms": 2326
             }
           },
           "planner": {
@@ -2464,13 +2751,13 @@
             }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
           "evidence": 1,
           "reviewer": 1,
           "closeout": 1,
           "start": 1,
-          "tester": 1,
+          "tester": 2,
           "planner": 2,
           "implementer": 2
         }
@@ -4529,6 +4816,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@2": {
+      "first_event_seq": 451,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-08-24T22:29:07.668692686Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 600000
+      },
+      "script_timing": {
+        "output": "blob://sha256/6e401af41c7f6c3f9152e6c04c124a68d2b4db426fde6084509abba5832f15b5",
+        "exit_code": 0,
+        "duration_ms": 2326,
+        "termination": "exited",
+        "output_bytes": 288,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 288,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-08-24T22:29:05.300760571Z",
+      "handler": "command",
+      "graph_visit": 2,
+      "timing": {
+        "wall_time_ms": 2336,
+        "inference_time_ms": 0,
+        "tool_time_ms": 2326,
+        "active_time_ms": 2326
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
