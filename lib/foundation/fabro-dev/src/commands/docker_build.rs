@@ -233,6 +233,7 @@ fn build_script(target: &str, zig_arch: &str) -> String {
          if [ ! -x /opt/zig/zig-linux-{zig_arch}-{ZIG_VERSION}/zig ]; then \
          curl -fsSL https://ziglang.org/download/{ZIG_VERSION}/zig-linux-{zig_arch}-{ZIG_VERSION}.tar.xz | tar -xJ -C /opt/zig; \
          fi; \
+         if [ ! -d /opt/rustup-home/toolchains ]; then cp -a /usr/local/rustup/. /opt/rustup-home/; fi; \
          export RUSTUP_HOME=/opt/rustup-home; \
          export PATH=/opt/cargo-tools/bin:/opt/zig/zig-linux-{zig_arch}-{ZIG_VERSION}:$PATH; \
          if ! command -v cargo-zigbuild >/dev/null; then \
