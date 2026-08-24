@@ -230,6 +230,27 @@ The preamble includes:
 
 Internal keys (prefixed with `internal.`, `current`, `graph.`, `thread.`, `response.`) are excluded from preambles to avoid noise.
 
+### Exit kinds (terminal classification)
+
+An edge targeting the exit node may carry a `kind` attribute that classifies the
+terminal event — the run-level failure reason distinguishes WHY the graph
+stopped instead of one flat `failed`:
+
+```dot
+planner -> exit [kind="deadlock", label="Blocked"]
+evidence -> exit [kind="soft", label="Capture failed"]
+```
+
+- `kind="deadlock"` -> `FailureReason::Deadlock`: work is preserved (seeds stay
+  open, commits pushed); a human decides next.
+- `kind="soft"` -> `FailureReason::SoftStop`: infrastructure could not finish;
+  the next run re-enters without human work on the code.
+- unset -> `natural`: ordinary completion or hard error.
+
+Precedence: edge kind over an exit-node `kind` attribute, default natural.
+Notification routes and the UI can select on the failure reason to separate
+needs-a-human from needs-an-engineer.
+
 ### Deterministic cycle counters
 
 Long loops (plan -> implement -> gate -> review) need cycle guards: stop a seed
