@@ -1,0 +1,16 @@
+diff --git a/.fabro/journal/evidence@2.json b/.fabro/journal/evidence@2.json
+new file mode 100644
+index 0000000..23ea45d
+--- /dev/null
++++ b/.fabro/journal/evidence@2.json
+@@ -0,0 +1,9 @@
++{
++  "$schema": "fabro-journal-v1",
++  "run_id": "01M0SS23MJM8972CBJD0SP7T4Q",
++  "node": "evidence",
++  "visit": 2,
++  "status": "succeeded",
++  "ts": "2026-08-24T11:46:51Z",
++  "data": {}
++}
+\ No newline at end of file
