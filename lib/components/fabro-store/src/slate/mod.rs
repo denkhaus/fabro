@@ -436,24 +436,10 @@ impl Database {
     /// nothing else would ever remove them. Returns the number of records
     /// deleted; a later boot finds the prefix empty and does nothing.
     pub async fn retire_refresh_token_keyspace(&self) -> Result<u64> {
-        self.retire_keyspace(keys::SlateKey::new("auth").with("refresh"))
-            .await
-    }
-
-    /// Delete every record under the retired `auth/code` prefix.
-    ///
-    /// Authorization codes move to SQLite without an import. Their short
-    /// lifetime makes them safe to discard, while deletion prevents an older
-    /// binary from accepting a code issued before the storage cutover.
-    /// Returns the number of records deleted; later boots are no-ops.
-    pub async fn retire_authorization_code_keyspace(&self) -> Result<u64> {
-        self.retire_keyspace(keys::SlateKey::new("auth").with("code"))
-            .await
-    }
-
-    async fn retire_keyspace(&self, keyspace: keys::SlateKey) -> Result<u64> {
         let db = self.open_db().await?;
-        let mut iter = db.scan_prefix(keyspace.into_prefix()).await?;
+        let mut iter = db
+            .scan_prefix(keys::SlateKey::new("auth").with("refresh").into_prefix())
+            .await?;
         let mut batch = slatedb::WriteBatch::new();
         let mut deletes = 0_u64;
         while let Some(entry) = iter.next().await? {
@@ -584,8 +570,8 @@ mod tests {
                 .as_ref()
                 .to_vec()
         });
-        // "auth/code" sorts adjacent to "auth/refresh" and is still live, so
-        // it is the neighbour a too-wide prefix delete would take with it.
+        // "auth/code" sorts adjacent to "auth/refresh", so it is the
+        // neighbour a too-wide prefix delete would take with it.
         let auth_code_key = keys::SlateKey::new("auth")
             .with("code")
             .with("keep")
@@ -607,42 +593,6 @@ mod tests {
         assert!(
             db.get(auth_code_key.as_slice()).await.unwrap().is_some(),
             "retiring refresh tokens must not touch the auth code prefix"
-        );
-    }
-
-    #[tokio::test]
-    async fn retire_authorization_code_keyspace_clears_only_its_prefix_and_is_idempotent() {
-        let (_object_store, store) = make_store();
-        let db = store.open_db().await.unwrap();
-
-        let authorization_code_keys = ["aaa", "bbb"].map(|id| {
-            keys::SlateKey::new("auth")
-                .with("code")
-                .with(id)
-                .as_ref()
-                .to_vec()
-        });
-        let neighboring_key = keys::SlateKey::new("auth")
-            .with("refresh")
-            .with("keep")
-            .as_ref()
-            .to_vec();
-
-        let mut batch = slatedb::WriteBatch::new();
-        for key in &authorization_code_keys {
-            batch.put(key.as_slice(), b"{}".as_slice());
-        }
-        batch.put(neighboring_key.as_slice(), b"{}".as_slice());
-        db.write(batch).await.unwrap();
-
-        assert_eq!(store.retire_authorization_code_keyspace().await.unwrap(), 2);
-        assert_eq!(store.retire_authorization_code_keyspace().await.unwrap(), 0);
-        for key in &authorization_code_keys {
-            assert!(db.get(key.as_slice()).await.unwrap().is_none());
-        }
-        assert!(
-            db.get(neighboring_key.as_slice()).await.unwrap().is_some(),
-            "retiring authorization codes must not touch neighboring auth prefixes"
         );
     }
 

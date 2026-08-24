@@ -783,24 +783,13 @@ where
     )
     .await
     .context("activating SQLite blob storage")?;
-    // Refresh tokens and authorization codes now live in SQLite. Nothing reads
-    // the old records and no reaper collects them any more, so clear them out
-    // once rather than leaving them in the object store forever. Retiring the
-    // authorization-code keyspace is fatal on failure; refresh-token cleanup
-    // stays best-effort.
-    let (retired_authorization_codes, retired_refresh_tokens) = tokio::join!(
-        store.retire_authorization_code_keyspace(),
-        store.retire_refresh_token_keyspace(),
-    );
-    let retired_authorization_codes =
-        retired_authorization_codes.context("retiring SlateDB authorization code records")?;
-    if retired_authorization_codes > 0 {
-        info!(
-            removed = retired_authorization_codes,
-            "Removed retired SlateDB authorization code records"
-        );
-    }
-    match retired_refresh_tokens {
+    // Refresh tokens now live in SQLite. Nothing reads the old records and no
+    // reaper collects them any more, so clear them out once rather than
+    // leaving them in the object store forever. Pending authorization codes
+    // also moved to SQLite, but their old records are left in place: at most a
+    // handful exist at cutover, every binary rejects them within 60 seconds of
+    // issue, and nothing reads their keyspace again.
+    match store.retire_refresh_token_keyspace().await {
         Ok(0) => {}
         Ok(removed) => info!(removed, "Removed retired SlateDB refresh token records"),
         Err(err) => warn!(error = %err, "Failed to remove retired SlateDB refresh token records"),
