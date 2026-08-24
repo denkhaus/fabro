@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl b/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl
+index 2db6fcc..bc1e214 100644
+--- a/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl
++++ b/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl
+@@ -8,3 +8,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M0TXPX09279433MGWSWPVVP4","node":"planner","visit":2,"status":"succeeded","ts":"2026-08-24T22:25:13Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M0TXPX09279433MGWSWPVVP4","node":"implementer","visit":2,"status":"succeeded","ts":"2026-08-24T22:28:56Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M0TXPX09279433MGWSWPVVP4","node":"tester","visit":2,"status":"succeeded","ts":"2026-08-24T22:29:08Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M0TXPX09279433MGWSWPVVP4","node":"evidence","visit":2,"status":"succeeded","ts":"2026-08-24T22:29:14Z","data":{}}
