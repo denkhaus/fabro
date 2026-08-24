@@ -54,6 +54,11 @@ _Avoid_: mixing evidence claims into implementation summaries.
 A brief marking a seed whose acceptance criteria look already satisfied;
 the implementer verifies without changing code.
 
+**Closeout**:
+The deterministic post-approval step: closes the approved seed and routes on
+tracker state (Tracker empty / More seeds). Never an LLM. _Avoid_: the
+planner closing seeds, acting on approved verdicts (ADR-0010).
+
 **Journal stream**:
 `.fabro/journal/<run_id>.jsonl` — one JSON line per stage completion
 (`fabro-journal-v1` line shape), one file per run, visits run-local.
