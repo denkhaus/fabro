@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use fabro_model::reasoning::ReasoningEffort;
 use fabro_types::settings::run::{
     ApprovalMode, HookEvent, McpHttpProtocol, MergeStrategy, RunMode,
 };
@@ -831,23 +832,33 @@ pub struct RunPullRequestLayer {
     /// Automatically create a PR after successful runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[option(default = "false", value_type = "boolean")]
-    pub enabled:        Option<bool>,
+    pub enabled:          Option<bool>,
     /// Open created pull requests as drafts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[option(default = "true", value_type = "boolean")]
-    pub draft:          Option<bool>,
+    pub draft:            Option<bool>,
     /// Enable GitHub auto-merge for created pull requests. Implies `draft =
     /// false`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[option(default = "false", value_type = "boolean")]
-    pub auto_merge:     Option<bool>,
+    pub auto_merge:       Option<bool>,
     /// Merge method to configure for the pull request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[option(
         default = "\"squash\"",
         value_type = "\"merge\" | \"squash\" | \"rebase\""
     )]
-    pub merge_strategy: Option<MergeStrategy>,
+    pub merge_strategy:   Option<MergeStrategy>,
+    /// Dedicated model for the generated PR title/body, e.g. `zai:glm-4.7`.
+    /// Unset uses the run model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[option(default = "unset", value_type = "string")]
+    pub model:            Option<ModelRef>,
+    /// Reasoning effort for the PR content call (low | medium | high |
+    /// xhigh | max). Unset uses the provider default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[option(default = "unset", value_type = "string")]
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 /// `[run.artifacts]` — run artifact collection policy.

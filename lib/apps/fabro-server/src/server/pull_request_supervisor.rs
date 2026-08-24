@@ -114,6 +114,7 @@ async fn attempt_pull_request_creation(
         goal: inputs.goal,
         diff: inputs.diff,
         model: &creation.model,
+        reasoning_effort: None,
         draft: true,
         auto_merge: None,
         run_store: &run_store_handle,

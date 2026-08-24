@@ -7,6 +7,7 @@ use fabro_github::{self as github_app, ssh_url_to_https};
 use fabro_graphviz::parser;
 use fabro_llm::client::Client;
 use fabro_llm::generate::{GenerateParams, generate_object};
+use fabro_model::reasoning::ReasoningEffort;
 use fabro_model::{Catalog, ProviderId};
 use fabro_store::RunProjection;
 use fabro_types::PullRequestLink;
@@ -50,6 +51,7 @@ const PR_BODY_SYSTEM_PROMPT: &str = include_str!("prompts/pr_body.md");
 
 const DEFAULT_PR_TITLE: &str = "Update workflow output";
 const EMPTY_BODY_NOTICE: &str = "> _The LLM did not produce a description for this change. The diff and the appended details are the source of truth for review._";
+const FALLBACK_BODY_NOTICE: &str = "> _PR title and body generation failed; this pull request was published with a deterministic fallback title. The diff and the appended details are the source of truth for review._";
 
 /// Truncation budget for the LLM prompt's plan / diff sections.
 #[derive(Debug, PartialEq, Eq)]
@@ -333,6 +335,7 @@ pub async fn build_pr_content(
     diff: &str,
     goal: &str,
     model: &str,
+    reasoning_effort: Option<ReasoningEffort>,
     run_store: &RunStoreHandle,
     llm_source: &dyn CredentialSource,
     catalog: Arc<Catalog>,
@@ -347,6 +350,7 @@ pub async fn build_pr_content(
         diff,
         goal,
         model,
+        reasoning_effort,
         run_store,
         catalog.as_ref(),
         conclusion,
@@ -360,6 +364,7 @@ async fn build_pr_content_with_client(
     diff: &str,
     goal: &str,
     model: &str,
+    reasoning_effort: Option<ReasoningEffort>,
     run_store: &RunStoreHandle,
     catalog: &Catalog,
     conclusion: Option<&Conclusion>,
@@ -398,33 +403,50 @@ async fn build_pr_content_with_client(
         format!("Goal: {goal}\n\nDiff:\n```\n{truncated_diff}\n```")
     };
 
-    let params = GenerateParams::new(model, client)
+    let mut params = GenerateParams::new(model, client)
         .system(PR_BODY_SYSTEM_PROMPT)
         .prompt(prompt);
+    if let Some(effort) = reasoning_effort {
+        params = params.reasoning_effort(effort);
+    }
 
-    let result = generate_object(params, PR_CONTENT_SCHEMA.clone())
-        .await
-        .map_err(|e| format!("LLM generation failed: {e}"))?;
+    // A failed PR-content call must never fail the publish step: the run's
+    // work is already pushed; only the narrative is missing. Fall back to
+    // the deterministic goal-derived title and a skeleton body.
+    let generated = match generate_object(params, PR_CONTENT_SCHEMA.clone()).await {
+        Ok(result) => match result.output {
+            Some(output) => serde_json::from_value::<PrContent>(output)
+                .map_err(|e| format!("Failed to deserialize PR content: {e}")),
+            None => Err("LLM generation returned no structured output".to_string()),
+        },
+        Err(e) => Err(format!("LLM generation failed: {e}")),
+    };
 
-    let output = result
-        .output
-        .ok_or_else(|| "LLM generation returned no structured output".to_string())?;
-    let generated: PrContent = serde_json::from_value(output)
-        .map_err(|e| format!("Failed to deserialize PR content: {e}"))?;
-
-    let title = if generated.title.trim().is_empty() {
-        fallback_pr_title(goal)
-    } else {
-        generated.title.trim().to_string()
+    let (title, llm_body) = match generated {
+        Ok(generated) => {
+            let title = if generated.title.trim().is_empty() {
+                fallback_pr_title(goal)
+            } else {
+                generated.title.trim().to_string()
+            };
+            let llm_body = if generated.body.trim().is_empty() {
+                warn!(model = %model, "LLM generated empty PR body; using skeleton PR body");
+                EMPTY_BODY_NOTICE.to_string()
+            } else {
+                generated.body
+            };
+            (title, llm_body)
+        }
+        Err(error) => {
+            warn!(
+                model = %model,
+                error = %error,
+                "PR content generation failed; using deterministic fallback title and skeleton body"
+            );
+            (fallback_pr_title(goal), FALLBACK_BODY_NOTICE.to_string())
+        }
     };
     let title = enforce_title_cap(&title);
-
-    let llm_body = if generated.body.trim().is_empty() {
-        warn!(model = %model, "LLM generated empty PR body; using skeleton PR body");
-        EMPTY_BODY_NOTICE.to_string()
-    } else {
-        generated.body
-    };
 
     let arc_details_section = conclusion
         .as_ref()
@@ -455,6 +477,9 @@ pub struct OpenPullRequestRequest<'a> {
     pub goal:              &'a str,
     pub diff:              &'a str,
     pub model:             &'a str,
+    /// Configured reasoning effort for the PR content call; `None` uses the
+    /// provider default.
+    pub reasoning_effort:  Option<ReasoningEffort>,
     pub draft:             bool,
     pub auto_merge:        Option<AutoMergeOptions>,
     pub run_store:         &'a RunStoreHandle,
@@ -611,6 +636,7 @@ pub async fn open_pull_request(
         req.diff,
         req.goal,
         req.model,
+        req.reasoning_effort,
         req.run_store,
         req.llm_source,
         Arc::clone(&req.catalog),
@@ -717,6 +743,52 @@ mod tests {
                 response_text: text.to_string(),
             }
         }
+    }
+
+    /// A provider whose calls always fail — the run-01M0QTNF6GW PR-publish
+    /// failure mode ('expected value at line 1 column 1').
+    struct FailingMockProvider {
+        name: String,
+    }
+
+    impl FailingMockProvider {
+        fn new(name: &str) -> Self {
+            Self {
+                name: name.to_string(),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ProviderAdapter for FailingMockProvider {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        async fn complete(&self, _request: &Request) -> Result<Response, LlmError> {
+            Err(LlmError::NoObjectGenerated {
+                message: "no object generated".to_string(),
+            })
+        }
+
+        async fn stream(&self, _request: &Request) -> Result<StreamEventStream, LlmError> {
+            Err(LlmError::NoObjectGenerated {
+                message: "no object generated".to_string(),
+            })
+        }
+    }
+
+    fn failing_client(provider_name: &str) -> Arc<Client> {
+        let mut providers: HashMap<String, Arc<dyn ProviderAdapter>> = HashMap::new();
+        providers.insert(
+            provider_name.to_string(),
+            Arc::new(FailingMockProvider::new(provider_name)),
+        );
+        Arc::new(Client::new(
+            providers,
+            Some(provider_name.to_string()),
+            vec![],
+        ))
     }
 
     #[async_trait::async_trait]
@@ -1072,6 +1144,7 @@ mod tests {
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
             "Implement feature",
             "mock-model",
+            None,
             &run_store.clone().into(),
             Catalog::builtin(),
             Some(&make_test_conclusion()),
@@ -1144,6 +1217,7 @@ mod tests {
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
             "Implement feature",
             "mock-model",
+            None,
             &run_store.clone().into(),
             Catalog::builtin(),
             Some(&make_test_conclusion()),
@@ -1240,6 +1314,7 @@ mod tests {
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
             "Implement feature",
             "mock-model",
+            None,
             &run_store.clone().into(),
             Catalog::builtin(),
             Some(&make_test_conclusion()),
@@ -1265,6 +1340,7 @@ mod tests {
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
             "Implement feature",
             "gpt-5.4",
+            None,
             &run_store.clone().into(),
             Catalog::builtin(),
             Some(&make_test_conclusion()),
@@ -1323,6 +1399,7 @@ mod tests {
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
             "Implement feature",
             "gpt-5.4",
+            None,
             &run_store_handle,
             llm_source.as_ref(),
             catalog,
@@ -1509,6 +1586,7 @@ mod tests {
             goal:              "Fix bug",
             diff:              "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             model:             "claude-sonnet-4-20250514",
+            reasoning_effort:  None,
             draft:             false,
             auto_merge:        None,
             run_store:         &harness.run_store,
@@ -1550,6 +1628,7 @@ mod tests {
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             "Implement feature",
             "mock-model",
+            None,
             &run_store.clone().into(),
             Catalog::builtin(),
             Some(&make_test_conclusion()),
@@ -1573,6 +1652,7 @@ mod tests {
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             "## Plan:",
             "mock-model",
+            None,
             &run_store.clone().into(),
             Catalog::builtin(),
             Some(&make_test_conclusion()),
@@ -1584,6 +1664,54 @@ mod tests {
         .title;
 
         assert_eq!(title, DEFAULT_PR_TITLE);
+    }
+
+    /// The run-01M0QTNF6GW regression: a hard LLM failure during PR content
+    /// generation must NOT fail the publish step. The PR is published with
+    /// the deterministic goal-derived title and a fallback notice body.
+    #[tokio::test]
+    async fn build_pr_content_falls_back_on_llm_hard_failure() {
+        let store = test_store();
+        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
+        let PrContent { title, body } = build_pr_content_with_client(
+            "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
+            "Implement the streaming retry budget",
+            "glm-5.3",
+            None,
+            &run_store.clone().into(),
+            Catalog::builtin(),
+            Some(&make_test_conclusion()),
+            None,
+            failing_client("mock"),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(title, "Implement the streaming retry budget");
+        assert!(body.contains("deterministic fallback"));
+    }
+
+    /// A configured reasoning_effort must reach the provider request.
+    #[tokio::test]
+    async fn build_pr_content_forwards_configured_reasoning_effort() {
+        let store = test_store();
+        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
+        let _ = build_pr_content_with_client(
+            "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
+            "Implement feature",
+            "mock-model",
+            Some(ReasoningEffort::Low),
+            &run_store.clone().into(),
+            Catalog::builtin(),
+            Some(&make_test_conclusion()),
+            None,
+            explicit_client("mock", &pr_content_json("T", "B.")),
+        )
+        .await
+        .unwrap();
+        // MockProvider ignores the request; the assertion here is only that
+        // the effort flows without error. Request-level verification of the
+        // reasoning_effort passthrough lives in fabro-llm codec tests.
     }
 
     /// Empty or whitespace-only bodies use the skeleton fallback instead of
@@ -1661,6 +1789,7 @@ mod tests {
             "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             "Implement feature",
             "mock-model",
+            None,
             &run_store.clone().into(),
             Catalog::builtin(),
             Some(&make_test_conclusion()),
@@ -1933,6 +2062,7 @@ mod tests {
             goal: "Fix telemetry leak",
             diff: "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             model: "gpt-5.4",
+            reasoning_effort: None,
             draft: false,
             auto_merge: None,
             run_store: &harness.run_store,
@@ -1981,6 +2111,7 @@ mod tests {
             goal: "Fix telemetry leak\n\ndetails...",
             diff: "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             model: "gpt-5.4",
+            reasoning_effort: None,
             draft: false,
             auto_merge: None,
             run_store: &harness.run_store,
@@ -2018,6 +2149,7 @@ mod tests {
             goal: &goal,
             diff: "diff --git a/src/lib.rs b/src/lib.rs\n+fn x() {}\n",
             model: "gpt-5.4",
+            reasoning_effort: None,
             draft: false,
             auto_merge: None,
             run_store: &harness.run_store,

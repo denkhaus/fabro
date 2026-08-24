@@ -585,6 +585,8 @@ enabled = true
 draft = true
 auto_merge = false
 merge_strategy = "squash"
+model = "zai:glm-4.7"        # optional: dedicated model for PR title/body
+reasoning_effort = "low"     # optional: effort for the PR content call
 ```
 
 | Field | Description |
@@ -593,6 +595,10 @@ merge_strategy = "squash"
 | `draft` | When `true`, the PR is created as a draft pull request. Default: `true`. |
 | `auto_merge` | When `true`, enables GitHub auto-merge on the created PR. Implies `draft = false` since GitHub doesn't allow auto-merge on draft PRs. The repository must have auto-merge enabled in GitHub settings. Default: `false`. |
 | `merge_strategy` | Merge method when `auto_merge` is enabled: `squash` (default), `merge`, or `rebase`. |
+| `model` | Dedicated model for the generated PR title/body, e.g. `zai:glm-4.7`. Unset uses the run model. Decouples cheap, structurally reliable PR titling from the working model. |
+| `reasoning_effort` | Reasoning effort for the PR content call: `low`, `medium`, `high`, `xhigh`, or `max`. Unset uses the provider default. Some providers default to reasoning output that breaks structured JSON generation. |
+
+When PR content generation fails, the run still publishes: Fabro falls back to a deterministic goal-derived title and a skeleton body with a notice, and logs a warning. A green run never dies at the PR step. |
 
 ### `[[run.hooks]]`
 

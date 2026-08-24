@@ -173,7 +173,8 @@ impl Concluded {
             expected_head_sha: final_sha,
             goal: self.graph.goal(),
             diff,
-            model: &options.model,
+            model: &options.pr_model,
+            reasoning_effort: options.pr_reasoning_effort,
             draft: pr_config.draft,
             auto_merge: pr_config.auto_merge.then_some(AutoMergeOptions {
                 merge_strategy: pr_config.merge_strategy,

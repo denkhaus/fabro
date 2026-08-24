@@ -779,10 +779,12 @@ fn resolve_pull_request(pull_request: Option<&RunPullRequestLayer>) -> Option<Pu
     }
 
     Some(PullRequestSettings {
-        enabled:        true,
-        draft:          pull_request.draft.unwrap_or(true),
-        auto_merge:     pull_request.auto_merge.unwrap_or(false),
-        merge_strategy: pull_request.merge_strategy.unwrap_or(MergeStrategy::Squash),
+        enabled:          true,
+        draft:            pull_request.draft.unwrap_or(true),
+        auto_merge:       pull_request.auto_merge.unwrap_or(false),
+        merge_strategy:   pull_request.merge_strategy.unwrap_or(MergeStrategy::Squash),
+        model:            pull_request.model.clone(),
+        reasoning_effort: pull_request.reasoning_effort,
     })
 }
 

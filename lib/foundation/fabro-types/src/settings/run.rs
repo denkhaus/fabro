@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::time::Duration as StdDuration;
 
+use fabro_model::reasoning::ReasoningEffort;
 use fabro_util::shell;
 use serde::de::{self, Deserializer};
 use serde::ser::SerializeStruct;
@@ -2431,19 +2432,32 @@ pub struct ScmGitHubSettings {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PullRequestSettings {
-    pub enabled:        bool,
-    pub draft:          bool,
-    pub auto_merge:     bool,
-    pub merge_strategy: MergeStrategy,
+    pub enabled:          bool,
+    pub draft:            bool,
+    pub auto_merge:       bool,
+    pub merge_strategy:   MergeStrategy,
+    /// Dedicated model for the generated PR title/body, e.g.
+    /// `zai:glm-4.7`. Unset uses the run model. Lets the publish step run
+    /// on a cheap, structurally reliable model while the run itself uses a
+    /// stronger one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model:            Option<ModelRef>,
+    /// Reasoning effort for the PR content call (e.g. `low`). Unset uses
+    /// the provider default — some providers default to reasoning output
+    /// that breaks structured JSON generation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 impl Default for PullRequestSettings {
     fn default() -> Self {
         Self {
-            enabled:        false,
-            draft:          true,
-            auto_merge:     false,
-            merge_strategy: MergeStrategy::Squash,
+            enabled:          false,
+            draft:            true,
+            auto_merge:       false,
+            merge_strategy:   MergeStrategy::Squash,
+            model:            None,
+            reasoning_effort: None,
         }
     }
 }

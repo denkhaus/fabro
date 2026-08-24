@@ -7834,6 +7834,7 @@ async fn workflow_run_with_vault_only_openai_codex_builds_pr_body() {
         "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
         "Implement feature",
         "gpt-5.4",
+        None,
         &run_store_handle,
         llm_source.as_ref(),
         catalog,

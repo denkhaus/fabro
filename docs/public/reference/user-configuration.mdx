@@ -433,6 +433,8 @@ enabled = true
 | `draft` | boolean | true | Open created pull requests as drafts. |
 | `enabled` | boolean | false | Automatically create a PR after successful runs. |
 | `merge_strategy` | "merge" \| "squash" \| "rebase" | "squash" | Merge method to configure for the pull request. |
+| `model` | string | unset | Dedicated model for the generated PR title/body (e.g. `zai:glm-4.7`). Unset uses the run model. |
+| `reasoning_effort` | string | unset | Reasoning effort for the PR content call (`low`-`max`). Unset uses the provider default. |
 
 ## `[run.agent]`
 

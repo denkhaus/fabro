@@ -766,10 +766,12 @@ mod tests {
     ) -> Result<Finalized, Error> {
         let concluded = conclude(executed, options).await?;
         let published = crate::pipeline::publish(concluded, &crate::pipeline::PublishOptions {
-            pr_config:  None,
-            github_app: None,
-            origin_url: None,
-            model:      "test-model".to_string(),
+            pr_config:           None,
+            github_app:          None,
+            origin_url:          None,
+            pr_model:            "test-model".to_string(),
+            pr_resolved_model:   "test-model".to_string(),
+            pr_reasoning_effort: None,
         })
         .await;
         finalize(published, options).await
@@ -1388,10 +1390,12 @@ mod tests {
         };
         let concluded = conclude(executed, &options).await.unwrap();
         let published = crate::pipeline::publish(concluded, &crate::pipeline::PublishOptions {
-            pr_config:  None,
-            github_app: None,
-            origin_url: None,
-            model:      "test-model".to_string(),
+            pr_config:           None,
+            github_app:          None,
+            origin_url:          None,
+            pr_model:            "test-model".to_string(),
+            pr_resolved_model:   "test-model".to_string(),
+            pr_reasoning_effort: None,
         })
         .await;
 
@@ -1442,10 +1446,12 @@ mod tests {
         };
         let concluded = conclude(executed, &options).await.unwrap();
         let published = crate::pipeline::publish(concluded, &crate::pipeline::PublishOptions {
-            pr_config:  None,
-            github_app: None,
-            origin_url: Some("https://github.com/owner/repo.git".to_string()),
-            model:      "test-model".to_string(),
+            pr_config:           None,
+            github_app:          None,
+            origin_url:          Some("https://github.com/owner/repo.git".to_string()),
+            pr_model:            "test-model".to_string(),
+            pr_resolved_model:   "test-model".to_string(),
+            pr_reasoning_effort: None,
         })
         .await;
 
@@ -1537,15 +1543,19 @@ mod tests {
         let mut concluded = conclude(executed, &options).await.unwrap();
         concluded.conclusion.diff.patch = None;
         let published = crate::pipeline::publish(concluded, &crate::pipeline::PublishOptions {
-            pr_config:  Some(fabro_types::settings::run::PullRequestSettings {
-                enabled:        true,
-                draft:          true,
-                auto_merge:     false,
-                merge_strategy: fabro_types::settings::run::MergeStrategy::Squash,
+            pr_config:           Some(fabro_types::settings::run::PullRequestSettings {
+                enabled:          true,
+                draft:            true,
+                auto_merge:       false,
+                merge_strategy:   fabro_types::settings::run::MergeStrategy::Squash,
+                model:            None,
+                reasoning_effort: None,
             }),
-            github_app: None,
-            origin_url: Some("https://github.com/owner/repo.git".to_string()),
-            model:      "test-model".to_string(),
+            github_app:          None,
+            origin_url:          Some("https://github.com/owner/repo.git".to_string()),
+            pr_model:            "test-model".to_string(),
+            pr_resolved_model:   "test-model".to_string(),
+            pr_reasoning_effort: None,
         })
         .await;
 
@@ -1607,10 +1617,12 @@ mod tests {
         // run succeeds without needing a commit SHA at all.
         concluded.conclusion.diff.patch = None;
         let published = crate::pipeline::publish(concluded, &crate::pipeline::PublishOptions {
-            pr_config:  None,
-            github_app: None,
-            origin_url: Some("https://github.com/owner/repo.git".to_string()),
-            model:      "test-model".to_string(),
+            pr_config:           None,
+            github_app:          None,
+            origin_url:          Some("https://github.com/owner/repo.git".to_string()),
+            pr_model:            "test-model".to_string(),
+            pr_resolved_model:   "test-model".to_string(),
+            pr_reasoning_effort: None,
         })
         .await;
         let finalized = finalize(published, &options).await.unwrap();
@@ -1661,15 +1673,19 @@ mod tests {
         concluded.conclusion.diff.patch =
             Some("diff --git a/a b/a\n+published change\n".to_string());
         let published = crate::pipeline::publish(concluded, &crate::pipeline::PublishOptions {
-            pr_config:  Some(fabro_types::settings::run::PullRequestSettings {
-                enabled:        true,
-                draft:          true,
-                auto_merge:     false,
-                merge_strategy: fabro_types::settings::run::MergeStrategy::Squash,
+            pr_config:           Some(fabro_types::settings::run::PullRequestSettings {
+                enabled:          true,
+                draft:            true,
+                auto_merge:       false,
+                merge_strategy:   fabro_types::settings::run::MergeStrategy::Squash,
+                model:            None,
+                reasoning_effort: None,
             }),
-            github_app: None,
-            origin_url: Some("https://github.com/owner/repo.git".to_string()),
-            model:      "test-model".to_string(),
+            github_app:          None,
+            origin_url:          Some("https://github.com/owner/repo.git".to_string()),
+            pr_model:            "test-model".to_string(),
+            pr_resolved_model:   "test-model".to_string(),
+            pr_reasoning_effort: None,
         })
         .await;
         let finalized = finalize(published, &options).await.unwrap();

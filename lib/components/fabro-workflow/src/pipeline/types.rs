@@ -412,8 +412,14 @@ pub struct FinalizeOptions {
 
 /// Options for the PUBLISH phase.
 pub struct PublishOptions {
-    pub pr_config:  Option<PullRequestSettings>,
-    pub github_app: Option<fabro_github::GitHubCredentials>,
-    pub origin_url: Option<String>,
-    pub model:      String,
+    pub pr_config:           Option<PullRequestSettings>,
+    pub github_app:          Option<fabro_github::GitHubCredentials>,
+    pub origin_url:          Option<String>,
+    /// Model the run itself used; the PR content call falls back to this
+    /// when `[run.pull_request] model` is unset.
+    pub pr_model:            String,
+    /// Model for the PR content call: the dedicated `[run.pull_request]`
+    /// model when set (resolved against the catalog), else `pr_model`.
+    pub pr_resolved_model:   String,
+    pub pr_reasoning_effort: Option<fabro_model::reasoning::ReasoningEffort>,
 }

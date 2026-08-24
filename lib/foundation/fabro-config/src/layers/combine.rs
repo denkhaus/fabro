@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
+use fabro_model::reasoning::ReasoningEffort;
 use fabro_model::{AgentProfileKind, BillingPolicy, CodecKind, ProviderAuthConfig};
 use fabro_types::PermissionLevel;
 use fabro_types::settings::cli::{CliAuthStrategy, OutputFormat, OutputVerbosity};
@@ -10,7 +11,7 @@ use fabro_types::settings::server::{
     GithubIntegrationStrategy, LogDestination, ObjectStoreProvider, ServerAuthMethod,
     WebhookStrategy,
 };
-use fabro_types::settings::{Duration, InterpString, Size};
+use fabro_types::settings::{Duration, InterpString, ModelRef, Size};
 
 use super::LogFilter;
 use super::cli::{CliAuthLayer, CliLoggingLayer, CliTargetLayer};
@@ -90,6 +91,8 @@ impl_combine_or_option!(
     CodecKind,
     ProviderAuthConfig,
     ReasoningEffortFeature,
+    ReasoningEffort,
+    ModelRef,
 );
 
 impl Combine for Option<Vec<String>> {

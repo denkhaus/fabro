@@ -16,6 +16,7 @@ use fabro_sandbox::from_environment::{
 };
 use fabro_sandbox::{DockerSandboxOptions, SandboxSpec};
 use fabro_static::EnvVars;
+use fabro_types::settings::ResolvedModelRef;
 use fabro_types::settings::run::{
     ApprovalMode, McpServerSettings as ResolvedMcpServerSettings, PullRequestSettings,
     ResolvedGithubIntegration, ResolvedMcpEntry, RunMode, RunNamespace as ResolvedRunSettings,
@@ -82,6 +83,9 @@ struct RunSession {
     pr_github_app:     Option<fabro_github::GitHubCredentials>,
     pr_origin_url:     Option<String>,
     pr_model:          String,
+    /// Resolved model for the PR content call (dedicated PR model or run
+    /// model).
+    pr_content_model:  String,
     workflow_path:     Option<ManifestPath>,
     workflow_bundle:   Option<Arc<WorkflowBundle>>,
     run_control:       Option<Arc<RunControlState>>,
@@ -549,10 +553,16 @@ impl RunSession {
             registry_override: services.registry_override,
             preserve_sandbox: resolved.environment.lifecycle.preserve,
             stop_on_terminal: resolved.environment.lifecycle.stop_on_terminal,
-            pr_config,
+            pr_config: pr_config.clone(),
             pr_github_app: services.github_app,
             pr_origin_url: record.repo_origin_url().map(str::to_string),
-            pr_model: llm.model,
+            pr_model: llm.model.clone(),
+            pr_content_model: resolve_pr_model(
+                catalog.as_ref(),
+                &configured,
+                pr_config.as_ref(),
+                &llm.model,
+            ),
             workflow_path,
             workflow_bundle,
             vault: services.vault,
@@ -648,6 +658,54 @@ fn resolve_docker_config(
         secrets_lookup,
     )
     .map_err(|err| Error::engine_with_source("failed to resolve Docker environment config", err))
+}
+
+/// Resolve the model for the PR content call: the dedicated
+/// `[run.pull_request]` model when it resolves against the catalog, else the
+/// run model. An unresolvable dedicated model warns and falls back — the
+/// publish step must not die on a bad PR-model config when the run model
+/// works.
+fn resolve_pr_model(
+    catalog: &Catalog,
+    configured: &[ProviderId],
+    pr_config: Option<&PullRequestSettings>,
+    run_model: &str,
+) -> String {
+    let Some(config) = pr_config else {
+        return run_model.to_string();
+    };
+    let Some(model_ref) = config.model.as_ref() else {
+        return run_model.to_string();
+    };
+    let eligible = configured.iter().cloned().collect::<HashSet<_>>();
+    let resolved_model = match model_ref.resolve(catalog) {
+        Ok(ResolvedModelRef::Model { provider, selector }) => catalog
+            .resolve_selection(
+                Some(selector.as_str()),
+                provider
+                    .as_deref()
+                    .map(fabro_model::ProviderId::new)
+                    .as_ref(),
+                &eligible,
+            )
+            .ok()
+            .map(|selected| selected.model),
+        Ok(ResolvedModelRef::Provider(_)) | Err(_) => {
+            // A bare provider token or an ambiguous ref is not a concrete PR
+            // model; the run model is the deterministic fallback.
+            None
+        }
+    };
+    match resolved_model {
+        Some(model) => model,
+        None => {
+            tracing::warn!(
+                model = %model_ref,
+                "run.pull_request.model could not be resolved to a concrete model; falling back to the run model"
+            );
+            run_model.to_string()
+        }
+    }
 }
 
 fn resolve_start_llm(
@@ -881,11 +939,17 @@ impl RunSession {
                 .expect("last_git_sha mutex should not be poisoned: no code panics while holding this lock")
                 .clone(),
         };
+        let pr_reasoning_effort = self
+            .pr_config
+            .as_ref()
+            .and_then(|config| config.reasoning_effort);
         let publish_opts = PublishOptions {
-            pr_config:  self.pr_config,
+            pr_config: self.pr_config,
             github_app: self.pr_github_app,
             origin_url: self.pr_origin_url,
-            model:      self.pr_model,
+            pr_model: self.pr_model.clone(),
+            pr_resolved_model: self.pr_content_model.clone(),
+            pr_reasoning_effort,
         };
 
         let concluding = race_persistence(
