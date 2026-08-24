@@ -7,10 +7,11 @@
 # Schema: fabro-journal-v1 — all fields required except data (object, may
 # be empty). Provenance fields (node, visit, status, ts, run_id) come from
 # the ENGINE hook context, never from agent claims. `data` is 1:1 the
-# stage's declared journal payload from its context_updates (bridgeless:
-# until HookContext carries context_updates — engine work item 2 — this
-# hook reads nothing from agents and writes the envelope with empty data;
-# consumers filter by their own schema inside data).
+# stage's declared journal payload from its context_updates (bridged
+# engine-side: HookContext carries the completed stage's context_updates
+# since fabro-31b2; a pre-bridge server or a stage that declared nothing
+# yields an empty object — consumers filter by their own schema inside
+# data).
 #
 # File identity: <node>@<visit>.json is unique per execution; ts provides
 # ordering; no global rank counter (deliberately — visit + ts suffice).
@@ -47,6 +48,13 @@ def main []: nothing -> nothing {
     })
     let visit = (if ($existing | is-empty) { 1 } else { ($existing | math max) + 1 })
 
+    # Journal bridge (engine fabro-31b2, landed): HookContext now carries
+    # the completed stage's declared context_updates — data is 1:1 the
+    # stage's journal payload. Absent field (pre-bridge server or a stage
+    # that declared nothing) stays {} — consumers filter by schema inside
+    # data, so the envelope shape never changes.
+    let data = ($ctx.context_updates?.journal? | default {})
+
     let entry = {
         "$schema": "fabro-journal-v1",
         run_id: ($ctx.run_id? | default ""),
@@ -54,7 +62,7 @@ def main []: nothing -> nothing {
         visit: $visit,
         status: ($ctx.status? | default ""),
         ts: (date now | format date "%Y-%m-%dT%H:%M:%SZ"),
-        data: {}
+        data: $data
     }
 
     let out = $"($journal_dir)/($node)@($visit).json"
