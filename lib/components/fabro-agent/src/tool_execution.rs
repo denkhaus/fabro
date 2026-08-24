@@ -11,7 +11,9 @@ use crate::question_tools::{self, AgentToolRuntime, is_question_tool};
 use crate::sandbox::{OutputCaptureStats, Sandbox};
 use crate::session::ToolEnvProvider;
 use crate::tool_registry::{AgentEventEmitter, RegisteredTool, ToolContext, ToolRegistry};
-use crate::truncation::{MAX_RETAINED_TOOL_OUTPUT_BYTES, retain_tool_output, truncate_tool_output};
+use crate::truncation::{
+    MAX_RETAINED_TOOL_OUTPUT_BYTES, preview_tool_output, truncate_tool_output,
+};
 use crate::types::AgentEvent;
 
 /// Execute tool calls, choosing parallel or sequential based on `parallel`
@@ -489,7 +491,7 @@ fn retain_tool_result(
         serde_json::Value::String(output) => {
             let previously_omitted = previous_stats.map_or(0, |stats| stats.omitted_bytes);
             let retained =
-                retain_tool_output(output, MAX_RETAINED_TOOL_OUTPUT_BYTES, previously_omitted);
+                preview_tool_output(output, MAX_RETAINED_TOOL_OUTPUT_BYTES, previously_omitted);
             (serde_json::Value::String(retained.output), retained.stats)
         }
         other => {
@@ -986,7 +988,11 @@ mod tests {
         .await;
 
         let result_output = result.content.as_str().expect("string tool output");
-        assert_eq!(result_output.len(), MAX_RETAINED_TOOL_OUTPUT_BYTES);
+        assert!(result_output.len() <= MAX_RETAINED_TOOL_OUTPUT_BYTES);
+        assert!(result_output.starts_with("Warning: truncated output"));
+        assert!(result_output.contains("bytes omitted"));
+        assert!(result_output.contains("tokens truncated"));
+        assert!(!result_output.contains("re-run"));
 
         let completed = loop {
             let event = receiver.try_recv().expect("tool completion event");
@@ -1008,17 +1014,16 @@ mod tests {
                 );
             }
         };
-        assert_eq!(
-            completed.0.as_str().expect("string event output").len(),
-            MAX_RETAINED_TOOL_OUTPUT_BYTES
-        );
+        let event_output = completed.0.as_str().expect("string event output");
+        assert_eq!(event_output, result_output);
         assert!(!completed.1, "truncation must not make the tool an error");
         assert_eq!(
             completed.2,
             MAX_RETAINED_TOOL_OUTPUT_BYTES + 100 + "echo: ".len()
         );
-        assert_eq!(completed.3, MAX_RETAINED_TOOL_OUTPUT_BYTES);
-        assert_eq!(completed.4, 100 + "echo: ".len());
+        assert!(completed.3 < MAX_RETAINED_TOOL_OUTPUT_BYTES);
+        assert_eq!(completed.4, completed.2 - completed.3);
+        assert!(event_output.contains(&format!("... {} bytes omitted ...", completed.4)));
     }
 
     #[tokio::test]
@@ -1357,12 +1362,14 @@ mod tests {
             .iter()
             .find_map(|event| match &event.event {
                 AgentEvent::ToolCallCompleted {
+                    output,
                     is_error,
                     output_bytes_observed,
                     output_bytes_retained,
                     output_bytes_omitted,
                     ..
                 } => Some((
+                    output.as_str().expect("string event output"),
                     *is_error,
                     *output_bytes_observed,
                     *output_bytes_retained,
@@ -1371,10 +1378,16 @@ mod tests {
                 _ => None,
             })
             .expect("tool completion event");
-        assert!(!completed.0, "truncation must not make the tool an error");
-        assert!(completed.1 > output_len);
-        assert_eq!(completed.2, MAX_RETAINED_TOOL_OUTPUT_BYTES);
-        assert_eq!(completed.3, completed.1 - completed.2);
+        assert!(completed.0.starts_with("Warning: truncated output"));
+        assert!(!completed.1, "truncation must not make the tool an error");
+        assert!(completed.2 > output_len);
+        assert!(completed.3 < MAX_RETAINED_TOOL_OUTPUT_BYTES);
+        assert_eq!(completed.4, completed.2 - completed.3);
+        assert!(
+            completed
+                .0
+                .contains(&format!("... {} bytes omitted ...", completed.4))
+        );
     }
 
     #[tokio::test]

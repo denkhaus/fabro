@@ -1408,7 +1408,8 @@ mod tests {
             truncation::truncate_tool_output(&output, "shell", &SessionOptions::default());
 
         assert!(truncated.len() < output.len());
-        assert!(truncated.starts_with("Termination: exited\nExit code: 2\n"));
+        assert!(truncated.starts_with("Warning: truncated output"));
+        assert!(truncated.contains("Termination: exited\nExit code: 2\n"));
         assert!(
             truncated.contains("stderr:\nthe build failed"),
             "stderr tail did not survive truncation"

@@ -8,6 +8,7 @@ pub(crate) const MAX_RETAINED_TOOL_OUTPUT_BYTES: usize = 1024 * 1024;
 pub(crate) struct RetainedToolOutput {
     pub output: String,
     pub stats:  OutputCaptureStats,
+    head_bytes: usize,
 }
 
 /// Keep an equal-sized UTF-8 prefix and suffix within a byte budget.
@@ -23,11 +24,16 @@ pub(crate) fn retain_tool_output(
     let observed_bytes = output.len().saturating_add(previously_omitted_bytes);
     if output.len() <= max_bytes {
         return RetainedToolOutput {
-            output: output.to_string(),
-            stats:  OutputCaptureStats {
+            output:     output.to_string(),
+            stats:      OutputCaptureStats {
                 observed_bytes,
                 retained_bytes: output.len(),
                 omitted_bytes: previously_omitted_bytes,
+            },
+            head_bytes: if previously_omitted_bytes == 0 {
+                output.len()
+            } else {
+                output.floor_char_boundary(output.len() / 2)
             },
         };
     }
@@ -42,13 +48,83 @@ pub(crate) fn retain_tool_output(
     retained.push_str(&output[tail_start..]);
 
     RetainedToolOutput {
-        output: retained,
-        stats:  OutputCaptureStats {
+        output:     retained,
+        stats:      OutputCaptureStats {
             observed_bytes,
             retained_bytes,
             omitted_bytes: observed_bytes.saturating_sub(retained_bytes),
         },
+        head_bytes: head_end,
     }
+}
+
+/// Build the final model-facing preview, including truncation notices inside
+/// the total byte budget.
+#[must_use]
+pub(crate) fn preview_tool_output(
+    output: &str,
+    max_bytes: usize,
+    previously_omitted_bytes: usize,
+) -> RetainedToolOutput {
+    let mut content_budget = max_bytes;
+    loop {
+        let retained = retain_tool_output(output, content_budget, previously_omitted_bytes);
+        if retained.stats.omitted_bytes == 0 {
+            return retained;
+        }
+
+        let rendered = render_retained_output(&retained);
+        if rendered.len() <= max_bytes {
+            return RetainedToolOutput {
+                output:     rendered,
+                stats:      retained.stats,
+                head_bytes: 0,
+            };
+        }
+
+        let excess = rendered.len().saturating_sub(max_bytes).max(1);
+        let next_budget = content_budget.saturating_sub(excess);
+        if next_budget == content_budget {
+            return RetainedToolOutput {
+                output:     truncate_plain_output(&rendered, max_bytes, TruncationMode::HeadTail),
+                stats:      retained.stats,
+                head_bytes: 0,
+            };
+        }
+        content_budget = next_budget;
+    }
+}
+
+fn render_retained_output(retained: &RetainedToolOutput) -> String {
+    let head = &retained.output[..retained.head_bytes];
+    let tail = &retained.output[retained.head_bytes..];
+    render_truncated_segments(head, tail, retained.stats, None)
+}
+
+fn render_truncated_segments(
+    head: &str,
+    tail: &str,
+    stats: OutputCaptureStats,
+    line_count_omitted: Option<usize>,
+) -> String {
+    let original_tokens = approximate_tokens(stats.observed_bytes);
+    let omitted_tokens = approximate_tokens(stats.omitted_bytes);
+    let middle_marker = line_count_omitted.map_or_else(
+        || format!("... approximately {omitted_tokens} tokens truncated ..."),
+        |lines| {
+            format!(
+                "... {lines} lines omitted (approximately {omitted_tokens} tokens truncated) ..."
+            )
+        },
+    );
+    format!(
+        "Warning: truncated output (original token count: {original_tokens})\n... {} bytes omitted ...\n\n{head}\n\n{middle_marker}\n\n{tail}",
+        stats.omitted_bytes
+    )
+}
+
+fn approximate_tokens(bytes: usize) -> usize {
+    bytes.div_ceil(4)
 }
 
 fn ceil_char_boundary(output: &str, index: usize) -> usize {
@@ -98,28 +174,57 @@ pub fn truncate_output(output: &str, max_chars: usize, mode: TruncationMode) -> 
         return output.to_string();
     }
 
-    let removed = output.len() - max_chars;
-
     match mode {
         TruncationMode::HeadTail => {
             let half = max_chars / 2;
             let head_end = output.floor_char_boundary(half);
-            let tail_start = output.floor_char_boundary(output.len() - half);
+            let tail_start = ceil_char_boundary(output, output.len().saturating_sub(half));
             let head = &output[..head_end];
             let tail = &output[tail_start..];
-            format!(
-                "{head}\n\n[WARNING: Tool output was truncated. {removed} characters were removed from the middle. \
-                 The full output is available in the event stream. \
-                 If you need to see specific parts, re-run the tool with more targeted parameters.]\n\n{tail}"
+            let retained_bytes = head.len().saturating_add(tail.len());
+            render_truncated_segments(
+                head,
+                tail,
+                OutputCaptureStats {
+                    observed_bytes: output.len(),
+                    retained_bytes,
+                    omitted_bytes: output.len().saturating_sub(retained_bytes),
+                },
+                None,
             )
         }
         TruncationMode::Tail => {
-            let tail_start = output.floor_char_boundary(output.len() - max_chars);
+            let tail_start = ceil_char_boundary(output, output.len().saturating_sub(max_chars));
             let tail = &output[tail_start..];
-            format!(
-                "[WARNING: Tool output was truncated. First {removed} characters were removed. \
-                 The full output is available in the event stream.]\n\n{tail}"
+            render_truncated_segments(
+                "",
+                tail,
+                OutputCaptureStats {
+                    observed_bytes: output.len(),
+                    retained_bytes: tail.len(),
+                    omitted_bytes:  output.len().saturating_sub(tail.len()),
+                },
+                None,
             )
+        }
+    }
+}
+
+fn truncate_plain_output(output: &str, max_bytes: usize, mode: TruncationMode) -> String {
+    if output.len() <= max_bytes {
+        return output.to_string();
+    }
+
+    match mode {
+        TruncationMode::HeadTail => {
+            let half = max_bytes / 2;
+            let head_end = output.floor_char_boundary(half);
+            let tail_start = ceil_char_boundary(output, output.len().saturating_sub(half));
+            format!("{}{}", &output[..head_end], &output[tail_start..])
+        }
+        TruncationMode::Tail => {
+            let tail_start = ceil_char_boundary(output, output.len().saturating_sub(max_bytes));
+            output[tail_start..].to_string()
         }
     }
 }
@@ -131,15 +236,22 @@ pub fn truncate_lines(output: &str, max_lines: usize) -> String {
         return output.to_string();
     }
 
-    let half = max_lines / 2;
-    let head: Vec<&str> = lines[..half].to_vec();
-    let tail: Vec<&str> = lines[lines.len() - half..].to_vec();
+    let head_count = max_lines / 2;
+    let tail_count = max_lines.saturating_sub(head_count);
+    let head = lines[..head_count].join("\n");
+    let tail = lines[lines.len() - tail_count..].join("\n");
     let omitted = lines.len() - max_lines;
+    let retained_bytes = head.len().saturating_add(tail.len());
 
-    format!(
-        "{}\n\n[... {omitted} lines omitted ...]\n\n{}",
-        head.join("\n"),
-        tail.join("\n")
+    render_truncated_segments(
+        &head,
+        &tail,
+        OutputCaptureStats {
+            observed_bytes: output.len(),
+            retained_bytes,
+            omitted_bytes: output.len().saturating_sub(retained_bytes),
+        },
+        Some(omitted),
     )
 }
 
@@ -204,6 +316,41 @@ mod tests {
     }
 
     #[test]
+    fn model_preview_includes_codex_style_notice_inside_budget() {
+        let output = format!("HEAD{}TAIL", "x".repeat(1_000));
+        let preview = preview_tool_output(&output, 512, 0);
+
+        assert!(preview.output.len() <= 512, "{}", preview.output.len());
+        assert!(
+            preview
+                .output
+                .starts_with("Warning: truncated output (original token count: 252)")
+        );
+        assert!(preview.output.contains(&format!(
+            "... {} bytes omitted ...",
+            preview.stats.omitted_bytes
+        )));
+        assert!(preview.output.contains("approximately"));
+        assert!(preview.output.contains("tokens truncated"));
+        assert!(preview.output.contains("HEAD"));
+        assert!(preview.output.ends_with("TAIL"));
+        assert!(!preview.output.contains("re-run"));
+        assert!(!preview.output.contains("targeted parameters"));
+    }
+
+    #[test]
+    fn model_preview_reports_bytes_omitted_before_rendering() {
+        let preview = preview_tool_output("abcdefgh", 512, 100);
+
+        assert_eq!(preview.stats.observed_bytes, 108);
+        assert_eq!(preview.stats.retained_bytes, 8);
+        assert_eq!(preview.stats.omitted_bytes, 100);
+        assert!(preview.output.contains("... 100 bytes omitted ..."));
+        assert!(preview.output.contains("abcd"));
+        assert!(preview.output.ends_with("efgh"));
+    }
+
+    #[test]
     fn under_limit_passthrough_chars() {
         let output = "short output";
         let result = truncate_output(output, 100, TruncationMode::HeadTail);
@@ -222,16 +369,18 @@ mod tests {
         let output = "a".repeat(100);
         let result = truncate_output(&output, 40, TruncationMode::HeadTail);
         assert!(result.contains(&"a".repeat(20)));
-        assert!(result.contains("Tool output was truncated"));
-        assert!(result.contains("60 characters were removed from the middle"));
+        assert!(result.starts_with("Warning: truncated output (original token count: 25)"));
+        assert!(result.contains("... 60 bytes omitted ..."));
+        assert!(result.contains("approximately 15 tokens truncated"));
     }
 
     #[test]
     fn tail_mode() {
         let output = format!("{}BBB", "A".repeat(100));
         let result = truncate_output(&output, 10, TruncationMode::Tail);
-        assert!(result.contains("Tool output was truncated"));
-        assert!(result.contains("First 93 characters were removed"));
+        assert!(result.starts_with("Warning: truncated output"));
+        assert!(result.contains("... 93 bytes omitted ..."));
+        assert!(result.contains("approximately 24 tokens truncated"));
         assert!(result.ends_with("AAAAAAABBB"));
     }
 
@@ -244,7 +393,8 @@ mod tests {
         assert!(result.contains("line 3"));
         assert!(result.contains("line 18"));
         assert!(result.contains("line 20"));
-        assert!(result.contains("... 14 lines omitted ..."));
+        assert!(result.contains("14 lines omitted"));
+        assert!(result.contains("tokens truncated"));
     }
 
     #[test]
@@ -273,7 +423,7 @@ mod tests {
         let mut config = SessionOptions::default();
         config.tool_output_limits.insert("shell".into(), 100);
         let result = truncate_tool_output(&"x".repeat(1_000), "Bash", &config);
-        assert!(result.contains("Tool output was truncated"));
+        assert!(result.contains("Warning: truncated output"));
     }
 
     #[test]
@@ -283,7 +433,7 @@ mod tests {
         config.tool_output_limits.insert("my_tool".into(), 100);
         let result = truncate_tool_output(&output, "my_tool", &config);
         assert!(result.len() < output.len());
-        assert!(result.contains("Tool output was truncated"));
+        assert!(result.contains("Warning: truncated output"));
     }
 
     #[test]
@@ -344,6 +494,6 @@ mod tests {
     fn truncate_output_multibyte_no_panic() {
         let output = "✅".repeat(100); // 300 bytes
         let result = truncate_output(&output, 10, TruncationMode::HeadTail);
-        assert!(result.contains("Tool output was truncated"));
+        assert!(result.contains("Warning: truncated output"));
     }
 }
