@@ -258,7 +258,8 @@ def main []: nothing -> nothing {
         "NO RUN BASE — no checkpoint commits found for this run.\nThe diff below is empty or misleading; treat this evidence as unreliable.\n\n"
     } else { "" })
 
-    # Journal files (.fabro/journal/<node>@<visit>.json) are meta context:
+    # Journal files (.fabro/journal/<run-id>.jsonl, one line per stage
+    # completion, plus legacy <node>@<visit>.json) are meta context:
     # run-machinery stage records about the workflow itself, consumed later
     # by the platform-side improve workflow. They are NO review input —
     # dropped here, so they appear in NO section and NO count.
