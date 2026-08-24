@@ -12,19 +12,11 @@ The deterministic Closeout step owns approvals: when the reviewer approves, the 
 
 `changes_requested`: the seed is still open and in_progress. Re-claim it for the next pass: fold `review_feedback` into `current_seed_brief` so the Implementer gets the concrete deviations to fix. Route Seed claimed again. Do not pick a different seed while one is in review cycle.
 
-## Cycle guards (review AND gate) — read the counter, never count yourself
+## Cycle guards — structural, not yours
 
-The engine maintains `seed_cycles` deterministically: an object `{ node -> completed visits since this seed was claimed }` (reset when `current_seed_id` changes value; survives resume; you cannot corrupt it). It appears in your `## Context` section.
+Deadlock guards live in the GRAPH (fabro-6baf): at `seed_cycles.reviewer >= 3` or `seed_cycles.tester >= 3` the engine routes the reviewer/tester straight to the deadlock exit — conditions outrank every other edge, no model compliance involved. You will never see a third cycle; if you do (older engine), route Blocked with `failure_reason` naming the deadlock and the count.
 
-- Review cycles for this seed: `seed_cycles.reviewer` (each visit = one review verdict on this seed).
-- Gate cycles for this seed: `seed_cycles.tester` bounces back after red gates.
-- Planning visits: `seed_cycles.planner` (re-plans of the SAME seed).
-
-Block on the DETERMINISTIC counts, never on your recollection of history:
-- `seed_cycles.reviewer >= 3` -> route Blocked, `failure_reason` "review deadlock: 3 review cycles on <seed id> without approval".
-- `seed_cycles.tester >= 3` consecutive reds -> route Blocked, `failure_reason` "gate deadlock: 3 red gates on <seed id> — likely platform, escalate".
-
-Check the guard BEFORE claiming/continuing a seed. A gate deadlock usually means the implementer is 'fixing' a gate that fails for platform reasons — escalate, don't loop. If `seed_cycles` is missing from context (older engine), fall back to counting verdicts in the preamble history — but say so in the failure_reason.
+The engine maintains `seed_cycles` deterministically: `{ node -> completed visits since this seed was claimed }`, reset when `current_seed_id` changes value, visible in your `## Context`. You may READ it (e.g. mention burn-down progress in feedback) but never count cycles yourself and never block on your own arithmetic.
 
 ## sd command reference (exact — never invent flags)
 

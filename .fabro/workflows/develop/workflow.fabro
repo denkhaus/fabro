@@ -178,6 +178,9 @@ digraph Develop {
     implementer -> tester   [label="Implemented"]
 
     tester -> evidence    [label="Gate green", condition="outcome=succeeded"]
+    // Structural gate-guard (fabro-6baf): third consecutive red routes to
+    // the human instead of another implementer round.
+    tester -> exit [kind="deadlock", label="Gate deadlock (3 reds, needs a human)", condition="seed_cycles.tester >= 3"]
     tester -> implementer [label="Gate red"]
 
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
@@ -191,13 +194,21 @@ digraph Develop {
     evidence -> exit [kind="soft", label="Capture failed (next run re-enters)"]
 
     reviewer -> closeout  [label="Approved", condition="preferred_label=\"Approved\""]
+    // Structural review-guard (fabro-6baf): conditions outrank unconditional
+    // edges, so at seed_cycles.reviewer >= 3 the deadlock exit wins over
+    // re-planning — the loop terminates without model compliance.
+    reviewer -> exit [kind="deadlock", label="Review deadlock (3 cycles, needs a human)", condition="seed_cycles.reviewer >= 3"]
     reviewer -> planner   [label="Changes requested"]
     // Fast re-review path (run 01M0SS23MJ): a procedural rejection
     // ("verification could not be completed" — evidence delivery, not code)
     // must NOT burn a full implementer+gate cycle on an unchanged tree
     // (~3.5 min, 5 visits observed). Re-capture only; the reviewer prompt
     // bounds this to one retry per seed, then it must decide.
-    reviewer -> evidence  [label="Verification blocked", condition="preferred_label=\"Verification blocked\""]
+    // Bounded re-capture (fabro-6baf): the prompt says "at most once per
+    // seed"; the edge makes it provable — a second Verification-blocked
+    // verdict cannot re-enter evidence and must decide (Approved / Changes
+    // requested via the unconditional fallback).
+    reviewer -> evidence  [label="Verification blocked", condition="preferred_label=\"Verification blocked\" && seed_cycles.evidence < 2"]
     reviewer -> exit [kind="soft", label="Reviewer failed (next run re-enters)", condition="outcome=failed"]
 
     // Closeout routing: the script's routing output decides — Tracker
