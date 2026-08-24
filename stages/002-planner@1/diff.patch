@@ -1,0 +1,32 @@
+diff --git a/.fabro/journal/planner@1.json b/.fabro/journal/planner@1.json
+new file mode 100644
+index 0000000..7b5ed91
+--- /dev/null
++++ b/.fabro/journal/planner@1.json
+@@ -0,0 +1,9 @@
++{
++  "$schema": "fabro-journal-v1",
++  "run_id": "01M0SFEYVC9TD6MP816RHEBFQY",
++  "node": "planner",
++  "visit": 1,
++  "status": "succeeded",
++  "ts": "2026-08-24T08:53:36Z",
++  "data": {}
++}
+\ No newline at end of file
+diff --git a/.fabro/journal/start@1.json b/.fabro/journal/start@1.json
+new file mode 100644
+index 0000000..895702b
+--- /dev/null
++++ b/.fabro/journal/start@1.json
+@@ -0,0 +1,9 @@
++{
++  "$schema": "fabro-journal-v1",
++  "run_id": "01M0SFEYVC9TD6MP816RHEBFQY",
++  "node": "start",
++  "visit": 1,
++  "status": "succeeded",
++  "ts": "2026-08-24T08:53:08Z",
++  "data": {}
++}
+\ No newline at end of file

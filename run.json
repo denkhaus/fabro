@@ -500,7 +500,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-24T08:53:03.962164438Z",
-  "last_event_at": "2026-08-24T08:53:35.896934094Z",
+  "last_event_at": "2026-08-24T08:53:43.445025345Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -542,9 +542,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 66,
       "checkpoint": {
-        "timestamp": "2026-08-24T08:53:36.185219784Z",
+        "timestamp": "2026-08-24T08:53:42.218113167Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -552,27 +552,27 @@
         ],
         "node_retries": {},
         "context_values": {
-          "preferred_label": "Tracker empty",
-          "graph.max_node_visits": "40",
-          "internal.work_dir": "/workspace/fabro",
-          "current_node": "planner",
-          "thread.start.current_node": "planner",
-          "internal.thread_id": "start",
-          "last_stage": "planner",
-          "response.planner": "Tracker is healthy and fully drained: every seed (`fabro-f487` through `fabro-d810`) is closed, nothing is in progress, and `sd ready` returns zero unblocked work. The goal — develop seed-by-seed until no open seed remains — holds; routing Tracker empty.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Tracker empty\",\n  \"context_updates\": {\n    \"review_verdict\": \"\"\n  }\n}",
-          "graph.preamble_budget_kb": "12",
           "internal.node_visit_count": 1,
-          "failure_class": "",
           "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "failure_class": "",
           "graph.rankdir": "LR",
+          "response.planner": "Tracker is healthy and fully drained: every seed (`fabro-f487` through `fabro-d810`) is closed, nothing is in progress, and `sd ready` returns zero unblocked work. The goal — develop seed-by-seed until no open seed remains — holds; routing Tracker empty.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Tracker empty\",\n  \"context_updates\": {\n    \"review_verdict\": \"\"\n  }\n}",
+          "internal.retry_count.planner": 0,
+          "thread.start.current_node": "planner",
+          "current_node": "planner",
+          "internal.retry_count.start": 0,
+          "graph.max_node_visits": "40",
+          "last_stage": "planner",
+          "preferred_label": "Tracker empty",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_signature": "",
           "internal.run_id": "01M0SFEYVC9TD6MP816RHEBFQY",
           "review_verdict": "",
-          "internal.fidelity": "compact",
-          "failure_signature": "",
+          "graph.preamble_budget_kb": "12",
+          "internal.thread_id": "start",
           "outcome": "succeeded",
           "last_response": "Tracker is healthy and fully drained: every seed (`fabro-f487` through `fabro-d810`) is closed, nothing is in progress, and `sd ready` returns zero unblocked work. The goal — develop seed-by-seed un",
-          "internal.retry_count.start": 0,
-          "internal.retry_count.planner": 0
+          "internal.fidelity": "compact"
         },
         "node_outcomes": {
           "start": {
@@ -619,15 +619,86 @@
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "7a3ed341d3a94e539d675cab98fae5aaa70732bc",
         "node_visits": {
           "start": 1,
           "planner": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/planner@1.json b/.fabro/journal/planner@1.json\nnew file mode 100644\nindex 0000000..7b5ed91\n--- /dev/null\n+++ b/.fabro/journal/planner@1.json\n@@ -0,0 +1,9 @@\n+{\n+  \"$schema\": \"fabro-journal-v1\",\n+  \"run_id\": \"01M0SFEYVC9TD6MP816RHEBFQY\",\n+  \"node\": \"planner\",\n+  \"visit\": 1,\n+  \"status\": \"succeeded\",\n+  \"ts\": \"2026-08-24T08:53:36Z\",\n+  \"data\": {}\n+}\n\\ No newline at end of file\ndiff --git a/.fabro/journal/start@1.json b/.fabro/journal/start@1.json\nnew file mode 100644\nindex 0000000..895702b\n--- /dev/null\n+++ b/.fabro/journal/start@1.json\n@@ -0,0 +1,9 @@\n+{\n+  \"$schema\": \"fabro-journal-v1\",\n+  \"run_id\": \"01M0SFEYVC9TD6MP816RHEBFQY\",\n+  \"node\": \"start\",\n+  \"visit\": 1,\n+  \"status\": \"succeeded\",\n+  \"ts\": \"2026-08-24T08:53:08Z\",\n+  \"data\": {}\n+}\n\\ No newline at end of file\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 18,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-08-24T08:53:42.244687590Z",
+    "status": "failed",
+    "timing": {
+      "wall_time_ms": 35136,
+      "inference_time_ms": 25357,
+      "tool_time_ms": 965,
+      "active_time_ms": 26322
+    },
+    "failure": {
+      "reason": "publish_failed",
+      "detail": {
+        "message": "failed to create pull request",
+        "causes": [
+          "Authentication failed creating pull request (403)"
+        ],
+        "category": "deterministic"
+      }
+    },
+    "final_git_commit_sha": "7a3ed341d3a94e539d675cab98fae5aaa70732bc",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 27726,
+          "inference_time_ms": 25357,
+          "tool_time_ms": 965,
+          "active_time_ms": 26322
+        },
+        "billing_usd_micros": 18633,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 7736,
+      "output_tokens": 235,
+      "total_tokens": 29864,
+      "reasoning_tokens": 261,
+      "cache_read_tokens": 21632,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 18633
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/planner@1.json b/.fabro/journal/planner@1.json\nnew file mode 100644\nindex 0000000..7b5ed91\n--- /dev/null\n+++ b/.fabro/journal/planner@1.json\n@@ -0,0 +1,9 @@\n+{\n+  \"$schema\": \"fabro-journal-v1\",\n+  \"run_id\": \"01M0SFEYVC9TD6MP816RHEBFQY\",\n+  \"node\": \"planner\",\n+  \"visit\": 1,\n+  \"status\": \"succeeded\",\n+  \"ts\": \"2026-08-24T08:53:36Z\",\n+  \"data\": {}\n+}\n\\ No newline at end of file\ndiff --git a/.fabro/journal/start@1.json b/.fabro/journal/start@1.json\nnew file mode 100644\nindex 0000000..895702b\n--- /dev/null\n+++ b/.fabro/journal/start@1.json\n@@ -0,0 +1,9 @@\n+{\n+  \"$schema\": \"fabro-journal-v1\",\n+  \"run_id\": \"01M0SFEYVC9TD6MP816RHEBFQY\",\n+  \"node\": \"start\",\n+  \"visit\": 1,\n+  \"status\": \"succeeded\",\n+  \"ts\": \"2026-08-24T08:53:08Z\",\n+  \"data\": {}\n+}\n\\ No newline at end of file\n",
+      "summary": {
+        "files_changed": 2,
+        "additions": 18,
+        "deletions": 0
+      }
+    }
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -654,6 +725,42 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "exit@1": {
+      "first_event_seq": 69,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-24T08:53:42.218321445Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-24T08:53:42.218297750Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "start@1": {
       "first_event_seq": 23,
       "prompt": null,
