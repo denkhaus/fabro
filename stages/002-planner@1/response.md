@@ -1,0 +1,11 @@
+Claimed `fabro-8208` (gofib `-limit` flag). Spec check found two ambiguities, resolved in the brief: `-limit 0` means "no limit" (mirroring `-start`'s 0-sentinel pattern), and `-pretty` column sizing must use the limit-capped last index.
+
+{
+  "outcome": "succeeded",
+  "preferred_next_label": "Seed claimed",
+  "context_updates": {
+    "current_seed_id": "fabro-8208",
+    "current_seed_title": "gofib: add -limit flag to cap output size safely",
+    "current_seed_brief": "Add a `-limit <int>` flag to `/workspace/fabro/main.go` capping the largest index gofib prints, independent of `-start`/`-n`. Acceptance criteria:\n- `-limit <int>`: no index > limit is printed; default (unset, or explicit 0) = no limit — RESOLVED AMBIGUITY: treat 0 as the 'no limit' sentinel, mirroring the existing `-start` 0-sentinel pattern in main.go; empty output via limit only occurs when 0 < limit < start\n- Combines with `-start` and `-n` as intersection: start <= index <= min(start+n-1, limit), at most -n lines; `-limit < start` (both positive) yields zero lines and exit 0, NOT an error\n- Validation mirrors existing flags: `-limit < 0` exits non-zero with stderr error `invalid value <v> for flag -limit: must be >= 0`; `-version` still takes precedence (even `-version -limit -1` prints version, exit 0)\n- `Fib(n)` stays the only computation — no inline recomputation (CONTEXT.md); flag parsed via the flag package\n- `-pretty` column widths computed from the limit-capped effective last index (not start+n-1); `-json`/`-pretty` combine as usual on the reduced set\n- Tests: table-driven in `/workspace/fabro/fib_test.go` covering: no limit (default), limit caps large -n (e.g. -n 100000 -limit 10 prints 10 lines fast), limit+start intersection, limit < start gives empty output exit 0, negative limit rejected non-zero, limit with -json and with -pretty\n- README.md `/workspace/fabro/README.md` flag table gains `-limit` row with a REAL example invocation and its actual output captured from the built binary (do not invent output); also document the limit < start = empty-output, not-error rule\n- `just qualitygate` green"
+  }
+}
