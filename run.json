@@ -632,7 +632,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-24T22:19:39.857188708Z",
-  "last_event_at": "2026-08-24T22:23:16.306268179Z",
+  "last_event_at": "2026-08-24T22:23:22.733685573Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -791,9 +791,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 188,
       "checkpoint": {
-        "timestamp": "2026-08-24T22:23:16.592718195Z",
+        "timestamp": "2026-08-24T22:23:21.379149112Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -802,9 +802,182 @@
         ],
         "node_retries": {},
         "context_values": {
+          "current_seed_id": "fabro-cfb6",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3198,
+            "preview": "Implementation complete. Files touched: `main.go` (new `-seed` flag, `run` signature gains `seed int`, precedence: version → negative-seed error → positive-seed lookup mode skipping range validati"
+          },
+          "implementation_summary": "main.go: added -seed flag; run() signature now (w, start, count, limit, seed, asJSON, pretty, version) with precedence version → negative-seed error → positive-seed lookup mode (start=seed,count=1,limit=0, range validation skipped) → existing range path; Fib(n) remains the only computation. fib_test.go: updated all run call sites, added table-driven TestRunSeed (single index, override of -n/-start/-limit incl. invalid values, sentinel 0, -json/-pretty combos) and TestRunRejectsInvalidSeed, extended TestRunVersion with seed rows. README.md: new -seed usage section with real captured output and a flag-table row documenting precedence and the 0 sentinel. Verification: all criteria PASS as itemized above; just qualitygate left to the tester (go build/vet/test/gofmt individually green).",
+          "current_node": "implementer",
+          "outcome": "succeeded",
+          "thread.planner.current_node": "implementer",
+          "failure_class": "",
+          "internal.retry_count.implementer": 0,
+          "internal.thread_id": "planner",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.start": 0,
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "current_seed_title": "gofib: add -seed flag for reproducible index selection",
+          "internal.run_id": "01M0TXPX09279433MGWSWPVVP4",
+          "graph.preamble_budget_kb": "24",
+          "last_stage": "implementer",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3024,
+            "preview": "Claimed. Brief distilled with one ambiguity annotated (spec silent on `-seed` + invalid range flags).\n\n**Seed `fabro-cfb6` — gofib: add `-seed` flag for single-index lookup.** Fresh claim; worktree "
+          },
+          "thread.start.current_node": "planner",
+          "graph.max_node_visits": "40",
+          "current_seed_brief": "Add a `-seed <int>` flag to gofib printing exactly one Fibonacci entry (index i) in the active output mode. Acceptance criteria: (1) `-seed i` prints one line — text `i: <value>`, `-json` one object `{\"index\":i,\"fib\":\"<string>\"}`, `-pretty` single-row; (2) precedence: `-version` wins over everything, positive `-seed` overrides `-n`/`-start`/`-limit` so only index i prints, and range-flag validation is skipped when `-seed > 0` (annotated choice: spec silent, mirrors -version's ignore-invalid semantics); (3) `-seed 0` is the unset sentinel — plain gofib output unchanged; (4) `-seed < 0` exits non-zero with a stderr error in existing flag-error style; (5) computation uses existing `Fib(n)` only, no inline recomputation; (6) `README.md` flag table gains the `-seed` row with a REAL captured example and output plus the precedence note; (7) table-driven tests in `/workspace/fabro/fib_test.go` cover single index, override of -n/-start/-limit, sentinel, -json/-pretty combos, negative rejection, -version precedence, and regression-pin existing behavior; (8) `just qualitygate` green.",
+          "graph.rankdir": "LR",
+          "preferred_label": "Implemented",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "internal.retry_count.planner": 0,
+          "failure_signature": "",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.node_visit_count": 1,
+          "internal.fidelity": "summary:high",
+          "internal.seed_cycle_anchor": "fabro-cfb6",
+          "last_response": "Implementation complete. Files touched: `main.go` (new `-seed` flag, `run` signature gains `seed int`, precedence: version → negative-seed error → positive-seed lookup mode skipping range validati"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "main.go: added -seed flag; run() signature now (w, start, count, limit, seed, asJSON, pretty, version) with precedence version → negative-seed error → positive-seed lookup mode (start=seed,count=1,limit=0, range validation skipped) → existing range path; Fib(n) remains the only computation. fib_test.go: updated all run call sites, added table-driven TestRunSeed (single index, override of -n/-start/-limit incl. invalid values, sentinel 0, -json/-pretty combos) and TestRunRejectsInvalidSeed, extended TestRunVersion with seed rows. README.md: new -seed usage section with real captured output and a flag-table row documenting precedence and the 0 sentinel. Verification: all criteria PASS as itemized above; just qualitygate left to the tester (go build/vet/test/gofmt individually green).",
+              "last_stage": "implementer",
+              "last_response": "Implementation complete. Files touched: `main.go` (new `-seed` flag, `run` signature gains `seed int`, precedence: version → negative-seed error → positive-seed lookup mode skipping range validati",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3198,
+                "preview": "Implementation complete. Files touched: `main.go` (new `-seed` flag, `run` signature gains `seed int`, precedence: version → negative-seed error → positive-seed lookup mode skipping range validati"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 26014,
+                    "output_tokens": 5548,
+                    "reasoning_tokens": 751,
+                    "cache_read_tokens": 310080,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 144735
+            },
+            "files_touched": [
+              "/workspace/fabro/README.md",
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 117182,
+              "tool_time_ms": 14275,
+              "active_time_ms": 131457
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Add a `-seed <int>` flag to gofib printing exactly one Fibonacci entry (index i) in the active output mode. Acceptance criteria: (1) `-seed i` prints one line — text `i: <value>`, `-json` one object `{\"index\":i,\"fib\":\"<string>\"}`, `-pretty` single-row; (2) precedence: `-version` wins over everything, positive `-seed` overrides `-n`/`-start`/`-limit` so only index i prints, and range-flag validation is skipped when `-seed > 0` (annotated choice: spec silent, mirrors -version's ignore-invalid semantics); (3) `-seed 0` is the unset sentinel — plain gofib output unchanged; (4) `-seed < 0` exits non-zero with a stderr error in existing flag-error style; (5) computation uses existing `Fib(n)` only, no inline recomputation; (6) `README.md` flag table gains the `-seed` row with a REAL captured example and output plus the precedence note; (7) table-driven tests in `/workspace/fabro/fib_test.go` cover single index, override of -n/-start/-limit, sentinel, -json/-pretty combos, negative rejection, -version precedence, and regression-pin existing behavior; (8) `just qualitygate` green.",
+              "last_stage": "planner",
+              "last_response": "Claimed. Brief distilled with one ambiguity annotated (spec silent on `-seed` + invalid range flags).\n\n**Seed `fabro-cfb6` — gofib: add `-seed` flag for single-index lookup.** Fresh claim; worktree ",
+              "current_seed_title": "gofib: add -seed flag for reproducible index selection",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3024,
+                "preview": "Claimed. Brief distilled with one ambiguity annotated (spec silent on `-seed` + invalid range flags).\n\n**Seed `fabro-cfb6` — gofib: add `-seed` flag for single-index lookup.** Fresh claim; worktree "
+              },
+              "current_seed_id": "fabro-cfb6"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 13092,
+                    "output_tokens": 1058,
+                    "reasoning_tokens": 1686,
+                    "cache_read_tokens": 47936,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 42858
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 53223,
+              "tool_time_ms": 1309,
+              "active_time_ms": 54532
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "8944b6161eaac4a40b4b6dcdb5ebbc7b00b9a7b5",
+        "node_visits": {
+          "implementer": 1,
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl b/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl\nindex ff3bbed..ecbe5fb 100644\n--- a/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl\n+++ b/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:19:42Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:20:45Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:23:16Z\",\"data\":{}}\ndiff --git a/README.md b/README.md\nindex 2be067d..8c5396c 100644\n--- a/README.md\n+++ b/README.md\n@@ -93,6 +93,20 @@ $ echo $?\n 0\n ```\n \n+`-seed i` switches gofib into lookup mode: print **only** the\n+Fibonacci number at index `i`, exactly one line, in the active output\n+mode. It overrides the range flags (`-n`, `-start`, `-limit`), and —\n+like `-version` — it makes their validation a no-op, so even an\n+otherwise-invalid combination still prints the single entry:\n+\n+```\n+$ gofib -seed 10 -n 5 -start 2\n+10: 55\n+\n+$ gofib -seed 10 -json\n+{\"index\":10,\"fib\":\"55\"}\n+```\n+\n JSON mode (`-json`) emits JSON Lines — one object per number, never a\n JSON array. `fib` is a string (ADR-0001) because F(100) overflows\n int64:\n@@ -149,6 +163,7 @@ $ echo $?\n | `-n <int>` | Count flag: how many numbers to print. Default `100`; must be `>= 1`, otherwise gofib exits non-zero with an error on stderr. Combines with JSON mode. |\n | `-start <int>` | Start flag: index of the first number printed. Default `0`, which behaves like `1` (gofib's indices are 1-based), so unset output is unchanged — plain `gofib` still starts `1: 1` and ends `100: 354224848179261915075`. `-start s -n k` prints exactly `k` lines with indices `s..s+k-1`: `-start` never changes what `-n` counts. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr. Combines with `-json` (the `index` field carries the actual index) and `-pretty` (columns sized to the largest index and value actually printed). |\n | `-limit <int>` | Cap flag: the largest index gofib will print, independent of `-start` and `-n`. Default `0`, which means **no limit** (the sentinel mirrors `-start`'s `0`-default). The output is the intersection of the three range flags — `start <= index <= min(start+n-1, limit)`, at most `-n` lines — so e.g. `gofib -n 100000 -limit 5` prints exactly 5 lines, instantly. `-limit < start` (both positive) is **not an error**: gofib prints nothing and exits `0`. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr (`invalid value -1 for flag -limit: must be >= 0`). Combines with `-json` (one object per surviving index) and `-pretty` (columns sized to the capped range, not `start+n-1`). |\n+| `-seed <int>` | Lookup flag: print **only** the Fibonacci number at this index — exactly one line in the active output mode (`i: <value>`, or one JSON object, or a single `-pretty` row sized from that sole index). Default `0` is the unset **sentinel** (mirroring `-start`): plain `gofib` output is unchanged. **Precedence**: a positive `-seed` overrides `-n`, `-start`, and `-limit` so only index `i` prints — e.g. `gofib -seed 10 -n 5 -start 2` prints exactly `10: 55` — and, like `-version`, it skips the range-flag validation, so an otherwise-invalid combination such as `-seed 10 -n 0` still prints the single entry. `-version` still wins over everything. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr (`invalid value -1 for flag -seed: must be >= 0`). |\n | `-json` | JSON mode: emit JSON Lines instead of text — one `{\"index\":<int>,\"fib\":\"<string>\"}` object per number. `fib` is a string by decision (ADR-0001), since F(100) overflows int64. Never a JSON array. |\n | `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. **No effect with `-json`** — JSON Lines have no columns to align. |\n | `-version` | Prints exactly `gofib 1.3.0` (from the `Version` const in `main.go`) and takes precedence over every other flag — even an otherwise-invalid combination like `-version -n 0 -json` prints the version and exits `0`. |\ndiff --git a/fib_test.go b/fib_test.go\nindex e9d9586..d7e37b8 100644\n--- a/fib_test.go\n+++ b/fib_test.go\n@@ -54,7 +54,7 @@ func TestRun(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, 0, tt.n, 0, false, false, false); err != nil {\n+\t\t\tif err := run(&buf, 0, tt.n, 0, 0, false, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d) returned error: %v\", tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -95,7 +95,7 @@ func TestRunStart(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.start, tt.n, 0, false, false, false); err != nil {\n+\t\t\tif err := run(&buf, tt.start, tt.n, 0, 0, false, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, %d) returned error: %v\", tt.start, tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -136,7 +136,7 @@ func TestRunJSON(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, 0, tt.n, 0, true, false, false); err != nil {\n+\t\t\tif err := run(&buf, 0, tt.n, 0, 0, true, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, json) returned error: %v\", tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -169,7 +169,7 @@ func TestRunJSON(t *testing.T) {\n func TestRunStartJSON(t *testing.T) {\n \tconst start, n = 10, 5\n \tvar buf bytes.Buffer\n-\tif err := run(&buf, start, n, 0, true, false, false); err != nil {\n+\tif err := run(&buf, start, n, 0, 0, true, false, false); err != nil {\n \t\tt.Fatalf(\"run(%d, %d, json) returned error: %v\", start, n, err)\n \t}\n \tout := buf.String()\n@@ -219,7 +219,7 @@ func TestRunPretty(t *testing.T) {\n \t} {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, 0, tt.n, 0, false, true, false); err != nil {\n+\t\t\tif err := run(&buf, 0, tt.n, 0, 0, false, true, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, pretty) returned error: %v\", tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -239,7 +239,7 @@ func TestRunPretty(t *testing.T) {\n \t// index right-aligned to len(\"100\"), value to len(Fib(100)).\n \tt.Run(\"pretty default prints 100 aligned numbers\", func(t *testing.T) {\n \t\tvar buf bytes.Buffer\n-\t\tif err := run(&buf, 0, defaultCount, 0, false, true, false); err != nil {\n+\t\tif err := run(&buf, 0, defaultCount, 0, 0, false, true, false); err != nil {\n \t\t\tt.Fatalf(\"run(default, pretty) returned error: %v\", err)\n \t\t}\n \t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -261,7 +261,7 @@ func TestRunStartPretty(t *testing.T) {\n \tfibs := map[int]string{8: \"21\", 9: \"34\", 10: \"55\", 11: \"89\", 12: \"144\"}\n \tconst start, n = 8, 5\n \tvar buf bytes.Buffer\n-\tif err := run(&buf, start, n, 0, false, true, false); err != nil {\n+\tif err := run(&buf, start, n, 0, 0, false, true, false); err != nil {\n \t\tt.Fatalf(\"run(%d, %d, pretty) returned error: %v\", start, n, err)\n \t}\n \tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -282,10 +282,10 @@ func TestRunPrettyJSON(t *testing.T) {\n \t// -pretty only affects text mode: with -json the output must be\n \t// identical, line for line.\n \tvar jsonOnly, prettyJSON bytes.Buffer\n-\tif err := run(&jsonOnly, 0, 3, 0, true, false, false); err != nil {\n+\tif err := run(&jsonOnly, 0, 3, 0, 0, true, false, false); err != nil {\n \t\tt.Fatalf(\"run(3, json) returned error: %v\", err)\n \t}\n-\tif err := run(&prettyJSON, 0, 3, 0, true, true, false); err != nil {\n+\tif err := run(&prettyJSON, 0, 3, 0, 0, true, true, false); err != nil {\n \t\tt.Fatalf(\"run(3, json, pretty) returned error: %v\", err)\n \t}\n \tif prettyJSON.String() != jsonOnly.String() {\n@@ -306,7 +306,7 @@ func TestRunRejectsInvalidCount(t *testing.T) {\n \t}{{\"text\", false}, {\"json\", true}} {\n \t\tfor _, n := range []int{0, -5} {\n \t\t\tvar buf bytes.Buffer\n-\t\t\terr := run(&buf, 0, n, 0, mode.asJSON, false, false)\n+\t\t\terr := run(&buf, 0, n, 0, 0, mode.asJSON, false, false)\n \t\t\tif err == nil {\n \t\t\t\tt.Fatalf(\"run(%d, %s) succeeded, want error\", n, mode.name)\n \t\t\t}\n@@ -330,7 +330,7 @@ func TestRunRejectsInvalidStart(t *testing.T) {\n \t}{{\"text\", false}, {\"json\", true}} {\n \t\tfor _, start := range []int{-1, -5} {\n \t\t\tvar buf bytes.Buffer\n-\t\t\terr := run(&buf, start, 5, 0, mode.asJSON, false, false)\n+\t\t\terr := run(&buf, start, 5, 0, 0, mode.asJSON, false, false)\n \t\t\tif err == nil {\n \t\t\t\tt.Fatalf(\"run(%d, 5, %s) succeeded, want error\", start, mode.name)\n \t\t\t}\n@@ -356,22 +356,25 @@ func TestRunVersion(t *testing.T) {\n \t\tstart  int\n \t\tcount  int\n \t\tlimit  int\n+\t\tseed   int\n \t\tasJSON bool\n \t\tpretty bool\n \t}{\n-\t\t{\"version alone\", 0, defaultCount, 0, false, false},\n-\t\t{\"version with -json -n 5\", 0, 5, 0, true, false},\n-\t\t{\"version with -pretty\", 0, defaultCount, 0, false, true},\n-\t\t{\"version with invalid -n 0\", 0, 0, 0, false, false},\n-\t\t{\"version with -start 10\", 10, 5, 0, false, false},\n-\t\t{\"version with invalid -start -1\", -1, 5, 0, false, false},\n-\t\t{\"version with -limit 3\", 0, defaultCount, 3, false, false},\n-\t\t{\"version with invalid -limit -1\", 0, 5, -1, false, false},\n+\t\t{\"version alone\", 0, defaultCount, 0, 0, false, false},\n+\t\t{\"version with -json -n 5\", 0, 5, 0, 0, true, false},\n+\t\t{\"version with -pretty\", 0, defaultCount, 0, 0, false, true},\n+\t\t{\"version with invalid -n 0\", 0, 0, 0, 0, false, false},\n+\t\t{\"version with -start 10\", 10, 5, 0, 0, false, false},\n+\t\t{\"version with invalid -start -1\", -1, 5, 0, 0, false, false},\n+\t\t{\"version with -limit 3\", 0, defaultCount, 3, 0, false, false},\n+\t\t{\"version with invalid -limit -1\", 0, 5, -1, 0, false, false},\n+\t\t{\"version with -seed 10\", 0, 5, 0, 10, false, false},\n+\t\t{\"version with invalid -seed -1\", 0, 5, 0, -1, false, false},\n \t}\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.start, tt.count, tt.limit, tt.asJSON, tt.pretty, true); err != nil {\n+\t\t\tif err := run(&buf, tt.start, tt.count, tt.limit, tt.seed, tt.asJSON, tt.pretty, true); err != nil {\n \t\t\t\tt.Fatalf(\"run(version) returned error: %v\", err)\n \t\t\t}\n \t\t\tif want := \"gofib \" + Version + \"\\n\"; buf.String() != want {\n@@ -415,7 +418,7 @@ func TestRunLimit(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.start, tt.n, tt.limit, tt.asJSON, false, false); err != nil {\n+\t\t\tif err := run(&buf, tt.start, tt.n, tt.limit, 0, tt.asJSON, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, %d, %d) returned error: %v\", tt.start, tt.n, tt.limit, err)\n \t\t\t}\n \t\t\tif tt.wantLines == 0 {\n@@ -445,7 +448,7 @@ func TestRunLimit(t *testing.T) {\n \tt.Run(\"limit with -pretty sizes columns from the capped last index\", func(t *testing.T) {\n \t\tconst start, n, limit = 8, 5, 10\n \t\tvar buf bytes.Buffer\n-\t\tif err := run(&buf, start, n, limit, false, true, false); err != nil {\n+\t\tif err := run(&buf, start, n, limit, 0, false, true, false); err != nil {\n \t\t\tt.Fatalf(\"run(%d, %d, %d, pretty) returned error: %v\", start, n, limit, err)\n \t\t}\n \t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -473,7 +476,7 @@ func TestRunRejectsInvalidLimit(t *testing.T) {\n \t}{{\"text\", false}, {\"json\", true}} {\n \t\tfor _, limit := range []int{-1, -5} {\n \t\t\tvar buf bytes.Buffer\n-\t\t\terr := run(&buf, 0, 5, limit, mode.asJSON, false, false)\n+\t\t\terr := run(&buf, 0, 5, limit, 0, mode.asJSON, false, false)\n \t\t\tif err == nil {\n \t\t\t\tt.Fatalf(\"run(0, 5, %d, %s) succeeded, want error\", limit, mode.name)\n \t\t\t}\n@@ -487,3 +490,92 @@ func TestRunRejectsInvalidLimit(t *testing.T) {\n \t\t}\n \t}\n }\n+\n+// TestRunSeed pins the -seed semantics: a positive seed prints exactly\n+// one entry for that index in the active output mode, overriding\n+// -n, -start, and -limit (whose validation is skipped, mirroring\n+// -version's ignore-invalid semantics); seed 0 is the unset sentinel,\n+// so plain gofib output is unchanged.\n+func TestRunSeed(t *testing.T) {\n+\ttests := []struct {\n+\t\tname      string\n+\t\tseed      int\n+\t\tstart     int\n+\t\tn         int\n+\t\tlimit     int\n+\t\tasJSON    bool\n+\t\tpretty    bool\n+\t\twantLines int\n+\t\twantFirst string\n+\t\twantLast  string\n+\t}{\n+\t\t// Single index lookup in each output mode.\n+\t\t{\"seed 10 prints only index 10\", 10, 0, defaultCount, 0, false, false, 1, \"10: 55\", \"10: 55\"},\n+\t\t{\"seed 1 prints only index 1\", 1, 0, defaultCount, 0, false, false, 1, \"1: 1\", \"1: 1\"},\n+\t\t{\"seed 100 prints F(100)\", 100, 0, defaultCount, 0, false, false, 1,\n+\t\t\t\"100: \" + mustBig(\"354224848179261915075\").String(),\n+\t\t\t\"100: \" + mustBig(\"354224848179261915075\").String()},\n+\t\t// Precedence: -seed overrides every range flag.\n+\t\t{\"seed overrides -n\", 10, 0, 5, 0, false, false, 1, \"10: 55\", \"10: 55\"},\n+\t\t{\"seed overrides -start\", 10, 3, defaultCount, 0, false, false, 1, \"10: 55\", \"10: 55\"},\n+\t\t{\"seed overrides -limit\", 10, 0, defaultCount, 5, false, false, 1, \"10: 55\", \"10: 55\"},\n+\t\t{\"seed overrides -n, -start, and -limit together\", 12, 2, 5, 7, false, false, 1, \"12: 144\", \"12: 144\"},\n+\t\t// Range-flag validation is skipped when seed > 0 (mirrors\n+\t\t// -version's ignore-invalid semantics).\n+\t\t{\"seed skips invalid -n 0\", 10, 0, 0, 0, false, false, 1, \"10: 55\", \"10: 55\"},\n+\t\t{\"seed skips invalid -start -1\", 10, -1, 5, 0, false, false, 1, \"10: 55\", \"10: 55\"},\n+\t\t{\"seed skips invalid -limit -1\", 10, 0, 5, -1, false, false, 1, \"10: 55\", \"10: 55\"},\n+\t\t// Sentinel: seed 0 behaves like unset — range flags rule.\n+\t\t{\"seed 0 is the unset sentinel\", 0, 0, 5, 0, false, false, 5, \"1: 1\", \"5: 5\"},\n+\t\t{\"seed 0 with -start keeps the range\", 0, 10, 2, 0, false, false, 2, \"10: 55\", \"11: 89\"},\n+\t\t// Output-mode combos: one JSON object / one pretty row.\n+\t\t{\"seed with -json\", 10, 0, defaultCount, 0, true, false, 1, wantJSONLine(10), wantJSONLine(10)},\n+\t\t{\"seed with -pretty sizes columns from the sole index\", 10, 0, defaultCount, 0, false, true, 1, prettyLine(10, 10, \"55\"), prettyLine(10, 10, \"55\")},\n+\t\t{\"seed with -json and -pretty is plain JSON\", 10, 0, defaultCount, 0, true, true, 1, wantJSONLine(10), wantJSONLine(10)},\n+\t}\n+\tfor _, tt := range tests {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tvar buf bytes.Buffer\n+\t\t\tif err := run(&buf, tt.start, tt.n, tt.limit, tt.seed, tt.asJSON, tt.pretty, false); err != nil {\n+\t\t\t\tt.Fatalf(\"run(seed=%d) returned error: %v\", tt.seed, err)\n+\t\t\t}\n+\t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n+\t\t\tif len(lines) != tt.wantLines {\n+\t\t\t\tt.Fatalf(\"run(seed=%d) printed %d lines, want %d\", tt.seed, len(lines), tt.wantLines)\n+\t\t\t}\n+\t\t\tif lines[0] != tt.wantFirst {\n+\t\t\t\tt.Errorf(\"first line = %q, want %q\", lines[0], tt.wantFirst)\n+\t\t\t}\n+\t\t\tif lines[len(lines)-1] != tt.wantLast {\n+\t\t\t\tt.Errorf(\"last line = %q, want %q\", lines[len(lines)-1], tt.wantLast)\n+\t\t\t}\n+\t\t})\n+\t}\n+}\n+\n+// TestRunRejectsInvalidSeed pins the -seed validation contract: a\n+// negative seed exits non-zero with the exact -start/-limit-style\n+// error message and writes no output first. It fires even when the\n+// range flags would otherwise error, because -seed is validated\n+// before them.\n+func TestRunRejectsInvalidSeed(t *testing.T) {\n+\tfor _, mode := range []struct {\n+\t\tname   string\n+\t\tasJSON bool\n+\t}{{\"text\", false}, {\"json\", true}} {\n+\t\tfor _, seed := range []int{-1, -5} {\n+\t\t\tvar buf bytes.Buffer\n+\t\t\terr := run(&buf, 0, 5, 0, seed, mode.asJSON, false, false)\n+\t\t\tif err == nil {\n+\t\t\t\tt.Fatalf(\"run(seed=%d, %s) succeeded, want error\", seed, mode.name)\n+\t\t\t}\n+\t\t\twant := fmt.Sprintf(\"invalid value %d for flag -seed: must be >= 0\", seed)\n+\t\t\tif err.Error() != want {\n+\t\t\t\tt.Errorf(\"run(seed=%d, %s) error = %q, want exactly %q\", seed, mode.name, err.Error(), want)\n+\t\t\t}\n+\t\t\tif buf.Len() != 0 {\n+\t\t\t\tt.Errorf(\"run(seed=%d, %s) wrote %q before failing, want no output\", seed, mode.name, buf.String())\n+\t\t\t}\n+\t\t}\n+\t}\n+}\ndiff --git a/main.go b/main.go\nindex 68ccf34..04affd2 100644\n--- a/main.go\n+++ b/main.go\n@@ -3,7 +3,9 @@\n // 100; the -n flag changes how many are printed, -start changes the\n // first index printed (it does not change what -n counts), -limit caps\n // the largest index printed (it does not change what -n counts either;\n-// 0, the default, means no limit), -json switches to JSON Lines\n+// 0, the default, means no limit), -seed prints only the Fibonacci\n+// number at a single index (0, the default, means unset), -json\n+// switches to JSON Lines\n // output, and -pretty aligns the text columns (it has no effect with\n // -json). The -version flag prints \"gofib <Version>\" and takes\n // precedence over every other flag.\n@@ -61,21 +63,37 @@ const defaultStart = 1\n // one JSON object {\"index\": <int>, \"fib\": \"<value>\"} (JSON Lines) and\n // pretty has no effect. With version set it prints only the single\n // line \"gofib <Version>\" and every other flag (including an invalid\n-// count, start, or limit) is ignored. Otherwise it returns an error\n-// when count < 1, start < 0, or limit < 0.\n-func run(w io.Writer, start, count, limit int, asJSON, pretty, version bool) error {\n+// count, start, limit, or seed) is ignored. A positive seed selects\n+// lookup mode: only the single index seed prints (in the active\n+// output mode, with -pretty sized from that sole index), it overrides\n+// -n, -start, and -limit, and the range-flag validation is skipped —\n+// like -version, an invalid range flag alongside a positive seed is\n+// ignored. A negative seed is rejected; seed 0 is the unset sentinel.\n+// Otherwise run returns an error when count < 1, start < 0, or\n+// limit < 0.\n+func run(w io.Writer, start, count, limit, seed int, asJSON, pretty, version bool) error {\n \tif version {\n \t\tfmt.Fprintf(w, \"gofib %s\\n\", Version)\n \t\treturn nil\n \t}\n-\tif count < 1 {\n-\t\treturn fmt.Errorf(\"invalid value %d for flag -n: must be >= 1\", count)\n+\tif seed < 0 {\n+\t\treturn fmt.Errorf(\"invalid value %d for flag -seed: must be >= 0\", seed)\n \t}\n-\tif start < 0 {\n-\t\treturn fmt.Errorf(\"invalid value %d for flag -start: must be >= 0\", start)\n-\t}\n-\tif limit < 0 {\n-\t\treturn fmt.Errorf(\"invalid value %d for flag -limit: must be >= 0\", limit)\n+\tif seed > 0 {\n+\t\t// Lookup mode: exactly one entry for index seed, regardless\n+\t\t// of the range flags (whose validation is skipped, mirroring\n+\t\t// -version's ignore-invalid semantics).\n+\t\tstart, count, limit = seed, 1, 0\n+\t} else {\n+\t\tif count < 1 {\n+\t\t\treturn fmt.Errorf(\"invalid value %d for flag -n: must be >= 1\", count)\n+\t\t}\n+\t\tif start < 0 {\n+\t\t\treturn fmt.Errorf(\"invalid value %d for flag -start: must be >= 0\", start)\n+\t\t}\n+\t\tif limit < 0 {\n+\t\t\treturn fmt.Errorf(\"invalid value %d for flag -limit: must be >= 0\", limit)\n+\t\t}\n \t}\n \tif start == 0 {\n \t\tstart = defaultStart\n@@ -114,11 +132,12 @@ func main() {\n \tn := flag.Int(\"n\", defaultCount, \"how many Fibonacci numbers to print (must be >= 1; default 100)\")\n \tstart := flag.Int(\"start\", 0, \"index of the first Fibonacci number to print (must be >= 0; 0 starts at 1 like the default)\")\n \tlimit := flag.Int(\"limit\", 0, \"largest index to print (must be >= 0; 0 means no limit)\")\n+\tseed := flag.Int(\"seed\", 0, \"print only the Fibonacci number at this index, overriding -n, -start, and -limit (must be >= 0; 0 means unset)\")\n \tasJSON := flag.Bool(\"json\", false, \"emit JSON Lines instead of text: one {\\\"index\\\": i, \\\"fib\\\": \\\"value\\\"} object per number\")\n \tpretty := flag.Bool(\"pretty\", false, \"align text output into two right-aligned columns sized to the largest index and value (no effect with -json)\")\n \tversion := flag.Bool(\"version\", false, \"print \\\"gofib <version>\\\" and exit; takes precedence over all other flags\")\n \tflag.Parse()\n-\tif err := run(os.Stdout, *start, *n, *limit, *asJSON, *pretty, *version); err != nil {\n+\tif err := run(os.Stdout, *start, *n, *limit, *seed, *asJSON, *pretty, *version); err != nil {\n \t\tfmt.Fprintln(os.Stderr, err)\n \t\tos.Exit(1)\n \t}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 165,
+          "deletions": 36
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-24T22:23:23.024964247Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
           "internal.retry_count.planner": 0,
           "internal.run_id": "01M0TXPX09279433MGWSWPVVP4",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "graph.cycle_counter_reset_key": "current_seed_id",
           "thread.start.current_node": "planner",
           "graph.preamble_budget_kb": "24",
@@ -818,6 +991,7 @@
             "chars": 3024,
             "preview": "Claimed. Brief distilled with one ambiguity annotated (spec silent on `-seed` + invalid range flags).\n\n**Seed `fabro-cfb6` — gofib: add `-seed` flag for single-index lookup.** Fresh claim; worktree "
           },
+          "internal.retry_count.tester": 0,
           "graph.max_node_visits": "40",
           "graph.rankdir": "LR",
           "thread.planner.current_node": "implementer",
@@ -828,13 +1002,15 @@
           "internal.retry_count.implementer": 0,
           "failure_class": "",
           "current_seed_brief": "Add a `-seed <int>` flag to gofib printing exactly one Fibonacci entry (index i) in the active output mode. Acceptance criteria: (1) `-seed i` prints one line — text `i: <value>`, `-json` one object `{\"index\":i,\"fib\":\"<string>\"}`, `-pretty` single-row; (2) precedence: `-version` wins over everything, positive `-seed` overrides `-n`/`-start`/`-limit` so only index i prints, and range-flag validation is skipped when `-seed > 0` (annotated choice: spec silent, mirrors -version's ignore-invalid semantics); (3) `-seed 0` is the unset sentinel — plain gofib output unchanged; (4) `-seed < 0` exits non-zero with a stderr error in existing flag-error style; (5) computation uses existing `Fib(n)` only, no inline recomputation; (6) `README.md` flag table gains the `-seed` row with a REAL captured example and output plus the precedence note; (7) table-driven tests in `/workspace/fabro/fib_test.go` cover single index, override of -n/-start/-limit, sentinel, -json/-pretty combos, negative rejection, -version precedence, and regression-pin existing behavior; (8) `just qualitygate` green.",
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
+          "command.output": "blob://sha256/0bb8fdd0899dec244b6543e56fcf325b817687d2a7f13596cf52c6c03ca50e3a",
           "implementation_summary": "main.go: added -seed flag; run() signature now (w, start, count, limit, seed, asJSON, pretty, version) with precedence version → negative-seed error → positive-seed lookup mode (start=seed,count=1,limit=0, range validation skipped) → existing range path; Fib(n) remains the only computation. fib_test.go: updated all run call sites, added table-driven TestRunSeed (single index, override of -n/-start/-limit incl. invalid values, sentinel 0, -json/-pretty combos) and TestRunRejectsInvalidSeed, extended TestRunVersion with seed rows. README.md: new -seed usage section with real captured output and a flag-table row documenting precedence and the 0 sentinel. Verification: all criteria PASS as itemized above; just qualitygate left to the tester (go build/vet/test/gofmt individually green).",
           "internal.work_dir": "/workspace/fabro",
-          "current_node": "implementer",
+          "current_node": "tester",
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "internal.seed_cycle_anchor": "fabro-cfb6",
           "last_stage": "implementer",
@@ -844,6 +1020,7 @@
             "chars": 3198,
             "preview": "Implementation complete. Files touched: `main.go` (new `-seed` flag, `run` signature gains `seed int`, precedence: version → negative-seed error → positive-seed lookup mode skipping range validati"
           },
+          "thread.implementer.current_node": "tester",
           "internal.retry_count.start": 0
         },
         "node_outcomes": {
@@ -943,11 +1120,26 @@
               "tool_time_ms": 14275,
               "active_time_ms": 131457
             }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/0bb8fdd0899dec244b6543e56fcf325b817687d2a7f13596cf52c6c03ca50e3a"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1319,
+              "active_time_ms": 1319
+            }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
           "start": 1,
+          "tester": 1,
           "planner": 1,
           "implementer": 1
         }
@@ -1749,6 +1941,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@1": {
+      "first_event_seq": 191,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-08-24T22:23:22.733685573Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 600000
+      },
+      "script_timing": {
+        "output": "blob://sha256/0bb8fdd0899dec244b6543e56fcf325b817687d2a7f13596cf52c6c03ca50e3a",
+        "exit_code": 0,
+        "duration_ms": 1319,
+        "termination": "exited",
+        "output_bytes": 288,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 288,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-08-24T22:23:21.396989218Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 1323,
+        "inference_time_ms": 0,
+        "tool_time_ms": 1319,
+        "active_time_ms": 1319
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
