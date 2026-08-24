@@ -501,7 +501,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-24T11:40:41.206004015Z",
-  "last_event_at": "2026-08-24T11:43:29.426206059Z",
+  "last_event_at": "2026-08-24T11:43:35.350417472Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -784,9 +784,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 184,
       "checkpoint": {
-        "timestamp": "2026-08-24T11:43:29.687083195Z",
+        "timestamp": "2026-08-24T11:43:34.328422904Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
@@ -796,6 +796,171 @@
         ],
         "node_retries": {},
         "context_values": {
+          "last_response": "Done. Summary of this pass:\n\n**Implemented seed fabro-e6df** — `README.md` at the repo root documenting the gofib CLI:\n\n- **Intro**: gofib is a Go CLI printing Fibonacci numbers, module `gofib` — ",
+          "graph.preamble_budget_kb": "12",
+          "internal.retry_count.tester": 0,
+          "internal.thread_id": "implementer",
+          "outcome": "succeeded",
+          "current_seed_id": "fabro-e6df",
+          "command.output": "blob://sha256/2cd3611bb70737871173d8b488691b6789239f2b714581832b5e4b335a2798ee",
+          "failure_signature": "",
+          "internal.fidelity": "compact",
+          "thread.start.current_node": "planner",
+          "current_seed_brief": "Create `/workspace/fabro/README.md` at the repo root documenting the gofib CLI (a Go CLI printing Fibonacci numbers). Acceptance criteria: - README.md exists at the repo root - Intro states what gofib is (Go CLI printing Fibonacci numbers, module `gofib`) - Install/build section referencing mise/just (`mise install`, `just bootstrap`; gate is `just qualitygate`) - Usage section with example invocations and their ACTUAL captured output — build the binary and run it to capture output; do NOT invent output - Flag reference covering all four flags: `-n <int>` count flag (default 100; must be >= 1 or non-zero exit with stderr error; combines with JSON mode), `-json` JSON mode (JSON Lines, one object per number `{\"index\":<int>,\"fib\":\"<string>\"}`; fib is a string by ADR-0001 since F(100) overflows int64; never a JSON array), `-pretty` (aligned column output in text mode; ANNOTATION: spec says only 'aligned column output' but `main.go` documents it has no effect with `-json` — document that interaction explicitly), `-version` (prints exactly `gofib 1.3.0` from the `Version` const and takes precedence over every other flag) - Use CONTEXT.md vocabulary verbatim: text mode (default `<index>: <value>` lines), JSON mode, count flag - `just qualitygate` green after the change",
+          "response.planner": "Claimed `fabro-e6df` — README.md does not exist yet, so this is a fresh implementation seed (not verification-only). No contradictions found in the spec; one annotation made: the seed describes `-pretty` only as \"aligned column output\" while `main.go` documents it has no effect with `-json`, so the brief pins that reading. No painpoints this cycle.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-e6df\",\n    \"current_seed_title\": \"gofib: add README with usage and flag reference\",\n    \"current_seed_brief\": \"Create `/workspace/fabro/README.md` at the repo root documenting the gofib CLI (a Go CLI printing Fibonacci numbers). Acceptance criteria: - README.md exists at the repo root - Intro states what gofib is (Go CLI printing Fibonacci numbers, module `gofib`) - Install/build section referencing mise/just (`mise install`, `just bootstrap`; gate is `just qualitygate`) - Usage section with example invocations and their ACTUAL captured output — build the binary and run it to capture output; do NOT invent output - Flag reference covering all four flags: `-n <int>` count flag (default 100; must be >= 1 or non-zero exit with stderr error; combines with JSON mode), `-json` JSON mode (JSON Lines, one object per number `{\\\"index\\\":<int>,\\\"fib\\\":\\\"<string>\\\"}`; fib is a string by ADR-0001 since F(100) overflows int64; never a JSON array), `-pretty` (aligned column output in text mode; ANNOTATION: spec says only 'aligned column output' but `main.go` documents it has no effect with `-json` — document that interaction explicitly), `-version` (prints exactly `gofib 1.3.0` from the `Version` const and takes precedence over every other flag) - Use CONTEXT.md vocabulary verbatim: text mode (default `<index>: <value>` lines), JSON mode, count flag - `just qualitygate` green after the change\"\n  }\n}",
+          "implementation_summary": "Created `/workspace/fabro/README.md` documenting the gofib CLI: intro (Go CLI printing Fibonacci numbers, module `gofib`), install/build via `mise install`/`just bootstrap` with `just qualitygate` as the gate, usage examples, and a four-flag reference (`-n` count flag default 100 with >= 1 validation, `-json` JSON Lines with string fib per ADR-0001, `-pretty` aligned columns with the explicit no-effect-with-`-json` interaction, `-version` printing exactly `gofib 1.3.0` with precedence over all other flags). All example output was captured from a real build in `/tmp/gofib-readme` (outside the worktree) and mechanically verified 10/10 against the binary; temp dir removed, `go test ./...` green, worktree clean except README.md.",
+          "thread.implementer.current_node": "tester",
+          "internal.retry_count.planner": 0,
+          "last_stage": "implementer",
+          "internal.retry_count.implementer": 0,
+          "failure_class": "",
+          "preferred_label": "Implemented",
+          "current_seed_title": "gofib: add README with usage and flag reference",
+          "internal.run_id": "01M0SS23MJM8972CBJD0SP7T4Q",
+          "graph.max_node_visits": "40",
+          "internal.work_dir": "/workspace/fabro",
+          "response.implementer": "Done. Summary of this pass:\n\n**Implemented seed fabro-e6df** — `README.md` at the repo root documenting the gofib CLI:\n\n- **Intro**: gofib is a Go CLI printing Fibonacci numbers, module `gofib` — CONTEXT.md vocabulary used verbatim (text mode, JSON mode, count flag).\n- **Install/build**: `mise install`, `just bootstrap`, gate `just qualitygate`.\n- **Usage**: all example blocks are **captured, not invented** — I built the binary into `/tmp/gofib-readme` (outside the worktree, per the recorded artifact-hygiene failure mx-a58327) and mechanically verified every block against the live binary afterwards: 10/10 exact matches (text mode, JSON mode incl. the F(100) string, `-pretty` alignment, `-version`, `-n 0` stderr + exit 1, version precedence over `-n 0 -json`, `-json -pretty` no-effect).\n- **Flag reference**: all four flags with the required annotations — `-n` default 100 / `>= 1` / combines with JSON mode; `-json` JSON Lines, `fib` string per ADR-0001, never an array; `-pretty` aligned columns **with explicit \"no effect with `-json`\" interaction documented**; `-version` prints exactly `gofib 1.3.0` from the `Version` const and takes precedence over every other flag.\n\n**Hygiene**: temp build dir removed; worktree shows only `?? README.md` (no binaries — and `gofib` was already gitignored). Smoke check `go test ./...` green; full `just qualitygate` left to the tester step as required.\n\nNo new durable insight surfaced (the build-outside-worktree convention was already recorded and merely followed), so no mulch record was added.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Created `/workspace/fabro/README.md` documenting the gofib CLI: intro (Go CLI printing Fibonacci numbers, module `gofib`), install/build via `mise install`/`just bootstrap` with `just qualitygate` as the gate, usage examples, and a four-flag reference (`-n` count flag default 100 with >= 1 validation, `-json` JSON Lines with string fib per ADR-0001, `-pretty` aligned columns with the explicit no-effect-with-`-json` interaction, `-version` printing exactly `gofib 1.3.0` with precedence over all other flags). All example output was captured from a real build in `/tmp/gofib-readme` (outside the worktree) and mechanically verified 10/10 against the binary; temp dir removed, `go test ./...` green, worktree clean except README.md.\"\n  }\n}",
+          "current_node": "tester",
+          "graph.rankdir": "LR",
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "internal.node_visit_count": 1,
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.start": 0
+        },
+        "node_outcomes": {
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/2cd3611bb70737871173d8b488691b6789239f2b714581832b5e4b335a2798ee"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 2136,
+              "active_time_ms": 2136
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Create `/workspace/fabro/README.md` at the repo root documenting the gofib CLI (a Go CLI printing Fibonacci numbers). Acceptance criteria: - README.md exists at the repo root - Intro states what gofib is (Go CLI printing Fibonacci numbers, module `gofib`) - Install/build section referencing mise/just (`mise install`, `just bootstrap`; gate is `just qualitygate`) - Usage section with example invocations and their ACTUAL captured output — build the binary and run it to capture output; do NOT invent output - Flag reference covering all four flags: `-n <int>` count flag (default 100; must be >= 1 or non-zero exit with stderr error; combines with JSON mode), `-json` JSON mode (JSON Lines, one object per number `{\"index\":<int>,\"fib\":\"<string>\"}`; fib is a string by ADR-0001 since F(100) overflows int64; never a JSON array), `-pretty` (aligned column output in text mode; ANNOTATION: spec says only 'aligned column output' but `main.go` documents it has no effect with `-json` — document that interaction explicitly), `-version` (prints exactly `gofib 1.3.0` from the `Version` const and takes precedence over every other flag) - Use CONTEXT.md vocabulary verbatim: text mode (default `<index>: <value>` lines), JSON mode, count flag - `just qualitygate` green after the change",
+              "current_seed_id": "fabro-e6df",
+              "response.planner": "Claimed `fabro-e6df` — README.md does not exist yet, so this is a fresh implementation seed (not verification-only). No contradictions found in the spec; one annotation made: the seed describes `-pretty` only as \"aligned column output\" while `main.go` documents it has no effect with `-json`, so the brief pins that reading. No painpoints this cycle.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-e6df\",\n    \"current_seed_title\": \"gofib: add README with usage and flag reference\",\n    \"current_seed_brief\": \"Create `/workspace/fabro/README.md` at the repo root documenting the gofib CLI (a Go CLI printing Fibonacci numbers). Acceptance criteria: - README.md exists at the repo root - Intro states what gofib is (Go CLI printing Fibonacci numbers, module `gofib`) - Install/build section referencing mise/just (`mise install`, `just bootstrap`; gate is `just qualitygate`) - Usage section with example invocations and their ACTUAL captured output — build the binary and run it to capture output; do NOT invent output - Flag reference covering all four flags: `-n <int>` count flag (default 100; must be >= 1 or non-zero exit with stderr error; combines with JSON mode), `-json` JSON mode (JSON Lines, one object per number `{\\\"index\\\":<int>,\\\"fib\\\":\\\"<string>\\\"}`; fib is a string by ADR-0001 since F(100) overflows int64; never a JSON array), `-pretty` (aligned column output in text mode; ANNOTATION: spec says only 'aligned column output' but `main.go` documents it has no effect with `-json` — document that interaction explicitly), `-version` (prints exactly `gofib 1.3.0` from the `Version` const and takes precedence over every other flag) - Use CONTEXT.md vocabulary verbatim: text mode (default `<index>: <value>` lines), JSON mode, count flag - `just qualitygate` green after the change\"\n  }\n}",
+              "current_seed_title": "gofib: add README with usage and flag reference",
+              "last_stage": "planner",
+              "last_response": "Claimed `fabro-e6df` — README.md does not exist yet, so this is a fresh implementation seed (not verification-only). No contradictions found in the spec; one annotation made: the seed describes `-pr"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 9702,
+                    "output_tokens": 992,
+                    "reasoning_tokens": 892,
+                    "cache_read_tokens": 47616,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 34244
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 42810,
+              "tool_time_ms": 1690,
+              "active_time_ms": 44500
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "Done. Summary of this pass:\n\n**Implemented seed fabro-e6df** — `README.md` at the repo root documenting the gofib CLI:\n\n- **Intro**: gofib is a Go CLI printing Fibonacci numbers, module `gofib` — ",
+              "last_stage": "implementer",
+              "response.implementer": "Done. Summary of this pass:\n\n**Implemented seed fabro-e6df** — `README.md` at the repo root documenting the gofib CLI:\n\n- **Intro**: gofib is a Go CLI printing Fibonacci numbers, module `gofib` — CONTEXT.md vocabulary used verbatim (text mode, JSON mode, count flag).\n- **Install/build**: `mise install`, `just bootstrap`, gate `just qualitygate`.\n- **Usage**: all example blocks are **captured, not invented** — I built the binary into `/tmp/gofib-readme` (outside the worktree, per the recorded artifact-hygiene failure mx-a58327) and mechanically verified every block against the live binary afterwards: 10/10 exact matches (text mode, JSON mode incl. the F(100) string, `-pretty` alignment, `-version`, `-n 0` stderr + exit 1, version precedence over `-n 0 -json`, `-json -pretty` no-effect).\n- **Flag reference**: all four flags with the required annotations — `-n` default 100 / `>= 1` / combines with JSON mode; `-json` JSON Lines, `fib` string per ADR-0001, never an array; `-pretty` aligned columns **with explicit \"no effect with `-json`\" interaction documented**; `-version` prints exactly `gofib 1.3.0` from the `Version` const and takes precedence over every other flag.\n\n**Hygiene**: temp build dir removed; worktree shows only `?? README.md` (no binaries — and `gofib` was already gitignored). Smoke check `go test ./...` green; full `just qualitygate` left to the tester step as required.\n\nNo new durable insight surfaced (the build-outside-worktree convention was already recorded and merely followed), so no mulch record was added.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Created `/workspace/fabro/README.md` documenting the gofib CLI: intro (Go CLI printing Fibonacci numbers, module `gofib`), install/build via `mise install`/`just bootstrap` with `just qualitygate` as the gate, usage examples, and a four-flag reference (`-n` count flag default 100 with >= 1 validation, `-json` JSON Lines with string fib per ADR-0001, `-pretty` aligned columns with the explicit no-effect-with-`-json` interaction, `-version` printing exactly `gofib 1.3.0` with precedence over all other flags). All example output was captured from a real build in `/tmp/gofib-readme` (outside the worktree) and mechanically verified 10/10 against the binary; temp dir removed, `go test ./...` green, worktree clean except README.md.\"\n  }\n}",
+              "implementation_summary": "Created `/workspace/fabro/README.md` documenting the gofib CLI: intro (Go CLI printing Fibonacci numbers, module `gofib`), install/build via `mise install`/`just bootstrap` with `just qualitygate` as the gate, usage examples, and a four-flag reference (`-n` count flag default 100 with >= 1 validation, `-json` JSON Lines with string fib per ADR-0001, `-pretty` aligned columns with the explicit no-effect-with-`-json` interaction, `-version` printing exactly `gofib 1.3.0` with precedence over all other flags). All example output was captured from a real build in `/tmp/gofib-readme` (outside the worktree) and mechanically verified 10/10 against the binary; temp dir removed, `go test ./...` green, worktree clean except README.md."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 17246,
+                    "output_tokens": 2855,
+                    "reasoning_tokens": 2424,
+                    "cache_read_tokens": 107072,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 75198
+            },
+            "files_touched": [
+              "/workspace/fabro/README.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 83450,
+              "tool_time_ms": 10403,
+              "active_time_ms": 93853
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "b112cbfc988fb906bccb00ec1854ede5dac14928",
+        "node_visits": {
+          "implementer": 1,
+          "planner": 1,
+          "tester": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/tester@1.json b/.fabro/journal/tester@1.json\nnew file mode 100644\nindex 0000000..7326a8e\n--- /dev/null\n+++ b/.fabro/journal/tester@1.json\n@@ -0,0 +1,9 @@\n+{\n+  \"$schema\": \"fabro-journal-v1\",\n+  \"run_id\": \"01M0SS23MJM8972CBJD0SP7T4Q\",\n+  \"node\": \"tester\",\n+  \"visit\": 1,\n+  \"status\": \"succeeded\",\n+  \"ts\": \"2026-08-24T11:43:29Z\",\n+  \"data\": {}\n+}\n\\ No newline at end of file\n",
+        "summary": {
+          "files_changed": 6,
+          "additions": 148,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-24T11:43:35.612662792Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "thread.tester.current_node": "evidence",
           "response.implementer": "Done. Summary of this pass:\n\n**Implemented seed fabro-e6df** — `README.md` at the repo root documenting the gofib CLI:\n\n- **Intro**: gofib is a Go CLI printing Fibonacci numbers, module `gofib` — CONTEXT.md vocabulary used verbatim (text mode, JSON mode, count flag).\n- **Install/build**: `mise install`, `just bootstrap`, gate `just qualitygate`.\n- **Usage**: all example blocks are **captured, not invented** — I built the binary into `/tmp/gofib-readme` (outside the worktree, per the recorded artifact-hygiene failure mx-a58327) and mechanically verified every block against the live binary afterwards: 10/10 exact matches (text mode, JSON mode incl. the F(100) string, `-pretty` alignment, `-version`, `-n 0` stderr + exit 1, version precedence over `-n 0 -json`, `-json -pretty` no-effect).\n- **Flag reference**: all four flags with the required annotations — `-n` default 100 / `>= 1` / combines with JSON mode; `-json` JSON Lines, `fib` string per ADR-0001, never an array; `-pretty` aligned columns **with explicit \"no effect with `-json`\" interaction documented**; `-version` prints exactly `gofib 1.3.0` from the `Version` const and takes precedence over every other flag.\n\n**Hygiene**: temp build dir removed; worktree shows only `?? README.md` (no binaries — and `gofib` was already gitignored). Smoke check `go test ./...` green; full `just qualitygate` left to the tester step as required.\n\nNo new durable insight surfaced (the build-outside-worktree convention was already recorded and merely followed), so no mulch record was added.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Created `/workspace/fabro/README.md` documenting the gofib CLI: intro (Go CLI printing Fibonacci numbers, module `gofib`), install/build via `mise install`/`just bootstrap` with `just qualitygate` as the gate, usage examples, and a four-flag reference (`-n` count flag default 100 with >= 1 validation, `-json` JSON Lines with string fib per ADR-0001, `-pretty` aligned columns with the explicit no-effect-with-`-json` interaction, `-version` printing exactly `gofib 1.3.0` with precedence over all other flags). All example output was captured from a real build in `/tmp/gofib-readme` (outside the worktree) and mechanically verified 10/10 against the binary; temp dir removed, `go test ./...` green, worktree clean except README.md.\"\n  }\n}",
           "internal.run_id": "01M0SS23MJM8972CBJD0SP7T4Q",
           "thread.start.current_node": "planner",
@@ -806,12 +971,13 @@
           "current_seed_brief": "Create `/workspace/fabro/README.md` at the repo root documenting the gofib CLI (a Go CLI printing Fibonacci numbers). Acceptance criteria: - README.md exists at the repo root - Intro states what gofib is (Go CLI printing Fibonacci numbers, module `gofib`) - Install/build section referencing mise/just (`mise install`, `just bootstrap`; gate is `just qualitygate`) - Usage section with example invocations and their ACTUAL captured output — build the binary and run it to capture output; do NOT invent output - Flag reference covering all four flags: `-n <int>` count flag (default 100; must be >= 1 or non-zero exit with stderr error; combines with JSON mode), `-json` JSON mode (JSON Lines, one object per number `{\"index\":<int>,\"fib\":\"<string>\"}`; fib is a string by ADR-0001 since F(100) overflows int64; never a JSON array), `-pretty` (aligned column output in text mode; ANNOTATION: spec says only 'aligned column output' but `main.go` documents it has no effect with `-json` — document that interaction explicitly), `-version` (prints exactly `gofib 1.3.0` from the `Version` const and takes precedence over every other flag) - Use CONTEXT.md vocabulary verbatim: text mode (default `<index>: <value>` lines), JSON mode, count flag - `just qualitygate` green after the change",
           "last_stage": "implementer",
           "preferred_label": "Implemented",
-          "current_node": "tester",
-          "internal.thread_id": "implementer",
+          "current_node": "evidence",
+          "internal.thread_id": "tester",
           "thread.planner.current_node": "implementer",
           "implementation_summary": "Created `/workspace/fabro/README.md` documenting the gofib CLI: intro (Go CLI printing Fibonacci numbers, module `gofib`), install/build via `mise install`/`just bootstrap` with `just qualitygate` as the gate, usage examples, and a four-flag reference (`-n` count flag default 100 with >= 1 validation, `-json` JSON Lines with string fib per ADR-0001, `-pretty` aligned columns with the explicit no-effect-with-`-json` interaction, `-version` printing exactly `gofib 1.3.0` with precedence over all other flags). All example output was captured from a real build in `/tmp/gofib-readme` (outside the worktree) and mechanically verified 10/10 against the binary; temp dir removed, `go test ./...` green, worktree clean except README.md.",
+          "internal.retry_count.evidence": 0,
           "graph.preamble_budget_kb": "12",
-          "command.output": "blob://sha256/2cd3611bb70737871173d8b488691b6789239f2b714581832b5e4b335a2798ee",
+          "command.output": "blob://sha256/1e3f540476ba2ac94e18785fa6514c2adc6012e2835bf1098507889d8c1b9ff2",
           "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
           "internal.work_dir": "/workspace/fabro",
           "internal.retry_count.start": 0,
@@ -882,6 +1048,20 @@
               "active_time_ms": 2136
             }
           },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/1e3f540476ba2ac94e18785fa6514c2adc6012e2835bf1098507889d8c1b9ff2"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 331,
+              "active_time_ms": 331
+            }
+          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -928,11 +1108,12 @@
             "usage": null
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
           "planner": 1,
           "start": 1,
           "tester": 1,
+          "evidence": 1,
           "implementer": 1
         }
       },
@@ -1776,6 +1957,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 2136,
         "active_time_ms": 2136
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 187,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-08-24T11:43:35.350417472Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/1e3f540476ba2ac94e18785fa6514c2adc6012e2835bf1098507889d8c1b9ff2",
+        "exit_code": 0,
+        "duration_ms": 331,
+        "termination": "exited",
+        "output_bytes": 4607,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 4607,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-08-24T11:43:35.001312576Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 337,
+        "inference_time_ms": 0,
+        "tool_time_ms": 331,
+        "active_time_ms": 331
       },
       "usage": {
         "input_tokens": 0,
