@@ -624,12 +624,7 @@ async fn create_run_from_intent(
         Ok(id) => id,
         Err(error) => return run_intent_admission_error(error.into()),
     };
-    let blobs = match state.store_ref().blobs().await {
-        Ok(blobs) => blobs,
-        Err(source) => {
-            return run_intent_admission_error(RunIntentAdmissionError::StoreOpen { source });
-        }
-    };
+    let blobs = state.store_ref().blobs();
     let version_store = fabro_workflow_version::WorkflowVersionStore::new(blobs);
     let closure = match version_store.get_closure(&intent.workflow_version_id).await {
         Ok(Some(closure)) => closure,
@@ -964,8 +959,7 @@ fn intent_error(status: StatusCode, detail: impl Into<String>, code: &'static st
 
 fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
     match &error {
-        RunIntentAdmissionError::StoreOpen { .. }
-        | RunIntentAdmissionError::VersionStore { .. }
+        RunIntentAdmissionError::VersionStore { .. }
         | RunIntentAdmissionError::VariableSnapshot { .. }
         | RunIntentAdmissionError::Environment(EnvironmentSelectionError::CredentialStore {
             ..
@@ -987,8 +981,7 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
     }
 
     match error {
-        RunIntentAdmissionError::StoreOpen { .. }
-        | RunIntentAdmissionError::VersionStore { .. } => intent_error(
+        RunIntentAdmissionError::VersionStore { .. } => intent_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "workflow version store operation failed",
             "workflow_version_store_error",

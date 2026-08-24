@@ -30,7 +30,10 @@ pub use fabro_types::{
     BlobHash, EventEnvelope, PendingInterviewRecord, Run, RunProjection, StageId, StageProjection,
 };
 pub use keyed_mutex::{KeyedMutex, KeyedMutexGuard};
-pub use legacy_blob_import::{LegacyBlobImportError, LegacyBlobImportReport};
+pub use legacy_blob_import::{
+    LegacyBlobImportError, LegacyBlobImportReport, LegacyBlobInventory, LegacyBlobInventoryError,
+    LegacyBlobVerificationError, LegacyBlobVerificationReport,
+};
 pub use run_sessions::{
     ProjectedRunSession, project_run_session, project_run_session_with_context,
     project_run_sessions,

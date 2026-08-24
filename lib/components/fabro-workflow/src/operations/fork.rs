@@ -294,7 +294,7 @@ mod tests {
     use super::*;
 
     fn test_store() -> Database {
-        Database::new(
+        fabro_store::test_support::test_database(
             Arc::new(InMemory::new()),
             "",
             Duration::from_millis(1),

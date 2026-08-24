@@ -773,12 +773,16 @@ where
     } else {
         None
     };
-    let store = Arc::new(fabro_store::Database::new(
+    let store = migrations::activate_blob_storage(
+        &database,
+        &sqlite_path,
         object_store,
         slatedb_prefix,
         flush_interval,
         cache_path,
-    ));
+    )
+    .await
+    .context("activating SQLite blob storage")?;
     let auth_code_store = store.auth_codes().await?;
     // Refresh tokens now live in SQLite. Nothing reads the old records and no
     // reaper collects them any more, so clear them out once rather than

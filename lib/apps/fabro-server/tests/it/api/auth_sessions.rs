@@ -9,8 +9,8 @@ use fabro_server::jwt_auth::resolve_auth_mode_with_lookup;
 use fabro_server::server::{AppState, RouterOptions, build_router_with_options};
 use fabro_server::test_support::{TEST_SESSION_SECRET, TestAppStateBuilder};
 use fabro_server::web_auth::{SESSION_COOKIE_NAME, SessionCookie};
+use fabro_store::ArtifactStore;
 use fabro_store::auth_session_store::{AuthSessionRecord, InitialRefreshToken};
-use fabro_store::{ArtifactStore, Database};
 use hkdf::Hkdf;
 use object_store::memory::InMemory;
 use sha2::Sha256;
@@ -22,7 +22,7 @@ use crate::helpers::{response_json, response_status, settings_from_toml};
 fn test_app(source: &str) -> (axum::Router, Arc<AppState>) {
     let settings = settings_from_toml(source);
     let object_store: Arc<dyn object_store::ObjectStore> = Arc::new(InMemory::new());
-    let store = Arc::new(Database::new(
+    let store = Arc::new(fabro_store::test_support::test_database(
         Arc::clone(&object_store),
         "",
         Duration::from_millis(1),

@@ -39,7 +39,7 @@ fn files_url_with_scope(run_id: &str, scope: &str) -> String {
 
 fn store_bundle() -> (Arc<Database>, ArtifactStore) {
     let object_store: Arc<dyn object_store::ObjectStore> = Arc::new(MemoryObjectStore::new());
-    let store = Arc::new(Database::new(
+    let store = Arc::new(fabro_store::test_support::test_database(
         Arc::clone(&object_store),
         "",
         Duration::from_millis(1),

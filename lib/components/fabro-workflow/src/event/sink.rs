@@ -293,7 +293,7 @@ mod tests {
 
     #[tokio::test]
     async fn append_event_writes_store_event_shape() {
-        let store = fabro_store::Database::new(
+        let store = fabro_store::test_support::test_database(
             std::sync::Arc::new(object_store::memory::InMemory::new()),
             "",
             std::time::Duration::from_millis(1),

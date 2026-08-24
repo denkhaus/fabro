@@ -195,7 +195,7 @@ fn test_lifecycle(setup_commands: Vec<&str>) -> LifecycleOptions {
 }
 
 async fn test_run_store(run_id: &RunId) -> fabro_store::RunDatabase {
-    let store: Arc<Database> = Arc::new(Database::new(
+    let store: Arc<Database> = Arc::new(fabro_store::test_support::test_database(
         Arc::new(InMemory::new()),
         "",
         Duration::from_millis(1),

@@ -14,7 +14,7 @@ use crate::helpers::{MINIMAL_DOT, api, minimal_manifest_json, response_json, tes
 
 fn app_with_store(object_store: Arc<dyn ObjectStore>) -> axum::Router {
     let settings = test_settings();
-    let store = Arc::new(fabro_store::Database::new(
+    let store = Arc::new(fabro_store::test_support::test_database(
         Arc::clone(&object_store),
         "event-race",
         Duration::from_millis(1),

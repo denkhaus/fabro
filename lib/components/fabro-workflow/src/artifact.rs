@@ -987,7 +987,6 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use fabro_store::Database;
     use object_store::memory::InMemory;
     use ulid::Ulid;
 
@@ -1001,7 +1000,12 @@ mod tests {
 
     async fn make_run_store(label: &str) -> fabro_store::RunDatabase {
         let object_store = Arc::new(InMemory::new());
-        let store = Database::new(object_store, "runs/", Duration::from_millis(1), None);
+        let store = fabro_store::test_support::test_database(
+            object_store,
+            "runs/",
+            Duration::from_millis(1),
+            None,
+        );
         store.create_run(&test_run_id(label)).await.unwrap()
     }
 
