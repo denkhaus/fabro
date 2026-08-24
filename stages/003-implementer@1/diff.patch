@@ -1,0 +1,298 @@
+diff --git a/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl b/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl
+index 926ae76..75d3a8e 100644
+--- a/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl
++++ b/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M0TKB7H7DCWCR8TZY6SZPXD2","node":"start","visit":1,"status":"succeeded","ts":"2026-08-24T19:18:32Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M0TKB7H7DCWCR8TZY6SZPXD2","node":"planner","visit":1,"status":"succeeded","ts":"2026-08-24T19:19:22Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M0TKB7H7DCWCR8TZY6SZPXD2","node":"implementer","visit":1,"status":"succeeded","ts":"2026-08-24T19:21:50Z","data":{}}
+diff --git a/README.md b/README.md
+index 2be067d..a26b9fd 100644
+--- a/README.md
++++ b/README.md
+@@ -149,6 +149,7 @@ $ echo $?
+ | `-n <int>` | Count flag: how many numbers to print. Default `100`; must be `>= 1`, otherwise gofib exits non-zero with an error on stderr. Combines with JSON mode. |
+ | `-start <int>` | Start flag: index of the first number printed. Default `0`, which behaves like `1` (gofib's indices are 1-based), so unset output is unchanged — plain `gofib` still starts `1: 1` and ends `100: 354224848179261915075`. `-start s -n k` prints exactly `k` lines with indices `s..s+k-1`: `-start` never changes what `-n` counts. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr. Combines with `-json` (the `index` field carries the actual index) and `-pretty` (columns sized to the largest index and value actually printed). |
+ | `-limit <int>` | Cap flag: the largest index gofib will print, independent of `-start` and `-n`. Default `0`, which means **no limit** (the sentinel mirrors `-start`'s `0`-default). The output is the intersection of the three range flags — `start <= index <= min(start+n-1, limit)`, at most `-n` lines — so e.g. `gofib -n 100000 -limit 5` prints exactly 5 lines, instantly. `-limit < start` (both positive) is **not an error**: gofib prints nothing and exits `0`. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr (`invalid value -1 for flag -limit: must be >= 0`). Combines with `-json` (one object per surviving index) and `-pretty` (columns sized to the capped range, not `start+n-1`). |
++| `-seed <int>` | Single-index lookup: print only the Fibonacci number at this index, one line, in the active output mode. Default `0` means unset (the sentinel mirrors `-start`'s `0`-default), so plain `gofib` output is unchanged. A positive `-seed` **overrides `-n`, `-start`, and `-limit` for output** (their validation still applies) — e.g. `gofib -seed 10 -n 5 -start 2 -limit 3` prints exactly `10: 55` and nothing else. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr (`invalid value -1 for flag -seed: must be >= 0`). Combines with `-json` (`gofib -seed 7 -json` prints `{"index":7,"fib":"13"}`) and `-pretty` (columns sized to the single row). |
+ | `-json` | JSON mode: emit JSON Lines instead of text — one `{"index":<int>,"fib":"<string>"}` object per number. `fib` is a string by decision (ADR-0001), since F(100) overflows int64. Never a JSON array. |
+ | `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. **No effect with `-json`** — JSON Lines have no columns to align. |
+ | `-version` | Prints exactly `gofib 1.3.0` (from the `Version` const in `main.go`) and takes precedence over every other flag — even an otherwise-invalid combination like `-version -n 0 -json` prints the version and exits `0`. |
+diff --git a/fib_test.go b/fib_test.go
+index e9d9586..d54dcaa 100644
+--- a/fib_test.go
++++ b/fib_test.go
+@@ -54,7 +54,7 @@ func TestRun(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, 0, tt.n, 0, false, false, false); err != nil {
++			if err := run(&buf, 0, tt.n, 0, 0, false, false, false); err != nil {
+ 				t.Fatalf("run(%d) returned error: %v", tt.n, err)
+ 			}
+ 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -95,7 +95,7 @@ func TestRunStart(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, tt.start, tt.n, 0, false, false, false); err != nil {
++			if err := run(&buf, tt.start, tt.n, 0, 0, false, false, false); err != nil {
+ 				t.Fatalf("run(%d, %d) returned error: %v", tt.start, tt.n, err)
+ 			}
+ 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -136,7 +136,7 @@ func TestRunJSON(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, 0, tt.n, 0, true, false, false); err != nil {
++			if err := run(&buf, 0, tt.n, 0, 0, true, false, false); err != nil {
+ 				t.Fatalf("run(%d, json) returned error: %v", tt.n, err)
+ 			}
+ 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -169,7 +169,7 @@ func TestRunJSON(t *testing.T) {
+ func TestRunStartJSON(t *testing.T) {
+ 	const start, n = 10, 5
+ 	var buf bytes.Buffer
+-	if err := run(&buf, start, n, 0, true, false, false); err != nil {
++	if err := run(&buf, start, n, 0, 0, true, false, false); err != nil {
+ 		t.Fatalf("run(%d, %d, json) returned error: %v", start, n, err)
+ 	}
+ 	out := buf.String()
+@@ -219,7 +219,7 @@ func TestRunPretty(t *testing.T) {
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, 0, tt.n, 0, false, true, false); err != nil {
++			if err := run(&buf, 0, tt.n, 0, 0, false, true, false); err != nil {
+ 				t.Fatalf("run(%d, pretty) returned error: %v", tt.n, err)
+ 			}
+ 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -239,7 +239,7 @@ func TestRunPretty(t *testing.T) {
+ 	// index right-aligned to len("100"), value to len(Fib(100)).
+ 	t.Run("pretty default prints 100 aligned numbers", func(t *testing.T) {
+ 		var buf bytes.Buffer
+-		if err := run(&buf, 0, defaultCount, 0, false, true, false); err != nil {
++		if err := run(&buf, 0, defaultCount, 0, 0, false, true, false); err != nil {
+ 			t.Fatalf("run(default, pretty) returned error: %v", err)
+ 		}
+ 		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -261,7 +261,7 @@ func TestRunStartPretty(t *testing.T) {
+ 	fibs := map[int]string{8: "21", 9: "34", 10: "55", 11: "89", 12: "144"}
+ 	const start, n = 8, 5
+ 	var buf bytes.Buffer
+-	if err := run(&buf, start, n, 0, false, true, false); err != nil {
++	if err := run(&buf, start, n, 0, 0, false, true, false); err != nil {
+ 		t.Fatalf("run(%d, %d, pretty) returned error: %v", start, n, err)
+ 	}
+ 	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -282,10 +282,10 @@ func TestRunPrettyJSON(t *testing.T) {
+ 	// -pretty only affects text mode: with -json the output must be
+ 	// identical, line for line.
+ 	var jsonOnly, prettyJSON bytes.Buffer
+-	if err := run(&jsonOnly, 0, 3, 0, true, false, false); err != nil {
++	if err := run(&jsonOnly, 0, 3, 0, 0, true, false, false); err != nil {
+ 		t.Fatalf("run(3, json) returned error: %v", err)
+ 	}
+-	if err := run(&prettyJSON, 0, 3, 0, true, true, false); err != nil {
++	if err := run(&prettyJSON, 0, 3, 0, 0, true, true, false); err != nil {
+ 		t.Fatalf("run(3, json, pretty) returned error: %v", err)
+ 	}
+ 	if prettyJSON.String() != jsonOnly.String() {
+@@ -306,7 +306,7 @@ func TestRunRejectsInvalidCount(t *testing.T) {
+ 	}{{"text", false}, {"json", true}} {
+ 		for _, n := range []int{0, -5} {
+ 			var buf bytes.Buffer
+-			err := run(&buf, 0, n, 0, mode.asJSON, false, false)
++			err := run(&buf, 0, n, 0, 0, mode.asJSON, false, false)
+ 			if err == nil {
+ 				t.Fatalf("run(%d, %s) succeeded, want error", n, mode.name)
+ 			}
+@@ -330,7 +330,7 @@ func TestRunRejectsInvalidStart(t *testing.T) {
+ 	}{{"text", false}, {"json", true}} {
+ 		for _, start := range []int{-1, -5} {
+ 			var buf bytes.Buffer
+-			err := run(&buf, start, 5, 0, mode.asJSON, false, false)
++			err := run(&buf, start, 5, 0, 0, mode.asJSON, false, false)
+ 			if err == nil {
+ 				t.Fatalf("run(%d, 5, %s) succeeded, want error", start, mode.name)
+ 			}
+@@ -371,7 +371,7 @@ func TestRunVersion(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, tt.start, tt.count, tt.limit, tt.asJSON, tt.pretty, true); err != nil {
++			if err := run(&buf, tt.start, tt.count, tt.limit, 0, tt.asJSON, tt.pretty, true); err != nil {
+ 				t.Fatalf("run(version) returned error: %v", err)
+ 			}
+ 			if want := "gofib " + Version + "\n"; buf.String() != want {
+@@ -415,7 +415,7 @@ func TestRunLimit(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, tt.start, tt.n, tt.limit, tt.asJSON, false, false); err != nil {
++			if err := run(&buf, tt.start, tt.n, tt.limit, 0, tt.asJSON, false, false); err != nil {
+ 				t.Fatalf("run(%d, %d, %d) returned error: %v", tt.start, tt.n, tt.limit, err)
+ 			}
+ 			if tt.wantLines == 0 {
+@@ -445,7 +445,7 @@ func TestRunLimit(t *testing.T) {
+ 	t.Run("limit with -pretty sizes columns from the capped last index", func(t *testing.T) {
+ 		const start, n, limit = 8, 5, 10
+ 		var buf bytes.Buffer
+-		if err := run(&buf, start, n, limit, false, true, false); err != nil {
++		if err := run(&buf, start, n, limit, 0, false, true, false); err != nil {
+ 			t.Fatalf("run(%d, %d, %d, pretty) returned error: %v", start, n, limit, err)
+ 		}
+ 		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -473,7 +473,7 @@ func TestRunRejectsInvalidLimit(t *testing.T) {
+ 	}{{"text", false}, {"json", true}} {
+ 		for _, limit := range []int{-1, -5} {
+ 			var buf bytes.Buffer
+-			err := run(&buf, 0, 5, limit, mode.asJSON, false, false)
++			err := run(&buf, 0, 5, limit, 0, mode.asJSON, false, false)
+ 			if err == nil {
+ 				t.Fatalf("run(0, 5, %d, %s) succeeded, want error", limit, mode.name)
+ 			}
+@@ -487,3 +487,72 @@ func TestRunRejectsInvalidLimit(t *testing.T) {
+ 		}
+ 	}
+ }
++
++// TestRunSeed pins the -seed semantics: a positive seed prints exactly
++// one entry for that index in the active output mode, overriding -n,
++// -start, and -limit for output; seed 0 is the unset sentinel; a
++// negative seed is rejected with the exact validation error message.
++func TestRunSeed(t *testing.T) {
++	tests := []struct {
++		name       string
++		start      int
++		n          int
++		limit      int
++		seed       int
++		asJSON     bool
++		pretty     bool
++		wantOutput string
++		wantErr    string
++	}{
++		{"seed 10 prints only index 10", 0, defaultCount, 0, 10, false, false, "10: 55\n", ""},
++		// -seed overrides the range flags for output: -n, -start, and
++		// -limit would print indices 2..3 without it, but the seed wins.
++		{"seed overrides n start limit", 2, 5, 3, 10, false, false, "10: 55\n", ""},
++		// seed 0 is the unset sentinel: plain -n output, unchanged.
++		{"seed 0 behaves like unset", 0, 5, 0, 0, false, false, "1: 1\n2: 1\n3: 2\n4: 3\n5: 5\n", ""},
++		{"seed with json emits one object", 0, defaultCount, 0, 7, true, false,
++			`{"index":7,"fib":"13"}` + "\n", ""},
++		// Pretty columns are sized to the single row itself.
++		{"seed with pretty prints one aligned row", 0, defaultCount, 0, 7, false, true, "7: 13\n", ""},
++		{"seed 100 with pretty sizes value column", 0, defaultCount, 0, 100, false, true,
++			"100: 354224848179261915075\n", ""},
++		{"negative seed rejected", 0, 5, 0, -1, false, false, "",
++			"invalid value -1 for flag -seed: must be >= 0"},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			var buf bytes.Buffer
++			err := run(&buf, tt.start, tt.n, tt.limit, tt.seed, tt.asJSON, tt.pretty, false)
++			if tt.wantErr != "" {
++				if err == nil {
++					t.Fatalf("run(seed %d) succeeded, want error", tt.seed)
++				}
++				if err.Error() != tt.wantErr {
++					t.Errorf("run(seed %d) error = %q, want exactly %q", tt.seed, err.Error(), tt.wantErr)
++				}
++				if buf.String() != "" {
++					t.Errorf("run(seed %d) wrote %q before failing, want no output", tt.seed, buf.String())
++				}
++				return
++			}
++			if err != nil {
++				t.Fatalf("run(seed %d) returned error: %v", tt.seed, err)
++			}
++			if got := buf.String(); got != tt.wantOutput {
++				t.Errorf("run(seed %d) output = %q, want %q", tt.seed, got, tt.wantOutput)
++			}
++		})
++	}
++}
++
++// TestRunSeedWithVersion pins that -version keeps top precedence over
++// -seed, mirroring its precedence over every other flag.
++func TestRunSeedWithVersion(t *testing.T) {
++	var buf bytes.Buffer
++	if err := run(&buf, 0, defaultCount, 0, 10, false, false, true); err != nil {
++		t.Fatalf("run(seed 10, version) returned error: %v", err)
++	}
++	if want := "gofib " + Version + "\n"; buf.String() != want {
++		t.Errorf("run(seed 10, version) output = %q, want %q", buf.String(), want)
++	}
++}
+diff --git a/main.go b/main.go
+index 68ccf34..4c9a6c0 100644
+--- a/main.go
++++ b/main.go
+@@ -5,8 +5,10 @@
+ // the largest index printed (it does not change what -n counts either;
+ // 0, the default, means no limit), -json switches to JSON Lines
+ // output, and -pretty aligns the text columns (it has no effect with
+-// -json). The -version flag prints "gofib <Version>" and takes
+-// precedence over every other flag.
++// -json). The -seed flag prints only the Fibonacci number at one index
++// (0, the default, means unset), overriding -n, -start, and -limit for
++// output while their validation is unchanged. The -version flag prints
++// "gofib <Version>" and takes precedence over every other flag.
+ package main
+ 
+ import (
+@@ -62,8 +64,13 @@ const defaultStart = 1
+ // pretty has no effect. With version set it prints only the single
+ // line "gofib <Version>" and every other flag (including an invalid
+ // count, start, or limit) is ignored. Otherwise it returns an error
+-// when count < 1, start < 0, or limit < 0.
+-func run(w io.Writer, start, count, limit int, asJSON, pretty, version bool) error {
++// when count < 1, start < 0, limit < 0, or seed < 0. A positive seed
++// overrides the range flags for output: exactly one entry for index
++// seed is printed in the active output mode (in pretty mode the
++// columns are sized to that single row), while -n, -start, and -limit
++// keep their usual validation; seed 0 is the unset sentinel, so plain
++// output is unchanged.
++func run(w io.Writer, start, count, limit, seed int, asJSON, pretty, version bool) error {
+ 	if version {
+ 		fmt.Fprintf(w, "gofib %s\n", Version)
+ 		return nil
+@@ -77,6 +84,25 @@ func run(w io.Writer, start, count, limit int, asJSON, pretty, version bool) err
+ 	if limit < 0 {
+ 		return fmt.Errorf("invalid value %d for flag -limit: must be >= 0", limit)
+ 	}
++	if seed < 0 {
++		return fmt.Errorf("invalid value %d for flag -seed: must be >= 0", seed)
++	}
++	// A positive -seed is a single-index lookup: print exactly one
++	// entry for that index in the active output mode, ignoring -n,
++	// -start, and -limit for output (they were validated above).
++	if seed > 0 {
++		if asJSON {
++			return json.NewEncoder(w).Encode(fibLine{Index: seed, Fib: Fib(seed).String()})
++		}
++		if pretty {
++			fmt.Fprintf(w, "%*d: %*s\n",
++				len(strconv.Itoa(seed)), seed,
++				len(Fib(seed).String()), Fib(seed).String())
++		} else {
++			fmt.Fprintf(w, "%d: %v\n", seed, Fib(seed))
++		}
++		return nil
++	}
+ 	if start == 0 {
+ 		start = defaultStart
+ 	}
+@@ -116,9 +142,10 @@ func main() {
+ 	limit := flag.Int("limit", 0, "largest index to print (must be >= 0; 0 means no limit)")
+ 	asJSON := flag.Bool("json", false, "emit JSON Lines instead of text: one {\"index\": i, \"fib\": \"value\"} object per number")
+ 	pretty := flag.Bool("pretty", false, "align text output into two right-aligned columns sized to the largest index and value (no effect with -json)")
++	seed := flag.Int("seed", 0, "print only the Fibonacci number at this index (must be >= 0; overrides -n/-start/-limit for output; 0 means unset)")
+ 	version := flag.Bool("version", false, "print \"gofib <version>\" and exit; takes precedence over all other flags")
+ 	flag.Parse()
+-	if err := run(os.Stdout, *start, *n, *limit, *asJSON, *pretty, *version); err != nil {
++	if err := run(os.Stdout, *start, *n, *limit, *seed, *asJSON, *pretty, *version); err != nil {
+ 		fmt.Fprintln(os.Stderr, err)
+ 		os.Exit(1)
+ 	}
