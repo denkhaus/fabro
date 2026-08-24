@@ -993,9 +993,9 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
             "workflow version store operation failed",
             "workflow_version_store_error",
         ),
-        RunIntentAdmissionError::Lowering(_) => intent_error(
+        RunIntentAdmissionError::Lowering(error) => intent_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "workflow version cannot be used for run creation",
+            format!("workflow version cannot be used for run creation: {error}"),
             "workflow_version_unusable",
         ),
         RunIntentAdmissionError::Target(error) => intent_error(
@@ -1025,21 +1025,27 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
                 error.to_string(),
                 "integration_unavailable",
             ),
+            // Nothing has been persisted yet on this path, so the code names
+            // the failing subsystem instead of claiming a persistence
+            // failure.
             EnvironmentSelectionError::CredentialStore { .. } => intent_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "failed to read sandbox credentials",
-                "run_persistence_failed",
+                "credential_store_error",
             ),
         },
-        RunIntentAdmissionError::Compiler(_) => intent_error(
+        // The top-level compiler/lowering message is the same curated detail
+        // the legacy manifest lane returns for identical defects; the full
+        // source chain stays in the warn log above.
+        RunIntentAdmissionError::Compiler(error) => intent_error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "run intent could not be compiled",
+            format!("run intent could not be compiled: {error}"),
             "run_compile_invalid",
         ),
         RunIntentAdmissionError::VariableSnapshot { .. } => intent_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to prepare run",
-            "run_persistence_failed",
+            "failed to load run variables",
+            "variable_store_error",
         ),
     }
 }
