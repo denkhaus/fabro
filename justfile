@@ -37,15 +37,15 @@ default:
     @just --list
 
 # Full pipeline: build binary + image, install CLI, start compose, wait for health
-up: build-image install-cli compose-up wait-healthy
+up: build-image install-cli compose-up wait-healthy clean
 
 # Build the release binary and the local docker image (cached; uses cargo dev docker-build)
 build-image: web-deps
-    cargo --locked dev docker-build --arch {{arch}} --tag {{image}}
+    cargo --locked dev docker-build --arch {{ arch }} --tag {{ image }}
 
 # Build only the release binary and stage it (no docker image build)
 build-binary: web-deps
-    cargo --locked dev docker-build --arch {{arch}} --compile-only
+    cargo --locked dev docker-build --arch {{ arch }} --compile-only
 
 # Install workspace JS dependencies for the SPA build (bun workspace, root lockfile)
 web-deps:
@@ -53,7 +53,7 @@ web-deps:
 
 # Install the staged binary as the user CLI (~/.fabro/bin/fabro)
 install-cli:
-    nu scripts/install-cli.nu "{{staged}}" "{{cli_bin}}"
+    nu scripts/install-cli.nu "{{ staged }}" "{{ cli_bin }}"
 
 # Start the compose stack (recreates the container when the image changed)
 compose-up:
@@ -73,11 +73,11 @@ logs:
 
 # Wait until the server health endpoint answers (max 90s)
 wait-healthy:
-    nu scripts/wait-healthy.nu "{{port}}"
+    nu scripts/wait-healthy.nu "{{ port }}"
 
 # Smoke check: health + CLI roundtrip against the running server
 smoke: wait-healthy
-    "{{cli_bin}}" ps
+    "{{ cli_bin }}" ps
 
 # Clean stale host build artifacts from target/ without a full cargo clean.
 # Logic lives in scripts/clean-target.nu; see its header for the growth
@@ -86,5 +86,5 @@ smoke: wait-healthy
 # Modes: stale (default: drop incremental/ dirs unused >= 6h) | sweep
 # (additionally cargo-sweep --time 24) | all (full cargo clean).
 # Script flags: `nu scripts/clean-target.nu <mode> --dry-run` to preview.
-clean-target mode="stale":
-    nu scripts/clean-target.nu "{{mode}}"
+clean mode="stale":
+    nu scripts/clean-target.nu "{{ mode }}"

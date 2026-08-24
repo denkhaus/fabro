@@ -1,5 +1,5 @@
 #!/usr/bin/env nu
-# GC stale host build artifacts from target/ (thin launcher: `just clean-target`).
+# GC stale host build artifacts from target/ (thin launcher: `just clean`).
 #
 # Cargo never garbage-collects: every crate x fingerprint x edit round leaves
 # incremental/<crate>-<hash>/ and deps/*-<hash>.rlib behind forever (measured:
