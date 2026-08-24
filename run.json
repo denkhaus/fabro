@@ -540,7 +540,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-24T19:18:30.201402761Z",
-  "last_event_at": "2026-08-24T19:23:54.541926858Z",
+  "last_event_at": "2026-08-24T19:24:03.708556670Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1440,9 +1440,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 295,
       "checkpoint": {
-        "timestamp": "2026-08-24T19:23:54.814882532Z",
+        "timestamp": "2026-08-24T19:23:59.229918805Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -1455,10 +1455,42 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.seed_cycle_anchor": "fabro-cfb6",
+          "graph.rankdir": "LR",
+          "current_seed_id": "fabro-cfb6",
+          "internal.node_visit_count": 2,
+          "internal.retry_count.evidence": 0,
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
           "failure_class": "",
+          "command.output": "blob://sha256/b87a808326e29d358decc500a51074a5ba19e223744b6ffb4fd7ba04110d99f7",
+          "current_seed_title": "gofib: add -seed flag for reproducible index selection",
+          "thread.implementer.current_node": "tester",
+          "current_seed_brief": "- `-seed <int>` flag: prints exactly ONE entry for index `i` (one line) in the active output mode — text: `i: <value>`; `-json`: one object `{\"index\":i,\"fib\":\"<string>\"}`; `-pretty`: single-row alignment (columns sized to that one row)\n- `-seed i` (i > 0) overrides the range flags: `-n`, `-start`, and `-limit` are ignored for output — e.g. `-seed 10 -n 5 -start 2 -limit 3` prints only index 10\n- `-version` keeps top precedence: `-version -seed 5` prints the version and exits 0\n- `-seed 0` is a sentinel treated as UNSET (mirrors `-start 0`), so `gofib -seed 0 -n 5` behaves exactly like `gofib -n 5` — plain output unchanged\n- Validation mirrors other flags: `-seed -1` exits non-zero with a stderr error (`invalid value -1 for flag -seed: must be >= 0`); chosen reading: `-seed` overrides which indices print, not other flags' validation — existing `-n`/`-start`/`-limit` validation behavior stays unchanged\n- Computation must go through the existing `Fib(n)` only — no inline recomputation (CONTEXT.md rule)\n- Tests: table-driven in `fib_test.go` — cover: single index via `-seed`; `-seed` overriding `-n`/`-start`/`-limit`; `-seed 0` sentinel; `-seed` with `-json`; `-seed` with `-pretty`; negative `-seed` rejected non-zero; `-version` still wins over `-seed`\n- README.md flag table gains a `-seed` row: real example invocation + its actual output captured from the built binary (do not invent output); the precedence-over-range-flags note lives in that row\n- Gate: `just qualitygate` green",
+          "thread.tester.current_node": "evidence",
+          "graph.max_node_visits": "40",
           "internal.retry_count.start": 0,
+          "response.planner": "Closed `fabro-cfb6` after its approved review; `sd ready` and `sd list --format json` both confirm the tracker is now empty — no open or blocked seeds remain, so the seed-by-seed effort is complete.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Tracker empty\",\n  \"context_updates\": {\n    \"review_verdict\": \"\"\n  }\n}",
           "last_response": "Closed `fabro-cfb6` after its approved review; `sd ready` and `sd list --format json` both confirm the tracker is now empty — no open or blocked seeds remain, so the seed-by-seed effort is complete.",
+          "internal.run_id": "01M0TKB7H7DCWCR8TZY6SZPXD2",
+          "internal.retry_count.reviewer": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "last_stage": "planner",
+          "failure_signature": "",
+          "response.reviewer": "All verification passed. Summary of my review:\n\n**Spec compliance (judged against the authoritative in-progress seed spec):**\n1. **Single-index lookup in active mode** — `run()` seed branch (main.go:93–105) prints exactly one entry: text `%d: %v`, JSON one `fibLine` object via the existing encoder, pretty single-row alignment with widths sized from the row itself. Verified live: `10: 55`, `{\"index\":7,\"fib\":\"13\"}`, `100: 354224848179261915075`.\n2. **Range-flag override** — seed branch sits after validation and short-circuits before the range loop; `-seed 10 -n 5 -start 2 -limit 3` prints only `10: 55` (live-verified, matches README claim). Existing `-n`/`-start`/`-limit` validation unchanged (error messages identical to base).\n3. **`-version` top precedence** — first check in `run()`; live-verified `-version -seed 5` → `gofib 1.3.0`, exit 0.\n4. **Negative rejected, 0 sentinel** — `gofib -seed -1` exits 1 with the exact spec'd stderr message; `-seed 0 -n 3` prints plain output unchanged.\n5. **`Fib(n)` only computation** — every path calls `Fib(seed)`; no inline recomputation.\n6. **Tests** — table-driven `TestRunSeed` covers all six required cases (single index, override of n/start/limit, 0-sentinel, json, pretty ×2, negative) with exact-message error assertions; `TestRunSeedWithVersion` pins version precedence. All 15 pre-existing `run()` call sites correctly updated for the new parameter position.\n7. **README** — `-seed` row added with the precedence note and two real invocations whose outputs I reproduced byte-for-byte from a fresh build. No invented output.\n8. **Gate** — tester stage green; I independently confirmed `go test` + `go vet` pass.\n\n**Hygiene:** doc comments (package + `run`) updated and accurate; no dead code; no scope creep (3 files, all in scope; only loop churn is `.seeds/issues.jsonl` as expected); worktree clean; integrity counts match the visible diff. One micro-nit (not a deviation): the pretty branch calls `Fib(seed)` twice (width + value) where a local var would suffice — compliant with the spec's \"Fib(n) stays the only computation.\"\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Approved\",\n  \"context_updates\": {\n    \"review_verdict\": \"approved\"\n  }\n}",
+          "implementation_summary": "Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\"index\":7,\"fib\":\"13\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\n\n- PASS single index via -seed: main.go seed branch + TestRunSeed \"seed 10 prints only index 10\"\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \"seed overrides n start limit\"\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \"seed 0 behaves like unset\"\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \"seed with json emits one object\"\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \"seed with pretty...\" cases\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \"negative seed rejected\"; verified live (exit=1)\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\n- PASS README -seed row with real captured output and precedence note: README.md flag table\n- PASS just qualitygate green (ran as smoke check: passed)",
+          "thread.start.current_node": "planner",
+          "thread.reviewer.current_node": "planner",
+          "response.implementer": "Quality gate green, no artifacts left (`/tmp/gofib` removed). Implementation complete.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\\\"index\\\":7,\\\"fib\\\":\\\"13\\\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\\n\\n- PASS single index via -seed: main.go seed branch + TestRunSeed \\\"seed 10 prints only index 10\\\"\\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \\\"seed overrides n start limit\\\"\\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \\\"seed 0 behaves like unset\\\"\\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \\\"seed with json emits one object\\\"\\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \\\"seed with pretty...\\\" cases\\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \\\"negative seed rejected\\\"; verified live (exit=1)\\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\\n- PASS README -seed row with real captured output and precedence note: README.md flag table\\n- PASS just qualitygate green (ran as smoke check: passed)\"\n  }\n}",
+          "review_verdict": "",
+          "preferred_label": "Tracker empty",
+          "internal.fidelity": "compact",
+          "internal.seed_cycle_anchor": "fabro-cfb6",
+          "internal.retry_count.implementer": 0,
+          "internal.thread_id": "reviewer",
+          "internal.retry_count.planner": 0,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.preamble_budget_kb": "12",
+          "internal.retry_count.tester": 0,
+          "outcome": "succeeded",
           "seed_cycles": {
             "planner": 2,
             "implementer": 1,
@@ -1466,41 +1498,9 @@
             "evidence": 1,
             "reviewer": 1
           },
-          "internal.retry_count.tester": 0,
-          "current_node": "planner",
-          "preferred_label": "Tracker empty",
-          "thread.start.current_node": "planner",
-          "internal.run_id": "01M0TKB7H7DCWCR8TZY6SZPXD2",
-          "current_seed_brief": "- `-seed <int>` flag: prints exactly ONE entry for index `i` (one line) in the active output mode — text: `i: <value>`; `-json`: one object `{\"index\":i,\"fib\":\"<string>\"}`; `-pretty`: single-row alignment (columns sized to that one row)\n- `-seed i` (i > 0) overrides the range flags: `-n`, `-start`, and `-limit` are ignored for output — e.g. `-seed 10 -n 5 -start 2 -limit 3` prints only index 10\n- `-version` keeps top precedence: `-version -seed 5` prints the version and exits 0\n- `-seed 0` is a sentinel treated as UNSET (mirrors `-start 0`), so `gofib -seed 0 -n 5` behaves exactly like `gofib -n 5` — plain output unchanged\n- Validation mirrors other flags: `-seed -1` exits non-zero with a stderr error (`invalid value -1 for flag -seed: must be >= 0`); chosen reading: `-seed` overrides which indices print, not other flags' validation — existing `-n`/`-start`/`-limit` validation behavior stays unchanged\n- Computation must go through the existing `Fib(n)` only — no inline recomputation (CONTEXT.md rule)\n- Tests: table-driven in `fib_test.go` — cover: single index via `-seed`; `-seed` overriding `-n`/`-start`/`-limit`; `-seed 0` sentinel; `-seed` with `-json`; `-seed` with `-pretty`; negative `-seed` rejected non-zero; `-version` still wins over `-seed`\n- README.md flag table gains a `-seed` row: real example invocation + its actual output captured from the built binary (do not invent output); the precedence-over-range-flags note lives in that row\n- Gate: `just qualitygate` green",
-          "graph.rankdir": "LR",
-          "thread.planner.current_node": "implementer",
-          "internal.retry_count.implementer": 0,
-          "response.reviewer": "All verification passed. Summary of my review:\n\n**Spec compliance (judged against the authoritative in-progress seed spec):**\n1. **Single-index lookup in active mode** — `run()` seed branch (main.go:93–105) prints exactly one entry: text `%d: %v`, JSON one `fibLine` object via the existing encoder, pretty single-row alignment with widths sized from the row itself. Verified live: `10: 55`, `{\"index\":7,\"fib\":\"13\"}`, `100: 354224848179261915075`.\n2. **Range-flag override** — seed branch sits after validation and short-circuits before the range loop; `-seed 10 -n 5 -start 2 -limit 3` prints only `10: 55` (live-verified, matches README claim). Existing `-n`/`-start`/`-limit` validation unchanged (error messages identical to base).\n3. **`-version` top precedence** — first check in `run()`; live-verified `-version -seed 5` → `gofib 1.3.0`, exit 0.\n4. **Negative rejected, 0 sentinel** — `gofib -seed -1` exits 1 with the exact spec'd stderr message; `-seed 0 -n 3` prints plain output unchanged.\n5. **`Fib(n)` only computation** — every path calls `Fib(seed)`; no inline recomputation.\n6. **Tests** — table-driven `TestRunSeed` covers all six required cases (single index, override of n/start/limit, 0-sentinel, json, pretty ×2, negative) with exact-message error assertions; `TestRunSeedWithVersion` pins version precedence. All 15 pre-existing `run()` call sites correctly updated for the new parameter position.\n7. **README** — `-seed` row added with the precedence note and two real invocations whose outputs I reproduced byte-for-byte from a fresh build. No invented output.\n8. **Gate** — tester stage green; I independently confirmed `go test` + `go vet` pass.\n\n**Hygiene:** doc comments (package + `run`) updated and accurate; no dead code; no scope creep (3 files, all in scope; only loop churn is `.seeds/issues.jsonl` as expected); worktree clean; integrity counts match the visible diff. One micro-nit (not a deviation): the pretty branch calls `Fib(seed)` twice (width + value) where a local var would suffice — compliant with the spec's \"Fib(n) stays the only computation.\"\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Approved\",\n  \"context_updates\": {\n    \"review_verdict\": \"approved\"\n  }\n}",
-          "internal.node_visit_count": 2,
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "thread.reviewer.current_node": "planner",
-          "current_seed_title": "gofib: add -seed flag for reproducible index selection",
-          "response.implementer": "Quality gate green, no artifacts left (`/tmp/gofib` removed). Implementation complete.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\\\"index\\\":7,\\\"fib\\\":\\\"13\\\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\\n\\n- PASS single index via -seed: main.go seed branch + TestRunSeed \\\"seed 10 prints only index 10\\\"\\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \\\"seed overrides n start limit\\\"\\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \\\"seed 0 behaves like unset\\\"\\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \\\"seed with json emits one object\\\"\\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \\\"seed with pretty...\\\" cases\\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \\\"negative seed rejected\\\"; verified live (exit=1)\\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\\n- PASS README -seed row with real captured output and precedence note: README.md flag table\\n- PASS just qualitygate green (ran as smoke check: passed)\"\n  }\n}",
-          "graph.max_node_visits": "40",
-          "internal.retry_count.planner": 0,
-          "outcome": "succeeded",
-          "current_seed_id": "fabro-cfb6",
-          "implementation_summary": "Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\"index\":7,\"fib\":\"13\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\n\n- PASS single index via -seed: main.go seed branch + TestRunSeed \"seed 10 prints only index 10\"\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \"seed overrides n start limit\"\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \"seed 0 behaves like unset\"\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \"seed with json emits one object\"\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \"seed with pretty...\" cases\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \"negative seed rejected\"; verified live (exit=1)\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\n- PASS README -seed row with real captured output and precedence note: README.md flag table\n- PASS just qualitygate green (ran as smoke check: passed)",
-          "response.planner": "Closed `fabro-cfb6` after its approved review; `sd ready` and `sd list --format json` both confirm the tracker is now empty — no open or blocked seeds remain, so the seed-by-seed effort is complete.\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Tracker empty\",\n  \"context_updates\": {\n    \"review_verdict\": \"\"\n  }\n}",
-          "last_stage": "planner",
-          "thread.implementer.current_node": "tester",
-          "command.output": "blob://sha256/b87a808326e29d358decc500a51074a5ba19e223744b6ffb4fd7ba04110d99f7",
-          "graph.preamble_budget_kb": "12",
-          "thread.tester.current_node": "evidence",
-          "internal.work_dir": "/workspace/fabro",
-          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
-          "internal.fidelity": "compact",
-          "internal.thread_id": "reviewer",
-          "failure_signature": "",
           "thread.evidence.current_node": "reviewer",
-          "review_verdict": "",
-          "internal.retry_count.reviewer": 0,
-          "internal.retry_count.evidence": 0
+          "thread.planner.current_node": "implementer",
+          "current_node": "planner"
         },
         "node_outcomes": {
           "tester": {
@@ -1517,6 +1517,49 @@
               "active_time_ms": 1029
             }
           },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "Quality gate green, no artifacts left (`/tmp/gofib` removed). Implementation complete.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"im",
+              "implementation_summary": "Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\"index\":7,\"fib\":\"13\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\n\n- PASS single index via -seed: main.go seed branch + TestRunSeed \"seed 10 prints only index 10\"\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \"seed overrides n start limit\"\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \"seed 0 behaves like unset\"\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \"seed with json emits one object\"\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \"seed with pretty...\" cases\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \"negative seed rejected\"; verified live (exit=1)\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\n- PASS README -seed row with real captured output and precedence note: README.md flag table\n- PASS just qualitygate green (ran as smoke check: passed)",
+              "last_stage": "implementer",
+              "response.implementer": "Quality gate green, no artifacts left (`/tmp/gofib` removed). Implementation complete.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\\\"index\\\":7,\\\"fib\\\":\\\"13\\\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\\n\\n- PASS single index via -seed: main.go seed branch + TestRunSeed \\\"seed 10 prints only index 10\\\"\\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \\\"seed overrides n start limit\\\"\\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \\\"seed 0 behaves like unset\\\"\\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \\\"seed with json emits one object\\\"\\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \\\"seed with pretty...\\\" cases\\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \\\"negative seed rejected\\\"; verified live (exit=1)\\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\\n- PASS README -seed row with real captured output and precedence note: README.md flag table\\n- PASS just qualitygate green (ran as smoke check: passed)\"\n  }\n}"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19338,
+                    "output_tokens": 4108,
+                    "reasoning_tokens": 1325,
+                    "cache_read_tokens": 224320,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 109280
+            },
+            "files_touched": [
+              "/workspace/fabro/README.md",
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 111193,
+              "tool_time_ms": 13796,
+              "active_time_ms": 124989
+            }
+          },
           "evidence": {
             "status": "succeeded",
             "context_updates": {
@@ -1530,10 +1573,6 @@
               "tool_time_ms": 406,
               "active_time_ms": 406
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           },
           "planner": {
             "status": "succeeded",
@@ -1611,64 +1650,132 @@
               "active_time_ms": 62167
             }
           },
-          "implementer": {
+          "start": {
             "status": "succeeded",
-            "preferred_label": "Implemented",
-            "context_updates": {
-              "last_response": "Quality gate green, no artifacts left (`/tmp/gofib` removed). Implementation complete.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"im",
-              "implementation_summary": "Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\"index\":7,\"fib\":\"13\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\n\n- PASS single index via -seed: main.go seed branch + TestRunSeed \"seed 10 prints only index 10\"\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \"seed overrides n start limit\"\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \"seed 0 behaves like unset\"\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \"seed with json emits one object\"\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \"seed with pretty...\" cases\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \"negative seed rejected\"; verified live (exit=1)\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\n- PASS README -seed row with real captured output and precedence note: README.md flag table\n- PASS just qualitygate green (ran as smoke check: passed)",
-              "last_stage": "implementer",
-              "response.implementer": "Quality gate green, no artifacts left (`/tmp/gofib` removed). Implementation complete.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\\\"index\\\":7,\\\"fib\\\":\\\"13\\\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\\n\\n- PASS single index via -seed: main.go seed branch + TestRunSeed \\\"seed 10 prints only index 10\\\"\\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \\\"seed overrides n start limit\\\"\\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \\\"seed 0 behaves like unset\\\"\\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \\\"seed with json emits one object\\\"\\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \\\"seed with pretty...\\\" cases\\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \\\"negative seed rejected\\\"; verified live (exit=1)\\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\\n- PASS README -seed row with real captured output and precedence note: README.md flag table\\n- PASS just qualitygate green (ran as smoke check: passed)\"\n  }\n}"
-            },
-            "notes": "Stage completed: implementer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 19338,
-                    "output_tokens": 4108,
-                    "reasoning_tokens": 1325,
-                    "cache_read_tokens": 224320,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 109280
-            },
-            "files_touched": [
-              "/workspace/fabro/README.md",
-              "/workspace/fabro/fib_test.go",
-              "/workspace/fabro/main.go"
-            ],
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 111193,
-              "tool_time_ms": 13796,
-              "active_time_ms": 124989
-            }
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "c8dfcd8610062a783790e2712bd2dc7bc14592a1",
         "node_visits": {
-          "evidence": 1,
-          "start": 1,
-          "planner": 2,
+          "tester": 1,
           "reviewer": 1,
+          "start": 1,
+          "evidence": 1,
           "implementer": 1,
-          "tester": 1
+          "planner": 2
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl b/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl\nindex 0681948..cd2d400 100644\n--- a/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl\n+++ b/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:21:58Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:22:04Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:23:21Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"planner\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:23:54Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex c84a386..2b3911a 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -7,4 +7,4 @@\n {\"id\":\"fabro-e6df\",\"title\":\"gofib: add README with usage and flag reference\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T11:38:40.410Z\",\"updatedAt\":\"2026-08-24T11:47:51.762Z\",\"description\":\"## Goal\\n\\nA README.md at the repo root that documents the gofib CLI: what it is\\n(Go CLI printing Fibonacci numbers), install/build via mise/just,\\nusage, and the full flag reference.\\n\\n## Flag reference to cover\\n\\n- `-n <int>`: how many numbers to print (default 100, must be >= 1)\\n- `-json`: JSON Lines output, one object per number (`{\\\"index\\\":<int>,\\\"fib\\\":\\\"<string>\\\"}`)\\n- `-pretty`: aligned column output\\n- `-version`: print version and exit\\n\\nUse the vocabulary from CONTEXT.md (text mode, JSON mode, count flag).\\nShow real example invocations and their actual output — run the built\\nbinary to capture it, do not invent output.\\n\\n## Acceptance\\n\\n- README.md exists at the repo root\\n- Examples match actual binary behavior\\n- `just qualitygate` green\",\"closedAt\":\"2026-08-24T11:47:51.762Z\"}\n {\"id\":\"fabro-4f3e\",\"title\":\"gofib: add -start flag to begin printing at a given index\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T14:23:57.517Z\",\"updatedAt\":\"2026-08-24T14:33:23.460Z\",\"description\":\"## Goal\\n\\nA `-start <int>` flag: the first Fibonacci index to print. Default 0.\\nCombines with `-n` (how many), `-json`, and `-pretty`.\\n\\n## Semantics\\n\\n- `-start 10 -n 5` prints indices 10..14 in the active output mode\\n  (text mode line format stays `<index>: <value>`).\\n- Validation mirrors the `-n` contract: values < 0 exit non-zero with a\\n  stderr error message.\\n- `-start` must not change what `-n` counts (still the number of lines).\\n\\n## Acceptance\\n\\n- Flag parsed via the flag package; `Fib(n)` stays the only computation\\n  (no inline recomputation — see CONTEXT.md).\\n- Table-driven tests: default start, start+n combination, start with\\n  -json and -pretty, negative start rejected.\\n- README.md flag table gains the `-start` row; example invocation with\\n  REAL output captured from the built binary (do not invent output).\\n- `just qualitygate` green\",\"closedAt\":\"2026-08-24T14:33:23.460Z\"}\n {\"id\":\"fabro-8208\",\"title\":\"gofib: add -limit flag to cap output size safely\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T16:14:54.720Z\",\"updatedAt\":\"2026-08-24T16:31:03.919Z\",\"description\":\"## Goal\\n\\nA `-limit <int>` flag: hard cap on the LARGEST index gofib will print,\\nindependent of `-start`/`-n`. Protects against accidental huge output\\nwhen `-n` is large (e.g. `-n 100000` should still stop at the limit).\\n\\n## Semantics\\n\\n- `-limit <int>`: do not print any index > limit. Default: no limit.\\n- Combines with `-start` and `-n`: the effective output is the\\n  intersection of all three (start <= index <= limit, at most -n lines).\\n- Validation mirrors existing flags: values < 0 exit non-zero with a\\n  stderr error message.\\n- `-limit` smaller than `-start` produces empty output (zero lines),\\n  NOT an error — document this in the README.\\n- `-json` and `-pretty` combine as usual on the reduced set.\\n\\n## Acceptance\\n\\n- Flag parsed via the flag package; `Fib(n)` stays the only computation\\n  (no inline recomputation — CONTEXT.md).\\n- Table-driven tests: default (no limit), limit caps large -n, limit+start\\n  intersection, limit < start gives empty output and exit 0, negative\\n  limit rejected, limit with -json and -pretty.\\n- README.md flag table gains the `-limit` row with a REAL example\\n  invocation and its actual output (capture from the built binary, do not\\n  invent output).\\n- `just qualitygate` green\",\"closedAt\":\"2026-08-24T16:31:03.919Z\"}\n-{\"id\":\"fabro-cfb6\",\"title\":\"gofib: add -seed flag for reproducible index selection\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T19:15:32.840Z\",\"updatedAt\":\"2026-08-24T19:19:11.043Z\",\"description\":\"## Goal\\n\\nA `-seed <int>` flag: print ONLY the Fibonacci number at a given index\\n(one line) — a tiny lookup mode instead of a range, for spot-checks and\\nscripting against specific indices.\\n\\n## Semantics\\n\\n- `-seed i` prints exactly one entry for index `i` in the active output\\n  mode: text mode `i: <value>`; JSON mode one object\\n  `{\\\"index\\\":i,\\\"fib\\\":\\\"<string>\\\"}`; pretty mode single-row alignment.\\n- `-seed` overrides the RANGE flags: with `-seed 10 -n 5 -start 2` only\\n  index 10 prints (exactly one line). Document that precedence in the\\n  README row.\\n- `-version` keeps its top precedence (existing behavior, README pins\\n  it).\\n- Validation mirrors the other flags: values < 0 exit non-zero with a\\n  stderr error. `-seed 0` behaves like `-start 0`: treated as unset\\n  (sentinel), so plain `gofib` output stays unchanged.\\n- `Fib(n)` stays the only computation — no inline recomputation\\n  (CONTEXT.md).\\n\\n## Acceptance\\n\\n- Table-driven tests: single index via -seed; -seed overrides -n/-start\\n  (and -limit); -seed 0 sentinel; -seed with -json and -pretty;\\n  negative rejected; -version still wins.\\n- README.md flag table gains the `-seed` row with a REAL example\\n  invocation and its actual output (capture from the built binary, do\\n  not invent output); the precedence note lives in that row.\\n- `just qualitygate` green\"}\n+{\"id\":\"fabro-cfb6\",\"title\":\"gofib: add -seed flag for reproducible index selection\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T19:15:32.840Z\",\"updatedAt\":\"2026-08-24T19:23:38.551Z\",\"description\":\"## Goal\\n\\nA `-seed <int>` flag: print ONLY the Fibonacci number at a given index\\n(one line) — a tiny lookup mode instead of a range, for spot-checks and\\nscripting against specific indices.\\n\\n## Semantics\\n\\n- `-seed i` prints exactly one entry for index `i` in the active output\\n  mode: text mode `i: <value>`; JSON mode one object\\n  `{\\\"index\\\":i,\\\"fib\\\":\\\"<string>\\\"}`; pretty mode single-row alignment.\\n- `-seed` overrides the RANGE flags: with `-seed 10 -n 5 -start 2` only\\n  index 10 prints (exactly one line). Document that precedence in the\\n  README row.\\n- `-version` keeps its top precedence (existing behavior, README pins\\n  it).\\n- Validation mirrors the other flags: values < 0 exit non-zero with a\\n  stderr error. `-seed 0` behaves like `-start 0`: treated as unset\\n  (sentinel), so plain `gofib` output stays unchanged.\\n- `Fib(n)` stays the only computation — no inline recomputation\\n  (CONTEXT.md).\\n\\n## Acceptance\\n\\n- Table-driven tests: single index via -seed; -seed overrides -n/-start\\n  (and -limit); -seed 0 sentinel; -seed with -json and -pretty;\\n  negative rejected; -version still wins.\\n- README.md flag table gains the `-seed` row with a REAL example\\n  invocation and its actual output (capture from the built binary, do\\n  not invent output); the precedence note lives in that row.\\n- `just qualitygate` green\",\"closedAt\":\"2026-08-24T19:23:38.551Z\"}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 125,
+          "deletions": 21
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-08-24T19:23:59.291387339Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 299018,
+      "inference_time_ms": 236504,
+      "tool_time_ms": 18718,
+      "active_time_ms": 255222
+    },
+    "final_git_commit_sha": "c8dfcd8610062a783790e2712bd2dc7bc14592a1",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 69215,
+          "inference_time_ms": 64301,
+          "tool_time_ms": 2330,
+          "active_time_ms": 66631
+        },
+        "billing_usd_micros": 57730,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 126379,
+          "inference_time_ms": 111193,
+          "tool_time_ms": 13796,
+          "active_time_ms": 124989
+        },
+        "billing_usd_micros": 109280,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 1034,
+          "inference_time_ms": 0,
+          "tool_time_ms": 1029,
+          "active_time_ms": 1029
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 413,
+          "inference_time_ms": 0,
+          "tool_time_ms": 406,
+          "active_time_ms": 406
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 63447,
+          "inference_time_ms": 61010,
+          "tool_time_ms": 1157,
+          "active_time_ms": 62167
+        },
+        "billing_usd_micros": 58748,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 58261,
+      "output_tokens": 6808,
+      "total_tokens": 402489,
+      "reasoning_tokens": 6412,
+      "cache_read_tokens": 331008,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 225758
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl b/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl\nnew file mode 100644\nindex 0000000..cd2d400\n--- /dev/null\n+++ b/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl\n@@ -0,0 +1,7 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:18:32Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:19:22Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:21:50Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:21:58Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:22:04Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:23:21Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"planner\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:23:54Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 0a4e9bc..2b3911a 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -7,4 +7,4 @@\n {\"id\":\"fabro-e6df\",\"title\":\"gofib: add README with usage and flag reference\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T11:38:40.410Z\",\"updatedAt\":\"2026-08-24T11:47:51.762Z\",\"description\":\"## Goal\\n\\nA README.md at the repo root that documents the gofib CLI: what it is\\n(Go CLI printing Fibonacci numbers), install/build via mise/just,\\nusage, and the full flag reference.\\n\\n## Flag reference to cover\\n\\n- `-n <int>`: how many numbers to print (default 100, must be >= 1)\\n- `-json`: JSON Lines output, one object per number (`{\\\"index\\\":<int>,\\\"fib\\\":\\\"<string>\\\"}`)\\n- `-pretty`: aligned column output\\n- `-version`: print version and exit\\n\\nUse the vocabulary from CONTEXT.md (text mode, JSON mode, count flag).\\nShow real example invocations and their actual output — run the built\\nbinary to capture it, do not invent output.\\n\\n## Acceptance\\n\\n- README.md exists at the repo root\\n- Examples match actual binary behavior\\n- `just qualitygate` green\",\"closedAt\":\"2026-08-24T11:47:51.762Z\"}\n {\"id\":\"fabro-4f3e\",\"title\":\"gofib: add -start flag to begin printing at a given index\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T14:23:57.517Z\",\"updatedAt\":\"2026-08-24T14:33:23.460Z\",\"description\":\"## Goal\\n\\nA `-start <int>` flag: the first Fibonacci index to print. Default 0.\\nCombines with `-n` (how many), `-json`, and `-pretty`.\\n\\n## Semantics\\n\\n- `-start 10 -n 5` prints indices 10..14 in the active output mode\\n  (text mode line format stays `<index>: <value>`).\\n- Validation mirrors the `-n` contract: values < 0 exit non-zero with a\\n  stderr error message.\\n- `-start` must not change what `-n` counts (still the number of lines).\\n\\n## Acceptance\\n\\n- Flag parsed via the flag package; `Fib(n)` stays the only computation\\n  (no inline recomputation — see CONTEXT.md).\\n- Table-driven tests: default start, start+n combination, start with\\n  -json and -pretty, negative start rejected.\\n- README.md flag table gains the `-start` row; example invocation with\\n  REAL output captured from the built binary (do not invent output).\\n- `just qualitygate` green\",\"closedAt\":\"2026-08-24T14:33:23.460Z\"}\n {\"id\":\"fabro-8208\",\"title\":\"gofib: add -limit flag to cap output size safely\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T16:14:54.720Z\",\"updatedAt\":\"2026-08-24T16:31:03.919Z\",\"description\":\"## Goal\\n\\nA `-limit <int>` flag: hard cap on the LARGEST index gofib will print,\\nindependent of `-start`/`-n`. Protects against accidental huge output\\nwhen `-n` is large (e.g. `-n 100000` should still stop at the limit).\\n\\n## Semantics\\n\\n- `-limit <int>`: do not print any index > limit. Default: no limit.\\n- Combines with `-start` and `-n`: the effective output is the\\n  intersection of all three (start <= index <= limit, at most -n lines).\\n- Validation mirrors existing flags: values < 0 exit non-zero with a\\n  stderr error message.\\n- `-limit` smaller than `-start` produces empty output (zero lines),\\n  NOT an error — document this in the README.\\n- `-json` and `-pretty` combine as usual on the reduced set.\\n\\n## Acceptance\\n\\n- Flag parsed via the flag package; `Fib(n)` stays the only computation\\n  (no inline recomputation — CONTEXT.md).\\n- Table-driven tests: default (no limit), limit caps large -n, limit+start\\n  intersection, limit < start gives empty output and exit 0, negative\\n  limit rejected, limit with -json and -pretty.\\n- README.md flag table gains the `-limit` row with a REAL example\\n  invocation and its actual output (capture from the built binary, do not\\n  invent output).\\n- `just qualitygate` green\",\"closedAt\":\"2026-08-24T16:31:03.919Z\"}\n-{\"id\":\"fabro-cfb6\",\"title\":\"gofib: add -seed flag for reproducible index selection\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T19:15:32.840Z\",\"updatedAt\":\"2026-08-24T19:15:32.840Z\",\"description\":\"## Goal\\n\\nA `-seed <int>` flag: print ONLY the Fibonacci number at a given index\\n(one line) — a tiny lookup mode instead of a range, for spot-checks and\\nscripting against specific indices.\\n\\n## Semantics\\n\\n- `-seed i` prints exactly one entry for index `i` in the active output\\n  mode: text mode `i: <value>`; JSON mode one object\\n  `{\\\"index\\\":i,\\\"fib\\\":\\\"<string>\\\"}`; pretty mode single-row alignment.\\n- `-seed` overrides the RANGE flags: with `-seed 10 -n 5 -start 2` only\\n  index 10 prints (exactly one line). Document that precedence in the\\n  README row.\\n- `-version` keeps its top precedence (existing behavior, README pins\\n  it).\\n- Validation mirrors the other flags: values < 0 exit non-zero with a\\n  stderr error. `-seed 0` behaves like `-start 0`: treated as unset\\n  (sentinel), so plain `gofib` output stays unchanged.\\n- `Fib(n)` stays the only computation — no inline recomputation\\n  (CONTEXT.md).\\n\\n## Acceptance\\n\\n- Table-driven tests: single index via -seed; -seed overrides -n/-start\\n  (and -limit); -seed 0 sentinel; -seed with -json and -pretty;\\n  negative rejected; -version still wins.\\n- README.md flag table gains the `-seed` row with a REAL example\\n  invocation and its actual output (capture from the built binary, do\\n  not invent output); the precedence note lives in that row.\\n- `just qualitygate` green\"}\n+{\"id\":\"fabro-cfb6\",\"title\":\"gofib: add -seed flag for reproducible index selection\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T19:15:32.840Z\",\"updatedAt\":\"2026-08-24T19:23:38.551Z\",\"description\":\"## Goal\\n\\nA `-seed <int>` flag: print ONLY the Fibonacci number at a given index\\n(one line) — a tiny lookup mode instead of a range, for spot-checks and\\nscripting against specific indices.\\n\\n## Semantics\\n\\n- `-seed i` prints exactly one entry for index `i` in the active output\\n  mode: text mode `i: <value>`; JSON mode one object\\n  `{\\\"index\\\":i,\\\"fib\\\":\\\"<string>\\\"}`; pretty mode single-row alignment.\\n- `-seed` overrides the RANGE flags: with `-seed 10 -n 5 -start 2` only\\n  index 10 prints (exactly one line). Document that precedence in the\\n  README row.\\n- `-version` keeps its top precedence (existing behavior, README pins\\n  it).\\n- Validation mirrors the other flags: values < 0 exit non-zero with a\\n  stderr error. `-seed 0` behaves like `-start 0`: treated as unset\\n  (sentinel), so plain `gofib` output stays unchanged.\\n- `Fib(n)` stays the only computation — no inline recomputation\\n  (CONTEXT.md).\\n\\n## Acceptance\\n\\n- Table-driven tests: single index via -seed; -seed overrides -n/-start\\n  (and -limit); -seed 0 sentinel; -seed with -json and -pretty;\\n  negative rejected; -version still wins.\\n- README.md flag table gains the `-seed` row with a REAL example\\n  invocation and its actual output (capture from the built binary, do\\n  not invent output); the precedence note lives in that row.\\n- `just qualitygate` green\",\"closedAt\":\"2026-08-24T19:23:38.551Z\"}\ndiff --git a/README.md b/README.md\nindex 2be067d..a26b9fd 100644\n--- a/README.md\n+++ b/README.md\n@@ -149,6 +149,7 @@ $ echo $?\n | `-n <int>` | Count flag: how many numbers to print. Default `100`; must be `>= 1`, otherwise gofib exits non-zero with an error on stderr. Combines with JSON mode. |\n | `-start <int>` | Start flag: index of the first number printed. Default `0`, which behaves like `1` (gofib's indices are 1-based), so unset output is unchanged — plain `gofib` still starts `1: 1` and ends `100: 354224848179261915075`. `-start s -n k` prints exactly `k` lines with indices `s..s+k-1`: `-start` never changes what `-n` counts. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr. Combines with `-json` (the `index` field carries the actual index) and `-pretty` (columns sized to the largest index and value actually printed). |\n | `-limit <int>` | Cap flag: the largest index gofib will print, independent of `-start` and `-n`. Default `0`, which means **no limit** (the sentinel mirrors `-start`'s `0`-default). The output is the intersection of the three range flags — `start <= index <= min(start+n-1, limit)`, at most `-n` lines — so e.g. `gofib -n 100000 -limit 5` prints exactly 5 lines, instantly. `-limit < start` (both positive) is **not an error**: gofib prints nothing and exits `0`. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr (`invalid value -1 for flag -limit: must be >= 0`). Combines with `-json` (one object per surviving index) and `-pretty` (columns sized to the capped range, not `start+n-1`). |\n+| `-seed <int>` | Single-index lookup: print only the Fibonacci number at this index, one line, in the active output mode. Default `0` means unset (the sentinel mirrors `-start`'s `0`-default), so plain `gofib` output is unchanged. A positive `-seed` **overrides `-n`, `-start`, and `-limit` for output** (their validation still applies) — e.g. `gofib -seed 10 -n 5 -start 2 -limit 3` prints exactly `10: 55` and nothing else. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr (`invalid value -1 for flag -seed: must be >= 0`). Combines with `-json` (`gofib -seed 7 -json` prints `{\"index\":7,\"fib\":\"13\"}`) and `-pretty` (columns sized to the single row). |\n | `-json` | JSON mode: emit JSON Lines instead of text — one `{\"index\":<int>,\"fib\":\"<string>\"}` object per number. `fib` is a string by decision (ADR-0001), since F(100) overflows int64. Never a JSON array. |\n | `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. **No effect with `-json`** — JSON Lines have no columns to align. |\n | `-version` | Prints exactly `gofib 1.3.0` (from the `Version` const in `main.go`) and takes precedence over every other flag — even an otherwise-invalid combination like `-version -n 0 -json` prints the version and exits `0`. |\ndiff --git a/fib_test.go b/fib_test.go\nindex e9d9586..d54dcaa 100644\n--- a/fib_test.go\n+++ b/fib_test.go\n@@ -54,7 +54,7 @@ func TestRun(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, 0, tt.n, 0, false, false, false); err != nil {\n+\t\t\tif err := run(&buf, 0, tt.n, 0, 0, false, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d) returned error: %v\", tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -95,7 +95,7 @@ func TestRunStart(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.start, tt.n, 0, false, false, false); err != nil {\n+\t\t\tif err := run(&buf, tt.start, tt.n, 0, 0, false, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, %d) returned error: %v\", tt.start, tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -136,7 +136,7 @@ func TestRunJSON(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, 0, tt.n, 0, true, false, false); err != nil {\n+\t\t\tif err := run(&buf, 0, tt.n, 0, 0, true, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, json) returned error: %v\", tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -169,7 +169,7 @@ func TestRunJSON(t *testing.T) {\n func TestRunStartJSON(t *testing.T) {\n \tconst start, n = 10, 5\n \tvar buf bytes.Buffer\n-\tif err := run(&buf, start, n, 0, true, false, false); err != nil {\n+\tif err := run(&buf, start, n, 0, 0, true, false, false); err != nil {\n \t\tt.Fatalf(\"run(%d, %d, json) returned error: %v\", start, n, err)\n \t}\n \tout := buf.String()\n@@ -219,7 +219,7 @@ func TestRunPretty(t *testing.T) {\n \t} {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, 0, tt.n, 0, false, true, false); err != nil {\n+\t\t\tif err := run(&buf, 0, tt.n, 0, 0, false, true, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, pretty) returned error: %v\", tt.n, err)\n \t\t\t}\n \t\t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -239,7 +239,7 @@ func TestRunPretty(t *testing.T) {\n \t// index right-aligned to len(\"100\"), value to len(Fib(100)).\n \tt.Run(\"pretty default prints 100 aligned numbers\", func(t *testing.T) {\n \t\tvar buf bytes.Buffer\n-\t\tif err := run(&buf, 0, defaultCount, 0, false, true, false); err != nil {\n+\t\tif err := run(&buf, 0, defaultCount, 0, 0, false, true, false); err != nil {\n \t\t\tt.Fatalf(\"run(default, pretty) returned error: %v\", err)\n \t\t}\n \t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -261,7 +261,7 @@ func TestRunStartPretty(t *testing.T) {\n \tfibs := map[int]string{8: \"21\", 9: \"34\", 10: \"55\", 11: \"89\", 12: \"144\"}\n \tconst start, n = 8, 5\n \tvar buf bytes.Buffer\n-\tif err := run(&buf, start, n, 0, false, true, false); err != nil {\n+\tif err := run(&buf, start, n, 0, 0, false, true, false); err != nil {\n \t\tt.Fatalf(\"run(%d, %d, pretty) returned error: %v\", start, n, err)\n \t}\n \tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -282,10 +282,10 @@ func TestRunPrettyJSON(t *testing.T) {\n \t// -pretty only affects text mode: with -json the output must be\n \t// identical, line for line.\n \tvar jsonOnly, prettyJSON bytes.Buffer\n-\tif err := run(&jsonOnly, 0, 3, 0, true, false, false); err != nil {\n+\tif err := run(&jsonOnly, 0, 3, 0, 0, true, false, false); err != nil {\n \t\tt.Fatalf(\"run(3, json) returned error: %v\", err)\n \t}\n-\tif err := run(&prettyJSON, 0, 3, 0, true, true, false); err != nil {\n+\tif err := run(&prettyJSON, 0, 3, 0, 0, true, true, false); err != nil {\n \t\tt.Fatalf(\"run(3, json, pretty) returned error: %v\", err)\n \t}\n \tif prettyJSON.String() != jsonOnly.String() {\n@@ -306,7 +306,7 @@ func TestRunRejectsInvalidCount(t *testing.T) {\n \t}{{\"text\", false}, {\"json\", true}} {\n \t\tfor _, n := range []int{0, -5} {\n \t\t\tvar buf bytes.Buffer\n-\t\t\terr := run(&buf, 0, n, 0, mode.asJSON, false, false)\n+\t\t\terr := run(&buf, 0, n, 0, 0, mode.asJSON, false, false)\n \t\t\tif err == nil {\n \t\t\t\tt.Fatalf(\"run(%d, %s) succeeded, want error\", n, mode.name)\n \t\t\t}\n@@ -330,7 +330,7 @@ func TestRunRejectsInvalidStart(t *testing.T) {\n \t}{{\"text\", false}, {\"json\", true}} {\n \t\tfor _, start := range []int{-1, -5} {\n \t\t\tvar buf bytes.Buffer\n-\t\t\terr := run(&buf, start, 5, 0, mode.asJSON, false, false)\n+\t\t\terr := run(&buf, start, 5, 0, 0, mode.asJSON, false, false)\n \t\t\tif err == nil {\n \t\t\t\tt.Fatalf(\"run(%d, 5, %s) succeeded, want error\", start, mode.name)\n \t\t\t}\n@@ -371,7 +371,7 @@ func TestRunVersion(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.start, tt.count, tt.limit, tt.asJSON, tt.pretty, true); err != nil {\n+\t\t\tif err := run(&buf, tt.start, tt.count, tt.limit, 0, tt.asJSON, tt.pretty, true); err != nil {\n \t\t\t\tt.Fatalf(\"run(version) returned error: %v\", err)\n \t\t\t}\n \t\t\tif want := \"gofib \" + Version + \"\\n\"; buf.String() != want {\n@@ -415,7 +415,7 @@ func TestRunLimit(t *testing.T) {\n \tfor _, tt := range tests {\n \t\tt.Run(tt.name, func(t *testing.T) {\n \t\t\tvar buf bytes.Buffer\n-\t\t\tif err := run(&buf, tt.start, tt.n, tt.limit, tt.asJSON, false, false); err != nil {\n+\t\t\tif err := run(&buf, tt.start, tt.n, tt.limit, 0, tt.asJSON, false, false); err != nil {\n \t\t\t\tt.Fatalf(\"run(%d, %d, %d) returned error: %v\", tt.start, tt.n, tt.limit, err)\n \t\t\t}\n \t\t\tif tt.wantLines == 0 {\n@@ -445,7 +445,7 @@ func TestRunLimit(t *testing.T) {\n \tt.Run(\"limit with -pretty sizes columns from the capped last index\", func(t *testing.T) {\n \t\tconst start, n, limit = 8, 5, 10\n \t\tvar buf bytes.Buffer\n-\t\tif err := run(&buf, start, n, limit, false, true, false); err != nil {\n+\t\tif err := run(&buf, start, n, limit, 0, false, true, false); err != nil {\n \t\t\tt.Fatalf(\"run(%d, %d, %d, pretty) returned error: %v\", start, n, limit, err)\n \t\t}\n \t\tlines := strings.Split(strings.TrimSuffix(buf.String(), \"\\n\"), \"\\n\")\n@@ -473,7 +473,7 @@ func TestRunRejectsInvalidLimit(t *testing.T) {\n \t}{{\"text\", false}, {\"json\", true}} {\n \t\tfor _, limit := range []int{-1, -5} {\n \t\t\tvar buf bytes.Buffer\n-\t\t\terr := run(&buf, 0, 5, limit, mode.asJSON, false, false)\n+\t\t\terr := run(&buf, 0, 5, limit, 0, mode.asJSON, false, false)\n \t\t\tif err == nil {\n \t\t\t\tt.Fatalf(\"run(0, 5, %d, %s) succeeded, want error\", limit, mode.name)\n \t\t\t}\n@@ -487,3 +487,72 @@ func TestRunRejectsInvalidLimit(t *testing.T) {\n \t\t}\n \t}\n }\n+\n+// TestRunSeed pins the -seed semantics: a positive seed prints exactly\n+// one entry for that index in the active output mode, overriding -n,\n+// -start, and -limit for output; seed 0 is the unset sentinel; a\n+// negative seed is rejected with the exact validation error message.\n+func TestRunSeed(t *testing.T) {\n+\ttests := []struct {\n+\t\tname       string\n+\t\tstart      int\n+\t\tn          int\n+\t\tlimit      int\n+\t\tseed       int\n+\t\tasJSON     bool\n+\t\tpretty     bool\n+\t\twantOutput string\n+\t\twantErr    string\n+\t}{\n+\t\t{\"seed 10 prints only index 10\", 0, defaultCount, 0, 10, false, false, \"10: 55\\n\", \"\"},\n+\t\t// -seed overrides the range flags for output: -n, -start, and\n+\t\t// -limit would print indices 2..3 without it, but the seed wins.\n+\t\t{\"seed overrides n start limit\", 2, 5, 3, 10, false, false, \"10: 55\\n\", \"\"},\n+\t\t// seed 0 is the unset sentinel: plain -n output, unchanged.\n+\t\t{\"seed 0 behaves like unset\", 0, 5, 0, 0, false, false, \"1: 1\\n2: 1\\n3: 2\\n4: 3\\n5: 5\\n\", \"\"},\n+\t\t{\"seed with json emits one object\", 0, defaultCount, 0, 7, true, false,\n+\t\t\t`{\"index\":7,\"fib\":\"13\"}` + \"\\n\", \"\"},\n+\t\t// Pretty columns are sized to the single row itself.\n+\t\t{\"seed with pretty prints one aligned row\", 0, defaultCount, 0, 7, false, true, \"7: 13\\n\", \"\"},\n+\t\t{\"seed 100 with pretty sizes value column\", 0, defaultCount, 0, 100, false, true,\n+\t\t\t\"100: 354224848179261915075\\n\", \"\"},\n+\t\t{\"negative seed rejected\", 0, 5, 0, -1, false, false, \"\",\n+\t\t\t\"invalid value -1 for flag -seed: must be >= 0\"},\n+\t}\n+\tfor _, tt := range tests {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tvar buf bytes.Buffer\n+\t\t\terr := run(&buf, tt.start, tt.n, tt.limit, tt.seed, tt.asJSON, tt.pretty, false)\n+\t\t\tif tt.wantErr != \"\" {\n+\t\t\t\tif err == nil {\n+\t\t\t\t\tt.Fatalf(\"run(seed %d) succeeded, want error\", tt.seed)\n+\t\t\t\t}\n+\t\t\t\tif err.Error() != tt.wantErr {\n+\t\t\t\t\tt.Errorf(\"run(seed %d) error = %q, want exactly %q\", tt.seed, err.Error(), tt.wantErr)\n+\t\t\t\t}\n+\t\t\t\tif buf.String() != \"\" {\n+\t\t\t\t\tt.Errorf(\"run(seed %d) wrote %q before failing, want no output\", tt.seed, buf.String())\n+\t\t\t\t}\n+\t\t\t\treturn\n+\t\t\t}\n+\t\t\tif err != nil {\n+\t\t\t\tt.Fatalf(\"run(seed %d) returned error: %v\", tt.seed, err)\n+\t\t\t}\n+\t\t\tif got := buf.String(); got != tt.wantOutput {\n+\t\t\t\tt.Errorf(\"run(seed %d) output = %q, want %q\", tt.seed, got, tt.wantOutput)\n+\t\t\t}\n+\t\t})\n+\t}\n+}\n+\n+// TestRunSeedWithVersion pins that -version keeps top precedence over\n+// -seed, mirroring its precedence over every other flag.\n+func TestRunSeedWithVersion(t *testing.T) {\n+\tvar buf bytes.Buffer\n+\tif err := run(&buf, 0, defaultCount, 0, 10, false, false, true); err != nil {\n+\t\tt.Fatalf(\"run(seed 10, version) returned error: %v\", err)\n+\t}\n+\tif want := \"gofib \" + Version + \"\\n\"; buf.String() != want {\n+\t\tt.Errorf(\"run(seed 10, version) output = %q, want %q\", buf.String(), want)\n+\t}\n+}\ndiff --git a/main.go b/main.go\nindex 68ccf34..4c9a6c0 100644\n--- a/main.go\n+++ b/main.go\n@@ -5,8 +5,10 @@\n // the largest index printed (it does not change what -n counts either;\n // 0, the default, means no limit), -json switches to JSON Lines\n // output, and -pretty aligns the text columns (it has no effect with\n-// -json). The -version flag prints \"gofib <Version>\" and takes\n-// precedence over every other flag.\n+// -json). The -seed flag prints only the Fibonacci number at one index\n+// (0, the default, means unset), overriding -n, -start, and -limit for\n+// output while their validation is unchanged. The -version flag prints\n+// \"gofib <Version>\" and takes precedence over every other flag.\n package main\n \n import (\n@@ -62,8 +64,13 @@ const defaultStart = 1\n // pretty has no effect. With version set it prints only the single\n // line \"gofib <Version>\" and every other flag (including an invalid\n // count, start, or limit) is ignored. Otherwise it returns an error\n-// when count < 1, start < 0, or limit < 0.\n-func run(w io.Writer, start, count, limit int, asJSON, pretty, version bool) error {\n+// when count < 1, start < 0, limit < 0, or seed < 0. A positive seed\n+// overrides the range flags for output: exactly one entry for index\n+// seed is printed in the active output mode (in pretty mode the\n+// columns are sized to that single row), while -n, -start, and -limit\n+// keep their usual validation; seed 0 is the unset sentinel, so plain\n+// output is unchanged.\n+func run(w io.Writer, start, count, limit, seed int, asJSON, pretty, version bool) error {\n \tif version {\n \t\tfmt.Fprintf(w, \"gofib %s\\n\", Version)\n \t\treturn nil\n@@ -77,6 +84,25 @@ func run(w io.Writer, start, count, limit int, asJSON, pretty, version bool) err\n \tif limit < 0 {\n \t\treturn fmt.Errorf(\"invalid value %d for flag -limit: must be >= 0\", limit)\n \t}\n+\tif seed < 0 {\n+\t\treturn fmt.Errorf(\"invalid value %d for flag -seed: must be >= 0\", seed)\n+\t}\n+\t// A positive -seed is a single-index lookup: print exactly one\n+\t// entry for that index in the active output mode, ignoring -n,\n+\t// -start, and -limit for output (they were validated above).\n+\tif seed > 0 {\n+\t\tif asJSON {\n+\t\t\treturn json.NewEncoder(w).Encode(fibLine{Index: seed, Fib: Fib(seed).String()})\n+\t\t}\n+\t\tif pretty {\n+\t\t\tfmt.Fprintf(w, \"%*d: %*s\\n\",\n+\t\t\t\tlen(strconv.Itoa(seed)), seed,\n+\t\t\t\tlen(Fib(seed).String()), Fib(seed).String())\n+\t\t} else {\n+\t\t\tfmt.Fprintf(w, \"%d: %v\\n\", seed, Fib(seed))\n+\t\t}\n+\t\treturn nil\n+\t}\n \tif start == 0 {\n \t\tstart = defaultStart\n \t}\n@@ -116,9 +142,10 @@ func main() {\n \tlimit := flag.Int(\"limit\", 0, \"largest index to print (must be >= 0; 0 means no limit)\")\n \tasJSON := flag.Bool(\"json\", false, \"emit JSON Lines instead of text: one {\\\"index\\\": i, \\\"fib\\\": \\\"value\\\"} object per number\")\n \tpretty := flag.Bool(\"pretty\", false, \"align text output into two right-aligned columns sized to the largest index and value (no effect with -json)\")\n+\tseed := flag.Int(\"seed\", 0, \"print only the Fibonacci number at this index (must be >= 0; overrides -n/-start/-limit for output; 0 means unset)\")\n \tversion := flag.Bool(\"version\", false, \"print \\\"gofib <version>\\\" and exit; takes precedence over all other flags\")\n \tflag.Parse()\n-\tif err := run(os.Stdout, *start, *n, *limit, *asJSON, *pretty, *version); err != nil {\n+\tif err := run(os.Stdout, *start, *n, *limit, *seed, *asJSON, *pretty, *version); err != nil {\n \t\tfmt.Fprintln(os.Stderr, err)\n \t\tos.Exit(1)\n \t}\n",
+      "summary": {
+        "files_changed": 5,
+        "additions": 125,
+        "deletions": 21
+      }
+    }
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -2797,57 +2904,6 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "evidence@1": {
-      "first_event_seq": 202,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-        "failure_reason": null,
-        "timestamp": "2026-08-24T19:22:04.351229727Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": {
-        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
-        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
-        "language": "shell",
-        "timeout_ms": 120000
-      },
-      "script_timing": {
-        "output": "blob://sha256/b87a808326e29d358decc500a51074a5ba19e223744b6ffb4fd7ba04110d99f7",
-        "exit_code": 0,
-        "duration_ms": 406,
-        "termination": "exited",
-        "output_bytes": 13843,
-        "live_streaming": true
-      },
-      "parallel_results": null,
-      "output": null,
-      "output_bytes": 13843,
-      "live_streaming": true,
-      "termination": "exited",
-      "started_at": "2026-08-24T19:22:03.924762318Z",
-      "handler": "command",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 413,
-        "inference_time_ms": 0,
-        "tool_time_ms": 406,
-        "active_time_ms": 406
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "start@1": {
       "first_event_seq": 23,
       "prompt": null,
@@ -3299,6 +3355,93 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 298,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-24T19:23:59.230510591Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-24T19:23:59.230362949Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 202,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-08-24T19:22:04.351229727Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/b87a808326e29d358decc500a51074a5ba19e223744b6ffb4fd7ba04110d99f7",
+        "exit_code": 0,
+        "duration_ms": 406,
+        "termination": "exited",
+        "output_bytes": 13843,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 13843,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-08-24T19:22:03.924762318Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 413,
+        "inference_time_ms": 0,
+        "tool_time_ms": 406,
+        "active_time_ms": 406
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
