@@ -22,6 +22,14 @@ pub use todo::*;
 
 use crate::{ParallelBranchId, Principal, RunId, StageId};
 
+/// Maximum accepted body size for `POST /runs/{id}/events`.
+///
+/// Producers that embed large payloads in an event (serialized tool output in
+/// particular) must budget against this limit, leaving headroom for the rest
+/// of the event envelope. The agent layer reserves half of it for serialized
+/// tool output.
+pub const MAX_RUN_EVENT_BODY_BYTES: usize = 3 * 1024 * 1024;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunNoticeLevel {

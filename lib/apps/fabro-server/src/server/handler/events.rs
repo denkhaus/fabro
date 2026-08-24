@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::extract::DefaultBodyLimit;
+use fabro_types::run_event::MAX_RUN_EVENT_BODY_BYTES;
 use fabro_types::{
     RunEventDetailContent, RunEventDetailContentKind, RunEventDetailEnvelope,
     RunEventDetailResponse,
@@ -15,8 +16,6 @@ use super::super::{
     broadcast, get, mpsc, parse_run_id_path, parse_stage_id_path, redact_jsonl_line,
     reject_if_archived, update_live_run_from_event,
 };
-
-const MAX_RUN_EVENT_BODY_BYTES: usize = 3 * 1024 * 1024;
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()

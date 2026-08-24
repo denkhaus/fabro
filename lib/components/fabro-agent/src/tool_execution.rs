@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use fabro_llm::types::{ToolCall, ToolResult};
@@ -12,7 +13,8 @@ use crate::sandbox::{OutputCaptureStats, Sandbox};
 use crate::session::ToolEnvProvider;
 use crate::tool_registry::{AgentEventEmitter, RegisteredTool, ToolContext, ToolRegistry};
 use crate::truncation::{
-    MAX_RETAINED_TOOL_OUTPUT_BYTES, preview_tool_output, truncate_tool_output,
+    MAX_RETAINED_TOOL_OUTPUT_BYTES, preview_tool_output, serialized_json_bytes,
+    truncate_tool_output,
 };
 use crate::types::AgentEvent;
 
@@ -267,7 +269,19 @@ fn error_tool_result_with_events(
     message: &str,
 ) -> ToolResult {
     emit_tool_call_started(emitter, session_id, tc);
-    let retained = retain_tool_result(&ToolResult::error(&tc.id, message), None);
+    finish_error_result(tc, emitter, session_id, config, message)
+}
+
+/// Bound, emit, and truncate an error result for a tool call whose
+/// started event was already emitted.
+fn finish_error_result(
+    tc: &ToolCall,
+    emitter: &Emitter,
+    session_id: &str,
+    config: &SessionOptions,
+    message: &str,
+) -> ToolResult {
+    let retained = retain_tool_result(ToolResult::error(&tc.id, message), None);
     emit_tool_call_result(
         emitter,
         session_id,
@@ -403,15 +417,7 @@ async fn execute_and_emit_one_tool_with_lookup(
     emit_tool_call_started(emitter, session_id, tc);
 
     if let Some(reason) = access_denial {
-        let retained = retain_tool_result(&ToolResult::error(&tc.id, &reason), None);
-        emit_tool_call_result(
-            emitter,
-            session_id,
-            tc,
-            &retained.result,
-            retained.output_stats,
-        );
-        return truncate_tool_result(&retained.result, &tc.name, config);
+        return finish_error_result(tc, emitter, session_id, config, &reason);
     }
 
     // Pre-tool-use hook
@@ -423,15 +429,7 @@ async fn execute_and_emit_one_tool_with_lookup(
         debug!(tool = %tc.name, hook_event = "pre_tool_use", ?decision, duration_ms = elapsed, "Tool hook complete");
 
         if let ToolHookDecision::Block { reason } = decision {
-            let retained = retain_tool_result(&ToolResult::error(&tc.id, &reason), None);
-            emit_tool_call_result(
-                emitter,
-                session_id,
-                tc,
-                &retained.result,
-                retained.output_stats,
-            );
-            return truncate_tool_result(&retained.result, &tc.name, config);
+            return finish_error_result(tc, emitter, session_id, config, &reason);
         }
     }
 
@@ -447,7 +445,7 @@ async fn execute_and_emit_one_tool_with_lookup(
         agent_tool_runtime,
     )
     .await;
-    let retained = retain_tool_result(&executed.result, executed.output_stats);
+    let retained = retain_tool_result(executed.result, executed.output_stats);
     let result = retained.result;
 
     emit_tool_call_result(emitter, session_id, tc, &result, retained.output_stats);
@@ -484,32 +482,25 @@ struct RetainedToolResult {
 
 /// Bound model-native tool output before it reaches hooks, events, or history.
 fn retain_tool_result(
-    result: &ToolResult,
+    mut result: ToolResult,
     previous_stats: Option<OutputCaptureStats>,
 ) -> RetainedToolResult {
-    let (retained_content, output_stats) = match &result.content {
+    let output_stats = match &mut result.content {
         serde_json::Value::String(output) => {
             let previously_omitted = previous_stats.map_or(0, |stats| stats.omitted_bytes);
-            let retained =
+            let previewed =
                 preview_tool_output(output, MAX_RETAINED_TOOL_OUTPUT_BYTES, previously_omitted);
-            (serde_json::Value::String(retained.output), retained.stats)
+            let stats = previewed.stats;
+            if let Cow::Owned(previewed_output) = previewed.output {
+                *output = previewed_output;
+            }
+            stats
         }
-        other => {
-            let byte_count = serde_json::to_vec(other)
-                .expect("serde_json::Value always serializes")
-                .len();
-            (other.clone(), OutputCaptureStats::complete(byte_count))
-        }
+        other => OutputCaptureStats::complete(serialized_json_bytes(other)),
     };
 
     RetainedToolResult {
-        result: ToolResult {
-            tool_call_id:     result.tool_call_id.clone(),
-            content:          retained_content,
-            is_error:         result.is_error,
-            image_data:       result.image_data.clone(),
-            image_media_type: result.image_media_type.clone(),
-        },
+        result,
         output_stats,
     }
 }
@@ -645,7 +636,7 @@ mod tests {
     use async_trait::async_trait;
     use fabro_llm::types::{ToolCall, ToolDefinition};
     use fabro_model::AgentProfileKind;
-    use fabro_types::run_event::AgentToolCompletedProps;
+    use fabro_types::run_event::{AgentToolCompletedProps, MAX_RUN_EVENT_BODY_BYTES};
     use tokio::sync::broadcast;
 
     use super::*;
@@ -1114,8 +1105,11 @@ mod tests {
         let serialized_event_bytes = serde_json::to_vec(&run_event)
             .expect("run event serializes")
             .len();
+        // Leave at least 1 MiB of envelope headroom under the server's
+        // run-event body limit.
+        let event_body_budget = MAX_RUN_EVENT_BODY_BYTES - 1024 * 1024;
         assert!(
-            serialized_event_bytes < 2 * 1024 * 1024,
+            serialized_event_bytes < event_body_budget,
             "serialized event was {serialized_event_bytes} bytes"
         );
     }

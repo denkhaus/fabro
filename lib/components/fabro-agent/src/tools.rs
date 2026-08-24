@@ -13,7 +13,7 @@ use tokio::task;
 use crate::config::NativeToolOptions;
 use crate::sandbox::{ExecStreamingResult, GrepOptions};
 use crate::tool_registry::{RegisteredTool, ToolContext, ToolRegistry, ToolSource};
-use crate::truncation::{MAX_RETAINED_TOOL_OUTPUT_BYTES, RetainedToolOutput, retain_tool_output};
+use crate::truncation::{MAX_RETAINED_TOOL_OUTPUT_BYTES, retain_tool_output};
 use crate::types::AgentEvent;
 use crate::web_search::{SearchBackend, make_web_search_tool};
 
@@ -320,13 +320,27 @@ pub(crate) async fn run_shell_command(
     cwd: Option<&str>,
 ) -> Result<String, String> {
     let streaming = execute_shell_command(ctx, command, timeout_ms, cwd).await?;
-    let retained = render_shell_result(&streaming);
-    ctx.record_tool_output_stats(retained.stats);
-    let text = retained.output;
+    let text = retain_shell_output(ctx, &streaming, render_shell_result(&streaming));
     let is_success = streaming.result.is_success();
     emit_shell_process_completed(ctx, streaming).await;
 
     if is_success { Ok(text) } else { Err(text) }
+}
+
+/// Bound rendered shell output to the retention budget and record the capture
+/// stats for the executing tool call.
+pub(crate) fn retain_shell_output(
+    ctx: &ToolContext,
+    streaming: &ExecStreamingResult,
+    output: String,
+) -> String {
+    let retained = retain_tool_output(
+        output,
+        MAX_RETAINED_TOOL_OUTPUT_BYTES,
+        streaming.output_capture().omitted_bytes,
+    );
+    ctx.record_tool_output_stats(retained.stats);
+    retained.output
 }
 
 /// Emit the subordinate process outcome after model-facing output has been
@@ -372,7 +386,7 @@ pub(crate) async fn emit_shell_process_completed(
 /// Renders the model-facing shell result: termination, exit code, duration,
 /// and provider-honest output sections. Metadata stays at the head and
 /// `stderr` at the tail so head/tail truncation preserves both.
-fn render_shell_result(streaming: &ExecStreamingResult) -> RetainedToolOutput {
+fn render_shell_result(streaming: &ExecStreamingResult) -> String {
     let result = &streaming.result;
     let mut output = format!(
         "Termination: {}\nExit code: {}\nDuration: {}ms\n",
@@ -392,11 +406,7 @@ fn render_shell_result(streaming: &ExecStreamingResult) -> RetainedToolOutput {
     } else if !result.stdout.is_empty() {
         let _ = write!(output, "output (combined):\n{}\n", result.stdout);
     }
-    retain_tool_output(
-        &output,
-        MAX_RETAINED_TOOL_OUTPUT_BYTES,
-        streaming.output_capture().omitted_bytes,
-    )
+    output
 }
 
 #[must_use]

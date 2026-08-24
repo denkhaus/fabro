@@ -64,9 +64,9 @@ impl Default for Emitter {
 /// when a subagent's events are forwarded through its parent.
 #[derive(Clone)]
 pub struct SessionBoundEmitter {
-    pub emitter:       Emitter,
-    pub session_id:    String,
-    pub tool_call_id:  Option<String>,
+    emitter:           Emitter,
+    session_id:        String,
+    tool_call_id:      Option<String>,
     tool_output_stats: Arc<Mutex<Option<OutputCaptureStats>>>,
 }
 

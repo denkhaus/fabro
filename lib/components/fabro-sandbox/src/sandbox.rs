@@ -870,38 +870,34 @@ impl OutputCaptureBuffer {
     #[cfg(feature = "daytona")]
     #[must_use]
     pub(crate) fn to_bytes(&self) -> Vec<u8> {
-        let stats = self.stats();
-        let mut bytes = Vec::with_capacity(stats.retained_bytes);
+        let mut bytes = Vec::with_capacity(self.head.len().saturating_add(self.tail.len()));
         bytes.extend_from_slice(&self.head);
-        bytes.extend(self.tail.iter().copied());
+        let (front, back) = self.tail.as_slices();
+        bytes.extend_from_slice(front);
+        bytes.extend_from_slice(back);
         bytes
     }
 
     #[must_use]
     pub(crate) fn into_parts(self) -> (Vec<u8>, OutputCaptureStats) {
         let stats = self.stats();
-        let mut bytes = Vec::with_capacity(stats.retained_bytes);
-        bytes.extend(self.head);
-        bytes.extend(self.tail);
+        let Self {
+            head: mut bytes,
+            tail,
+            ..
+        } = self;
+        let (front, back) = tail.as_slices();
+        bytes.extend_from_slice(front);
+        bytes.extend_from_slice(back);
         (bytes, stats)
     }
 
+    /// Retained bytes as two contiguous slices: the stable head, then the
+    /// rolling tail.
     #[cfg(feature = "daytona")]
     #[must_use]
-    pub(crate) fn observed_bytes(&self) -> usize {
-        self.observed_bytes
-    }
-
-    #[cfg(feature = "daytona")]
-    #[must_use]
-    pub(crate) fn retained_head(&self) -> &[u8] {
-        &self.head
-    }
-
-    #[cfg(feature = "daytona")]
-    #[must_use]
-    pub(crate) fn retained_tail(&self) -> &VecDeque<u8> {
-        &self.tail
+    pub(crate) fn retained_slices(&mut self) -> (&[u8], &[u8]) {
+        (&self.head, self.tail.make_contiguous())
     }
 }
 
@@ -1008,14 +1004,8 @@ pub(crate) async fn replay_exec_result(
             .await?;
         }
     }
-    let mut stdout_capture = OutputCaptureBuffer::new(stream_output_bytes_cap);
-    stdout_capture.push(result.stdout.as_bytes());
-    let mut stderr_capture = OutputCaptureBuffer::new(stream_output_bytes_cap);
-    stderr_capture.push(result.stderr.as_bytes());
-    let (stdout, stdout_capture) = stdout_capture.into_parts();
-    let (stderr, stderr_capture) = stderr_capture.into_parts();
-    result.stdout = String::from_utf8_lossy(&stdout).into_owned();
-    result.stderr = String::from_utf8_lossy(&stderr).into_owned();
+    let stdout_capture = capture_replayed_stream(&mut result.stdout, stream_output_bytes_cap);
+    let stderr_capture = capture_replayed_stream(&mut result.stderr, stream_output_bytes_cap);
 
     Ok(ExecStreamingResult {
         result,
@@ -1024,6 +1014,21 @@ pub(crate) async fn replay_exec_result(
         stdout_capture,
         stderr_capture,
     })
+}
+
+/// Bound one replayed stream in place, leaving it untouched when it already
+/// fits the cap.
+fn capture_replayed_stream(text: &mut String, cap: Option<usize>) -> OutputCaptureStats {
+    match cap {
+        Some(cap) if text.len() > cap => {
+            let mut buffer = OutputCaptureBuffer::new(Some(cap));
+            buffer.push(text.as_bytes());
+            let (bytes, stats) = buffer.into_parts();
+            *text = String::from_utf8_lossy(&bytes).into_owned();
+            stats
+        }
+        _ => OutputCaptureStats::complete(text.len()),
+    }
 }
 
 pub struct StdioProcess {

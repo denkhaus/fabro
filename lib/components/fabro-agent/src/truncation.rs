@@ -1,15 +1,43 @@
+use std::borrow::Cow;
+
+use fabro_llm::token_count;
+use fabro_types::run_event::MAX_RUN_EVENT_BODY_BYTES;
+use serde::Serialize;
+
 use crate::config::SessionOptions;
 use crate::sandbox::OutputCaptureStats;
 use crate::tool_permissions::canonical_tool_name;
 
 pub(crate) const MAX_RETAINED_TOOL_OUTPUT_BYTES: usize = 1024 * 1024;
-pub(crate) const MAX_SERIALIZED_TOOL_OUTPUT_BYTES: usize = 3 * 1024 * 1024 / 2;
+/// Reserve half the run-event body limit for serialized tool output; the
+/// other half is headroom for the rest of the event envelope.
+pub(crate) const MAX_SERIALIZED_TOOL_OUTPUT_BYTES: usize = MAX_RUN_EVENT_BODY_BYTES / 2;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub(crate) struct RetainedToolOutput {
     pub output: String,
     pub stats:  OutputCaptureStats,
-    head_bytes: usize,
+}
+
+/// Model-facing preview of a tool output. Borrows the input when no
+/// truncation notice was needed.
+#[derive(Debug)]
+pub(crate) struct PreviewedToolOutput<'a> {
+    pub output: Cow<'a, str>,
+    pub stats:  OutputCaptureStats,
+}
+
+/// Boundaries of an equal-sized UTF-8 head and tail fitting `max_bytes`, or
+/// `None` when `output` already fits.
+fn split_head_tail(output: &str, max_bytes: usize) -> Option<(usize, usize)> {
+    if output.len() <= max_bytes {
+        return None;
+    }
+    let head_budget = max_bytes / 2;
+    let tail_budget = max_bytes - head_budget;
+    let head_end = output.floor_char_boundary(head_budget);
+    let tail_start = output.ceil_char_boundary(output.len() - tail_budget);
+    Some((head_end, tail_start))
 }
 
 /// Keep an equal-sized UTF-8 prefix and suffix within a byte budget.
@@ -18,44 +46,34 @@ pub(crate) struct RetainedToolOutput {
 /// discarded before the rendered result was assembled.
 #[must_use]
 pub(crate) fn retain_tool_output(
-    output: &str,
+    output: String,
     max_bytes: usize,
     previously_omitted_bytes: usize,
 ) -> RetainedToolOutput {
     let observed_bytes = output.len().saturating_add(previously_omitted_bytes);
-    if output.len() <= max_bytes {
+    let Some((head_end, tail_start)) = split_head_tail(&output, max_bytes) else {
         return RetainedToolOutput {
-            output:     output.to_string(),
-            stats:      OutputCaptureStats {
+            stats: OutputCaptureStats {
                 observed_bytes,
                 retained_bytes: output.len(),
                 omitted_bytes: previously_omitted_bytes,
             },
-            head_bytes: if previously_omitted_bytes == 0 {
-                output.len()
-            } else {
-                output.floor_char_boundary(output.len() / 2)
-            },
+            output,
         };
-    }
+    };
 
-    let head_budget = max_bytes / 2;
-    let tail_budget = max_bytes.saturating_sub(head_budget);
-    let head_end = output.floor_char_boundary(head_budget);
-    let tail_start = ceil_char_boundary(output, output.len().saturating_sub(tail_budget));
-    let retained_bytes = head_end.saturating_add(output.len().saturating_sub(tail_start));
+    let retained_bytes = head_end + (output.len() - tail_start);
     let mut retained = String::with_capacity(retained_bytes);
     retained.push_str(&output[..head_end]);
     retained.push_str(&output[tail_start..]);
 
     RetainedToolOutput {
-        output:     retained,
-        stats:      OutputCaptureStats {
+        output: retained,
+        stats:  OutputCaptureStats {
             observed_bytes,
             retained_bytes,
             omitted_bytes: observed_bytes.saturating_sub(retained_bytes),
         },
-        head_bytes: head_end,
     }
 }
 
@@ -66,30 +84,64 @@ pub(crate) fn preview_tool_output(
     output: &str,
     max_bytes: usize,
     previously_omitted_bytes: usize,
-) -> RetainedToolOutput {
+) -> PreviewedToolOutput<'_> {
+    let observed_bytes = output.len().saturating_add(previously_omitted_bytes);
     let mut content_budget = max_bytes;
     loop {
-        let retained = retain_tool_output(output, content_budget, previously_omitted_bytes);
-        let rendered = if retained.stats.omitted_bytes == 0 {
-            retained.output.clone()
+        let (head_end, tail_start, stats) =
+            if let Some((head_end, tail_start)) = split_head_tail(output, content_budget) {
+                let retained_bytes = head_end + (output.len() - tail_start);
+                (head_end, tail_start, OutputCaptureStats {
+                    observed_bytes,
+                    retained_bytes,
+                    omitted_bytes: observed_bytes.saturating_sub(retained_bytes),
+                })
+            } else {
+                // The whole output fits. A notice is still rendered when the
+                // stream itself omitted bytes; equal-sized retention keeps
+                // that omission gap at the midpoint.
+                let mid = output.floor_char_boundary(output.len() / 2);
+                (mid, mid, OutputCaptureStats {
+                    observed_bytes,
+                    retained_bytes: output.len(),
+                    omitted_bytes: previously_omitted_bytes,
+                })
+            };
+        let rendered: Cow<'_, str> = if stats.omitted_bytes == 0 {
+            Cow::Borrowed(output)
         } else {
-            render_retained_output(&retained)
+            Cow::Owned(render_truncated_segments(
+                &output[..head_end],
+                &output[tail_start..],
+                stats,
+                None,
+            ))
         };
-        let serialized_bytes = serialized_json_string_bytes(&rendered);
+        let serialized_bytes = serialized_json_bytes(rendered.as_ref());
         if rendered.len() <= max_bytes && serialized_bytes <= MAX_SERIALIZED_TOOL_OUTPUT_BYTES {
-            if retained.stats.omitted_bytes == 0 {
-                return retained;
-            }
-            return RetainedToolOutput {
-                output:     rendered,
-                stats:      retained.stats,
-                head_bytes: 0,
+            return PreviewedToolOutput {
+                output: rendered,
+                stats,
             };
         }
 
-        let mut next_budget = content_budget;
+        let Some(reduced_budget) = content_budget.checked_sub(1) else {
+            // The content budget is exhausted and the notice text alone still
+            // overflows. Hard-cut the rendered notice to fit.
+            let output = match split_head_tail(&rendered, max_bytes) {
+                Some((head_end, tail_start)) => {
+                    format!("{}{}", &rendered[..head_end], &rendered[tail_start..])
+                }
+                None => rendered.into_owned(),
+            };
+            return PreviewedToolOutput {
+                output: Cow::Owned(output),
+                stats,
+            };
+        };
+        let mut next_budget = reduced_budget;
         if rendered.len() > max_bytes {
-            let excess = rendered.len().saturating_sub(max_bytes);
+            let excess = rendered.len() - max_bytes;
             next_budget = next_budget.min(content_budget.saturating_sub(excess));
         }
         if serialized_bytes > MAX_SERIALIZED_TOOL_OUTPUT_BYTES {
@@ -100,28 +152,27 @@ pub(crate) fn preview_tool_output(
                 .unwrap_or(0);
             next_budget = next_budget.min(scaled_budget);
         }
-        next_budget = next_budget.min(content_budget.saturating_sub(1));
-        if next_budget == content_budget {
-            return RetainedToolOutput {
-                output:     truncate_plain_output(&rendered, max_bytes, TruncationMode::HeadTail),
-                stats:      retained.stats,
-                head_bytes: 0,
-            };
-        }
         content_budget = next_budget;
     }
 }
 
-fn serialized_json_string_bytes(output: &str) -> usize {
-    serde_json::to_vec(output)
-        .expect("strings always serialize as JSON")
-        .len()
-}
+/// Serialized JSON size in bytes, counted without materializing the payload.
+pub(crate) fn serialized_json_bytes<T: Serialize + ?Sized>(value: &T) -> usize {
+    struct CountingWriter(usize);
+    impl std::io::Write for CountingWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0 += buf.len();
+            Ok(buf.len())
+        }
 
-fn render_retained_output(retained: &RetainedToolOutput) -> String {
-    let head = &retained.output[..retained.head_bytes];
-    let tail = &retained.output[retained.head_bytes..];
-    render_truncated_segments(head, tail, retained.stats, None)
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut writer = CountingWriter(0);
+    serde_json::to_writer(&mut writer, value).expect("JSON tool output always serializes");
+    writer.0
 }
 
 fn render_truncated_segments(
@@ -130,8 +181,8 @@ fn render_truncated_segments(
     stats: OutputCaptureStats,
     line_count_omitted: Option<usize>,
 ) -> String {
-    let original_tokens = approximate_tokens(stats.observed_bytes);
-    let omitted_tokens = approximate_tokens(stats.omitted_bytes);
+    let original_tokens = token_count::estimate_byte_tokens(stats.observed_bytes);
+    let omitted_tokens = token_count::estimate_byte_tokens(stats.omitted_bytes);
     let middle_marker = line_count_omitted.map_or_else(
         || format!("... approximately {omitted_tokens} tokens truncated ..."),
         |lines| {
@@ -144,18 +195,6 @@ fn render_truncated_segments(
         "Warning: truncated output (original token count: {original_tokens})\n... {} bytes omitted ...\n\n{head}\n\n{middle_marker}\n\n{tail}",
         stats.omitted_bytes
     )
-}
-
-fn approximate_tokens(bytes: usize) -> usize {
-    bytes.div_ceil(4)
-}
-
-fn ceil_char_boundary(output: &str, index: usize) -> usize {
-    let mut index = index.min(output.len());
-    while index < output.len() && !output.is_char_boundary(index) {
-        index += 1;
-    }
-    index
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -193,63 +232,28 @@ fn default_truncation_mode(tool_name: &str) -> TruncationMode {
 
 #[must_use]
 pub fn truncate_output(output: &str, max_chars: usize, mode: TruncationMode) -> String {
-    if output.len() <= max_chars {
+    let Some((head_end, tail_start)) = split_head_tail(output, max_chars) else {
         return output.to_string();
-    }
+    };
 
-    match mode {
-        TruncationMode::HeadTail => {
-            let half = max_chars / 2;
-            let head_end = output.floor_char_boundary(half);
-            let tail_start = ceil_char_boundary(output, output.len().saturating_sub(half));
-            let head = &output[..head_end];
-            let tail = &output[tail_start..];
-            let retained_bytes = head.len().saturating_add(tail.len());
-            render_truncated_segments(
-                head,
-                tail,
-                OutputCaptureStats {
-                    observed_bytes: output.len(),
-                    retained_bytes,
-                    omitted_bytes: output.len().saturating_sub(retained_bytes),
-                },
-                None,
-            )
-        }
+    let (head, tail) = match mode {
+        TruncationMode::HeadTail => (&output[..head_end], &output[tail_start..]),
         TruncationMode::Tail => {
-            let tail_start = ceil_char_boundary(output, output.len().saturating_sub(max_chars));
-            let tail = &output[tail_start..];
-            render_truncated_segments(
-                "",
-                tail,
-                OutputCaptureStats {
-                    observed_bytes: output.len(),
-                    retained_bytes: tail.len(),
-                    omitted_bytes:  output.len().saturating_sub(tail.len()),
-                },
-                None,
-            )
+            let tail_start = output.ceil_char_boundary(output.len() - max_chars);
+            ("", &output[tail_start..])
         }
-    }
-}
-
-fn truncate_plain_output(output: &str, max_bytes: usize, mode: TruncationMode) -> String {
-    if output.len() <= max_bytes {
-        return output.to_string();
-    }
-
-    match mode {
-        TruncationMode::HeadTail => {
-            let half = max_bytes / 2;
-            let head_end = output.floor_char_boundary(half);
-            let tail_start = ceil_char_boundary(output, output.len().saturating_sub(half));
-            format!("{}{}", &output[..head_end], &output[tail_start..])
-        }
-        TruncationMode::Tail => {
-            let tail_start = ceil_char_boundary(output, output.len().saturating_sub(max_bytes));
-            output[tail_start..].to_string()
-        }
-    }
+    };
+    let retained_bytes = head.len().saturating_add(tail.len());
+    render_truncated_segments(
+        head,
+        tail,
+        OutputCaptureStats {
+            observed_bytes: output.len(),
+            retained_bytes,
+            omitted_bytes: output.len().saturating_sub(retained_bytes),
+        },
+        None,
+    )
 }
 
 #[must_use]
@@ -316,7 +320,7 @@ mod tests {
 
     #[test]
     fn retained_tool_output_keeps_equal_head_and_tail() {
-        let retained = retain_tool_output("abcdefghijkl", 8, 0);
+        let retained = retain_tool_output("abcdefghijkl".to_string(), 8, 0);
 
         assert_eq!(retained.output, "abcdijkl");
         assert_eq!(retained.stats.observed_bytes, 12);
@@ -326,7 +330,7 @@ mod tests {
 
     #[test]
     fn retained_tool_output_stays_within_budget_at_utf8_boundaries() {
-        let retained = retain_tool_output("aa😀😀zz", 7, 3);
+        let retained = retain_tool_output("aa😀😀zz".to_string(), 7, 3);
 
         assert!(retained.output.len() <= 7, "{}", retained.output.len());
         assert!(retained.output.starts_with("aa"));
@@ -380,10 +384,10 @@ mod tests {
             "\0".repeat(MAX_RETAINED_TOOL_OUTPUT_BYTES - "HEADTAIL".len())
         );
         assert_eq!(output.len(), MAX_RETAINED_TOOL_OUTPUT_BYTES);
-        assert!(serialized_json_string_bytes(&output) > MAX_SERIALIZED_TOOL_OUTPUT_BYTES);
+        assert!(serialized_json_bytes(output.as_str()) > MAX_SERIALIZED_TOOL_OUTPUT_BYTES);
 
         let preview = preview_tool_output(&output, MAX_RETAINED_TOOL_OUTPUT_BYTES, 0);
-        let serialized_bytes = serialized_json_string_bytes(&preview.output);
+        let serialized_bytes = serialized_json_bytes(preview.output.as_ref());
 
         assert!(preview.output.len() <= MAX_RETAINED_TOOL_OUTPUT_BYTES);
         assert!(

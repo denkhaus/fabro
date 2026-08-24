@@ -33,8 +33,8 @@ use crate::push_credentials::{self, PushCredentialState};
 use crate::redact::redact_auth_url;
 use crate::sandbox::{
     self, BASH_ENV_VAR, BASH_PROBE_MARKER, BASH_PROBE_SCRIPT, BASH_PROBE_TIMEOUT_MS,
-    OutputCaptureBuffer, REMOTE_BASH, REMOTE_WALK_TIMEOUT_MS, RefreshOutcome, optional_timeout,
-    resolve_path, validate_bash_probe,
+    OutputCaptureBuffer, OutputCaptureStats, REMOTE_BASH, REMOTE_WALK_TIMEOUT_MS, RefreshOutcome,
+    optional_timeout, resolve_path, validate_bash_probe,
 };
 use crate::{
     CommandOutputCallback, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult,
@@ -2375,20 +2375,8 @@ impl Sandbox for DaytonaSandbox {
             .await?;
         }
 
-        let (stdout, stdout_capture) = {
-            let stdout_seen = stdout_seen.lock().await;
-            (
-                String::from_utf8_lossy(&stdout_seen.to_bytes()).into_owned(),
-                stdout_seen.stats(),
-            )
-        };
-        let (stderr, stderr_capture) = {
-            let stderr_seen = stderr_seen.lock().await;
-            (
-                String::from_utf8_lossy(&stderr_seen.to_bytes()).into_owned(),
-                stderr_seen.stats(),
-            )
-        };
+        let (stdout, stdout_capture) = drain_captured_stream(&stdout_seen).await;
+        let (stderr, stderr_capture) = drain_captured_stream(&stderr_seen).await;
 
         let result = ExecStreamingResult {
             result: ExecResult {
@@ -2914,7 +2902,7 @@ async fn append_missing_log_suffix(
     }
 
     let mut seen = seen.lock().await;
-    let offset = captured_log_suffix_offset(&seen, final_bytes);
+    let offset = captured_log_suffix_offset(&mut seen, final_bytes);
     if offset >= final_bytes.len() {
         return Ok(());
     }
@@ -2928,21 +2916,34 @@ async fn append_missing_log_suffix(
     }
 }
 
-fn captured_log_suffix_offset(seen: &OutputCaptureBuffer, final_bytes: &[u8]) -> usize {
+/// Take the captured stream bytes out of their shared buffer as a lossy
+/// string, avoiding a copy when the bytes are valid UTF-8.
+async fn drain_captured_stream(
+    seen: &Arc<Mutex<OutputCaptureBuffer>>,
+) -> (String, OutputCaptureStats) {
+    let buffer = {
+        let mut seen = seen.lock().await;
+        std::mem::replace(&mut *seen, OutputCaptureBuffer::new(None))
+    };
+    let (bytes, stats) = buffer.into_parts();
+    let text = match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(err) => String::from_utf8_lossy(err.as_bytes()).into_owned(),
+    };
+    (text, stats)
+}
+
+fn captured_log_suffix_offset(seen: &mut OutputCaptureBuffer, final_bytes: &[u8]) -> usize {
     let stats = seen.stats();
     if stats.omitted_bytes == 0 {
         return missing_log_suffix_offset(&seen.to_bytes(), final_bytes);
     }
 
-    let observed_bytes = seen.observed_bytes();
-    let head = seen.retained_head();
-    let tail = seen.retained_tail();
+    let observed_bytes = stats.observed_bytes;
+    let (head, tail) = seen.retained_slices();
     if final_bytes.len() >= observed_bytes
         && final_bytes.starts_with(head)
-        && tail.iter().copied().eq(final_bytes
-            [observed_bytes.saturating_sub(tail.len())..observed_bytes]
-            .iter()
-            .copied())
+        && tail == &final_bytes[observed_bytes.saturating_sub(tail.len())..observed_bytes]
     {
         return observed_bytes;
     }
@@ -2952,12 +2953,7 @@ fn captured_log_suffix_offset(seen: &OutputCaptureBuffer, final_bytes: &[u8]) ->
 
     let max_overlap = tail.len().min(final_bytes.len());
     for overlap in (1..=max_overlap).rev() {
-        if tail
-            .iter()
-            .skip(tail.len() - overlap)
-            .copied()
-            .eq(final_bytes[..overlap].iter().copied())
-        {
+        if tail[tail.len() - overlap..] == final_bytes[..overlap] {
             return overlap;
         }
     }
@@ -4791,9 +4787,9 @@ mod tests {
         let mut seen = OutputCaptureBuffer::new(Some(6));
         seen.push(b"abcdefgh");
 
-        assert_eq!(captured_log_suffix_offset(&seen, b"abcdefghij"), 8);
-        assert_eq!(captured_log_suffix_offset(&seen, b"abcdefgh"), 8);
-        assert_eq!(captured_log_suffix_offset(&seen, b"abcd"), 4);
+        assert_eq!(captured_log_suffix_offset(&mut seen, b"abcdefghij"), 8);
+        assert_eq!(captured_log_suffix_offset(&mut seen, b"abcdefgh"), 8);
+        assert_eq!(captured_log_suffix_offset(&mut seen, b"abcd"), 4);
     }
 
     #[test]
