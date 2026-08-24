@@ -1582,6 +1582,10 @@ async fn probe_rest_api_scope(token: &str, origin_url: &str) -> std::result::Res
         .get(&url)
         .header("Authorization", format!("Bearer {token}"))
         .header("Accept", "application/vnd.github+json")
+        // GitHub rejects UA-less API requests with 403 "administrative
+        // rules" — every other REST call in fabro-github sends this UA;
+        // the probe must too (verified: same token, no-UA 403 / with-UA 200).
+        .header("User-Agent", "fabro")
         .send()
         .await
         .map_err(|err| format!("request failed: {err}"))?;
