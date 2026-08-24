@@ -72,7 +72,7 @@ client_id = "Iv1.test"
 "#,
     );
     state
-        .test_authorization_code_store()
+        .test_auth_code_store()
         .issue("integration-code", &PendingCliAuthorization {
             identity:       fabro_types::IdpIdentity::new("https://github.com", "12345").unwrap(),
             login:          "octocat".to_string(),

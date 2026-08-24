@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 
 mod artifact_store;
+mod auth_code_store;
 pub mod auth_session_store;
-mod authorization_code_store;
 mod blob_store;
 mod error;
 mod keyed_mutex;
@@ -23,10 +23,10 @@ pub use artifact_store::{
     ArtifactKey, ArtifactStore, NodeArtifact, StageArtifactEntry, retry_storage_segment,
     stage_storage_segment,
 };
+pub use auth_code_store::{AuthCodeStore, PendingCliAuthorization};
 pub use auth_session_store::{
     ActiveCliSession, AuthSessionRecord, AuthSessionStore, InitialRefreshToken, RotateOutcome,
 };
-pub use authorization_code_store::{AuthorizationCodeStore, PendingCliAuthorization};
 pub use blob_store::{Blob, BlobStore};
 pub use error::{Error, Result};
 pub use fabro_types::{

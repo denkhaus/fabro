@@ -392,7 +392,7 @@ async fn token(
 
     let Some(entry) = (match state
         .stores
-        .authorization_codes
+        .auth_codes
         .consume(code, chrono::Utc::now())
         .await
     {
@@ -1122,7 +1122,7 @@ async fn issue_auth_code_response(
         expires_at: chrono::Utc::now() + chrono::Duration::seconds(60),
     };
 
-    if let Err(err) = state.stores.authorization_codes.issue(&code, &entry).await {
+    if let Err(err) = state.stores.auth_codes.issue(&code, &entry).await {
         warn!(error = %err, "Failed to persist auth code");
         return redirect_with_error(
             &redirect_uri,
@@ -1313,7 +1313,7 @@ client_id = "github-client-id"
     async fn insert_auth_code(state: &crate::server::AppState, code: &str, verifier: &str) {
         state
             .stores
-            .authorization_codes
+            .auth_codes
             .issue(code, &PendingCliAuthorization {
                 identity:       fabro_types::IdpIdentity::new("https://github.com", "12345")
                     .expect("identity should be valid"),
@@ -1705,7 +1705,7 @@ client_id = "github-client-id"
             .expect("auth code should be present");
         let entry = state
             .stores
-            .authorization_codes
+            .auth_codes
             .consume(code, chrono::Utc::now())
             .await
             .unwrap()
@@ -2064,7 +2064,7 @@ client_id = "github-client-id"
     #[tokio::test]
     async fn token_storage_failure_returns_safe_oauth_error() {
         let (app, state) = test_router(github_settings("https://fabro.example"));
-        state.stores.authorization_codes.test_close().await;
+        state.stores.auth_codes.test_close().await;
         let raw_code = "raw-code-that-must-not-escape";
         let raw_verifier = "raw-verifier-that-must-not-escape";
         let redirect_uri = "http://127.0.0.1:4444/callback";

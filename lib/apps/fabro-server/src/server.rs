@@ -85,9 +85,9 @@ use fabro_slack::threads::ThreadRegistry;
 use fabro_slack::{blocks as slack_blocks, connection as slack_connection};
 use fabro_static::EnvVars;
 use fabro_store::{
-    ArtifactKey, ArtifactStore, AuthSessionStore, AuthorizationCodeStore, CachedRunProjection,
-    Database, EventEnvelope, EventPayload, KeyedMutex, NodeArtifact, PendingInterviewRecord,
-    RunSummaryStore, StageArtifactEntry, StageId,
+    ArtifactKey, ArtifactStore, AuthCodeStore, AuthSessionStore, CachedRunProjection, Database,
+    EventEnvelope, EventPayload, KeyedMutex, NodeArtifact, PendingInterviewRecord, RunSummaryStore,
+    StageArtifactEntry, StageId,
 };
 #[cfg(test)]
 use fabro_types::BlockedReason;
@@ -1152,15 +1152,15 @@ pub struct AppState {
 }
 
 pub(crate) struct AppStores {
-    pub(crate) runs:                Arc<Database>,
-    pub(crate) run_summaries:       Arc<RunSummaryStore>,
-    pub(crate) authorization_codes: Arc<AuthorizationCodeStore>,
-    pub(crate) auth_sessions:       Arc<AuthSessionStore>,
-    pub(crate) automations:         Arc<AutomationStore>,
-    pub(crate) environments:        Arc<EnvironmentStore>,
-    pub(crate) mcp_servers:         Arc<McpServerStore>,
-    pub(crate) vault:               Arc<SecretStore>,
-    pub(crate) variables:           Arc<VariableStore>,
+    pub(crate) runs:          Arc<Database>,
+    pub(crate) run_summaries: Arc<RunSummaryStore>,
+    pub(crate) auth_codes:    Arc<AuthCodeStore>,
+    pub(crate) auth_sessions: Arc<AuthSessionStore>,
+    pub(crate) automations:   Arc<AutomationStore>,
+    pub(crate) environments:  Arc<EnvironmentStore>,
+    pub(crate) mcp_servers:   Arc<McpServerStore>,
+    pub(crate) vault:         Arc<SecretStore>,
+    pub(crate) variables:     Arc<VariableStore>,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -1172,10 +1172,10 @@ impl AppState {
         &self.stores.auth_sessions
     }
 
-    /// Access the authorization-code store used by this router.
+    /// Access the auth-code store used by this router.
     #[must_use]
-    pub fn test_authorization_code_store(&self) -> &Arc<AuthorizationCodeStore> {
-        &self.stores.authorization_codes
+    pub fn test_auth_code_store(&self) -> &Arc<AuthCodeStore> {
+        &self.stores.auth_codes
     }
 }
 
@@ -2449,7 +2449,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
     );
     let run_summaries =
         store.attach_run_summary_store(Arc::new(RunSummaryStore::new(db_pool.clone())));
-    let authorization_codes = Arc::new(AuthorizationCodeStore::new(db_pool.clone()));
+    let auth_codes = Arc::new(AuthCodeStore::new(db_pool.clone()));
     let auth_sessions = Arc::new(AuthSessionStore::new(db_pool.clone()));
     let mcp_server_dir = mcp_server_dir_for_active_config(&active_config_path);
     let mcp_server_pool = db_pool.clone();
@@ -2557,7 +2557,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         stores: AppStores {
             runs: store,
             run_summaries,
-            authorization_codes,
+            auth_codes,
             auth_sessions,
             automations: automation_store,
             environments: environment_store,

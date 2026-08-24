@@ -28,18 +28,17 @@ pub struct PendingCliAuthorization {
 }
 
 /// Issues, consumes, and expires pending CLI authorizations in SQLite.
-pub struct AuthorizationCodeStore {
+pub struct AuthCodeStore {
     pool: SqlitePool,
 }
 
-impl std::fmt::Debug for AuthorizationCodeStore {
+impl std::fmt::Debug for AuthCodeStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AuthorizationCodeStore")
-            .finish_non_exhaustive()
+        f.debug_struct("AuthCodeStore").finish_non_exhaustive()
     }
 }
 
-impl AuthorizationCodeStore {
+impl AuthCodeStore {
     #[must_use]
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
@@ -146,7 +145,7 @@ mod tests {
     use tokio::fs;
     use tokio::task::JoinSet;
 
-    use super::{AuthorizationCodeStore, PendingCliAuthorization};
+    use super::{AuthCodeStore, PendingCliAuthorization};
     use crate::{Error, test_support};
 
     fn pending(expires_at: chrono::DateTime<Utc>) -> PendingCliAuthorization {
@@ -167,8 +166,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authorization_code_issue_and_consume_round_trips_once() {
-        let (_directory, store) = test_support::sqlite_authorization_code_store().await;
+    async fn issue_and_consume_round_trips_once() {
+        let (_directory, store) = test_support::sqlite_auth_code_store().await;
         let now = now();
         let expected = pending(now + Duration::seconds(60));
         store.issue("one-time-code", &expected).await.unwrap();
@@ -181,16 +180,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authorization_code_concurrent_consume_has_one_winner_across_store_instances() {
-        let (_directory, store) = test_support::sqlite_authorization_code_store().await;
+    async fn concurrent_consume_has_one_winner_across_store_instances() {
+        let (_directory, store) = test_support::sqlite_auth_code_store().await;
         let now = now();
         store
             .issue("contended-code", &pending(now + Duration::seconds(60)))
             .await
             .unwrap();
         let stores = [
-            Arc::new(AuthorizationCodeStore::new(store.pool.clone())),
-            Arc::new(AuthorizationCodeStore::new(store.pool.clone())),
+            Arc::new(AuthCodeStore::new(store.pool.clone())),
+            Arc::new(AuthCodeStore::new(store.pool.clone())),
         ];
 
         let mut tasks = JoinSet::new();
@@ -215,8 +214,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authorization_code_expired_consume_deletes_the_row() {
-        let (_directory, store) = test_support::sqlite_authorization_code_store().await;
+    async fn expired_consume_deletes_the_row() {
+        let (_directory, store) = test_support::sqlite_auth_code_store().await;
         let now = now();
         store
             .issue("expired-code", &pending(now - Duration::seconds(1)))
@@ -232,8 +231,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authorization_code_gc_removes_only_rows_at_or_before_cutoff() {
-        let (_directory, store) = test_support::sqlite_authorization_code_store().await;
+    async fn gc_removes_only_rows_at_or_before_cutoff() {
+        let (_directory, store) = test_support::sqlite_auth_code_store().await;
         let now = now();
         for (code, expiry) in [
             ("before", now - Duration::seconds(1)),
@@ -250,8 +249,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authorization_code_survives_reopening_the_sqlite_pool() {
-        let (directory, store) = test_support::sqlite_authorization_code_store().await;
+    async fn survives_reopening_the_sqlite_pool() {
+        let (directory, store) = test_support::sqlite_auth_code_store().await;
         let now = now();
         let expected = pending(now + Duration::seconds(60));
         store.issue("durable-code", &expected).await.unwrap();
@@ -261,7 +260,7 @@ mod tests {
             .await
             .unwrap();
         database.migrate().await.unwrap();
-        let reopened = AuthorizationCodeStore::new(database.clone_pool());
+        let reopened = AuthCodeStore::new(database.clone_pool());
         assert_eq!(
             reopened.consume("durable-code", now).await.unwrap(),
             Some(expected)
@@ -269,8 +268,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authorization_code_duplicate_hash_fails_without_overwriting() {
-        let (_directory, store) = test_support::sqlite_authorization_code_store().await;
+    async fn duplicate_hash_fails_without_overwriting() {
+        let (_directory, store) = test_support::sqlite_auth_code_store().await;
         let now = now();
         let first = pending(now + Duration::seconds(60));
         let mut second = pending(now + Duration::seconds(120));
@@ -285,8 +284,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authorization_code_errors_do_not_expose_sensitive_fields() {
-        let (_directory, store) = test_support::sqlite_authorization_code_store().await;
+    async fn errors_do_not_expose_sensitive_fields() {
+        let (_directory, store) = test_support::sqlite_auth_code_store().await;
         let raw_code = "raw-authorization-code";
         let entry = pending(now() + Duration::seconds(60));
         store.issue(raw_code, &entry).await.unwrap();
@@ -312,8 +311,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authorization_code_persistence_contains_hash_but_not_raw_code() {
-        let (directory, store) = test_support::sqlite_authorization_code_store().await;
+    async fn persistence_contains_hash_but_not_raw_code() {
+        let (directory, store) = test_support::sqlite_auth_code_store().await;
         let raw_code = "raw-authorization-code-that-must-never-be-persisted";
         store
             .issue(raw_code, &pending(Utc::now() + Duration::seconds(60)))
@@ -343,8 +342,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authorization_code_invalid_stored_timestamp_is_typed() {
-        let (_directory, store) = test_support::sqlite_authorization_code_store().await;
+    async fn invalid_stored_timestamp_is_typed() {
+        let (_directory, store) = test_support::sqlite_auth_code_store().await;
         store
             .issue(
                 "invalid-timestamp-code",

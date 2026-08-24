@@ -8,7 +8,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
 use crate::keys::SlateKey;
 #[cfg(test)]
-use crate::{AuthSessionStore, AuthorizationCodeStore, RunSummaryStore};
+use crate::{AuthCodeStore, AuthSessionStore, RunSummaryStore};
 use crate::{BlobStore, Database, Result};
 
 /// Returns an isolated SQLite blob authority backed by its own in-memory
@@ -164,10 +164,9 @@ pub(crate) async fn sqlite_auth_session_store() -> (tempfile::TempDir, AuthSessi
 }
 
 #[cfg(test)]
-pub(crate) async fn sqlite_authorization_code_store() -> (tempfile::TempDir, AuthorizationCodeStore)
-{
+pub(crate) async fn sqlite_auth_code_store() -> (tempfile::TempDir, AuthCodeStore) {
     let directory = tempfile::tempdir().unwrap();
-    let store = AuthorizationCodeStore::new(sqlite_test_pool(directory.path()).await);
+    let store = AuthCodeStore::new(sqlite_test_pool(directory.path()).await);
     (directory, store)
 }
 

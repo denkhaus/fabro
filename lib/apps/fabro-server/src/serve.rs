@@ -859,7 +859,7 @@ where
     .await?;
 
     spawn_auth_store_reapers(
-        Arc::clone(&state.stores.authorization_codes),
+        Arc::clone(&state.stores.auth_codes),
         Arc::clone(&state.stores.auth_sessions),
         shutdown.clone(),
     );
@@ -1129,7 +1129,7 @@ async fn shutdown_signal() {
 }
 
 fn spawn_auth_store_reapers(
-    auth_codes: Arc<fabro_store::AuthorizationCodeStore>,
+    auth_codes: Arc<fabro_store::AuthCodeStore>,
     auth_sessions: Arc<fabro_store::AuthSessionStore>,
     shutdown: CancellationToken,
 ) {
@@ -1138,7 +1138,7 @@ fn spawn_auth_store_reapers(
 }
 
 fn spawn_auth_code_reaper(
-    auth_codes: Arc<fabro_store::AuthorizationCodeStore>,
+    auth_codes: Arc<fabro_store::AuthCodeStore>,
     shutdown: CancellationToken,
 ) {
     tokio::spawn(async move {
