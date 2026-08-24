@@ -160,6 +160,7 @@ async fn persist_forked_run(
         source_directory:    spec.source_directory.clone(),
         workflow_slug:       spec.workflow_slug.clone(),
         workflow_version_id: spec.workflow_version_id,
+        target:              spec.target.clone(),
         automation:          spec.automation.clone(),
         provenance:          spec.provenance.clone(),
         manifest_blob:       spec.manifest_blob,
@@ -384,12 +385,17 @@ mod tests {
             source_directory:    Some("/client/source".to_string()),
             workflow_slug:       Some("fork-source".to_string()),
             workflow_version_id: Some(workflow_version_id),
+            target:              Some(fabro_types::RunTarget::Git {
+                repo:   "example/repo".to_string(),
+                branch: "main".to_string(),
+                sha:    None,
+            }),
             automation:          None,
             provenance:          test_support::test_run_provenance(),
             manifest_blob:       None,
             spec_blob:           None,
             git:                 Some(fabro_types::GitContext {
-                origin_url: "https://github.com/example/repo.git".to_string(),
+                origin_url: "https://github.com/example/repo".to_string(),
                 branch:     "main".to_string(),
                 sha:        None,
                 dirty:      fabro_types::DirtyStatus::Clean,
@@ -469,6 +475,14 @@ mod tests {
         assert_eq!(
             forked_state.spec.workflow_version_id,
             Some(workflow_version_id)
+        );
+        assert_eq!(
+            forked_state.spec.target,
+            Some(fabro_types::RunTarget::Git {
+                repo:   "example/repo".to_string(),
+                branch: "main".to_string(),
+                sha:    None,
+            })
         );
         assert_eq!(
             forked_state.spec.fork_source_ref.unwrap().source_run_id,

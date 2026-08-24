@@ -1041,6 +1041,7 @@ fn projection_from_created(event: &EventEnvelope) -> Result<RunProjection> {
         graph_source: props.workflow_source.clone(),
         workflow_slug: props.workflow_slug.clone(),
         workflow_version_id: props.workflow_version_id,
+        target: props.target.clone(),
         automation: props.automation.clone(),
         source_directory: props.source_directory.clone(),
         labels,

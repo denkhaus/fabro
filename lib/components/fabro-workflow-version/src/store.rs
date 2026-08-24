@@ -64,6 +64,13 @@ impl LoadedWorkflowVersionClosure {
         self.root.version()
     }
 
+    /// The certified root version, for consumers that need guarantees only
+    /// [`ValidatedWorkflowVersion`] provides (e.g. goal-file resolution).
+    #[must_use]
+    pub fn validated_root(&self) -> &ValidatedWorkflowVersion {
+        &self.root
+    }
+
     #[must_use]
     pub fn get(&self, id: &WorkflowVersionId) -> Option<&WorkflowVersion> {
         if *id == self.root_id {

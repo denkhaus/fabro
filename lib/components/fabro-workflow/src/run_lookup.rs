@@ -499,6 +499,7 @@ mod tests {
             source_directory:    run_spec.source_directory.clone(),
             workflow_slug:       run_spec.workflow_slug.clone(),
             workflow_version_id: None,
+            target:              None,
             automation:          None,
             provenance:          run_spec.provenance.clone(),
             manifest_blob:       None,
