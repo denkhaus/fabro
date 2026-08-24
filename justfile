@@ -37,7 +37,7 @@ default:
     @just --list
 
 # Full pipeline: build binary + image, install CLI, start compose, wait for health
-up: build-image install-cli compose-up wait-healthy clean
+up: clean build-image install-cli compose-up wait-healthy clean
 
 # Build the release binary and the local docker image (cached; uses cargo dev docker-build)
 build-image: web-deps
