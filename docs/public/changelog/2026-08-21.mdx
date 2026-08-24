@@ -1,7 +1,29 @@
 ---
-title: "Additional GitHub repositories and Venice search"
+title: "Run intents, additional repositories, and Venice search"
 date: "2026-08-21"
 ---
+
+## Version-backed run creation
+
+Fabro's canonical `POST /api/v1/runs` endpoint now also accepts a strict
+`RunIntent` body that creates a submitted run from an immutable workflow
+version, a named server environment, and an explicit public GitHub repository
+target. Creation remains separate from execution; call the existing start
+endpoint when the run should begin.
+
+Git targets require a branch and may pin a full commit SHA. Fabro normalizes a
+submitted SHA to lowercase and uses that exact commit during sandbox setup,
+without resolving it during admission or falling back to a newer branch HEAD.
+The environment ID defaults to `default`; this first target slice supports
+clone-enabled Docker and Daytona environments.
+
+Existing manifest callers continue to work unchanged and can migrate
+independently. Intent runs do not consume repository `project.toml` settings:
+the selected server environment owns provider, working directory, and image,
+while workflow versions may still overlay resources, network, lifecycle,
+labels, and environment variables. Project metadata therefore no longer adds
+run labels on this path, and repository-wide settings must move into workflow
+versions or server defaults before a caller migrates.
 
 ## One token for the whole repository set
 

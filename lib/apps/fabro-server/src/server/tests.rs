@@ -3544,6 +3544,423 @@ async fn post_run_manifest(app: &Router, manifest: serde_json::Value) -> serde_j
     response_json!(response, StatusCode::CREATED).await
 }
 
+async fn store_workflow_version(
+    state: &AppState,
+    graph: &str,
+    workflow_toml: Option<&str>,
+) -> fabro_types::WorkflowVersionId {
+    let mut files = std::collections::BTreeMap::from([(
+        fabro_types::WorkflowPath::new("workflow.fabro").unwrap(),
+        graph.to_string(),
+    )]);
+    if let Some(workflow_toml) = workflow_toml {
+        files.insert(
+            fabro_types::WorkflowPath::new("workflow.toml").unwrap(),
+            workflow_toml.to_string(),
+        );
+        files.insert(
+            fabro_types::WorkflowPath::new("goal.md").unwrap(),
+            "Goal loaded from immutable version bytes".to_string(),
+        );
+        files.insert(
+            fabro_types::WorkflowPath::new("Dockerfile").unwrap(),
+            "FROM alpine:3".to_string(),
+        );
+    }
+    let version = fabro_types::WorkflowVersion::new(
+        fabro_types::WorkflowPath::new("workflow.fabro").unwrap(),
+        files,
+        std::collections::BTreeMap::new(),
+    )
+    .unwrap();
+    let version = fabro_workflow_version::ValidatedWorkflowVersion::new(version).unwrap();
+    let blobs = state.store_ref().blobs().await.unwrap();
+    fabro_workflow_version::WorkflowVersionStore::new(blobs)
+        .put(&version)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_creates_submitted_version_backed_git_target_without_starting() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(
+        &state,
+        MINIMAL_DOT,
+        Some(
+            r#"
+_version = 1
+
+[environments.default]
+provider = "local"
+
+[environments.default.image]
+dockerfile = { path = "Dockerfile" }
+
+[environments.default.resources]
+cpu = 7
+
+[environments.default.env]
+WORKFLOW_OVERLAY = "present"
+
+[run.goal]
+file = "goal.md"
+
+[run.environment.image]
+docker = "workflow-owned:latest"
+"#,
+        ),
+    )
+    .await;
+    let submitted_sha = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
+    let body = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": {
+                "kind": "git",
+                "repo": "fabro-sh/fabro",
+                "branch": "feature/run-intent",
+                "sha": submitted_sha
+            },
+            "args": {
+                "inputs": { "ship": true },
+                "labels": { "team": "platform" }
+            },
+            "title": "Intent run"
+        }),
+    )
+    .await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    assert_eq!(body["lifecycle"]["status"]["kind"], "submitted");
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    let events = run_store.list_events().await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.event.event_name())
+            .collect::<Vec<_>>(),
+        vec!["run.created", "run.submitted"]
+    );
+    let projection = run_store.state().await.unwrap();
+    assert_eq!(
+        projection.spec.workflow_version_id,
+        Some(workflow_version_id)
+    );
+    assert_eq!(
+        projection.spec.graph.goal(),
+        "Goal loaded from immutable version bytes"
+    );
+    assert_eq!(
+        projection.spec.target,
+        Some(fabro_types::RunTarget::Git {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "feature/run-intent".to_string(),
+            sha:    Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
+        })
+    );
+    assert_eq!(
+        projection
+            .spec
+            .git
+            .as_ref()
+            .and_then(|git| git.sha.as_deref()),
+        Some("abcdef0123456789abcdef0123456789abcdef01")
+    );
+    assert_eq!(
+        projection.spec.settings.run.inputs["ship"],
+        toml::Value::Boolean(true)
+    );
+    assert_eq!(
+        projection.spec.labels.get("team").map(String::as_str),
+        Some("platform")
+    );
+    assert_eq!(
+        projection.spec.settings.run.environment.provider,
+        EnvironmentProvider::Docker
+    );
+    assert_eq!(
+        projection
+            .spec
+            .settings
+            .run
+            .environment
+            .image
+            .docker
+            .as_deref(),
+        Some("buildpack-deps:noble")
+    );
+    assert!(
+        projection
+            .spec
+            .settings
+            .run
+            .environment
+            .image
+            .dockerfile
+            .is_none()
+    );
+    assert_eq!(
+        projection.spec.settings.run.environment.resources.cpu,
+        Some(7)
+    );
+    assert!(
+        projection
+            .spec
+            .settings
+            .run
+            .environment
+            .env
+            .contains_key("WORKFLOW_OVERLAY")
+    );
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_dispatches_errors_without_changing_legacy_lane() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let malformed = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from("{"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let malformed = response_json!(malformed, StatusCode::BAD_REQUEST).await;
+    assert_eq!(malformed["errors"][0]["code"], "invalid_json");
+
+    let intent_shaped = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "workflow_version_id": fabro_types::test_support::test_workflow_version_id() }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let intent_shaped = response_json!(intent_shaped, StatusCode::UNPROCESSABLE_ENTITY).await;
+    assert_eq!(intent_shaped["errors"][0]["code"], "run_intent_invalid");
+
+    let mut legacy = minimal_manifest_json(MINIMAL_DOT);
+    legacy["workflow_version_id"] = json!(fabro_types::test_support::test_workflow_version_id());
+    let legacy = post_run_manifest(&app, legacy).await;
+    assert_eq!(legacy["lifecycle"]["status"]["kind"], "submitted");
+}
+
+#[tokio::test]
+async fn post_runs_attributes_parse_failures_and_rejects_duplicate_keys() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let post = |body: String| {
+        Request::builder()
+            .method("POST")
+            .uri(api("/runs"))
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap()
+    };
+
+    // A defective manifest keeps the manifest lane's 400 contract even when
+    // a stray workflow_version_id rides along.
+    let mut manifest = minimal_manifest_json(MINIMAL_DOT);
+    manifest["workflow_version_id"] = json!(fabro_types::test_support::test_workflow_version_id());
+    manifest["cwd"] = json!(42);
+    let response = app
+        .clone()
+        .oneshot(post(manifest.to_string()))
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::BAD_REQUEST).await;
+    let detail = body["errors"][0]["detail"].as_str().unwrap();
+    assert!(detail.contains("invalid type: integer `42`"), "{detail}");
+
+    // Duplicate JSON keys are ambiguous: they must be rejected, not
+    // collapsed to last-key-wins by a Value round-trip.
+    let duplicated = format!(
+        r#"{{"version":1,"cwd":"/tmp","cwd":"/other","target":{{"path":"workflow.fabro"}},"workflows":{{"workflow.fabro":{{"source":{source},"files":{{}}}}}}}}"#,
+        source = serde_json::to_string(MINIMAL_DOT).unwrap()
+    );
+    let response = app.clone().oneshot(post(duplicated)).await.unwrap();
+    let body = response_json!(response, StatusCode::BAD_REQUEST).await;
+    let detail = body["errors"][0]["detail"].as_str().unwrap();
+    assert!(detail.contains("duplicate field"), "{detail}");
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_maps_missing_version_environment_and_target_errors() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let missing_version_id = fabro_types::test_support::test_workflow_version_id();
+    let base_intent = json!({
+        "workflow_version_id": missing_version_id,
+        "target": {
+            "kind": "git",
+            "repo": "fabro-sh/fabro",
+            "branch": "feature/run-intent"
+        },
+        "args": {}
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from(base_intent.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::NOT_FOUND).await;
+    assert_eq!(body["errors"][0]["code"], "workflow_version_not_found");
+
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    for (patch, expected_status, expected_code) in [
+        (
+            json!({ "environment_id": "missing-environment" }),
+            StatusCode::NOT_FOUND,
+            "environment_not_found",
+        ),
+        (
+            json!({ "environment_id": "not valid" }),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "run_intent_invalid",
+        ),
+        (
+            json!({ "target": { "kind": "git", "repo": "fabro-sh/fabro", "branch": "heads/main" } }),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "target_invalid",
+        ),
+    ] {
+        let mut intent = json!({
+            "workflow_version_id": workflow_version_id,
+            "target": {
+                "kind": "git",
+                "repo": "fabro-sh/fabro",
+                "branch": "feature/run-intent"
+            },
+            "args": {}
+        });
+        for (key, value) in patch.as_object().unwrap() {
+            intent[key] = value.clone();
+        }
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api("/runs"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(intent.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = response_json!(response, expected_status).await;
+        assert_eq!(body["errors"][0]["code"], expected_code);
+    }
+
+    assert!(state.runs.lock().expect("runs lock poisoned").is_empty());
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_rejects_disabled_or_unready_sandbox_integrations() {
+    let disabled_state = test_app_state_with_options(
+        server_settings_from_toml(
+            r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[server.sandbox.providers.docker]
+enabled = false
+"#,
+        ),
+        RunLayer::default(),
+        5,
+    );
+    let disabled_version_id = store_workflow_version(&disabled_state, MINIMAL_DOT, None).await;
+    let disabled_app = crate::test_support::build_test_router(Arc::clone(&disabled_state));
+    let intent = json!({
+        "workflow_version_id": disabled_version_id,
+        "target": {
+            "kind": "git",
+            "repo": "fabro-sh/fabro",
+            "branch": "feature/run-intent"
+        },
+        "args": {}
+    });
+    let response = disabled_app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from(intent.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::SERVICE_UNAVAILABLE).await;
+    assert_eq!(body["errors"][0]["code"], "integration_unavailable");
+    assert!(
+        disabled_state
+            .runs
+            .lock()
+            .expect("runs lock poisoned")
+            .is_empty()
+    );
+
+    let daytona_state = TestAppStateBuilder::new()
+        .default_environment_provider(Some(EnvironmentProvider::Daytona))
+        .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .build();
+    let daytona_version_id = store_workflow_version(&daytona_state, MINIMAL_DOT, None).await;
+    let daytona_app = crate::test_support::build_test_router(Arc::clone(&daytona_state));
+    let intent = json!({
+        "workflow_version_id": daytona_version_id,
+        "target": {
+            "kind": "git",
+            "repo": "fabro-sh/fabro",
+            "branch": "feature/run-intent"
+        },
+        "args": {}
+    });
+    let response = daytona_app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api("/runs"))
+                .header("content-type", "application/json")
+                .body(Body::from(intent.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::SERVICE_UNAVAILABLE).await;
+    assert_eq!(body["errors"][0]["code"], "integration_unavailable");
+    assert!(
+        daytona_state
+            .runs
+            .lock()
+            .expect("runs lock poisoned")
+            .is_empty()
+    );
+}
+
 #[tokio::test]
 async fn post_runs_ignores_removed_run_id_input() {
     let app = crate::test_support::build_test_router(test_app_state());
@@ -4650,6 +5067,7 @@ async fn append_default_run_created(run_store: &fabro_store::RunDatabase, run_id
         source_directory: None,
         workflow_slug: None,
         workflow_version_id: None,
+        target: None,
         automation: None,
         provenance: test_support::test_run_provenance(),
         manifest_blob: None,
@@ -4703,6 +5121,7 @@ async fn create_slack_notification_run(
         source_directory: None,
         workflow_slug: workflow_slug.map(str::to_string),
         workflow_version_id: None,
+        target: None,
         automation: None,
         provenance: test_support::test_run_provenance(),
         manifest_blob: None,
@@ -5778,6 +6197,7 @@ async fn list_run_stages_distinguishes_visits() {
             source_directory: None,
             workflow_slug: Some("test".to_string()),
             workflow_version_id: None,
+            target: None,
             automation: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
@@ -5916,6 +6336,7 @@ async fn list_run_stages_exposes_execution_identity_for_resumed_stage() {
             source_directory: None,
             workflow_slug: Some("test".to_string()),
             workflow_version_id: None,
+            target: None,
             automation: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
@@ -7101,6 +7522,7 @@ async fn create_completed_run_ready_for_pull_request(
         graph_source: None,
         workflow_slug: Some("test".to_string()),
         workflow_version_id: None,
+        target: None,
         automation: None,
         source_directory: Some("/tmp/project".to_string()),
         git: git.clone(),
@@ -7123,6 +7545,7 @@ async fn create_completed_run_ready_for_pull_request(
             source_directory: run_spec.source_directory.clone(),
             workflow_slug: run_spec.workflow_slug.clone(),
             workflow_version_id: run_spec.workflow_version_id,
+            target: run_spec.target.clone(),
             automation: None,
             provenance: run_spec.provenance.clone(),
             manifest_blob: None,
@@ -10992,6 +11415,79 @@ async fn append_run_event_rejects_run_id_mismatch() {
 }
 
 #[tokio::test]
+async fn append_run_event_accepts_a_body_larger_than_two_mib() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_run(&app, MINIMAL_DOT).await;
+    let payload = json!({
+        "id": "evt-large-agent-output",
+        "ts": "2026-08-24T12:00:00Z",
+        "run_id": run_id,
+        "event": "agent.tool.completed",
+        "properties": {
+            "tool_name": "shell",
+            "tool_call_id": "call-large",
+            "output": "x".repeat(2 * 1024 * 1024),
+            "is_error": false,
+            "visit": 1
+        }
+    })
+    .to_string();
+    assert!(payload.len() > 2 * 1024 * 1024);
+    assert!(payload.len() < 3 * 1024 * 1024);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/events")))
+                .header("content-type", "application/json")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_status!(response, StatusCode::OK).await;
+}
+
+#[tokio::test]
+async fn append_run_event_rejects_a_body_larger_than_three_mib() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_run(&app, MINIMAL_DOT).await;
+    let payload = json!({
+        "id": "evt-oversized-agent-output",
+        "ts": "2026-08-24T12:00:00Z",
+        "run_id": run_id,
+        "event": "agent.tool.completed",
+        "properties": {
+            "tool_name": "shell",
+            "tool_call_id": "call-oversized",
+            "output": "x".repeat(3 * 1024 * 1024),
+            "is_error": false,
+            "visit": 1
+        }
+    })
+    .to_string();
+    assert!(payload.len() > 3 * 1024 * 1024);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/events")))
+                .header("content-type", "application/json")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_status!(response, StatusCode::PAYLOAD_TOO_LARGE).await;
+}
+
+#[tokio::test]
 async fn append_run_event_rejects_reserved_archive_event() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
@@ -14103,6 +14599,7 @@ async fn create_preserved_local_sandbox_run(state: &Arc<AppState>, run_id: RunId
             source_directory: Some("/tmp/fabro-run".to_string()),
             workflow_slug: Some("test".to_string()),
             workflow_version_id: None,
+            target: None,
             automation: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,
@@ -14854,6 +15351,7 @@ async fn delete_run_retry_after_missing_provider_resource_removes_metadata() {
             source_directory: Some("/tmp/fabro-run".to_string()),
             workflow_slug: Some("test".to_string()),
             workflow_version_id: None,
+            target: None,
             automation: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,

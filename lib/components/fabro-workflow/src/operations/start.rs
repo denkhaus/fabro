@@ -22,7 +22,9 @@ use fabro_types::settings::run::{
     ResolvedGithubIntegration, ResolvedMcpEntry, RunMode, RunNamespace as ResolvedRunSettings,
     RunPrepareSettings as ResolvedRunPrepareSettings,
 };
-use fabro_types::{ManifestPath, RunId, RunRunnableSource, SandboxProviderKind};
+use fabro_types::{
+    ManifestPath, RunId, RunRunnableSource, RunSpec, SandboxProviderKind, TargetValidationError,
+};
 use fabro_util::error::collect_chain;
 use fabro_vault::Vault;
 use tokio::runtime::Handle;
@@ -419,6 +421,7 @@ impl RunSession {
         let resolved = &settings.run;
         let sandbox_provider =
             resolve_sandbox_provider(resolved).effective_for(resolved.execution.mode);
+        let clone_source = clone_source_for_run(record)?;
         let catalog = Arc::clone(&services.catalog);
         let configured =
             configured_providers_for_start(&services.vault, Arc::clone(&catalog)).await;
@@ -458,6 +461,11 @@ impl RunSession {
 
         let sandbox = match sandbox_provider {
             SandboxProviderKind::Local => {
+                if record.target.is_some() {
+                    return Err(Error::engine(
+                        "persisted Git run targets require a clone-based sandbox provider",
+                    ));
+                }
                 let working_directory = local_working_directory_from_environment(
                     &resolved.environment,
                     record.source_directory.as_deref().map(Path::new),
@@ -474,9 +482,9 @@ impl RunSession {
                 config:           resolve_docker_config(resolved, secret_lookup)?,
                 github_app:       services.github_app.clone(),
                 run_id:           Some(record.run_id),
-                clone_origin_url: record.repo_origin_url().map(str::to_string),
-                clone_branch:     record.base_branch().map(str::to_string),
-                clone_commit_sha: None,
+                clone_origin_url: clone_source.origin_url,
+                clone_branch:     clone_source.branch,
+                clone_commit_sha: clone_source.commit_sha,
             },
             SandboxProviderKind::Daytona => {
                 let api_key = vault_guard
@@ -486,9 +494,9 @@ impl RunSession {
                     config: Box::new(resolve_daytona_config(resolved)),
                     github_app: services.github_app.clone(),
                     run_id: Some(record.run_id),
-                    clone_origin_url: record.repo_origin_url().map(str::to_string),
-                    clone_branch: record.base_branch().map(str::to_string),
-                    clone_commit_sha: None,
+                    clone_origin_url: clone_source.origin_url,
+                    clone_branch: clone_source.branch,
+                    clone_commit_sha: clone_source.commit_sha,
                     api_key,
                 }
             }
@@ -570,6 +578,43 @@ impl RunSession {
             fabro_run_tools: services.fabro_run_tools,
         })
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CloneSourceForRun {
+    origin_url: Option<String>,
+    branch:     Option<String>,
+    commit_sha: Option<String>,
+}
+
+fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
+    let Some(target) = &record.target else {
+        return Ok(CloneSourceForRun {
+            origin_url: record.repo_origin_url().map(str::to_string),
+            branch:     record.base_branch().map(str::to_string),
+            commit_sha: None,
+        });
+    };
+
+    // The Git-target grammar is owned by `RunTarget::validate` in fabro-types;
+    // admission accepts targets through the same rules, and this start path
+    // re-derives the clone source from the persisted target alone. The
+    // persisted `git` projection is display metadata, never a clone input, so
+    // writers cannot break starts by letting the pair drift.
+    let validated = target.clone().validate().map_err(|error| {
+        Error::engine(match error {
+            TargetValidationError::Repository => {
+                "persisted Git run target has an invalid repository slug"
+            }
+            TargetValidationError::Branch => "persisted Git run target has an invalid branch",
+            TargetValidationError::Sha => "persisted Git run target has an invalid SHA",
+        })
+    })?;
+    Ok(CloneSourceForRun {
+        origin_url: Some(validated.git.origin_url),
+        branch:     Some(validated.git.branch),
+        commit_sha: validated.git.sha,
+    })
 }
 
 async fn configured_providers_for_start(
@@ -1202,7 +1247,8 @@ mod tests {
         RunPrepareSettings,
     };
     use fabro_types::{
-        BilledModelUsage, ManifestPath, StageTiming, WorkflowSettings, fixtures, test_support,
+        BilledModelUsage, ManifestPath, RunTarget, StageTiming, WorkflowSettings, fixtures,
+        test_support,
     };
     use fabro_vault::SecretType;
     use object_store::memory::InMemory;
@@ -1874,6 +1920,7 @@ reasoning = false
                 workflow_slug: Some("test".to_string()),
                 workflow_path: None,
                 workflow_bundle: None,
+                target: None,
                 submitted_manifest_bytes: None,
                 run_id: Some(fixtures::RUN_1),
                 title: None,
@@ -2430,6 +2477,7 @@ reasoning = false
                 workflow_slug: Some("bundle-child".to_string()),
                 workflow_path: Some(ManifestPath::from_wire("workflow.fabro").unwrap()),
                 workflow_bundle: Some(workflow_bundle),
+                target: None,
                 submitted_manifest_bytes: None,
                 run_id: Some(fixtures::RUN_1),
                 title: None,
@@ -2675,5 +2723,100 @@ reasoning = false
             "expected Precondition error, got: {result:?}",
             result = result.as_ref().map(|_| "Ok"),
         );
+    }
+
+    #[test]
+    fn clone_commit_legacy_run_never_activates_an_observed_git_sha() {
+        let mut spec = test_support::test_run_spec();
+        spec.git = Some(fabro_types::GitContext {
+            origin_url: "https://github.com/fabro-sh/fabro".to_string(),
+            branch:     "main".to_string(),
+            sha:        Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
+            dirty:      fabro_types::DirtyStatus::Clean,
+        });
+
+        let source = clone_source_for_run(&spec).unwrap();
+
+        assert_eq!(source.commit_sha, None);
+        assert_eq!(source.branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn clone_commit_persisted_git_target_activates_exact_branch_and_sha() {
+        let mut spec = test_support::test_run_spec();
+        let submitted_sha = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
+        let normalized_sha = "abcdef0123456789abcdef0123456789abcdef01";
+        spec.target = Some(RunTarget::Git {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "feature/run-intent".to_string(),
+            sha:    Some(submitted_sha.to_string()),
+        });
+        spec.git = Some(fabro_types::GitContext {
+            origin_url: "https://github.com/fabro-sh/fabro".to_string(),
+            branch:     "feature/run-intent".to_string(),
+            sha:        Some(submitted_sha.to_string()),
+            dirty:      fabro_types::DirtyStatus::Clean,
+        });
+
+        let source = clone_source_for_run(&spec).unwrap();
+
+        assert_eq!(
+            source.origin_url.as_deref(),
+            Some("https://github.com/fabro-sh/fabro")
+        );
+        assert_eq!(source.branch.as_deref(), Some("feature/run-intent"));
+        assert_eq!(source.commit_sha.as_deref(), Some(normalized_sha));
+    }
+
+    #[test]
+    fn clone_commit_persisted_git_target_without_sha_keeps_branch_unpinned() {
+        let mut spec = test_support::test_run_spec();
+        spec.target = Some(RunTarget::Git {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "feature/run-intent".to_string(),
+            sha:    None,
+        });
+        spec.git = Some(fabro_types::GitContext {
+            origin_url: "https://github.com/fabro-sh/fabro".to_string(),
+            branch:     "feature/run-intent".to_string(),
+            sha:        None,
+            dirty:      fabro_types::DirtyStatus::Clean,
+        });
+
+        let source = clone_source_for_run(&spec).unwrap();
+
+        assert_eq!(source.branch.as_deref(), Some("feature/run-intent"));
+        assert_eq!(source.commit_sha, None);
+    }
+
+    #[test]
+    fn clone_commit_persisted_git_target_is_authoritative_over_projection() {
+        let mut spec = test_support::test_run_spec();
+        spec.target = Some(RunTarget::Git {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "main".to_string(),
+            sha:    None,
+        });
+        // A drifted (or absent) projection never feeds the clone source: the
+        // validated target alone does.
+        spec.git = Some(fabro_types::GitContext {
+            origin_url: "https://github.com/fabro-sh/other".to_string(),
+            branch:     "other".to_string(),
+            sha:        Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
+            dirty:      fabro_types::DirtyStatus::Clean,
+        });
+
+        let source = clone_source_for_run(&spec).unwrap();
+
+        assert_eq!(
+            source.origin_url.as_deref(),
+            Some("https://github.com/fabro-sh/fabro")
+        );
+        assert_eq!(source.branch.as_deref(), Some("main"));
+        assert_eq!(source.commit_sha, None);
+
+        spec.git = None;
+        let source = clone_source_for_run(&spec).unwrap();
+        assert_eq!(source.branch.as_deref(), Some("main"));
     }
 }

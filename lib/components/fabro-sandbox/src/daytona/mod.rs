@@ -32,8 +32,9 @@ use crate::git_retry::{self, CredentialContext, GitRetryReason};
 use crate::push_credentials::{self, PushCredentialState};
 use crate::redact::redact_auth_url;
 use crate::sandbox::{
-    self, BASH_ENV_VAR, BASH_PROBE_MARKER, BASH_PROBE_SCRIPT, BASH_PROBE_TIMEOUT_MS, REMOTE_BASH,
-    REMOTE_WALK_TIMEOUT_MS, RefreshOutcome, optional_timeout, resolve_path, validate_bash_probe,
+    self, BASH_ENV_VAR, BASH_PROBE_MARKER, BASH_PROBE_SCRIPT, BASH_PROBE_TIMEOUT_MS,
+    OutputCaptureBuffer, OutputCaptureStats, REMOTE_BASH, REMOTE_WALK_TIMEOUT_MS, RefreshOutcome,
+    optional_timeout, resolve_path, validate_bash_probe,
 };
 use crate::{
     CommandOutputCallback, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult,
@@ -2218,6 +2219,7 @@ impl Sandbox for DaytonaSandbox {
             cancel_token,
             stdin,
             output_callback,
+            stream_output_bytes_cap,
         } = request;
         let sandbox = self.sandbox()?;
         let start = Instant::now();
@@ -2258,8 +2260,12 @@ impl Sandbox for DaytonaSandbox {
                 return Err(crate::Error::context("Failed to get process service", err));
             }
         };
-        let stdout_seen = Arc::new(Mutex::new(Vec::new()));
-        let stderr_seen = Arc::new(Mutex::new(Vec::new()));
+        let stdout_seen = Arc::new(Mutex::new(OutputCaptureBuffer::new(
+            stream_output_bytes_cap,
+        )));
+        let stderr_seen = Arc::new(Mutex::new(OutputCaptureBuffer::new(
+            stream_output_bytes_cap,
+        )));
         let saw_live_chunk = Arc::new(AtomicBool::new(false));
 
         let stream_session_id = session.id().to_string();
@@ -2283,7 +2289,7 @@ impl Sandbox for DaytonaSandbox {
                             let bytes = chunk.into_bytes();
                             if !bytes.is_empty() {
                                 saw_live_chunk.store(true, Ordering::Relaxed);
-                                stdout_seen.lock().await.extend_from_slice(&bytes);
+                                stdout_seen.lock().await.push(&bytes);
                                 if let Some(callback) = callback {
                                     callback(CommandOutputStream::Stdout, bytes)
                                         .await
@@ -2301,7 +2307,7 @@ impl Sandbox for DaytonaSandbox {
                             let bytes = chunk.into_bytes();
                             if !bytes.is_empty() {
                                 saw_live_chunk.store(true, Ordering::Relaxed);
-                                stderr_seen.lock().await.extend_from_slice(&bytes);
+                                stderr_seen.lock().await.push(&bytes);
                                 if let Some(callback) = callback {
                                     callback(CommandOutputStream::Stderr, bytes)
                                         .await
@@ -2375,8 +2381,8 @@ impl Sandbox for DaytonaSandbox {
             .await?;
         }
 
-        let stdout = String::from_utf8_lossy(&stdout_seen.lock().await).into_owned();
-        let stderr = String::from_utf8_lossy(&stderr_seen.lock().await).into_owned();
+        let (stdout, stdout_capture) = drain_captured_stream(&stdout_seen).await;
+        let (stderr, stderr_capture) = drain_captured_stream(&stderr_seen).await;
 
         let result = ExecStreamingResult {
             result: ExecResult {
@@ -2390,6 +2396,8 @@ impl Sandbox for DaytonaSandbox {
             },
             streams_separated,
             live_streaming: saw_live_chunk.load(Ordering::Relaxed),
+            stdout_capture,
+            stderr_capture,
         };
         if let Some(stdin_file) = stdin_file.as_mut() {
             stdin_file.close().await;
@@ -2892,7 +2900,7 @@ async fn fetch_daytona_session_logs(
 async fn append_missing_log_suffix(
     stream: CommandOutputStream,
     final_bytes: &[u8],
-    seen: &Arc<Mutex<Vec<u8>>>,
+    seen: &Arc<Mutex<OutputCaptureBuffer>>,
     output_callback: Option<&CommandOutputCallback>,
 ) -> crate::Result<()> {
     if final_bytes.is_empty() {
@@ -2900,18 +2908,62 @@ async fn append_missing_log_suffix(
     }
 
     let mut seen = seen.lock().await;
-    let offset = missing_log_suffix_offset(&seen, final_bytes);
+    let offset = captured_log_suffix_offset(&mut seen, final_bytes);
     if offset >= final_bytes.len() {
         return Ok(());
     }
 
     let missing = final_bytes[offset..].to_vec();
-    seen.extend_from_slice(&missing);
+    seen.push(&missing);
     drop(seen);
     match output_callback {
         Some(output_callback) => output_callback(stream, missing).await,
         None => Ok(()),
     }
+}
+
+/// Take the captured stream bytes out of their shared buffer as a lossy
+/// string, avoiding a copy when the bytes are valid UTF-8.
+async fn drain_captured_stream(
+    seen: &Arc<Mutex<OutputCaptureBuffer>>,
+) -> (String, OutputCaptureStats) {
+    let buffer = {
+        let mut seen = seen.lock().await;
+        std::mem::replace(&mut *seen, OutputCaptureBuffer::new(None))
+    };
+    let (bytes, stats) = buffer.into_parts();
+    let text = match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(err) => String::from_utf8_lossy(err.as_bytes()).into_owned(),
+    };
+    (text, stats)
+}
+
+fn captured_log_suffix_offset(seen: &mut OutputCaptureBuffer, final_bytes: &[u8]) -> usize {
+    let stats = seen.stats();
+    if stats.omitted_bytes == 0 {
+        return missing_log_suffix_offset(&seen.to_bytes(), final_bytes);
+    }
+
+    let observed_bytes = stats.observed_bytes;
+    let (head, tail) = seen.retained_slices();
+    if final_bytes.len() >= observed_bytes
+        && final_bytes.starts_with(head)
+        && tail == &final_bytes[observed_bytes.saturating_sub(tail.len())..observed_bytes]
+    {
+        return observed_bytes;
+    }
+    if final_bytes.len() <= observed_bytes && final_bytes.starts_with(head) {
+        return final_bytes.len();
+    }
+
+    let max_overlap = tail.len().min(final_bytes.len());
+    for overlap in (1..=max_overlap).rev() {
+        if tail[tail.len() - overlap..] == final_bytes[..overlap] {
+            return overlap;
+        }
+    }
+    0
 }
 
 fn missing_log_suffix_offset(seen: &[u8], final_bytes: &[u8]) -> usize {
@@ -4737,6 +4789,16 @@ mod tests {
         assert_eq!(missing_log_suffix_offset(b"abcxyz", b"xyz123"), 3);
         assert_eq!(missing_log_suffix_offset(b"hello world", b"hello"), 5);
         assert_eq!(missing_log_suffix_offset(b"abc", b"def"), 0);
+    }
+
+    #[test]
+    fn captured_log_suffix_offset_uses_observed_length_after_truncation() {
+        let mut seen = OutputCaptureBuffer::new(Some(6));
+        seen.push(b"abcdefgh");
+
+        assert_eq!(captured_log_suffix_offset(&mut seen, b"abcdefghij"), 8);
+        assert_eq!(captured_log_suffix_offset(&mut seen, b"abcdefgh"), 8);
+        assert_eq!(captured_log_suffix_offset(&mut seen, b"abcd"), 4);
     }
 
     #[test]

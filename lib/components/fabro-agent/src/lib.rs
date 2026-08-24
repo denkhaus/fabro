@@ -60,7 +60,7 @@ pub use question_tools::{
 };
 pub use sandbox::{
     CommandOutputCallback, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult,
-    GrepOptions, RefreshOutcome, RemoteCredentialAction, Sandbox, SandboxEvent,
+    GrepOptions, OutputCaptureStats, RefreshOutcome, RemoteCredentialAction, Sandbox, SandboxEvent,
     SandboxEventCallback, StderrCollector, StdioProcess, StdioProcessHandle, TokenProvenance,
     TokenSnapshot, format_lines_numbered, shell_quote,
 };

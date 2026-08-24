@@ -5,7 +5,7 @@ use fabro_types::run::{DirtyStatus, ForkSourceRef, GitContext, RunSpec};
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::RunGoal;
 use fabro_types::test_support::{test_run_provenance, test_workflow_version_id};
-use fabro_types::{AutomationRef, WorkflowSettings, fixtures};
+use fabro_types::{AutomationRef, RunTarget, WorkflowSettings, fixtures};
 
 fn templated_settings() -> WorkflowSettings {
     let mut settings = WorkflowSettings::default();
@@ -22,6 +22,11 @@ fn run_spec_round_trips_templated_settings() {
         graph_source:        None,
         workflow_slug:       Some("demo".to_string()),
         workflow_version_id: Some(test_workflow_version_id()),
+        target:              Some(RunTarget::Git {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "main".to_string(),
+            sha:    Some("abc123".to_string()),
+        }),
         automation:          Some(AutomationRef {
             id:         "nightly".to_string(),
             name:       Some("Nightly".to_string()),
@@ -64,6 +69,7 @@ fn run_spec_round_trips_templated_settings() {
         json["workflow_version_id"],
         test_workflow_version_id().to_string()
     );
+    assert_eq!(json["target"]["kind"], "git");
     let round_trip: RunSpec =
         serde_json::from_value(json.clone()).expect("record should deserialize");
 
@@ -91,6 +97,7 @@ fn run_spec_defaults_automation_for_legacy_specs() {
 
     assert_eq!(record.automation, None);
     assert_eq!(record.workflow_version_id, None);
+    assert_eq!(record.target, None);
 
     let round_trip = serde_json::to_value(&record).expect("record should serialize");
     assert!(round_trip.get("workflow_version_id").is_none());

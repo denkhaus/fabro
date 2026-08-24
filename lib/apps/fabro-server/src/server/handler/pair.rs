@@ -1025,6 +1025,7 @@ mod tests {
             source_directory: None,
             workflow_slug: None,
             workflow_version_id: None,
+            target: None,
             automation: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,

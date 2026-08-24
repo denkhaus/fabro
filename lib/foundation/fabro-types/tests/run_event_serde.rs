@@ -7,7 +7,7 @@ use fabro_types::run_event::{RunSessionTurnFailedCode, RunSessionTurnFailedProps
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::RunGoal;
 use fabro_types::test_support::{test_run_provenance, test_workflow_version_id};
-use fabro_types::{AutomationRef, EventBody, TurnId, WorkflowSettings, fixtures};
+use fabro_types::{AutomationRef, EventBody, RunTarget, TurnId, WorkflowSettings, fixtures};
 
 fn templated_settings() -> WorkflowSettings {
     let mut settings = WorkflowSettings::default();
@@ -26,6 +26,11 @@ fn run_created_props_round_trip_templated_settings() {
         source_directory:    Some("/Users/client/project".to_string()),
         workflow_slug:       Some("demo".to_string()),
         workflow_version_id: Some(test_workflow_version_id()),
+        target:              Some(RunTarget::Git {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "main".to_string(),
+            sha:    None,
+        }),
         automation:          Some(AutomationRef {
             id:         "nightly".to_string(),
             name:       Some("Nightly".to_string()),
@@ -99,6 +104,7 @@ fn run_created_props_omits_web_url_when_absent() {
         source_directory:    None,
         workflow_slug:       None,
         workflow_version_id: None,
+        target:              None,
         automation:          None,
         provenance:          test_run_provenance(),
         manifest_blob:       None,

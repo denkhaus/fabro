@@ -49,6 +49,7 @@ pub async fn retry_run(
         graph_source,
         workflow_slug,
         workflow_version_id,
+        target,
         automation,
         source_directory,
         labels,
@@ -78,6 +79,7 @@ pub async fn retry_run(
         source_directory,
         workflow_slug,
         workflow_version_id,
+        target,
         automation,
         provenance: input.provenance.clone(),
         manifest_blob,
@@ -124,8 +126,8 @@ mod tests {
     use fabro_store::{Database, RunProjectionReducer};
     use fabro_types::{
         AuthMethod, BlobHash, DirtyStatus, FailureReason, ForkSourceRef, GitContext, Graph,
-        IdpIdentity, Principal, PullRequestLink, RunRunnableSource, RunServerProvenance, RunTiming,
-        WorkflowSettings, fixtures, test_support,
+        IdpIdentity, Principal, PullRequestLink, RunRunnableSource, RunServerProvenance, RunTarget,
+        RunTiming, WorkflowSettings, fixtures, test_support,
     };
     use object_store::memory::InMemory;
 
@@ -160,10 +162,18 @@ mod tests {
 
     fn git_context() -> GitContext {
         GitContext {
-            origin_url: "https://github.com/fabro-sh/fabro.git".to_string(),
+            origin_url: "https://github.com/fabro-sh/fabro".to_string(),
             branch:     "main".to_string(),
-            sha:        Some("abc123".to_string()),
+            sha:        Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
             dirty:      DirtyStatus::Clean,
+        }
+    }
+
+    fn run_target() -> RunTarget {
+        RunTarget::Git {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "main".to_string(),
+            sha:    Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
         }
     }
 
@@ -189,6 +199,7 @@ mod tests {
             source_directory: Some("/workspace/source".to_string()),
             workflow_slug: Some("retry-source".to_string()),
             workflow_version_id: Some(test_support::test_workflow_version_id()),
+            target: Some(run_target()),
             automation: None,
             provenance: provenance("source-user"),
             manifest_blob,
@@ -405,6 +416,7 @@ mod tests {
             Some("digraph retry_source { start -> exit }")
         );
         assert_eq!(retry_state.spec.git, Some(git_context()));
+        assert_eq!(retry_state.spec.target, Some(run_target()));
         assert_eq!(retry_state.spec.manifest_blob, manifest_blob);
         assert_eq!(retry_state.spec.definition_blob, definition_blob);
         assert_eq!(retry_state.spec.fork_source_ref, Some(fork_source_ref));

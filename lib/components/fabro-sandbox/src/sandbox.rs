@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Write;
 use std::future::Future;
 use std::path::Path;
@@ -766,6 +766,139 @@ pub struct ExecStreamingResult {
     pub result:            ExecResult,
     pub streams_separated: bool,
     pub live_streaming:    bool,
+    pub stdout_capture:    OutputCaptureStats,
+    pub stderr_capture:    OutputCaptureStats,
+}
+
+impl ExecStreamingResult {
+    #[must_use]
+    pub fn output_capture(&self) -> OutputCaptureStats {
+        self.stdout_capture.combine(self.stderr_capture)
+    }
+}
+
+/// Byte counts for output observed and retained while draining a process.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OutputCaptureStats {
+    pub observed_bytes: usize,
+    pub retained_bytes: usize,
+    pub omitted_bytes:  usize,
+}
+
+impl OutputCaptureStats {
+    #[must_use]
+    pub fn complete(byte_count: usize) -> Self {
+        Self {
+            observed_bytes: byte_count,
+            retained_bytes: byte_count,
+            omitted_bytes:  0,
+        }
+    }
+
+    #[must_use]
+    pub fn combine(self, other: Self) -> Self {
+        Self {
+            observed_bytes: self.observed_bytes.saturating_add(other.observed_bytes),
+            retained_bytes: self.retained_bytes.saturating_add(other.retained_bytes),
+            omitted_bytes:  self.omitted_bytes.saturating_add(other.omitted_bytes),
+        }
+    }
+}
+
+/// A byte buffer that keeps an equal-sized stable prefix and rolling suffix.
+///
+/// The process is always drained. Once the optional cap is full, bytes from
+/// the middle are discarded while the newest suffix replaces the old tail.
+#[derive(Debug)]
+pub(crate) struct OutputCaptureBuffer {
+    max_bytes:      Option<usize>,
+    head:           Vec<u8>,
+    tail:           VecDeque<u8>,
+    observed_bytes: usize,
+}
+
+impl OutputCaptureBuffer {
+    #[must_use]
+    pub(crate) fn new(max_bytes: Option<usize>) -> Self {
+        Self {
+            max_bytes,
+            head: Vec::new(),
+            tail: VecDeque::new(),
+            observed_bytes: 0,
+        }
+    }
+
+    pub(crate) fn push(&mut self, bytes: &[u8]) {
+        self.observed_bytes = self.observed_bytes.saturating_add(bytes.len());
+        let Some(max_bytes) = self.max_bytes else {
+            self.head.extend_from_slice(bytes);
+            return;
+        };
+
+        let head_budget = max_bytes / 2;
+        let tail_budget = max_bytes.saturating_sub(head_budget);
+        let head_remaining = head_budget.saturating_sub(self.head.len());
+        let head_take = head_remaining.min(bytes.len());
+        self.head.extend_from_slice(&bytes[..head_take]);
+
+        let tail_bytes = &bytes[head_take..];
+        let overflow = self
+            .tail
+            .len()
+            .saturating_add(tail_bytes.len())
+            .saturating_sub(tail_budget);
+        if overflow >= self.tail.len() {
+            let skip = overflow.saturating_sub(self.tail.len());
+            self.tail.clear();
+            self.tail.extend(&tail_bytes[skip..]);
+        } else {
+            self.tail.drain(..overflow);
+            self.tail.extend(tail_bytes);
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn stats(&self) -> OutputCaptureStats {
+        let retained_bytes = self.head.len().saturating_add(self.tail.len());
+        OutputCaptureStats {
+            observed_bytes: self.observed_bytes,
+            retained_bytes,
+            omitted_bytes: self.observed_bytes.saturating_sub(retained_bytes),
+        }
+    }
+
+    #[cfg(feature = "daytona")]
+    #[must_use]
+    pub(crate) fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(self.head.len().saturating_add(self.tail.len()));
+        bytes.extend_from_slice(&self.head);
+        let (front, back) = self.tail.as_slices();
+        bytes.extend_from_slice(front);
+        bytes.extend_from_slice(back);
+        bytes
+    }
+
+    #[must_use]
+    pub(crate) fn into_parts(self) -> (Vec<u8>, OutputCaptureStats) {
+        let stats = self.stats();
+        let Self {
+            head: mut bytes,
+            tail,
+            ..
+        } = self;
+        let (front, back) = tail.as_slices();
+        bytes.extend_from_slice(front);
+        bytes.extend_from_slice(back);
+        (bytes, stats)
+    }
+
+    /// Retained bytes as two contiguous slices: the stable head, then the
+    /// rolling tail.
+    #[cfg(feature = "daytona")]
+    #[must_use]
+    pub(crate) fn retained_slices(&mut self) -> (&[u8], &[u8]) {
+        (&self.head, self.tail.make_contiguous())
+    }
 }
 
 pub type CommandOutputCallback = Arc<
@@ -785,13 +918,16 @@ pub type CommandOutputCallback = Arc<
 /// type does not implement `Debug` because standard input can contain
 /// sensitive workflow data.
 pub struct ExecStreamingRequest<'a> {
-    pub command:         &'a str,
-    pub timeout_ms:      Option<u64>,
-    pub working_dir:     Option<&'a str>,
-    pub env_vars:        Option<&'a HashMap<String, String>>,
-    pub cancel_token:    Option<CancellationToken>,
-    pub stdin:           Option<Vec<u8>>,
-    pub output_callback: Option<CommandOutputCallback>,
+    pub command:                 &'a str,
+    pub timeout_ms:              Option<u64>,
+    pub working_dir:             Option<&'a str>,
+    pub env_vars:                Option<&'a HashMap<String, String>>,
+    pub cancel_token:            Option<CancellationToken>,
+    pub stdin:                   Option<Vec<u8>>,
+    pub output_callback:         Option<CommandOutputCallback>,
+    /// Maximum bytes retained from each stream. Providers continue draining
+    /// stdout and stderr after the cap is reached.
+    pub stream_output_bytes_cap: Option<usize>,
 }
 
 impl<'a> ExecStreamingRequest<'a> {
@@ -805,6 +941,7 @@ impl<'a> ExecStreamingRequest<'a> {
             cancel_token: None,
             stdin: None,
             output_callback: None,
+            stream_output_bytes_cap: None,
         }
     }
 }
@@ -846,9 +983,10 @@ where
 }
 
 pub(crate) async fn replay_exec_result(
-    result: ExecResult,
+    mut result: ExecResult,
     streams_separated: bool,
     output_callback: Option<&CommandOutputCallback>,
+    stream_output_bytes_cap: Option<usize>,
 ) -> crate::Result<ExecStreamingResult> {
     if let Some(output_callback) = output_callback {
         if !result.stdout.is_empty() {
@@ -866,11 +1004,31 @@ pub(crate) async fn replay_exec_result(
             .await?;
         }
     }
+    let stdout_capture = capture_replayed_stream(&mut result.stdout, stream_output_bytes_cap);
+    let stderr_capture = capture_replayed_stream(&mut result.stderr, stream_output_bytes_cap);
+
     Ok(ExecStreamingResult {
         result,
         streams_separated,
         live_streaming: false,
+        stdout_capture,
+        stderr_capture,
     })
+}
+
+/// Bound one replayed stream in place, leaving it untouched when it already
+/// fits the cap.
+fn capture_replayed_stream(text: &mut String, cap: Option<usize>) -> OutputCaptureStats {
+    match cap {
+        Some(cap) if text.len() > cap => {
+            let mut buffer = OutputCaptureBuffer::new(Some(cap));
+            buffer.push(text.as_bytes());
+            let (bytes, stats) = buffer.into_parts();
+            *text = String::from_utf8_lossy(&bytes).into_owned();
+            stats
+        }
+        _ => OutputCaptureStats::complete(text.len()),
+    }
 }
 
 pub struct StdioProcess {
@@ -1192,7 +1350,13 @@ pub trait Sandbox: Send + Sync {
                 request.cancel_token,
             )
             .await?;
-        replay_exec_result(result, true, request.output_callback.as_ref()).await
+        replay_exec_result(
+            result,
+            true,
+            request.output_callback.as_ref(),
+            request.stream_output_bytes_cap,
+        )
+        .await
     }
 
     /// Launch a long-lived process with bidirectional stdio attached.
@@ -2531,6 +2695,43 @@ mod push_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_capture_buffer_keeps_stable_head_and_rolling_tail() {
+        let mut buffer = OutputCaptureBuffer::new(Some(8));
+        buffer.push(b"abc");
+        buffer.push(b"defghi");
+        buffer.push(b"jkl");
+
+        let (bytes, stats) = buffer.into_parts();
+        assert_eq!(bytes, b"abcdijkl");
+        assert_eq!(stats.observed_bytes, 12);
+        assert_eq!(stats.retained_bytes, 8);
+        assert_eq!(stats.omitted_bytes, 4);
+    }
+
+    #[test]
+    fn output_capture_buffer_without_cap_retains_everything() {
+        let mut buffer = OutputCaptureBuffer::new(None);
+        buffer.push(b"abc");
+        buffer.push(b"def");
+
+        let (bytes, stats) = buffer.into_parts();
+        assert_eq!(bytes, b"abcdef");
+        assert_eq!(stats, OutputCaptureStats::complete(6));
+    }
+
+    #[test]
+    fn zero_byte_output_capture_buffer_still_counts_drained_bytes() {
+        let mut buffer = OutputCaptureBuffer::new(Some(0));
+        buffer.push(b"abcdef");
+
+        let (bytes, stats) = buffer.into_parts();
+        assert!(bytes.is_empty());
+        assert_eq!(stats.observed_bytes, 6);
+        assert_eq!(stats.retained_bytes, 0);
+        assert_eq!(stats.omitted_bytes, 6);
+    }
 
     #[test]
     fn exec_result_fields() {

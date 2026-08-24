@@ -1172,13 +1172,25 @@ paths:
       operationId: createRun
       tags: [Runs]
       summary: Create Run
-      description: Creates a new workflow run in `submitted` status from a self-contained manifest.
+      description: >-
+        Creates a new workflow run in `submitted` status from either a
+        self-contained legacy manifest or an immutable workflow-version intent.
+        Creation does not start or schedule the run.
+
+
+        Failures return the standard error body. The intent lane responds
+        `404` (`workflow_version_not_found`, `environment_not_found`), `422`
+        (`run_intent_invalid`, `target_invalid`,
+        `target_environment_unsupported`, `workflow_version_unusable`,
+        `run_compile_invalid`), `503` (`integration_unavailable`), or `500`
+        (`workflow_version_store_error`, `credential_store_error`,
+        `variable_store_error`, `run_persistence_failed`).
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RunManifest"
+              $ref: "#/components/schemas/CreateRunRequest"
       responses:
         "201":
           description: Run created
@@ -1186,8 +1198,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Run"
+        # Non-2xx statuses beyond 400 are deliberately documented in the
+        # endpoint description instead of declared here: progenitor-generated
+        # clients drop the HTTP status when a declared error response's body
+        # is not valid JSON (e.g. a gateway's plain-text error), which breaks
+        # the CLI's error display contract
+        # (run_create_failure_shows_action_context_and_response_body).
         "400":
-          description: Invalid Graphviz source
+          description: Invalid JSON or legacy manifest
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -9214,6 +9232,104 @@ components:
         workflow_version_id:
           $ref: "#/components/schemas/WorkflowVersionId"
 
+    CreateRunRequest:
+      description: >-
+        Transitional create body used while callers migrate independently from
+        self-contained manifests to immutable workflow-version intents.
+      oneOf:
+        - $ref: "#/components/schemas/RunManifest"
+        - $ref: "#/components/schemas/RunIntent"
+
+    RunIntent:
+      description: >-
+        A request to create, but not start, one run from an immutable workflow
+        version and an explicit workspace target.
+      type: object
+      additionalProperties: false
+      required:
+        - workflow_version_id
+        - target
+        - args
+      properties:
+        workflow_version_id:
+          $ref: "#/components/schemas/WorkflowVersionId"
+        target:
+          $ref: "#/components/schemas/RunTarget"
+        args:
+          $ref: "#/components/schemas/RunIntentArgs"
+        environment_id:
+          type: string
+          description: Server environment catalog ID. Omission selects `default`.
+        parent_id:
+          type: string
+          description: Optional orchestration parent run ID.
+        title:
+          type: string
+          maxLength: 100
+          description: Optional explicit run title, normalized by the server.
+        goal:
+          type: string
+          description: Optional inline goal override.
+
+    RunIntentArgs:
+      description: Structured run overrides accepted by workflow-version creation.
+      type: object
+      additionalProperties: false
+      properties:
+        model:
+          type: string
+        provider:
+          type: string
+          description: LLM provider; this does not select the sandbox environment.
+        inputs:
+          type: object
+          additionalProperties:
+            anyOf:
+              - type: string
+              - type: number
+              - type: integer
+              - type: boolean
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+
+    RunTarget:
+      description: Workspace content and location requested for a run.
+      oneOf:
+        - $ref: "#/components/schemas/GitRunTarget"
+      discriminator:
+        propertyName: kind
+        mapping:
+          git: "#/components/schemas/GitRunTarget"
+
+    GitRunTarget:
+      description: Public github.com repository target.
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - repo
+        - branch
+      properties:
+        kind:
+          type: string
+          enum: [git]
+        repo:
+          type: string
+          description: GitHub repository slug in `owner/name` form.
+          example: acme/my-app
+        branch:
+          type: string
+          description: Required branch name, preserved exactly.
+          example: feature/foo
+        sha:
+          type: string
+          pattern: "^[0-9A-Fa-f]{40}$"
+          description: >-
+            Optional exact commit. The server lowercase-normalizes its syntax
+            but does not resolve it or prove branch ancestry.
+
     RunManifest:
       description: Self-contained workflow run manifest.
       type: object
@@ -11438,6 +11554,11 @@ components:
           description: Exact immutable root workflow version from which the run was admitted, when applicable.
           oneOf:
             - $ref: "#/components/schemas/WorkflowVersionId"
+            - type: "null"
+        target:
+          description: Canonical workspace target accepted for a version-backed run. Absent for legacy manifest runs.
+          oneOf:
+            - $ref: "#/components/schemas/RunTarget"
             - type: "null"
         automation:
           oneOf:

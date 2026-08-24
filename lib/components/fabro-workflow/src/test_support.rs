@@ -205,6 +205,7 @@ async fn initialized(
         source_directory:    Some(sandbox.working_directory().to_string()),
         workflow_slug:       run_options.workflow_slug.clone(),
         workflow_version_id: None,
+        target:              None,
         automation:          None,
         provenance:          fabro_types::RunProvenance {
             server:  None,

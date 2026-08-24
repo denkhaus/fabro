@@ -247,6 +247,7 @@ mod tests {
                 graph_source:        None,
                 workflow_slug:       None,
                 workflow_version_id: None,
+                target:              None,
                 automation:          None,
                 source_directory:    None,
                 labels:              HashMap::new(),

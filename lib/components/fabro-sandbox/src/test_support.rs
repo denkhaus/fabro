@@ -324,6 +324,7 @@ impl Sandbox for MockSandbox {
             cancel_token,
             stdin,
             output_callback,
+            stream_output_bytes_cap,
         } = request;
         *self
             .captured_stdin
@@ -338,7 +339,13 @@ impl Sandbox for MockSandbox {
                 cancel_token,
             )
             .await?;
-        sandbox::replay_exec_result(result, self.streams_separated, output_callback.as_ref()).await
+        sandbox::replay_exec_result(
+            result,
+            self.streams_separated,
+            output_callback.as_ref(),
+            stream_output_bytes_cap,
+        )
+        .await
     }
 
     async fn spawn_stdio_process(

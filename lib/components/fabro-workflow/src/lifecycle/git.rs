@@ -783,6 +783,7 @@ mod tests {
             source_directory: Some("/tmp/project".to_string()),
             workflow_slug: Some("metadata".to_string()),
             workflow_version_id: None,
+            target: None,
             automation: None,
             provenance: test_support::test_run_provenance(),
             manifest_blob: None,

@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
+use fabro_types::run_event::MAX_RUN_EVENT_BODY_BYTES;
 use fabro_types::{
     RunEventDetailContent, RunEventDetailContentKind, RunEventDetailEnvelope,
     RunEventDetailResponse,
@@ -20,7 +22,9 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/attach", get(attach_events))
         .route(
             "/runs/{id}/events",
-            get(list_run_events).post(append_run_event),
+            get(list_run_events)
+                .post(append_run_event)
+                .layer(DefaultBodyLimit::max(MAX_RUN_EVENT_BODY_BYTES)),
         )
         .route("/runs/{id}/events/{seq}", get(get_run_event_detail))
         .route(
@@ -625,6 +629,7 @@ mod stage_events_tests {
             source_directory:    None,
             workflow_slug:       None,
             workflow_version_id: None,
+            target:              None,
             automation:          None,
             provenance:          test_support::test_run_provenance(),
             manifest_blob:       None,

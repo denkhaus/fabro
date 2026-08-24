@@ -60,8 +60,8 @@ pub use reconnect::{reconnect, reconnect_for_run, reconnect_for_run_with_callbac
 pub use sandbox::{
     CommandOutputCallback, DEFAULT_EXEC_OUTPUT_TAIL_BYTES, DirEntry, ExecResult,
     ExecStreamingRequest, ExecStreamingResult, GitRunInfo, GitSetupIntent, GrepOptions,
-    PushAttempt, PushError, PushReport, RefreshOutcome, RemoteCredentialAction, Sandbox,
-    SandboxActivation, SandboxEvent, SandboxEventCallback, SandboxFile, StderrCollector,
+    OutputCaptureStats, PushAttempt, PushError, PushReport, RefreshOutcome, RemoteCredentialAction,
+    Sandbox, SandboxActivation, SandboxEvent, SandboxEventCallback, SandboxFile, StderrCollector,
     StdioProcess, StdioProcessHandle, StdioProcessTermination, WalkOptions, format_lines_numbered,
     redacted_output_tail, setup_git_via_exec, shell_quote,
 };

@@ -5,22 +5,18 @@
 //!   type.
 //! - [`RecordId`]: converts the typed id to and from key segments.
 //! - [`Repository`]: performs the generic get/put/delete/scan/gc operations.
-//! - [`transaction`]: batches multiple typed writes into one atomic SlateDB
-//!   write.
 //!
 //! Production callers should add a named domain store on top of this layer
 //! rather than exposing `Repository<R>` directly. See `slate/auth_codes.rs`,
-//! `slate/auth_tokens.rs`, `slate/blob_store.rs`, and
-//! `slate/run_catalog_index.rs` for the intended pattern.
+//! `slate/blob_store.rs`, and `slate/run_catalog_index.rs` for the intended
+//! pattern.
 
 mod codec;
 mod record_id;
 mod repository;
-mod transaction;
 
 pub(crate) use codec::{Codec, JsonCodec, MarkerCodec, RawBytesCodec};
 pub(crate) use repository::Repository;
-pub(crate) use transaction::transaction;
 
 use crate::Result;
 
