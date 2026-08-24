@@ -299,13 +299,32 @@
             "group": "August 2026",
             "icon": "clock-rotate-left",
             "pages": [
-              "changelog/2026-08-21"
+              "changelog/2026-08-23",
+              "changelog/2026-08-21",
+              "changelog/2026-08-20",
+              "changelog/2026-08-18",
+              "changelog/2026-08-17",
+              "changelog/2026-08-16",
+              "changelog/2026-08-14",
+              "changelog/2026-08-13",
+              "changelog/2026-08-12",
+              "changelog/2026-08-06",
+              "changelog/2026-08-05",
+              "changelog/2026-08-04",
+              "changelog/2026-08-03",
+              "changelog/2026-08-01"
             ]
           },
           {
             "group": "July 2026",
             "icon": "clock-rotate-left",
             "pages": [
+              "changelog/2026-07-31",
+              "changelog/2026-07-30",
+              "changelog/2026-07-29",
+              "changelog/2026-07-28",
+              "changelog/2026-07-27",
+              "changelog/2026-07-26",
               "changelog/2026-07-25",
               "changelog/2026-07-24",
               "changelog/2026-07-23",
