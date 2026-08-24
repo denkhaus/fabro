@@ -189,6 +189,19 @@ fn resolve_runner_image(config: &mut DockerSandboxOptions) -> crate::Result<()> 
     }
 }
 
+/// The image name to REPORT for a docker sandbox config: the
+/// content-hash tag when an inline dockerfile drives the runner image
+/// (mirrors the resolution `DockerSandbox::new` applies to its own copy),
+/// else the configured image. Display/reporting only — the runtime path
+/// keeps its own resolved config.
+#[must_use]
+pub(crate) fn display_image(config: &DockerSandboxOptions) -> String {
+    match config.dockerfile.as_ref() {
+        Some(DockerfileSource::Inline(content)) => runner_image_tag(content),
+        _ => config.image.clone(),
+    }
+}
+
 pub struct DockerSandbox {
     docker:            Docker,
     config:            DockerSandboxOptions,

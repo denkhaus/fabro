@@ -101,7 +101,17 @@ impl SandboxSpec {
                 );
                 RunSandboxInstance {
                     provider: self.provider(),
-                    image:    (!config.image.is_empty()).then(|| config.image.clone()),
+                    // Display the image the container ACTUALLY runs: with an
+                    // inline dockerfile, `DockerSandbox::new` resolved
+                    // `image` to the content-hash tag on its own copy; this
+                    // spec copy still carries the unresolved fallback name
+                    // (observed: sandbox.initialized reported
+                    // buildpack-deps:noble while the container ran
+                    // fabro-runner-<hash>, run 01M0T2GW).
+                    image:    {
+                        let image = docker::display_image(config);
+                        (!image.is_empty()).then_some(image)
+                    },
                     snapshot: None,
                     runtime:  RunSandboxRuntime {
                         id,
@@ -266,6 +276,8 @@ fn runtime_layout_metadata(
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "docker")]
+    use crate::config::DockerfileSource;
+    #[cfg(feature = "docker")]
     use fabro_types::RunId;
 
     #[cfg(feature = "docker")]
@@ -335,6 +347,39 @@ mod tests {
         );
         assert!(format!("{error:#}").contains("40 ASCII hexadecimal"));
         assert!(!format!("{error:#}").contains("Docker daemon"));
+    }
+
+    #[cfg(feature = "docker")]
+    #[test]
+    fn docker_run_sandbox_reports_built_runner_tag_not_fallback_image() {
+        // Run 01M0T2GW: sandbox.initialized reported the unresolved
+        // fallback (buildpack-deps:noble) while the container ran the
+        // content-hash tag — the record must show what actually runs.
+        let spec = SandboxSpec::Docker {
+            config:           DockerSandboxOptions {
+                dockerfile: Some(DockerfileSource::Inline(
+                    "FROM ubuntu:24.04
+".to_string(),
+                )),
+                ..DockerSandboxOptions::default()
+            },
+            github_app:       None,
+            run_id:           None,
+            clone_origin_url: None,
+            clone_branch:     None,
+            clone_commit_sha: None,
+        };
+        let sandbox = MockSandbox::linux();
+
+        let run_id: RunId = "01HY0000000000000000000000".parse().unwrap();
+        let record = spec.to_run_sandbox_instance(&sandbox, run_id);
+
+        let image = record.image.as_deref().expect("image must be reported");
+        assert!(
+            image.starts_with("fabro-runner-"),
+            "inline dockerfile must report the content-hash tag, got {image}"
+        );
+        assert_ne!(image, "buildpack-deps:noble");
     }
 
     #[cfg(feature = "docker")]
