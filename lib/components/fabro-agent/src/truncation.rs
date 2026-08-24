@@ -1,5 +1,63 @@
 use crate::config::SessionOptions;
+use crate::sandbox::OutputCaptureStats;
 use crate::tool_permissions::canonical_tool_name;
+
+pub(crate) const MAX_RETAINED_TOOL_OUTPUT_BYTES: usize = 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RetainedToolOutput {
+    pub output: String,
+    pub stats:  OutputCaptureStats,
+}
+
+/// Keep an equal-sized UTF-8 prefix and suffix within a byte budget.
+///
+/// `previously_omitted_bytes` accounts for output a streaming provider
+/// discarded before the rendered result was assembled.
+#[must_use]
+pub(crate) fn retain_tool_output(
+    output: &str,
+    max_bytes: usize,
+    previously_omitted_bytes: usize,
+) -> RetainedToolOutput {
+    let observed_bytes = output.len().saturating_add(previously_omitted_bytes);
+    if output.len() <= max_bytes {
+        return RetainedToolOutput {
+            output: output.to_string(),
+            stats:  OutputCaptureStats {
+                observed_bytes,
+                retained_bytes: output.len(),
+                omitted_bytes: previously_omitted_bytes,
+            },
+        };
+    }
+
+    let head_budget = max_bytes / 2;
+    let tail_budget = max_bytes.saturating_sub(head_budget);
+    let head_end = output.floor_char_boundary(head_budget);
+    let tail_start = ceil_char_boundary(output, output.len().saturating_sub(tail_budget));
+    let retained_bytes = head_end.saturating_add(output.len().saturating_sub(tail_start));
+    let mut retained = String::with_capacity(retained_bytes);
+    retained.push_str(&output[..head_end]);
+    retained.push_str(&output[tail_start..]);
+
+    RetainedToolOutput {
+        output: retained,
+        stats:  OutputCaptureStats {
+            observed_bytes,
+            retained_bytes,
+            omitted_bytes: observed_bytes.saturating_sub(retained_bytes),
+        },
+    }
+}
+
+fn ceil_char_boundary(output: &str, index: usize) -> usize {
+    let mut index = index.min(output.len());
+    while index < output.len() && !output.is_char_boundary(index) {
+        index += 1;
+    }
+    index
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TruncationMode {
@@ -120,6 +178,30 @@ pub fn truncate_tool_output(output: &str, tool_name: &str, config: &SessionOptio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retained_tool_output_keeps_equal_head_and_tail() {
+        let retained = retain_tool_output("abcdefghijkl", 8, 0);
+
+        assert_eq!(retained.output, "abcdijkl");
+        assert_eq!(retained.stats.observed_bytes, 12);
+        assert_eq!(retained.stats.retained_bytes, 8);
+        assert_eq!(retained.stats.omitted_bytes, 4);
+    }
+
+    #[test]
+    fn retained_tool_output_stays_within_budget_at_utf8_boundaries() {
+        let retained = retain_tool_output("aa😀😀zz", 7, 3);
+
+        assert!(retained.output.len() <= 7, "{}", retained.output.len());
+        assert!(retained.output.starts_with("aa"));
+        assert!(retained.output.ends_with("zz"));
+        assert_eq!(retained.stats.observed_bytes, "aa😀😀zz".len() + 3);
+        assert_eq!(
+            retained.stats.omitted_bytes,
+            retained.stats.observed_bytes - retained.output.len()
+        );
+    }
 
     #[test]
     fn under_limit_passthrough_chars() {

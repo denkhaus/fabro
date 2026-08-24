@@ -13,6 +13,7 @@ use tokio::task;
 use crate::config::NativeToolOptions;
 use crate::sandbox::{ExecStreamingResult, GrepOptions};
 use crate::tool_registry::{RegisteredTool, ToolContext, ToolRegistry, ToolSource};
+use crate::truncation::{MAX_RETAINED_TOOL_OUTPUT_BYTES, RetainedToolOutput, retain_tool_output};
 use crate::types::AgentEvent;
 use crate::web_search::{SearchBackend, make_web_search_tool};
 
@@ -303,6 +304,7 @@ pub(crate) async fn execute_shell_command(
             working_dir: cwd,
             env_vars: tool_env.as_ref(),
             cancel_token: Some(ctx.cancel.clone()),
+            stream_output_bytes_cap: Some(MAX_RETAINED_TOOL_OUTPUT_BYTES),
             ..crate::ExecStreamingRequest::new(command)
         })
         .await
@@ -318,7 +320,7 @@ pub(crate) async fn run_shell_command(
     cwd: Option<&str>,
 ) -> Result<String, String> {
     let streaming = execute_shell_command(ctx, command, timeout_ms, cwd).await?;
-    let text = render_shell_result(&streaming);
+    let text = render_shell_result(&streaming).output;
     let is_success = streaming.result.is_success();
     emit_shell_process_completed(ctx, streaming).await;
 
@@ -364,7 +366,7 @@ pub(crate) async fn emit_shell_process_completed(
 /// Renders the model-facing shell result: termination, exit code, duration,
 /// and provider-honest output sections. Metadata stays at the head and
 /// `stderr` at the tail so head/tail truncation preserves both.
-fn render_shell_result(streaming: &ExecStreamingResult) -> String {
+fn render_shell_result(streaming: &ExecStreamingResult) -> RetainedToolOutput {
     let result = &streaming.result;
     let mut output = format!(
         "Termination: {}\nExit code: {}\nDuration: {}ms\n",
@@ -384,7 +386,11 @@ fn render_shell_result(streaming: &ExecStreamingResult) -> String {
     } else if !result.stdout.is_empty() {
         let _ = write!(output, "output (combined):\n{}\n", result.stdout);
     }
-    output
+    retain_tool_output(
+        &output,
+        MAX_RETAINED_TOOL_OUTPUT_BYTES,
+        streaming.output_capture().omitted_bytes,
+    )
 }
 
 #[must_use]

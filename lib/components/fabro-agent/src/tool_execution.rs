@@ -11,7 +11,7 @@ use crate::question_tools::{self, AgentToolRuntime, is_question_tool};
 use crate::sandbox::Sandbox;
 use crate::session::ToolEnvProvider;
 use crate::tool_registry::{AgentEventEmitter, RegisteredTool, ToolContext, ToolRegistry};
-use crate::truncation::truncate_tool_output;
+use crate::truncation::{MAX_RETAINED_TOOL_OUTPUT_BYTES, retain_tool_output, truncate_tool_output};
 use crate::types::AgentEvent;
 
 /// Execute tool calls, choosing parallel or sequential based on `parallel`
@@ -265,7 +265,7 @@ fn error_tool_result_with_events(
     message: &str,
 ) -> ToolResult {
     emit_tool_call_started(emitter, session_id, tc);
-    let result = ToolResult::error(&tc.id, message);
+    let result = retain_tool_result(&ToolResult::error(&tc.id, message));
     emit_tool_call_result(emitter, session_id, tc, &result);
     truncate_tool_result(&result, &tc.name, config)
 }
@@ -386,7 +386,7 @@ async fn execute_and_emit_one_tool_with_lookup(
     emit_tool_call_started(emitter, session_id, tc);
 
     if let Some(reason) = access_denial {
-        let result = ToolResult::error(&tc.id, &reason);
+        let result = retain_tool_result(&ToolResult::error(&tc.id, &reason));
         emit_tool_call_result(emitter, session_id, tc, &result);
         return truncate_tool_result(&result, &tc.name, config);
     }
@@ -400,24 +400,26 @@ async fn execute_and_emit_one_tool_with_lookup(
         debug!(tool = %tc.name, hook_event = "pre_tool_use", ?decision, duration_ms = elapsed, "Tool hook complete");
 
         if let ToolHookDecision::Block { reason } = decision {
-            let result = ToolResult::error(&tc.id, &reason);
+            let result = retain_tool_result(&ToolResult::error(&tc.id, &reason));
             emit_tool_call_result(emitter, session_id, tc, &result);
             return truncate_tool_result(&result, &tc.name, config);
         }
     }
 
-    let result = execute_one_tool(
-        tc,
-        registered_tool,
-        env,
-        cancel_token,
-        emitter,
-        session_id,
-        root_session_id,
-        tool_env_provider,
-        agent_tool_runtime,
-    )
-    .await;
+    let result = retain_tool_result(
+        &execute_one_tool(
+            tc,
+            registered_tool,
+            env,
+            cancel_token,
+            emitter,
+            session_id,
+            root_session_id,
+            tool_env_provider,
+            agent_tool_runtime,
+        )
+        .await,
+    );
 
     emit_tool_call_result(emitter, session_id, tc, &result);
 
@@ -444,6 +446,24 @@ async fn execute_and_emit_one_tool_with_lookup(
     }
 
     truncate_tool_result(&result, &tc.name, config)
+}
+
+/// Bound model-native tool output before it reaches hooks, events, or history.
+fn retain_tool_result(result: &ToolResult) -> ToolResult {
+    let retained_content = match &result.content {
+        serde_json::Value::String(output) => serde_json::Value::String(
+            retain_tool_output(output, MAX_RETAINED_TOOL_OUTPUT_BYTES, 0).output,
+        ),
+        other => other.clone(),
+    };
+
+    ToolResult {
+        tool_call_id:     result.tool_call_id.clone(),
+        content:          retained_content,
+        is_error:         result.is_error,
+        image_data:       result.image_data.clone(),
+        image_media_type: result.image_media_type.clone(),
+    }
 }
 
 /// Execute a single tool call: argument validation and execution.
@@ -875,6 +895,47 @@ mod tests {
         assert!(!result.is_error);
         let content = result.content.to_string();
         assert!(content.contains("echo: hello"));
+    }
+
+    #[tokio::test]
+    async fn tool_output_is_bounded_before_events_and_history() {
+        let mut registry = ToolRegistry::new();
+        registry.register(make_echo_tool());
+        let text = "x".repeat(MAX_RETAINED_TOOL_OUTPUT_BYTES + 100);
+        let tc = make_tool_call("echo", "call_large", serde_json::json!({"text": text}));
+        let emitter = Emitter::new();
+        let mut receiver = emitter.subscribe();
+
+        let result = execute_and_emit_one_tool(
+            &tc,
+            &registry,
+            make_sandbox(),
+            None,
+            CancellationToken::new(),
+            &SessionOptions::default(),
+            &emitter,
+            "test-session",
+            "test-session",
+            None,
+        )
+        .await;
+
+        let result_output = result.content.as_str().expect("string tool output");
+        assert_eq!(result_output.len(), MAX_RETAINED_TOOL_OUTPUT_BYTES);
+
+        let completed_output = loop {
+            let event = receiver.try_recv().expect("tool completion event");
+            if let AgentEvent::ToolCallCompleted { output, .. } = event.event {
+                break output;
+            }
+        };
+        assert_eq!(
+            completed_output
+                .as_str()
+                .expect("string event output")
+                .len(),
+            MAX_RETAINED_TOOL_OUTPUT_BYTES
+        );
     }
 
     #[tokio::test]

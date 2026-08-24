@@ -33,7 +33,7 @@ use crate::managed_labels::{self, MANAGED_LABEL, RUN_ID_LABEL};
 use crate::push_credentials::{self, PushCredentialState};
 use crate::redact::redact_auth_url;
 use crate::sandbox::{
-    self, BASH_ENV_VAR, BASH_PROBE_SCRIPT, BASH_PROBE_TIMEOUT_MS, REMOTE_BASH,
+    self, BASH_ENV_VAR, BASH_PROBE_SCRIPT, BASH_PROBE_TIMEOUT_MS, OutputCaptureBuffer, REMOTE_BASH,
     REMOTE_WALK_TIMEOUT_MS, RefreshOutcome, StdioProcessControl, optional_timeout, resolve_path,
     validate_bash_probe, write_process_stdin,
 };
@@ -438,7 +438,8 @@ impl DockerSandbox {
         env: Option<Vec<String>>,
         stdin: Option<Vec<u8>>,
         output_callback: Option<CommandOutputCallback>,
-    ) -> crate::Result<(Vec<u8>, Vec<u8>, i32)> {
+        stream_output_bytes_cap: Option<usize>,
+    ) -> crate::Result<(OutputCaptureBuffer, OutputCaptureBuffer, i32)> {
         let exec_opts = CreateExecOptions {
             cmd: Some(cmd),
             attach_stdin: Some(stdin.is_some()),
@@ -460,8 +461,8 @@ impl DockerSandbox {
         )
         .await?;
 
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
+        let mut stdout = OutputCaptureBuffer::new(stream_output_bytes_cap);
+        let mut stderr = OutputCaptureBuffer::new(stream_output_bytes_cap);
 
         let StartExecResults::Attached { mut output, input } = start_result else {
             return Err(crate::Error::message(
@@ -478,13 +479,13 @@ impl DockerSandbox {
             while let Some(chunk) = output.next().await {
                 match chunk {
                     Ok(LogOutput::StdOut { message }) => {
-                        stdout.extend_from_slice(&message);
+                        stdout.push(&message);
                         if let Some(output_callback) = output_callback.as_ref() {
                             output_callback(CommandOutputStream::Stdout, message.to_vec()).await?;
                         }
                     }
                     Ok(LogOutput::StdErr { message }) => {
-                        stderr.extend_from_slice(&message);
+                        stderr.push(&message);
                         if let Some(output_callback) = output_callback.as_ref() {
                             output_callback(CommandOutputStream::Stderr, message.to_vec()).await?;
                         }
@@ -580,6 +581,7 @@ impl DockerSandbox {
             cancel_token,
             stdin,
             output_callback,
+            stream_output_bytes_cap,
         } = request;
         let start = Instant::now();
         let effective_dir = working_dir
@@ -607,6 +609,7 @@ impl DockerSandbox {
             env,
             stdin,
             output_callback,
+            stream_output_bytes_cap,
         ));
 
         let mut termination = CommandTermination::Exited;
@@ -632,9 +635,11 @@ impl DockerSandbox {
         };
 
         let (stdout, stderr, exit_code) = output;
+        let (stdout, stdout_capture) = stdout.into_parts();
+        let (stderr, stderr_capture) = stderr.into_parts();
         let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
         Ok(ExecStreamingResult {
-            result:            ExecResult {
+            result: ExecResult {
                 stdout: String::from_utf8_lossy(&stdout).into_owned(),
                 stderr: String::from_utf8_lossy(&stderr).into_owned(),
                 exit_code: (termination == CommandTermination::Exited).then_some(exit_code),
@@ -642,7 +647,9 @@ impl DockerSandbox {
                 duration_ms,
             },
             streams_separated: true,
-            live_streaming:    true,
+            live_streaming: true,
+            stdout_capture,
+            stderr_capture,
         })
     }
 
