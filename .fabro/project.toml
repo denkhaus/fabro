@@ -39,10 +39,17 @@ script = "mise install"
 [[run.prepare.steps]]
 script = "just bootstrap"
 
-# Default model for all project runs.
+# Default model for all project runs, with fallback chain: one provider
+# endpoint is a single point of failure (run 01M0NJZGX7 lost its reviewer
+# to a z.ai broken pipe). Same model on three providers (parity with the
+# meta world).
 [run.model]
 provider = "zai"
 name = "glm-5.3"
+
+# keyed syntax: model name -> ordered provider fallback chain
+[run.model.fallbacks]
+"glm-5.3" = ["venice", "openrouter"]
 
 # Dev-cycle test: push checkpoint branches to the fork.
 [run.run_branch]
