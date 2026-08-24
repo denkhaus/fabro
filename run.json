@@ -632,7 +632,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-24T22:19:39.857188708Z",
-  "last_event_at": "2026-08-24T22:29:07.668692686Z",
+  "last_event_at": "2026-08-24T22:29:14.478302061Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -2486,9 +2486,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 458,
       "checkpoint": {
-        "timestamp": "2026-08-24T22:29:08.209379005Z",
+        "timestamp": "2026-08-24T22:29:13.847879364Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
@@ -2504,9 +2504,297 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.tester": 0,
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1
+          },
+          "outcome": "succeeded",
+          "implementation_summary": "`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePretty`/`modeTable`) with `parseMode` (flag-style invalid-value error listing all four modes), `resolveMode` (shortcut resolution: unset `-format` keeps legacy JSON-wins semantics; explicit `-format` requires shortcut agreement, else an error naming both `-json`/`-pretty` and `-format`), `-format` flag registration, and `run()` grew a `format string` parameter (checked after `-version` so version precedence holds) with a `modeTable` print branch (values only, right-justified to the widest value). `fib_test.go`: all existing call sites updated to pass `\"\"` (legacy behavior unchanged and regression-pinned); new tests `TestRunFormatModes`, `TestRunFormatShortcutEquivalence`, `TestRunFormatConflicts`, `TestRunRejectsInvalidFormat`, `TestRunTableCombinations`, `TestRunFormatSeed`, `TestRunVersionFormat`. `README.md`: `-format` usage section with real captured output for every mode (built to `/workspace/tmp`-external `/tmp/gofib`, binary removed), plus shortcut/conflict/default/version-precedence examples and a full flag-table row; `-json`/`-pretty` rows updated to document shortcut semantics. Per-criterion report: - PASS `-format text|json|pretty|table`, invalid value exits non-zero with `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table`: main.go `parseMode` + `TestRunRejectsInvalidFormat` (exact-message pins). - PASS `-json`/`-pretty` remain shortcuts, legacy behavior unchanged incl. `-json -pretty` JSON-wins: main.go `resolveMode` unset-format path + existing tests pass with `\"\"` (TestRunJSON/TestRunPretty/TestRunPrettyJSON) + `TestRunFormatShortcutEquivalence` and legacy subtest in `TestRunFormatConflicts`. - PASS conflict rule both directions and vs `text`/`table`, agreeing combos accepted, no conflict check when `-format` unset: main.go `resolveMode` + `TestRunFormatConflicts` (6 conflict rows naming both flags, agreeing rows in `TestRunFormatShortcutEquivalence`). - PASS `table` mode values-only right-justified to widest value, no index, composes with `-start`/`-n`/`-limit`: main.go modeTable branch + `TestRunFormatModes` and `TestRunTableCombinations`. - PASS active mode applies in `-seed` lookup: `TestRunFormatSeed` (`-seed 10 -format json` == `-seed 10 -json`; `-seed 10 -format table` prints `55`). - PASS `-version` wins over invalid/conflicting `-format`: main.go version-first check + `TestRunVersionFormat` (incl. `-version -format xml` → `gofib 1.3.0`, exit 0). - PASS computation via existing `Fib(n)` only, flag-package registration, `run()` signature grew the mode parameter and all call sites updated: main.go. - PASS README flag-table `-format` row + real captured example per mode (captured from a built binary, not invented) + shortcut/conflict/default docs: `README.md`. - PASS table-driven tests covering all demanded cases: `fib_test.go` new tests listed above plus regression pins. - PASS `just qualitygate`: not run by me (tester's job); `go vet` + full `go test` were green before README-only edits, focused re-run green after; gofmt clean; no artifacts left (binary built to `/tmp` and removed; worktree shows only `README.md`, `fib_test.go`, `main.go` modified).",
+          "thread.implementer.current_node": "tester",
+          "thread.closeout.current_node": "planner",
+          "thread.start.current_node": "planner",
+          "graph.rankdir": "LR",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3367,
+            "preview": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePre"
+          },
+          "graph.max_node_visits": "40",
+          "failure_class": "",
+          "preferred_label": "Implemented",
+          "current_seed_brief": "Add a `-format <mode>` flag to gofib (`/workspace/fabro/main.go`) that selects the output style globally — `text` (default), `json`, `pretty`, and new compact `table` mode — unifying the text/json/pretty matrix. Acceptance criteria: (1) `-format text|json|pretty|table`; an invalid value exits non-zero with a stderr error in the existing flag-error style that lists the valid modes (e.g. `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table`). (2) `-json` and `-pretty` remain SHORTCUTS: `-json` behaves exactly like `-format json`, `-pretty` like `-format pretty`; plain `-json`/`-pretty` behavior is UNCHANGED and pinned by regression tests (including `-json -pretty` with no `-format`: JSON wins, no error). (3) Conflict rule: when `-format` is EXPLICITLY set, any also-given shortcut must agree — `-pretty -format json`, `-json -format pretty`, and shortcut-vs-`text`/`table` combos exit non-zero with a stderr error naming both flags; agreeing combos (`-pretty -format pretty`, `-json -format json`) are accepted (annotated choice: spec forbids conflicts, agreement is not one); with `-format` unset there is NO conflict check — legacy `-json -pretty` keeps JSON-wins semantics (annotated: regression criterion demands existing behavior unchanged). (4) `table` mode: values only, one per line, right-justified to the width of the widest value printed; no index column; composes with `-start`/`-n`/`-limit` as usual. (5) The active mode applies in `-seed` lookup mode too: `-seed 10 -format json` equals `-seed 10 -json`, `-seed 10 -format table` prints just the value. (6) `-version` still wins over everything, including an INVALID `-format` value or a shortcut/format conflict — `-version -format xml` prints `gofib <Version>` and exits 0 (annotated choice: mirrors -version's ignore-invalid semantics). (7) Computation uses existing `Fib(n)` only; the flag is registered via the flag package; `run()` signature may grow the mode parameter and all existing call sites update. (8) `README.md` flag table gains the `-format` row plus a REAL captured example for EACH mode (build the binary and capture; do not invent output), and documents the shortcut, conflict, and default semantics. (9) Table-driven tests in `/workspace/fabro/fib_test.go` cover: each of the four modes, shortcut==format equivalence, conflict rejection (both shortcut directions plus vs `text` and `table`), invalid mode rejection, table+`-start`/`-n`/`-limit` combos, table with `-seed`, `-version` precedence over invalid/conflicting `-format`, and regression pins for existing `-json`/`-pretty` behavior. (10) `just qualitygate` green.",
+          "internal.retry_count.closeout": 0,
+          "thread.reviewer.current_node": "closeout",
+          "thread.tester.current_node": "evidence",
+          "internal.node_visit_count": 2,
+          "current_seed_id": "fabro-d920",
+          "last_response": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePre",
+          "failure_signature": "",
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3344,
+            "preview": "Claimed `fabro-d920`. The worktree matches the seed's assumptions (flag-package CLI, `run()` dispatch, README flag table), and I resolved three spec soft spots in the brief: agreeing shortcut+format c"
+          },
+          "graph.preamble_budget_kb": "24",
+          "internal.run_id": "01M0TXPX09279433MGWSWPVVP4",
+          "internal.fidelity": "compact",
+          "current_seed_title": "gofib: add -format flag for compact table output",
+          "internal.retry_count.start": 0,
+          "internal.seed_cycle_anchor": "fabro-d920",
+          "internal.retry_count.planner": 0,
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.reviewer": 0,
+          "review_verdict": "approved",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "thread.evidence.current_node": "reviewer",
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.evidence": 0,
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 1992,
+            "preview": "The evidence blob is complete and internally consistent. Verified against the authoritative seed spec:\n\n1. **Single-index printing** — main.go's lookup mode sets `start, count, limit = seed, 1, 0`, "
+          },
+          "last_stage": "implementer",
+          "current_node": "tester",
+          "internal.thread_id": "implementer",
+          "command.output": "blob://sha256/6e401af41c7f6c3f9152e6c04c124a68d2b4db426fde6084509abba5832f15b5"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Add a `-format <mode>` flag to gofib (`/workspace/fabro/main.go`) that selects the output style globally — `text` (default), `json`, `pretty`, and new compact `table` mode — unifying the text/json/pretty matrix. Acceptance criteria: (1) `-format text|json|pretty|table`; an invalid value exits non-zero with a stderr error in the existing flag-error style that lists the valid modes (e.g. `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table`). (2) `-json` and `-pretty` remain SHORTCUTS: `-json` behaves exactly like `-format json`, `-pretty` like `-format pretty`; plain `-json`/`-pretty` behavior is UNCHANGED and pinned by regression tests (including `-json -pretty` with no `-format`: JSON wins, no error). (3) Conflict rule: when `-format` is EXPLICITLY set, any also-given shortcut must agree — `-pretty -format json`, `-json -format pretty`, and shortcut-vs-`text`/`table` combos exit non-zero with a stderr error naming both flags; agreeing combos (`-pretty -format pretty`, `-json -format json`) are accepted (annotated choice: spec forbids conflicts, agreement is not one); with `-format` unset there is NO conflict check — legacy `-json -pretty` keeps JSON-wins semantics (annotated: regression criterion demands existing behavior unchanged). (4) `table` mode: values only, one per line, right-justified to the width of the widest value printed; no index column; composes with `-start`/`-n`/`-limit` as usual. (5) The active mode applies in `-seed` lookup mode too: `-seed 10 -format json` equals `-seed 10 -json`, `-seed 10 -format table` prints just the value. (6) `-version` still wins over everything, including an INVALID `-format` value or a shortcut/format conflict — `-version -format xml` prints `gofib <Version>` and exits 0 (annotated choice: mirrors -version's ignore-invalid semantics). (7) Computation uses existing `Fib(n)` only; the flag is registered via the flag package; `run()` signature may grow the mode parameter and all existing call sites update. (8) `README.md` flag table gains the `-format` row plus a REAL captured example for EACH mode (build the binary and capture; do not invent output), and documents the shortcut, conflict, and default semantics. (9) Table-driven tests in `/workspace/fabro/fib_test.go` cover: each of the four modes, shortcut==format equivalence, conflict rejection (both shortcut directions plus vs `text` and `table`), invalid mode rejection, table+`-start`/`-n`/`-limit` combos, table with `-seed`, `-version` precedence over invalid/conflicting `-format`, and regression pins for existing `-json`/`-pretty` behavior. (10) `just qualitygate` green.",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3344,
+                "preview": "Claimed `fabro-d920`. The worktree matches the seed's assumptions (flag-package CLI, `run()` dispatch, README flag table), and I resolved three spec soft spots in the brief: agreeing shortcut+format c"
+              },
+              "last_response": "Claimed `fabro-d920`. The worktree matches the seed's assumptions (flag-package CLI, `run()` dispatch, README flag table), and I resolved three spec soft spots in the brief: agreeing shortcut+format c",
+              "last_stage": "planner",
+              "current_seed_id": "fabro-d920",
+              "current_seed_title": "gofib: add -format flag for compact table output"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15083,
+                    "output_tokens": 1054,
+                    "reasoning_tokens": 2348,
+                    "cache_read_tokens": 38016,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 45963
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 52898,
+              "tool_time_ms": 1036,
+              "active_time_ms": 53934
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/6e401af41c7f6c3f9152e6c04c124a68d2b4db426fde6084509abba5832f15b5"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 2326,
+              "active_time_ms": 2326
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "preferred_label": "More seeds",
+            "context_updates": {
+              "command.output": "blob://sha256/2c03dd81a681ee5903629f09ee3e5ce1b41c4872efd04a90e4135a70bfecd23e"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 413,
+              "active_time_ms": 413
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/ce80b61a8083ef1d8ec5c6174fed9fd267a7f2a2a9928771c30dd09eb54f97ee"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 554,
+              "active_time_ms": 554
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePre",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3367,
+                "preview": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePre"
+              },
+              "implementation_summary": "`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePretty`/`modeTable`) with `parseMode` (flag-style invalid-value error listing all four modes), `resolveMode` (shortcut resolution: unset `-format` keeps legacy JSON-wins semantics; explicit `-format` requires shortcut agreement, else an error naming both `-json`/`-pretty` and `-format`), `-format` flag registration, and `run()` grew a `format string` parameter (checked after `-version` so version precedence holds) with a `modeTable` print branch (values only, right-justified to the widest value). `fib_test.go`: all existing call sites updated to pass `\"\"` (legacy behavior unchanged and regression-pinned); new tests `TestRunFormatModes`, `TestRunFormatShortcutEquivalence`, `TestRunFormatConflicts`, `TestRunRejectsInvalidFormat`, `TestRunTableCombinations`, `TestRunFormatSeed`, `TestRunVersionFormat`. `README.md`: `-format` usage section with real captured output for every mode (built to `/workspace/tmp`-external `/tmp/gofib`, binary removed), plus shortcut/conflict/default/version-precedence examples and a full flag-table row; `-json`/`-pretty` rows updated to document shortcut semantics. Per-criterion report: - PASS `-format text|json|pretty|table`, invalid value exits non-zero with `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table`: main.go `parseMode` + `TestRunRejectsInvalidFormat` (exact-message pins). - PASS `-json`/`-pretty` remain shortcuts, legacy behavior unchanged incl. `-json -pretty` JSON-wins: main.go `resolveMode` unset-format path + existing tests pass with `\"\"` (TestRunJSON/TestRunPretty/TestRunPrettyJSON) + `TestRunFormatShortcutEquivalence` and legacy subtest in `TestRunFormatConflicts`. - PASS conflict rule both directions and vs `text`/`table`, agreeing combos accepted, no conflict check when `-format` unset: main.go `resolveMode` + `TestRunFormatConflicts` (6 conflict rows naming both flags, agreeing rows in `TestRunFormatShortcutEquivalence`). - PASS `table` mode values-only right-justified to widest value, no index, composes with `-start`/`-n`/`-limit`: main.go modeTable branch + `TestRunFormatModes` and `TestRunTableCombinations`. - PASS active mode applies in `-seed` lookup: `TestRunFormatSeed` (`-seed 10 -format json` == `-seed 10 -json`; `-seed 10 -format table` prints `55`). - PASS `-version` wins over invalid/conflicting `-format`: main.go version-first check + `TestRunVersionFormat` (incl. `-version -format xml` → `gofib 1.3.0`, exit 0). - PASS computation via existing `Fib(n)` only, flag-package registration, `run()` signature grew the mode parameter and all call sites updated: main.go. - PASS README flag-table `-format` row + real captured example per mode (captured from a built binary, not invented) + shortcut/conflict/default docs: `README.md`. - PASS table-driven tests covering all demanded cases: `fib_test.go` new tests listed above plus regression pins. - PASS `just qualitygate`: not run by me (tester's job); `go vet` + full `go test` were green before README-only edits, focused re-run green after; gofmt clean; no artifacts left (binary built to `/tmp` and removed; worktree shows only `README.md`, `fib_test.go`, `main.go` modified)."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 35718,
+                    "output_tokens": 9325,
+                    "reasoning_tokens": 3204,
+                    "cache_read_tokens": 677568,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 281268
+            },
+            "files_touched": [
+              "/workspace/fabro/README.md",
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 186107,
+              "tool_time_ms": 9370,
+              "active_time_ms": 195477
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_stage": "reviewer",
+              "review_verdict": "approved",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 1992,
+                "preview": "The evidence blob is complete and internally consistent. Verified against the authoritative seed spec:\n\n1. **Single-index printing** — main.go's lookup mode sets `start, count, limit = seed, 1, 0`, "
+              },
+              "last_response": "The evidence blob is complete and internally consistent. Verified against the authoritative seed spec:\n\n1. **Single-index printing** — main.go's lookup mode sets `start, count, limit = seed, 1, 0`, "
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14735,
+                    "output_tokens": 600,
+                    "reasoning_tokens": 144,
+                    "cache_read_tokens": 22272,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 29690
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 18222,
+              "tool_time_ms": 515,
+              "active_time_ms": 18737
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "33cb416d751bb54141e318f8e30e1cb78d005343",
+        "node_visits": {
+          "tester": 2,
+          "closeout": 1,
+          "evidence": 1,
+          "implementer": 2,
+          "planner": 2,
+          "reviewer": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl b/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl\nindex fd786f9..2db6fcc 100644\n--- a/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl\n+++ b/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl\n@@ -7,3 +7,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:24:07Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"planner\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:25:13Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"implementer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:28:56Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"tester\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:29:08Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 621,
+          "deletions": 53
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-24T22:29:14.795288641Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence"
+        ],
+        "node_retries": {},
+        "context_values": {
           "internal.retry_count.planner": 0,
           "internal.run_id": "01M0TXPX09279433MGWSWPVVP4",
-          "internal.thread_id": "implementer",
+          "internal.thread_id": "tester",
           "graph.cycle_counter_reset_key": "current_seed_id",
           "thread.start.current_node": "planner",
           "graph.preamble_budget_kb": "24",
@@ -2543,14 +2831,15 @@
           "failure_class": "",
           "current_seed_brief": "Add a `-format <mode>` flag to gofib (`/workspace/fabro/main.go`) that selects the output style globally — `text` (default), `json`, `pretty`, and new compact `table` mode — unifying the text/json/pretty matrix. Acceptance criteria: (1) `-format text|json|pretty|table`; an invalid value exits non-zero with a stderr error in the existing flag-error style that lists the valid modes (e.g. `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table`). (2) `-json` and `-pretty` remain SHORTCUTS: `-json` behaves exactly like `-format json`, `-pretty` like `-format pretty`; plain `-json`/`-pretty` behavior is UNCHANGED and pinned by regression tests (including `-json -pretty` with no `-format`: JSON wins, no error). (3) Conflict rule: when `-format` is EXPLICITLY set, any also-given shortcut must agree — `-pretty -format json`, `-json -format pretty`, and shortcut-vs-`text`/`table` combos exit non-zero with a stderr error naming both flags; agreeing combos (`-pretty -format pretty`, `-json -format json`) are accepted (annotated choice: spec forbids conflicts, agreement is not one); with `-format` unset there is NO conflict check — legacy `-json -pretty` keeps JSON-wins semantics (annotated: regression criterion demands existing behavior unchanged). (4) `table` mode: values only, one per line, right-justified to the width of the widest value printed; no index column; composes with `-start`/`-n`/`-limit` as usual. (5) The active mode applies in `-seed` lookup mode too: `-seed 10 -format json` equals `-seed 10 -json`, `-seed 10 -format table` prints just the value. (6) `-version` still wins over everything, including an INVALID `-format` value or a shortcut/format conflict — `-version -format xml` prints `gofib <Version>` and exits 0 (annotated choice: mirrors -version's ignore-invalid semantics). (7) Computation uses existing `Fib(n)` only; the flag is registered via the flag package; `run()` signature may grow the mode parameter and all existing call sites update. (8) `README.md` flag table gains the `-format` row plus a REAL captured example for EACH mode (build the binary and capture; do not invent output), and documents the shortcut, conflict, and default semantics. (9) Table-driven tests in `/workspace/fabro/fib_test.go` cover: each of the four modes, shortcut==format equivalence, conflict rejection (both shortcut directions plus vs `text` and `table`), invalid mode rejection, table+`-start`/`-n`/`-limit` combos, table with `-seed`, `-version` precedence over invalid/conflicting `-format`, and regression pins for existing `-json`/`-pretty` behavior. (10) `just qualitygate` green.",
           "internal.fidelity": "compact",
-          "command.output": "blob://sha256/6e401af41c7f6c3f9152e6c04c124a68d2b4db426fde6084509abba5832f15b5",
+          "command.output": "blob://sha256/4c4c76f2f8c14e494bf964629b60f1249a4b6be3bb58275642f6d8b6ad34eb1e",
           "implementation_summary": "`main.go`: new `outputMode` type (`modeText`/`modeJSON`/`modePretty`/`modeTable`) with `parseMode` (flag-style invalid-value error listing all four modes), `resolveMode` (shortcut resolution: unset `-format` keeps legacy JSON-wins semantics; explicit `-format` requires shortcut agreement, else an error naming both `-json`/`-pretty` and `-format`), `-format` flag registration, and `run()` grew a `format string` parameter (checked after `-version` so version precedence holds) with a `modeTable` print branch (values only, right-justified to the widest value). `fib_test.go`: all existing call sites updated to pass `\"\"` (legacy behavior unchanged and regression-pinned); new tests `TestRunFormatModes`, `TestRunFormatShortcutEquivalence`, `TestRunFormatConflicts`, `TestRunRejectsInvalidFormat`, `TestRunTableCombinations`, `TestRunFormatSeed`, `TestRunVersionFormat`. `README.md`: `-format` usage section with real captured output for every mode (built to `/workspace/tmp`-external `/tmp/gofib`, binary removed), plus shortcut/conflict/default/version-precedence examples and a full flag-table row; `-json`/`-pretty` rows updated to document shortcut semantics. Per-criterion report: - PASS `-format text|json|pretty|table`, invalid value exits non-zero with `invalid value \"xml\" for flag -format: must be one of text, json, pretty, table`: main.go `parseMode` + `TestRunRejectsInvalidFormat` (exact-message pins). - PASS `-json`/`-pretty` remain shortcuts, legacy behavior unchanged incl. `-json -pretty` JSON-wins: main.go `resolveMode` unset-format path + existing tests pass with `\"\"` (TestRunJSON/TestRunPretty/TestRunPrettyJSON) + `TestRunFormatShortcutEquivalence` and legacy subtest in `TestRunFormatConflicts`. - PASS conflict rule both directions and vs `text`/`table`, agreeing combos accepted, no conflict check when `-format` unset: main.go `resolveMode` + `TestRunFormatConflicts` (6 conflict rows naming both flags, agreeing rows in `TestRunFormatShortcutEquivalence`). - PASS `table` mode values-only right-justified to widest value, no index, composes with `-start`/`-n`/`-limit`: main.go modeTable branch + `TestRunFormatModes` and `TestRunTableCombinations`. - PASS active mode applies in `-seed` lookup: `TestRunFormatSeed` (`-seed 10 -format json` == `-seed 10 -json`; `-seed 10 -format table` prints `55`). - PASS `-version` wins over invalid/conflicting `-format`: main.go version-first check + `TestRunVersionFormat` (incl. `-version -format xml` → `gofib 1.3.0`, exit 0). - PASS computation via existing `Fib(n)` only, flag-package registration, `run()` signature grew the mode parameter and all call sites updated: main.go. - PASS README flag-table `-format` row + real captured example per mode (captured from a built binary, not invented) + shortcut/conflict/default docs: `README.md`. - PASS table-driven tests covering all demanded cases: `fib_test.go` new tests listed above plus regression pins. - PASS `just qualitygate`: not run by me (tester's job); `go vet` + full `go test` were green before README-only edits, focused re-run green after; gofmt clean; no artifacts left (binary built to `/tmp` and removed; worktree shows only `README.md`, `fib_test.go`, `main.go` modified).",
           "internal.work_dir": "/workspace/fabro",
-          "current_node": "tester",
+          "current_node": "evidence",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
-            "tester": 1
+            "tester": 1,
+            "evidence": 1
           },
           "internal.seed_cycle_anchor": "fabro-d920",
           "last_stage": "implementer",
@@ -2739,21 +3028,21 @@
           "evidence": {
             "status": "succeeded",
             "context_updates": {
-              "command.output": "blob://sha256/ce80b61a8083ef1d8ec5c6174fed9fd267a7f2a2a9928771c30dd09eb54f97ee"
+              "command.output": "blob://sha256/4c4c76f2f8c14e494bf964629b60f1249a4b6be3bb58275642f6d8b6ad34eb1e"
             },
             "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 554,
-              "active_time_ms": 554
+              "tool_time_ms": 395,
+              "active_time_ms": 395
             }
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
-          "evidence": 1,
+          "evidence": 2,
           "reviewer": 1,
           "closeout": 1,
           "start": 1,
@@ -4859,6 +5148,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 2326,
         "active_time_ms": 2326
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@2": {
+      "first_event_seq": 461,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-08-24T22:29:14.478302061Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/4c4c76f2f8c14e494bf964629b60f1249a4b6be3bb58275642f6d8b6ad34eb1e",
+        "exit_code": 0,
+        "duration_ms": 395,
+        "termination": "exited",
+        "output_bytes": 36987,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 36987,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-08-24T22:29:14.061804182Z",
+      "handler": "command",
+      "graph_visit": 2,
+      "timing": {
+        "wall_time_ms": 403,
+        "inference_time_ms": 0,
+        "tool_time_ms": 395,
+        "active_time_ms": 395
       },
       "usage": {
         "input_tokens": 0,
