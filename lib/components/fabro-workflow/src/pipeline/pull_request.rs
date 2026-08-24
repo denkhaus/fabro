@@ -981,6 +981,7 @@ mod tests {
             }),
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
+            exit_kind:            String::new(),
         }
     }
 

@@ -388,6 +388,14 @@ impl Handler for AgentHandler {
             .await
             {
                 structured_output::apply_validated_output(node, schema, &validated, &mut outcome);
+                // Response dedup (fabro-b907): the validated payload now
+                // lives under output.<node>; persisting the full response
+                // text would duplicate it (up to 4x per checkpoint). Swap
+                // the full text for a compact reference.
+                outcome.context_updates.insert(
+                    keys::response_key(&node.id),
+                    structured_output::compact_response_value(&node.id, &response_text),
+                );
             } else {
                 let mut failed =
                     structured_output::exhausted_failure_outcome(node.output_retries());

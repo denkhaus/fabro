@@ -195,6 +195,13 @@ impl Handler for PromptHandler {
                 structured_output::validate_response_text(&schema, &response_text)
             {
                 structured_output::apply_validated_output(node, &schema, &validated, &mut outcome);
+                // Response dedup (fabro-b907): payload lives under
+                // output.<node>; replace the full-text echo with a compact
+                // reference (see agent.rs for the twin).
+                outcome.context_updates.insert(
+                    keys::response_key(&node.id),
+                    structured_output::compact_response_value(&node.id, &response_text),
+                );
             } else {
                 let mut failed =
                     structured_output::exhausted_failure_outcome(node.output_retries());

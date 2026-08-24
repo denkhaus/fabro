@@ -333,6 +333,32 @@ pub(crate) fn output_key(node_id: &str) -> String {
     format!("output.{node_id}")
 }
 
+/// Response-payload deduplication (fabro-b907): when a stage's
+/// context_updates already carry the structured data the response text
+/// embeds (an `output.<node>` JSON payload from a validated schema, or a
+/// user-contract key also set from the same response), the full response
+/// text duplicates that data verbatim — up to four copies of the same
+/// brief landed in one checkpoint, consuming preamble budget that then
+/// blob-ref'd 1.5 KB facts. Returns a compact reference instead of the
+/// full text.
+#[must_use]
+pub(crate) fn compact_response_value(node_id: &str, response_text: &str) -> serde_json::Value {
+    let len = response_text.len();
+    let head = truncate_chars(response_text, 200);
+    serde_json::json!({
+        "dedup": "response text omitted — payload lives in structured context keys",
+        "output_key": output_key(node_id),
+        "chars": len,
+        "preview": head,
+    })
+}
+
+/// Character-safe truncation for previews (cuts at char boundaries, never
+/// mid-UTF-8).
+fn truncate_chars(text: &str, max_chars: usize) -> String {
+    crate::handler::agent::truncate(text, max_chars).to_string()
+}
+
 #[must_use]
 pub(crate) fn exhausted_failure_reason(repair_attempts: i64) -> String {
     format!("output schema validation failed after {repair_attempts} repair attempt(s)")
@@ -1142,5 +1168,33 @@ mod tests {
             outcome.context_updates.get("output.audit"),
             Some(&serde_json::json!({"passed": true})),
         );
+    }
+
+    #[test]
+    fn compact_response_value_references_payload_key() {
+        // fabro-b907: with a validated output payload under output.<node>,
+        // the response echo must become a compact reference, not a verbatim
+        // copy of the same data.
+        let value = compact_response_value("planner", "FULL RESPONSE TEXT ".repeat(100).as_str());
+        let obj = value.as_object().expect("compact reference is an object");
+        assert_eq!(obj.get("output_key"), Some(&serde_json::json!("output.planner")));
+        assert_eq!(obj.get("chars"), Some(&serde_json::json!(1_900)));
+        let preview = obj.get("preview").and_then(|v| v.as_str()).expect("preview");
+        assert!(preview.starts_with("FULL RESPONSE TEXT"));
+        assert!(preview.chars().count() <= 200);
+        assert!(
+            !preview.contains(&"FULL RESPONSE TEXT ".repeat(50)[..]),
+            "preview must not carry the full text"
+        );
+    }
+
+    #[test]
+    fn compact_response_value_short_text_is_fully_previewed() {
+        let value = compact_response_value("reviewer", "short");
+        assert_eq!(
+            value.get("preview"),
+            Some(&serde_json::json!("short"))
+        );
+        assert_eq!(value.get("chars"), Some(&serde_json::json!(5)));
     }
 }

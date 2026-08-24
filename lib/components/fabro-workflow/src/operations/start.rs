@@ -2608,7 +2608,7 @@ reasoning = false
             billing:              None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
-        };
+            exit_kind: String::new(),};
         let run_store = store.open_run(&fixtures::RUN_1).await.unwrap();
         crate::event::append_event(&run_store, &fixtures::RUN_1, &Event::CheckpointCompleted {
             graph_visit: None,

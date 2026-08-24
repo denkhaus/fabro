@@ -170,6 +170,7 @@ mod tests {
             }),
             total_retries:        0,
             diff:                 RunDiff::default(),
+            exit_kind: String::new(),
         };
         let json = build_json_output(
             RunStatus::Succeeded {
@@ -224,6 +225,7 @@ mod tests {
             billing:              None,
             total_retries:        0,
             diff:                 RunDiff::default(),
+            exit_kind: String::new(),
         };
         let json = build_json_output(
             RunStatus::Failed {
@@ -258,6 +260,7 @@ mod tests {
             }),
             total_retries:        0,
             diff:                 RunDiff::default(),
+            exit_kind: String::new(),
         };
         // Just verify no panic; actual stderr output is hard to capture
         print_human_output(

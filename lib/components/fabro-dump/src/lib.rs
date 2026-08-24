@@ -561,6 +561,7 @@ mod tests {
             billing:              None,
             total_retries:        0,
             diff:                 RunDiff::default(),
+            exit_kind:            String::new(),
         });
         projection.sandbox = Some(RunSandbox::ready(
             RunSandboxPlan {

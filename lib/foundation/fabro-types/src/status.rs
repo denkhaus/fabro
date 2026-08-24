@@ -299,6 +299,15 @@ pub enum FailureReason {
     LaunchFailed,
     BootstrapFailed,
     SandboxInitFailed,
+    /// Soft stop routed to a `kind="deadlock"` exit: work is preserved
+    /// (seeds stay open, commits pushed) and a human decides next. Distinct
+    /// from infra failures so notification routing can separate
+    /// needs-a-human from needs-an-engineer (fabro-b907).
+    Deadlock,
+    /// Soft stop routed to a `kind="soft"` exit: infrastructure could not
+    /// finish (e.g. evidence capture) but the loop can re-enter next run
+    /// without human intervention on the code itself (fabro-b907).
+    SoftStop,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

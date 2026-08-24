@@ -41,6 +41,12 @@ pub mod keys {
     /// key. Engine bookkeeping for [`SEED_CYCLES`]: a value change resets
     /// the cycle counts. Hidden from preambles (internal.*), durable.
     pub const INTERNAL_SEED_CYCLE_ANCHOR: &str = "internal.seed_cycle_anchor";
+    /// Exit-kind capture (fabro-b907): set when an edge targets the exit
+    /// node; carries the exit node's `kind` attribute (default "natural").
+    /// Consumed by the terminal-event builder to classify soft stops
+    /// (deadlock-for-human, infrastructure) vs natural completion. Hidden
+    /// from preambles (internal.*).
+    pub const INTERNAL_EXIT_KIND: &str = "internal.exit_kind";
 
 
     /// Per-node stage visits since the last value change of the graph's

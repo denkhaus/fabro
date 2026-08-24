@@ -1325,7 +1325,7 @@ mod tests {
             billing:              None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
-        };
+            exit_kind: String::new(),};
         write_finalize_commit(
             lifecycle.run_options.as_ref(),
             &finalize_services,

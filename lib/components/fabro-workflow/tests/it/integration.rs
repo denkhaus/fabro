@@ -7848,6 +7848,7 @@ async fn workflow_run_with_vault_only_openai_codex_builds_pr_body() {
             billing:              None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
+            exit_kind:            String::new(),
         }),
         None,
     )

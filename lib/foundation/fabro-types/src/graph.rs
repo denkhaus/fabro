@@ -287,6 +287,14 @@ impl Node {
         self.str_attr("fidelity")
     }
 
+    /// Generic string attribute accessor for workflow-facing node kinds
+    /// (e.g. exit-node `kind`). Private helpers keep attribute parsing in
+    /// one place; typed accessors (goal, fidelity, ...) stay beside it.
+    #[must_use]
+    pub fn str_kind_attr(&self, key: &str) -> Option<&str> {
+        self.str_attr(key)
+    }
+
     /// Node ids whose stage-history sections this node's prompt preamble
     /// omits (comma-separated deny-list, render-only). Split and trimmed;
     /// empty entries are dropped. See the workflow docs for semantics.

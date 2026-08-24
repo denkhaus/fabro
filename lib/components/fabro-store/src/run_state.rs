@@ -1512,6 +1512,7 @@ fn conclusion_from_completed(
             patch:   props.final_patch.clone(),
             summary: props.diff_summary,
         },
+        exit_kind: String::new(),
     })
 }
 
@@ -1531,6 +1532,7 @@ fn conclusion_from_failed(props: &RunFailedProps, timestamp: DateTime<Utc>) -> C
             patch:   props.final_patch.clone(),
             summary: props.diff_summary,
         },
+        exit_kind: String::new(),
     }
 }
 

@@ -443,6 +443,23 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
         ctx: &EdgeContext<'_, WorkflowGraph>,
         state: &WfRunState,
     ) -> CoreResult<EdgeDecision> {
+        // Exit-kind capture (fabro-b907): when an edge targets the graph's
+        // exit node, record the EXIT NODE's `kind` attribute (default
+        // "natural") in context. build_terminal_event maps it to
+        // FailureReason for soft stops (deadlock-for-human, infrastructure)
+        // so notification routing and the UI can distinguish terminal
+        // semantics instead of reading one flat failed().
+        if ctx.to == "exit" || ctx.to == "Exit" {
+            let kind = self
+                .graph
+                .nodes
+                .get(ctx.to)
+                .and_then(|node| node.str_kind_attr("kind"))
+                .unwrap_or("natural");
+            state
+                .context
+                .set(context::keys::INTERNAL_EXIT_KIND, serde_json::json!(kind));
+        }
         // Fidelity captures edge data
         self.fidelity.on_edge_selected(ctx, state).await?;
         // Event always fires first

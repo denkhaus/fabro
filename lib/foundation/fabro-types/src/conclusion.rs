@@ -35,4 +35,11 @@ pub struct Conclusion {
     pub total_retries:        u32,
     #[serde(default)]
     pub diff:                 RunDiff,
+    /// Exit-kind classification (fabro-b907): the `kind` attribute of the
+    /// exit node the graph routed through ("natural" when unset). Soft-stop
+    /// kinds (deadlock, soft) reclassify the terminal event so notification
+    /// routing and the UI distinguish needs-a-human / re-enterable from
+    /// hard errors.
+    #[serde(default)]
+    pub exit_kind:            String,
 }

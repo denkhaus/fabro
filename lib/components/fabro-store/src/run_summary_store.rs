@@ -788,6 +788,7 @@ mod tests {
                     deletions:     3,
                 }),
             },
+            exit_kind: String::new(),
         });
         store
             .upsert_projection(&entry(projection, 4))
@@ -859,6 +860,7 @@ mod tests {
             }),
             total_retries:        0,
             diff:                 RunDiff::default(),
+            exit_kind: String::new(),
         });
 
         store

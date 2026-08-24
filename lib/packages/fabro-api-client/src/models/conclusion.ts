@@ -45,4 +45,11 @@ export interface Conclusion {
     'billing'?: BilledTokenCounts | null;
     'total_retries': number;
     'diff': RunDiff;
+    /**
+     * Exit-kind classification: the `kind` attribute of the exit node the
+     * graph routed through ('natural' when unset). Soft-stop kinds
+     * (deadlock, soft) distinguish needs-a-human / re-enterable from hard
+     * errors.
+     */
+    'exit_kind'?: string;
 }

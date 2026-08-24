@@ -179,6 +179,7 @@ fn build_conclusion_from_parts(
         billing: projection_billing.billing_if_present(),
         total_retries,
         diff: fabro_types::RunDiff::default(),
+        exit_kind: String::new(),
     }
 }
 
@@ -450,6 +451,7 @@ pub(crate) fn build_terminal_event(
     final_patch: Option<String>,
     diff_summary: Option<DiffSummary>,
     billing: Option<BilledTokenCounts>,
+    exit_kind: Option<&str>,
 ) -> Event {
     let outcome_status = outcome.as_ref().map_or(
         StageOutcome::Failed {
@@ -478,14 +480,31 @@ pub(crate) fn build_terminal_event(
         };
     }
 
+    // Exit-kind classification (fabro-b907): a soft-stop exit attribute
+    // reclassifies the failure so notifications/UI can distinguish
+    // deadlock-for-human and re-enterable soft stops from hard errors.
+    // Only applies when the graph routed through a kind-bearing exit; the
+    // ordinary error path is untouched.
+    let exit_reason = match exit_kind {
+        Some("deadlock") => Some(FailureReason::Deadlock),
+        Some("soft") => Some(FailureReason::SoftStop),
+        _ => None,
+    };
     let failure = match outcome {
-        Err(err) => run_failure_from_error(err, err.failure_reason()),
+        Err(err) => {
+            if let Some(reason) = exit_reason {
+                run_failure_from_error(err, reason)
+            } else {
+                run_failure_from_error(err, err.failure_reason())
+            }
+        }
         Ok(outcome) => {
+            let fallback_reason = exit_reason.unwrap_or(FailureReason::WorkflowError);
             if let Some(failure) = outcome.failure.as_ref() {
-                run_failure_from_outcome_failure(failure, FailureReason::WorkflowError)
+                run_failure_from_outcome_failure(failure, fallback_reason)
             } else {
                 let fallback = Error::engine("run failed");
-                run_failure_from_error(&fallback, FailureReason::WorkflowError)
+                run_failure_from_error(&fallback, fallback_reason)
             }
         }
     };
@@ -529,7 +548,7 @@ pub async fn conclude(executed: Executed, options: &FinalizeOptions) -> Result<C
         outcome,
         run_options,
         wall_time_ms,
-        final_context: _,
+        final_context,
         engine,
         model: _,
     } = executed;
@@ -563,6 +582,13 @@ pub async fn conclude(executed: Executed, options: &FinalizeOptions) -> Result<C
         wall_time_ms,
         options.last_git_sha.clone(),
     );
+
+    // Exit-kind (fabro-b907): carried in the conclusion for the terminal
+    // event; empty string = natural exit (no kind attribute).
+    conclusion.exit_kind = final_context
+        .get(crate::context::keys::INTERNAL_EXIT_KIND)
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .unwrap_or_default();
 
     let (final_patch, diff_summary) =
         compute_final_patch(&run_options, &services, final_status).await;
@@ -626,6 +652,7 @@ pub async fn finalize(published: Published, options: &FinalizeOptions) -> Result
         );
     }
 
+    let exit_kind = (!conclusion.exit_kind.is_empty()).then(|| conclusion.exit_kind.as_str());
     let terminal_event = build_terminal_event(
         &outcome,
         conclusion.timing,
@@ -634,6 +661,7 @@ pub async fn finalize(published: Published, options: &FinalizeOptions) -> Result
         conclusion.diff.patch.clone(),
         conclusion.diff.summary,
         conclusion.billing.clone(),
+        exit_kind.as_deref(),
     );
     services.emitter.emit(&terminal_event);
 
@@ -941,11 +969,78 @@ mod tests {
             Some("diff".to_string()),
             None,
             None,
+            None,
         );
 
         match event {
             Event::WorkflowRunFailed { failure, .. } => {
                 assert_eq!(failure.reason, FailureReason::PublishFailed);
+            }
+            other => panic!("expected run failure, got {other:?}"),
+        }
+    }
+
+
+    #[test]
+    fn deadlock_exit_kind_reclassifies_failure_reason() {
+        // fabro-b907: a soft-stop exit attribute maps to FailureReason::Deadlock
+        // so notifications distinguish needs-a-human from hard errors.
+        let failed = Outcome::fail("review deadlock: 3 cycles");
+        let event = build_terminal_event(
+            &Ok(failed),
+            fabro_types::RunTiming::wall_only(10),
+            0,
+            None,
+            None,
+            None,
+            None,
+            Some("deadlock"),
+        );
+        match event {
+            Event::WorkflowRunFailed { failure, .. } => {
+                assert_eq!(failure.reason, FailureReason::Deadlock);
+            }
+            other => panic!("expected run failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn soft_exit_kind_reclassifies_failure_reason() {
+        let failed = Outcome::fail("evidence capture failed twice");
+        let event = build_terminal_event(
+            &Ok(failed),
+            fabro_types::RunTiming::wall_only(10),
+            0,
+            None,
+            None,
+            None,
+            None,
+            Some("soft"),
+        );
+        match event {
+            Event::WorkflowRunFailed { failure, .. } => {
+                assert_eq!(failure.reason, FailureReason::SoftStop);
+            }
+            other => panic!("expected run failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn natural_exit_kind_keeps_error_reason() {
+        let failed = Outcome::fail("planner errored");
+        let event = build_terminal_event(
+            &Ok(failed),
+            fabro_types::RunTiming::wall_only(10),
+            0,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        match event {
+            Event::WorkflowRunFailed { failure, .. } => {
+                assert_eq!(failure.reason, FailureReason::WorkflowError);
             }
             other => panic!("expected run failure, got {other:?}"),
         }
@@ -1182,7 +1277,7 @@ mod tests {
             billing:              None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
-        };
+            exit_kind: String::new(),};
         let emitter = Arc::new(Emitter::new(test_run_id()));
         let events = record_events(&emitter);
         let services = test_services(
@@ -1245,7 +1340,7 @@ mod tests {
             billing:              None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
-        };
+            exit_kind: String::new(),};
 
         write_finalize_commit(&run_options, &services, &conclusion).await;
 
@@ -1297,7 +1392,7 @@ mod tests {
             billing:              None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
-        };
+            exit_kind: String::new(),};
 
         write_finalize_commit(&run_options, &services, &conclusion).await;
 

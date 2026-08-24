@@ -138,6 +138,7 @@ fn conclusion_serializes_rich_failure() {
         billing:              None,
         total_retries:        0,
         diff:                 RunDiff::default(),
+        exit_kind:            String::new(),
     };
 
     let value = serde_json::to_value(&conclusion).expect("conclusion should serialize");
