@@ -70,3 +70,14 @@ model = "zai:glm-4.7"
 [run.integrations.github.permissions]
 contents = "write"
 pull_requests = "write"
+
+# Terminal-failure visibility (run 01M0T9B7T6 review, rec 5): the 403
+# publish failure was silent (notifications: {}). One Slack route for
+# terminal lifecycle events is enough to notice credential rot.
+[run.notifications.terminal]
+enabled = true
+provider = "slack"
+events = ["run.completed", "run.failed"]
+
+[run.notifications.terminal.slack]
+channel = "#fabro-reviews"
