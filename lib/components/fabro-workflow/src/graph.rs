@@ -46,6 +46,13 @@ impl WorkflowEdge {
     pub(crate) fn inner(&self) -> &GvEdge {
         &self.0
     }
+
+    /// String attribute on the underlying graph edge (fabro-b907: exit
+    /// edges carry `kind="deadlock"|"soft"`).
+    #[must_use]
+    pub(crate) fn str_kind_attr(&self, key: &str) -> Option<&str> {
+        self.0.str_kind_attr(key)
+    }
 }
 
 impl EdgeSpec for WorkflowEdge {

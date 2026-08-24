@@ -449,12 +449,16 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
         // FailureReason for soft stops (deadlock-for-human, infrastructure)
         // so notification routing and the UI can distinguish terminal
         // semantics instead of reading one flat failed().
-        // Any Msquare-shaped node is an exit (distinct exit nodes with
-        // different `kind` attributes, fabro-b907 adoption): capture the
-        // targeted exit's kind, not just the id-named ones.
+        // Exit-kind capture (fabro-b907): an edge targeting an exit node
+        // (Msquare) may carry a `kind` attribute (deadlock | soft); the
+        // kind classifies the terminal event. Falls back to the exit
+        // node's own kind attribute, then "natural".
         if let Some(target) = self.graph.nodes.get(ctx.to) {
             if target.shape() == "Msquare" {
-                let kind = target.str_kind_attr("kind").unwrap_or("natural");
+                let edge_kind = ctx.edge.as_ref().and_then(|edge| edge.str_kind_attr("kind"));
+                let kind = edge_kind
+                    .or_else(|| target.str_kind_attr("kind"))
+                    .unwrap_or("natural");
                 state.context.set(
                     context::keys::INTERNAL_EXIT_KIND,
                     serde_json::json!(kind),

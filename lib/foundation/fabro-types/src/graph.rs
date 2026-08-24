@@ -419,6 +419,13 @@ impl Edge {
         }
     }
 
+    /// String attribute on the edge (fabro-b907: exit edges carry
+    /// `kind="deadlock"|"soft"` to classify the terminal event).
+    #[must_use]
+    pub fn str_kind_attr(&self, key: &str) -> Option<&str> {
+        self.str_attr(key)
+    }
+
     fn str_attr(&self, key: &str) -> Option<&str> {
         self.attrs.get(key).and_then(AttrValue::as_str)
     }
