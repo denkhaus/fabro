@@ -5,9 +5,9 @@ use ::fabro_types::{
     FailureReason, ForkSourceRef, GitContext, PairId, PairMessageId, PairSystemMessageKind,
     PairTarget, ParallelBranchId, ParallelBranchResult, PendingReason, PermissionLevel, Principal,
     PullRequestCreationId, PullRequestLink, ReviewTarget, RunFailure, RunId, RunNoticeLevel,
-    RunPairEndedReason, RunPairFailedReason, RunProvenance, RunRunnableSource, RunTiming,
-    SandboxProviderKind, StageId, StageOutcome, StageTiming, SuccessReason, WorkflowVersionId,
-    run_event as fabro_types,
+    RunPairEndedReason, RunPairFailedReason, RunProvenance, RunRunnableSource, RunTarget,
+    RunTiming, SandboxProviderKind, StageId, StageOutcome, StageTiming, SuccessReason,
+    WorkflowVersionId, run_event as fabro_types,
 };
 use fabro_agent::{AgentEvent, SandboxEvent};
 use fabro_model::{ReasoningEffort, Speed};
@@ -37,6 +37,8 @@ pub enum Event {
         workflow_slug:       Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         workflow_version_id: Option<WorkflowVersionId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target:              Option<RunTarget>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         automation:          Option<AutomationRef>,
         provenance:          RunProvenance,

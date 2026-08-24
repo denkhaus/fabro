@@ -157,6 +157,7 @@ fn persisted_workflow(graph: Graph, source: String, run_dir: &Path, run_id: RunI
             graph_source: None,
             workflow_slug: Some("test".to_string()),
             workflow_version_id: None,
+            target: None,
             automation: None,
             source_directory: Some(
                 std::env::current_dir()
@@ -218,6 +219,7 @@ async fn seed_created_and_starting(
         source_directory:    Some(std::env::current_dir().unwrap().display().to_string()),
         workflow_slug:       run_options.workflow_slug.clone(),
         workflow_version_id: None,
+        target:              None,
         automation:          None,
         provenance:          test_support::test_run_provenance(),
         manifest_blob:       None,

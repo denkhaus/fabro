@@ -85,9 +85,9 @@ pub(crate) fn exact_repository_init_command(clone_url: &str, checkout_path: &str
 /// Fetch a single admitted commit with the same history depth a branch clone
 /// gets, so both paths can reach the same number of parent commits.
 ///
-/// The fetch names the commit directly rather than the branch: reachability of
-/// the commit from the admitted branch is an admission-time invariant, not
-/// something this layer re-verifies.
+/// The fetch names the commit directly rather than the branch. No layer proves
+/// that the submitted commit belongs to the submitted branch: the branch names
+/// the working branch, while a fetchable exact commit is checked out as-is.
 #[cfg(any(feature = "docker", test))]
 pub(crate) fn exact_fetch_command(
     checkout_path: &str,
@@ -212,8 +212,9 @@ pub(crate) fn decide_clone(
             ));
         }
         // The branch names the checkout the run works on; it is not used to
-        // constrain which commits may be fetched. Admission is responsible for
-        // proving the commit belongs to the branch before it reaches here.
+        // constrain which commits may be fetched. No layer proves branch/SHA
+        // ancestry, and an unavailable exact commit fails without falling back
+        // to branch HEAD.
         if clone_branch.is_none_or(|branch| branch.trim().is_empty()) {
             return Err(crate::Error::message(
                 "Exact commit checkout requires a repository branch",
@@ -250,12 +251,9 @@ pub(crate) fn decide_clone(
 }
 
 fn normalize_exact_commit_sha(commit_sha: &str) -> crate::Result<String> {
-    if commit_sha.len() != 40 || !commit_sha.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(crate::Error::message(
-            "Exact commit SHA must be exactly 40 ASCII hexadecimal characters",
-        ));
-    }
-    Ok(commit_sha.to_ascii_lowercase())
+    fabro_types::normalize_git_commit_sha(commit_sha).ok_or_else(|| {
+        crate::Error::message("Exact commit SHA must be exactly 40 ASCII hexadecimal characters")
+    })
 }
 
 pub(crate) fn clean_clone_origin_for_record(clone_origin_url: Option<&str>) -> Option<String> {

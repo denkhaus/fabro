@@ -37,6 +37,7 @@ mod request_id;
 mod run_compiler;
 mod run_files;
 mod run_files_security;
+mod run_intent;
 mod run_manifest;
 mod run_selector;
 mod run_title_generation;

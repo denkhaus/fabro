@@ -107,6 +107,32 @@ impl ValidatedWorkflowVersion {
     pub fn into_version(self) -> WorkflowVersion {
         self.0
     }
+
+    /// Content of the run-goal file selected by this version's
+    /// `workflow.toml`, when the config declares a file-form goal.
+    ///
+    /// Resolution reuses the exact grammar [`Self::new`] certified, so
+    /// goal-file resolution has one owner: consumers that inline the goal at
+    /// run-admission time read the same bytes validation proved present.
+    #[must_use]
+    pub fn resolved_goal_file_content(&self) -> Option<&str> {
+        let config_path = WorkflowPath::new("workflow.toml")
+            .expect("the static workflow config path must be valid");
+        let source = self.0.files().get(&config_path)?;
+        let layer: SettingsLayer = source.parse().expect("validated workflow.toml must parse");
+        let RunGoalLayer::File { file } = layer.run.as_ref().and_then(|run| run.goal.as_ref())?
+        else {
+            return None;
+        };
+        let (_, content) = validate_config_file_reference(
+            &self.0,
+            &config_path,
+            ReferenceKind::RunGoalFile,
+            &unresolved_source(file),
+        )
+        .expect("validated goal-file reference must resolve");
+        Some(content)
+    }
 }
 
 /// Template sources that anchor static dependency discovery, all rooted at
