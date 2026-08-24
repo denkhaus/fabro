@@ -1,9 +1,0 @@
-{
-  "$schema": "fabro-journal-v1",
-  "run_id": "01M0SS23MJM8972CBJD0SP7T4Q",
-  "node": "tester",
-  "visit": 1,
-  "status": "succeeded",
-  "ts": "2026-08-24T11:43:29Z",
-  "data": {}
-}
