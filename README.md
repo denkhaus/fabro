@@ -49,6 +49,20 @@ $ gofib | tail -1
 100: 354224848179261915075
 ```
 
+`-start` changes the first index printed without changing what `-n`
+counts — `-start s -n k` prints exactly `k` lines, indices `s..s+k-1`.
+The default (`0`) behaves like `1`, so plain `gofib` output is
+unchanged:
+
+```
+$ gofib -start 10 -n 5
+10: 55
+11: 89
+12: 144
+13: 233
+14: 377
+```
+
 JSON mode (`-json`) emits JSON Lines — one object per number, never a
 JSON array. `fib` is a string (ADR-0001) because F(100) overflows
 int64:
@@ -103,6 +117,7 @@ $ echo $?
 | Flag | Meaning |
 |------|---------|
 | `-n <int>` | Count flag: how many numbers to print. Default `100`; must be `>= 1`, otherwise gofib exits non-zero with an error on stderr. Combines with JSON mode. |
+| `-start <int>` | Start flag: index of the first number printed. Default `0`, which behaves like `1` (gofib's indices are 1-based), so unset output is unchanged — plain `gofib` still starts `1: 1` and ends `100: 354224848179261915075`. `-start s -n k` prints exactly `k` lines with indices `s..s+k-1`: `-start` never changes what `-n` counts. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr. Combines with `-json` (the `index` field carries the actual index) and `-pretty` (columns sized to the largest index and value actually printed). |
 | `-json` | JSON mode: emit JSON Lines instead of text — one `{"index":<int>,"fib":"<string>"}` object per number. `fib` is a string by decision (ADR-0001), since F(100) overflows int64. Never a JSON array. |
 | `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. **No effect with `-json`** — JSON Lines have no columns to align. |
 | `-version` | Prints exactly `gofib 1.3.0` (from the `Version` const in `main.go`) and takes precedence over every other flag — even an otherwise-invalid combination like `-version -n 0 -json` prints the version and exits `0`. |

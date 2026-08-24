@@ -54,12 +54,53 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.n, false, false, false); err != nil {
+			if err := run(&buf, 0, tt.n, false, false, false); err != nil {
 				t.Fatalf("run(%d) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
 			if len(lines) != tt.wantLines {
 				t.Fatalf("run(%d) printed %d lines, want %d", tt.n, len(lines), tt.wantLines)
+			}
+			if lines[0] != tt.wantFirst {
+				t.Errorf("first line = %q, want %q", lines[0], tt.wantFirst)
+			}
+			if lines[len(lines)-1] != tt.wantLast {
+				t.Errorf("last line = %q, want %q", lines[len(lines)-1], tt.wantLast)
+			}
+		})
+	}
+}
+
+// TestRunStart pins the -start semantics in text mode: -start s -n k
+// prints exactly k lines with the indices s..s+k-1 (s = 0 behaves like
+// the historical default starting at 1), so -start never changes what
+// -n counts.
+func TestRunStart(t *testing.T) {
+	tests := []struct {
+		name      string
+		start     int
+		n         int
+		wantLines int
+		wantFirst string
+		wantLast  string
+	}{
+		{"start 0 behaves like unset", 0, 5, 5, "1: 1", "5: 5"},
+		{"start 1 prints indices 1..n", 1, 3, 3, "1: 1", "3: 2"},
+		{"start 10 n 5 prints indices 10..14", 10, 5, 5, "10: 55", "14: 377"},
+		// -start does not change what -n counts: one line, F(100).
+		{"start 100 n 1 prints only F(100)", 100, 1, 1,
+			"100: " + mustBig("354224848179261915075").String(),
+			"100: " + mustBig("354224848179261915075").String()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, tt.start, tt.n, false, false, false); err != nil {
+				t.Fatalf("run(%d, %d) returned error: %v", tt.start, tt.n, err)
+			}
+			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+			if len(lines) != tt.wantLines {
+				t.Fatalf("run(%d, %d) printed %d lines, want %d", tt.start, tt.n, len(lines), tt.wantLines)
 			}
 			if lines[0] != tt.wantFirst {
 				t.Errorf("first line = %q, want %q", lines[0], tt.wantFirst)
@@ -95,7 +136,7 @@ func TestRunJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.n, true, false, false); err != nil {
+			if err := run(&buf, 0, tt.n, true, false, false); err != nil {
 				t.Fatalf("run(%d, json) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -122,6 +163,41 @@ func TestRunJSON(t *testing.T) {
 	}
 }
 
+// TestRunStartJSON pins -start in JSON mode: the index field carries
+// the actual index (s..s+k-1), fib stays a string, and there is still
+// one object per line — never an array.
+func TestRunStartJSON(t *testing.T) {
+	const start, n = 10, 5
+	var buf bytes.Buffer
+	if err := run(&buf, start, n, true, false, false); err != nil {
+		t.Fatalf("run(%d, %d, json) returned error: %v", start, n, err)
+	}
+	out := buf.String()
+	if strings.HasPrefix(out, "[") || strings.HasSuffix(out, "]") {
+		t.Errorf("json output looks like an array, want JSON Lines: %q", out)
+	}
+	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+	if len(lines) != n {
+		t.Fatalf("run(%d, %d, json) printed %d lines, want %d", start, n, len(lines), n)
+	}
+	for i, line := range lines {
+		idx := start + i
+		var got fibLine
+		if err := json.Unmarshal([]byte(line), &got); err != nil {
+			t.Fatalf("line %d is not valid JSON (%q): %v", i+1, line, err)
+		}
+		if want := wantJSONLine(idx); line != want {
+			t.Errorf("line %d = %q, want exactly %q", i+1, line, want)
+		}
+		if got.Index != idx {
+			t.Errorf("line %d index = %d, want %d", i+1, got.Index, idx)
+		}
+		if got.Fib != Fib(idx).String() {
+			t.Errorf("line %d fib = %q, want %q", i+1, got.Fib, Fib(idx).String())
+		}
+	}
+}
+
 // prettyLine returns the expected -pretty text line for index i with
 // value v: the index right-aligned to the width of the largest index
 // (n) and the value right-aligned to the width of the largest value
@@ -143,7 +219,7 @@ func TestRunPretty(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.n, false, true, false); err != nil {
+			if err := run(&buf, 0, tt.n, false, true, false); err != nil {
 				t.Fatalf("run(%d, pretty) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -163,7 +239,7 @@ func TestRunPretty(t *testing.T) {
 	// index right-aligned to len("100"), value to len(Fib(100)).
 	t.Run("pretty default prints 100 aligned numbers", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := run(&buf, defaultCount, false, true, false); err != nil {
+		if err := run(&buf, 0, defaultCount, false, true, false); err != nil {
 			t.Fatalf("run(default, pretty) returned error: %v", err)
 		}
 		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -177,14 +253,39 @@ func TestRunPretty(t *testing.T) {
 	})
 }
 
+// TestRunStartPretty pins -pretty with -start: the columns are sized to
+// the largest index (start+n-1) and the largest value Fib(start+n-1)
+// actually printed, not to n.
+func TestRunStartPretty(t *testing.T) {
+	// F(8)..F(12); hardcoding F-values is allowed only for small n.
+	fibs := map[int]string{8: "21", 9: "34", 10: "55", 11: "89", 12: "144"}
+	const start, n = 8, 5
+	var buf bytes.Buffer
+	if err := run(&buf, start, n, false, true, false); err != nil {
+		t.Fatalf("run(%d, %d, pretty) returned error: %v", start, n, err)
+	}
+	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+	if len(lines) != n {
+		t.Fatalf("run(%d, %d, pretty) printed %d lines, want %d", start, n, len(lines), n)
+	}
+	for i, line := range lines {
+		idx := start + i
+		// Widths come from the largest printed index (12) and the
+		// largest printed value (Fib(12) = 144).
+		if want := prettyLine(start+n-1, idx, fibs[idx]); line != want {
+			t.Errorf("line %d = %q, want %q", i+1, line, want)
+		}
+	}
+}
+
 func TestRunPrettyJSON(t *testing.T) {
 	// -pretty only affects text mode: with -json the output must be
 	// identical, line for line.
 	var jsonOnly, prettyJSON bytes.Buffer
-	if err := run(&jsonOnly, 3, true, false, false); err != nil {
+	if err := run(&jsonOnly, 0, 3, true, false, false); err != nil {
 		t.Fatalf("run(3, json) returned error: %v", err)
 	}
-	if err := run(&prettyJSON, 3, true, true, false); err != nil {
+	if err := run(&prettyJSON, 0, 3, true, true, false); err != nil {
 		t.Fatalf("run(3, json, pretty) returned error: %v", err)
 	}
 	if prettyJSON.String() != jsonOnly.String() {
@@ -205,7 +306,7 @@ func TestRunRejectsInvalidCount(t *testing.T) {
 	}{{"text", false}, {"json", true}} {
 		for _, n := range []int{0, -5} {
 			var buf bytes.Buffer
-			err := run(&buf, n, mode.asJSON, false, false)
+			err := run(&buf, 0, n, mode.asJSON, false, false)
 			if err == nil {
 				t.Fatalf("run(%d, %s) succeeded, want error", n, mode.name)
 			}
@@ -219,26 +320,54 @@ func TestRunRejectsInvalidCount(t *testing.T) {
 	}
 }
 
+// TestRunRejectsInvalidStart pins the -start validation contract: a
+// negative start exits non-zero with the exact -n-style error message
+// and writes no output first.
+func TestRunRejectsInvalidStart(t *testing.T) {
+	for _, mode := range []struct {
+		name   string
+		asJSON bool
+	}{{"text", false}, {"json", true}} {
+		for _, start := range []int{-1, -5} {
+			var buf bytes.Buffer
+			err := run(&buf, start, 5, mode.asJSON, false, false)
+			if err == nil {
+				t.Fatalf("run(%d, 5, %s) succeeded, want error", start, mode.name)
+			}
+			want := fmt.Sprintf("invalid value %d for flag -start: must be >= 0", start)
+			if err.Error() != want {
+				t.Errorf("run(%d, %s) error = %q, want exactly %q", start, mode.name, err.Error(), want)
+			}
+			if buf.Len() != 0 {
+				t.Errorf("run(%d, %s) wrote %q before failing, want no output", start, mode.name, buf.String())
+			}
+		}
+	}
+}
+
 func TestRunVersion(t *testing.T) {
 	// -version must win over every other flag combination: the only
 	// output is the single line "gofib <Version>". It is checked before
-	// the -n validation in run(), so even an invalid count still prints
-	// the version line and succeeds.
+	// the -n and -start validation in run(), so even an invalid count
+	// or start still prints the version line and succeeds.
 	tests := []struct {
 		name   string
+		start  int
 		count  int
 		asJSON bool
 		pretty bool
 	}{
-		{"version alone", defaultCount, false, false},
-		{"version with -json -n 5", 5, true, false},
-		{"version with -pretty", defaultCount, false, true},
-		{"version with invalid -n 0", 0, false, false},
+		{"version alone", 0, defaultCount, false, false},
+		{"version with -json -n 5", 0, 5, true, false},
+		{"version with -pretty", 0, defaultCount, false, true},
+		{"version with invalid -n 0", 0, 0, false, false},
+		{"version with -start 10", 10, 5, false, false},
+		{"version with invalid -start -1", -1, 5, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.count, tt.asJSON, tt.pretty, true); err != nil {
+			if err := run(&buf, tt.start, tt.count, tt.asJSON, tt.pretty, true); err != nil {
 				t.Fatalf("run(version) returned error: %v", err)
 			}
 			if want := "gofib " + Version + "\n"; buf.String() != want {
