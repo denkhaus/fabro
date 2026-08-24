@@ -80,7 +80,11 @@ async fn connect_creates_parent_directory_and_migrate_is_idempotent() -> anyhow:
     .await?;
     assert_eq!(blobs_table_count, 1);
 
-    for table in ["auth_sessions", "refresh_tokens"] {
+    for table in [
+        "auth_sessions",
+        "refresh_tokens",
+        "oauth_authorization_codes",
+    ] {
         let count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
         )
@@ -89,14 +93,6 @@ async fn connect_creates_parent_directory_and_migrate_is_idempotent() -> anyhow:
         .await?;
         assert_eq!(count, 1, "{table} table should exist");
     }
-
-    let authorization_code_table_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM sqlite_master \
-         WHERE type = 'table' AND name = 'oauth_authorization_codes'",
-    )
-    .fetch_one(database.pool())
-    .await?;
-    assert_eq!(authorization_code_table_count, 1);
 
     let legacy_import_table_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'legacy_imports'",

@@ -146,28 +146,29 @@ pub async fn put_unvalidated_run_event(
         .await
 }
 
+/// Connects to a migrated `fabro.sqlite3` in `directory` and returns its pool.
 #[cfg(test)]
-pub(crate) async fn sqlite_auth_session_store() -> (tempfile::TempDir, AuthSessionStore) {
-    let directory = tempfile::tempdir().unwrap();
-    let database = fabro_db::Database::connect(directory.path().join("fabro.sqlite3"))
+async fn sqlite_test_pool(directory: &Path) -> sqlx::SqlitePool {
+    let database = fabro_db::Database::connect(directory.join("fabro.sqlite3"))
         .await
         .unwrap();
     database.migrate().await.unwrap();
-    (directory, AuthSessionStore::new(database.clone_pool()))
+    database.clone_pool()
+}
+
+#[cfg(test)]
+pub(crate) async fn sqlite_auth_session_store() -> (tempfile::TempDir, AuthSessionStore) {
+    let directory = tempfile::tempdir().unwrap();
+    let store = AuthSessionStore::new(sqlite_test_pool(directory.path()).await);
+    (directory, store)
 }
 
 #[cfg(test)]
 pub(crate) async fn sqlite_authorization_code_store() -> (tempfile::TempDir, AuthorizationCodeStore)
 {
     let directory = tempfile::tempdir().unwrap();
-    let database = fabro_db::Database::connect(directory.path().join("fabro.sqlite3"))
-        .await
-        .unwrap();
-    database.migrate().await.unwrap();
-    (
-        directory,
-        AuthorizationCodeStore::new(database.clone_pool()),
-    )
+    let store = AuthorizationCodeStore::new(sqlite_test_pool(directory.path()).await);
+    (directory, store)
 }
 
 #[cfg(test)]
@@ -179,9 +180,5 @@ pub(crate) async fn sqlite_summary_store() -> (tempfile::TempDir, RunSummaryStor
 
 #[cfg(test)]
 pub(crate) async fn sqlite_summary_store_at(directory: &Path) -> RunSummaryStore {
-    let database = fabro_db::Database::connect(directory.join("fabro.sqlite3"))
-        .await
-        .unwrap();
-    database.migrate().await.unwrap();
-    RunSummaryStore::new(database.clone_pool())
+    RunSummaryStore::new(sqlite_test_pool(directory).await)
 }

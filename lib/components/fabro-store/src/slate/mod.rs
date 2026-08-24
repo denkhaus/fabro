@@ -436,20 +436,8 @@ impl Database {
     /// nothing else would ever remove them. Returns the number of records
     /// deleted; a later boot finds the prefix empty and does nothing.
     pub async fn retire_refresh_token_keyspace(&self) -> Result<u64> {
-        let db = self.open_db().await?;
-        let mut iter = db
-            .scan_prefix(keys::SlateKey::new("auth").with("refresh").into_prefix())
-            .await?;
-        let mut batch = slatedb::WriteBatch::new();
-        let mut deletes = 0_u64;
-        while let Some(entry) = iter.next().await? {
-            batch.delete(entry.key);
-            deletes += 1;
-        }
-        if deletes > 0 {
-            db.write(batch).await?;
-        }
-        Ok(deletes)
+        self.retire_keyspace(keys::SlateKey::new("auth").with("refresh"))
+            .await
     }
 
     /// Delete every record under the retired `auth/code` prefix.
@@ -459,10 +447,13 @@ impl Database {
     /// binary from accepting a code issued before the storage cutover.
     /// Returns the number of records deleted; later boots are no-ops.
     pub async fn retire_authorization_code_keyspace(&self) -> Result<u64> {
+        self.retire_keyspace(keys::SlateKey::new("auth").with("code"))
+            .await
+    }
+
+    async fn retire_keyspace(&self, keyspace: keys::SlateKey) -> Result<u64> {
         let db = self.open_db().await?;
-        let mut iter = db
-            .scan_prefix(keys::SlateKey::new("auth").with("code").into_prefix())
-            .await?;
+        let mut iter = db.scan_prefix(keyspace.into_prefix()).await?;
         let mut batch = slatedb::WriteBatch::new();
         let mut deletes = 0_u64;
         while let Some(entry) = iter.next().await? {
@@ -473,13 +464,6 @@ impl Database {
             db.write(batch).await?;
         }
         Ok(deletes)
-    }
-
-    /// Close the shared SlateDB handle to exercise storage-failure paths.
-    #[cfg(any(test, feature = "test-support"))]
-    pub async fn test_close_slate(&self) -> Result<()> {
-        self.open_db().await?.close().await?;
-        Ok(())
     }
 
     #[must_use]

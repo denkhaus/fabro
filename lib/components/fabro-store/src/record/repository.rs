@@ -52,12 +52,11 @@
 //!     async fn get(&self, id: &str) -> Result<Option<Session>> {
 //!         self.repo.get(&id.to_string()).await
 //!     }
-//!
-//!     async fn gc_expired(&self, now: DateTime<Utc>) -> Result<u64> {
-//!         self.repo.gc(|session| session.expires_at <= now).await
-//!     }
 //! }
 //! ```
+//!
+//! `JsonCodec` is currently compiled only for tests; un-gate it when the
+//! first production JSON-encoded record type appears.
 //!
 //! Keep `Repository<R>` internal. Domain-specific invariants such as consume
 //! locks, token rotation, or marker-only behavior belong in the named store
@@ -69,8 +68,6 @@ use std::sync::Arc;
 
 use futures::stream::{self};
 use futures::{Stream, StreamExt};
-#[cfg(test)]
-use slatedb::WriteBatch;
 use slatedb::{Db, KeyValue};
 
 use super::{Codec, Record, RecordId};
@@ -161,30 +158,6 @@ impl<R: Record> Repository<R> {
             })),
             Err(err) => Box::pin(stream::once(async move { Err(err) })),
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) async fn gc<F>(&self, predicate: F) -> Result<u64>
-    where
-        F: Fn(&R) -> bool + Send + Sync,
-    {
-        let mut iter = self.db.scan_prefix(prefix_key::<R>(&[])?).await?;
-        let mut batch = WriteBatch::new();
-        let mut deletes = 0_u64;
-
-        while let Some(entry) = iter.next().await? {
-            let value = R::Codec::decode(&entry.value)?;
-            if predicate(&value) {
-                batch.delete(entry.key);
-                deletes += 1;
-            }
-        }
-
-        if deletes > 0 {
-            self.db.write(batch).await?;
-        }
-
-        Ok(deletes)
     }
 }
 
@@ -468,25 +441,6 @@ mod tests {
 
         repo.delete(&saved.id()).await.unwrap();
         assert!(repo.get(&saved.id()).await.unwrap().is_none());
-    }
-
-    #[tokio::test]
-    async fn gc_deletes_matching_records() {
-        let repo = Repository::<TestRecord>::new(db().await);
-        for record in [
-            record("bucket-a", "keep", false),
-            record("bucket-a", "delete", true),
-            record("bucket-b", "keep", false),
-            record("bucket-b", "delete", true),
-        ] {
-            repo.put(&record).await.unwrap();
-        }
-
-        assert_eq!(repo.gc(|record| record.delete_me).await.unwrap(), 2);
-
-        let remaining = repo.scan_stream().try_collect::<Vec<_>>().await.unwrap();
-        assert_eq!(remaining.len(), 2);
-        assert!(remaining.iter().all(|(_, record)| !record.delete_me));
     }
 
     #[tokio::test]

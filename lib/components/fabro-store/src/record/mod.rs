@@ -4,7 +4,7 @@
 //! - [`Record`]: declares the key prefix, id type, and codec for one persisted
 //!   type.
 //! - [`RecordId`]: converts the typed id to and from key segments.
-//! - [`Repository`]: performs the generic get/put/delete/scan/gc operations.
+//! - [`Repository`]: performs the generic get/put/delete/scan operations.
 //!
 //! Production callers should add a named domain store on top of this layer
 //! rather than exposing `Repository<R>` directly. See `slate/blob_store.rs`

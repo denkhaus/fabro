@@ -10,7 +10,7 @@ use sha2::{Digest as _, Sha256};
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row as _, SqlitePool};
 
-use crate::{Error, Result};
+use crate::{Result, sqlite_row};
 
 const RECORD_NAME: &str = "pending CLI authorization";
 
@@ -124,32 +124,15 @@ fn hash_code(code: &str) -> [u8; 32] {
 }
 
 fn pending_from_row(row: &SqliteRow) -> Result<PendingCliAuthorization> {
-    let identity = IdpIdentity::new(
-        row.try_get::<String, _>("identity_issuer")?,
-        row.try_get::<String, _>("identity_subject")?,
-    )
-    .map_err(|source| Error::InvalidStoredIdentity {
-        record: RECORD_NAME,
-        source,
-    })?;
     Ok(PendingCliAuthorization {
-        identity,
-        login: row.try_get("login")?,
-        name: row.try_get("name")?,
-        email: row.try_get("email")?,
-        avatar_url: row.try_get("avatar_url")?,
+        identity:       sqlite_row::identity_from_row(row, RECORD_NAME)?,
+        login:          row.try_get("login")?,
+        name:           row.try_get("name")?,
+        email:          row.try_get("email")?,
+        avatar_url:     row.try_get("avatar_url")?,
         code_challenge: row.try_get("code_challenge")?,
-        redirect_uri: row.try_get("redirect_uri")?,
-        expires_at: timestamp_from_row(row, "expires_at_ms")?,
-    })
-}
-
-fn timestamp_from_row(row: &SqliteRow, field: &'static str) -> Result<DateTime<Utc>> {
-    let value: i64 = row.try_get(field)?;
-    DateTime::from_timestamp_millis(value).ok_or(Error::InvalidStoredTimestamp {
-        record: RECORD_NAME,
-        field,
-        value,
+        redirect_uri:   row.try_get("redirect_uri")?,
+        expires_at:     sqlite_row::timestamp_from_row(row, RECORD_NAME, "expires_at_ms")?,
     })
 }
 
@@ -362,29 +345,18 @@ mod tests {
     #[tokio::test]
     async fn authorization_code_invalid_stored_timestamp_is_typed() {
         let (_directory, store) = test_support::sqlite_authorization_code_store().await;
-        let pending = pending(Utc::now() + Duration::seconds(60));
-        let code_hash = super::hash_code("invalid-timestamp-code");
-        sqlx::query(
-            r"
-INSERT INTO oauth_authorization_codes (
-    code_hash, identity_issuer, identity_subject, login, name, email,
-    avatar_url, code_challenge, redirect_uri, expires_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-",
-        )
-        .bind(code_hash.as_slice())
-        .bind(pending.identity.issuer())
-        .bind(pending.identity.subject())
-        .bind(&pending.login)
-        .bind(&pending.name)
-        .bind(&pending.email)
-        .bind(&pending.avatar_url)
-        .bind(&pending.code_challenge)
-        .bind(&pending.redirect_uri)
-        .bind(i64::MAX)
-        .execute(&store.pool)
-        .await
-        .unwrap();
+        store
+            .issue(
+                "invalid-timestamp-code",
+                &pending(Utc::now() + Duration::seconds(60)),
+            )
+            .await
+            .unwrap();
+        sqlx::query("UPDATE oauth_authorization_codes SET expires_at_ms = ?")
+            .bind(i64::MAX)
+            .execute(&store.pool)
+            .await
+            .unwrap();
 
         let err = store
             .consume("invalid-timestamp-code", Utc::now())
