@@ -5,8 +5,10 @@
 // the largest index printed (it does not change what -n counts either;
 // 0, the default, means no limit), -json switches to JSON Lines
 // output, and -pretty aligns the text columns (it has no effect with
-// -json). The -version flag prints "gofib <Version>" and takes
-// precedence over every other flag.
+// -json). The -seed flag prints only the Fibonacci number at one index
+// (0, the default, means unset), overriding -n, -start, and -limit for
+// output while their validation is unchanged. The -version flag prints
+// "gofib <Version>" and takes precedence over every other flag.
 package main
 
 import (
@@ -62,8 +64,13 @@ const defaultStart = 1
 // pretty has no effect. With version set it prints only the single
 // line "gofib <Version>" and every other flag (including an invalid
 // count, start, or limit) is ignored. Otherwise it returns an error
-// when count < 1, start < 0, or limit < 0.
-func run(w io.Writer, start, count, limit int, asJSON, pretty, version bool) error {
+// when count < 1, start < 0, limit < 0, or seed < 0. A positive seed
+// overrides the range flags for output: exactly one entry for index
+// seed is printed in the active output mode (in pretty mode the
+// columns are sized to that single row), while -n, -start, and -limit
+// keep their usual validation; seed 0 is the unset sentinel, so plain
+// output is unchanged.
+func run(w io.Writer, start, count, limit, seed int, asJSON, pretty, version bool) error {
 	if version {
 		fmt.Fprintf(w, "gofib %s\n", Version)
 		return nil
@@ -76,6 +83,25 @@ func run(w io.Writer, start, count, limit int, asJSON, pretty, version bool) err
 	}
 	if limit < 0 {
 		return fmt.Errorf("invalid value %d for flag -limit: must be >= 0", limit)
+	}
+	if seed < 0 {
+		return fmt.Errorf("invalid value %d for flag -seed: must be >= 0", seed)
+	}
+	// A positive -seed is a single-index lookup: print exactly one
+	// entry for that index in the active output mode, ignoring -n,
+	// -start, and -limit for output (they were validated above).
+	if seed > 0 {
+		if asJSON {
+			return json.NewEncoder(w).Encode(fibLine{Index: seed, Fib: Fib(seed).String()})
+		}
+		if pretty {
+			fmt.Fprintf(w, "%*d: %*s\n",
+				len(strconv.Itoa(seed)), seed,
+				len(Fib(seed).String()), Fib(seed).String())
+		} else {
+			fmt.Fprintf(w, "%d: %v\n", seed, Fib(seed))
+		}
+		return nil
 	}
 	if start == 0 {
 		start = defaultStart
@@ -116,9 +142,10 @@ func main() {
 	limit := flag.Int("limit", 0, "largest index to print (must be >= 0; 0 means no limit)")
 	asJSON := flag.Bool("json", false, "emit JSON Lines instead of text: one {\"index\": i, \"fib\": \"value\"} object per number")
 	pretty := flag.Bool("pretty", false, "align text output into two right-aligned columns sized to the largest index and value (no effect with -json)")
+	seed := flag.Int("seed", 0, "print only the Fibonacci number at this index (must be >= 0; overrides -n/-start/-limit for output; 0 means unset)")
 	version := flag.Bool("version", false, "print \"gofib <version>\" and exit; takes precedence over all other flags")
 	flag.Parse()
-	if err := run(os.Stdout, *start, *n, *limit, *asJSON, *pretty, *version); err != nil {
+	if err := run(os.Stdout, *start, *n, *limit, *seed, *asJSON, *pretty, *version); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
