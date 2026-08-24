@@ -192,11 +192,10 @@ mod tests {
     use fabro_hooks::config::HookDefinition;
     use fabro_hooks::HookSettings;
     use fabro_model::Catalog;
+    use fabro_util::shell::shell_quote;
     use fabro_types::fixtures;
-    use fabro_types::outcome::Outcome;
 
     use super::*;
-    use crate::graph::WorkflowGraph;
 
     fn test_node(id: &str) -> WorkflowNode {
         let mut node = Node::new(id);
@@ -255,9 +254,15 @@ mod tests {
 
     fn probe_command(needle: &str, marker: &std::path::Path) -> String {
         // sh: read HookContext from stdin; write the probe verdict to marker.
-        let marker = marker.display();
+        // Marker path is shell_quote'd per the repo rule (AGENTS.md): a
+        // TMPDIR with spaces must not split the redirect. The needle is
+        // quoted INSIDE the case pattern (`*needle*`): quoting only the
+        // literal keeps the surrounding globs wild while neutralizing
+        // metacharacters within the needle itself.
+        let needle = shell_quote(needle);
+        let marker = shell_quote(&marker.display().to_string());
         format!(
-            "ctx=$(cat); case \"$ctx\" in *\"{needle}\"*) echo found > {marker};; *)              echo missing > {marker};; esac; exit 0"
+            "ctx=$(cat); case \"$ctx\" in *{needle}*) echo found > {marker};; *) echo missing > {marker};; esac; exit 0"
         )
     }
 

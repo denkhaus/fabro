@@ -15,8 +15,7 @@ pub struct HookContext {
     pub workflow_name:  String,
     /// Context updates the completed stage declared (stage_complete /
     /// stage_failed only). This is the journal bridge: hooks read
-    /// `context_updates.journal` to persist agent payloads durably
-    /// (seed fabro-31b2, run 01M0SS23MJ wrote empty envelopes without it).
+    /// `context_updates.journal` to persist agent payloads durably.
     /// `None` for events without a stage outcome and for callers built
     /// against the pre-bridge struct.
     #[serde(default, skip_serializing_if = "Option::is_none")]

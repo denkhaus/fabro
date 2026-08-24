@@ -293,6 +293,14 @@ The full event context is available as a JSON payload. For command hooks running
 
 Fields vary by event — `edge_from`/`edge_to`/`edge_label` are only set for `edge_selected`, `failure_reason` for failure events, `attempt`/`max_attempts` for `stage_retrying`, etc. Null fields are omitted from the serialized JSON.
 
+For stage outcome events (`stage_complete`, `stage_failed`), the context additionally carries the stage's declared updates:
+
+| Field | Events | Description |
+|---|---|---|
+| `context_updates` | `stage_complete`, `stage_failed` | Map of context updates the finished stage declared (the same values that flow into later stages' context), exactly as the stage emitted them. Absent when the stage declared nothing — hooks can distinguish "no updates" from an empty map only by field absence. Read `context_updates.journal` to capture stage journal payloads durably. |
+
+The example `stage_start` JSON above shows the field absent; on `stage_complete` with declared updates it would appear as `"context_updates": {"journal": {"painpoints": []}}` alongside the provenance fields.
+
 For tool-level events (`pre_tool_use`, `post_tool_use`, `post_tool_use_failure`), the context includes additional fields:
 
 | Field | Events | Description |
