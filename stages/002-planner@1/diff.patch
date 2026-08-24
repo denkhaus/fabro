@@ -1,0 +1,42 @@
+diff --git a/.fabro/journal/planner@4.json b/.fabro/journal/planner@4.json
+new file mode 100644
+index 0000000..7d6c07c
+--- /dev/null
++++ b/.fabro/journal/planner@4.json
+@@ -0,0 +1,9 @@
++{
++  "$schema": "fabro-journal-v1",
++  "run_id": "01M0T2GW0PTNF3CHNQKHER1271",
++  "node": "planner",
++  "visit": 4,
++  "status": "succeeded",
++  "ts": "2026-08-24T14:26:22Z",
++  "data": {}
++}
+\ No newline at end of file
+diff --git a/.fabro/journal/start@2.json b/.fabro/journal/start@2.json
+new file mode 100644
+index 0000000..1815a2b
+--- /dev/null
++++ b/.fabro/journal/start@2.json
+@@ -0,0 +1,9 @@
++{
++  "$schema": "fabro-journal-v1",
++  "run_id": "01M0T2GW0PTNF3CHNQKHER1271",
++  "node": "start",
++  "visit": 2,
++  "status": "succeeded",
++  "ts": "2026-08-24T14:24:28Z",
++  "data": {}
++}
+\ No newline at end of file
+diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl
+index 42026d6..f4c8185 100644
+--- a/.seeds/issues.jsonl
++++ b/.seeds/issues.jsonl
+@@ -5,4 +5,4 @@
+ {"id":"fabro-8d26","title":"gofib: add -version flag","status":"closed","type":"feature","priority":2,"createdAt":"2026-08-22T21:01:17.873Z","updatedAt":"2026-08-23T17:33:54.942Z","description":"Add a -version flag to the gofib CLI.\n\nRequirements:\n- New bool flag 'version' via the flag package: 'gofib -version'.\n- With -version, print exactly one line to stdout: 'gofib <semver>' with\n  semver taken from a package-level const Version = \"1.3.0\", then exit 0.\n- -version takes precedence over all output modes: 'gofib -version -pretty'\n  and 'gofib -version -json -n 5' also print only the version line.\n- Add a table-driven test covering run() or main-level behavior for\n  -version alone and -version combined with -json (assert the single\n  version line and exit 0).\n- No external dependencies. 'just qualitygate' must pass.\n\nDone when: 'go run . -version' prints 'gofib 1.3.0' and the gate is green.","labels":["ready-for-agent"],"closedAt":"2026-08-23T17:33:54.942Z"}
+ {"id":"fabro-d810","title":"Develop workflow: adopt preamble stage scoping + budget (prove a85b/facd/6a78 fixes in the loop)","status":"closed","type":"task","priority":1,"createdAt":"2026-08-23T10:56:49.844Z","updatedAt":"2026-08-23T15:29:56.696Z","description":"CLOSED (rescoped 2026-08-23): the workflow-adoption half is DONE and\nverified in the worktree (scoping+budget synced: 17e1fb8/965fbc8/e579afe;\nprompts aligned: d153c0372). The remaining acceptance (recording preamble\nsizes across >=3 cycles under the rebuilt binary) is NOT executable from\nthe product sandbox (no fabro CLI, no run events, no meta access) — it\nlived in the wrong world and permanently blocked the planner tracker\n(observed run 01M0QJ5FNE9, planner painpoint). The measurement moved to\nthe platform world: fabro-29f7 gate step 3 records the numbers. Closing\nhere prevents the eternal ready-but-unclaimable state.","labels":["review-tool-option"],"closedAt":"2026-08-23T15:29:56.696Z"}
+ {"id":"fabro-e6df","title":"gofib: add README with usage and flag reference","status":"closed","type":"task","priority":2,"createdAt":"2026-08-24T11:38:40.410Z","updatedAt":"2026-08-24T11:47:51.762Z","description":"## Goal\n\nA README.md at the repo root that documents the gofib CLI: what it is\n(Go CLI printing Fibonacci numbers), install/build via mise/just,\nusage, and the full flag reference.\n\n## Flag reference to cover\n\n- `-n <int>`: how many numbers to print (default 100, must be >= 1)\n- `-json`: JSON Lines output, one object per number (`{\"index\":<int>,\"fib\":\"<string>\"}`)\n- `-pretty`: aligned column output\n- `-version`: print version and exit\n\nUse the vocabulary from CONTEXT.md (text mode, JSON mode, count flag).\nShow real example invocations and their actual output — run the built\nbinary to capture it, do not invent output.\n\n## Acceptance\n\n- README.md exists at the repo root\n- Examples match actual binary behavior\n- `just qualitygate` green","closedAt":"2026-08-24T11:47:51.762Z"}
+-{"id":"fabro-4f3e","title":"gofib: add -start flag to begin printing at a given index","status":"open","type":"task","priority":2,"createdAt":"2026-08-24T14:23:57.517Z","updatedAt":"2026-08-24T14:23:57.517Z","description":"## Goal\n\nA `-start <int>` flag: the first Fibonacci index to print. Default 0.\nCombines with `-n` (how many), `-json`, and `-pretty`.\n\n## Semantics\n\n- `-start 10 -n 5` prints indices 10..14 in the active output mode\n  (text mode line format stays `<index>: <value>`).\n- Validation mirrors the `-n` contract: values < 0 exit non-zero with a\n  stderr error message.\n- `-start` must not change what `-n` counts (still the number of lines).\n\n## Acceptance\n\n- Flag parsed via the flag package; `Fib(n)` stays the only computation\n  (no inline recomputation — see CONTEXT.md).\n- Table-driven tests: default start, start+n combination, start with\n  -json and -pretty, negative start rejected.\n- README.md flag table gains the `-start` row; example invocation with\n  REAL output captured from the built binary (do not invent output).\n- `just qualitygate` green"}
++{"id":"fabro-4f3e","title":"gofib: add -start flag to begin printing at a given index","status":"in_progress","type":"task","priority":2,"createdAt":"2026-08-24T14:23:57.517Z","updatedAt":"2026-08-24T14:26:03.221Z","description":"## Goal\n\nA `-start <int>` flag: the first Fibonacci index to print. Default 0.\nCombines with `-n` (how many), `-json`, and `-pretty`.\n\n## Semantics\n\n- `-start 10 -n 5` prints indices 10..14 in the active output mode\n  (text mode line format stays `<index>: <value>`).\n- Validation mirrors the `-n` contract: values < 0 exit non-zero with a\n  stderr error message.\n- `-start` must not change what `-n` counts (still the number of lines).\n\n## Acceptance\n\n- Flag parsed via the flag package; `Fib(n)` stays the only computation\n  (no inline recomputation — see CONTEXT.md).\n- Table-driven tests: default start, start+n combination, start with\n  -json and -pretty, negative start rejected.\n- README.md flag table gains the `-start` row; example invocation with\n  REAL output captured from the built binary (do not invent output).\n- `just qualitygate` green"}
