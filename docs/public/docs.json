@@ -188,6 +188,13 @@
             ]
           },
           {
+            "group": "Workflow Versions",
+            "icon": "code-branch",
+            "pages": [
+              "POST /api/v1/workflow-versions"
+            ]
+          },
+          {
             "group": "Runs",
             "icon": "play",
             "pages": [
@@ -202,6 +209,8 @@
               "POST /api/v1/runs/{id}/cancel",
               "POST /api/v1/runs/{id}/pause",
               "POST /api/v1/runs/{id}/unpause",
+              "POST /api/v1/runs/{id}/pull_request",
+              "GET /api/v1/runs/{id}/pull_request/creation",
               "GET /api/v1/runs/{id}/graph",
               "GET /api/v1/runs/{id}/events"
             ]
@@ -220,6 +229,7 @@
             "icon": "file-export",
             "pages": [
               "GET /api/v1/runs/{id}/artifacts",
+              "GET /api/v1/runs/{id}/artifacts/download",
               "GET /api/v1/runs/{id}/billing",
               {
                 "group": "Run Internals",

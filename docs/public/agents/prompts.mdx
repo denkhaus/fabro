@@ -257,18 +257,19 @@ to load its instructions, then follow them.
 </Accordion>
 
 <Note>
-OpenAI and Gemini providers have their own system prompts with different identity text, tool guidance (e.g. `apply_patch` instead of `edit_file` for OpenAI), and coding conventions. The overall structure is the same.
+Fabro selects an agent profile for the model. Anthropic, Claude 5, OpenAI, GPT-5.6, Gemini, and Kimi profiles can use different identity text, tool names, tool guidance, and coding conventions. The overall system-prompt structure is the same.
 </Note>
 
 ### Project docs
 
-Fabro automatically discovers project instruction files by walking the directory hierarchy from the git root to the working directory. Which files are loaded depends on the provider:
+Fabro automatically discovers project instruction files by walking the directory hierarchy from the git root to the working directory. Which files are loaded depends on the agent profile:
 
-| Provider | Files |
+| Agent profile | Files |
 |---|---|
-| Anthropic | `AGENTS.md`, `CLAUDE.md` |
-| OpenAI | `AGENTS.md`, `.codex/instructions.md` |
+| Anthropic and Claude 5 | `AGENTS.md`, `CLAUDE.md` |
+| OpenAI and GPT-5.6 | `AGENTS.md`, `.codex/instructions.md` |
 | Gemini | `AGENTS.md`, `GEMINI.md` |
+| Kimi | `AGENTS.md` |
 
 Files are loaded in directory order (root first, deepest last) with a total budget of 32KB. If the combined content exceeds this budget, later files are truncated.
 
