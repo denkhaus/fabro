@@ -62,6 +62,8 @@ enabled = true
 draft = false
 auto_merge = true
 merge_strategy = "squash"
+model = "zai:glm-4.7-flash"
+reasoning = "off"
 
 [run.integrations.github.permissions]
 contents = "write"
