@@ -546,6 +546,19 @@ impl Graph {
         self.attrs.get("retry_target").and_then(AttrValue::as_str)
     }
 
+    /// Graph-level `cycle_counter_reset_key`: the context key whose VALUE
+    /// change marks a new seed/work cycle context. When set, the workflow
+    /// lifecycle injects `internal.seed_cycles` (per-node visits since the
+    /// last value change) so agents read deterministic cycle counts
+    /// instead of counting preamble history. Unset = no injection.
+    #[must_use]
+    pub fn cycle_counter_reset_key(&self) -> Option<&str> {
+        self.attrs
+            .get("cycle_counter_reset_key")
+            .and_then(AttrValue::as_str)
+            .filter(|key| !key.is_empty())
+    }
+
     /// Graph-level `fallback_retry_target`.
     pub fn fallback_retry_target(&self) -> Option<&str> {
         self.attrs

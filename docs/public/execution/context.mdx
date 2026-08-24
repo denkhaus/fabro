@@ -230,6 +230,28 @@ The preamble includes:
 
 Internal keys (prefixed with `internal.`, `current`, `graph.`, `thread.`, `response.`) are excluded from preambles to avoid noise.
 
+### Deterministic cycle counters
+
+Long loops (plan -> implement -> gate -> review) need cycle guards: stop a seed
+after N review rejections instead of burning the visit budget. Counting from
+preamble history is an LLM guess; Fabro can count deterministically:
+
+```dot
+digraph {
+  graph [goal="...", cycle_counter_reset_key="current_seed_id"]
+}
+```
+
+When the graph declares `cycle_counter_reset_key`, Fabro maintains a public
+`seed_cycles` context value — an object `{ node_id -> completed visits }`
+counted since the declared key's value last changed. A workflow whose planner
+claims seed ids via `current_seed_id` therefore gets per-seed visit counts:
+claiming a NEW seed resets the counters, re-emitting the same value does not.
+Prompts read the counts directly (`seed_cycles.reviewer >= 3 -> route
+Blocked`) and the value survives checkpoint resume; stages cannot corrupt it
+(every recorded stage recomputes it). Without the graph attribute, nothing is
+injected and behavior is unchanged.
+
 ### Stage scoping (deny-list)
 
 A node can omit specific stages' history sections from its own preamble with the `preamble_stages_ignore` attribute — a comma-separated list of node ids:

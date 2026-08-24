@@ -37,9 +37,31 @@ pub mod keys {
     /// [`super::ParallelBranchPreamble`] for the entry shape and the
     /// producer/consumer contract.
     pub const INTERNAL_PARALLEL_BRANCH_PREAMBLES: &str = "internal.parallel_branch_preambles";
+    /// Last observed value of the graph's `cycle_counter_reset_key` context
+    /// key. Engine bookkeeping for [`SEED_CYCLES`]: a value change resets
+    /// the cycle counts. Hidden from preambles (internal.*), durable.
+    pub const INTERNAL_SEED_CYCLE_ANCHOR: &str = "internal.seed_cycle_anchor";
+
+
+    /// Per-node stage visits since the last value change of the graph's
+    /// `cycle_counter_reset_key` context key (e.g. the seed id the planner
+    /// claimed). Object: { node_id -> visits_since_baseline }. Only set
+    /// when the graph declares the attribute; agents use it for
+    /// deterministic cycle guards instead of counting preamble history.
+    /// Set after `record`, so a freshly recorded visit IS included.
+    pub const INTERNAL_SEED_CYCLES: &str = "internal.seed_cycles";
 
     // --- current.* keys ---
     pub const CURRENT_PREAMBLE: &str = "current.preamble";
+
+    // --- public engine-injected keys (preamble-visible) ---
+    /// Per-node completed-visit counts since the graph's
+    /// `cycle_counter_reset_key` context key last changed value (see
+    /// [`INTERNAL_SEED_CYCLE_ANCHOR`]). Injected after each record when the
+    /// graph declares the attribute; plain key on purpose so agents see it
+    /// in their `## Context` section (internal.* is preamble-hidden).
+    /// Agents cannot corrupt it — every record overwrites it.
+    pub const SEED_CYCLES: &str = "seed_cycles";
 
     // --- command.* keys ---
     pub const COMMAND_OUTPUT: &str = "command.output";
@@ -215,6 +237,41 @@ pub(crate) fn context_diff_public(
 ///
 /// The lookup is flat. `context.plan.title` reads the literal keys
 /// `context.plan.title` and `plan.title`; it never walks into a nested object.
+/// Maintain [`keys::SEED_CYCLES`] after a recorded stage (fabro-45d0).
+///
+/// Reads the reset key's CURRENT value from `context` (the completed
+/// stage's updates are already applied when this runs): equal to the
+/// anchor -> increment the node's count; different (or first
+/// observation) -> reset all counts, then count the recording node as
+/// its first visit. Anchor and counts live in `context` itself, so the
+/// counter is deterministic across checkpoint resume and immune to
+/// agent writes (every call recomputes and overwrites).
+pub fn update_seed_cycles(context: &Context, reset_key: &str, node_id: &str) {
+    let cur = context
+        .get(reset_key)
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .unwrap_or_default();
+    let anchored = context
+        .get(keys::INTERNAL_SEED_CYCLE_ANCHOR)
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .is_some_and(|anchor| anchor == cur);
+    let mut cycles = if anchored {
+        context
+            .get(keys::SEED_CYCLES)
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_default()
+    } else {
+        serde_json::Map::new()
+    };
+    let next = cycles
+        .get(node_id)
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0)
+        + 1;
+    cycles.insert(node_id.to_string(), serde_json::json!(next));
+    context.set(keys::INTERNAL_SEED_CYCLE_ANCHOR, serde_json::json!(cur));
+    context.set(keys::SEED_CYCLES, serde_json::Value::Object(cycles));
+}
 pub(crate) fn lookup_flat(context: &Context, key: &str) -> Option<serde_json::Value> {
     if let Some(bare) = key.strip_prefix("context.") {
         return context.get(key).or_else(|| context.get(bare));
@@ -585,5 +642,90 @@ mod tests {
         let ctx = Context::new();
         ctx.set(keys::CURRENT_NODE, serde_json::json!("plan"));
         assert_eq!(ctx.current_node_id(), "plan");
+    }
+}
+
+#[cfg(test)]
+mod seed_cycles_tests {
+    use fabro_core::Context;
+    use serde_json::json;
+
+    use super::keys::{INTERNAL_SEED_CYCLE_ANCHOR, SEED_CYCLES};
+    use super::update_seed_cycles;
+
+    fn claim(context: &Context, seed: &str) {
+        // Mirrors record(): updates are applied BEFORE after_record runs.
+        context.set("current_seed_id", json!(seed));
+    }
+
+    #[test]
+    fn counts_increment_within_seed_and_reset_on_new_seed() {
+        let context = Context::new();
+
+        // Planner claims seed A: counter starts, planner = 1
+        claim(&context, "seed-a");
+        update_seed_cycles(&context, "current_seed_id", "planner");
+        assert_eq!(context.get(SEED_CYCLES), Some(json!({"planner": 1})));
+
+        // Reviewer twice within seed A
+        update_seed_cycles(&context, "current_seed_id", "reviewer");
+        update_seed_cycles(&context, "current_seed_id", "reviewer");
+        assert_eq!(
+            context.get(SEED_CYCLES),
+            Some(json!({"planner": 1, "reviewer": 2}))
+        );
+
+        // Same seed re-emitted (re-plan): no reset, planner increments
+        claim(&context, "seed-a");
+        update_seed_cycles(&context, "current_seed_id", "planner");
+        assert_eq!(
+            context.get(SEED_CYCLES),
+            Some(json!({"planner": 2, "reviewer": 2}))
+        );
+
+        // New seed: reset, only the claiming visit counts
+        claim(&context, "seed-b");
+        update_seed_cycles(&context, "current_seed_id", "planner");
+        assert_eq!(context.get(SEED_CYCLES), Some(json!({"planner": 1})));
+        assert_eq!(context.get(INTERNAL_SEED_CYCLE_ANCHOR), Some(json!("seed-b")));
+    }
+
+    #[test]
+    fn absent_reset_key_value_resets_like_first_observation() {
+        // Before any claim, cur = "" — first observation anchors to "".
+        let context = Context::new();
+        update_seed_cycles(&context, "current_seed_id", "tester");
+        update_seed_cycles(&context, "current_seed_id", "tester");
+        assert_eq!(context.get(SEED_CYCLES), Some(json!({"tester": 2})));
+
+        // A claim changes the value: reset
+        claim(&context, "seed-a");
+        update_seed_cycles(&context, "current_seed_id", "tester");
+        assert_eq!(context.get(SEED_CYCLES), Some(json!({"tester": 1})));
+    }
+
+    #[test]
+    fn agent_written_seed_cycles_is_overwritten_by_engine() {
+        let context = Context::new();
+        context.set(SEED_CYCLES, json!({"reviewer": 99}));
+        claim(&context, "seed-a");
+        update_seed_cycles(&context, "current_seed_id", "planner");
+        // Anchor differs from the forged state's anchor (None) -> reset.
+        assert_eq!(context.get(SEED_CYCLES), Some(json!({"planner": 1})));
+    }
+
+    #[test]
+    fn counts_survive_context_fork_like_checkpoint_restore() {
+        // Checkpoints persist context values; the counter recomputes purely
+        // from them. A forked context keeps counting across the boundary.
+        let context = Context::new();
+        claim(&context, "seed-a");
+        update_seed_cycles(&context, "current_seed_id", "planner");
+        let resumed = context.fork();
+        update_seed_cycles(&resumed, "current_seed_id", "reviewer");
+        assert_eq!(
+            resumed.get(SEED_CYCLES),
+            Some(json!({"planner": 1, "reviewer": 1}))
+        );
     }
 }

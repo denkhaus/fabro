@@ -60,6 +60,10 @@ pub(crate) struct WorkflowLifecycle {
     circuit_breaker:       Arc<CircuitBreakerLifecycle>,
     git:                   GitLifecycle,
     artifact:              ArtifactLifecycle,
+    /// Graph attribute `cycle_counter_reset_key` (see fabro-45d0): the
+    /// context key whose value change resets the deterministic
+    /// `seed_cycles` counter. None = feature off.
+    cycle_reset_key:       Option<String>,
     sandbox:               Arc<dyn Sandbox>,
     on_node:               crate::OnNodeCallback,
     emitter:               Arc<Emitter>,
@@ -105,6 +109,7 @@ impl WorkflowLifecycle {
     ) -> Self {
         let restarted_from: Arc<Mutex<Option<(String, String)>>> = Arc::new(Mutex::new(None));
         let loop_restart_signature_limit = graph.loop_restart_signature_limit();
+        let cycle_reset_key = graph.cycle_counter_reset_key().map(str::to_string);
         let checkpoint_git_result: Arc<Mutex<Option<GitCheckpointResult>>> =
             Arc::new(Mutex::new(None));
         let last_git_sha: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
@@ -191,6 +196,7 @@ impl WorkflowLifecycle {
             circuit_breaker,
             git,
             artifact,
+            cycle_reset_key,
             sandbox: Arc::clone(sandbox),
             on_node,
             emitter: Arc::clone(emitter),
@@ -402,6 +408,19 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
             context::keys::OUTCOME,
             serde_json::json!(outcome.status.to_string()),
         );
+
+        // Deterministic seed-cycle counter (fabro-45d0): when the graph
+        // declares `cycle_counter_reset_key`, maintain `seed_cycles`
+        // ({node -> completed visits since the reset key's value last
+        // changed}) in durable context. Agents read deterministic cycle
+        // counts instead of counting preamble history; the engine stays
+        // seed-agnostic — the workflow names its own reset key (e.g.
+        // the seed id the planner claims). State is carried entirely in
+        // context keys, so counts survive checkpoint resume; agents cannot
+        // corrupt it (each after_record overwrites).
+        if let Some(reset_key) = self.cycle_reset_key.as_deref() {
+            context::update_seed_cycles(&state.context, reset_key, node.id());
+        }
         state.context.set(
             context::keys::FAILURE_CLASS,
             serde_json::json!(failure_class.map_or(String::new(), |fc| fc.to_string())),
@@ -488,3 +507,4 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
         self.hook.on_run_end(outcome, state).await;
     }
 }
+
