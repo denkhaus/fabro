@@ -53,3 +53,9 @@ _Avoid_: mixing evidence claims into implementation summaries.
 **Verification-only brief**:
 A brief marking a seed whose acceptance criteria look already satisfied;
 the implementer verifies without changing code.
+
+**Journal stream**:
+`.fabro/journal/<run_id>.jsonl` — one JSON line per stage completion
+(`fabro-journal-v1` line shape), one file per run, visits run-local.
+_Avoid_: per-node journal files (they collide across runs sharing a base);
+unattributable journal lines. See ADR-0009.
