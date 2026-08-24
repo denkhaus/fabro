@@ -76,6 +76,8 @@ const DAYTONA_POST_CLONE_SETUP_TIMEOUT: Duration = Duration::from_mins(5);
 /// Best-effort push-credential setup should not consume or extend the required
 /// post-clone setup budget.
 const DAYTONA_CREDENTIAL_SETUP_TIMEOUT: Duration = Duration::from_secs(10);
+/// Budget for a custom snapshot to reach Daytona's active state.
+const DAYTONA_SNAPSHOT_ACTIVE_TIMEOUT: Duration = Duration::from_mins(30);
 /// Grace for the toolbox to return the server-side command timeout response.
 /// The SDK truncates the server timeout to whole seconds, so the server can
 /// fire up to one second before the shared deadline; this additional grace
@@ -1121,7 +1123,7 @@ impl DaytonaSandbox {
         use daytona_api_client::models::SnapshotState;
         let mut delay = std::time::Duration::from_secs(2);
         let max_delay = std::time::Duration::from_secs(30);
-        let deadline = Instant::now() + std::time::Duration::from_mins(10);
+        let deadline = Instant::now() + DAYTONA_SNAPSHOT_ACTIVE_TIMEOUT;
 
         while Instant::now() < deadline {
             time::sleep(delay).await;

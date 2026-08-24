@@ -24,3 +24,20 @@ Declaring additional repositories requires `contents = "read"` or `contents = "w
 The built-in `web_search` tool now supports Venice as an automatic alternative to direct Brave Search. Fabro uses `BRAVE_SEARCH_API_KEY` when present. Otherwise it uses `VENICE_API_KEY` with Venice's Brave search engine. If neither key is present, the tool is not registered. Failed calls do not fall back between providers.
 
 See [Venice Search](/integrations/venice-search) and [Brave Search](/integrations/brave-search).
+
+## More
+
+<Accordion title="Workflows">
+- Docker and Daytona clones now default to 100 commits; set `[run.clone] depth = 0` for full history or a smaller positive depth for a shallower clone
+</Accordion>
+
+<Accordion title="Fixes">
+- Runs now fail if durable event persistence is lost instead of continuing with incomplete history
+- Venice model responses now include provider-reported top-level costs in billing totals
+- Daytona post-clone setup now has a bounded wait
+</Accordion>
+
+<Accordion title="Improvements">
+- Large context values moved out of agent prompt preambles now render as concise file references with bounded previews
+- Added the Venice built-in model provider catalog and integration guide
+</Accordion>
