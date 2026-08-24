@@ -32,7 +32,7 @@ use fabro_interview::{
 };
 use fabro_model::catalog::{LlmCatalogSettings, ProviderCatalogSettings};
 use fabro_model::{Catalog, ProviderId};
-use fabro_store::{ArtifactKey, ArtifactStore, Database};
+use fabro_store::{ArtifactKey, ArtifactStore};
 use fabro_types::{EventBody, RunEvent, RunId, StageId, WorkflowSettings, parse_blob_ref};
 use fabro_validate::{Severity, validate, validate_or_raise};
 use fabro_workflow::artifact;
@@ -117,12 +117,13 @@ fn load_run_checkpoint(run_dir: &Path) -> Result<Checkpoint, Box<dyn std::error:
     } else {
         test_store_dir(&run_dir)
     };
-    let object_store = Arc::new(LocalFileSystem::new_with_prefix(store_dir)?);
-    let store = Arc::new(Database::new(
+    let object_store = Arc::new(LocalFileSystem::new_with_prefix(&store_dir)?);
+    let store = Arc::new(fabro_store::test_support::test_database_with_blobs(
         object_store,
         "",
         Duration::from_millis(1),
         None,
+        fabro_store::test_support::test_blob_store_at(&store_dir),
     ));
     let state = if tokio::runtime::Handle::try_current().is_ok() {
         std::thread::spawn(
@@ -247,12 +248,13 @@ fn resolve_checkpoint_text(
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()?;
-            let object_store = Arc::new(LocalFileSystem::new_with_prefix(store_dir)?);
-            let store = Arc::new(Database::new(
+            let object_store = Arc::new(LocalFileSystem::new_with_prefix(&store_dir)?);
+            let store = Arc::new(fabro_store::test_support::test_database_with_blobs(
                 object_store,
                 "",
                 Duration::from_millis(1),
                 None,
+                fabro_store::test_support::test_blob_store_at(&store_dir),
             ));
             let run_id = if uses_shared_store {
                 run_dir
@@ -7821,11 +7823,12 @@ async fn workflow_run_with_vault_only_openai_codex_builds_pr_body() {
     assert_eq!(outcome.status, StageOutcome::Succeeded);
 
     let store_dir = test_store_dir(&run_options.run_dir);
-    let store = Arc::new(Database::new(
+    let store = Arc::new(fabro_store::test_support::test_database_with_blobs(
         Arc::new(LocalFileSystem::new_with_prefix(&store_dir).unwrap()),
         "",
         Duration::from_millis(1),
         None,
+        fabro_store::test_support::test_blob_store_at(&store_dir),
     ));
     let run_store = store.open_run_reader(&run_options.run_id).await.unwrap();
     let run_store_handle: fabro_workflow::runtime_store::RunStoreHandle = run_store.into();

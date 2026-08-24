@@ -116,7 +116,6 @@ mod tests {
     use std::time::Duration;
 
     use chrono::Utc;
-    use fabro_store::Database;
     use fabro_types::run_event::RunSubmittedProps;
     use fabro_types::{EventBody, RunEvent, fixtures, test_support};
     use object_store::memory::InMemory;
@@ -126,7 +125,7 @@ mod tests {
     use crate::records::RunSpec;
 
     async fn test_run_store() -> fabro_store::RunDatabase {
-        let store = Arc::new(Database::new(
+        let store = Arc::new(fabro_store::test_support::test_database(
             Arc::new(InMemory::new()),
             "",
             Duration::from_millis(1),

@@ -712,7 +712,7 @@ mod tests {
     use crate::transforms::Transform;
     use crate::workflow_bundle::BundledWorkflow;
     fn memory_store() -> Arc<Database> {
-        Arc::new(Database::new(
+        Arc::new(fabro_store::test_support::test_database(
             Arc::new(InMemory::new()),
             "",
             Duration::from_millis(1),
@@ -2345,7 +2345,7 @@ reasoning = false
         std::fs::create_dir_all(storage_dir.join("store")).unwrap();
         let object_store =
             Arc::new(LocalFileSystem::new_with_prefix(storage_dir.join("store")).unwrap());
-        let store = Arc::new(Database::new(
+        let store = Arc::new(fabro_store::test_support::test_database(
             object_store,
             "",
             Duration::from_millis(1),
@@ -2405,7 +2405,7 @@ reasoning = false
         std::fs::create_dir_all(storage_dir.join("store")).unwrap();
         let object_store =
             Arc::new(LocalFileSystem::new_with_prefix(storage_dir.join("store")).unwrap());
-        let store = Arc::new(Database::new(
+        let store = Arc::new(fabro_store::test_support::test_database(
             object_store,
             "",
             Duration::from_millis(1),

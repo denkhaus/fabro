@@ -26,7 +26,7 @@ use fabro_agent::Sandbox;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_sandbox::daytona::{DaytonaConfig, DaytonaSandbox};
 use fabro_static::EnvVars;
-use fabro_store::{ArtifactKey, ArtifactStore, Database};
+use fabro_store::{ArtifactKey, ArtifactStore};
 use fabro_types::{RunId, StageId, WorkflowSettings, parse_blob_ref};
 use fabro_util::shell;
 use fabro_workflow::artifact;
@@ -69,7 +69,7 @@ fn load_run_checkpoint(run_dir: &Path) -> Result<Checkpoint, Box<dyn std::error:
         test_store_dir(&run_dir)
     };
     let object_store = Arc::new(LocalFileSystem::new_with_prefix(store_dir)?);
-    let store = Arc::new(Database::new(
+    let store = Arc::new(fabro_store::test_support::test_database(
         object_store,
         "",
         std::time::Duration::from_millis(1),
@@ -173,7 +173,12 @@ async fn resolve_checkpoint_text(
     }
 
     let object_store = Arc::new(LocalFileSystem::new_with_prefix(test_store_dir(run_dir))?);
-    let store = Database::new(object_store, "", std::time::Duration::from_millis(1), None);
+    let store = fabro_store::test_support::test_database(
+        object_store,
+        "",
+        std::time::Duration::from_millis(1),
+        None,
+    );
     let run = store.open_run_reader(run_id).await?;
     let run_store = RunStoreHandle::from(run);
     Ok(artifact::resolve_text_or_blob_ref_str(current, &run_store).await?)

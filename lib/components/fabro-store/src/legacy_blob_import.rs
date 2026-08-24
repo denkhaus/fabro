@@ -8,18 +8,201 @@ use std::fmt;
 
 use bytes::Bytes;
 use fabro_types::BlobHash;
+use fabro_util::error;
+use futures::TryStreamExt as _;
 use sqlx::pool::PoolConnection;
-use sqlx::{Acquire as _, Sqlite};
+use sqlx::{Acquire as _, Sqlite, SqlitePool};
 #[cfg(test)]
 use tokio::sync::Barrier;
-use tracing::debug;
+use tracing::{debug, error};
 
+use crate::Database;
 use crate::keys::SlateKey;
-use crate::{BlobStore, Database};
 
 const MAX_BATCH_ROWS: usize = 100;
 const MAX_BATCH_BYTES: u64 = 1024 * 1024;
 const PASSIVE_CHECKPOINT_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Aggregate size and row count of the exact legacy blob keyspace.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LegacyBlobInventory {
+    pub rows:          u64,
+    pub bytes:         u64,
+    /// Legacy rows whose hash is not yet present in the SQLite blobs table.
+    pub pending_rows:  u64,
+    /// Bytes belonging to [`Self::pending_rows`].
+    pub pending_bytes: u64,
+}
+
+/// A failed strict inventory and the aggregate progress observed before it.
+pub struct LegacyBlobInventoryError {
+    report:  LegacyBlobInventory,
+    failure: LegacyBlobInventoryFailure,
+}
+
+impl LegacyBlobInventoryError {
+    #[must_use]
+    pub fn report(&self) -> &LegacyBlobInventory {
+        &self.report
+    }
+}
+
+impl fmt::Debug for LegacyBlobInventoryError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LegacyBlobInventoryError")
+            .field("report", &self.report)
+            .field("failure", &self.failure.kind())
+            .finish()
+    }
+}
+
+impl fmt::Display for LegacyBlobInventoryError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "legacy blob inventory failed after scanning {} rows: {}",
+            self.report.rows, self.failure
+        )
+    }
+}
+
+impl StdError for LegacyBlobInventoryError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        Some(&self.failure)
+    }
+}
+
+#[derive(strum::IntoStaticStr, thiserror::Error)]
+#[strum(serialize_all = "snake_case")]
+enum LegacyBlobInventoryFailure {
+    #[error("opening the legacy blob source")]
+    OpenSource(#[source] crate::Error),
+    #[error("opening the legacy blob scan")]
+    OpenSourceScan(#[source] slatedb::Error),
+    #[error("reading the legacy blob scan")]
+    ReadSourceScan(#[source] slatedb::Error),
+    #[error("a legacy blob key is not canonical")]
+    InvalidSourceKey,
+    #[error("reading a SQLite blob row for the legacy inventory")]
+    ReadDestination(#[source] sqlx::Error),
+    #[error("a legacy blob inventory counter overflowed")]
+    CounterOverflow,
+}
+
+impl LegacyBlobInventoryFailure {
+    fn kind(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl fmt::Debug for LegacyBlobInventoryFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LegacyBlobInventoryFailure")
+            .field("kind", &self.kind())
+            .finish()
+    }
+}
+
+/// Aggregate proof produced by a complete legacy-source and SQLite-target
+/// verification pass.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LegacyBlobVerificationReport {
+    pub source_rows:         u64,
+    pub source_bytes:        u64,
+    pub matched_rows:        u64,
+    pub matched_bytes:       u64,
+    pub target_rows:         u64,
+    pub target_bytes:        u64,
+    pub missing_rows:        u64,
+    pub invalid_source_rows: u64,
+    pub invalid_target_rows: u64,
+    pub conflicting_rows:    u64,
+}
+
+/// A failed complete verification and its aggregate partial report.
+pub struct LegacyBlobVerificationError {
+    report:  LegacyBlobVerificationReport,
+    failure: LegacyBlobVerificationFailure,
+}
+
+impl LegacyBlobVerificationError {
+    #[must_use]
+    pub fn report(&self) -> &LegacyBlobVerificationReport {
+        &self.report
+    }
+}
+
+impl fmt::Debug for LegacyBlobVerificationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LegacyBlobVerificationError")
+            .field("report", &self.report)
+            .field("failure", &self.failure.kind())
+            .finish()
+    }
+}
+
+impl fmt::Display for LegacyBlobVerificationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "legacy blob verification failed after checking {} source rows and {} target rows: {}",
+            self.report.source_rows, self.report.target_rows, self.failure
+        )
+    }
+}
+
+impl StdError for LegacyBlobVerificationError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        Some(&self.failure)
+    }
+}
+
+#[derive(strum::IntoStaticStr, thiserror::Error)]
+#[strum(serialize_all = "snake_case")]
+enum LegacyBlobVerificationFailure {
+    #[error("opening the legacy blob source")]
+    OpenSource(#[source] crate::Error),
+    #[error("opening the legacy blob scan")]
+    OpenSourceScan(#[source] slatedb::Error),
+    #[error("reading the legacy blob scan")]
+    ReadSourceScan(#[source] slatedb::Error),
+    #[error("a legacy blob key is not canonical")]
+    InvalidSourceKey,
+    #[error("legacy blob bytes do not match their key digest")]
+    SourceDigestMismatch,
+    #[error("reading a SQLite blob row for legacy verification")]
+    ReadDestination(#[source] sqlx::Error),
+    #[error("SQLite is missing a legacy blob row")]
+    MissingDestination,
+    #[error("SQLite contains different bytes for a legacy blob hash")]
+    DestinationConflict,
+    #[error("scanning SQLite blob rows")]
+    ScanTarget(#[source] sqlx::Error),
+    #[error("a SQLite blob hash is not canonical")]
+    InvalidTargetHash,
+    #[error("SQLite blob bytes do not match their hash")]
+    TargetDigestMismatch,
+    #[error("a legacy blob verification counter overflowed")]
+    CounterOverflow,
+}
+
+impl LegacyBlobVerificationFailure {
+    fn kind(&self) -> &'static str {
+        self.into()
+    }
+}
+
+impl fmt::Debug for LegacyBlobVerificationFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LegacyBlobVerificationFailure")
+            .field("kind", &self.kind())
+            .finish()
+    }
+}
 
 /// Aggregate progress from one legacy blob import attempt.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -101,9 +284,6 @@ impl StdError for LegacyBlobImportError {
 #[derive(strum::IntoStaticStr, thiserror::Error)]
 #[strum(serialize_all = "snake_case")]
 enum LegacyBlobImportFailure {
-    #[error("the legacy blob import target is not backed by SQLite")]
-    WrongTargetBackend,
-
     #[error("opening the legacy blob source")]
     OpenSource(#[source] crate::Error),
 
@@ -158,12 +338,6 @@ enum LegacyBlobImportFailure {
 
     #[error("the passive SQLite WAL checkpoint could not complete")]
     PassiveCheckpointBusy,
-
-    #[error("running the final SQLite WAL checkpoint")]
-    FinalCheckpoint(#[source] sqlx::Error),
-
-    #[error("the final SQLite WAL checkpoint could not complete")]
-    FinalCheckpointBusy,
 
     #[error("restoring the SQLite automatic checkpoint setting")]
     RestoreAutomaticCheckpoint {
@@ -245,8 +419,6 @@ struct ImportControls {
     #[cfg(test)]
     passive_checkpoint:                  bool,
     #[cfg(test)]
-    final_checkpoint:                    bool,
-    #[cfg(test)]
     restore_automatic_checkpoint:        bool,
 }
 
@@ -275,17 +447,6 @@ impl ImportControls {
         if self.passive_checkpoint {
             return Some(sqlx::Error::Protocol(
                 "injected passive checkpoint failure".to_owned(),
-            ));
-        }
-        let _ = self;
-        None
-    }
-
-    fn final_checkpoint_error(&self) -> Option<sqlx::Error> {
-        #[cfg(test)]
-        if self.final_checkpoint {
-            return Some(sqlx::Error::Protocol(
-                "injected final checkpoint failure".to_owned(),
             ));
         }
         let _ = self;
@@ -364,6 +525,158 @@ struct BatchReport {
 }
 
 impl Database {
+    /// Inventories the exact legacy SlateDB blob keyspace against the SQLite
+    /// blobs table in `pool`.
+    ///
+    /// Keys must be canonical, but value digests are not rehashed here: the
+    /// inventory only sizes the keyspace, and the import pass validates every
+    /// digest before any row is persisted. Rows whose hash the blobs table
+    /// does not contain yet are reported as pending so callers can size the
+    /// remaining import work.
+    pub async fn legacy_blob_inventory(
+        &self,
+        pool: &SqlitePool,
+    ) -> std::result::Result<LegacyBlobInventory, LegacyBlobInventoryError> {
+        let mut report = LegacyBlobInventory::default();
+        let result = self.run_legacy_blob_inventory(pool, &mut report).await;
+        match result {
+            Ok(()) => Ok(report),
+            Err(failure) => Err(LegacyBlobInventoryError { report, failure }),
+        }
+    }
+
+    async fn run_legacy_blob_inventory(
+        &self,
+        pool: &SqlitePool,
+        report: &mut LegacyBlobInventory,
+    ) -> Result<(), LegacyBlobInventoryFailure> {
+        let source = self
+            .open_db()
+            .await
+            .map_err(LegacyBlobInventoryFailure::OpenSource)?;
+        let prefix = legacy_blob_prefix();
+        let mut entries = source
+            .scan_prefix(&prefix)
+            .await
+            .map_err(LegacyBlobInventoryFailure::OpenSourceScan)?;
+        while let Some(entry) = entries
+            .next()
+            .await
+            .map_err(LegacyBlobInventoryFailure::ReadSourceScan)?
+        {
+            inventory_checked_add(&mut report.rows, 1)?;
+            let value_bytes = inventory_usize_to_u64(entry.value.len())?;
+            inventory_checked_add(&mut report.bytes, value_bytes)?;
+            let hash = parse_source_key(&entry.key, &prefix)
+                .ok_or(LegacyBlobInventoryFailure::InvalidSourceKey)?;
+            let imported: bool =
+                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM blobs WHERE hash = ?)")
+                    .bind(hash.to_string())
+                    .fetch_one(pool)
+                    .await
+                    .map_err(LegacyBlobInventoryFailure::ReadDestination)?;
+            if !imported {
+                inventory_checked_add(&mut report.pending_rows, 1)?;
+                inventory_checked_add(&mut report.pending_bytes, value_bytes)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Verifies every legacy blob against SQLite and validates every SQLite
+    /// blob row independently.
+    pub async fn verify_legacy_blobs_in(
+        &self,
+        pool: &SqlitePool,
+    ) -> std::result::Result<LegacyBlobVerificationReport, LegacyBlobVerificationError> {
+        let mut report = LegacyBlobVerificationReport::default();
+        let result = self.run_legacy_blob_verification(pool, &mut report).await;
+        match result {
+            Ok(()) => Ok(report),
+            Err(failure) => Err(LegacyBlobVerificationError { report, failure }),
+        }
+    }
+
+    async fn run_legacy_blob_verification(
+        &self,
+        pool: &SqlitePool,
+        report: &mut LegacyBlobVerificationReport,
+    ) -> Result<(), LegacyBlobVerificationFailure> {
+        let source = self
+            .open_db()
+            .await
+            .map_err(LegacyBlobVerificationFailure::OpenSource)?;
+        let prefix = legacy_blob_prefix();
+        let mut entries = source
+            .scan_prefix(&prefix)
+            .await
+            .map_err(LegacyBlobVerificationFailure::OpenSourceScan)?;
+        while let Some(entry) = entries
+            .next()
+            .await
+            .map_err(LegacyBlobVerificationFailure::ReadSourceScan)?
+        {
+            verification_checked_add(&mut report.source_rows, 1)?;
+            let value_bytes = verification_usize_to_u64(entry.value.len())?;
+            verification_checked_add(&mut report.source_bytes, value_bytes)?;
+            let hash = match validate_source_entry_common(&entry.key, &entry.value, &prefix) {
+                Ok(hash) => hash,
+                Err(SourceEntryFailure::InvalidKey) => {
+                    verification_checked_add(&mut report.invalid_source_rows, 1)?;
+                    return Err(LegacyBlobVerificationFailure::InvalidSourceKey);
+                }
+                Err(SourceEntryFailure::DigestMismatch) => {
+                    verification_checked_add(&mut report.invalid_source_rows, 1)?;
+                    return Err(LegacyBlobVerificationFailure::SourceDigestMismatch);
+                }
+            };
+            let equal: Option<bool> =
+                sqlx::query_scalar("SELECT data = ? FROM blobs WHERE hash = ?")
+                    .bind(entry.value.as_ref())
+                    .bind(hash.to_string())
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(LegacyBlobVerificationFailure::ReadDestination)?;
+            match equal {
+                Some(true) => {
+                    verification_checked_add(&mut report.matched_rows, 1)?;
+                    verification_checked_add(&mut report.matched_bytes, value_bytes)?;
+                }
+                Some(false) => {
+                    verification_checked_add(&mut report.conflicting_rows, 1)?;
+                    return Err(LegacyBlobVerificationFailure::DestinationConflict);
+                }
+                None => {
+                    verification_checked_add(&mut report.missing_rows, 1)?;
+                    return Err(LegacyBlobVerificationFailure::MissingDestination);
+                }
+            }
+        }
+
+        let mut rows =
+            sqlx::query_as::<_, (String, Vec<u8>)>("SELECT hash, data FROM blobs").fetch(pool);
+        while let Some((hash_text, bytes)) = rows
+            .try_next()
+            .await
+            .map_err(LegacyBlobVerificationFailure::ScanTarget)?
+        {
+            verification_checked_add(&mut report.target_rows, 1)?;
+            verification_checked_add(
+                &mut report.target_bytes,
+                verification_usize_to_u64(bytes.len())?,
+            )?;
+            let Some(hash) = parse_canonical_hash(&hash_text) else {
+                verification_checked_add(&mut report.invalid_target_rows, 1)?;
+                return Err(LegacyBlobVerificationFailure::InvalidTargetHash);
+            };
+            if BlobHash::new(&bytes) != hash {
+                verification_checked_add(&mut report.invalid_target_rows, 1)?;
+                return Err(LegacyBlobVerificationFailure::TargetDigestMismatch);
+            }
+        }
+        Ok(())
+    }
+
     /// Strictly imports the legacy SlateDB blob keyspace into a SQLite blob
     /// store.
     ///
@@ -374,20 +687,20 @@ impl Database {
     /// cleanup fails.
     pub async fn import_legacy_blobs_into(
         &self,
-        target: &BlobStore,
+        pool: &SqlitePool,
     ) -> std::result::Result<LegacyBlobImportReport, LegacyBlobImportError> {
-        self.import_legacy_blobs_with_controls(target, &ImportControls::default())
+        self.import_legacy_blobs_with_controls(pool, &ImportControls::default())
             .await
     }
 
     async fn import_legacy_blobs_with_controls(
         &self,
-        target: &BlobStore,
+        pool: &SqlitePool,
         controls: &ImportControls,
     ) -> std::result::Result<LegacyBlobImportReport, LegacyBlobImportError> {
         let mut report = LegacyBlobImportReport::default();
         let result = self
-            .run_legacy_blob_import(target, controls, &mut report)
+            .run_legacy_blob_import(pool, controls, &mut report)
             .await;
 
         match result {
@@ -397,20 +710,25 @@ impl Database {
             }
             Err(failure) => {
                 debug_import_outcome("failed", &report, Some(failure.kind()));
-                Err(LegacyBlobImportError { report, failure })
+                let import_error = LegacyBlobImportError { report, failure };
+                for cleanup_error in import_error.cleanup_errors() {
+                    let rendered = error::collect_chain(cleanup_error).join(": ");
+                    error!(
+                        error = %rendered,
+                        "Legacy blob import cleanup failed"
+                    );
+                }
+                Err(import_error)
             }
         }
     }
 
     async fn run_legacy_blob_import(
         &self,
-        target: &BlobStore,
+        pool: &SqlitePool,
         controls: &ImportControls,
         report: &mut LegacyBlobImportReport,
     ) -> Result<(), LegacyBlobImportFailure> {
-        let pool = target
-            .sqlite_pool_for_legacy_import()
-            .ok_or(LegacyBlobImportFailure::WrongTargetBackend)?;
         let mut connection = pool
             .acquire()
             .await
@@ -536,8 +854,48 @@ impl Database {
             report,
         )
         .await?;
-        run_checkpoint(connection, CheckpointKind::Final, controls).await
+        Ok(())
     }
+}
+
+#[derive(Clone, Copy)]
+enum SourceEntryFailure {
+    InvalidKey,
+    DigestMismatch,
+}
+
+fn legacy_blob_prefix() -> Vec<u8> {
+    SlateKey::new("blobs")
+        .with("sha256")
+        .into_prefix()
+        .as_ref()
+        .to_vec()
+}
+
+fn parse_canonical_hash(value: &str) -> Option<BlobHash> {
+    let canonical = value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+    canonical.then(|| value.parse().ok()).flatten()
+}
+
+fn parse_source_key(key: &[u8], prefix: &[u8]) -> Option<BlobHash> {
+    let suffix = key.strip_prefix(prefix)?;
+    let hash_text = std::str::from_utf8(suffix).ok()?;
+    parse_canonical_hash(hash_text)
+}
+
+fn validate_source_entry_common(
+    key: &[u8],
+    value: &[u8],
+    prefix: &[u8],
+) -> Result<BlobHash, SourceEntryFailure> {
+    let hash = parse_source_key(key, prefix).ok_or(SourceEntryFailure::InvalidKey)?;
+    if BlobHash::new(value) != hash {
+        return Err(SourceEntryFailure::DigestMismatch);
+    }
+    Ok(hash)
 }
 
 fn validate_source_entry(
@@ -546,29 +904,15 @@ fn validate_source_entry(
     prefix: &[u8],
     report: &mut LegacyBlobImportReport,
 ) -> Result<BlobHash, LegacyBlobImportFailure> {
-    let Some(suffix) = key.strip_prefix(prefix) else {
-        return invalid_source_row(report, LegacyBlobImportFailure::InvalidSourceKey);
-    };
-    let canonical = suffix.len() == 64
-        && suffix
-            .iter()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte));
-    if !canonical {
-        return invalid_source_row(report, LegacyBlobImportFailure::InvalidSourceKey);
+    match validate_source_entry_common(key, value, prefix) {
+        Ok(hash) => Ok(hash),
+        Err(SourceEntryFailure::InvalidKey) => {
+            invalid_source_row(report, LegacyBlobImportFailure::InvalidSourceKey)
+        }
+        Err(SourceEntryFailure::DigestMismatch) => {
+            invalid_source_row(report, LegacyBlobImportFailure::SourceDigestMismatch)
+        }
     }
-
-    let hash = std::str::from_utf8(suffix)
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .ok_or(LegacyBlobImportFailure::InvalidSourceKey);
-    let hash = match hash {
-        Ok(hash) => hash,
-        Err(failure) => return invalid_source_row(report, failure),
-    };
-    if BlobHash::new(value) != hash {
-        return invalid_source_row(report, LegacyBlobImportFailure::SourceDigestMismatch);
-    }
-    Ok(hash)
 }
 
 fn invalid_source_row<T>(
@@ -605,7 +949,7 @@ async fn commit_pending_batch(
 
     checked_add(bytes_since_checkpoint, batch_report.imported_bytes)?;
     if *bytes_since_checkpoint >= PASSIVE_CHECKPOINT_BYTES {
-        run_checkpoint(connection, CheckpointKind::Passive, controls).await?;
+        run_checkpoint(connection, controls).await?;
         checked_add(&mut report.passive_checkpoints, 1)?;
         *bytes_since_checkpoint = 0;
     }
@@ -675,47 +1019,46 @@ async fn commit_batch(
     }
 }
 
-#[derive(Clone, Copy)]
-enum CheckpointKind {
-    Passive,
-    Final,
-}
-
 async fn run_checkpoint(
     connection: &mut PoolConnection<Sqlite>,
-    kind: CheckpointKind,
     controls: &ImportControls,
 ) -> Result<(), LegacyBlobImportFailure> {
-    let (statement, injected_error) = match kind {
-        CheckpointKind::Passive => (
-            "PRAGMA wal_checkpoint(PASSIVE)",
-            controls.passive_checkpoint_error(),
-        ),
-        CheckpointKind::Final => (
-            "PRAGMA wal_checkpoint(TRUNCATE)",
-            controls.final_checkpoint_error(),
-        ),
-    };
-    if let Some(source) = injected_error {
-        return Err(match kind {
-            CheckpointKind::Passive => LegacyBlobImportFailure::PassiveCheckpoint(source),
-            CheckpointKind::Final => LegacyBlobImportFailure::FinalCheckpoint(source),
-        });
+    if let Some(source) = controls.passive_checkpoint_error() {
+        return Err(LegacyBlobImportFailure::PassiveCheckpoint(source));
     }
 
-    let result = sqlx::query_as::<_, (i64, i64, i64)>(statement)
+    let result = sqlx::query_as::<_, (i64, i64, i64)>("PRAGMA wal_checkpoint(PASSIVE)")
         .fetch_one(&mut **connection)
         .await;
-    let (busy, _, _) = result.map_err(|source| match kind {
-        CheckpointKind::Passive => LegacyBlobImportFailure::PassiveCheckpoint(source),
-        CheckpointKind::Final => LegacyBlobImportFailure::FinalCheckpoint(source),
-    })?;
+    let (busy, _, _) = result.map_err(LegacyBlobImportFailure::PassiveCheckpoint)?;
     if busy != 0 {
-        return Err(match kind {
-            CheckpointKind::Passive => LegacyBlobImportFailure::PassiveCheckpointBusy,
-            CheckpointKind::Final => LegacyBlobImportFailure::FinalCheckpointBusy,
-        });
+        return Err(LegacyBlobImportFailure::PassiveCheckpointBusy);
     }
+    Ok(())
+}
+
+fn inventory_usize_to_u64(value: usize) -> Result<u64, LegacyBlobInventoryFailure> {
+    u64::try_from(value).map_err(|_| LegacyBlobInventoryFailure::CounterOverflow)
+}
+
+fn inventory_checked_add(value: &mut u64, amount: u64) -> Result<(), LegacyBlobInventoryFailure> {
+    *value = value
+        .checked_add(amount)
+        .ok_or(LegacyBlobInventoryFailure::CounterOverflow)?;
+    Ok(())
+}
+
+fn verification_usize_to_u64(value: usize) -> Result<u64, LegacyBlobVerificationFailure> {
+    u64::try_from(value).map_err(|_| LegacyBlobVerificationFailure::CounterOverflow)
+}
+
+fn verification_checked_add(
+    value: &mut u64,
+    amount: u64,
+) -> Result<(), LegacyBlobVerificationFailure> {
+    *value = value
+        .checked_add(amount)
+        .ok_or(LegacyBlobVerificationFailure::CounterOverflow)?;
     Ok(())
 }
 
@@ -794,23 +1137,24 @@ mod tests {
         source:    Database,
         source_db: slatedb::Db,
         sqlite:    sqlx::SqlitePool,
-        target:    BlobStore,
+        target:    Arc<BlobStore>,
     }
 
     impl TestContext {
         async fn new() -> TestResult<Self> {
+            let dir = tempfile::tempdir()?;
+            let sqlite = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
+            sqlite.migrate().await?;
+            let sqlite = sqlite.clone_pool();
+            let target = Arc::new(BlobStore::new(sqlite.clone()));
             let source = Database::new(
                 Arc::new(InMemory::new()),
                 "legacy-blob-import-tests",
                 Duration::from_millis(1),
                 None,
+                Arc::clone(&target),
             );
             let source_db = source.open_db().await?;
-            let dir = tempfile::tempdir()?;
-            let sqlite = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
-            sqlite.migrate().await?;
-            let sqlite = sqlite.clone_pool();
-            let target = BlobStore::new(sqlite.clone());
             Ok(Self {
                 _dir: dir,
                 source,
@@ -828,7 +1172,7 @@ mod tests {
                 .max_connections(1)
                 .connect_with(options)
                 .await?;
-            context.target = BlobStore::new(sqlite.clone());
+            context.target = Arc::new(BlobStore::new(sqlite.clone()));
             context.sqlite = sqlite;
             Ok(context)
         }
@@ -892,7 +1236,7 @@ mod tests {
         }
 
         async fn import(&self) -> TestResult<LegacyBlobImportReport> {
-            Ok(self.source.import_legacy_blobs_into(&self.target).await?)
+            Ok(self.source.import_legacy_blobs_into(&self.sqlite).await?)
         }
     }
 
@@ -977,6 +1321,135 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn inventory_streams_the_exact_prefix_and_reports_logical_bytes() -> TestResult<()> {
+        let context = TestContext::new().await?;
+        context.put_blob(b"").await?;
+        context.put_blob(&[0, 0xff, 0x80, b'a']).await?;
+        context
+            .source_db
+            .put(
+                SlateKey::new("blobs").with("other").with("ignored"),
+                b"nearby",
+            )
+            .await?;
+
+        let inventory = context
+            .source
+            .legacy_blob_inventory(&context.sqlite)
+            .await?;
+
+        assert_eq!(inventory.rows, 2);
+        assert_eq!(inventory.bytes, 4);
+        assert_eq!(inventory.pending_rows, 2);
+        assert_eq!(inventory.pending_bytes, 4);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn inventory_reports_already_imported_rows_as_not_pending() -> TestResult<()> {
+        let context = TestContext::new().await?;
+        context.put_blob(b"imported-before-inventory").await?;
+        context.import().await?;
+        context.put_blob(b"still-pending").await?;
+
+        let inventory = context
+            .source
+            .legacy_blob_inventory(&context.sqlite)
+            .await?;
+
+        assert_eq!(inventory.rows, 2);
+        assert_eq!(inventory.pending_rows, 1);
+        assert_eq!(
+            inventory.pending_bytes,
+            u64::try_from(b"still-pending".len())?
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn verification_checks_every_source_and_allows_valid_sqlite_only_rows() -> TestResult<()>
+    {
+        let context = TestContext::new().await?;
+        context.put_blob(b"legacy").await?;
+        context.import().await?;
+        let sqlite_only = b"written-after-activation";
+        context
+            .insert_destination(BlobHash::new(sqlite_only), sqlite_only)
+            .await?;
+
+        let report = context
+            .source
+            .verify_legacy_blobs_in(&context.sqlite)
+            .await?;
+
+        assert_eq!(report.source_rows, 1);
+        assert_eq!(report.matched_rows, 1);
+        assert_eq!(report.target_rows, 2);
+        assert_eq!(report.missing_rows, 0);
+        assert_eq!(report.invalid_source_rows, 0);
+        assert_eq!(report.invalid_target_rows, 0);
+        assert_eq!(report.conflicting_rows, 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn verification_reports_a_missing_destination_without_exposing_its_hash() -> TestResult<()>
+    {
+        let context = TestContext::new().await?;
+        let bytes = b"missing-sensitive-content";
+        let hash = context.put_blob(bytes).await?;
+
+        let error = context
+            .source
+            .verify_legacy_blobs_in(&context.sqlite)
+            .await
+            .expect_err("a missing destination row must fail verification");
+
+        assert_eq!(error.report().source_rows, 1);
+        assert_eq!(error.report().missing_rows, 1);
+        let rendered = format!("{error} {error:?}");
+        assert!(!rendered.contains(&hash.to_string()));
+        assert!(!rendered.contains(std::str::from_utf8(bytes)?));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn verification_rejects_invalid_sqlite_hashes_and_bytes() -> TestResult<()> {
+        let malformed_hash = TestContext::new().await?;
+        let mut connection = malformed_hash.sqlite.acquire().await?;
+        sqlx::query("PRAGMA ignore_check_constraints = ON")
+            .execute(&mut *connection)
+            .await?;
+        sqlx::query("INSERT INTO blobs (hash, data) VALUES (?, ?)")
+            .bind("not-a-canonical-hash")
+            .bind(b"bytes".as_slice())
+            .execute(&mut *connection)
+            .await?;
+        sqlx::query("PRAGMA ignore_check_constraints = OFF")
+            .execute(&mut *connection)
+            .await?;
+        drop(connection);
+        let error = malformed_hash
+            .source
+            .verify_legacy_blobs_in(&malformed_hash.sqlite)
+            .await
+            .expect_err("malformed SQLite hashes must fail verification");
+        assert_eq!(error.report().invalid_target_rows, 1);
+
+        let mismatched_bytes = TestContext::new().await?;
+        mismatched_bytes
+            .insert_destination(BlobHash::new(b"expected"), b"different")
+            .await?;
+        let error = mismatched_bytes
+            .source
+            .verify_legacy_blobs_in(&mismatched_bytes.sqlite)
+            .await
+            .expect_err("SQLite bytes must match their hash");
+        assert_eq!(error.report().invalid_target_rows, 1);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn rejects_every_noncanonical_legacy_key_shape() -> TestResult<()> {
         let valid_hash = BlobHash::new(b"valid-shape").to_string();
         let cases = [
@@ -1001,7 +1474,7 @@ mod tests {
 
             let error = context
                 .source
-                .import_legacy_blobs_into(&context.target)
+                .import_legacy_blobs_into(&context.sqlite)
                 .await
                 .expect_err("noncanonical key should fail import");
 
@@ -1031,7 +1504,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_into(&context.target)
+            .import_legacy_blobs_into(&context.sqlite)
             .await
             .expect_err("digest mismatch should fail import");
 
@@ -1056,7 +1529,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_into(&context.target)
+            .import_legacy_blobs_into(&context.sqlite)
             .await
             .expect_err("invalid row should stop the import");
 
@@ -1097,7 +1570,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_into(&context.target)
+            .import_legacy_blobs_into(&context.sqlite)
             .await
             .expect_err("differing destination row should fail import");
 
@@ -1125,7 +1598,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_into(&context.target)
+            .import_legacy_blobs_into(&context.sqlite)
             .await
             .expect_err("last-row conflict should interrupt import");
 
@@ -1241,7 +1714,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_with_controls(&context.target, &controls)
+            .import_legacy_blobs_with_controls(&context.sqlite, &controls)
             .await
             .expect_err("injected passive checkpoint should fail import");
 
@@ -1261,33 +1734,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn final_checkpoint_failure_returns_committed_progress() -> TestResult<()> {
-        let context = TestContext::new().await?;
-        context
-            .put_blob(b"committed-before-final-checkpoint")
-            .await?;
-        let controls = ImportControls {
-            final_checkpoint: true,
-            ..ImportControls::default()
-        };
-
-        let error = context
-            .source
-            .import_legacy_blobs_with_controls(&context.target, &controls)
-            .await
-            .expect_err("injected final checkpoint should fail import");
-
-        assert_eq!(error.report().imported_rows, 1);
-        assert_eq!(error.report().committed_batches, 1);
-        assert!(matches!(
-            &error.failure,
-            LegacyBlobImportFailure::FinalCheckpoint(sqlx::Error::Protocol(_))
-        ));
-        assert_eq!(context.destination_rows().await?, 1);
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn source_transport_failure_preserves_commits_and_typed_source() -> TestResult<()> {
         let context = TestContext::new().await?;
         seed_blobs(&context, 101).await?;
@@ -1298,7 +1744,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_with_controls(&context.target, &controls)
+            .import_legacy_blobs_with_controls(&context.sqlite, &controls)
             .await
             .expect_err("injected source transport failure should stop import");
 
@@ -1329,10 +1775,12 @@ mod tests {
             restore_automatic_checkpoint: true,
             ..ImportControls::default()
         };
+        let capture = CapturedEvents::default();
 
         let error = context
             .source
-            .import_legacy_blobs_with_controls(&context.target, &controls)
+            .import_legacy_blobs_with_controls(&context.sqlite, &controls)
+            .with_subscriber(capture.clone())
             .await
             .expect_err("both injected failures should fail import");
 
@@ -1348,6 +1796,15 @@ mod tests {
                 .cleanup_errors()
                 .any(|source| source.downcast_ref::<sqlx::Error>().is_some()),
             "restoration source was absent from cleanup errors"
+        );
+        let events = capture.events().join("\n");
+        assert!(
+            events.contains("Legacy blob import cleanup failed"),
+            "captured: {events}"
+        );
+        assert!(
+            events.contains("injected automatic checkpoint restoration failure"),
+            "captured: {events}"
         );
         Ok(())
     }
@@ -1368,7 +1825,7 @@ mod tests {
         failure.put_raw(invalid_key, b"invalid").await?;
         failure
             .source
-            .import_legacy_blobs_into(&failure.target)
+            .import_legacy_blobs_into(&failure.sqlite)
             .await
             .expect_err("invalid source should fail import");
         assert_eq!(failure.automatic_checkpoint().await?, 41);
@@ -1377,12 +1834,6 @@ mod tests {
 
     #[tokio::test]
     async fn cancellation_retires_a_connection_with_disabled_checkpointing() -> TestResult<()> {
-        let source = Database::new(
-            Arc::new(InMemory::new()),
-            "legacy-blob-import-cancellation-test",
-            Duration::from_millis(1),
-            None,
-        );
         let dir = tempfile::tempdir()?;
         let options = SqliteConnectOptions::new()
             .filename(dir.path().join("fabro.sqlite3"))
@@ -1396,6 +1847,13 @@ mod tests {
             .execute(&pool)
             .await?;
         let target = Arc::new(BlobStore::new(pool.clone()));
+        let source = Database::new(
+            Arc::new(InMemory::new()),
+            "legacy-blob-import-cancellation-test",
+            Duration::from_millis(1),
+            None,
+            Arc::clone(&target),
+        );
 
         let mut connection = pool.acquire().await?;
         set_automatic_checkpoint(&mut connection, 73).await?;
@@ -1408,11 +1866,11 @@ mod tests {
         };
         let task = tokio::spawn({
             let source = source.clone();
-            let target = Arc::clone(&target);
+            let pool = pool.clone();
             async move {
                 let mut report = LegacyBlobImportReport::default();
                 source
-                    .run_legacy_blob_import(&target, &controls, &mut report)
+                    .run_legacy_blob_import(&pool, &controls, &mut report)
                     .await
             }
         });
@@ -1442,7 +1900,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_with_controls(&context.target, &controls)
+            .import_legacy_blobs_with_controls(&context.sqlite, &controls)
             .await
             .expect_err("injected restoration failure should fail import");
 
@@ -1459,27 +1917,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn slate_backed_target_is_rejected_before_scanning() -> TestResult<()> {
-        let context = TestContext::new().await?;
-        context.put_blob(b"never-scanned").await?;
-        let slate_target = context.source.blobs().await?;
-
-        let error = context
-            .source
-            .import_legacy_blobs_into(&slate_target)
-            .await
-            .expect_err("Slate target should be rejected");
-
-        assert_eq!(*error.report(), LegacyBlobImportReport::default());
-        assert!(matches!(
-            &error.failure,
-            LegacyBlobImportFailure::WrongTargetBackend
-        ));
-        assert_eq!(context.destination_rows().await?, 0);
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn logs_and_error_rendering_expose_counts_but_not_row_data() -> TestResult<()> {
         let context = TestContext::new().await?;
         let sensitive_key_fragment = "sensitive-invalid-legacy-key";
@@ -1491,7 +1928,7 @@ mod tests {
 
         let error = context
             .source
-            .import_legacy_blobs_into(&context.target)
+            .import_legacy_blobs_into(&context.sqlite)
             .with_subscriber(capture.clone())
             .await
             .expect_err("invalid key should fail import");

@@ -262,7 +262,6 @@ impl EngineServices {
         reason = "Test scaffolding must build a slate-backed run store from sync code."
     )]
     pub fn test_default() -> Self {
-        use fabro_store::Database;
         use object_store::memory::InMemory;
 
         use crate::handler::start;
@@ -286,7 +285,7 @@ impl EngineServices {
             }
         }
 
-        let store = Arc::new(Database::new(
+        let store = Arc::new(fabro_store::test_support::test_database(
             Arc::new(InMemory::new()),
             "",
             Duration::from_millis(1),

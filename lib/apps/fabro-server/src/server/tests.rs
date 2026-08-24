@@ -3574,7 +3574,7 @@ async fn store_workflow_version(
     )
     .unwrap();
     let version = fabro_workflow_version::ValidatedWorkflowVersion::new(version).unwrap();
-    let blobs = state.store_ref().blobs().await.unwrap();
+    let blobs = state.store_ref().blobs();
     fabro_workflow_version::WorkflowVersionStore::new(blobs)
         .put(&version)
         .await

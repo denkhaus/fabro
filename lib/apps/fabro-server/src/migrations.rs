@@ -7,9 +7,12 @@ use fabro_vault::SecretStore;
 mod legacy_vault_entries;
 #[path = "../migrations/2026052501_optional_server_env_secrets_to_vault.rs"]
 mod optional_server_env_secrets_to_vault;
+#[path = "../migrations/2026082301_sqlite_blob_activation.rs"]
+mod sqlite_blob_activation;
 
 pub(crate) use legacy_vault_entries::REMOVAL_DEADLINE as LEGACY_VAULT_REMOVAL_DEADLINE;
 pub(crate) use optional_server_env_secrets_to_vault::REMOVAL_DEADLINE as OPTIONAL_SERVER_ENV_SECRETS_REMOVAL_DEADLINE;
+pub(crate) use sqlite_blob_activation::activate_blob_storage;
 
 pub(crate) type LegacyVaultMigrationReport = legacy_vault_entries::LegacyVaultMigrationReport;
 pub(crate) type OptionalServerEnvSecretsMigrationReport =

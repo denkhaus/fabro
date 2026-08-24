@@ -969,7 +969,7 @@ mod tests {
     }
 
     fn test_store() -> Arc<Database> {
-        Arc::new(Database::new(
+        Arc::new(fabro_store::test_support::test_database(
             Arc::new(InMemory::new()),
             "",
             Duration::from_millis(1),

@@ -175,7 +175,7 @@ use crate::{
 mod automation_scheduler;
 mod handler;
 mod pull_request_supervisor;
-mod resource_sampler;
+pub(crate) mod resource_sampler;
 mod session_runtime;
 
 pub(crate) use automation_scheduler::spawn_automation_scheduler;
