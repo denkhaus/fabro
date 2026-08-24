@@ -9987,19 +9987,25 @@ async fn create_run_pull_request_persists_generation_failure() {
 
     let creation = wait_for_pull_request_creation(&app, run_id).await;
 
+    // Since the deterministic PR-content fallback, an LLM generation failure
+    // no longer fails the creation: the PR is published with the
+    // goal-derived title. This fixture stops at the unmocked GitHub PR
+    // creation route, so the failure we persist is the GitHub 404 — the
+    // point is that the LLM error did NOT abort the publish flow earlier.
     assert_eq!(creation["status"], "failed");
-    // The unconfigured LLM is what fails this fixture; pin the error to the
-    // generation step so the test cannot pass on an earlier validation error.
     assert!(
         creation["error"]
             .as_str()
-            .is_some_and(|error| error.contains("LLM generation failed")),
-        "unexpected error: {:?}",
+            .is_some_and(|error| !error.contains("LLM generation failed")),
+        "LLM failure must not abort the publish flow anymore: {:?}",
         creation["error"]
     );
     assert!(creation["pull_request"].is_null());
     branch_mock.assert();
-    find_mock.assert();
+    // Fallback title flows into create_pull_request, which 404s on the
+    // unmocked route, then reconcile runs once more (before + after the
+    // failed create) — the LLM failure no longer aborts before GitHub.
+    assert_eq!(find_mock.calls_async().await, 2);
     state.shutdown_token().cancel();
     supervisor.await.unwrap();
 }
