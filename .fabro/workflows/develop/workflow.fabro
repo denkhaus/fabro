@@ -72,11 +72,13 @@ digraph Develop {
         max_retries=1
     ]
 
-    // Reviewer: prompt node (shape=tab) — read-only BY POLICY, not by
-    // capability. Tools available for verification (reading blob refs,
-    // read-only git); never for modification. Judges primarily from
-    // context (brief, summary, gate result, evidence), falling back to
-    // tools when the context is incomplete.
+    // Reviewer: AGENT node — read-only BY POLICY, not by capability.
+    // Run 01M0SS23MJ measured shape=tab (prompt handler): tool_time_ms 0
+    // on both visits while the prompt promised tools — blob-ref'd evidence
+    // and seed spec were UNREADABLE, and reviewer@1 rejected green work as
+    // "verification could not be completed". As an agent node the tools
+    // exist: reading blob refs, read-only git, re-running the gate are
+    // real fallbacks; modification stays forbidden by policy.
     //
     // fidelity="summary:high" is the evidence pipe: the default `compact`
     // preamble truncates a command node's output to roughly the first 300
@@ -101,7 +103,6 @@ digraph Develop {
     // leave the seed open; the next run re-enters the review cycle.
     reviewer [
         label="Reviewer",
-        shape=tab,
         prompt="@prompts/reviewer.md",
         fidelity="summary:high",
         preamble_stages_ignore="planner,implementer,reviewer",
@@ -121,6 +122,12 @@ digraph Develop {
     start -> planner
 
     planner -> exit        [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    // Cycle-guard exit (run 01M0SS23MJ): the planner prompt routes Blocked
+    // after the third review/gate cycle on one seed, but the graph had no
+    // matching edge — the guard could never fire. Seed stays open for a
+    // human; only an approved review closes it. Listed BEFORE the generic
+    // outcome=failed edge so the specific label wins the routing.
+    planner -> exit        [label="Blocked (seed stays open for a human)", condition="preferred_label=\"Blocked\""]
     planner -> exit        [label="Planner failed", condition="outcome=failed"]
     planner -> implementer [label="Seed claimed"]
 
@@ -133,7 +140,13 @@ digraph Develop {
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
     evidence -> exit     [label="Capture failed (seed stays open for the next run)"]
 
-    reviewer -> planner [label="Approved", condition="preferred_label=\"Approved\""]
-    reviewer -> planner [label="Changes requested"]
-    reviewer -> exit    [label="Reviewer failed", condition="outcome=failed"]
+    reviewer -> planner   [label="Approved", condition="preferred_label=\"Approved\""]
+    reviewer -> planner   [label="Changes requested"]
+    // Fast re-review path (run 01M0SS23MJ): a procedural rejection
+    // ("verification could not be completed" — evidence delivery, not code)
+    // must NOT burn a full implementer+gate cycle on an unchanged tree
+    // (~3.5 min, 5 visits observed). Re-capture only; the reviewer prompt
+    // bounds this to one retry per seed, then it must decide.
+    reviewer -> evidence  [label="Verification blocked", condition="preferred_label=\"Verification blocked\""]
+    reviewer -> exit      [label="Reviewer failed", condition="outcome=failed"]
 }
