@@ -1,6 +1,10 @@
 services:
   fabro:
-    image: ghcr.io/fabro-sh/fabro:${FABRO_VERSION:-nightly}
+    # Default `local`: the image `just build-image` produces. The previous
+    # default `nightly` silently ignored the fresh build and ran the cached
+    # public nightly instead (observed: CLI 0.335 vs server 0.331, run
+    # config rejected at the then-unknown [run.pull_request] model key).
+    image: ghcr.io/fabro-sh/fabro:${FABRO_VERSION:-local}
     restart: always
     ports:
       - "${FABRO_PORT:-32276}:32276"
