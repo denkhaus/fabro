@@ -632,7 +632,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-24T22:19:39.857188708Z",
-  "last_event_at": "2026-08-24T22:20:45.065849591Z",
+  "last_event_at": "2026-08-24T22:23:16.306268179Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -679,9 +679,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 74,
       "checkpoint": {
-        "timestamp": "2026-08-24T22:20:45.332277052Z",
+        "timestamp": "2026-08-24T22:20:49.928411696Z",
         "current_node": "planner",
         "completed_nodes": [
           "start",
@@ -689,45 +689,41 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.retry_count.planner": 0,
-          "internal.run_id": "01M0TXPX09279433MGWSWPVVP4",
-          "internal.thread_id": "start",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "thread.start.current_node": "planner",
           "graph.preamble_budget_kb": "24",
+          "internal.retry_count.planner": 0,
+          "failure_class": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_id": "fabro-cfb6",
           "internal.node_visit_count": 1,
-          "failure_signature": "",
+          "internal.run_id": "01M0TXPX09279433MGWSWPVVP4",
+          "internal.work_dir": "/workspace/fabro",
+          "preferred_label": "Seed claimed",
+          "internal.retry_count.start": 0,
+          "internal.thread_id": "start",
+          "thread.start.current_node": "planner",
+          "current_node": "planner",
+          "graph.max_node_visits": "40",
           "outcome": "succeeded",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "graph.rankdir": "LR",
+          "internal.seed_cycle_anchor": "fabro-cfb6",
+          "current_seed_brief": "Add a `-seed <int>` flag to gofib printing exactly one Fibonacci entry (index i) in the active output mode. Acceptance criteria: (1) `-seed i` prints one line — text `i: <value>`, `-json` one object `{\"index\":i,\"fib\":\"<string>\"}`, `-pretty` single-row; (2) precedence: `-version` wins over everything, positive `-seed` overrides `-n`/`-start`/`-limit` so only index i prints, and range-flag validation is skipped when `-seed > 0` (annotated choice: spec silent, mirrors -version's ignore-invalid semantics); (3) `-seed 0` is the unset sentinel — plain gofib output unchanged; (4) `-seed < 0` exits non-zero with a stderr error in existing flag-error style; (5) computation uses existing `Fib(n)` only, no inline recomputation; (6) `README.md` flag table gains the `-seed` row with a REAL captured example and output plus the precedence note; (7) table-driven tests in `/workspace/fabro/fib_test.go` cover single index, override of -n/-start/-limit, sentinel, -json/-pretty combos, negative rejection, -version precedence, and regression-pin existing behavior; (8) `just qualitygate` green.",
           "current_seed_title": "gofib: add -seed flag for reproducible index selection",
+          "failure_signature": "",
+          "last_stage": "planner",
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "last_response": "Claimed. Brief distilled with one ambiguity annotated (spec silent on `-seed` + invalid range flags).\n\n**Seed `fabro-cfb6` — gofib: add `-seed` flag for single-index lookup.** Fresh claim; worktree ",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
             "chars": 3024,
             "preview": "Claimed. Brief distilled with one ambiguity annotated (spec silent on `-seed` + invalid range flags).\n\n**Seed `fabro-cfb6` — gofib: add `-seed` flag for single-index lookup.** Fresh claim; worktree "
           },
-          "graph.max_node_visits": "40",
-          "graph.rankdir": "LR",
-          "current_seed_id": "fabro-cfb6",
-          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
-          "preferred_label": "Seed claimed",
-          "last_response": "Claimed. Brief distilled with one ambiguity annotated (spec silent on `-seed` + invalid range flags).\n\n**Seed `fabro-cfb6` — gofib: add `-seed` flag for single-index lookup.** Fresh claim; worktree ",
-          "failure_class": "",
-          "current_seed_brief": "Add a `-seed <int>` flag to gofib printing exactly one Fibonacci entry (index i) in the active output mode. Acceptance criteria: (1) `-seed i` prints one line — text `i: <value>`, `-json` one object `{\"index\":i,\"fib\":\"<string>\"}`, `-pretty` single-row; (2) precedence: `-version` wins over everything, positive `-seed` overrides `-n`/`-start`/`-limit` so only index i prints, and range-flag validation is skipped when `-seed > 0` (annotated choice: spec silent, mirrors -version's ignore-invalid semantics); (3) `-seed 0` is the unset sentinel — plain gofib output unchanged; (4) `-seed < 0` exits non-zero with a stderr error in existing flag-error style; (5) computation uses existing `Fib(n)` only, no inline recomputation; (6) `README.md` flag table gains the `-seed` row with a REAL captured example and output plus the precedence note; (7) table-driven tests in `/workspace/fabro/fib_test.go` cover single index, override of -n/-start/-limit, sentinel, -json/-pretty combos, negative rejection, -version precedence, and regression-pin existing behavior; (8) `just qualitygate` green.",
-          "internal.fidelity": "compact",
-          "internal.work_dir": "/workspace/fabro",
-          "current_node": "planner",
-          "seed_cycles": {
-            "planner": 1
-          },
-          "internal.seed_cycle_anchor": "fabro-cfb6",
-          "last_stage": "planner",
-          "internal.retry_count.start": 0
+          "internal.fidelity": "compact"
         },
         "node_outcomes": {
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -772,12 +768,188 @@
               "tool_time_ms": 1309,
               "active_time_ms": 54532
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           }
         },
         "next_node_id": "implementer",
+        "git_commit_sha": "aac045201b1bbd884ddc5568f5aecbfdfe38b4c9",
         "node_visits": {
           "start": 1,
           "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl b/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl\nnew file mode 100644\nindex 0000000..ff3bbed\n--- /dev/null\n+++ b/.fabro/journal/01M0TXPX09279433MGWSWPVVP4.jsonl\n@@ -0,0 +1,2 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:19:42Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TXPX09279433MGWSWPVVP4\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T22:20:45Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 19ac941..b71801f 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -7,5 +7,5 @@\n {\"id\":\"fabro-e6df\",\"title\":\"gofib: add README with usage and flag reference\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T11:38:40.410Z\",\"updatedAt\":\"2026-08-24T11:47:51.762Z\",\"description\":\"## Goal\\n\\nA README.md at the repo root that documents the gofib CLI: what it is\\n(Go CLI printing Fibonacci numbers), install/build via mise/just,\\nusage, and the full flag reference.\\n\\n## Flag reference to cover\\n\\n- `-n <int>`: how many numbers to print (default 100, must be >= 1)\\n- `-json`: JSON Lines output, one object per number (`{\\\"index\\\":<int>,\\\"fib\\\":\\\"<string>\\\"}`)\\n- `-pretty`: aligned column output\\n- `-version`: print version and exit\\n\\nUse the vocabulary from CONTEXT.md (text mode, JSON mode, count flag).\\nShow real example invocations and their actual output — run the built\\nbinary to capture it, do not invent output.\\n\\n## Acceptance\\n\\n- README.md exists at the repo root\\n- Examples match actual binary behavior\\n- `just qualitygate` green\",\"closedAt\":\"2026-08-24T11:47:51.762Z\"}\n {\"id\":\"fabro-4f3e\",\"title\":\"gofib: add -start flag to begin printing at a given index\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T14:23:57.517Z\",\"updatedAt\":\"2026-08-24T14:33:23.460Z\",\"description\":\"## Goal\\n\\nA `-start <int>` flag: the first Fibonacci index to print. Default 0.\\nCombines with `-n` (how many), `-json`, and `-pretty`.\\n\\n## Semantics\\n\\n- `-start 10 -n 5` prints indices 10..14 in the active output mode\\n  (text mode line format stays `<index>: <value>`).\\n- Validation mirrors the `-n` contract: values < 0 exit non-zero with a\\n  stderr error message.\\n- `-start` must not change what `-n` counts (still the number of lines).\\n\\n## Acceptance\\n\\n- Flag parsed via the flag package; `Fib(n)` stays the only computation\\n  (no inline recomputation — see CONTEXT.md).\\n- Table-driven tests: default start, start+n combination, start with\\n  -json and -pretty, negative start rejected.\\n- README.md flag table gains the `-start` row; example invocation with\\n  REAL output captured from the built binary (do not invent output).\\n- `just qualitygate` green\",\"closedAt\":\"2026-08-24T14:33:23.460Z\"}\n {\"id\":\"fabro-8208\",\"title\":\"gofib: add -limit flag to cap output size safely\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T16:14:54.720Z\",\"updatedAt\":\"2026-08-24T16:31:03.919Z\",\"description\":\"## Goal\\n\\nA `-limit <int>` flag: hard cap on the LARGEST index gofib will print,\\nindependent of `-start`/`-n`. Protects against accidental huge output\\nwhen `-n` is large (e.g. `-n 100000` should still stop at the limit).\\n\\n## Semantics\\n\\n- `-limit <int>`: do not print any index > limit. Default: no limit.\\n- Combines with `-start` and `-n`: the effective output is the\\n  intersection of all three (start <= index <= limit, at most -n lines).\\n- Validation mirrors existing flags: values < 0 exit non-zero with a\\n  stderr error message.\\n- `-limit` smaller than `-start` produces empty output (zero lines),\\n  NOT an error — document this in the README.\\n- `-json` and `-pretty` combine as usual on the reduced set.\\n\\n## Acceptance\\n\\n- Flag parsed via the flag package; `Fib(n)` stays the only computation\\n  (no inline recomputation — CONTEXT.md).\\n- Table-driven tests: default (no limit), limit caps large -n, limit+start\\n  intersection, limit < start gives empty output and exit 0, negative\\n  limit rejected, limit with -json and -pretty.\\n- README.md flag table gains the `-limit` row with a REAL example\\n  invocation and its actual output (capture from the built binary, do not\\n  invent output).\\n- `just qualitygate` green\",\"closedAt\":\"2026-08-24T16:31:03.919Z\"}\n-{\"id\":\"fabro-cfb6\",\"title\":\"gofib: add -seed flag for reproducible index selection\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T19:15:32.840Z\",\"updatedAt\":\"2026-08-24T19:15:32.840Z\",\"description\":\"## Goal\\n\\nA `-seed <int>` flag: print ONLY the Fibonacci number at a given index\\n(one line) — a tiny lookup mode instead of a range, for spot-checks and\\nscripting against specific indices.\\n\\n## Semantics\\n\\n- `-seed i` prints exactly one entry for index `i` in the active output\\n  mode: text mode `i: <value>`; JSON mode one object\\n  `{\\\"index\\\":i,\\\"fib\\\":\\\"<string>\\\"}`; pretty mode single-row alignment.\\n- `-seed` overrides the RANGE flags: with `-seed 10 -n 5 -start 2` only\\n  index 10 prints (exactly one line). Document that precedence in the\\n  README row.\\n- `-version` keeps its top precedence (existing behavior, README pins\\n  it).\\n- Validation mirrors the other flags: values < 0 exit non-zero with a\\n  stderr error. `-seed 0` behaves like `-start 0`: treated as unset\\n  (sentinel), so plain `gofib` output stays unchanged.\\n- `Fib(n)` stays the only computation — no inline recomputation\\n  (CONTEXT.md).\\n\\n## Acceptance\\n\\n- Table-driven tests: single index via -seed; -seed overrides -n/-start\\n  (and -limit); -seed 0 sentinel; -seed with -json and -pretty;\\n  negative rejected; -version still wins.\\n- README.md flag table gains the `-seed` row with a REAL example\\n  invocation and its actual output (capture from the built binary, do\\n  not invent output); the precedence note lives in that row.\\n- `just qualitygate` green\"}\n+{\"id\":\"fabro-cfb6\",\"title\":\"gofib: add -seed flag for reproducible index selection\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T19:15:32.840Z\",\"updatedAt\":\"2026-08-24T22:20:28.564Z\",\"description\":\"## Goal\\n\\nA `-seed <int>` flag: print ONLY the Fibonacci number at a given index\\n(one line) — a tiny lookup mode instead of a range, for spot-checks and\\nscripting against specific indices.\\n\\n## Semantics\\n\\n- `-seed i` prints exactly one entry for index `i` in the active output\\n  mode: text mode `i: <value>`; JSON mode one object\\n  `{\\\"index\\\":i,\\\"fib\\\":\\\"<string>\\\"}`; pretty mode single-row alignment.\\n- `-seed` overrides the RANGE flags: with `-seed 10 -n 5 -start 2` only\\n  index 10 prints (exactly one line). Document that precedence in the\\n  README row.\\n- `-version` keeps its top precedence (existing behavior, README pins\\n  it).\\n- Validation mirrors the other flags: values < 0 exit non-zero with a\\n  stderr error. `-seed 0` behaves like `-start 0`: treated as unset\\n  (sentinel), so plain `gofib` output stays unchanged.\\n- `Fib(n)` stays the only computation — no inline recomputation\\n  (CONTEXT.md).\\n\\n## Acceptance\\n\\n- Table-driven tests: single index via -seed; -seed overrides -n/-start\\n  (and -limit); -seed 0 sentinel; -seed with -json and -pretty;\\n  negative rejected; -version still wins.\\n- README.md flag table gains the `-seed` row with a REAL example\\n  invocation and its actual output (capture from the built binary, do\\n  not invent output); the precedence note lives in that row.\\n- `just qualitygate` green\"}\n {\"id\":\"fabro-d920\",\"title\":\"gofib: add -format flag for compact table output\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T22:19:17.606Z\",\"updatedAt\":\"2026-08-24T22:19:17.606Z\",\"description\":\"## Goal\\n\\nA `-format <mode>` flag selecting the OUTPUT STYLE globally, unifying\\nthe text/json/pretty matrix: `text` (default), `json`, `pretty`, and a\\nnew compact `table` mode (no leading index column, values only, one\\nper line).\\n\\n## Semantics\\n\\n- `-format text|json|pretty|table` — invalid values exit non-zero with\\n  a stderr error listing valid modes.\\n- `-json` and `-pretty` remain as SHORTCUTS: `-json` == `-format json`,\\n  `-pretty` == `-format pretty`. If BOTH a shortcut and `-format` are\\n  given and they conflict (e.g. `-pretty -format json`), exit non-zero\\n  with a clear error — no silent precedence.\\n- `table` mode: values only, one per line (aligned, right-justified to\\n  the widest value). Composes with `-start`/`-n`/`-limit` as usual.\\n- `-version` still wins over everything.\\n\\n## Acceptance\\n\\n- Flag via the flag package; existing behavior for `-json`/`-pretty`\\n  UNCHANGED (regression tests pin them).\\n- Table-driven tests: each mode, shortcut==format equivalence, conflict\\n  rejection, invalid mode rejection, table+start/n/limit combos.\\n- README flag table gains the `-format` row with a REAL example per\\n  mode (capture from the built binary; do not invent output).\\n- `just qualitygate` green\"}\n",
+        "summary": {
+          "files_changed": 2,
+          "additions": 3,
+          "deletions": 1
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-24T22:23:16.592718195Z",
+        "current_node": "implementer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.retry_count.planner": 0,
+          "internal.run_id": "01M0TXPX09279433MGWSWPVVP4",
+          "internal.thread_id": "planner",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "thread.start.current_node": "planner",
+          "graph.preamble_budget_kb": "24",
+          "internal.node_visit_count": 1,
+          "failure_signature": "",
+          "outcome": "succeeded",
+          "current_seed_title": "gofib: add -seed flag for reproducible index selection",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3024,
+            "preview": "Claimed. Brief distilled with one ambiguity annotated (spec silent on `-seed` + invalid range flags).\n\n**Seed `fabro-cfb6` — gofib: add `-seed` flag for single-index lookup.** Fresh claim; worktree "
+          },
+          "graph.max_node_visits": "40",
+          "graph.rankdir": "LR",
+          "thread.planner.current_node": "implementer",
+          "current_seed_id": "fabro-cfb6",
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "preferred_label": "Implemented",
+          "last_response": "Implementation complete. Files touched: `main.go` (new `-seed` flag, `run` signature gains `seed int`, precedence: version → negative-seed error → positive-seed lookup mode skipping range validati",
+          "internal.retry_count.implementer": 0,
+          "failure_class": "",
+          "current_seed_brief": "Add a `-seed <int>` flag to gofib printing exactly one Fibonacci entry (index i) in the active output mode. Acceptance criteria: (1) `-seed i` prints one line — text `i: <value>`, `-json` one object `{\"index\":i,\"fib\":\"<string>\"}`, `-pretty` single-row; (2) precedence: `-version` wins over everything, positive `-seed` overrides `-n`/`-start`/`-limit` so only index i prints, and range-flag validation is skipped when `-seed > 0` (annotated choice: spec silent, mirrors -version's ignore-invalid semantics); (3) `-seed 0` is the unset sentinel — plain gofib output unchanged; (4) `-seed < 0` exits non-zero with a stderr error in existing flag-error style; (5) computation uses existing `Fib(n)` only, no inline recomputation; (6) `README.md` flag table gains the `-seed` row with a REAL captured example and output plus the precedence note; (7) table-driven tests in `/workspace/fabro/fib_test.go` cover single index, override of -n/-start/-limit, sentinel, -json/-pretty combos, negative rejection, -version precedence, and regression-pin existing behavior; (8) `just qualitygate` green.",
+          "internal.fidelity": "summary:high",
+          "implementation_summary": "main.go: added -seed flag; run() signature now (w, start, count, limit, seed, asJSON, pretty, version) with precedence version → negative-seed error → positive-seed lookup mode (start=seed,count=1,limit=0, range validation skipped) → existing range path; Fib(n) remains the only computation. fib_test.go: updated all run call sites, added table-driven TestRunSeed (single index, override of -n/-start/-limit incl. invalid values, sentinel 0, -json/-pretty combos) and TestRunRejectsInvalidSeed, extended TestRunVersion with seed rows. README.md: new -seed usage section with real captured output and a flag-table row documenting precedence and the 0 sentinel. Verification: all criteria PASS as itemized above; just qualitygate left to the tester (go build/vet/test/gofmt individually green).",
+          "internal.work_dir": "/workspace/fabro",
+          "current_node": "implementer",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "internal.seed_cycle_anchor": "fabro-cfb6",
+          "last_stage": "implementer",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3198,
+            "preview": "Implementation complete. Files touched: `main.go` (new `-seed` flag, `run` signature gains `seed int`, precedence: version → negative-seed error → positive-seed lookup mode skipping range validati"
+          },
+          "internal.retry_count.start": 0
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Add a `-seed <int>` flag to gofib printing exactly one Fibonacci entry (index i) in the active output mode. Acceptance criteria: (1) `-seed i` prints one line — text `i: <value>`, `-json` one object `{\"index\":i,\"fib\":\"<string>\"}`, `-pretty` single-row; (2) precedence: `-version` wins over everything, positive `-seed` overrides `-n`/`-start`/`-limit` so only index i prints, and range-flag validation is skipped when `-seed > 0` (annotated choice: spec silent, mirrors -version's ignore-invalid semantics); (3) `-seed 0` is the unset sentinel — plain gofib output unchanged; (4) `-seed < 0` exits non-zero with a stderr error in existing flag-error style; (5) computation uses existing `Fib(n)` only, no inline recomputation; (6) `README.md` flag table gains the `-seed` row with a REAL captured example and output plus the precedence note; (7) table-driven tests in `/workspace/fabro/fib_test.go` cover single index, override of -n/-start/-limit, sentinel, -json/-pretty combos, negative rejection, -version precedence, and regression-pin existing behavior; (8) `just qualitygate` green.",
+              "last_stage": "planner",
+              "last_response": "Claimed. Brief distilled with one ambiguity annotated (spec silent on `-seed` + invalid range flags).\n\n**Seed `fabro-cfb6` — gofib: add `-seed` flag for single-index lookup.** Fresh claim; worktree ",
+              "current_seed_title": "gofib: add -seed flag for reproducible index selection",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3024,
+                "preview": "Claimed. Brief distilled with one ambiguity annotated (spec silent on `-seed` + invalid range flags).\n\n**Seed `fabro-cfb6` — gofib: add `-seed` flag for single-index lookup.** Fresh claim; worktree "
+              },
+              "current_seed_id": "fabro-cfb6"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 13092,
+                    "output_tokens": 1058,
+                    "reasoning_tokens": 1686,
+                    "cache_read_tokens": 47936,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 42858
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 53223,
+              "tool_time_ms": 1309,
+              "active_time_ms": 54532
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "main.go: added -seed flag; run() signature now (w, start, count, limit, seed, asJSON, pretty, version) with precedence version → negative-seed error → positive-seed lookup mode (start=seed,count=1,limit=0, range validation skipped) → existing range path; Fib(n) remains the only computation. fib_test.go: updated all run call sites, added table-driven TestRunSeed (single index, override of -n/-start/-limit incl. invalid values, sentinel 0, -json/-pretty combos) and TestRunRejectsInvalidSeed, extended TestRunVersion with seed rows. README.md: new -seed usage section with real captured output and a flag-table row documenting precedence and the 0 sentinel. Verification: all criteria PASS as itemized above; just qualitygate left to the tester (go build/vet/test/gofmt individually green).",
+              "last_stage": "implementer",
+              "last_response": "Implementation complete. Files touched: `main.go` (new `-seed` flag, `run` signature gains `seed int`, precedence: version → negative-seed error → positive-seed lookup mode skipping range validati",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3198,
+                "preview": "Implementation complete. Files touched: `main.go` (new `-seed` flag, `run` signature gains `seed int`, precedence: version → negative-seed error → positive-seed lookup mode skipping range validati"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 26014,
+                    "output_tokens": 5548,
+                    "reasoning_tokens": 751,
+                    "cache_read_tokens": 310080,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 144735
+            },
+            "files_touched": [
+              "/workspace/fabro/README.md",
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 117182,
+              "tool_time_ms": 14275,
+              "active_time_ms": 131457
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "node_visits": {
+          "start": 1,
+          "planner": 1,
+          "implementer": 1
         }
       },
       "diff": {}
@@ -1209,6 +1381,374 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "implementer@1": {
+      "first_event_seq": 77,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: implementer",
+        "failure_reason": null,
+        "timestamp": "2026-08-24T22:23:16.306268179Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-24T22:20:49.944932896Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 133007,
+        "inference_time_ms": 117182,
+        "tool_time_ms": 14275,
+        "active_time_ms": 131457
+      },
+      "usage": {
+        "input_tokens": 26014,
+        "output_tokens": 5548,
+        "total_tokens": 342393,
+        "reasoning_tokens": 751,
+        "cache_read_tokens": 310080,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 144735
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "ask-matt",
+            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
+          },
+          {
+            "name": "claude-handoff",
+            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
+          },
+          {
+            "name": "code-review",
+            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
+          },
+          {
+            "name": "codebase-design",
+            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
+          },
+          {
+            "name": "diagnosing-bugs",
+            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
+          },
+          {
+            "name": "domain-modeling",
+            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
+          },
+          {
+            "name": "git-guardrails-claude-code",
+            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
+          },
+          {
+            "name": "grill-me",
+            "description": "A relentless interview to sharpen a plan or design."
+          },
+          {
+            "name": "grill-with-docs",
+            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
+          },
+          {
+            "name": "grilling",
+            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
+          },
+          {
+            "name": "handoff",
+            "description": "Compact the current conversation into a handoff document for another agent to pick up."
+          },
+          {
+            "name": "implement",
+            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
+          },
+          {
+            "name": "implement-spec",
+            "description": "\"Implement a specification in code.\""
+          },
+          {
+            "name": "improve-codebase-architecture",
+            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
+          },
+          {
+            "name": "loop-me",
+            "description": "Grill me about specs for the workflows I want to build, within this workspace."
+          },
+          {
+            "name": "migrate-to-shoehorn",
+            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
+          },
+          {
+            "name": "prototype",
+            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
+          },
+          {
+            "name": "research",
+            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
+          },
+          {
+            "name": "resolving-merge-conflicts",
+            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
+          },
+          {
+            "name": "scaffold-exercises",
+            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
+          },
+          {
+            "name": "setup-matt-pocock-skills",
+            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
+          },
+          {
+            "name": "setup-pre-commit",
+            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
+          },
+          {
+            "name": "setup-ts-deep-modules",
+            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
+          },
+          {
+            "name": "tdd",
+            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
+          },
+          {
+            "name": "teach",
+            "description": "Teach the user a new skill or concept, within this workspace."
+          },
+          {
+            "name": "to-questionnaire",
+            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
+          },
+          {
+            "name": "to-spec",
+            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
+          },
+          {
+            "name": "to-tickets",
+            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
+          },
+          {
+            "name": "triage",
+            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
+          },
+          {
+            "name": "wait-what",
+            "description": "\"Stop. That last message did not land: re-pitch it.\""
+          },
+          {
+            "name": "wayfinder",
+            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
+          },
+          {
+            "name": "wizard",
+            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
+          },
+          {
+            "name": "writing-beats",
+            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
+          },
+          {
+            "name": "writing-for-agents",
+            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
+          },
+          {
+            "name": "writing-fragments",
+            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
+          },
+          {
+            "name": "writing-shape",
+            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 25557,
+        "usage_percent": 2.437305450439453,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-08-24T22:23:16.287914662Z",
+        "event_seq": 181,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1150,
+            "usage_percent": 0.10967254638671875
+          },
+          {
+            "category": "tools",
+            "tokens": 1531,
+            "usage_percent": 0.14600753784179688
+          },
+          {
+            "category": "skills",
+            "tokens": 1548,
+            "usage_percent": 0.1476287841796875
+          },
+          {
+            "category": "memory",
+            "tokens": 1259,
+            "usage_percent": 0.12006759643554688
+          },
+          {
+            "category": "conversation",
+            "tokens": 20062,
+            "usage_percent": 1.9132614135742188
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
