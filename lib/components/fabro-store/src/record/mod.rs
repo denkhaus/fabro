@@ -27,6 +27,7 @@ pub(crate) trait Record: Sized + Send + Sync + 'static {
 
     const PREFIX: &'static str;
 
+    #[cfg(test)]
     fn id(&self) -> Self::Id;
 }
 

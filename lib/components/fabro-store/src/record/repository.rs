@@ -93,6 +93,7 @@ impl<R: Record> Repository<R> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) async fn get(&self, id: &R::Id) -> Result<Option<R>> {
         self.db
             .get(key_for_id::<R>(id)?)
@@ -101,6 +102,7 @@ impl<R: Record> Repository<R> {
             .transpose()
     }
 
+    #[cfg(test)]
     pub(crate) async fn put(&self, record: &R) -> Result<()> {
         let id = record.id();
         self.put_at(&id, record).await

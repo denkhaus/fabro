@@ -16,6 +16,7 @@ impl Record for RunCatalogEntry {
 
     const PREFIX: &'static str = "runs/_index/by-start";
 
+    #[cfg(test)]
     fn id(&self) -> Self::Id {
         unreachable!("marker records must use put_at")
     }
