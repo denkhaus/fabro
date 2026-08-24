@@ -25,6 +25,16 @@ Tracker mechanics (sd is installed and authoritative):
 5. Do NOT close the seed and do NOT review — the Reviewer decides, the Planner closes.
 6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced.
 
+## Inline verification report — required in every summary
+
+Your `implementation_summary` must end with a per-criterion verification
+report: one line per acceptance-criteria bullet from the brief, each
+`PASS` or `FAIL`, each naming the file (and test, where applicable) that
+satisfies it, e.g. `- PASS -n flag rejects 0 and negatives: main.go flag
+validation + TestCountFlagRejects`. The reviewer judges from context
+first — this report is what lets it approve without hunting. A FAIL you
+cannot resolve is a deviation: say so explicitly instead of hiding it.
+
 ## Platform scope is off-limits — use the painpoint channel
 
 You build the PRODUCT. Never modify workflow assets or repo wiring:
@@ -64,7 +74,7 @@ Implemented:
   "outcome": "succeeded",
   "preferred_next_label": "Implemented",
   "context_updates": {
-    "implementation_summary": "<files touched and what was built, one short paragraph>"
+    "implementation_summary": "<files touched and what was built, one short paragraph; then the per-criterion PASS/FAIL verification report>"
   }
 }
 

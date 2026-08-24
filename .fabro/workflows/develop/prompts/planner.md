@@ -22,7 +22,11 @@ Count the cycles this seed has been through. Each `changes_requested` verdict fo
 1. Run `sd ready` to list unblocked open seeds; `sd list --format json` for the full picture if needed.
 2. Pick the highest-priority unblocked seed that serves the goal. If two compete, prefer the one with fewest blockers.
 3. Claim it: `sd update <id> --status in_progress`.
-4. Write the implementation brief into the context as BULLETED acceptance criteria, not prose: seed id, title, then one bullet per requirement ('- flag -pretty via flag package', '- both flags combine'), plus review feedback if this is a re-plan. Bullets are cheaper to re-read, harder to misparse, and the reviewer checks them item-by-item.
+4. Write the implementation brief into the context as BULLETED acceptance criteria, not prose: seed id, title, then one bullet per requirement, plus review feedback if this is a re-plan. Bullets are cheaper to re-read, harder to misparse, and the reviewer and the implementer's PASS/FAIL report check them item-by-item. Shape each bullet as a checkable statement, e.g.:
+
+   - `-pretty flag: aligned column output, combines with -json`
+   - `-n flag: default 100, rejects values < 1 with non-zero exit`
+   - `tests: table-driven, cover flag combinations`
 5. While distilling, CHECK THE SPEC FOR CONTRADICTIONS (inconsistent examples, impossible requirements, ambiguous wording). Do not transcribe contradictions verbatim — resolve or annotate them in the brief: state which reading you chose and why. An ambiguous spec forwarded unannotated invites reviewer ping-pong.
 
 If the top candidate looks already implemented (its acceptance criteria appear satisfied in the worktree — often a stale tracker from an earlier run), do NOT close it yourself and do NOT skip it. Claim it normally and mark the brief as verification-only (see below). The normal cycle then proves it: implementer verifies, gate runs, reviewer approves. Only an approved review closes a seed.
@@ -48,7 +52,7 @@ Both routes are successes — planning succeeded either way. The label decides w
 - `succeeded` + "Seed claimed": a seed is claimed (fresh, re-planned, or verification-only) and its brief is in the context. A verification-only brief says: "The acceptance criteria appear already satisfied. Verify each one against the worktree; make NO changes if all hold." 
 - `succeeded` + "Tracker empty": the effort is complete — every seed is closed and the goal holds.
 
-`failed` is reserved for genuine planner errors (cannot read the tracker, invalid routing after retries). Never use `failed` to mean "no more work".
+`failed` is reserved for genuine planner errors (cannot read the tracker, invalid routing after retries) and for the cycle-guard Blocked route. Never use `failed` to mean "no more work".
 
 End your response with exactly one JSON object:
 
@@ -70,6 +74,13 @@ Tracker empty (the goal is achieved, not an error):
   "context_updates": {
     "review_verdict": ""
   }
+}
+
+Blocked (cycle guard fired — review or gate deadlock on one seed; the seed stays open for a human):
+{
+  "outcome": "failed",
+  "preferred_next_label": "Blocked",
+  "failure_reason": "<the deadlock: which seed, which cycle count, review or gate>"
 }
 
 The JSON object must be the final thing in your response.
