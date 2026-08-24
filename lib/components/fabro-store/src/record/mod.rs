@@ -7,15 +7,16 @@
 //! - [`Repository`]: performs the generic get/put/delete/scan/gc operations.
 //!
 //! Production callers should add a named domain store on top of this layer
-//! rather than exposing `Repository<R>` directly. See `slate/auth_codes.rs`,
-//! `slate/blob_store.rs`, and `slate/run_catalog_index.rs` for the intended
-//! pattern.
+//! rather than exposing `Repository<R>` directly. See `slate/blob_store.rs`
+//! and `slate/run_catalog_index.rs` for the intended pattern.
 
 mod codec;
 mod record_id;
 mod repository;
 
-pub(crate) use codec::{Codec, JsonCodec, MarkerCodec, RawBytesCodec};
+#[cfg(test)]
+pub(crate) use codec::JsonCodec;
+pub(crate) use codec::{Codec, MarkerCodec, RawBytesCodec};
 pub(crate) use repository::Repository;
 
 use crate::Result;

@@ -1,4 +1,4 @@
-use fabro_types::BlobHash;
+use fabro_types::{BlobHash, IdpIdentityError};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -12,6 +12,18 @@ pub enum Error {
     Serde(#[from] serde_json::Error),
     #[error("SQLite error: {0}")]
     Sqlite(#[from] sqlx::Error),
+    #[error("stored {record} has an invalid identity")]
+    InvalidStoredIdentity {
+        record: &'static str,
+        #[source]
+        source: IdpIdentityError,
+    },
+    #[error("stored {record} has an invalid {field} timestamp: {value}")]
+    InvalidStoredTimestamp {
+        record: &'static str,
+        field:  &'static str,
+        value:  i64,
+    },
     #[error("stored blob {blob_hash} has bytes that conflict with its hash")]
     BlobHashConflict { blob_hash: BlobHash },
     #[error("stored blob data does not match requested hash {blob_hash}")]

@@ -259,7 +259,7 @@ honors those hand-edited values even though the browser wizard does not manage t
 
 Shared relational state, including vault entries, server-managed definitions, and CLI auth sessions, lives at `<storage_root>/db/fabro.sqlite3`. Run events continue to use the `[server.slatedb]` object store.
 
-CLI auth sessions are stored as an `auth_sessions` row per signed-in CLI, with the rotating refresh tokens for that session in `refresh_tokens`. Revoking a session from **Settings → Sessions**, or with `DELETE /api/v1/auth/sessions/{id}`, deletes the session row and its tokens together.
+CLI auth sessions are stored as an `auth_sessions` row per signed-in CLI, with the rotating refresh tokens for that session in `refresh_tokens`. Pending browser-to-CLI handoffs live briefly in `oauth_authorization_codes`; the table contains a SHA-256 hash of each one-time code, never the raw bearer value. Revoking a session from **Settings → Sessions**, or with `DELETE /api/v1/auth/sessions/{id}`, deletes the session row and its tokens together.
 
 Before applying pending SQLite migrations, Fabro creates `<storage_root>/db/fabro.sqlite3.pre-migration.bak` with SQLite's `VACUUM INTO`. Each migration run replaces the previous snapshot, so only the most recent pre-migration backup is retained.
 

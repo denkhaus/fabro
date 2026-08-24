@@ -69,7 +69,9 @@ use std::sync::Arc;
 
 use futures::stream::{self};
 use futures::{Stream, StreamExt};
-use slatedb::{Db, KeyValue, WriteBatch};
+#[cfg(test)]
+use slatedb::WriteBatch;
+use slatedb::{Db, KeyValue};
 
 use super::{Codec, Record, RecordId};
 use crate::{Error, Result, keys};
@@ -78,7 +80,7 @@ use crate::{Error, Result, keys};
 /// stores.
 ///
 /// This type is intentionally `pub(crate)`: callers should interact through a
-/// named store such as `AuthCodeStore` or `BlobStore`, which can add
+/// named store such as `RunCatalogIndex` or `BlobStore`, which can add
 /// domain-specific behavior on top of the generic storage primitives here.
 pub(crate) struct Repository<R: Record> {
     db:      Arc<Db>,
@@ -161,6 +163,7 @@ impl<R: Record> Repository<R> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) async fn gc<F>(&self, predicate: F) -> Result<u64>
     where
         F: Fn(&R) -> bool + Send + Sync,

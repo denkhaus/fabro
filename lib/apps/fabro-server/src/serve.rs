@@ -783,7 +783,13 @@ where
     )
     .await
     .context("activating SQLite blob storage")?;
-    let auth_code_store = store.auth_codes().await?;
+    let retired_authorization_codes = retire_authorization_code_records(&store).await?;
+    if retired_authorization_codes > 0 {
+        info!(
+            removed = retired_authorization_codes,
+            "Removed retired SlateDB authorization code records"
+        );
+    }
     // Refresh tokens now live in SQLite. Nothing reads the old records and no
     // reaper collects them any more, so clear them out once rather than
     // leaving them in the object store forever.
@@ -857,7 +863,7 @@ where
     .await?;
 
     spawn_auth_store_reapers(
-        Arc::clone(&auth_code_store),
+        Arc::clone(&state.stores.authorization_codes),
         Arc::clone(&state.stores.auth_sessions),
         shutdown.clone(),
     );
@@ -1127,7 +1133,7 @@ async fn shutdown_signal() {
 }
 
 fn spawn_auth_store_reapers(
-    auth_codes: Arc<fabro_store::AuthCodeStore>,
+    auth_codes: Arc<fabro_store::AuthorizationCodeStore>,
     auth_sessions: Arc<fabro_store::AuthSessionStore>,
     shutdown: CancellationToken,
 ) {
@@ -1135,8 +1141,15 @@ fn spawn_auth_store_reapers(
     spawn_refresh_token_reaper(auth_sessions, shutdown);
 }
 
+async fn retire_authorization_code_records(store: &fabro_store::Database) -> anyhow::Result<u64> {
+    store
+        .retire_authorization_code_keyspace()
+        .await
+        .context("retiring SlateDB authorization code records")
+}
+
 fn spawn_auth_code_reaper(
-    auth_codes: Arc<fabro_store::AuthCodeStore>,
+    auth_codes: Arc<fabro_store::AuthorizationCodeStore>,
     shutdown: CancellationToken,
 ) {
     tokio::spawn(async move {
@@ -1285,6 +1298,24 @@ mod tests {
             server_settings:       server_settings(source),
             llm_catalog_settings:  fabro_model::catalog::LlmCatalogSettings::default(),
         }
+    }
+
+    #[tokio::test]
+    async fn authorization_code_retirement_failure_is_fatal_before_startup() {
+        let object_store: Arc<dyn object_store::ObjectStore> =
+            Arc::new(object_store::memory::InMemory::new());
+        let store = fabro_store::Database::new(object_store, "", Duration::from_millis(1), None);
+        store.test_close_slate().await.unwrap();
+
+        let err = super::retire_authorization_code_records(&store)
+            .await
+            .expect_err("retirement failure must abort startup");
+        let chain: Vec<String> = err.chain().map(ToString::to_string).collect();
+        assert_eq!(chain[0], "retiring SlateDB authorization code records");
+        assert!(
+            chain.len() > 1,
+            "retirement error should preserve its source chain: {chain:?}"
+        );
     }
 
     #[tokio::test(start_paused = true)]

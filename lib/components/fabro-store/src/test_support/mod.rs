@@ -8,7 +8,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
 use crate::keys::SlateKey;
 #[cfg(test)]
-use crate::{AuthSessionStore, RunSummaryStore};
+use crate::{AuthSessionStore, AuthorizationCodeStore, RunSummaryStore};
 use crate::{BlobStore, Database, Result};
 
 /// Returns an isolated SQLite blob authority backed by its own in-memory
@@ -154,6 +154,20 @@ pub(crate) async fn sqlite_auth_session_store() -> (tempfile::TempDir, AuthSessi
         .unwrap();
     database.migrate().await.unwrap();
     (directory, AuthSessionStore::new(database.clone_pool()))
+}
+
+#[cfg(test)]
+pub(crate) async fn sqlite_authorization_code_store() -> (tempfile::TempDir, AuthorizationCodeStore)
+{
+    let directory = tempfile::tempdir().unwrap();
+    let database = fabro_db::Database::connect(directory.path().join("fabro.sqlite3"))
+        .await
+        .unwrap();
+    database.migrate().await.unwrap();
+    (
+        directory,
+        AuthorizationCodeStore::new(database.clone_pool()),
+    )
 }
 
 #[cfg(test)]

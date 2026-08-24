@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 
 mod artifact_store;
 pub mod auth_session_store;
+mod authorization_code_store;
 mod blob_store;
 mod error;
 mod keyed_mutex;
@@ -24,6 +25,7 @@ pub use artifact_store::{
 pub use auth_session_store::{
     ActiveCliSession, AuthSessionRecord, AuthSessionStore, InitialRefreshToken, RotateOutcome,
 };
+pub use authorization_code_store::{AuthorizationCodeStore, PendingCliAuthorization};
 pub use blob_store::{Blob, BlobStore};
 pub use error::{Error, Result};
 pub use fabro_types::{
@@ -44,10 +46,7 @@ pub use run_summary_store::{
     RunSummarySortDirection, RunSummaryStore, RunSummaryVisibility,
 };
 pub use serializable_projection::SerializableProjection;
-pub use slate::{
-    AuthCode, AuthCodeStore, CachedRunProjection, Database, RunCatalogIndex, RunDatabase, Runs,
-    UnreadableRun,
-};
+pub use slate::{CachedRunProjection, Database, RunCatalogIndex, RunDatabase, Runs, UnreadableRun};
 pub use types::EventPayload;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
