@@ -54,7 +54,7 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, 0, tt.n, 0, false, false, false); err != nil {
+			if err := run(&buf, 0, tt.n, 0, 0, "", false, false, false); err != nil {
 				t.Fatalf("run(%d) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -95,7 +95,7 @@ func TestRunStart(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.start, tt.n, 0, false, false, false); err != nil {
+			if err := run(&buf, tt.start, tt.n, 0, 0, "", false, false, false); err != nil {
 				t.Fatalf("run(%d, %d) returned error: %v", tt.start, tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -136,7 +136,7 @@ func TestRunJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, 0, tt.n, 0, true, false, false); err != nil {
+			if err := run(&buf, 0, tt.n, 0, 0, "", true, false, false); err != nil {
 				t.Fatalf("run(%d, json) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -169,7 +169,7 @@ func TestRunJSON(t *testing.T) {
 func TestRunStartJSON(t *testing.T) {
 	const start, n = 10, 5
 	var buf bytes.Buffer
-	if err := run(&buf, start, n, 0, true, false, false); err != nil {
+	if err := run(&buf, start, n, 0, 0, "", true, false, false); err != nil {
 		t.Fatalf("run(%d, %d, json) returned error: %v", start, n, err)
 	}
 	out := buf.String()
@@ -219,7 +219,7 @@ func TestRunPretty(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, 0, tt.n, 0, false, true, false); err != nil {
+			if err := run(&buf, 0, tt.n, 0, 0, "", false, true, false); err != nil {
 				t.Fatalf("run(%d, pretty) returned error: %v", tt.n, err)
 			}
 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -239,7 +239,7 @@ func TestRunPretty(t *testing.T) {
 	// index right-aligned to len("100"), value to len(Fib(100)).
 	t.Run("pretty default prints 100 aligned numbers", func(t *testing.T) {
 		var buf bytes.Buffer
-		if err := run(&buf, 0, defaultCount, 0, false, true, false); err != nil {
+		if err := run(&buf, 0, defaultCount, 0, 0, "", false, true, false); err != nil {
 			t.Fatalf("run(default, pretty) returned error: %v", err)
 		}
 		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -261,7 +261,7 @@ func TestRunStartPretty(t *testing.T) {
 	fibs := map[int]string{8: "21", 9: "34", 10: "55", 11: "89", 12: "144"}
 	const start, n = 8, 5
 	var buf bytes.Buffer
-	if err := run(&buf, start, n, 0, false, true, false); err != nil {
+	if err := run(&buf, start, n, 0, 0, "", false, true, false); err != nil {
 		t.Fatalf("run(%d, %d, pretty) returned error: %v", start, n, err)
 	}
 	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -282,10 +282,10 @@ func TestRunPrettyJSON(t *testing.T) {
 	// -pretty only affects text mode: with -json the output must be
 	// identical, line for line.
 	var jsonOnly, prettyJSON bytes.Buffer
-	if err := run(&jsonOnly, 0, 3, 0, true, false, false); err != nil {
+	if err := run(&jsonOnly, 0, 3, 0, 0, "", true, false, false); err != nil {
 		t.Fatalf("run(3, json) returned error: %v", err)
 	}
-	if err := run(&prettyJSON, 0, 3, 0, true, true, false); err != nil {
+	if err := run(&prettyJSON, 0, 3, 0, 0, "", true, true, false); err != nil {
 		t.Fatalf("run(3, json, pretty) returned error: %v", err)
 	}
 	if prettyJSON.String() != jsonOnly.String() {
@@ -306,7 +306,7 @@ func TestRunRejectsInvalidCount(t *testing.T) {
 	}{{"text", false}, {"json", true}} {
 		for _, n := range []int{0, -5} {
 			var buf bytes.Buffer
-			err := run(&buf, 0, n, 0, mode.asJSON, false, false)
+			err := run(&buf, 0, n, 0, 0, "", mode.asJSON, false, false)
 			if err == nil {
 				t.Fatalf("run(%d, %s) succeeded, want error", n, mode.name)
 			}
@@ -330,7 +330,7 @@ func TestRunRejectsInvalidStart(t *testing.T) {
 	}{{"text", false}, {"json", true}} {
 		for _, start := range []int{-1, -5} {
 			var buf bytes.Buffer
-			err := run(&buf, start, 5, 0, mode.asJSON, false, false)
+			err := run(&buf, start, 5, 0, 0, "", mode.asJSON, false, false)
 			if err == nil {
 				t.Fatalf("run(%d, 5, %s) succeeded, want error", start, mode.name)
 			}
@@ -356,22 +356,25 @@ func TestRunVersion(t *testing.T) {
 		start  int
 		count  int
 		limit  int
+		seed   int
 		asJSON bool
 		pretty bool
 	}{
-		{"version alone", 0, defaultCount, 0, false, false},
-		{"version with -json -n 5", 0, 5, 0, true, false},
-		{"version with -pretty", 0, defaultCount, 0, false, true},
-		{"version with invalid -n 0", 0, 0, 0, false, false},
-		{"version with -start 10", 10, 5, 0, false, false},
-		{"version with invalid -start -1", -1, 5, 0, false, false},
-		{"version with -limit 3", 0, defaultCount, 3, false, false},
-		{"version with invalid -limit -1", 0, 5, -1, false, false},
+		{"version alone", 0, defaultCount, 0, 0, false, false},
+		{"version with -json -n 5", 0, 5, 0, 0, true, false},
+		{"version with -pretty", 0, defaultCount, 0, 0, false, true},
+		{"version with invalid -n 0", 0, 0, 0, 0, false, false},
+		{"version with -start 10", 10, 5, 0, 0, false, false},
+		{"version with invalid -start -1", -1, 5, 0, 0, false, false},
+		{"version with -limit 3", 0, defaultCount, 3, 0, false, false},
+		{"version with invalid -limit -1", 0, 5, -1, 0, false, false},
+		{"version with -seed 10", 0, 5, 0, 10, false, false},
+		{"version with invalid -seed -1", 0, 5, 0, -1, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.start, tt.count, tt.limit, tt.asJSON, tt.pretty, true); err != nil {
+			if err := run(&buf, tt.start, tt.count, tt.limit, tt.seed, "", tt.asJSON, tt.pretty, true); err != nil {
 				t.Fatalf("run(version) returned error: %v", err)
 			}
 			if want := "gofib " + Version + "\n"; buf.String() != want {
@@ -415,7 +418,7 @@ func TestRunLimit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if err := run(&buf, tt.start, tt.n, tt.limit, tt.asJSON, false, false); err != nil {
+			if err := run(&buf, tt.start, tt.n, tt.limit, 0, "", tt.asJSON, false, false); err != nil {
 				t.Fatalf("run(%d, %d, %d) returned error: %v", tt.start, tt.n, tt.limit, err)
 			}
 			if tt.wantLines == 0 {
@@ -445,7 +448,7 @@ func TestRunLimit(t *testing.T) {
 	t.Run("limit with -pretty sizes columns from the capped last index", func(t *testing.T) {
 		const start, n, limit = 8, 5, 10
 		var buf bytes.Buffer
-		if err := run(&buf, start, n, limit, false, true, false); err != nil {
+		if err := run(&buf, start, n, limit, 0, "", false, true, false); err != nil {
 			t.Fatalf("run(%d, %d, %d, pretty) returned error: %v", start, n, limit, err)
 		}
 		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
@@ -473,7 +476,7 @@ func TestRunRejectsInvalidLimit(t *testing.T) {
 	}{{"text", false}, {"json", true}} {
 		for _, limit := range []int{-1, -5} {
 			var buf bytes.Buffer
-			err := run(&buf, 0, 5, limit, mode.asJSON, false, false)
+			err := run(&buf, 0, 5, limit, 0, "", mode.asJSON, false, false)
 			if err == nil {
 				t.Fatalf("run(0, 5, %d, %s) succeeded, want error", limit, mode.name)
 			}
@@ -485,5 +488,341 @@ func TestRunRejectsInvalidLimit(t *testing.T) {
 				t.Errorf("run(0, 5, %d, %s) wrote %q before failing, want no output", limit, mode.name, buf.String())
 			}
 		}
+	}
+}
+
+// TestRunSeed pins the -seed semantics: a positive seed prints exactly
+// one entry for that index in the active output mode, overriding
+// -n, -start, and -limit (whose validation is skipped, mirroring
+// -version's ignore-invalid semantics); seed 0 is the unset sentinel,
+// so plain gofib output is unchanged.
+func TestRunSeed(t *testing.T) {
+	tests := []struct {
+		name      string
+		seed      int
+		start     int
+		n         int
+		limit     int
+		asJSON    bool
+		pretty    bool
+		wantLines int
+		wantFirst string
+		wantLast  string
+	}{
+		// Single index lookup in each output mode.
+		{"seed 10 prints only index 10", 10, 0, defaultCount, 0, false, false, 1, "10: 55", "10: 55"},
+		{"seed 1 prints only index 1", 1, 0, defaultCount, 0, false, false, 1, "1: 1", "1: 1"},
+		{"seed 100 prints F(100)", 100, 0, defaultCount, 0, false, false, 1,
+			"100: " + mustBig("354224848179261915075").String(),
+			"100: " + mustBig("354224848179261915075").String()},
+		// Precedence: -seed overrides every range flag.
+		{"seed overrides -n", 10, 0, 5, 0, false, false, 1, "10: 55", "10: 55"},
+		{"seed overrides -start", 10, 3, defaultCount, 0, false, false, 1, "10: 55", "10: 55"},
+		{"seed overrides -limit", 10, 0, defaultCount, 5, false, false, 1, "10: 55", "10: 55"},
+		{"seed overrides -n, -start, and -limit together", 12, 2, 5, 7, false, false, 1, "12: 144", "12: 144"},
+		// Range-flag validation is skipped when seed > 0 (mirrors
+		// -version's ignore-invalid semantics).
+		{"seed skips invalid -n 0", 10, 0, 0, 0, false, false, 1, "10: 55", "10: 55"},
+		{"seed skips invalid -start -1", 10, -1, 5, 0, false, false, 1, "10: 55", "10: 55"},
+		{"seed skips invalid -limit -1", 10, 0, 5, -1, false, false, 1, "10: 55", "10: 55"},
+		// Sentinel: seed 0 behaves like unset — range flags rule.
+		{"seed 0 is the unset sentinel", 0, 0, 5, 0, false, false, 5, "1: 1", "5: 5"},
+		{"seed 0 with -start keeps the range", 0, 10, 2, 0, false, false, 2, "10: 55", "11: 89"},
+		// Output-mode combos: one JSON object / one pretty row.
+		{"seed with -json", 10, 0, defaultCount, 0, true, false, 1, wantJSONLine(10), wantJSONLine(10)},
+		{"seed with -pretty sizes columns from the sole index", 10, 0, defaultCount, 0, false, true, 1, prettyLine(10, 10, "55"), prettyLine(10, 10, "55")},
+		{"seed with -json and -pretty is plain JSON", 10, 0, defaultCount, 0, true, true, 1, wantJSONLine(10), wantJSONLine(10)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, tt.start, tt.n, tt.limit, tt.seed, "", tt.asJSON, tt.pretty, false); err != nil {
+				t.Fatalf("run(seed=%d) returned error: %v", tt.seed, err)
+			}
+			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+			if len(lines) != tt.wantLines {
+				t.Fatalf("run(seed=%d) printed %d lines, want %d", tt.seed, len(lines), tt.wantLines)
+			}
+			if lines[0] != tt.wantFirst {
+				t.Errorf("first line = %q, want %q", lines[0], tt.wantFirst)
+			}
+			if lines[len(lines)-1] != tt.wantLast {
+				t.Errorf("last line = %q, want %q", lines[len(lines)-1], tt.wantLast)
+			}
+		})
+	}
+}
+
+// TestRunRejectsInvalidSeed pins the -seed validation contract: a
+// negative seed exits non-zero with the exact -start/-limit-style
+// error message and writes no output first. It fires even when the
+// range flags would otherwise error, because -seed is validated
+// before them.
+func TestRunRejectsInvalidSeed(t *testing.T) {
+	for _, mode := range []struct {
+		name   string
+		asJSON bool
+	}{{"text", false}, {"json", true}} {
+		for _, seed := range []int{-1, -5} {
+			var buf bytes.Buffer
+			err := run(&buf, 0, 5, 0, seed, "", mode.asJSON, false, false)
+			if err == nil {
+				t.Fatalf("run(seed=%d, %s) succeeded, want error", seed, mode.name)
+			}
+			want := fmt.Sprintf("invalid value %d for flag -seed: must be >= 0", seed)
+			if err.Error() != want {
+				t.Errorf("run(seed=%d, %s) error = %q, want exactly %q", seed, mode.name, err.Error(), want)
+			}
+			if buf.Len() != 0 {
+				t.Errorf("run(seed=%d, %s) wrote %q before failing, want no output", seed, mode.name, buf.String())
+			}
+		}
+	}
+}
+
+// TestRunFormatModes pins each -format mode's exact output for the
+// same range (indices 8..12): text ("<index>: <value>"), json (one
+// object per line), pretty (both columns right-aligned), and table
+// (value only, right-justified to the widest value).
+func TestRunFormatModes(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		format string
+		want   string
+	}{
+		{"text", "text", "8: 21\n9: 34\n10: 55\n11: 89\n12: 144\n"},
+		{"json", "json",
+			wantJSONLine(8) + "\n" + wantJSONLine(9) + "\n" + wantJSONLine(10) + "\n" + wantJSONLine(11) + "\n" + wantJSONLine(12) + "\n"},
+		{"pretty", "pretty", " 8:  21\n 9:  34\n10:  55\n11:  89\n12: 144\n"},
+		{"table", "table", " 21\n 34\n 55\n 89\n144\n"},
+		{"empty format is text (unset sentinel)", "", "8: 21\n9: 34\n10: 55\n11: 89\n12: 144\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, 8, 5, 0, 0, tt.format, false, false, false); err != nil {
+				t.Fatalf("run(format=%q) returned error: %v", tt.format, err)
+			}
+			if buf.String() != tt.want {
+				t.Errorf("run(format=%q) = %q, want %q", tt.format, buf.String(), tt.want)
+			}
+		})
+	}
+}
+
+// TestRunFormatShortcutEquivalence pins that -json and -pretty are
+// pure shortcuts: their output is byte-identical to the corresponding
+// -format mode, in both the range path and -seed lookup mode.
+func TestRunFormatShortcutEquivalence(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		format string
+		asJSON bool
+		pretty bool
+		seed   int
+	}{
+		{"-json equals -format json (range)", "json", true, false, 0},
+		{"-pretty equals -format pretty (range)", "pretty", false, true, 0},
+		{"-json equals -format json (seed)", "json", true, false, 10},
+		{"-pretty equals -format pretty (seed)", "pretty", false, true, 10},
+		{"agreeing -json -format json is accepted", "json", true, false, 0},
+		{"agreeing -pretty -format pretty is accepted", "pretty", false, true, 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var viaFormat, viaShortcut bytes.Buffer
+			n := defaultCount
+			if err := run(&viaFormat, 0, n, 0, tt.seed, tt.format, false, false, false); err != nil {
+				t.Fatalf("run(format=%q) returned error: %v", tt.format, err)
+			}
+			if err := run(&viaShortcut, 0, n, 0, tt.seed, "", tt.asJSON, tt.pretty, false); err != nil {
+				t.Fatalf("run(shortcut) returned error: %v", err)
+			}
+			if viaFormat.String() != viaShortcut.String() {
+				t.Errorf("shortcut output %q != -format output %q", viaShortcut.String(), viaFormat.String())
+			}
+		})
+	}
+}
+
+// TestRunFormatConflicts pins the conflict rule: when -format is
+// explicitly set, any also-given shortcut must agree. Both shortcut
+// directions, plus shortcuts vs text and table, exit non-zero with a
+// stderr error naming both flags and write no output. With -format
+// unset there is no conflict check — legacy -json -pretty keeps its
+// JSON-wins semantics (pinned by TestRunPrettyJSON).
+func TestRunFormatConflicts(t *testing.T) {
+	tests := []struct {
+		name   string
+		format string
+		asJSON bool
+		pretty bool
+		want   string
+	}{
+		{"-pretty with -format json", "json", false, true,
+			`flags -pretty and -format conflict: -pretty selects pretty but -format selects json`},
+		{"-json with -format pretty", "pretty", true, false,
+			`flags -json and -format conflict: -json selects json but -format selects pretty`},
+		{"-json with -format text", "text", true, false,
+			`flags -json and -format conflict: -json selects json but -format selects text`},
+		{"-pretty with -format text", "text", false, true,
+			`flags -pretty and -format conflict: -pretty selects pretty but -format selects text`},
+		{"-json with -format table", "table", true, false,
+			`flags -json and -format conflict: -json selects json but -format selects table`},
+		{"-pretty with -format table", "table", false, true,
+			`flags -pretty and -format conflict: -pretty selects pretty but -format selects table`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := run(&buf, 0, 5, 0, 0, tt.format, tt.asJSON, tt.pretty, false)
+			if err == nil {
+				t.Fatalf("run(format=%q) succeeded, want conflict error", tt.format)
+			}
+			if err.Error() != tt.want {
+				t.Errorf("error = %q, want exactly %q", err.Error(), tt.want)
+			}
+			if buf.Len() != 0 {
+				t.Errorf("wrote %q before failing, want no output", buf.String())
+			}
+		})
+	}
+	// Legacy, no -format: -json -pretty is not an error (JSON wins).
+	t.Run("legacy -json -pretty without -format is not a conflict", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := run(&buf, 0, 3, 0, 0, "", true, true, false); err != nil {
+			t.Fatalf("run(-json -pretty, no -format) returned error: %v", err)
+		}
+		if want := wantJSONLine(1) + "\n" + wantJSONLine(2) + "\n" + wantJSONLine(3) + "\n"; buf.String() != want {
+			t.Errorf("output = %q, want %q", buf.String(), want)
+		}
+	})
+}
+
+// TestRunRejectsInvalidFormat pins the invalid-value contract: an
+// unknown -format value exits non-zero with the flag-package-style
+// error listing the valid modes and writes no output.
+func TestRunRejectsInvalidFormat(t *testing.T) {
+	for _, format := range []string{"xml", "TEXT", "jso"} {
+		var buf bytes.Buffer
+		err := run(&buf, 0, 5, 0, 0, format, false, false, false)
+		if err == nil {
+			t.Fatalf("run(format=%q) succeeded, want error", format)
+		}
+		want := fmt.Sprintf("invalid value %q for flag -format: must be one of text, json, pretty, table", format)
+		if err.Error() != want {
+			t.Errorf("error = %q, want exactly %q", err.Error(), want)
+		}
+		if buf.Len() != 0 {
+			t.Errorf("wrote %q before failing, want no output", buf.String())
+		}
+	}
+}
+
+// tableLine returns the expected -format table line for value v:
+// right-justified to the width of the widest value printed, which is
+// Fib(n) for the range ending at index n.
+func tableLine(n int, v string) string {
+	return fmt.Sprintf("%*s", len(Fib(n).String()), v)
+}
+
+// TestRunTableCombinations pins table mode composing with the range
+// flags exactly like the other modes: -start shifts the window, -limit
+// caps it (and the width follows the capped widest value), and a
+// -seed lookup prints just the value.
+func TestRunTableCombinations(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		start     int
+		n         int
+		limit     int
+		seed      int
+		wantLines int
+		wantFirst string
+		wantLast  string
+	}{
+		{"table with -start 8 -n 5", 8, 5, 0, 0, 5, tableLine(12, "21"), tableLine(12, "144")},
+		{"table with -limit caps the window", 8, 5, 10, 0, 3, tableLine(10, "21"), tableLine(10, "55")},
+		{"table with -limit below start is empty", 10, 5, 7, 0, 0, "", ""},
+		{"table with -seed prints just the value", 0, defaultCount, 0, 12, 1, tableLine(12, "144"), tableLine(12, "144")},
+		{"table with -seed 10", 0, defaultCount, 0, 10, 1, tableLine(10, "55"), tableLine(10, "55")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, tt.start, tt.n, tt.limit, tt.seed, "table", false, false, false); err != nil {
+				t.Fatalf("run(table) returned error: %v", err)
+			}
+			if tt.wantLines == 0 {
+				if buf.Len() != 0 {
+					t.Fatalf("wrote %q, want empty output", buf.String())
+				}
+				return
+			}
+			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+			if len(lines) != tt.wantLines {
+				t.Fatalf("printed %d lines, want %d", len(lines), tt.wantLines)
+			}
+			if lines[0] != tt.wantFirst {
+				t.Errorf("first line = %q, want %q", lines[0], tt.wantFirst)
+			}
+			if lines[len(lines)-1] != tt.wantLast {
+				t.Errorf("last line = %q, want %q", lines[len(lines)-1], tt.wantLast)
+			}
+		})
+	}
+}
+
+// TestRunFormatSeed pins that the active -format mode applies in -seed
+// lookup mode too: -format json emits one object, -format table emits
+// just the value.
+func TestRunFormatSeed(t *testing.T) {
+	t.Run("-seed with -format json equals -seed -json", func(t *testing.T) {
+		var viaFormat, viaShortcut bytes.Buffer
+		if err := run(&viaFormat, 0, defaultCount, 0, 10, "json", false, false, false); err != nil {
+			t.Fatalf("run(-seed -format json) returned error: %v", err)
+		}
+		if err := run(&viaShortcut, 0, defaultCount, 0, 10, "", true, false, false); err != nil {
+			t.Fatalf("run(-seed -json) returned error: %v", err)
+		}
+		if viaFormat.String() != viaShortcut.String() {
+			t.Errorf("output %q != %q", viaFormat.String(), viaShortcut.String())
+		}
+		if want := wantJSONLine(10) + "\n"; viaFormat.String() != want {
+			t.Errorf("output = %q, want %q", viaFormat.String(), want)
+		}
+	})
+	t.Run("-seed with -format table prints just the value", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := run(&buf, 0, defaultCount, 0, 10, "table", false, false, false); err != nil {
+			t.Fatalf("run(-seed -format table) returned error: %v", err)
+		}
+		if buf.String() != "55\n" {
+			t.Errorf("output = %q, want %q", buf.String(), "55\n")
+		}
+	})
+}
+
+// TestRunVersionFormat pins -version's precedence over -format: even
+// an invalid mode value or a shortcut/format conflict is ignored —
+// the only output is the version line, exit 0.
+func TestRunVersionFormat(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		format string
+		asJSON bool
+		pretty bool
+	}{
+		{"version with invalid -format xml", "xml", false, false},
+		{"version with -pretty -format json conflict", "json", false, true},
+		{"version with -json -format pretty conflict", "pretty", true, false},
+		{"version with -format table", "table", false, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, 0, 5, 0, 0, tt.format, tt.asJSON, tt.pretty, true); err != nil {
+				t.Fatalf("run(version) returned error: %v", err)
+			}
+			if want := "gofib " + Version + "\n"; buf.String() != want {
+				t.Errorf("wrote %q, want exactly %q", buf.String(), want)
+			}
+		})
 	}
 }
