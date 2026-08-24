@@ -15,9 +15,19 @@ If context contains `review_verdict` from the previous pass, act on it before pl
 
 Clear the verdict from your mind after handling it — the next review pass will set a fresh one.
 
-## Cycle guards (review AND gate)
+## Cycle guards (review AND gate) — read the counter, never count yourself
 
-Count the cycles this seed has been through. Each `changes_requested` verdict for the same seed is one review cycle; each gate-red bounce back to the implementer on the same seed is one gate cycle. After the THIRD review cycle on one seed, or the THIRD consecutive gate-red on one seed: do not hand it to the implementer again unchanged. Route Blocked with `failure_reason` naming the deadlock (review deadlock or gate deadlock), so the seed stays open for a human instead of burning the visit budget. A gate deadlock usually means the implementer is 'fixing' a gate that fails for platform reasons — escalate, don't loop.
+The engine maintains `seed_cycles` deterministically: an object `{ node -> completed visits since this seed was claimed }` (reset when `current_seed_id` changes value; survives resume; you cannot corrupt it). It appears in your `## Context` section.
+
+- Review cycles for this seed: `seed_cycles.reviewer` (each visit = one review verdict on this seed).
+- Gate cycles for this seed: `seed_cycles.tester` bounces back after red gates.
+- Planning visits: `seed_cycles.planner` (re-plans of the SAME seed).
+
+Block on the DETERMINISTIC counts, never on your recollection of history:
+- `seed_cycles.reviewer >= 3` -> route Blocked, `failure_reason` "review deadlock: 3 review cycles on <seed id> without approval".
+- `seed_cycles.tester >= 3` consecutive reds -> route Blocked, `failure_reason` "gate deadlock: 3 red gates on <seed id> — likely platform, escalate".
+
+Check the guard BEFORE claiming/continuing a seed. A gate deadlock usually means the implementer is 'fixing' a gate that fails for platform reasons — escalate, don't loop. If `seed_cycles` is missing from context (older engine), fall back to counting verdicts in the preamble history — but say so in the failure_reason.
 
 ## sd command reference (exact — never invent flags)
 

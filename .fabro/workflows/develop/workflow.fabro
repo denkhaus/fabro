@@ -3,7 +3,12 @@ digraph Develop {
         goal="Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
         rankdir=LR,
         max_node_visits=40,
-        preamble_budget_kb=12
+        preamble_budget_kb=12,
+        // Deterministic cycle guards (fabro-45d0): engine injects
+        // seed_cycles = { node -> completed visits since current_seed_id
+        // last changed value }. The planner reads counts instead of
+        // counting preamble history (run 01M0T9B7T6 review, rec 1b).
+        cycle_counter_reset_key="current_seed_id"
     ]
 
     start [shape=Mdiamond, label="Start"]
