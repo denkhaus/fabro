@@ -227,6 +227,12 @@ pub enum SnapshotStagingError {
         #[source]
         source: std::io::Error,
     },
+    #[error("creating private snapshot staging area for {path}")]
+    CreatePrivateStagingArea {
+        path:   PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
     #[error("snapshot staging path is not valid UTF-8 at {path}")]
     NonUtf8Path { path: PathBuf },
     #[error("writing SQLite snapshot {path}")]
@@ -247,26 +253,57 @@ pub enum SnapshotStagingError {
         #[source]
         source: std::io::Error,
     },
+    #[error("publishing private snapshot staging file {path}")]
+    Publish {
+        path:   PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 /// Writes a consistent single-file copy of the live pool to `staging_path`.
 ///
 /// `VACUUM INTO` produces a snapshot that needs no `-wal`/`-shm` siblings to
-/// restore. Any stale staging file is removed first and the copy is
-/// restricted to private permissions. The caller publishes the staging file
-/// into its final path and owns the durability of that rename.
+/// restore. The copy is first written inside a private same-directory staging
+/// area, then restricted to owner-only permissions and flushed before it is
+/// exposed at `staging_path`. The caller publishes the staging file into its
+/// final path and owns the durability of that rename.
 pub async fn write_snapshot_to_staging(
     pool: &DbPool,
     staging_path: &Path,
 ) -> Result<(), SnapshotStagingError> {
+    write_snapshot_to_staging_inner(pool, staging_path, |_| {}).await
+}
+
+async fn write_snapshot_to_staging_inner<F>(
+    pool: &DbPool,
+    staging_path: &Path,
+    after_write: F,
+) -> Result<(), SnapshotStagingError>
+where
+    F: FnOnce(&Path),
+{
     remove_file_if_exists(staging_path)
         .await
         .map_err(|source| SnapshotStagingError::RemoveStale {
             path: staging_path.to_path_buf(),
             source,
         })?;
+
+    let staging_parent = nonempty_parent(staging_path);
+    // SQLite's VACUUM INTO creates its destination with umask-derived
+    // permissions. Keep that file behind an owner-only directory until its
+    // own mode is restricted, so a traversable database directory never
+    // exposes a partially written snapshot.
+    let private_staging_area = create_private_staging_area(staging_parent).map_err(|source| {
+        SnapshotStagingError::CreatePrivateStagingArea {
+            path: staging_path.to_path_buf(),
+            source,
+        }
+    })?;
+    let private_staging_path = private_staging_area.path().join("snapshot.sqlite3");
     let staging_target =
-        staging_path
+        private_staging_path
             .to_str()
             .ok_or_else(|| SnapshotStagingError::NonUtf8Path {
                 path: staging_path.to_path_buf(),
@@ -279,7 +316,8 @@ pub async fn write_snapshot_to_staging(
             path: staging_path.to_path_buf(),
             source,
         })?;
-    set_private_permissions(staging_path)
+    after_write(&private_staging_path);
+    set_private_permissions(&private_staging_path)
         .await
         .map_err(|source| SnapshotStagingError::SetPermissions {
             path: staging_path.to_path_buf(),
@@ -287,7 +325,7 @@ pub async fn write_snapshot_to_staging(
         })?;
     // The staging file must be durable before the caller renames it into a
     // path that later recovery logic treats as a complete snapshot.
-    let sync_result = match fs::File::open(staging_path).await {
+    let sync_result = match fs::File::open(&private_staging_path).await {
         Ok(file) => file.sync_all().await,
         Err(source) => Err(source),
     };
@@ -295,7 +333,31 @@ pub async fn write_snapshot_to_staging(
         path: staging_path.to_path_buf(),
         source,
     })?;
+    fs::rename(&private_staging_path, staging_path)
+        .await
+        .map_err(|source| SnapshotStagingError::Publish {
+            path: staging_path.to_path_buf(),
+            source,
+        })?;
     Ok(())
+}
+
+fn create_private_staging_area(parent: &Path) -> std::io::Result<tempfile::TempDir> {
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(".fabro-snapshot-");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        builder.permissions(std::fs::Permissions::from_mode(0o700));
+    }
+    builder.tempdir_in(parent)
+}
+
+fn nonempty_parent(path: &Path) -> &Path {
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
 }
 
 /// Flushes the directory entry metadata for `path`'s parent so a rename into
@@ -307,10 +369,7 @@ pub async fn write_snapshot_to_staging(
     reason = "directory fds have no async open; callers run this on a blocking thread"
 )]
 pub fn sync_parent_directory(path: &Path) -> std::io::Result<()> {
-    let Some(parent) = path.parent() else {
-        return Ok(());
-    };
-    std::fs::File::open(parent)?.sync_all()
+    std::fs::File::open(nonempty_parent(path))?.sync_all()
 }
 
 /// Flushes the directory entry metadata for `path`'s parent so a rename into
@@ -377,4 +436,66 @@ async fn prepare_private_database_file(path: &Path) -> anyhow::Result<()> {
         .await
         .with_context(|| format!("creating SQLite database {}", path.display()))?;
     Ok(())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn snapshot_stays_hidden_until_it_has_private_permissions() -> anyhow::Result<()> {
+        let root = tempfile::tempdir()?;
+        let database_directory = root.path().join("traversable-db");
+        fs::create_dir(&database_directory).await?;
+        fs::set_permissions(&database_directory, std::fs::Permissions::from_mode(0o755)).await?;
+
+        let database = Database::connect(database_directory.join("fabro.sqlite3")).await?;
+        sqlx::query("CREATE TABLE snapshot_secret (value TEXT NOT NULL)")
+            .execute(database.pool())
+            .await?;
+        sqlx::query("INSERT INTO snapshot_secret (value) VALUES ('kept')")
+            .execute(database.pool())
+            .await?;
+
+        let staging_path = database_directory.join("snapshot.tmp");
+        let observed_private_stage = AtomicBool::new(false);
+        write_snapshot_to_staging_inner(database.pool(), &staging_path, |private_path| {
+            assert!(
+                !staging_path.exists(),
+                "the traversable parent must not expose the snapshot before chmod"
+            );
+            let private_directory = private_path
+                .parent()
+                .expect("private staging file should have a parent");
+            let mode = std::fs::metadata(private_directory)
+                .expect("private staging directory should exist")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o700, "temporary staging directory must be private");
+            observed_private_stage.store(true, Ordering::Relaxed);
+        })
+        .await?;
+        assert!(observed_private_stage.load(Ordering::Relaxed));
+
+        let mode = fs::metadata(&staging_path).await?.permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "published staging file must be private");
+        let snapshot = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(&staging_path)
+                    .read_only(true),
+            )
+            .await?;
+        let value: String = sqlx::query_scalar("SELECT value FROM snapshot_secret")
+            .fetch_one(&snapshot)
+            .await?;
+        assert_eq!(value, "kept");
+        snapshot.close().await;
+        Ok(())
+    }
 }

@@ -6,9 +6,9 @@ use fabro_types::{BlobHash, RunId};
 use object_store::ObjectStore;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
+use crate::keys::SlateKey;
 #[cfg(test)]
 use crate::{AuthSessionStore, RunSummaryStore};
-use crate::keys::SlateKey;
 use crate::{BlobStore, Database, Result};
 
 /// Returns an isolated SQLite blob authority backed by its own in-memory

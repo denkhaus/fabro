@@ -8,12 +8,13 @@ use std::fmt;
 
 use bytes::Bytes;
 use fabro_types::BlobHash;
+use fabro_util::error;
 use futures::TryStreamExt as _;
 use sqlx::pool::PoolConnection;
 use sqlx::{Acquire as _, Sqlite, SqlitePool};
 #[cfg(test)]
 use tokio::sync::Barrier;
-use tracing::debug;
+use tracing::{debug, error};
 
 use crate::Database;
 use crate::keys::SlateKey;
@@ -709,7 +710,15 @@ impl Database {
             }
             Err(failure) => {
                 debug_import_outcome("failed", &report, Some(failure.kind()));
-                Err(LegacyBlobImportError { report, failure })
+                let import_error = LegacyBlobImportError { report, failure };
+                for cleanup_error in import_error.cleanup_errors() {
+                    let rendered = error::collect_chain(cleanup_error).join(": ");
+                    error!(
+                        error = %rendered,
+                        "Legacy blob import cleanup failed"
+                    );
+                }
+                Err(import_error)
             }
         }
     }
@@ -1766,10 +1775,12 @@ mod tests {
             restore_automatic_checkpoint: true,
             ..ImportControls::default()
         };
+        let capture = CapturedEvents::default();
 
         let error = context
             .source
             .import_legacy_blobs_with_controls(&context.sqlite, &controls)
+            .with_subscriber(capture.clone())
             .await
             .expect_err("both injected failures should fail import");
 
@@ -1785,6 +1796,15 @@ mod tests {
                 .cleanup_errors()
                 .any(|source| source.downcast_ref::<sqlx::Error>().is_some()),
             "restoration source was absent from cleanup errors"
+        );
+        let events = capture.events().join("\n");
+        assert!(
+            events.contains("Legacy blob import cleanup failed"),
+            "captured: {events}"
+        );
+        assert!(
+            events.contains("injected automatic checkpoint restoration failure"),
+            "captured: {events}"
         );
         Ok(())
     }

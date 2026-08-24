@@ -50,6 +50,14 @@ pub(crate) enum BlobActivationError {
     BackupNotRegular { path: PathBuf },
     #[error("activation backup permissions are not private at {path}")]
     BackupNotPrivate { path: PathBuf },
+    #[error(
+        "activation backup is missing at {path} while {existing_rows} of {legacy_rows} legacy blob rows are already present in SQLite"
+    )]
+    MissingBackupAfterImport {
+        path:          PathBuf,
+        legacy_rows:   u64,
+        existing_rows: u64,
+    },
     #[error("opening or checking activation backup integrity at {path}")]
     BackupIntegrity {
         path:   PathBuf,
@@ -132,6 +140,13 @@ pub(crate) async fn activate_blob_storage(
     let backup_exists = backup_exists(&backup_path).await?;
     if backup_exists {
         validate_backup(&backup_path).await?;
+    }
+    if !backup_exists && inventory.pending_rows < inventory.rows {
+        return Err(BlobActivationError::MissingBackupAfterImport {
+            path:          backup_path,
+            legacy_rows:   inventory.rows,
+            existing_rows: inventory.rows - inventory.pending_rows,
+        });
     }
     let backup_required = inventory.rows > 0 && !backup_exists;
     // The resource sampler treats a path with no matching mount as an
@@ -621,6 +636,51 @@ mod tests {
             warm.blobs().read(&sqlite_only_hash).await?.as_deref(),
             Some(sqlite_only_bytes.as_slice())
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn missing_backup_after_prior_import_fails_closed() -> TestResult<()> {
+        let directory = tempfile::tempdir()?;
+        let sqlite_path = directory.path().join("fabro.sqlite3");
+        let database = fabro_db::Database::connect(&sqlite_path).await?;
+        database.migrate().await?;
+        let object_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let source = fabro_store::test_support::test_database(
+            Arc::clone(&object_store),
+            "missing-backup-test",
+            Duration::from_millis(1),
+            None,
+        );
+        let bytes = b"already-imported";
+        let hash = fabro_store::test_support::put_legacy_blob(&source, bytes).await?;
+        sqlx::query("INSERT INTO blobs (hash, data) VALUES (?, ?)")
+            .bind(hash.to_string())
+            .bind(bytes.as_slice())
+            .execute(database.pool())
+            .await?;
+        drop(source);
+
+        let error = activate_blob_storage(
+            &database,
+            &sqlite_path,
+            object_store,
+            "missing-backup-test".to_string(),
+            Duration::from_millis(1),
+            None,
+        )
+        .await
+        .expect_err("startup must not move the pre-activation rollback boundary");
+
+        assert!(matches!(
+            error,
+            BlobActivationError::MissingBackupAfterImport {
+                legacy_rows: 1,
+                existing_rows: 1,
+                ..
+            }
+        ));
+        assert!(!append_to_path(&sqlite_path, BACKUP_SUFFIX).exists());
         Ok(())
     }
 
