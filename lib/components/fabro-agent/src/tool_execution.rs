@@ -645,6 +645,7 @@ mod tests {
     use async_trait::async_trait;
     use fabro_llm::types::{ToolCall, ToolDefinition};
     use fabro_model::AgentProfileKind;
+    use fabro_types::run_event::AgentToolCompletedProps;
     use tokio::sync::broadcast;
 
     use super::*;
@@ -660,6 +661,7 @@ mod tests {
     use crate::test_support::MockSandbox;
     use crate::tool_registry::{RegisteredTool, ToolContext, ToolRegistry, ToolSource};
     use crate::tools::make_shell_tool;
+    use crate::truncation::MAX_SERIALIZED_TOOL_OUTPUT_BYTES;
     use crate::types::SessionEvent;
 
     struct NamedPolicy {
@@ -1024,6 +1026,98 @@ mod tests {
         assert!(completed.3 < MAX_RETAINED_TOOL_OUTPUT_BYTES);
         assert_eq!(completed.4, completed.2 - completed.3);
         assert!(event_output.contains(&format!("... {} bytes omitted ...", completed.4)));
+    }
+
+    #[tokio::test]
+    async fn serialized_tool_output_and_full_event_stay_within_reserved_budgets() {
+        let mut registry = ToolRegistry::new();
+        registry.register(make_echo_tool());
+        let text = format!(
+            "HEAD{}TAIL",
+            "\0".repeat(MAX_RETAINED_TOOL_OUTPUT_BYTES - "echo: HEADTAIL".len())
+        );
+        let tc = make_tool_call("echo", "call_escaped", serde_json::json!({"text": text}));
+        let emitter = Emitter::new();
+        let mut receiver = emitter.subscribe();
+
+        let result = execute_and_emit_one_tool(
+            &tc,
+            &registry,
+            make_sandbox(),
+            None,
+            CancellationToken::new(),
+            &SessionOptions::default(),
+            &emitter,
+            "test-session",
+            "test-session",
+            None,
+        )
+        .await;
+
+        assert!(!result.is_error);
+        let completed = loop {
+            let event = receiver.try_recv().expect("tool completion event");
+            if let AgentEvent::ToolCallCompleted {
+                tool_name,
+                tool_call_id,
+                output,
+                is_error,
+                output_bytes_observed,
+                output_bytes_retained,
+                output_bytes_omitted,
+            } = event.event
+            {
+                break (
+                    tool_name,
+                    tool_call_id,
+                    output,
+                    is_error,
+                    output_bytes_observed,
+                    output_bytes_retained,
+                    output_bytes_omitted,
+                );
+            }
+        };
+
+        let serialized_output_bytes = serde_json::to_vec(&completed.2)
+            .expect("tool output serializes")
+            .len();
+        assert!(serialized_output_bytes <= MAX_SERIALIZED_TOOL_OUTPUT_BYTES);
+
+        let run_id = fabro_types::RunId::new();
+        let run_event = fabro_types::RunEvent {
+            id: "evt-escaped-output".to_string(),
+            ts: chrono::Utc::now(),
+            run_id,
+            node_id: None,
+            node_label: None,
+            stage_id: None,
+            parallel_group_id: None,
+            parallel_branch_id: None,
+            session_id: Some("test-session".to_string()),
+            parent_session_id: None,
+            tool_call_id: Some(completed.1.clone()),
+            actor: None,
+            body: fabro_types::EventBody::AgentToolCompleted(AgentToolCompletedProps {
+                tool_name:             completed.0,
+                tool_call_id:          completed.1,
+                output:                completed.2,
+                is_error:              completed.3,
+                visit:                 1,
+                output_bytes_observed: Some(completed.4 as u64),
+                output_bytes_retained: Some(completed.5 as u64),
+                output_bytes_omitted:  Some(completed.6 as u64),
+                tool_result:           None,
+                turn_id:               None,
+            }),
+        };
+        let serialized_event_bytes = serde_json::to_vec(&run_event)
+            .expect("run event serializes")
+            .len();
+        assert!(
+            serialized_event_bytes < 2 * 1024 * 1024,
+            "serialized event was {serialized_event_bytes} bytes"
+        );
     }
 
     #[tokio::test]

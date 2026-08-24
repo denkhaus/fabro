@@ -3,6 +3,7 @@ use crate::sandbox::OutputCaptureStats;
 use crate::tool_permissions::canonical_tool_name;
 
 pub(crate) const MAX_RETAINED_TOOL_OUTPUT_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_SERIALIZED_TOOL_OUTPUT_BYTES: usize = 3 * 1024 * 1024 / 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RetainedToolOutput {
@@ -59,7 +60,7 @@ pub(crate) fn retain_tool_output(
 }
 
 /// Build the final model-facing preview, including truncation notices inside
-/// the total byte budget.
+/// the total byte budget and JSON serialization limit.
 #[must_use]
 pub(crate) fn preview_tool_output(
     output: &str,
@@ -69,12 +70,16 @@ pub(crate) fn preview_tool_output(
     let mut content_budget = max_bytes;
     loop {
         let retained = retain_tool_output(output, content_budget, previously_omitted_bytes);
-        if retained.stats.omitted_bytes == 0 {
-            return retained;
-        }
-
-        let rendered = render_retained_output(&retained);
-        if rendered.len() <= max_bytes {
+        let rendered = if retained.stats.omitted_bytes == 0 {
+            retained.output.clone()
+        } else {
+            render_retained_output(&retained)
+        };
+        let serialized_bytes = serialized_json_string_bytes(&rendered);
+        if rendered.len() <= max_bytes && serialized_bytes <= MAX_SERIALIZED_TOOL_OUTPUT_BYTES {
+            if retained.stats.omitted_bytes == 0 {
+                return retained;
+            }
             return RetainedToolOutput {
                 output:     rendered,
                 stats:      retained.stats,
@@ -82,8 +87,20 @@ pub(crate) fn preview_tool_output(
             };
         }
 
-        let excess = rendered.len().saturating_sub(max_bytes).max(1);
-        let next_budget = content_budget.saturating_sub(excess);
+        let mut next_budget = content_budget;
+        if rendered.len() > max_bytes {
+            let excess = rendered.len().saturating_sub(max_bytes);
+            next_budget = next_budget.min(content_budget.saturating_sub(excess));
+        }
+        if serialized_bytes > MAX_SERIALIZED_TOOL_OUTPUT_BYTES {
+            let scaled_budget = (content_budget as u128)
+                .saturating_mul(MAX_SERIALIZED_TOOL_OUTPUT_BYTES as u128)
+                .checked_div(serialized_bytes as u128)
+                .and_then(|budget| usize::try_from(budget).ok())
+                .unwrap_or(0);
+            next_budget = next_budget.min(scaled_budget);
+        }
+        next_budget = next_budget.min(content_budget.saturating_sub(1));
         if next_budget == content_budget {
             return RetainedToolOutput {
                 output:     truncate_plain_output(&rendered, max_bytes, TruncationMode::HeadTail),
@@ -93,6 +110,12 @@ pub(crate) fn preview_tool_output(
         }
         content_budget = next_budget;
     }
+}
+
+fn serialized_json_string_bytes(output: &str) -> usize {
+    serde_json::to_vec(output)
+        .expect("strings always serialize as JSON")
+        .len()
 }
 
 fn render_retained_output(retained: &RetainedToolOutput) -> String {
@@ -348,6 +371,34 @@ mod tests {
         assert!(preview.output.contains("... 100 bytes omitted ..."));
         assert!(preview.output.contains("abcd"));
         assert!(preview.output.ends_with("efgh"));
+    }
+
+    #[test]
+    fn model_preview_bounds_pathological_json_serialization() {
+        let output = format!(
+            "HEAD{}TAIL",
+            "\0".repeat(MAX_RETAINED_TOOL_OUTPUT_BYTES - "HEADTAIL".len())
+        );
+        assert_eq!(output.len(), MAX_RETAINED_TOOL_OUTPUT_BYTES);
+        assert!(serialized_json_string_bytes(&output) > MAX_SERIALIZED_TOOL_OUTPUT_BYTES);
+
+        let preview = preview_tool_output(&output, MAX_RETAINED_TOOL_OUTPUT_BYTES, 0);
+        let serialized_bytes = serialized_json_string_bytes(&preview.output);
+
+        assert!(preview.output.len() <= MAX_RETAINED_TOOL_OUTPUT_BYTES);
+        assert!(
+            serialized_bytes <= MAX_SERIALIZED_TOOL_OUTPUT_BYTES,
+            "serialized preview was {serialized_bytes} bytes"
+        );
+        assert!(preview.output.starts_with("Warning: truncated output"));
+        assert!(preview.output.contains("HEAD"));
+        assert!(preview.output.ends_with("TAIL"));
+        assert_eq!(preview.stats.observed_bytes, MAX_RETAINED_TOOL_OUTPUT_BYTES);
+        assert!(preview.stats.retained_bytes < MAX_RETAINED_TOOL_OUTPUT_BYTES);
+        assert_eq!(
+            preview.stats.omitted_bytes,
+            preview.stats.observed_bytes - preview.stats.retained_bytes
+        );
     }
 
     #[test]
