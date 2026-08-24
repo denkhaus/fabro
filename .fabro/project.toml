@@ -61,6 +61,12 @@ enabled = true
 draft = false
 auto_merge = true
 merge_strategy = "squash"
+# glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,
+# clean JSON for PR titling; no reasoning_effort needed ("off" is not a
+# valid value: the enum is low|medium|high|xhigh|max). Unset would fall
+# back to the run model (glm-5.3), whose reasoning output breaks the
+# structured PR call (run 01M0QTNF6GW).
+model = "zai:glm-4.7"
 
 [run.integrations.github.permissions]
 contents = "write"
