@@ -105,6 +105,14 @@ impl RunLifecycle<WorkflowGraph> for HookLifecycle {
         set_hook_node(&mut hook_ctx, node.inner());
         hook_ctx.status = Some(outcome.status.to_string());
         hook_ctx.failure_reason = outcome.failure_reason().map(String::from);
+        // Journal bridge (seed fabro-31b2): hand the stage's declared
+        // context_updates to the hook — both on success and failure; a
+        // failed stage can carry painpoints too. Raw declared values,
+        // pre-blob-normalization: journal payloads are small and must not
+        // degrade to blob refs inside the hook context file.
+        if !outcome.context_updates.is_empty() {
+            hook_ctx.context_updates = Some(outcome.context_updates.clone());
+        }
         let _ = self.run_hook(&hook_ctx).await;
         Ok(())
     }
@@ -173,5 +181,155 @@ impl RunLifecycle<WorkflowGraph> for HookLifecycle {
             hook_ctx.failure_reason = Some(error_msg);
             let _ = self.run_hook(&hook_ctx).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use fabro_graphviz::graph::{AttrValue, Graph, Node};
+    use fabro_hooks::config::HookDefinition;
+    use fabro_hooks::HookSettings;
+    use fabro_model::Catalog;
+    use fabro_types::fixtures;
+    use fabro_types::outcome::Outcome;
+
+    use super::*;
+    use crate::graph::WorkflowGraph;
+
+    fn test_node(id: &str) -> WorkflowNode {
+        let mut node = Node::new(id);
+        node.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("box".to_string()),
+        );
+        WorkflowNode(Arc::new(node))
+    }
+
+    /// Minimal two-node graph (start -> <id>) so ExecutionState can exist.
+    fn test_state(id: &str) -> WfRunState {
+        let mut graph = Graph::new("hook-test");
+        let mut start = Node::new("start");
+        start.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("Mdiamond".to_string()),
+        );
+        graph.nodes.insert(start.id.clone(), start);
+        graph.nodes.insert(id.to_string(), Node::new(id));
+        graph.edges.push(fabro_graphviz::graph::Edge::new("start", id));
+        let workflow_graph = WorkflowGraph(Arc::new(graph));
+        ExecutionState::new(&workflow_graph).unwrap()
+    }
+
+    /// HookLifecycle whose stage_complete hook runs `command` on the host
+    /// (context JSON arrives on stdin). The command writes a verdict into
+    /// `marker` for the test to assert on — this exercises the REAL
+    /// executor pipe (HookContext -> serialization -> hook process).
+    fn hook_lifecycle(command: String) -> HookLifecycle {
+        let hook = HookDefinition {
+            name:       Some("journal-probe".into()),
+            event:      HookEvent::StageComplete,
+            command:    Some(command.into()),
+            hook_type:  None,
+            matcher:    None,
+            blocking:   None,
+            timeout_ms: None,
+            sandbox:    Some(false),
+        };
+        let runner = HookRunner::new(
+            HookSettings { hooks: vec![hook] },
+            fabro_auth::test_support::vault_only_credential_source(),
+            Arc::new(Catalog::from_builtin().expect("default catalog should build")),
+        );
+        HookLifecycle {
+            hook_runner:            Some(Arc::new(runner)),
+            sandbox:                Arc::new(fabro_agent::LocalSandbox::new(
+                std::env::temp_dir(),
+            )),
+            hook_execution_context: HookExecutionContext::default(),
+            run_id:                 fixtures::RUN_1,
+            graph_name:             "test-wf".to_string(),
+        }
+    }
+
+    fn probe_command(needle: &str, marker: &std::path::Path) -> String {
+        // sh: read HookContext from stdin; write the probe verdict to marker.
+        let marker = marker.display();
+        format!(
+            "ctx=$(cat); case \"$ctx\" in *\"{needle}\"*) echo found > {marker};; *)              echo missing > {marker};; esac; exit 0"
+        )
+    }
+
+    #[tokio::test]
+    async fn after_node_carries_context_updates_to_stage_complete_hooks() {
+        // Journal bridge (seed fabro-31b2): a completed stage's declared
+        // context_updates must reach the hook — that is the only pipe the
+        // stage-journal hook has to persist agent journal payloads.
+        let marker = std::env::temp_dir().join(format!(
+            "fabro-journal-bridge-{}.txt",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&marker);
+        let lc = hook_lifecycle(probe_command("blob refs unreadable", &marker));
+
+        let node = test_node("reviewer");
+        let mut result = NodeResult::new(
+            Outcome::success(),
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            1,
+            1,
+        );
+        result.outcome.context_updates.insert(
+            "journal".to_string(),
+            serde_json::json!({"painpoints": [{"text": "blob refs unreadable"}]}),
+        );
+
+        let state = test_state("reviewer");
+        lc.after_node(&node, &mut result, &state).await.unwrap();
+
+        let verdict = std::fs::read_to_string(&marker).unwrap_or_else(|_| "no-marker".into());
+        let _ = std::fs::remove_file(&marker);
+        assert_eq!(
+            verdict.trim(),
+            "found",
+            "stage's journal payload must reach the hook via the executor pipe"
+        );
+    }
+
+    #[tokio::test]
+    async fn after_node_leaves_updates_absent_when_stage_declared_none() {
+        // Absent, not an empty map: hooks must distinguish "stage declared
+        // nothing" from "bridge dropped the payload" — an empty {} would
+        // look like a lost journal.
+        let marker = std::env::temp_dir().join(format!(
+            "fabro-journal-absent-{}.txt",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&marker);
+        let lc = hook_lifecycle(probe_command("context_updates", &marker));
+
+        let node = test_node("planner");
+        let mut result = NodeResult::new(
+            Outcome::success(),
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::ZERO,
+            1,
+            1,
+        );
+
+        let state = test_state("planner");
+        lc.after_node(&node, &mut result, &state).await.unwrap();
+
+        let verdict = std::fs::read_to_string(&marker).unwrap_or_else(|_| "no-marker".into());
+        let _ = std::fs::remove_file(&marker);
+        assert_eq!(
+            verdict.trim(),
+            "missing",
+            "no declared updates must serialize WITHOUT a context_updates field"
+        );
     }
 }

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use fabro_types::RunId;
@@ -12,6 +13,14 @@ pub struct HookContext {
     pub event:          HookEvent,
     pub run_id:         RunId,
     pub workflow_name:  String,
+    /// Context updates the completed stage declared (stage_complete /
+    /// stage_failed only). This is the journal bridge: hooks read
+    /// `context_updates.journal` to persist agent payloads durably
+    /// (seed fabro-31b2, run 01M0SS23MJ wrote empty envelopes without it).
+    /// `None` for events without a stage outcome and for callers built
+    /// against the pre-bridge struct.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_updates: Option<HashMap<String, serde_json::Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd:            Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -53,6 +62,7 @@ impl HookContext {
             event,
             run_id,
             workflow_name,
+            context_updates: None,
             cwd: None,
             node_id: None,
             node_label: None,
@@ -172,6 +182,7 @@ mod tests {
             event:          HookEvent::StageStart,
             run_id:         fixtures::RUN_1,
             workflow_name:  "test-wf".into(),
+            context_updates: None,
             cwd:            Some("/tmp".into()),
             node_id:        Some("plan".into()),
             node_label:     Some("Plan".into()),
@@ -194,6 +205,40 @@ mod tests {
         assert_eq!(back.event, HookEvent::StageStart);
         assert_eq!(back.run_id, fixtures::RUN_1);
         assert_eq!(back.node_id.as_deref(), Some("plan"));
+    }
+
+    #[test]
+    fn hook_context_carries_context_updates() {
+        // Journal bridge (seed fabro-31b2): stage_complete hooks read
+        // context_updates.journal from FABRO_HOOK_CONTEXT; the map must
+        // survive serialization AND stay absent when unset.
+        let mut ctx =
+            HookContext::new(HookEvent::StageComplete, fixtures::RUN_1, "test-wf".into());
+        ctx.context_updates = Some(HashMap::from([(
+            "journal".to_string(),
+            serde_json::json!({"painpoints": [{"text": "x"}]}),
+        )]));
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        assert!(
+            json.contains("\"context_updates\""),
+            "context_updates must serialize for hook scripts: {json}"
+        );
+        let back: HookContext = serde_json::from_str(&json).unwrap();
+        let updates = back.context_updates.expect("updates survive round trip");
+        assert_eq!(
+            updates["journal"]["painpoints"][0]["text"],
+            serde_json::json!("x")
+        );
+
+        ctx.context_updates = None;
+        let json = serde_json::to_string(&ctx).unwrap();
+        assert!(
+            !json.contains("\"context_updates\""),
+            "unset updates must stay absent: {json}"
+        );
+        let back: HookContext = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.context_updates, None);
     }
 
     #[test]
