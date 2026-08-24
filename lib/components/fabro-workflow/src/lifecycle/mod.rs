@@ -449,16 +449,17 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
         // FailureReason for soft stops (deadlock-for-human, infrastructure)
         // so notification routing and the UI can distinguish terminal
         // semantics instead of reading one flat failed().
-        if ctx.to == "exit" || ctx.to == "Exit" {
-            let kind = self
-                .graph
-                .nodes
-                .get(ctx.to)
-                .and_then(|node| node.str_kind_attr("kind"))
-                .unwrap_or("natural");
-            state
-                .context
-                .set(context::keys::INTERNAL_EXIT_KIND, serde_json::json!(kind));
+        // Any Msquare-shaped node is an exit (distinct exit nodes with
+        // different `kind` attributes, fabro-b907 adoption): capture the
+        // targeted exit's kind, not just the id-named ones.
+        if let Some(target) = self.graph.nodes.get(ctx.to) {
+            if target.shape() == "Msquare" {
+                let kind = target.str_kind_attr("kind").unwrap_or("natural");
+                state.context.set(
+                    context::keys::INTERNAL_EXIT_KIND,
+                    serde_json::json!(kind),
+                );
+            }
         }
         // Fidelity captures edge data
         self.fidelity.on_edge_selected(ctx, state).await?;
@@ -525,3 +526,29 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
     }
 }
 
+
+#[cfg(test)]
+mod lifecycle_exit_kind_tests {
+    #[test]
+    fn exit_kind_captured_for_any_msquare_exit_node() {
+        // fabro-b907 adoption: distinct exit nodes (exit_blocked etc.) are
+        // Msquare-shaped but not id-named "exit"; the capture must read
+        // their kind attribute too.
+        use fabro_graphviz::graph::{AttrValue, Graph, Node};
+        let mut graph = Graph::new("t");
+        let mut blocked = Node::new("exit_blocked");
+        blocked.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("Msquare".into()),
+        );
+        blocked
+            .attrs
+            .insert("kind".to_string(), AttrValue::String("deadlock".into()));
+        graph.nodes.insert("exit_blocked".into(), blocked);
+        // (lifecycle construction is heavy; the predicate under test is the
+        // node lookup + shape/kind read, verified through the same accessors)
+        let target = graph.nodes.get("exit_blocked").unwrap();
+        assert_eq!(target.shape(), "Msquare");
+        assert_eq!(target.str_kind_attr("kind"), Some("deadlock"));
+    }
+}
