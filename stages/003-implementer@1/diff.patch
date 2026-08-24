@@ -1,0 +1,395 @@
+diff --git a/.fabro/journal/implementer@3.json b/.fabro/journal/implementer@3.json
+new file mode 100644
+index 0000000..2fcc13d
+--- /dev/null
++++ b/.fabro/journal/implementer@3.json
+@@ -0,0 +1,9 @@
++{
++  "$schema": "fabro-journal-v1",
++  "run_id": "01M0T2GW0PTNF3CHNQKHER1271",
++  "node": "implementer",
++  "visit": 3,
++  "status": "succeeded",
++  "ts": "2026-08-24T14:31:09Z",
++  "data": {}
++}
+\ No newline at end of file
+diff --git a/.mulch/expertise/gofib.jsonl b/.mulch/expertise/gofib.jsonl
+index 0bdfd61..38c4425 100644
+--- a/.mulch/expertise/gofib.jsonl
++++ b/.mulch/expertise/gofib.jsonl
+@@ -1,2 +1,3 @@
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-08-22T17:10:28.450Z","evidence":{"seeds":"fabro-759d","commit":"802b69be5b96ee07d2af8abf553e0f7ff5205750"},"name":"thin-main-runnable-core","description":"gofib CLI testability: keep main() as a thin flag.Parse + error-exit shim and put all output logic in run(w io.Writer, count int) error, so tests exercise CLI behavior (counts, formats, invalid -n values) via bytes.Buffer instead of os/exec subprocesses. New flags should validate in run and surface errors through main's stderr+exit-1 path.","files":[".mulch/mulch.config.yaml","fib_test.go","main.go"],"id":"mx-d4cf38"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-08-22T18:08:57.202Z","evidence":{"commit":"423d296789e3a8c6f97e29e6f03f4fe41fb56356"},"description":"A previous implementer pass left a compiled 'gofib' binary in the worktree root (gitignored, so the gate stayed green). Hard rule: build smoke checks must not leave binaries behind — use 'go run .' (builds to cache) or build into a temp dir outside the worktree, and remove any stray binary before finishing the pass.","resolution":"Binary removed with 'rm -f gofib'; smoke checks now use 'go run .' which builds into the Go cache and never touches the worktree.","id":"mx-a58327"}
++{"type":"decision","classification":"tactical","recorded_at":"2026-08-24T14:30:15.783Z","evidence":{"commit":"7812d1e4afe42f9ddb6ec6f7aee45413c5ea1d49"},"title":"-start 0 normalizes to 1 inside run()","rationale":"gofib indices are 1-based and pinned by README ('100: 354224848179261915075') and existing tests, so a -start flag defaulting to 0 must reproduce today's output exactly; the seed's 'Default 0' was resolved to '0 behaves like unset'","id":"mx-5dcb01"}
+diff --git a/README.md b/README.md
+index d3a15e0..355c467 100644
+--- a/README.md
++++ b/README.md
+@@ -49,6 +49,20 @@ $ gofib | tail -1
+ 100: 354224848179261915075
+ ```
+ 
++`-start` changes the first index printed without changing what `-n`
++counts — `-start s -n k` prints exactly `k` lines, indices `s..s+k-1`.
++The default (`0`) behaves like `1`, so plain `gofib` output is
++unchanged:
++
++```
++$ gofib -start 10 -n 5
++10: 55
++11: 89
++12: 144
++13: 233
++14: 377
++```
++
+ JSON mode (`-json`) emits JSON Lines — one object per number, never a
+ JSON array. `fib` is a string (ADR-0001) because F(100) overflows
+ int64:
+@@ -103,6 +117,7 @@ $ echo $?
+ | Flag | Meaning |
+ |------|---------|
+ | `-n <int>` | Count flag: how many numbers to print. Default `100`; must be `>= 1`, otherwise gofib exits non-zero with an error on stderr. Combines with JSON mode. |
++| `-start <int>` | Start flag: index of the first number printed. Default `0`, which behaves like `1` (gofib's indices are 1-based), so unset output is unchanged — plain `gofib` still starts `1: 1` and ends `100: 354224848179261915075`. `-start s -n k` prints exactly `k` lines with indices `s..s+k-1`: `-start` never changes what `-n` counts. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr. Combines with `-json` (the `index` field carries the actual index) and `-pretty` (columns sized to the largest index and value actually printed). |
+ | `-json` | JSON mode: emit JSON Lines instead of text — one `{"index":<int>,"fib":"<string>"}` object per number. `fib` is a string by decision (ADR-0001), since F(100) overflows int64. Never a JSON array. |
+ | `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. **No effect with `-json`** — JSON Lines have no columns to align. |
+ | `-version` | Prints exactly `gofib 1.3.0` (from the `Version` const in `main.go`) and takes precedence over every other flag — even an otherwise-invalid combination like `-version -n 0 -json` prints the version and exits `0`. |
+diff --git a/fib_test.go b/fib_test.go
+index 4626976..9fd2df4 100644
+--- a/fib_test.go
++++ b/fib_test.go
+@@ -54,7 +54,7 @@ func TestRun(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, tt.n, false, false, false); err != nil {
++			if err := run(&buf, 0, tt.n, false, false, false); err != nil {
+ 				t.Fatalf("run(%d) returned error: %v", tt.n, err)
+ 			}
+ 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -71,6 +71,47 @@ func TestRun(t *testing.T) {
+ 	}
+ }
+ 
++// TestRunStart pins the -start semantics in text mode: -start s -n k
++// prints exactly k lines with the indices s..s+k-1 (s = 0 behaves like
++// the historical default starting at 1), so -start never changes what
++// -n counts.
++func TestRunStart(t *testing.T) {
++	tests := []struct {
++		name      string
++		start     int
++		n         int
++		wantLines int
++		wantFirst string
++		wantLast  string
++	}{
++		{"start 0 behaves like unset", 0, 5, 5, "1: 1", "5: 5"},
++		{"start 1 prints indices 1..n", 1, 3, 3, "1: 1", "3: 2"},
++		{"start 10 n 5 prints indices 10..14", 10, 5, 5, "10: 55", "14: 377"},
++		// -start does not change what -n counts: one line, F(100).
++		{"start 100 n 1 prints only F(100)", 100, 1, 1,
++			"100: " + mustBig("354224848179261915075").String(),
++			"100: " + mustBig("354224848179261915075").String()},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			var buf bytes.Buffer
++			if err := run(&buf, tt.start, tt.n, false, false, false); err != nil {
++				t.Fatalf("run(%d, %d) returned error: %v", tt.start, tt.n, err)
++			}
++			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
++			if len(lines) != tt.wantLines {
++				t.Fatalf("run(%d, %d) printed %d lines, want %d", tt.start, tt.n, len(lines), tt.wantLines)
++			}
++			if lines[0] != tt.wantFirst {
++				t.Errorf("first line = %q, want %q", lines[0], tt.wantFirst)
++			}
++			if lines[len(lines)-1] != tt.wantLast {
++				t.Errorf("last line = %q, want %q", lines[len(lines)-1], tt.wantLast)
++			}
++		})
++	}
++}
++
+ // wantJSONLine returns the canonical JSON line for index i, used to pin
+ // the exact object shape {"index": <int>, "fib": "<string>"}.
+ func wantJSONLine(i int) string {
+@@ -95,7 +136,7 @@ func TestRunJSON(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, tt.n, true, false, false); err != nil {
++			if err := run(&buf, 0, tt.n, true, false, false); err != nil {
+ 				t.Fatalf("run(%d, json) returned error: %v", tt.n, err)
+ 			}
+ 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -122,6 +163,41 @@ func TestRunJSON(t *testing.T) {
+ 	}
+ }
+ 
++// TestRunStartJSON pins -start in JSON mode: the index field carries
++// the actual index (s..s+k-1), fib stays a string, and there is still
++// one object per line — never an array.
++func TestRunStartJSON(t *testing.T) {
++	const start, n = 10, 5
++	var buf bytes.Buffer
++	if err := run(&buf, start, n, true, false, false); err != nil {
++		t.Fatalf("run(%d, %d, json) returned error: %v", start, n, err)
++	}
++	out := buf.String()
++	if strings.HasPrefix(out, "[") || strings.HasSuffix(out, "]") {
++		t.Errorf("json output looks like an array, want JSON Lines: %q", out)
++	}
++	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
++	if len(lines) != n {
++		t.Fatalf("run(%d, %d, json) printed %d lines, want %d", start, n, len(lines), n)
++	}
++	for i, line := range lines {
++		idx := start + i
++		var got fibLine
++		if err := json.Unmarshal([]byte(line), &got); err != nil {
++			t.Fatalf("line %d is not valid JSON (%q): %v", i+1, line, err)
++		}
++		if want := wantJSONLine(idx); line != want {
++			t.Errorf("line %d = %q, want exactly %q", i+1, line, want)
++		}
++		if got.Index != idx {
++			t.Errorf("line %d index = %d, want %d", i+1, got.Index, idx)
++		}
++		if got.Fib != Fib(idx).String() {
++			t.Errorf("line %d fib = %q, want %q", i+1, got.Fib, Fib(idx).String())
++		}
++	}
++}
++
+ // prettyLine returns the expected -pretty text line for index i with
+ // value v: the index right-aligned to the width of the largest index
+ // (n) and the value right-aligned to the width of the largest value
+@@ -143,7 +219,7 @@ func TestRunPretty(t *testing.T) {
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, tt.n, false, true, false); err != nil {
++			if err := run(&buf, 0, tt.n, false, true, false); err != nil {
+ 				t.Fatalf("run(%d, pretty) returned error: %v", tt.n, err)
+ 			}
+ 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -163,7 +239,7 @@ func TestRunPretty(t *testing.T) {
+ 	// index right-aligned to len("100"), value to len(Fib(100)).
+ 	t.Run("pretty default prints 100 aligned numbers", func(t *testing.T) {
+ 		var buf bytes.Buffer
+-		if err := run(&buf, defaultCount, false, true, false); err != nil {
++		if err := run(&buf, 0, defaultCount, false, true, false); err != nil {
+ 			t.Fatalf("run(default, pretty) returned error: %v", err)
+ 		}
+ 		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -177,14 +253,39 @@ func TestRunPretty(t *testing.T) {
+ 	})
+ }
+ 
++// TestRunStartPretty pins -pretty with -start: the columns are sized to
++// the largest index (start+n-1) and the largest value Fib(start+n-1)
++// actually printed, not to n.
++func TestRunStartPretty(t *testing.T) {
++	// F(8)..F(12); hardcoding F-values is allowed only for small n.
++	fibs := map[int]string{8: "21", 9: "34", 10: "55", 11: "89", 12: "144"}
++	const start, n = 8, 5
++	var buf bytes.Buffer
++	if err := run(&buf, start, n, false, true, false); err != nil {
++		t.Fatalf("run(%d, %d, pretty) returned error: %v", start, n, err)
++	}
++	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
++	if len(lines) != n {
++		t.Fatalf("run(%d, %d, pretty) printed %d lines, want %d", start, n, len(lines), n)
++	}
++	for i, line := range lines {
++		idx := start + i
++		// Widths come from the largest printed index (12) and the
++		// largest printed value (Fib(12) = 144).
++		if want := prettyLine(start+n-1, idx, fibs[idx]); line != want {
++			t.Errorf("line %d = %q, want %q", i+1, line, want)
++		}
++	}
++}
++
+ func TestRunPrettyJSON(t *testing.T) {
+ 	// -pretty only affects text mode: with -json the output must be
+ 	// identical, line for line.
+ 	var jsonOnly, prettyJSON bytes.Buffer
+-	if err := run(&jsonOnly, 3, true, false, false); err != nil {
++	if err := run(&jsonOnly, 0, 3, true, false, false); err != nil {
+ 		t.Fatalf("run(3, json) returned error: %v", err)
+ 	}
+-	if err := run(&prettyJSON, 3, true, true, false); err != nil {
++	if err := run(&prettyJSON, 0, 3, true, true, false); err != nil {
+ 		t.Fatalf("run(3, json, pretty) returned error: %v", err)
+ 	}
+ 	if prettyJSON.String() != jsonOnly.String() {
+@@ -205,7 +306,7 @@ func TestRunRejectsInvalidCount(t *testing.T) {
+ 	}{{"text", false}, {"json", true}} {
+ 		for _, n := range []int{0, -5} {
+ 			var buf bytes.Buffer
+-			err := run(&buf, n, mode.asJSON, false, false)
++			err := run(&buf, 0, n, mode.asJSON, false, false)
+ 			if err == nil {
+ 				t.Fatalf("run(%d, %s) succeeded, want error", n, mode.name)
+ 			}
+@@ -219,26 +320,54 @@ func TestRunRejectsInvalidCount(t *testing.T) {
+ 	}
+ }
+ 
++// TestRunRejectsInvalidStart pins the -start validation contract: a
++// negative start exits non-zero with the exact -n-style error message
++// and writes no output first.
++func TestRunRejectsInvalidStart(t *testing.T) {
++	for _, mode := range []struct {
++		name   string
++		asJSON bool
++	}{{"text", false}, {"json", true}} {
++		for _, start := range []int{-1, -5} {
++			var buf bytes.Buffer
++			err := run(&buf, start, 5, mode.asJSON, false, false)
++			if err == nil {
++				t.Fatalf("run(%d, 5, %s) succeeded, want error", start, mode.name)
++			}
++			want := fmt.Sprintf("invalid value %d for flag -start: must be >= 0", start)
++			if err.Error() != want {
++				t.Errorf("run(%d, %s) error = %q, want exactly %q", start, mode.name, err.Error(), want)
++			}
++			if buf.Len() != 0 {
++				t.Errorf("run(%d, %s) wrote %q before failing, want no output", start, mode.name, buf.String())
++			}
++		}
++	}
++}
++
+ func TestRunVersion(t *testing.T) {
+ 	// -version must win over every other flag combination: the only
+ 	// output is the single line "gofib <Version>". It is checked before
+-	// the -n validation in run(), so even an invalid count still prints
+-	// the version line and succeeds.
++	// the -n and -start validation in run(), so even an invalid count
++	// or start still prints the version line and succeeds.
+ 	tests := []struct {
+ 		name   string
++		start  int
+ 		count  int
+ 		asJSON bool
+ 		pretty bool
+ 	}{
+-		{"version alone", defaultCount, false, false},
+-		{"version with -json -n 5", 5, true, false},
+-		{"version with -pretty", defaultCount, false, true},
+-		{"version with invalid -n 0", 0, false, false},
++		{"version alone", 0, defaultCount, false, false},
++		{"version with -json -n 5", 0, 5, true, false},
++		{"version with -pretty", 0, defaultCount, false, true},
++		{"version with invalid -n 0", 0, 0, false, false},
++		{"version with -start 10", 10, 5, false, false},
++		{"version with invalid -start -1", -1, 5, false, false},
+ 	}
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, tt.count, tt.asJSON, tt.pretty, true); err != nil {
++			if err := run(&buf, tt.start, tt.count, tt.asJSON, tt.pretty, true); err != nil {
+ 				t.Fatalf("run(version) returned error: %v", err)
+ 			}
+ 			if want := "gofib " + Version + "\n"; buf.String() != want {
+diff --git a/main.go b/main.go
+index 9dd76ef..7b20e53 100644
+--- a/main.go
++++ b/main.go
+@@ -1,9 +1,10 @@
+ // Command gofib prints Fibonacci numbers, one per line, prefixed with
+ // the index: "1: 1", "2: 1", "3: 2", ... By default it prints the first
+-// 100; the -n flag changes how many are printed, -json switches to
+-// JSON Lines output, and -pretty aligns the text columns (it has no
+-// effect with -json). The -version flag prints "gofib <Version>" and
+-// takes precedence over every other flag.
++// 100; the -n flag changes how many are printed, -start changes the
++// first index printed (it does not change what -n counts), -json
++// switches to JSON Lines output, and -pretty aligns the text columns
++// (it has no effect with -json). The -version flag prints
++// "gofib <Version>" and takes precedence over every other flag.
+ package main
+ 
+ import (
+@@ -38,16 +39,24 @@ func Fib(n int) *big.Int {
+ 	return a
+ }
+ 
+-// run writes the first count Fibonacci numbers to w. In text mode each
+-// line is "<index>: <value>"; with pretty both columns are right-aligned,
+-// the index to the width of the largest index printed and the value to
+-// the width of the largest value printed, separated by ": ". In JSON
+-// mode each line is one JSON object {"index": <int>, "fib": "<value>"}
+-// (JSON Lines) and pretty has no effect. With version set it prints only
+-// the single line "gofib <Version>" and every other flag (including an
+-// invalid count) is ignored. Otherwise it returns an error when
+-// count < 1.
+-func run(w io.Writer, count int, asJSON, pretty, version bool) error {
++// defaultStart is the effective first index when -start is omitted or
++// zero: gofib's indices are 1-based, and an unset (or explicit 0)
++// -start preserves the historical output starting at index 1.
++const defaultStart = 1
++
++// run writes count Fibonacci numbers to w, beginning at index start
++// (an unset -start value of 0 means the historical default of 1), so
++// it prints the indices start..start+count-1 and -start never changes
++// what count counts. In text mode each line is "<index>: <value>";
++// with pretty both columns are right-aligned, the index to the width
++// of the largest index printed and the value to the width of the
++// largest value printed, separated by ": ". In JSON mode each line is
++// one JSON object {"index": <int>, "fib": "<value>"} (JSON Lines) and
++// pretty has no effect. With version set it prints only the single
++// line "gofib <Version>" and every other flag (including an invalid
++// count or start) is ignored. Otherwise it returns an error when
++// count < 1 or start < 0.
++func run(w io.Writer, start, count int, asJSON, pretty, version bool) error {
+ 	if version {
+ 		fmt.Fprintf(w, "gofib %s\n", Version)
+ 		return nil
+@@ -55,15 +64,22 @@ func run(w io.Writer, count int, asJSON, pretty, version bool) error {
+ 	if count < 1 {
+ 		return fmt.Errorf("invalid value %d for flag -n: must be >= 1", count)
+ 	}
++	if start < 0 {
++		return fmt.Errorf("invalid value %d for flag -start: must be >= 0", start)
++	}
++	if start == 0 {
++		start = defaultStart
++	}
++	last := start + count - 1
+ 	enc := json.NewEncoder(w)
+ 	// Pretty text mode sizes its columns from the largest index and
+-	// value printed: count and Fib(count).
++	// value printed: last and Fib(last).
+ 	idxW, valW := 0, 0
+ 	if pretty && !asJSON {
+-		idxW = len(strconv.Itoa(count))
+-		valW = len(Fib(count).String())
++		idxW = len(strconv.Itoa(last))
++		valW = len(Fib(last).String())
+ 	}
+-	for i := 1; i <= count; i++ {
++	for i := start; i <= last; i++ {
+ 		if asJSON {
+ 			if err := enc.Encode(fibLine{Index: i, Fib: Fib(i).String()}); err != nil {
+ 				return err
+@@ -79,11 +95,12 @@ func run(w io.Writer, count int, asJSON, pretty, version bool) error {
+ 
+ func main() {
+ 	n := flag.Int("n", defaultCount, "how many Fibonacci numbers to print (must be >= 1; default 100)")
++	start := flag.Int("start", 0, "index of the first Fibonacci number to print (must be >= 0; 0 starts at 1 like the default)")
+ 	asJSON := flag.Bool("json", false, "emit JSON Lines instead of text: one {\"index\": i, \"fib\": \"value\"} object per number")
+ 	pretty := flag.Bool("pretty", false, "align text output into two right-aligned columns sized to the largest index and value (no effect with -json)")
+ 	version := flag.Bool("version", false, "print \"gofib <version>\" and exit; takes precedence over all other flags")
+ 	flag.Parse()
+-	if err := run(os.Stdout, *n, *asJSON, *pretty, *version); err != nil {
++	if err := run(os.Stdout, *start, *n, *asJSON, *pretty, *version); err != nil {
+ 		fmt.Fprintln(os.Stderr, err)
+ 		os.Exit(1)
+ 	}
