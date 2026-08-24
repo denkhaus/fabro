@@ -53,19 +53,7 @@ web-deps:
 
 # Install the staged binary as the user CLI (~/.fabro/bin/fabro)
 install-cli:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [[ ! -x "{{staged}}" ]]; then
-        echo "no staged binary at {{staged}} — run 'just build-binary' first" >&2
-        exit 1
-    fi
-    mkdir -p "$(dirname "{{cli_bin}}")"
-    if cmp -s "{{staged}}" "{{cli_bin}}"; then
-        echo "CLI already up to date: {{cli_bin}}"
-    else
-        install -m 0755 "{{staged}}" "{{cli_bin}}"
-        "{{cli_bin}}" --version
-    fi
+    nu scripts/install-cli.nu "{{staged}}" "{{cli_bin}}"
 
 # Start the compose stack (recreates the container when the image changed)
 compose-up:
@@ -85,61 +73,18 @@ logs:
 
 # Wait until the server health endpoint answers (max 90s)
 wait-healthy:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "waiting for http://127.0.0.1:{{port}}/health ..."
-    for i in $(seq 1 90); do
-        if curl -fsS "http://127.0.0.1:{{port}}/health" >/dev/null 2>&1; then
-            echo "healthy after ${i}s"
-            exit 0
-        fi
-        sleep 1
-    done
-    echo "server did not become healthy within 90s" >&2
-    docker compose ps || true
-    docker compose logs --tail 50 || true
-    exit 1
+    nu scripts/wait-healthy.nu "{{port}}"
 
 # Smoke check: health + CLI roundtrip against the running server
 smoke: wait-healthy
     "{{cli_bin}}" ps
 
 # Clean stale host build artifacts from target/ without a full cargo clean.
+# Logic lives in scripts/clean-target.nu; see its header for the growth
+# mechanics (cargo never GCs; the docker release build uses its own volume).
 #
-# Growth mechanics: cargo never garbage-collects. Every crate x fingerprint
-# x edit round leaves incremental/<crate>-<hash>/ and deps/*-<hash>.rlib
-# behind forever; one heavy day measured 52 GB (937 incremental dirs for
-# 150 crates). The docker release build (just up) does NOT use target/ —
-# it builds in the fabro-docker-cargo-target-amd64 volume — so cleaning
-# here never invalidates that cache.
-#
-# Modes:
-#   just clean-target          drop incremental/ dirs unused for >= 6h
-#                              (safe: incremental state is regenerable,
-#                              worst case one full non-incremental recompile)
-#   just clean-target sweep    additionally GC deps/ via cargo-sweep
-#                              (requires: cargo install cargo-sweep)
-#   just clean-target all      full `cargo clean` (last resort)
+# Modes: stale (default: drop incremental/ dirs unused >= 6h) | sweep
+# (additionally cargo-sweep --time 24) | all (full cargo clean).
+# Script flags: `nu scripts/clean-target.nu <mode> --dry-run` to preview.
 clean-target mode="stale":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    [ -d target ] || { echo "no target/ — nothing to clean"; exit 0; }
-    before=$(du -sh target | cut -f1)
-    case "{{mode}}" in
-        stale|sweep)
-            find target/debug/incremental -maxdepth 1 -mindepth 1 -type d                 -not -newermt "-6 hours" -exec rm -rf {} + 2>/dev/null || true
-            if [ "{{mode}}" = "sweep" ]; then
-                command -v cargo-sweep >/dev/null 2>&1 || { echo "cargo-sweep not installed: cargo install cargo-sweep" >&2; exit 1; }
-                cargo sweep --time 24
-            fi
-            ;;
-        all)
-            cargo clean
-            ;;
-        *)
-            echo "unknown mode '{{mode}}' (use stale | sweep | all)" >&2
-            exit 1
-            ;;
-    esac
-    after=$(du -sh target 2>/dev/null | cut -f1 || echo gone)
-    echo "target: $before -> ${after:-gone}"
+    nu scripts/clean-target.nu "{{mode}}"
