@@ -9,6 +9,7 @@ use fabro_llm::types::ToolDefinition;
 
 use crate::sandbox::Sandbox;
 use crate::tool_registry::{RegisteredTool, ToolSource};
+use crate::write_locks::{self, BatchWriteLocks};
 
 const APPLY_PATCH_LARK_GRAMMAR: &str = include_str!("apply_patch.lark");
 
@@ -236,9 +237,24 @@ pub async fn apply_patch_operations(
     ops: &[PatchOperation],
     env: &dyn Sandbox,
 ) -> Result<String, String> {
+    apply_patch_operations_locked(ops, env, None).await
+}
+
+/// [`apply_patch_operations`] with per-path write locks from the parallel
+/// dispatcher. All paths the patch touches (including `new_path` rename
+/// targets) are locked up front, held for the whole call: a parallel
+/// `edit_file`/`write_file`/`apply_patch` on the same path then serializes
+/// instead of clobbering the patch's read-modify-write span.
+pub async fn apply_patch_operations_locked(
+    ops: &[PatchOperation],
+    env: &dyn Sandbox,
+    locks: Option<&BatchWriteLocks>,
+) -> Result<String, String> {
     if ops.is_empty() {
         return Err("No files were modified.".to_string());
     }
+
+    let _write_guards = lock_patch_paths(ops, locks).await;
 
     let mut added = Vec::new();
     let mut modified = Vec::new();
@@ -293,6 +309,33 @@ pub async fn apply_patch_operations(
     }
 
     Ok(format_summary(&added, &modified, &deleted))
+}
+
+/// Acquire the write lock for every path the patch touches (source and
+/// rename target). One patch call is atomic with respect to same-batch
+/// write tools on those paths.
+async fn lock_patch_paths(
+    ops: &[PatchOperation],
+    locks: Option<&BatchWriteLocks>,
+) -> Vec<write_locks::PathGuard> {
+    let Some(locks) = locks else {
+        return Vec::new();
+    };
+    let mut guards = Vec::new();
+    for op in ops {
+        match op {
+            PatchOperation::Add { path, .. } | PatchOperation::Delete { path } => {
+                guards.push(write_locks::lock_write_path(locks, path).await);
+            }
+            PatchOperation::Update { path, new_path, .. } => {
+                guards.push(write_locks::lock_write_path(locks, path).await);
+                if let Some(dest) = new_path {
+                    guards.push(write_locks::lock_write_path(locks, dest).await);
+                }
+            }
+        }
+    }
+    guards
 }
 
 fn normalize_char(c: char) -> char {
@@ -491,7 +534,8 @@ pub fn make_apply_patch_tool() -> RegisteredTool {
                     .ok_or_else(|| "apply_patch expects raw patch text".to_string())?;
 
                 let ops = parse_apply_patch(patch_text)?;
-                apply_patch_operations(&ops, ctx.env.as_ref()).await
+                apply_patch_operations_locked(&ops, ctx.env.as_ref(), ctx.write_locks.as_ref())
+                    .await
             })
         }),
         source:     ToolSource::Native,
@@ -512,6 +556,83 @@ mod tests {
     use crate::LocalSandbox;
     use crate::test_support::MutableMockSandbox;
     use crate::tool_registry::ToolContext;
+
+    #[tokio::test]
+    async fn parallel_apply_patch_and_edit_file_to_same_file_apply_both() {
+        // The apply_patch gap left open by the per-path write locks: a
+        // parallel edit_file racing an apply_patch on the same path read
+        // identical base content and silently discarded the loser's edit.
+        // Both now hold the same per-path lock for their whole write span,
+        // so both changes land. Slow writes force the interleaving.
+        use crate::test_support::SlowWriteMockSandbox;
+        use crate::write_locks;
+
+        let patch_tool = make_apply_patch_tool();
+        let edit_tool = crate::make_edit_file_tool();
+        let env = Arc::new(SlowWriteMockSandbox::new(
+            HashMap::from([("main.go".to_string(), "alpha beta\ngamma\n".to_string())]),
+            25,
+        ));
+        // One shared lock map for BOTH calls: the dispatcher creates one
+        // per batch; sharing it here is what makes the race detectable.
+        let locks = write_locks::new_batch_write_locks();
+        let ctx_with_locks = || ToolContext {
+            write_locks:         Some(locks.clone()),
+            env:                 env.clone(),
+            cancel:              CancellationToken::new(),
+            tool_env_provider:   None,
+            session_id:          None,
+            root_session_id:     None,
+            tool_call_id:        None,
+            agent_event_emitter: None,
+        };
+        let patch = (patch_tool.executor)(
+            serde_json::Value::String(
+                // Replace the `alpha beta` line; `gamma` stays untouched
+                // for the parallel edit_file.
+                "*** Begin Patch\n*** Update File: main.go\n@@\n-alpha beta\n+patched beta\n*** End Patch".to_string(),
+            ),
+            ctx_with_locks(),
+        );
+        let edit = (edit_tool.executor)(
+            serde_json::json!({
+                "file_path": "main.go",
+                "old_string": "gamma",
+                "new_string": "GAMMA"
+            }),
+            ctx_with_locks(),
+        );
+        let (patch_result, edit_result) = tokio::join!(patch, edit);
+
+        assert!(
+            patch_result.is_ok(),
+            "apply_patch failed: {:?}",
+            patch_result.err()
+        );
+        assert!(
+            edit_result.is_ok(),
+            "edit_file failed: {:?}",
+            edit_result.err()
+        );
+        // Both lock orderings must converge to the same result: the patch
+        // replaces `alpha beta` with `alpha patched`, the edit turns `gamma`
+        // into `GAMMA` — neither loses the other's change.
+        let content = env.inner.read_file_text("main.go").await.unwrap();
+        assert_eq!(content, "patched beta\nGAMMA\n");
+    }
+
+    #[tokio::test]
+    async fn apply_patch_without_locks_still_applies() {
+        // Sequential rounds pass write_locks: None; the lock-free path must
+        // behave exactly like the old apply_patch_operations.
+        let env = MutableMockSandbox::new(HashMap::new());
+        let ops =
+            parse_apply_patch("*** Begin Patch\n*** Add File: out.txt\n+hello\n*** End Patch")
+                .unwrap();
+        let result = apply_patch_operations_locked(&ops, &env, None).await;
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(env.read_file_text("out.txt").await.unwrap(), "hello\n");
+    }
 
     #[test]
     fn parse_apply_patch_add_file() {

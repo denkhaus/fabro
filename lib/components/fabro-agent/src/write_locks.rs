@@ -26,6 +26,9 @@ use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 /// Per-batch map from normalized path to that path's write mutex.
 pub type BatchWriteLocks = Arc<Mutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>>;
 
+/// Guard held while a write tool owns a path's lock.
+pub type PathGuard = OwnedMutexGuard<()>;
+
 /// Create the lock map for one parallel tool-call batch.
 #[must_use]
 pub fn new_batch_write_locks() -> BatchWriteLocks {
