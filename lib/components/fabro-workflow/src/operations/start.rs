@@ -23,7 +23,6 @@ use fabro_types::settings::run::{
 };
 use fabro_types::{
     ManifestPath, RunId, RunRunnableSource, RunSpec, SandboxProviderKind, TargetValidationError,
-    normalize_git_commit_sha,
 };
 use fabro_util::error::collect_chain;
 use fabro_vault::Vault;
@@ -588,8 +587,10 @@ fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
     };
 
     // The Git-target grammar is owned by `RunTarget::validate` in fabro-types;
-    // admission accepts targets through the same rules this start path
-    // re-derives the clone source from.
+    // admission accepts targets through the same rules, and this start path
+    // re-derives the clone source from the persisted target alone. The
+    // persisted `git` projection is display metadata, never a clone input, so
+    // writers cannot break starts by letting the pair drift.
     let validated = target.clone().validate().map_err(|error| {
         Error::engine(match error {
             TargetValidationError::Repository => {
@@ -599,31 +600,10 @@ fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
             TargetValidationError::Sha => "persisted Git run target has an invalid SHA",
         })
     })?;
-    let git = record
-        .git
-        .as_ref()
-        .ok_or_else(|| Error::engine("persisted Git run target is missing its Git projection"))?;
-    let projected_sha = git
-        .sha
-        .as_deref()
-        .map(|value| {
-            normalize_git_commit_sha(value)
-                .ok_or_else(|| Error::engine("persisted Git projection has an invalid SHA"))
-        })
-        .transpose()?;
-    let expected = validated.git;
-    if git.origin_url != expected.origin_url
-        || git.branch != expected.branch
-        || projected_sha != expected.sha
-    {
-        return Err(Error::engine(
-            "persisted Git run target disagrees with its Git projection",
-        ));
-    }
     Ok(CloneSourceForRun {
-        origin_url: Some(expected.origin_url),
-        branch:     Some(expected.branch),
-        commit_sha: expected.sha,
+        origin_url: Some(validated.git.origin_url),
+        branch:     Some(validated.git.branch),
+        commit_sha: validated.git.sha,
     })
 }
 
@@ -2746,22 +2726,33 @@ reasoning = false
     }
 
     #[test]
-    fn clone_commit_persisted_git_target_rejects_projection_drift() {
+    fn clone_commit_persisted_git_target_is_authoritative_over_projection() {
         let mut spec = test_support::test_run_spec();
         spec.target = Some(RunTarget::Git {
             repo:   "fabro-sh/fabro".to_string(),
             branch: "main".to_string(),
             sha:    None,
         });
+        // A drifted (or absent) projection never feeds the clone source: the
+        // validated target alone does.
         spec.git = Some(fabro_types::GitContext {
-            origin_url: "https://github.com/fabro-sh/fabro".to_string(),
+            origin_url: "https://github.com/fabro-sh/other".to_string(),
             branch:     "other".to_string(),
-            sha:        None,
+            sha:        Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
             dirty:      fabro_types::DirtyStatus::Clean,
         });
 
-        let error = clone_source_for_run(&spec).unwrap_err();
+        let source = clone_source_for_run(&spec).unwrap();
 
-        assert!(error.to_string().contains("disagrees"));
+        assert_eq!(
+            source.origin_url.as_deref(),
+            Some("https://github.com/fabro-sh/fabro")
+        );
+        assert_eq!(source.branch.as_deref(), Some("main"));
+        assert_eq!(source.commit_sha, None);
+
+        spec.git = None;
+        let source = clone_source_for_run(&spec).unwrap();
+        assert_eq!(source.branch.as_deref(), Some("main"));
     }
 }
