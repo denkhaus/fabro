@@ -1,7 +1,7 @@
 services:
   fabro:
     image: ghcr.io/fabro-sh/fabro:${FABRO_VERSION:-nightly}
-    restart: unless-stopped
+    restart: always
     ports:
       - "${FABRO_PORT:-32276}:32276"
     volumes:
