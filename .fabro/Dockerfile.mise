@@ -19,7 +19,7 @@ ENV MISE_DATA_DIR=/mise \
 # Sandbox requirements (bash, git) + mise itself.
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends bash git ca-certificates curl xz-utils; \
+    apt-get install -y --no-install-recommends bash git ca-certificates curl xz-utils ripgrep; \
     rm -rf /var/lib/apt/lists/*; \
     curl -fsSL "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64" \
         -o /usr/local/bin/mise; \
