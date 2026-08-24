@@ -1176,6 +1176,15 @@ paths:
         Creates a new workflow run in `submitted` status from either a
         self-contained legacy manifest or an immutable workflow-version intent.
         Creation does not start or schedule the run.
+
+
+        Failures return the standard error body. The intent lane responds
+        `404` (`workflow_version_not_found`, `environment_not_found`), `422`
+        (`run_intent_invalid`, `target_invalid`,
+        `target_environment_unsupported`, `workflow_version_unusable`,
+        `run_compile_invalid`), `503` (`integration_unavailable`), or `500`
+        (`workflow_version_store_error`, `credential_store_error`,
+        `variable_store_error`, `run_persistence_failed`).
       requestBody:
         required: true
         content:
@@ -1189,44 +1198,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Run"
+        # Non-2xx statuses beyond 400 are deliberately documented in the
+        # endpoint description instead of declared here: progenitor-generated
+        # clients drop the HTTP status when a declared error response's body
+        # is not valid JSON (e.g. a gateway's plain-text error), which breaks
+        # the CLI's error display contract
+        # (run_create_failure_shows_action_context_and_response_body).
         "400":
           description: Invalid JSON or legacy manifest
-          headers:
-            x-request-id:
-              $ref: "#/components/headers/XRequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Workflow version or selected environment not found
-          headers:
-            x-request-id:
-              $ref: "#/components/headers/XRequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Invalid intent, target, environment, workflow version, or compiled run
-          headers:
-            x-request-id:
-              $ref: "#/components/headers/XRequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "503":
-          description: Required sandbox integration is unavailable
-          headers:
-            x-request-id:
-              $ref: "#/components/headers/XRequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Workflow-version storage or run persistence failed
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"

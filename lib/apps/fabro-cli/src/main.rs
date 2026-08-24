@@ -304,7 +304,7 @@ async fn main_inner(worker_token: Option<String>) -> (String, Result<()>) {
                 commands::dump::run(&args, &base_ctx).await?;
             }
             Commands::RunsCmd(cmd) => {
-                commands::runs::dispatch(cmd, &base_ctx).await?;
+                Box::pin(commands::runs::dispatch(cmd, &base_ctx)).await?;
             }
             Commands::Model { command } => {
                 commands::model::execute(command, &base_ctx).await?;
