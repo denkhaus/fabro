@@ -2,38 +2,43 @@
 # Capture review evidence for the reviewer (read-only by policy; tools
 # available for verification).
 #
-# PIPE FACTS, measured over four review cycles: at the default `compact`
-# fidelity a downstream prompt node renders only the FIRST ~300 characters
-# of a command node's output (the render cuts mid-line; nothing after the
-# cut survives). The reviewer node therefore sets fidelity="summary:high"
-# in workflow.fabro — "detailed summary including outputs" — which carries
-# command output in full. This script is sized for that pipe and ordered
-# critical-first, so even a truncated render keeps, in order: the integrity
-# header, the seed-work file list, and the complete seed-work diff. Loop
-# churn counts and worktree state sit at the tail, cut first.
+# PIPE (agent-reviewer era, run 01M0T2GW): the reviewer is an agent node
+# with real tools, and the engine materializes demoted values as blob
+# files in the sandbox (.fabro/blobs/<sha>.json) that the reviewer reads
+# on demand. Consequence: this capture is COMPLETE — it does not
+# self-budget. The old 6.8k self-budget was a workaround for the
+# prompt-node reviewer (tool_time_ms 0, blob refs unreadable) and it cut
+# exactly the wrong files: run 01M0T2GW reviewer@3 journaled that the
+# budget walk kept README.md and omitted main.go + fib_test.go — the
+# files the review hinged on.
 #
-# Structure: private helpers resolve the facts (run base, numstat grouping,
-# in-progress seed), section printers render one evidence section each, and
-# `main` wires them in the critical-first order. Output text is contract:
-# the reviewer prompt names these sections — change wording there too.
+# Size handling is the ENGINE's business now: a large capture is demoted
+# to a preview-plus-blobref marker, and the reviewer follows the blobref
+# link (its prompt says so). Completeness is THIS script's business:
+# every seed-work diff is included, source files before docs, the seed
+# spec untruncated. Inputs that arrive as blob refs are resolved inline
+# (resolve-blobrefs); unresolvable refs pass through as links rather
+# than being dropped.
+#
+# HARD_CAP is a pathological-input safety only (a generated 50MB file in
+# the diff must not produce an unbounded blob): on cap the disclosure
+# names what was cut, and source-first ordering guarantees docs go first.
+#
+# Structure: private helpers resolve the facts (run base, numstat
+# grouping, in-progress seed), section printers render one evidence
+# section each, and `main` wires them in the critical-first order.
+# Output text is contract: the reviewer prompt names these sections —
+# change wording there too.
 
 # Dev-loop machinery this repo owns; never part of a seed's review scope.
 const LOOP_PREFIXES = [".fabro/" ".mulch/" ".seeds/" ".prime/" "docs/" "scripts/"]
 const LOOP_ROOTS = ["justfile" "AGENTS.md" "CONTEXT.md" ".gitignore" "lefthook.yml" "go.sum"]
 
-# OUTPUT BUDGET context (engine state 2026-08-23): two layers bound what
-# reaches the reviewer prompt — per-value demotion at 8KB
-# (PROMPT_INLINE_VALUE_MAX) and an AGGREGATE budget (12KB default,
-# graph-level preamble_budget_kb). Values over either arrive as a
-# preview-plus-blobref marker; the blob file is materialized in the
-# sandbox and the reviewer (read-only tools) can and must read it. This
-# script still self-budgets to 6.8k chars: staying under the per-value
-# threshold keeps the capture inline whenever the aggregate budget
-# allows, so the common case needs no blob round-trip. Critical-first
-# ordering keeps the most important sections intact under any cut.
-const OUTPUT_BUDGET = 6800
-const SPEC_CAP = 2200
-const TAIL_RESERVE = 700
+# Pathological-input safety only — NOT a fidelity budget (see header).
+const HARD_CAP = 128000
+
+# Doc-ish extensions sort LAST in the diff walk: review hinges on source.
+const DOC_EXTENSIONS = ["md" "markdown" "txt" "rst" "adoc" "ad"]
 
 # ---------------------------------------------------------------------------
 # helpers — resolve facts
@@ -45,6 +50,37 @@ const TAIL_RESERVE = 700
 def sanitize [text: string]: nothing -> string {
     let one = ($text | str replace --all --regex '(?m)(^|\s)/([a-z][a-z0-9_.-]*)(\s|$)' '$1`/$2`$3')
     $one | str replace --all --regex '(?m)(^|\s)/([a-z][a-z0-9_.-]*)(\s|$)' '$1`/$2`$3'
+}
+
+# Resolve `blob://sha256/<hex>` markers in text inputs against the
+# engine-materialized blob store (.fabro/blobs/<sha>.json in the sandbox
+# workdir). A resolvable ref is inlined verbatim — the capture must carry
+# the CONTENT it judges by, not a dead marker. An unresolvable ref (blob
+# not materialized here) passes through as the blobref link unchanged:
+# downstream (the agent reviewer) can still open it; dropping it would
+# lose the only pointer.
+def resolve-blobrefs [text: string]: nothing -> string {
+    let refs = ($text | parse --regex 'blob://sha256/(?P<sha>[0-9a-f]{64})')
+    if ($refs | is-empty) {
+        return $text
+    }
+    mut out = $text
+    for sha in ($refs | get sha | uniq) {
+        let path = $".fabro/blobs/($sha).json"
+        if ($path | path exists) {
+            let content = (sanitize (open --raw $path | str trim -r -c "\n"))
+            $out = ($out | str replace --all $"blob://sha256/($sha)" $content)
+        }
+    }
+    $out
+}
+
+# Source files sort before docs in the diff walk (reviewer@3 painpoint,
+# run 01M0T2GW): the complete diff of changed SOURCE files is the primary
+# review artifact; docs are context. Stable within each group by path.
+def diff-sort-key [path: string]: nothing -> string {
+    let ext = ($path | path parse | get extension? | default "" | str lowercase)
+    if $ext in $DOC_EXTENSIONS { $"z:($path)" } else { $"a:($path)" }
 }
 
 def current-branch []: nothing -> string {
@@ -137,13 +173,11 @@ def integrity-line [
 def spec-section [wip: any]: nothing -> string {
     if $wip == null { return "" }
     let head = "\n== in-progress seed spec (authoritative — judge against this, not the brief) ==\n"
-    let desc = ($wip.description | str trim -r -c "\n")
-    if ($desc | str length) > $SPEC_CAP {
-        let cut = (($desc | str length) - $SPEC_CAP)
-        $head + ($desc | str substring 0..($SPEC_CAP - 1)) + "\n(spec truncated: " + ($cut | into string) + " chars cut — judge the visible part only)\n"
-    } else {
-        $head + $desc + "\n"
-    }
+    # COMPLETE, untruncated, blob refs resolved: a cut spec once forced
+    # "judge the visible part only" reviews; the engine blob-demotion
+    # makes truncation unnecessary (see header).
+    let desc = (resolve-blobrefs ($wip.description | str trim -r -c "\n"))
+    $head + $desc + "\n"
 }
 
 def seed-work-files-section [seed_rows: list]: nothing -> string {
@@ -159,11 +193,14 @@ def seed-work-files-section [seed_rows: list]: nothing -> string {
 # `complete` keeps stdout as one raw string: the list-of-lines split +
 # str join round-trip once injected a stray newline mid-line (observed
 # once, never reproduced) — raw capture rules that class out.
-# Whole-file budgeting: a file is included completely or not at all; the
-# first non-fitting file stops the walk, the rest is disclosed as omitted.
-def diff-section [base: string, seed_rows: list, allowance: int]: nothing -> string {
-    let head = "\n== seed work: complete diff (git diff -U1 against run base, files above) ==\n"
-    let seed_files = ($seed_rows | get -o path | default [])
+# COMPLETE, no fidelity budget: every seed-work file is included, whole,
+# source files first and docs last (diff-sort-key). HARD_CAP is a
+# pathological-input safety only; on cap the walk stops and the
+# disclosure names the omitted files — with docs sorted last, a cap hit
+# eats documentation before source.
+def diff-section [base: string, seed_rows: list]: nothing -> string {
+    let head = "\n== seed work: complete diff (git diff -U1 against run base, files above; source before docs) ==\n"
+    let seed_files = ($seed_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })
     if ($seed_files | is-empty) {
         return ($head + "(no seed-work files to diff)\n")
     }
@@ -177,7 +214,7 @@ def diff-section [base: string, seed_rows: list, allowance: int]: nothing -> str
         }
         let text = (sanitize ($res.stdout | str trim -r -c "\n"))
         let cost = ($text | str length)
-        if ($used + $cost) > $allowance { break }
+        if ($used + $cost) > $HARD_CAP { break }
         $used = ($used + $cost)
         $parts = ($parts | append $"($text)\n")
         $included = ($included | append $f)
@@ -187,7 +224,7 @@ def diff-section [base: string, seed_rows: list, allowance: int]: nothing -> str
     if ($omitted | is-empty) {
         $head + $body
     } else {
-        $head + $body + "\n(budget cut: " + ($omitted | length | into string) + " of " + ($seed_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
+        $head + $body + "\n(hard cap hit: " + ($omitted | length | into string) + " of " + ($seed_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
     }
 }
 
@@ -242,12 +279,10 @@ def main []: nothing -> nothing {
 
     # …then the diff gets whatever remains under the hard output budget
     # (tail sections reserved so a cut lands in the diff, never in them).
-    let spent = (($no_base_note | str length) + ($integrity | str length) + ($spec | str length) + ($files | str length))
-    let allowance: int = $OUTPUT_BUDGET - $spent - $TAIL_RESERVE
-    let diff = (diff-section $base.base $seed_rows $allowance)
+    let diff = (diff-section $base.base $seed_rows)
 
-    # Critical-first emission; the budget above guarantees the whole
-    # capture stays under the engine's 8KB demote threshold.
+    # Critical-first emission. No size games: a large capture is the
+    # engine's to demote (blobref link) and the agent reviewer's to read.
     print ($no_base_note | str trim -r -c "\n")
     print $integrity
     print $spec
