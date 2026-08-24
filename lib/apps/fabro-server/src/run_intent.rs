@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
 use fabro_config::parse::SettingsSource;
-use fabro_config::{RunGoalLayer, SettingsLayer};
+use fabro_config::{EnvironmentLayer, RunEnvironmentLayer, RunGoalLayer, SettingsLayer};
 use fabro_environment::{EnvironmentId, EnvironmentValidationError};
 use fabro_types::settings::InterpString;
 use fabro_types::{
     ManifestPath, SandboxProviderKind, TargetValidationError, WorkflowPath, WorkflowVersionId,
 };
 use fabro_workflow::workflow_bundle::{BundledWorkflow, ParsedWorkflowConfig, WorkflowBundle};
-use fabro_workflow_version::LoadedWorkflowVersionClosure;
+use fabro_workflow_version::{LoadedWorkflowVersionClosure, ValidatedWorkflowVersion};
 use thiserror::Error;
 
 use crate::run_compiler::{RunCompilerError, settings_layer_with_resolved_dockerfiles};
@@ -78,12 +78,16 @@ pub(crate) struct LoweredWorkflowClosure {
     pub(crate) workflow_layer:  Option<SettingsLayer>,
 }
 
+/// Ceiling on the number of distinct workflow mounts one closure may expand
+/// into. Mounts are keyed by rebased path, so a small dependency graph that
+/// re-mounts shared versions along many paths can otherwise expand
+/// exponentially and stall admission on a single request.
+const MAX_WORKFLOW_MOUNTS: usize = 256;
+
 #[derive(Debug, Error)]
 pub(crate) enum WorkflowClosureLoweringError {
     #[error("workflow version `{id}` is missing from the loaded closure")]
     MissingVersion { id: WorkflowVersionId },
-    #[error("workflow version `{id}` has no entrypoint content")]
-    MissingEntrypoint { id: WorkflowVersionId },
     #[error("workflow path `{path}` cannot be mounted at `{mount}`")]
     InvalidMount {
         path:  WorkflowPath,
@@ -91,10 +95,8 @@ pub(crate) enum WorkflowClosureLoweringError {
     },
     #[error("workflow mount `{path}` resolves to two different workflow versions")]
     ConflictingMount { path: ManifestPath },
-    #[error("workflow config goal file `{reference}` cannot be resolved")]
-    InvalidGoalReference { reference: String },
-    #[error("workflow config goal file `{path}` is missing from the version")]
-    MissingGoalFile { path: ManifestPath },
+    #[error("workflow version closure expands into more than {limit} workflow mounts")]
+    MountLimitExceeded { limit: usize },
     #[error("workflow-version settings are unusable")]
     Settings {
         #[source]
@@ -132,9 +134,9 @@ pub(crate) fn lower_workflow_closure(
             .map_err(|source| WorkflowClosureLoweringError::Settings {
                 source: Box::new(source),
             })
-            .and_then(|mut layer| {
-                inline_goal_file(&mut layer, &config.path, &root_workflow.files)?;
-                Ok(layer)
+            .map(|mut layer| {
+                inline_goal_file(&mut layer, closure.validated_root());
+                layer
             })
         })
         .transpose()?;
@@ -147,13 +149,36 @@ pub(crate) fn lower_workflow_closure(
 }
 
 pub(crate) fn pin_workflow_environment_authority(layer: &mut SettingsLayer, environment_id: &str) {
+    // Both blocks destructure without `..` so adding a field to either layer
+    // type forces a compile-time decision here: server-owned facts are
+    // cleared off the immutable workflow layer, workflow-owned facts pass
+    // through.
     if let Some(environment) = layer.environments.get_mut(environment_id) {
-        environment.provider = None;
-        environment.cwd = None;
-        environment.image = None;
+        let EnvironmentLayer {
+            provider,
+            cwd,
+            image,
+            resources: _,
+            network: _,
+            lifecycle: _,
+            labels: _,
+            env: _,
+        } = environment;
+        *provider = None;
+        *cwd = None;
+        *image = None;
     }
     if let Some(environment) = layer.run.as_mut().and_then(|run| run.environment.as_mut()) {
-        environment.image = None;
+        let RunEnvironmentLayer {
+            id: _,
+            image,
+            resources: _,
+            network: _,
+            lifecycle: _,
+            labels: _,
+            env: _,
+        } = environment;
+        *image = None;
     }
 }
 
@@ -174,6 +199,13 @@ fn mount_version(
         };
     }
     mounts.insert(mounted_entrypoint.clone(), id);
+    // Recursion depth is bounded by the mount count (every level inserts a
+    // distinct mount before descending), so this cap also bounds the stack.
+    if mounts.len() > MAX_WORKFLOW_MOUNTS {
+        return Err(WorkflowClosureLoweringError::MountLimitExceeded {
+            limit: MAX_WORKFLOW_MOUNTS,
+        });
+    }
 
     let version = closure
         .get(&id)
@@ -191,7 +223,7 @@ fn mount_version(
         .files()
         .get(version.entrypoint())
         .cloned()
-        .ok_or(WorkflowClosureLoweringError::MissingEntrypoint { id })?;
+        .expect("validated workflow versions contain their entrypoint file");
     let config_local = WorkflowPath::new("workflow.toml")
         .expect("the static workflow config path should be valid");
     let config_path = version.files().get(&config_local).map(|source| {
@@ -300,37 +332,22 @@ fn normal_component(component: Component<'_>) -> Option<&std::ffi::OsStr> {
     }
 }
 
-fn inline_goal_file(
-    layer: &mut SettingsLayer,
-    config_path: &ManifestPath,
-    files: &HashMap<ManifestPath, String>,
-) -> Result<(), WorkflowClosureLoweringError> {
+/// Inline a file-form run goal using the goal-file resolution the
+/// workflow-version store certified, so the resolution grammar has exactly
+/// one owner in `fabro-workflow-version`.
+fn inline_goal_file(layer: &mut SettingsLayer, root: &ValidatedWorkflowVersion) {
     let Some(goal) = layer.run.as_mut().and_then(|run| run.goal.as_mut()) else {
-        return Ok(());
+        return;
     };
-    let RunGoalLayer::File { file } = &*goal else {
-        return Ok(());
-    };
-    let reference = unresolved_source(file);
-    let path =
-        ManifestPath::from_reference(config_path.parent_or_dot(), &reference).ok_or_else(|| {
-            WorkflowClosureLoweringError::InvalidGoalReference {
-                reference: reference.clone(),
-            }
-        })?;
-    let content = files
-        .get(&path)
-        .ok_or_else(|| WorkflowClosureLoweringError::MissingGoalFile { path: path.clone() })?;
+    if !matches!(&*goal, RunGoalLayer::File { .. }) {
+        return;
+    }
+    // `layer` is parsed from the same `workflow.toml` source the certified
+    // root version carries, so a file-form goal here always resolves there.
+    let content = root
+        .resolved_goal_file_content()
+        .expect("stored workflow versions certify their goal-file references");
     *goal = RunGoalLayer::Inline(InterpString::parse(content));
-    Ok(())
-}
-
-#[expect(
-    clippy::disallowed_methods,
-    reason = "workflow-version lowering preserves authored goal-file references for validated lookup"
-)]
-fn unresolved_source(value: &InterpString) -> String {
-    value.as_source()
 }
 
 #[cfg(test)]
@@ -472,6 +489,39 @@ mod tests {
                 .workflow(&ManifestPath::from_wire("children/two.fabro").unwrap())
                 .is_some()
         );
+    }
+
+    #[tokio::test]
+    async fn rejects_closures_that_expand_past_the_mount_limit() {
+        let (database, _) = crate::test_support::test_store_bundle();
+        let blobs = database.blobs().await.unwrap();
+        let store = WorkflowVersionStore::new(blobs);
+        // A chain of tiny versions where each level mounts the next twice is
+        // cheap to store and load (the closure dedupes by id) but expands to
+        // 2^depth distinct mounts.
+        let leaf = version("flow.fabro", [("flow.fabro", "digraph Leaf {}")], []);
+        let mut previous = store.put(&leaf).await.unwrap();
+        for _ in 0..9 {
+            let fan = version(
+                "flow.fabro",
+                [(
+                    "flow.fabro",
+                    "digraph Fan { a [stack.child_workflow=\"a/next.fabro\"] b [stack.child_workflow=\"b/next.fabro\"] }",
+                )],
+                [("a/next.fabro", previous), ("b/next.fabro", previous)],
+            );
+            previous = store.put(&fan).await.unwrap();
+        }
+        let closure = store.get_closure(&previous).await.unwrap().unwrap();
+
+        let error = lower_workflow_closure(&closure).unwrap_err();
+
+        assert!(matches!(
+            error,
+            WorkflowClosureLoweringError::MountLimitExceeded {
+                limit: MAX_WORKFLOW_MOUNTS,
+            }
+        ));
     }
 
     #[tokio::test]
