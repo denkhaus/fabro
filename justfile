@@ -103,3 +103,43 @@ wait-healthy:
 # Smoke check: health + CLI roundtrip against the running server
 smoke: wait-healthy
     "{{cli_bin}}" ps
+
+# Clean stale host build artifacts from target/ without a full cargo clean.
+#
+# Growth mechanics: cargo never garbage-collects. Every crate x fingerprint
+# x edit round leaves incremental/<crate>-<hash>/ and deps/*-<hash>.rlib
+# behind forever; one heavy day measured 52 GB (937 incremental dirs for
+# 150 crates). The docker release build (just up) does NOT use target/ —
+# it builds in the fabro-docker-cargo-target-amd64 volume — so cleaning
+# here never invalidates that cache.
+#
+# Modes:
+#   just clean-target          drop incremental/ dirs unused for >= 6h
+#                              (safe: incremental state is regenerable,
+#                              worst case one full non-incremental recompile)
+#   just clean-target sweep    additionally GC deps/ via cargo-sweep
+#                              (requires: cargo install cargo-sweep)
+#   just clean-target all      full `cargo clean` (last resort)
+clean-target mode="stale":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ -d target ] || { echo "no target/ — nothing to clean"; exit 0; }
+    before=$(du -sh target | cut -f1)
+    case "{{mode}}" in
+        stale|sweep)
+            find target/debug/incremental -maxdepth 1 -mindepth 1 -type d                 -not -newermt "-6 hours" -exec rm -rf {} + 2>/dev/null || true
+            if [ "{{mode}}" = "sweep" ]; then
+                command -v cargo-sweep >/dev/null 2>&1 || { echo "cargo-sweep not installed: cargo install cargo-sweep" >&2; exit 1; }
+                cargo sweep --time 24
+            fi
+            ;;
+        all)
+            cargo clean
+            ;;
+        *)
+            echo "unknown mode '{{mode}}' (use stale | sweep | all)" >&2
+            exit 1
+            ;;
+    esac
+    after=$(du -sh target 2>/dev/null | cut -f1 || echo gone)
+    echo "target: $before -> ${after:-gone}"
