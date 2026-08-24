@@ -279,10 +279,24 @@ pub fn update_seed_cycles(context: &Context, reset_key: &str, node_id: &str) {
     context.set(keys::SEED_CYCLES, serde_json::Value::Object(cycles));
 }
 pub(crate) fn lookup_flat(context: &Context, key: &str) -> Option<serde_json::Value> {
-    if let Some(bare) = key.strip_prefix("context.") {
-        return context.get(key).or_else(|| context.get(bare));
-    }
-    context.get(key)
+    let bare = key.strip_prefix("context.").unwrap_or(key);
+    context
+        .get(key)
+        .or_else(|| context.get(bare))
+        // Dotted path: walk into nested objects (fabro-6baf). Engine-injected
+        // values like seed_cycles are objects ({node -> visits}); edge
+        // conditions address them as seed_cycles.reviewer. A bare key that
+        // literally exists wins over decomposition, so dotted user keys keep
+        // working unchanged.
+        .or_else(|| {
+            let mut segments = bare.split('.');
+            let first = segments.next()?;
+            let mut value = context.get(first)?;
+            for segment in segments {
+                value = value.get(segment)?.clone();
+            }
+            Some(value)
+        })
 }
 
 /// One entry of the [`keys::INTERNAL_PARALLEL_BRANCH_PREAMBLES`] stash.

@@ -744,4 +744,54 @@ mod tests {
         let n = Node::new("work");
         assert!(!is_terminal(&n));
     }
+
+    #[test]
+    fn structural_cycle_guard_routes_to_deadlock_exit() {
+        // fabro-6baf: at seed_cycles.reviewer >= 3 the CONDITIONAL deadlock
+        // edge outranks the unconditional continue edge — the loop
+        // terminates structurally, without model compliance.
+        let mut g = Graph::new("cyclic");
+        let mut reviewer = Node::new("reviewer");
+        reviewer
+            .attrs
+            .insert("shape".to_string(), AttrValue::String("box".into()));
+        g.nodes.insert("reviewer".into(), reviewer);
+        let mut exit = Node::new("exit");
+        exit.attrs
+            .insert("shape".to_string(), AttrValue::String("Msquare".into()));
+        g.nodes.insert("exit".into(), exit);
+        g.nodes.insert("planner".into(), Node::new("planner"));
+
+        let mut deadlock = Edge::new("reviewer", "exit");
+        deadlock.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("seed_cycles.reviewer >= 3".into()),
+        );
+        deadlock.attrs.insert(
+            "kind".to_string(),
+            AttrValue::String("deadlock".into()),
+        );
+        g.edges.push(deadlock);
+        let mut cont = Edge::new("reviewer", "planner");
+        cont.attrs.insert(
+            "label".to_string(),
+            AttrValue::String("Changes requested".into()),
+        );
+        g.edges.push(cont);
+
+        let node = g.nodes.get("reviewer").unwrap().clone();
+        let outcome = Outcome::success();
+        let context = Context::new();
+        context.set("seed_cycles", serde_json::json!({"reviewer": 3}));
+
+        let sel = select_edge(&node, &outcome, &context, &g, "deterministic").unwrap();
+        assert_eq!(sel.edge.to, "exit");
+        assert_eq!(sel.reason, "condition");
+
+        // Below the guard, the unconditional continue edge wins.
+        let under = Context::new();
+        under.set("seed_cycles", serde_json::json!({"reviewer": 2}));
+        let sel2 = select_edge(&node, &outcome, &under, &g, "deterministic").unwrap();
+        assert_eq!(sel2.edge.to, "planner");
+    }
 }

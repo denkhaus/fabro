@@ -629,4 +629,68 @@ mod tests {
             &context
         ));
     }
+
+    #[test]
+    fn numeric_compare_resolves_dotted_context_path() {
+        // fabro-6baf: seed_cycles is an object; edges address
+        // seed_cycles.reviewer and compare numerically.
+        let context = Context::new();
+        context.set("seed_cycles", serde_json::json!({"reviewer": 3, "tester": 1}));
+        let outcome = make_outcome(StageOutcome::Succeeded);
+
+        assert!(evaluate_condition(
+            "seed_cycles.reviewer >= 3",
+            &outcome,
+            &context
+        ));
+        assert!(!evaluate_condition(
+            "seed_cycles.reviewer >= 4",
+            &outcome,
+            &context
+        ));
+        assert!(evaluate_condition(
+            "seed_cycles.tester < 3",
+            &outcome,
+            &context
+        ));
+        assert!(!evaluate_condition(
+            "seed_cycles.tester > 1",
+            &outcome,
+            &context
+        ));
+    }
+
+    #[test]
+    fn dotted_path_into_missing_object_is_false_for_numeric_compare() {
+        let context = Context::new();
+        let outcome = make_outcome(StageOutcome::Succeeded);
+        assert!(!evaluate_condition(
+            "seed_cycles.reviewer >= 3",
+            &outcome,
+            &context
+        ));
+    }
+
+    #[test]
+    fn dotted_path_prefers_literal_key_when_present() {
+        // A context key that literally contains dots must keep exact-match
+        // semantics; decomposition is only a fallback.
+        let context = Context::new();
+        context.set("graph.goal", serde_json::json!("ship"));
+        context.set("graph", serde_json::json!({"goal": "decoy"}));
+        let outcome = make_outcome(StageOutcome::Succeeded);
+        assert!(evaluate_condition("context.graph.goal=ship", &outcome, &context));
+    }
+
+    #[test]
+    fn dotted_path_with_context_prefix_also_resolves() {
+        let context = Context::new();
+        context.set("seed_cycles", serde_json::json!({"reviewer": 2}));
+        let outcome = make_outcome(StageOutcome::Succeeded);
+        assert!(evaluate_condition(
+            "context.seed_cycles.reviewer >= 2",
+            &outcome,
+            &context
+        ));
+    }
 }

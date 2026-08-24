@@ -265,7 +265,15 @@ digraph {
 
 When the graph declares `cycle_counter_reset_key`, Fabro maintains a public
 `seed_cycles` context value — an object `{ node_id -> completed visits }`
-counted since the declared key's value last changed. A workflow whose planner
+counted since the declared key's value last changed. Edge conditions address
+the counts through dotted paths, making loop guards STRUCTURAL — the deadlock
+edge below outranks any unconditional continue edge (conditions always take
+routing precedence):
+
+```dot
+reviewer -> exit     [kind="deadlock", condition="seed_cycles.reviewer >= 3"]
+reviewer -> planner  [label="Changes requested"]
+``` A workflow whose planner
 claims seed ids via `current_seed_id` therefore gets per-seed visit counts:
 claiming a NEW seed resets the counters, re-emitting the same value does not.
 Prompts read the counts directly (`seed_cycles.reviewer >= 3 -> route
