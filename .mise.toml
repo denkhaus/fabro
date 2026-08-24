@@ -1,0 +1,17 @@
+# Local development toolset for this worktree, managed by mise.
+# Activate with `mise activate` in the shell, or run tools through
+# `mise x -- <command>`.
+#
+# Notes:
+# - The denkhaus-lab branch carries its own .mise.toml for run
+#   sandboxes (fabro-runner:mise image). Keep overlapping pins
+#   aligned with that file so lab and local hosts behave the same.
+# - The Rust toolchain is owned by rustup (pinned nightly-2026-04-14,
+#   see AGENTS.md); do not add cargo/rust here.
+
+[tools]
+# Task runner for the local build + docker compose pipeline (justfile).
+just = "1.58.0"
+# Frontend toolchain: `cargo dev docker-build` / `just` recipes refresh
+# the embedded SPA via `bun run build` (fabro-dev spa refresh).
+bun = "1.4.0"
