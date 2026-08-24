@@ -62,8 +62,10 @@ enabled = true
 draft = false
 auto_merge = true
 merge_strategy = "squash"
-model = "zai:glm-4.7-flash"
-reasoning = "off"
+# glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap, clean
+# JSON for PR titling; no reasoning_effort needed (and "off" is not a valid
+# value: the enum is low|medium|high|xhigh|max).
+model = "zai:glm-4.7"
 
 [run.integrations.github.permissions]
 contents = "write"
