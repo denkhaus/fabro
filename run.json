@@ -540,7 +540,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-24T19:18:30.201402761Z",
-  "last_event_at": "2026-08-24T19:22:04.351229727Z",
+  "last_event_at": "2026-08-24T19:23:21.755920711Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1013,9 +1013,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 209,
       "checkpoint": {
-        "timestamp": "2026-08-24T19:22:04.607461267Z",
+        "timestamp": "2026-08-24T19:22:10.564858930Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -1026,10 +1026,31 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.seed_cycle_anchor": "fabro-cfb6",
+          "current_seed_brief": "- `-seed <int>` flag: prints exactly ONE entry for index `i` (one line) in the active output mode — text: `i: <value>`; `-json`: one object `{\"index\":i,\"fib\":\"<string>\"}`; `-pretty`: single-row alignment (columns sized to that one row)\n- `-seed i` (i > 0) overrides the range flags: `-n`, `-start`, and `-limit` are ignored for output — e.g. `-seed 10 -n 5 -start 2 -limit 3` prints only index 10\n- `-version` keeps top precedence: `-version -seed 5` prints the version and exits 0\n- `-seed 0` is a sentinel treated as UNSET (mirrors `-start 0`), so `gofib -seed 0 -n 5` behaves exactly like `gofib -n 5` — plain output unchanged\n- Validation mirrors other flags: `-seed -1` exits non-zero with a stderr error (`invalid value -1 for flag -seed: must be >= 0`); chosen reading: `-seed` overrides which indices print, not other flags' validation — existing `-n`/`-start`/`-limit` validation behavior stays unchanged\n- Computation must go through the existing `Fib(n)` only — no inline recomputation (CONTEXT.md rule)\n- Tests: table-driven in `fib_test.go` — cover: single index via `-seed`; `-seed` overriding `-n`/`-start`/`-limit`; `-seed 0` sentinel; `-seed` with `-json`; `-seed` with `-pretty`; negative `-seed` rejected non-zero; `-version` still wins over `-seed`\n- README.md flag table gains a `-seed` row: real example invocation + its actual output captured from the built binary (do not invent output); the precedence-over-range-flags note lives in that row\n- Gate: `just qualitygate` green",
+          "internal.retry_count.evidence": 0,
+          "current_node": "evidence",
+          "internal.retry_count.planner": 0,
           "failure_class": "",
+          "graph.rankdir": "LR",
+          "command.output": "blob://sha256/b87a808326e29d358decc500a51074a5ba19e223744b6ffb4fd7ba04110d99f7",
+          "internal.run_id": "01M0TKB7H7DCWCR8TZY6SZPXD2",
+          "failure_signature": "",
+          "outcome": "succeeded",
+          "thread.implementer.current_node": "tester",
+          "thread.start.current_node": "planner",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.implementer": 0,
           "internal.retry_count.start": 0,
+          "internal.fidelity": "compact",
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "response.implementer": "Quality gate green, no artifacts left (`/tmp/gofib` removed). Implementation complete.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\\\"index\\\":7,\\\"fib\\\":\\\"13\\\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\\n\\n- PASS single index via -seed: main.go seed branch + TestRunSeed \\\"seed 10 prints only index 10\\\"\\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \\\"seed overrides n start limit\\\"\\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \\\"seed 0 behaves like unset\\\"\\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \\\"seed with json emits one object\\\"\\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \\\"seed with pretty...\\\" cases\\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \\\"negative seed rejected\\\"; verified live (exit=1)\\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\\n- PASS README -seed row with real captured output and precedence note: README.md flag table\\n- PASS just qualitygate green (ran as smoke check: passed)\"\n  }\n}",
+          "current_seed_title": "gofib: add -seed flag for reproducible index selection",
+          "graph.max_node_visits": "40",
+          "internal.seed_cycle_anchor": "fabro-cfb6",
+          "internal.node_visit_count": 1,
           "last_response": "Quality gate green, no artifacts left (`/tmp/gofib` removed). Implementation complete.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"im",
+          "graph.preamble_budget_kb": "12",
+          "thread.planner.current_node": "implementer",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -1037,14 +1058,187 @@
             "evidence": 1
           },
           "internal.retry_count.tester": 0,
-          "current_node": "evidence",
+          "current_seed_id": "fabro-cfb6",
+          "last_stage": "implementer",
           "preferred_label": "Implemented",
+          "implementation_summary": "Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\"index\":7,\"fib\":\"13\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\n\n- PASS single index via -seed: main.go seed branch + TestRunSeed \"seed 10 prints only index 10\"\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \"seed overrides n start limit\"\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \"seed 0 behaves like unset\"\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \"seed with json emits one object\"\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \"seed with pretty...\" cases\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \"negative seed rejected\"; verified live (exit=1)\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\n- PASS README -seed row with real captured output and precedence note: README.md flag table\n- PASS just qualitygate green (ran as smoke check: passed)",
+          "internal.thread_id": "tester",
+          "response.planner": "Claimed `fabro-cfb6` (gofib: `-seed` flag). No review verdict to handle; guards clean (fresh cycle, counters at 0). The spec aligns with existing flag patterns in `main.go` and the README table; one ambiguity (flag name suggests randomness but semantics are a single-index lookup; also `-seed 0` sentinel behavior) is annotated in the brief below.\n\n- `-seed <int>` flag: prints exactly ONE entry for index `i` (one line) in the active output mode — text: `i: <value>`; `-json`: one object `{\"index\":i,\"fib\":\"<string>\"}`; `-pretty`: single-row alignment (columns sized to that one row)\n- `-seed i` (i > 0) overrides the range flags: `-n`, `-start`, and `-limit` are ignored for output — e.g. `-seed 10 -n 5 -start 2 -limit 3` prints only index 10\n- `-version` keeps top precedence: `-version -seed 5` prints the version and exits 0\n- `-seed 0` is a sentinel treated as UNSET (mirrors `-start 0`), so `gofib -seed 0 -n 5` behaves exactly like `gofib -n 5` — plain output unchanged\n- Validation mirrors other flags: `-seed -1` exits non-zero with a stderr error (`invalid value -1 for flag -seed: must be >= 0`); chosen reading: `-seed` overrides which indices print, not other flags' validation — existing `-n`/`-start`/`-limit` validation behavior stays unchanged\n- Computation must go through the existing `Fib(n)` only — no inline recomputation (CONTEXT.md rule)\n- Tests: table-driven in `fib_test.go` — cover: single index via `-seed`; `-seed` overriding `-n`/`-start`/`-limit`; `-seed 0` sentinel; `-seed` with `-json`; `-seed` with `-pretty`; negative `-seed` rejected non-zero; `-version` still wins over `-seed`\n- README.md flag table gains a `-seed` row: real example invocation + its actual output captured from the built binary (do not invent output); the precedence-over-range-flags note lives in that row\n- Gate: `just qualitygate` green\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-cfb6\",\n    \"current_seed_title\": \"gofib: add -seed flag for reproducible index selection\",\n    \"current_seed_brief\": \"- `-seed <int>` flag: prints exactly ONE entry for index `i` (one line) in the active output mode — text: `i: <value>`; `-json`: one object `{\\\"index\\\":i,\\\"fib\\\":\\\"<string>\\\"}`; `-pretty`: single-row alignment (columns sized to that one row)\\n- `-seed i` (i > 0) overrides the range flags: `-n`, `-start`, and `-limit` are ignored for output — e.g. `-seed 10 -n 5 -start 2 -limit 3` prints only index 10\\n- `-version` keeps top precedence: `-version -seed 5` prints the version and exits 0\\n- `-seed 0` is a sentinel treated as UNSET (mirrors `-start 0`), so `gofib -seed 0 -n 5` behaves exactly like `gofib -n 5` — plain output unchanged\\n- Validation mirrors other flags: `-seed -1` exits non-zero with a stderr error (`invalid value -1 for flag -seed: must be >= 0`); chosen reading: `-seed` overrides which indices print, not other flags' validation — existing `-n`/`-start`/`-limit` validation behavior stays unchanged\\n- Computation must go through the existing `Fib(n)` only — no inline recomputation (CONTEXT.md rule)\\n- Tests: table-driven in `fib_test.go` — cover: single index via `-seed`; `-seed` overriding `-n`/`-start`/`-limit`; `-seed 0` sentinel; `-seed` with `-json`; `-seed` with `-pretty`; negative `-seed` rejected non-zero; `-version` still wins over `-seed`\\n- README.md flag table gains a `-seed` row: real example invocation + its actual output captured from the built binary (do not invent output); the precedence-over-range-flags note lives in that row\\n- Gate: `just qualitygate` green\"\n  }\n}",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "thread.tester.current_node": "evidence"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "- `-seed <int>` flag: prints exactly ONE entry for index `i` (one line) in the active output mode — text: `i: <value>`; `-json`: one object `{\"index\":i,\"fib\":\"<string>\"}`; `-pretty`: single-row alignment (columns sized to that one row)\n- `-seed i` (i > 0) overrides the range flags: `-n`, `-start`, and `-limit` are ignored for output — e.g. `-seed 10 -n 5 -start 2 -limit 3` prints only index 10\n- `-version` keeps top precedence: `-version -seed 5` prints the version and exits 0\n- `-seed 0` is a sentinel treated as UNSET (mirrors `-start 0`), so `gofib -seed 0 -n 5` behaves exactly like `gofib -n 5` — plain output unchanged\n- Validation mirrors other flags: `-seed -1` exits non-zero with a stderr error (`invalid value -1 for flag -seed: must be >= 0`); chosen reading: `-seed` overrides which indices print, not other flags' validation — existing `-n`/`-start`/`-limit` validation behavior stays unchanged\n- Computation must go through the existing `Fib(n)` only — no inline recomputation (CONTEXT.md rule)\n- Tests: table-driven in `fib_test.go` — cover: single index via `-seed`; `-seed` overriding `-n`/`-start`/`-limit`; `-seed 0` sentinel; `-seed` with `-json`; `-seed` with `-pretty`; negative `-seed` rejected non-zero; `-version` still wins over `-seed`\n- README.md flag table gains a `-seed` row: real example invocation + its actual output captured from the built binary (do not invent output); the precedence-over-range-flags note lives in that row\n- Gate: `just qualitygate` green",
+              "response.planner": "Claimed `fabro-cfb6` (gofib: `-seed` flag). No review verdict to handle; guards clean (fresh cycle, counters at 0). The spec aligns with existing flag patterns in `main.go` and the README table; one ambiguity (flag name suggests randomness but semantics are a single-index lookup; also `-seed 0` sentinel behavior) is annotated in the brief below.\n\n- `-seed <int>` flag: prints exactly ONE entry for index `i` (one line) in the active output mode — text: `i: <value>`; `-json`: one object `{\"index\":i,\"fib\":\"<string>\"}`; `-pretty`: single-row alignment (columns sized to that one row)\n- `-seed i` (i > 0) overrides the range flags: `-n`, `-start`, and `-limit` are ignored for output — e.g. `-seed 10 -n 5 -start 2 -limit 3` prints only index 10\n- `-version` keeps top precedence: `-version -seed 5` prints the version and exits 0\n- `-seed 0` is a sentinel treated as UNSET (mirrors `-start 0`), so `gofib -seed 0 -n 5` behaves exactly like `gofib -n 5` — plain output unchanged\n- Validation mirrors other flags: `-seed -1` exits non-zero with a stderr error (`invalid value -1 for flag -seed: must be >= 0`); chosen reading: `-seed` overrides which indices print, not other flags' validation — existing `-n`/`-start`/`-limit` validation behavior stays unchanged\n- Computation must go through the existing `Fib(n)` only — no inline recomputation (CONTEXT.md rule)\n- Tests: table-driven in `fib_test.go` — cover: single index via `-seed`; `-seed` overriding `-n`/`-start`/`-limit`; `-seed 0` sentinel; `-seed` with `-json`; `-seed` with `-pretty`; negative `-seed` rejected non-zero; `-version` still wins over `-seed`\n- README.md flag table gains a `-seed` row: real example invocation + its actual output captured from the built binary (do not invent output); the precedence-over-range-flags note lives in that row\n- Gate: `just qualitygate` green\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-cfb6\",\n    \"current_seed_title\": \"gofib: add -seed flag for reproducible index selection\",\n    \"current_seed_brief\": \"- `-seed <int>` flag: prints exactly ONE entry for index `i` (one line) in the active output mode — text: `i: <value>`; `-json`: one object `{\\\"index\\\":i,\\\"fib\\\":\\\"<string>\\\"}`; `-pretty`: single-row alignment (columns sized to that one row)\\n- `-seed i` (i > 0) overrides the range flags: `-n`, `-start`, and `-limit` are ignored for output — e.g. `-seed 10 -n 5 -start 2 -limit 3` prints only index 10\\n- `-version` keeps top precedence: `-version -seed 5` prints the version and exits 0\\n- `-seed 0` is a sentinel treated as UNSET (mirrors `-start 0`), so `gofib -seed 0 -n 5` behaves exactly like `gofib -n 5` — plain output unchanged\\n- Validation mirrors other flags: `-seed -1` exits non-zero with a stderr error (`invalid value -1 for flag -seed: must be >= 0`); chosen reading: `-seed` overrides which indices print, not other flags' validation — existing `-n`/`-start`/`-limit` validation behavior stays unchanged\\n- Computation must go through the existing `Fib(n)` only — no inline recomputation (CONTEXT.md rule)\\n- Tests: table-driven in `fib_test.go` — cover: single index via `-seed`; `-seed` overriding `-n`/`-start`/`-limit`; `-seed 0` sentinel; `-seed` with `-json`; `-seed` with `-pretty`; negative `-seed` rejected non-zero; `-version` still wins over `-seed`\\n- README.md flag table gains a `-seed` row: real example invocation + its actual output captured from the built binary (do not invent output); the precedence-over-range-flags note lives in that row\\n- Gate: `just qualitygate` green\"\n  }\n}",
+              "last_stage": "planner",
+              "last_response": "Claimed `fabro-cfb6` (gofib: `-seed` flag). No review verdict to handle; guards clean (fresh cycle, counters at 0). The spec aligns with existing flag patterns in `main.go` and the README table; one a",
+              "current_seed_id": "fabro-cfb6",
+              "current_seed_title": "gofib: add -seed flag for reproducible index selection"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 10542,
+                    "output_tokens": 1243,
+                    "reasoning_tokens": 1200,
+                    "cache_read_tokens": 41536,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 36300
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 43437,
+              "tool_time_ms": 1396,
+              "active_time_ms": 44833
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/9526fbd7f4930bac55427672c5d50a7a95770cd3549399dcba7394f29b0ebd55"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1029,
+              "active_time_ms": 1029
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/b87a808326e29d358decc500a51074a5ba19e223744b6ffb4fd7ba04110d99f7"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 406,
+              "active_time_ms": 406
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "last_response": "Quality gate green, no artifacts left (`/tmp/gofib` removed). Implementation complete.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"im",
+              "implementation_summary": "Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\"index\":7,\"fib\":\"13\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\n\n- PASS single index via -seed: main.go seed branch + TestRunSeed \"seed 10 prints only index 10\"\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \"seed overrides n start limit\"\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \"seed 0 behaves like unset\"\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \"seed with json emits one object\"\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \"seed with pretty...\" cases\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \"negative seed rejected\"; verified live (exit=1)\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\n- PASS README -seed row with real captured output and precedence note: README.md flag table\n- PASS just qualitygate green (ran as smoke check: passed)",
+              "last_stage": "implementer",
+              "response.implementer": "Quality gate green, no artifacts left (`/tmp/gofib` removed). Implementation complete.\n\nImplemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\\\"index\\\":7,\\\"fib\\\":\\\"13\\\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\\n\\n- PASS single index via -seed: main.go seed branch + TestRunSeed \\\"seed 10 prints only index 10\\\"\\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \\\"seed overrides n start limit\\\"\\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \\\"seed 0 behaves like unset\\\"\\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \\\"seed with json emits one object\\\"\\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \\\"seed with pretty...\\\" cases\\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \\\"negative seed rejected\\\"; verified live (exit=1)\\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\\n- PASS README -seed row with real captured output and precedence note: README.md flag table\\n- PASS just qualitygate green (ran as smoke check: passed)\"\n  }\n}"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19338,
+                    "output_tokens": 4108,
+                    "reasoning_tokens": 1325,
+                    "cache_read_tokens": 224320,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 109280
+            },
+            "files_touched": [
+              "/workspace/fabro/README.md",
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 111193,
+              "tool_time_ms": 13796,
+              "active_time_ms": 124989
+            }
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "8908aebff928d722fbdc07aba261547e8e209fba",
+        "node_visits": {
+          "evidence": 1,
+          "implementer": 1,
+          "start": 1,
+          "planner": 1,
+          "tester": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl b/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl\nindex b937385..28ba7bf 100644\n--- a/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl\n+++ b/.fabro/journal/01M0TKB7H7DCWCR8TZY6SZPXD2.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:19:22Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:21:50Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:21:58Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0TKB7H7DCWCR8TZY6SZPXD2\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-24T19:22:04Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 123,
+          "deletions": 21
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-24T19:23:22.017601111Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.seed_cycle_anchor": "fabro-cfb6",
+          "failure_class": "",
+          "internal.retry_count.start": 0,
+          "last_response": "All verification passed. Summary of my review:\n\n**Spec compliance (judged against the authoritative in-progress seed spec):**\n1. **Single-index lookup in active mode** — `run()` seed branch (main.go",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "internal.retry_count.tester": 0,
+          "current_node": "reviewer",
+          "preferred_label": "Approved",
           "thread.start.current_node": "planner",
           "internal.run_id": "01M0TKB7H7DCWCR8TZY6SZPXD2",
           "current_seed_brief": "- `-seed <int>` flag: prints exactly ONE entry for index `i` (one line) in the active output mode — text: `i: <value>`; `-json`: one object `{\"index\":i,\"fib\":\"<string>\"}`; `-pretty`: single-row alignment (columns sized to that one row)\n- `-seed i` (i > 0) overrides the range flags: `-n`, `-start`, and `-limit` are ignored for output — e.g. `-seed 10 -n 5 -start 2 -limit 3` prints only index 10\n- `-version` keeps top precedence: `-version -seed 5` prints the version and exits 0\n- `-seed 0` is a sentinel treated as UNSET (mirrors `-start 0`), so `gofib -seed 0 -n 5` behaves exactly like `gofib -n 5` — plain output unchanged\n- Validation mirrors other flags: `-seed -1` exits non-zero with a stderr error (`invalid value -1 for flag -seed: must be >= 0`); chosen reading: `-seed` overrides which indices print, not other flags' validation — existing `-n`/`-start`/`-limit` validation behavior stays unchanged\n- Computation must go through the existing `Fib(n)` only — no inline recomputation (CONTEXT.md rule)\n- Tests: table-driven in `fib_test.go` — cover: single index via `-seed`; `-seed` overriding `-n`/`-start`/`-limit`; `-seed 0` sentinel; `-seed` with `-json`; `-seed` with `-pretty`; negative `-seed` rejected non-zero; `-version` still wins over `-seed`\n- README.md flag table gains a `-seed` row: real example invocation + its actual output captured from the built binary (do not invent output); the precedence-over-range-flags note lives in that row\n- Gate: `just qualitygate` green",
           "graph.rankdir": "LR",
           "thread.planner.current_node": "implementer",
           "internal.retry_count.implementer": 0,
+          "response.reviewer": "All verification passed. Summary of my review:\n\n**Spec compliance (judged against the authoritative in-progress seed spec):**\n1. **Single-index lookup in active mode** — `run()` seed branch (main.go:93–105) prints exactly one entry: text `%d: %v`, JSON one `fibLine` object via the existing encoder, pretty single-row alignment with widths sized from the row itself. Verified live: `10: 55`, `{\"index\":7,\"fib\":\"13\"}`, `100: 354224848179261915075`.\n2. **Range-flag override** — seed branch sits after validation and short-circuits before the range loop; `-seed 10 -n 5 -start 2 -limit 3` prints only `10: 55` (live-verified, matches README claim). Existing `-n`/`-start`/`-limit` validation unchanged (error messages identical to base).\n3. **`-version` top precedence** — first check in `run()`; live-verified `-version -seed 5` → `gofib 1.3.0`, exit 0.\n4. **Negative rejected, 0 sentinel** — `gofib -seed -1` exits 1 with the exact spec'd stderr message; `-seed 0 -n 3` prints plain output unchanged.\n5. **`Fib(n)` only computation** — every path calls `Fib(seed)`; no inline recomputation.\n6. **Tests** — table-driven `TestRunSeed` covers all six required cases (single index, override of n/start/limit, 0-sentinel, json, pretty ×2, negative) with exact-message error assertions; `TestRunSeedWithVersion` pins version precedence. All 15 pre-existing `run()` call sites correctly updated for the new parameter position.\n7. **README** — `-seed` row added with the precedence note and two real invocations whose outputs I reproduced byte-for-byte from a fresh build. No invented output.\n8. **Gate** — tester stage green; I independently confirmed `go test` + `go vet` pass.\n\n**Hygiene:** doc comments (package + `run`) updated and accurate; no dead code; no scope creep (3 files, all in scope; only loop churn is `.seeds/issues.jsonl` as expected); worktree clean; integrity counts match the visible diff. One micro-nit (not a deviation): the pretty branch calls `Fib(seed)` twice (width + value) where a local var would suffice — compliant with the spec's \"Fib(n) stays the only computation.\"\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Approved\",\n  \"context_updates\": {\n    \"review_verdict\": \"approved\"\n  }\n}",
           "internal.node_visit_count": 1,
           "graph.cycle_counter_reset_key": "current_seed_id",
           "current_seed_title": "gofib: add -seed flag for reproducible index selection",
@@ -1055,16 +1249,19 @@
           "current_seed_id": "fabro-cfb6",
           "implementation_summary": "Added the `-seed <int>` flag to gofib in `main.go`: `run()` gained a `seed int` parameter; after the existing `-n`/`-start`/`-limit` validation (unchanged) and a new `seed < 0` rejection (`invalid value %d for flag -seed: must be >= 0`), a positive seed prints exactly one entry for that index in the active mode (text `i: <value>`; JSON one object; pretty columns sized to the single row), all via the existing `Fib(n)`; `seed 0` is the unset sentinel; `-version` still short-circuits first. `main.go` registers the flag and the package/run doc comments document it. `fib_test.go`: all existing `run` call sites updated for the new signature, plus new table-driven `TestRunSeed` and `TestRunSeedWithVersion`. `README.md` flag table gained the `-seed` row with real captured output (`gofib -seed 10 -n 5 -start 2 -limit 3` → `10: 55`, `gofib -seed 7 -json` → `{\"index\":7,\"fib\":\"13\"}`) and the precedence note. Smoke checks and `just qualitygate` both green; binary built into `/tmp` and removed.\n\n- PASS single index via -seed: main.go seed branch + TestRunSeed \"seed 10 prints only index 10\"\n- PASS -seed overrides -n/-start/-limit: main.go seed branch prints before range loop + TestRunSeed \"seed overrides n start limit\"\n- PASS -seed 0 sentinel (plain output unchanged): main.go `if seed > 0` guard + TestRunSeed \"seed 0 behaves like unset\"\n- PASS -seed with -json: main.go JSON branch + TestRunSeed \"seed with json emits one object\"\n- PASS -seed with -pretty single-row alignment: main.go pretty branch sized from seed row + TestRunSeed \"seed with pretty...\" cases\n- PASS negative -seed rejected non-zero with exact stderr message: main.go validation + TestRunSeed \"negative seed rejected\"; verified live (exit=1)\n- PASS -version wins over -seed: main.go version short-circuit first + TestRunSeedWithVersion; verified live (`gofib -version -seed 5` → `gofib 1.3.0`)\n- PASS README -seed row with real captured output and precedence note: README.md flag table\n- PASS just qualitygate green (ran as smoke check: passed)",
           "response.planner": "Claimed `fabro-cfb6` (gofib: `-seed` flag). No review verdict to handle; guards clean (fresh cycle, counters at 0). The spec aligns with existing flag patterns in `main.go` and the README table; one ambiguity (flag name suggests randomness but semantics are a single-index lookup; also `-seed 0` sentinel behavior) is annotated in the brief below.\n\n- `-seed <int>` flag: prints exactly ONE entry for index `i` (one line) in the active output mode — text: `i: <value>`; `-json`: one object `{\"index\":i,\"fib\":\"<string>\"}`; `-pretty`: single-row alignment (columns sized to that one row)\n- `-seed i` (i > 0) overrides the range flags: `-n`, `-start`, and `-limit` are ignored for output — e.g. `-seed 10 -n 5 -start 2 -limit 3` prints only index 10\n- `-version` keeps top precedence: `-version -seed 5` prints the version and exits 0\n- `-seed 0` is a sentinel treated as UNSET (mirrors `-start 0`), so `gofib -seed 0 -n 5` behaves exactly like `gofib -n 5` — plain output unchanged\n- Validation mirrors other flags: `-seed -1` exits non-zero with a stderr error (`invalid value -1 for flag -seed: must be >= 0`); chosen reading: `-seed` overrides which indices print, not other flags' validation — existing `-n`/`-start`/`-limit` validation behavior stays unchanged\n- Computation must go through the existing `Fib(n)` only — no inline recomputation (CONTEXT.md rule)\n- Tests: table-driven in `fib_test.go` — cover: single index via `-seed`; `-seed` overriding `-n`/`-start`/`-limit`; `-seed 0` sentinel; `-seed` with `-json`; `-seed` with `-pretty`; negative `-seed` rejected non-zero; `-version` still wins over `-seed`\n- README.md flag table gains a `-seed` row: real example invocation + its actual output captured from the built binary (do not invent output); the precedence-over-range-flags note lives in that row\n- Gate: `just qualitygate` green\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Seed claimed\",\n  \"context_updates\": {\n    \"current_seed_id\": \"fabro-cfb6\",\n    \"current_seed_title\": \"gofib: add -seed flag for reproducible index selection\",\n    \"current_seed_brief\": \"- `-seed <int>` flag: prints exactly ONE entry for index `i` (one line) in the active output mode — text: `i: <value>`; `-json`: one object `{\\\"index\\\":i,\\\"fib\\\":\\\"<string>\\\"}`; `-pretty`: single-row alignment (columns sized to that one row)\\n- `-seed i` (i > 0) overrides the range flags: `-n`, `-start`, and `-limit` are ignored for output — e.g. `-seed 10 -n 5 -start 2 -limit 3` prints only index 10\\n- `-version` keeps top precedence: `-version -seed 5` prints the version and exits 0\\n- `-seed 0` is a sentinel treated as UNSET (mirrors `-start 0`), so `gofib -seed 0 -n 5` behaves exactly like `gofib -n 5` — plain output unchanged\\n- Validation mirrors other flags: `-seed -1` exits non-zero with a stderr error (`invalid value -1 for flag -seed: must be >= 0`); chosen reading: `-seed` overrides which indices print, not other flags' validation — existing `-n`/`-start`/`-limit` validation behavior stays unchanged\\n- Computation must go through the existing `Fib(n)` only — no inline recomputation (CONTEXT.md rule)\\n- Tests: table-driven in `fib_test.go` — cover: single index via `-seed`; `-seed` overriding `-n`/`-start`/`-limit`; `-seed 0` sentinel; `-seed` with `-json`; `-seed` with `-pretty`; negative `-seed` rejected non-zero; `-version` still wins over `-seed`\\n- README.md flag table gains a `-seed` row: real example invocation + its actual output captured from the built binary (do not invent output); the precedence-over-range-flags note lives in that row\\n- Gate: `just qualitygate` green\"\n  }\n}",
-          "last_stage": "implementer",
+          "last_stage": "reviewer",
           "thread.implementer.current_node": "tester",
           "command.output": "blob://sha256/b87a808326e29d358decc500a51074a5ba19e223744b6ffb4fd7ba04110d99f7",
           "graph.preamble_budget_kb": "12",
           "thread.tester.current_node": "evidence",
           "internal.work_dir": "/workspace/fabro",
           "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
-          "internal.fidelity": "compact",
-          "internal.thread_id": "tester",
+          "internal.fidelity": "summary:high",
+          "internal.thread_id": "evidence",
           "failure_signature": "",
+          "thread.evidence.current_node": "reviewer",
+          "review_verdict": "approved",
+          "internal.retry_count.reviewer": 0,
           "internal.retry_count.evidence": 0
         },
         "node_outcomes": {
@@ -1140,6 +1337,44 @@
               "active_time_ms": 44833
             }
           },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_stage": "reviewer",
+              "last_response": "All verification passed. Summary of my review:\n\n**Spec compliance (judged against the authoritative in-progress seed spec):**\n1. **Single-index lookup in active mode** — `run()` seed branch (main.go",
+              "response.reviewer": "All verification passed. Summary of my review:\n\n**Spec compliance (judged against the authoritative in-progress seed spec):**\n1. **Single-index lookup in active mode** — `run()` seed branch (main.go:93–105) prints exactly one entry: text `%d: %v`, JSON one `fibLine` object via the existing encoder, pretty single-row alignment with widths sized from the row itself. Verified live: `10: 55`, `{\"index\":7,\"fib\":\"13\"}`, `100: 354224848179261915075`.\n2. **Range-flag override** — seed branch sits after validation and short-circuits before the range loop; `-seed 10 -n 5 -start 2 -limit 3` prints only `10: 55` (live-verified, matches README claim). Existing `-n`/`-start`/`-limit` validation unchanged (error messages identical to base).\n3. **`-version` top precedence** — first check in `run()`; live-verified `-version -seed 5` → `gofib 1.3.0`, exit 0.\n4. **Negative rejected, 0 sentinel** — `gofib -seed -1` exits 1 with the exact spec'd stderr message; `-seed 0 -n 3` prints plain output unchanged.\n5. **`Fib(n)` only computation** — every path calls `Fib(seed)`; no inline recomputation.\n6. **Tests** — table-driven `TestRunSeed` covers all six required cases (single index, override of n/start/limit, 0-sentinel, json, pretty ×2, negative) with exact-message error assertions; `TestRunSeedWithVersion` pins version precedence. All 15 pre-existing `run()` call sites correctly updated for the new parameter position.\n7. **README** — `-seed` row added with the precedence note and two real invocations whose outputs I reproduced byte-for-byte from a fresh build. No invented output.\n8. **Gate** — tester stage green; I independently confirmed `go test` + `go vet` pass.\n\n**Hygiene:** doc comments (package + `run`) updated and accurate; no dead code; no scope creep (3 files, all in scope; only loop churn is `.seeds/issues.jsonl` as expected); worktree clean; integrity counts match the visible diff. One micro-nit (not a deviation): the pretty branch calls `Fib(seed)` twice (width + value) where a local var would suffice — compliant with the spec's \"Fib(n) stays the only computation.\"\n\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Approved\",\n  \"context_updates\": {\n    \"review_verdict\": \"approved\"\n  }\n}",
+              "review_verdict": "approved"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19742,
+                    "output_tokens": 1223,
+                    "reasoning_tokens": 3424,
+                    "cache_read_tokens": 41024,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 58748
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 61010,
+              "tool_time_ms": 1157,
+              "active_time_ms": 62167
+            }
+          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -1184,11 +1419,12 @@
             }
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "planner",
         "node_visits": {
           "evidence": 1,
           "start": 1,
           "planner": 1,
+          "reviewer": 1,
           "implementer": 1,
           "tester": 1
         }
@@ -1583,6 +1819,373 @@
             "category": "other",
             "tokens": 8,
             "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 212,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-08-24T19:23:21.755920711Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-24T19:22:11.625259630Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 63447,
+        "inference_time_ms": 61010,
+        "tool_time_ms": 1157,
+        "active_time_ms": 62167
+      },
+      "usage": {
+        "input_tokens": 19742,
+        "output_tokens": 1223,
+        "total_tokens": 65413,
+        "reasoning_tokens": 3424,
+        "cache_read_tokens": 41024,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 58748
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "ask-matt",
+            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
+          },
+          {
+            "name": "claude-handoff",
+            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
+          },
+          {
+            "name": "code-review",
+            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
+          },
+          {
+            "name": "codebase-design",
+            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
+          },
+          {
+            "name": "diagnosing-bugs",
+            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
+          },
+          {
+            "name": "domain-modeling",
+            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
+          },
+          {
+            "name": "git-guardrails-claude-code",
+            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
+          },
+          {
+            "name": "grill-me",
+            "description": "A relentless interview to sharpen a plan or design."
+          },
+          {
+            "name": "grill-with-docs",
+            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
+          },
+          {
+            "name": "grilling",
+            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
+          },
+          {
+            "name": "handoff",
+            "description": "Compact the current conversation into a handoff document for another agent to pick up."
+          },
+          {
+            "name": "implement",
+            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
+          },
+          {
+            "name": "implement-spec",
+            "description": "\"Implement a specification in code.\""
+          },
+          {
+            "name": "improve-codebase-architecture",
+            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
+          },
+          {
+            "name": "loop-me",
+            "description": "Grill me about specs for the workflows I want to build, within this workspace."
+          },
+          {
+            "name": "migrate-to-shoehorn",
+            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
+          },
+          {
+            "name": "prototype",
+            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
+          },
+          {
+            "name": "research",
+            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
+          },
+          {
+            "name": "resolving-merge-conflicts",
+            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
+          },
+          {
+            "name": "scaffold-exercises",
+            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
+          },
+          {
+            "name": "setup-matt-pocock-skills",
+            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
+          },
+          {
+            "name": "setup-pre-commit",
+            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
+          },
+          {
+            "name": "setup-ts-deep-modules",
+            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
+          },
+          {
+            "name": "tdd",
+            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
+          },
+          {
+            "name": "teach",
+            "description": "Teach the user a new skill or concept, within this workspace."
+          },
+          {
+            "name": "to-questionnaire",
+            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
+          },
+          {
+            "name": "to-spec",
+            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
+          },
+          {
+            "name": "to-tickets",
+            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
+          },
+          {
+            "name": "triage",
+            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
+          },
+          {
+            "name": "wait-what",
+            "description": "\"Stop. That last message did not land: re-pitch it.\""
+          },
+          {
+            "name": "wayfinder",
+            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
+          },
+          {
+            "name": "wizard",
+            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
+          },
+          {
+            "name": "writing-beats",
+            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
+          },
+          {
+            "name": "writing-for-agents",
+            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
+          },
+          {
+            "name": "writing-fragments",
+            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
+          },
+          {
+            "name": "writing-shape",
+            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 19664,
+        "usage_percent": 1.87530517578125,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-08-24T19:23:21.739932806Z",
+        "event_seq": 249,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1281,
+            "usage_percent": 0.12216567993164062
+          },
+          {
+            "category": "tools",
+            "tokens": 1721,
+            "usage_percent": 0.16412734985351562
+          },
+          {
+            "category": "skills",
+            "tokens": 1740,
+            "usage_percent": 0.1659393310546875
+          },
+          {
+            "category": "memory",
+            "tokens": 1416,
+            "usage_percent": 0.135040283203125
+          },
+          {
+            "category": "conversation",
+            "tokens": 13500,
+            "usage_percent": 1.2874603271484375
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
           }
         ],
         "warnings": []
