@@ -467,7 +467,7 @@ mod tests {
             source_directory:    None,
             workflow_slug:       Some("none-target-retry".to_string()),
             workflow_version_id: Some(test_support::test_workflow_version_id()),
-            target:              Some(RunTarget::None),
+            target:              Some(RunTarget::None {}),
             automation:          None,
             provenance:          provenance("source-user"),
             manifest_blob:       None,
@@ -491,7 +491,7 @@ mod tests {
         assert_eq!(source_state.status, RunStatus::Failed {
             reason: FailureReason::WorkflowError,
         });
-        assert_eq!(source_state.spec.target, Some(RunTarget::None));
+        assert_eq!(source_state.spec.target, Some(RunTarget::None {}));
         assert_eq!(source_state.spec.git, None);
         assert_eq!(source_state.spec.source_directory, None);
 
@@ -510,7 +510,7 @@ mod tests {
         assert_eq!(retry_events.len(), 2);
         assert_eq!(retry_state.status, RunStatus::Submitted);
         assert_eq!(retry_state.retried_from, Some(source_run_id));
-        assert_eq!(retry_state.spec.target, Some(RunTarget::None));
+        assert_eq!(retry_state.spec.target, Some(RunTarget::None {}));
         assert_eq!(retry_state.spec.git, None);
         assert_eq!(retry_state.spec.source_directory, None);
     }

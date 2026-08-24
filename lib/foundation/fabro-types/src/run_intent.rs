@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
-use serde::de::Error as _;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{DirtyStatus, GitContext, GitHubRepositorySlug, RunId, WorkflowVersionId, repository};
@@ -38,8 +37,13 @@ pub struct RunIntentArgs {
 }
 
 /// Requested workspace content, independent of sandbox placement.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+///
+/// `None` is an empty struct variant rather than a unit variant so that the
+/// derived deserializer enforces `deny_unknown_fields` on `{"kind": "none"}`
+/// (serde ignores sibling fields on internally tagged unit variants).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, strum::IntoStaticStr)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+#[strum(serialize_all = "snake_case")]
 pub enum RunTarget {
     Git {
         repo:   String,
@@ -47,68 +51,15 @@ pub enum RunTarget {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         sha:    Option<String>,
     },
-    None,
-}
-
-// Serde's derived internally tagged unit variants accept sibling fields even
-// with `deny_unknown_fields`, so deserialize through strict arm-specific maps.
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum RunTargetKindWire {
-    Git,
-    None,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct GitRunTargetWire {
-    kind:   RunTargetKindWire,
-    repo:   String,
-    branch: String,
-    #[serde(default)]
-    sha:    Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct NoneRunTargetWire {
-    kind: RunTargetKindWire,
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum RunTargetWire {
-    Git(GitRunTargetWire),
-    None(NoneRunTargetWire),
-}
-
-impl<'de> Deserialize<'de> for RunTarget {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        match RunTargetWire::deserialize(deserializer)? {
-            RunTargetWire::Git(wire) => match wire.kind {
-                RunTargetKindWire::Git => Ok(Self::Git {
-                    repo:   wire.repo,
-                    branch: wire.branch,
-                    sha:    wire.sha,
-                }),
-                RunTargetKindWire::None => {
-                    Err(D::Error::custom("none target must not contain Git fields"))
-                }
-            },
-            RunTargetWire::None(wire) => match wire.kind {
-                RunTargetKindWire::None => Ok(Self::None),
-                RunTargetKindWire::Git => Err(D::Error::custom(
-                    "git target requires repository and branch fields",
-                )),
-            },
-        }
-    }
+    None {},
 }
 
 impl RunTarget {
+    /// The wire `kind` discriminator (`git`, `none`), for diagnostics.
+    pub fn kind_name(&self) -> &'static str {
+        self.into()
+    }
+
     /// Validates and canonicalizes the target without any network resolution.
     ///
     /// Git targets include their derived operational Git projection. Targets
@@ -146,8 +97,8 @@ impl RunTarget {
                     git:    Some(git),
                 })
             }
-            Self::None => Ok(ValidatedRunTarget {
-                target: Self::None,
+            Self::None {} => Ok(ValidatedRunTarget {
+                target: Self::None {},
                 git:    None,
             }),
         }

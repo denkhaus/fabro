@@ -52,7 +52,7 @@ fn run_intent_round_trips_the_strict_git_shape() {
 #[test]
 fn run_intent_round_trips_the_strict_none_shape() {
     let mut intent = intent();
-    intent.target = RunTarget::None;
+    intent.target = RunTarget::None {};
 
     let value = serde_json::to_value(&intent).expect("intent should serialize");
 
@@ -147,8 +147,8 @@ fn target_validation_normalizes_sha_without_network_resolution() {
 
 #[test]
 fn run_intent_none_target_validates_without_a_git_projection() {
-    let validated = RunTarget::None.validate().unwrap();
-    assert_eq!(validated.target, RunTarget::None);
+    let validated = RunTarget::None {}.validate().unwrap();
+    assert_eq!(validated.target, RunTarget::None {});
     assert_eq!(validated.git, None);
 }
 

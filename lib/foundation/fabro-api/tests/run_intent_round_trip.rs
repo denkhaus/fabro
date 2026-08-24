@@ -46,7 +46,7 @@ fn run_intent_round_trips_the_openapi_shape() {
 fn run_intent_none_target_round_trips_the_openapi_shape() {
     let intent = RunIntent {
         workflow_version_id: test_support::test_workflow_version_id(),
-        target:              RunTarget::None,
+        target:              RunTarget::None {},
         args:                RunIntentArgs::default(),
         environment_id:      Some("default".to_string()),
         parent_id:           None,

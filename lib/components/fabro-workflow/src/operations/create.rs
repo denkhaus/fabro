@@ -475,11 +475,10 @@ pub async fn persist_create_run(
         source_directory,
         labels,
     } = materialized;
-    let (source_directory, git) = if matches!(target.as_ref(), Some(RunTarget::None)) {
-        (None, None)
-    } else {
-        (Some(source_directory), git)
-    };
+    // An empty-workspace target has no submitter cwd to project; `git` is
+    // already `None` for it because admission derives it from the target.
+    let source_directory =
+        (!matches!(target.as_ref(), Some(RunTarget::None {}))).then_some(source_directory);
     let persisted_run_dir = run_dir.clone();
     let persisted = spawn_blocking(move || {
         let run_spec = RunSpec {
@@ -2294,17 +2293,12 @@ reasoning = false
                 workflow_slug: None,
                 workflow_path: None,
                 workflow_bundle: None,
-                target: Some(RunTarget::None),
+                target: Some(RunTarget::None {}),
                 submitted_manifest_bytes: None,
                 run_id: Some(fixtures::RUN_2),
                 title: None,
                 automation: None,
-                git: Some(fabro_types::GitContext {
-                    origin_url: "https://github.com/fabro-sh/fabro".to_string(),
-                    branch:     "main".to_string(),
-                    sha:        None,
-                    dirty:      fabro_types::DirtyStatus::Clean,
-                }),
+                git: None,
                 fork_source_ref: None,
                 parent_id: None,
                 provenance: test_support::test_run_provenance(),
@@ -2318,7 +2312,10 @@ reasoning = false
         .unwrap();
 
         assert_eq!(created.persisted.run_spec().source_directory, None);
-        assert_eq!(created.persisted.run_spec().target, Some(RunTarget::None));
+        assert_eq!(
+            created.persisted.run_spec().target,
+            Some(RunTarget::None {})
+        );
         assert_eq!(created.persisted.run_spec().git, None);
     }
 

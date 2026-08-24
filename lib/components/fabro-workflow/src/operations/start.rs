@@ -22,8 +22,7 @@ use fabro_types::settings::run::{
     RunPrepareSettings as ResolvedRunPrepareSettings,
 };
 use fabro_types::{
-    ManifestPath, RunId, RunRunnableSource, RunSpec, RunTarget, SandboxProviderKind,
-    TargetValidationError,
+    ManifestPath, RunId, RunRunnableSource, RunSpec, SandboxProviderKind, TargetValidationError,
 };
 use fabro_util::error::collect_chain;
 use fabro_vault::Vault;
@@ -419,12 +418,11 @@ impl RunSession {
         let sandbox_provider =
             resolve_sandbox_provider(resolved).effective_for(resolved.execution.mode);
         let clone_source = clone_source_for_run(record)?;
-        let target_requires_empty_workspace = target_requires_empty_workspace(record);
-        let runtime_origin_url = if target_requires_empty_workspace {
-            None
-        } else {
-            record.repo_origin_url().map(str::to_string)
-        };
+        // An empty-workspace run has no repository for PR creation or the
+        // sandbox environment, regardless of any persisted Git metadata.
+        let runtime_origin_url = (!clone_source.skip_clone)
+            .then(|| record.repo_origin_url().map(str::to_string))
+            .flatten();
         let catalog = Arc::clone(&services.catalog);
         let configured =
             configured_providers_for_start(&services.vault, Arc::clone(&catalog)).await;
@@ -464,18 +462,11 @@ impl RunSession {
 
         let sandbox = match sandbox_provider {
             SandboxProviderKind::Local => {
-                match record.target.as_ref() {
-                    Some(RunTarget::Git { .. }) => {
-                        return Err(Error::engine(
-                            "persisted Git run targets require a clone-based sandbox provider",
-                        ));
-                    }
-                    Some(RunTarget::None) => {
-                        return Err(Error::engine(
-                            "persisted none run targets require a clone-based sandbox provider",
-                        ));
-                    }
-                    None => {}
+                if let Some(target) = &record.target {
+                    return Err(Error::engine(format!(
+                        "persisted {} run targets require a clone-based sandbox provider",
+                        target.kind_name()
+                    )));
                 }
                 let working_directory = local_working_directory_from_environment(
                     &resolved.environment,
@@ -491,7 +482,7 @@ impl RunSession {
             }
             SandboxProviderKind::Docker => {
                 let mut config = resolve_docker_config(resolved, secret_lookup)?;
-                config.skip_clone |= target_requires_empty_workspace;
+                config.skip_clone |= clone_source.skip_clone;
                 SandboxSpec::Docker {
                     config,
                     github_app: services.github_app.clone(),
@@ -506,7 +497,7 @@ impl RunSession {
                     .get(EnvVars::DAYTONA_API_KEY)
                     .map(str::to_string);
                 let mut config = resolve_daytona_config(resolved);
-                config.skip_clone |= target_requires_empty_workspace;
+                config.skip_clone |= clone_source.skip_clone;
                 SandboxSpec::Daytona {
                     config: Box::new(config),
                     github_app: services.github_app.clone(),
@@ -596,10 +587,9 @@ struct CloneSourceForRun {
     origin_url: Option<String>,
     branch:     Option<String>,
     commit_sha: Option<String>,
-}
-
-fn target_requires_empty_workspace(record: &RunSpec) -> bool {
-    matches!(record.target.as_ref(), Some(RunTarget::None))
+    /// The target asked for an empty workspace, so the provider must not
+    /// clone even when it would otherwise inherit an origin.
+    skip_clone: bool,
 }
 
 fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
@@ -608,16 +598,9 @@ fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
             origin_url: record.repo_origin_url().map(str::to_string),
             branch:     record.base_branch().map(str::to_string),
             commit_sha: None,
+            skip_clone: false,
         });
     };
-
-    if matches!(target, RunTarget::None) {
-        return Ok(CloneSourceForRun {
-            origin_url: None,
-            branch:     None,
-            commit_sha: None,
-        });
-    }
 
     // The Git-target grammar is owned by `RunTarget::validate` in fabro-types;
     // admission accepts targets through the same rules, and this start path
@@ -633,13 +616,20 @@ fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
             TargetValidationError::Sha => "persisted Git run target has an invalid SHA",
         })
     })?;
-    let git = validated.git.ok_or_else(|| {
-        Error::engine("persisted run target has no supported clone-source projection")
-    })?;
-    Ok(CloneSourceForRun {
-        origin_url: Some(git.origin_url),
-        branch:     Some(git.branch),
-        commit_sha: git.sha,
+    // A target with no Git projection (`none`) asks for an empty workspace.
+    Ok(match validated.git {
+        Some(git) => CloneSourceForRun {
+            origin_url: Some(git.origin_url),
+            branch:     Some(git.branch),
+            commit_sha: git.sha,
+            skip_clone: false,
+        },
+        None => CloneSourceForRun {
+            origin_url: None,
+            branch:     None,
+            commit_sha: None,
+            skip_clone: true,
+        },
     })
 }
 
@@ -1820,7 +1810,7 @@ reasoning = false
             MINIMAL_DOT,
             &storage_root,
             settings,
-            Some(RunTarget::None),
+            Some(RunTarget::None {}),
         )
         .await;
         let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
@@ -1882,7 +1872,7 @@ reasoning = false
             MINIMAL_DOT,
             &storage_root,
             settings,
-            Some(RunTarget::None),
+            Some(RunTarget::None {}),
         )
         .await;
         let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
@@ -1942,7 +1932,7 @@ reasoning = false
             MINIMAL_DOT,
             &storage_root,
             settings,
-            Some(RunTarget::None),
+            Some(RunTarget::None {}),
         )
         .await;
         let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
@@ -2883,7 +2873,7 @@ reasoning = false
     #[test]
     fn none_target_forces_an_empty_clone_source_and_workspace() {
         let mut spec = test_support::test_run_spec();
-        spec.target = Some(RunTarget::None);
+        spec.target = Some(RunTarget::None {});
         spec.git = Some(fabro_types::GitContext {
             origin_url: "https://github.com/fabro-sh/fabro".to_string(),
             branch:     "main".to_string(),
@@ -2896,7 +2886,7 @@ reasoning = false
         assert_eq!(source.origin_url, None);
         assert_eq!(source.branch, None);
         assert_eq!(source.commit_sha, None);
-        assert!(target_requires_empty_workspace(&spec));
+        assert!(source.skip_clone);
     }
 
     #[test]
