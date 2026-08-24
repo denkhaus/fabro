@@ -503,7 +503,7 @@ mod tests {
     async fn rotate_spends_the_presented_token_and_issues_its_successor() {
         let (_dir, store) = sqlite_auth_session_store().await;
         let id = open_session(&store, "12345", [1_u8; 32], Duration::days(30)).await;
-        let now = Utc::now();
+        let now = Utc::now() + Duration::seconds(1);
 
         let outcome = store
             .rotate(

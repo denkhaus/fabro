@@ -96,7 +96,7 @@ impl Database {
         self.base_prefix.clone()
     }
 
-    async fn open_db(&self) -> Result<slatedb::Db> {
+    pub(crate) async fn open_db(&self) -> Result<slatedb::Db> {
         let db = self
             .db
             .get_or_try_init(|| async {

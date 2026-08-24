@@ -6,6 +6,7 @@ mod blob_store;
 mod error;
 mod keyed_mutex;
 mod keys;
+mod legacy_blob_import;
 mod record;
 mod run_sessions;
 mod run_state;
@@ -29,6 +30,7 @@ pub use fabro_types::{
     BlobHash, EventEnvelope, PendingInterviewRecord, Run, RunProjection, StageId, StageProjection,
 };
 pub use keyed_mutex::{KeyedMutex, KeyedMutexGuard};
+pub use legacy_blob_import::{LegacyBlobImportError, LegacyBlobImportReport};
 pub use run_sessions::{
     ProjectedRunSession, project_run_session, project_run_session_with_context,
     project_run_sessions,

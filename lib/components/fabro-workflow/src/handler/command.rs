@@ -1077,7 +1077,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1108,7 +1108,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1135,7 +1135,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1162,7 +1162,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1187,7 +1187,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1212,7 +1212,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1242,7 +1242,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap_err();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node_state = snapshot.stage(&StageId::new("script_node", 1)).unwrap();
@@ -1269,7 +1269,7 @@ mod tests {
             .execute(&node, &context, &graph, run_dir.path(), &services)
             .await
             .unwrap();
-        logger.flush().await;
+        logger.flush().await.unwrap();
 
         let snapshot = run_store.state().await.unwrap();
         let node = snapshot

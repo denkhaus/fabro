@@ -287,7 +287,7 @@ async fn execute_test_run_with_options(
             hooks: HookSettings { hooks: vec![] },
             sandbox_env: SandboxEnvSpec {
                 toml_env:           HashMap::new(),
-                github_permissions: None,
+                github_integration: None,
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
@@ -304,7 +304,7 @@ async fn execute_test_run_with_options(
     .unwrap();
 
     let executed = execute(initialized).await;
-    store_logger.flush().await;
+    store_logger.flush().await.unwrap();
     executed
 }
 
@@ -349,7 +349,7 @@ async fn execute_runs_start_to_exit_and_returns_final_context() {
             hooks: HookSettings { hooks: vec![] },
             sandbox_env: SandboxEnvSpec {
                 toml_env:           HashMap::new(),
-                github_permissions: None,
+                github_integration: None,
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
@@ -488,7 +488,7 @@ async fn resumed_in_flight_node_starts_a_new_stage_execution() {
             hooks: HookSettings { hooks: vec![] },
             sandbox_env: SandboxEnvSpec {
                 toml_env:           HashMap::new(),
-                github_permissions: None,
+                github_integration: None,
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),
@@ -599,7 +599,7 @@ async fn run_with_lifecycle(
             hooks: HookSettings { hooks: vec![] },
             sandbox_env: SandboxEnvSpec {
                 toml_env:           HashMap::new(),
-                github_permissions: None,
+                github_integration: None,
                 origin_url:         None,
             },
             vault: auth_test_support::empty_vault(),

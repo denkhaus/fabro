@@ -76,6 +76,8 @@ const DAYTONA_POST_CLONE_SETUP_TIMEOUT: Duration = Duration::from_mins(5);
 /// Best-effort push-credential setup should not consume or extend the required
 /// post-clone setup budget.
 const DAYTONA_CREDENTIAL_SETUP_TIMEOUT: Duration = Duration::from_secs(10);
+/// Budget for a custom snapshot to reach Daytona's active state.
+const DAYTONA_SNAPSHOT_ACTIVE_TIMEOUT: Duration = Duration::from_mins(30);
 /// Grace for the toolbox to return the server-side command timeout response.
 /// The SDK truncates the server timeout to whole seconds, so the server can
 /// fire up to one second before the shared deadline; this additional grace
@@ -101,30 +103,16 @@ const DAYTONA_STATE_CHANGE_POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// leaked by a dead worker. An explicit `0` disables auto-stop entirely.
 const DEFAULT_AUTO_STOP_INTERVAL_MINUTES: i32 = 120;
 
-fn daytona_git_clone_options(
-    branch: Option<String>,
-    commit_id: Option<String>,
-    username: Option<String>,
-    password: Option<String>,
-) -> GitCloneOptions {
-    GitCloneOptions {
-        branch,
-        commit_id,
-        username,
-        password,
-    }
-}
-
 pub(crate) fn daytona_not_found(err: &DaytonaError) -> bool {
     matches!(err, DaytonaError::NotFound { .. }) || err.status_code() == Some(404)
 }
 
 /// Permissions a Daytona API key needs for Fabro's snapshot and sandbox flow.
 pub const REQUIRED_DAYTONA_PERMISSIONS: &[Permissions] = &[
-    Permissions::WriteColonSnapshots,
-    Permissions::DeleteColonSnapshots,
-    Permissions::WriteColonSandboxes,
-    Permissions::DeleteColonSandboxes,
+    Permissions::WRITE_SNAPSHOTS,
+    Permissions::DELETE_SNAPSHOTS,
+    Permissions::WRITE_SANDBOXES,
+    Permissions::DELETE_SANDBOXES,
 ];
 
 pub use crate::config::{
@@ -258,10 +246,10 @@ fn join_perms(perms: &[Permissions]) -> String {
 
 fn perm_wire_str(permission: Permissions) -> &'static str {
     match permission {
-        Permissions::WriteColonSnapshots => "write:snapshots",
-        Permissions::DeleteColonSnapshots => "delete:snapshots",
-        Permissions::WriteColonSandboxes => "write:sandboxes",
-        Permissions::DeleteColonSandboxes => "delete:sandboxes",
+        Permissions::WRITE_SNAPSHOTS => "write:snapshots",
+        Permissions::DELETE_SNAPSHOTS => "delete:snapshots",
+        Permissions::WRITE_SANDBOXES => "write:sandboxes",
+        Permissions::DELETE_SANDBOXES => "delete:sandboxes",
         _ => "unknown",
     }
 }
@@ -1135,7 +1123,7 @@ impl DaytonaSandbox {
         use daytona_api_client::models::SnapshotState;
         let mut delay = std::time::Duration::from_secs(2);
         let max_delay = std::time::Duration::from_secs(30);
-        let deadline = Instant::now() + std::time::Duration::from_mins(10);
+        let deadline = Instant::now() + DAYTONA_SNAPSHOT_ACTIVE_TIMEOUT;
 
         while Instant::now() < deadline {
             time::sleep(delay).await;
@@ -1612,7 +1600,7 @@ impl Sandbox for DaytonaSandbox {
                 })?;
 
                 let clone_plan = git_retry::RetryPlan::clone_default(None);
-                let clone_result = git_retry::retry_clone(
+                let clone_result = git_retry::retry_git_operation(
                     SandboxProviderKind::Daytona,
                     "clone",
                     &clone_plan,
@@ -1620,12 +1608,14 @@ impl Sandbox for DaytonaSandbox {
                         let git_svc = &git_svc;
                         let origin = origin_url.as_str();
                         let target = layout.primary_repo_path.as_str();
-                        let options = daytona_git_clone_options(
-                            branch.clone(),
-                            commit_sha.clone(),
-                            username.clone(),
-                            password.clone(),
-                        );
+                        let options = GitCloneOptions {
+                            branch: branch.clone(),
+                            commit_id: commit_sha.clone(),
+                            username: username.clone(),
+                            password: password.clone(),
+                            depth: self.config.clone_depth,
+                            ..GitCloneOptions::default()
+                        };
                         async move { git_svc.clone(origin, target, options).await }
                     },
                     |err: &DaytonaError| classify_clone_failure(err, clone_credential_context),
@@ -3138,24 +3128,6 @@ mod tests {
         assert!(!error.to_string().contains("Daytona client"));
     }
 
-    #[test]
-    fn exact_checkout_uses_daytona_branch_and_commit_options() {
-        let options = daytona_git_clone_options(
-            Some("feature/work".to_string()),
-            Some("0123456789abcdef0123456789abcdef01234567".to_string()),
-            Some("x-access-token".to_string()),
-            Some("secret".to_string()),
-        );
-
-        assert_eq!(options.branch.as_deref(), Some("feature/work"));
-        assert_eq!(
-            options.commit_id.as_deref(),
-            Some("0123456789abcdef0123456789abcdef01234567")
-        );
-        assert_eq!(options.username.as_deref(), Some("x-access-token"));
-        assert_eq!(options.password.as_deref(), Some("secret"));
-    }
-
     fn mock_sandbox_body(sandbox_id: &str) -> serde_json::Value {
         serde_json::json!({
             "id": sandbox_id,
@@ -3171,6 +3143,7 @@ mod tests {
             "gpu": 0.0,
             "memory": 4.0,
             "disk": 20.0,
+            "toolboxProxyUrl": "https://proxy.example.com/toolbox",
             "state": "started"
         })
     }
@@ -3488,6 +3461,7 @@ mod tests {
             "size": null,
             "entrypoint": null,
             "errorReason": null,
+            "sourceSandboxId": null,
             "lastUsedAt": null,
             "createdAt": "2026-05-01T00:00:00Z",
             "updatedAt": "2026-05-01T00:00:00Z"
@@ -3509,6 +3483,7 @@ mod tests {
             "gpu": 0.0,
             "memory": 4.0,
             "disk": 20.0,
+            "toolboxProxyUrl": "https://proxy.example.com/toolbox",
             "state": state.to_string()
         })
     }
@@ -3519,6 +3494,7 @@ mod tests {
         assert!(config.snapshot.is_none());
         assert!(config.auto_stop_interval.is_none());
         assert!(config.labels.is_none());
+        assert!(config.clone_depth.is_none());
     }
 
     #[test]
@@ -4195,10 +4171,7 @@ mod tests {
     fn missing_display_uses_daytona_wire_scope_names() {
         let check = DaytonaKeyCheck {
             key_name: "delete-only".to_string(),
-            missing:  vec![
-                Permissions::WriteColonSnapshots,
-                Permissions::WriteColonSandboxes,
-            ],
+            missing:  vec![Permissions::WRITE_SNAPSHOTS, Permissions::WRITE_SANDBOXES],
         };
 
         assert_eq!(check.missing_display(), "write:snapshots, write:sandboxes");
@@ -4337,6 +4310,7 @@ mod tests {
                         "gpu": 0.0,
                         "memory": 4.0,
                         "disk": 20.0,
+                        "toolboxProxyUrl": "https://proxy.example.com/toolbox",
                         "state": "started"
                     }));
             })
