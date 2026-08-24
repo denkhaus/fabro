@@ -1,0 +1,152 @@
+digraph Develop {
+    graph [
+        goal="Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+        rankdir=LR,
+        max_node_visits=40,
+        preamble_budget_kb=12
+    ]
+
+    start [shape=Mdiamond, label="Start"]
+    exit  [shape=Msquare, label="Exit"]
+
+    // Planner: reads the seeds tracker, handles the last review verdict,
+    // decides what is implemented next and hands a brief to the implementer.
+    //
+    // preamble_stages_ignore="planner,implementer,evidence": the planner
+    // keeps ONLY the tester and reviewer history sections — they are the
+    // cycle counters (3x review verdict / 3x gate-red => Blocked, see the
+    // prompt's cycle guards). Seed brief and review verdict arrive as
+    // context keys; the implementer's response and the evidence capture
+    // are not planning inputs.
+    planner [
+        label="Planner",
+        prompt="@prompts/planner.md",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=20,
+        goal_gate=true,
+        retry_policy="standard",
+        reasoning_effort="high",
+        preamble_stages_ignore="planner,implementer,evidence"
+    ]
+
+    // Implementer: builds exactly what the claimed seed specifies.
+    //
+    // preamble_stages_ignore="planner,reviewer,implementer": the brief and
+    // review feedback arrive as context keys; the implementer keeps the
+    // tester section (gate log on gate-red bounces) and the evidence
+    // section, and can always re-run the gate itself (it has tools).
+    implementer [
+        label="Implementer",
+        prompt="@prompts/implementer.md",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=10,
+        fidelity="summary:high",
+        retry_policy="standard",
+        preamble_stages_ignore="planner,reviewer,implementer"
+    ]
+
+    // Tester: deterministic quality gate, no agent. The host project defines
+    // the gate as a `qualitygate` recipe in its justfile; the workflow stays
+    // agnostic about what the gate checks.
+    tester [
+        label="Quality Gate",
+        shape=parallelogram,
+        script="just qualitygate",
+        timeout="10m",
+        max_retries=1
+    ]
+
+    // Evidence: deterministic capture of what the read-only reviewer needs.
+    // Compact and critical-first (integrity header, seed-work file list,
+    // complete seed-work diff, then loop-churn counts and worktree): at the
+    // default `compact` fidelity a downstream node renders only the FIRST
+    // ~300 chars of command output, so ordering must front-load what review
+    // verifies. The reviewer below lifts that cap via summary:high.
+    evidence [
+        label="Evidence",
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/evidence.nu",
+        timeout="2m",
+        max_retries=1
+    ]
+
+    // Reviewer: AGENT node — read-only BY POLICY, not by capability.
+    // Run 01M0SS23MJ measured shape=tab (prompt handler): tool_time_ms 0
+    // on both visits while the prompt promised tools — blob-ref'd evidence
+    // and seed spec were UNREADABLE, and reviewer@1 rejected green work as
+    // "verification could not be completed". As an agent node the tools
+    // exist: reading blob refs, read-only git, re-running the gate are
+    // real fallbacks; modification stays forbidden by policy.
+    //
+    // fidelity="summary:high" is the evidence pipe: the default `compact`
+    // preamble truncates a command node's output to roughly the first 300
+    // characters (measured over four review cycles — the capture cut
+    // mid-header every time), which starved review of the diff.
+    // summary:high is "detailed summary including outputs" and carries the
+    // evidence capture in full.
+    //
+    // preamble_stages_ignore="planner,implementer,reviewer": the reviewer
+    // keeps EXACTLY two history sections — tester (its only view of the
+    // gate result; the evidence capture does not include gate output) and
+    // evidence (the full capture pipe). Seed spec and implementation
+    // summary arrive as context keys. Dropped: the planner's and
+    // implementer's verbose responses and the reviewer's own past verdicts
+    // — the accumulation that produced the 25.6k preamble at cycle 3.
+    // Render-only: ignored stages' context updates (seed_brief) still
+    // reach the reviewer via the ## Context section.
+    //
+    // No goal_gate: this node is legitimately skippable (tracker-empty runs
+    // never reach it), and an unvisited goal-gate node fails the whole run
+    // (engine semantics). Its genuine failures route to exit explicitly and
+    // leave the seed open; the next run re-enters the review cycle.
+    reviewer [
+        label="Reviewer",
+        prompt="@prompts/reviewer.md",
+        fidelity="summary:high",
+        preamble_stages_ignore="planner,implementer,reviewer",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=20,
+        retry_policy="standard"
+    ]
+
+    // Refiner REMOVED (seed fabro-176b, ADR-0009 candidate): painpoint
+    // delivery no longer needs an in-graph fan-in node. The stage-journal
+    // hook writes .fabro/journal/<node>@<visit>.json at every stage
+    // completion; the checkpoint carries it durably; the platform-side
+    // improve workflow scans run branches for journals. Delivery is
+    // intrinsic — no exit-bound path can miss it.
+
+    start -> planner
+
+    planner -> exit        [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
+    // Cycle-guard exit (run 01M0SS23MJ): the planner prompt routes Blocked
+    // after the third review/gate cycle on one seed, but the graph had no
+    // matching edge — the guard could never fire. Seed stays open for a
+    // human; only an approved review closes it. Listed BEFORE the generic
+    // outcome=failed edge so the specific label wins the routing.
+    planner -> exit        [label="Blocked (seed stays open for a human)", condition="preferred_label=\"Blocked\""]
+    planner -> exit        [label="Planner failed", condition="outcome=failed"]
+    planner -> implementer [label="Seed claimed"]
+
+    implementer -> planner  [label="Blocked", condition="outcome=failed"]
+    implementer -> tester   [label="Implemented"]
+
+    tester -> evidence    [label="Gate green", condition="outcome=succeeded"]
+    tester -> implementer [label="Gate red"]
+
+    evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
+    evidence -> exit     [label="Capture failed (seed stays open for the next run)"]
+
+    reviewer -> planner   [label="Approved", condition="preferred_label=\"Approved\""]
+    reviewer -> planner   [label="Changes requested"]
+    // Fast re-review path (run 01M0SS23MJ): a procedural rejection
+    // ("verification could not be completed" — evidence delivery, not code)
+    // must NOT burn a full implementer+gate cycle on an unchanged tree
+    // (~3.5 min, 5 visits observed). Re-capture only; the reviewer prompt
+    // bounds this to one retry per seed, then it must decide.
+    reviewer -> evidence  [label="Verification blocked", condition="preferred_label=\"Verification blocked\""]
+    reviewer -> exit      [label="Reviewer failed", condition="outcome=failed"]
+}
