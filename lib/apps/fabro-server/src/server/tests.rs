@@ -3758,6 +3758,45 @@ async fn post_runs_run_intent_dispatches_errors_without_changing_legacy_lane() {
 }
 
 #[tokio::test]
+async fn post_runs_attributes_parse_failures_and_rejects_duplicate_keys() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let post = |body: String| {
+        Request::builder()
+            .method("POST")
+            .uri(api("/runs"))
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap()
+    };
+
+    // A defective manifest keeps the manifest lane's 400 contract even when
+    // a stray workflow_version_id rides along.
+    let mut manifest = minimal_manifest_json(MINIMAL_DOT);
+    manifest["workflow_version_id"] = json!(fabro_types::test_support::test_workflow_version_id());
+    manifest["cwd"] = json!(42);
+    let response = app
+        .clone()
+        .oneshot(post(manifest.to_string()))
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::BAD_REQUEST).await;
+    let detail = body["errors"][0]["detail"].as_str().unwrap();
+    assert!(detail.contains("invalid type: integer `42`"), "{detail}");
+
+    // Duplicate JSON keys are ambiguous: they must be rejected, not
+    // collapsed to last-key-wins by a Value round-trip.
+    let duplicated = format!(
+        r#"{{"version":1,"cwd":"/tmp","cwd":"/other","target":{{"path":"workflow.fabro"}},"workflows":{{"workflow.fabro":{{"source":{source},"files":{{}}}}}}}}"#,
+        source = serde_json::to_string(MINIMAL_DOT).unwrap()
+    );
+    let response = app.clone().oneshot(post(duplicated)).await.unwrap();
+    let body = response_json!(response, StatusCode::BAD_REQUEST).await;
+    let detail = body["errors"][0]["detail"].as_str().unwrap();
+    assert!(detail.contains("duplicate field"), "{detail}");
+}
+
+#[tokio::test]
 async fn post_runs_run_intent_maps_missing_version_environment_and_target_errors() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));

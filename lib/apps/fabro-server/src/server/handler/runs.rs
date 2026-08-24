@@ -38,7 +38,6 @@ use fabro_workflow::command_log::{command_log_path, read_json_string_blob, read_
 use fabro_workflow::run_status::RunStatus;
 use fabro_workflow::workflow_bundle::WorkflowBundle;
 use fabro_workflow::{Error as WorkflowError, operations};
-use serde::Deserialize as _;
 use strum::VariantArray as _;
 use tokio::fs;
 use tracing::info;
@@ -536,34 +535,19 @@ async fn create_run(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    let value = match serde_json::from_slice::<serde_json::Value>(&body) {
-        Ok(value) => value,
-        Err(err) => {
-            return ApiError::with_code(StatusCode::BAD_REQUEST, err.to_string(), "invalid_json")
-                .into_response();
-        }
-    };
-    let intent_error = match RunIntent::deserialize(&value) {
+    // Both lanes parse the raw bytes directly so serde_json keeps its
+    // duplicate-key rejection and line/column error locations; a JSON `Value`
+    // round-trip would silently collapse duplicate keys to last-key-wins.
+    let intent_error = match serde_json::from_slice::<RunIntent>(&body) {
         Ok(intent) => {
             return Box::pin(create_run_from_intent(state, intent, actor, headers)).await;
         }
         Err(err) => err,
     };
-    let req = match RunManifest::deserialize(&value) {
+    let req = match serde_json::from_slice::<RunManifest>(&body) {
         Ok(req) => req,
         Err(manifest_error) => {
-            if value
-                .as_object()
-                .is_some_and(|object| object.contains_key("workflow_version_id"))
-            {
-                return ApiError::with_code(
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    intent_error.to_string(),
-                    "run_intent_invalid",
-                )
-                .into_response();
-            }
-            return ApiError::bad_request(manifest_error.to_string()).into_response();
+            return create_run_parse_error(&body, &intent_error, &manifest_error);
         }
     };
     let explicit_title_supplied = req.title.is_some();
@@ -580,6 +564,42 @@ async fn create_run(
         },
     ))
     .await
+}
+
+/// Attribute a create-run body that neither lane accepted. A body carrying
+/// any of the legacy manifest's required keys is a defective manifest even
+/// when a stray `workflow_version_id` rides along, and keeps the manifest
+/// lane's `400` contract; only an intent-shaped body gets the intent `422`.
+fn create_run_parse_error(
+    body: &[u8],
+    intent_error: &serde_json::Error,
+    manifest_error: &serde_json::Error,
+) -> Response {
+    let value = match serde_json::from_slice::<serde_json::Value>(body) {
+        Ok(value) => value,
+        Err(err) => {
+            return ApiError::with_code(StatusCode::BAD_REQUEST, err.to_string(), "invalid_json")
+                .into_response();
+        }
+    };
+    let has_key = |key: &str| {
+        value
+            .as_object()
+            .is_some_and(|object| object.contains_key(key))
+    };
+    if has_key("workflow_version_id")
+        && !has_key("version")
+        && !has_key("cwd")
+        && !has_key("workflows")
+    {
+        return ApiError::with_code(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            intent_error.to_string(),
+            "run_intent_invalid",
+        )
+        .into_response();
+    }
+    ApiError::bad_request(manifest_error.to_string()).into_response()
 }
 
 async fn create_run_from_intent(
