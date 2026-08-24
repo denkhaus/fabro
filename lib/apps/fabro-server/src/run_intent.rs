@@ -16,11 +16,6 @@ use crate::run_compiler::{RunCompilerError, settings_layer_with_resolved_dockerf
 
 #[derive(Debug, Error)]
 pub(crate) enum RunIntentAdmissionError {
-    #[error("workflow-version storage could not be opened")]
-    StoreOpen {
-        #[source]
-        source: fabro_store::Error,
-    },
     #[error("workflow-version closure could not be loaded")]
     VersionStore {
         #[source]
@@ -385,7 +380,7 @@ mod tests {
     #[tokio::test]
     async fn lowers_nested_entrypoints_and_inlines_goal_files() {
         let (database, _) = crate::test_support::test_store_bundle();
-        let blobs = database.blobs().await.unwrap();
+        let blobs = database.blobs();
         let store = WorkflowVersionStore::new(blobs);
         let grandchild = version(
             "deep/leaf.fabro",
@@ -453,7 +448,7 @@ mod tests {
     #[tokio::test]
     async fn lowers_same_version_at_distinct_mount_paths() {
         let (database, _) = crate::test_support::test_store_bundle();
-        let blobs = database.blobs().await.unwrap();
+        let blobs = database.blobs();
         let store = WorkflowVersionStore::new(blobs);
         let child = version(
             "pkg/child.fabro",
@@ -494,7 +489,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_closures_that_expand_past_the_mount_limit() {
         let (database, _) = crate::test_support::test_store_bundle();
-        let blobs = database.blobs().await.unwrap();
+        let blobs = database.blobs();
         let store = WorkflowVersionStore::new(blobs);
         // A chain of tiny versions where each level mounts the next twice is
         // cheap to store and load (the closure dedupes by id) but expands to
@@ -527,7 +522,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_distinct_versions_that_converge_on_one_mount_path() {
         let (database, _) = crate::test_support::test_store_bundle();
-        let blobs = database.blobs().await.unwrap();
+        let blobs = database.blobs();
         let store = WorkflowVersionStore::new(blobs);
         let first_leaf = version(
             "leaf/first.fabro",
@@ -584,7 +579,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_rebased_files_that_escape_the_runtime_root() {
         let (database, _) = crate::test_support::test_store_bundle();
-        let blobs = database.blobs().await.unwrap();
+        let blobs = database.blobs();
         let store = WorkflowVersionStore::new(blobs);
         let child = version(
             "nested/child.fabro",
