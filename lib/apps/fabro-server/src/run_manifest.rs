@@ -738,9 +738,6 @@ fn environment_capability_warnings(resolved_run: &RunNamespace) -> Vec<String> {
             if environment.lifecycle.auto_stop.is_some() {
                 warnings.push("docker provider ignores lifecycle.auto_stop".to_string());
             }
-            if environment.image.dockerfile.is_some() {
-                warnings.push("docker provider ignores image.dockerfile".to_string());
-            }
         }
         EnvironmentProvider::Daytona => {
             if environment.cwd.is_some() {

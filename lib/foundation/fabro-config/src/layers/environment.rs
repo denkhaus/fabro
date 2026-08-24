@@ -62,13 +62,31 @@ impl RunEnvironmentLayer {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EnvironmentImageLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub docker:     Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dockerfile: Option<EnvironmentDockerfileLayer>,
+}
+
+impl Combine for EnvironmentImageLayer {
+    /// `docker` and `dockerfile` are alternative image sources: the higher
+    /// layer that sets either one fully determines the image configuration
+    /// and suppresses the alternative coming from a lower layer. This keeps
+    /// server-stored environments registered with `image.docker` (via the
+    /// environments API) from colliding with a project layer that switches
+    /// the same environment id to `image.dockerfile` — the project wins.
+    /// Setting both fields in the same layer is preserved untouched so
+    /// resolve-level validation can reject it.
+    fn combine(self, other: Self) -> Self {
+        if self.docker.is_some() || self.dockerfile.is_some() {
+            self
+        } else {
+            other
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]

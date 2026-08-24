@@ -82,6 +82,7 @@ fn resolve_environment_fields(
         env: layer.env.clone().into_inner(),
     };
     validate_daytona_image_settings(&environment, path, errors);
+    validate_docker_image_settings(&environment, path, errors);
     environment
 }
 
@@ -210,6 +211,26 @@ fn validate_daytona_image_settings(
         errors.push(ResolveError::Invalid {
             path:   format!("{path}.image"),
             reason: "daytona environments do not support image.docker; use image.dockerfile for custom snapshots".to_string(),
+        });
+    }
+}
+
+fn validate_docker_image_settings(
+    environment: &EnvironmentSettings,
+    path: &str,
+    errors: &mut Vec<ResolveError>,
+) {
+    if environment.provider == EnvironmentProvider::Docker
+        && environment.image.docker.is_some()
+        && environment.image.dockerfile.is_some()
+    {
+        errors.push(ResolveError::Invalid {
+            path:   format!("{path}.image"),
+            reason: concat!(
+                "docker environments cannot set both image.docker and image.dockerfile; ",
+                "image.docker references a finished image while image.dockerfile builds one",
+            )
+            .to_string(),
         });
     }
 }

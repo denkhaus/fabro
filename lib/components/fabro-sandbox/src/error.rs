@@ -48,6 +48,18 @@ pub enum Error {
         source: BollardError,
     },
 
+    #[cfg(feature = "docker")]
+    #[error("Failed to build Docker image {image}")]
+    DockerImageBuild {
+        image:  String,
+        #[source]
+        source: BollardError,
+    },
+
+    #[cfg(feature = "docker")]
+    #[error("Failed to build Docker image {image}: {error}")]
+    DockerImageBuildStream { image: String, error: String },
+
     #[error(
         "{label} failed (exit {exit}, termination={termination}, duration_ms={duration_ms}) - hint: {hint}",
         exit = format_exit_code(result.exit_code),
@@ -111,6 +123,22 @@ impl Error {
         Self::DockerImagePull {
             image: image.into(),
             source,
+        }
+    }
+
+    #[cfg(feature = "docker")]
+    pub fn docker_image_build(image: impl Into<String>, source: BollardError) -> Self {
+        Self::DockerImageBuild {
+            image: image.into(),
+            source,
+        }
+    }
+
+    #[cfg(feature = "docker")]
+    pub fn docker_image_build_stream(image: impl Into<String>, error: impl Into<String>) -> Self {
+        Self::DockerImageBuildStream {
+            image: image.into(),
+            error: error.into(),
         }
     }
 

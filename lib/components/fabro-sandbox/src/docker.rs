@@ -14,8 +14,9 @@ use bollard::container::{
 };
 use bollard::errors::Error as DockerError;
 use bollard::exec::{CreateExecOptions, StartExecOptions, StartExecResults};
-use bollard::image::CreateImageOptions;
-use bollard::models::{ContainerInspectResponse, HostConfig};
+use bollard::image::{BuildImageOptions, CreateImageOptions};
+use bollard::models::{BuildInfo, ContainerInspectResponse, HostConfig};
+use bytes::Bytes;
 use fabro_github::GitHubCredentials;
 use fabro_github::token_source::InstallationTokenSource;
 use fabro_types::settings::run::RunCloneSettings;
@@ -28,8 +29,9 @@ use tokio::{fs, time};
 use tokio_util::sync::CancellationToken;
 
 use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason};
+use crate::config::DockerfileSource;
 use crate::git_retry::{self, CredentialContext};
-use crate::managed_labels::{self, MANAGED_LABEL, RUN_ID_LABEL};
+use crate::managed_labels::{self, MANAGED_LABEL, MANAGED_LABEL_VALUE, RUN_ID_LABEL};
 use crate::push_credentials::{self, PushCredentialState};
 use crate::redact::redact_auth_url;
 use crate::sandbox::{
@@ -120,6 +122,11 @@ pub struct DockerSandboxOptions {
     pub cpu_quota:    Option<i64>,
     /// Whether to pull the image if not found locally. Default: `true`.
     pub auto_pull:    bool,
+    /// Dockerfile to build the runner image from instead of pulling `image`.
+    /// When this is inline content, the image is built on first use and tagged
+    /// from the content hash (see [`runner_image_tag`]); a path form is
+    /// rejected because paths must be inlined before sandbox creation.
+    pub dockerfile:   Option<DockerfileSource>,
     /// Additional `KEY=VALUE` environment variables for the container.
     pub env_vars:     Vec<String>,
     /// Maximum Git history depth fetched during clone; `None` fetches full
@@ -137,10 +144,48 @@ impl Default for DockerSandboxOptions {
             memory_limit: None,
             cpu_quota:    None,
             auto_pull:    true,
+            dockerfile:   None,
             env_vars:     Vec::new(),
             clone_depth:  Some(DEFAULT_GIT_CLONE_DEPTH),
             skip_clone:   false,
         }
+    }
+}
+
+/// Tag for a runner image built from `dockerfile` content:
+/// `fabro-runner-<first 12 hex chars of sha256(content)>`.
+///
+/// The tag is derived from content only (no tenant or API-key scope, unlike
+/// Daytona snapshot names) so identical dockerfiles share one image across
+/// projects on the same daemon.
+pub(crate) fn runner_image_tag(dockerfile: &str) -> String {
+    use sha2::{Digest, Sha256};
+
+    let digest = Sha256::digest(dockerfile.as_bytes());
+    format!("fabro-runner-{}", &hex::encode(digest)[..12])
+}
+
+/// Resolve the effective runner image for a docker sandbox config: replace
+/// `image` with the content-hash tag when an inline dockerfile is configured,
+/// and reject path dockerfiles that were not inlined before sandbox creation.
+fn resolve_runner_image(config: &mut DockerSandboxOptions) -> crate::Result<()> {
+    let Some(dockerfile) = config.dockerfile.as_ref() else {
+        return Ok(());
+    };
+    if config.image != DockerSandboxOptions::default().image {
+        return Err(crate::Error::message(
+            "docker sandbox options set both image and dockerfile; the environment config layer \
+             rejects this combination, so a programmatic construction leaked it through",
+        ));
+    }
+    match dockerfile {
+        DockerfileSource::Inline(content) => {
+            config.image = runner_image_tag(content);
+            Ok(())
+        }
+        DockerfileSource::Path { .. } => Err(crate::Error::message(
+            "docker sandbox dockerfile path should have been resolved to inline content before sandbox creation",
+        )),
     }
 }
 
@@ -166,6 +211,7 @@ enum EnsureImageOutcome {
     Skipped,
     AlreadyLocal,
     Pulled,
+    Built,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, strum::Display)]
@@ -213,6 +259,8 @@ impl DockerSandbox {
         clone_branch: Option<String>,
         clone_commit_sha: Option<String>,
     ) -> crate::Result<Self> {
+        let mut config = config;
+        resolve_runner_image(&mut config)?;
         let push_credentials = PushCredentialState::new(push_credentials::build_token_source(
             github_app,
             clone_origin_url.as_deref(),
@@ -651,6 +699,23 @@ impl DockerSandbox {
     }
 
     async fn ensure_image(&self) -> crate::Result<EnsureImageOutcome> {
+        // Building the runner image is not a pull: `auto_pull = false` guards
+        // registry access, while a missing built image still must be produced
+        // locally before the container can start.
+        if let Some(DockerfileSource::Inline(content)) = self.config.dockerfile.as_ref() {
+            match self.docker.inspect_image(&self.config.image).await {
+                Ok(_) => return Ok(EnsureImageOutcome::AlreadyLocal),
+                Err(e) if docker_not_found(&e) => {}
+                Err(e) => {
+                    return Err(crate::Error::docker_image_inspect(
+                        self.config.image.clone(),
+                        e,
+                    ));
+                }
+            }
+            return self.build_runner_image(content).await;
+        }
+
         if !self.config.auto_pull {
             return Ok(EnsureImageOutcome::Skipped);
         }
@@ -687,6 +752,48 @@ impl DockerSandbox {
         }
 
         Ok(EnsureImageOutcome::Pulled)
+    }
+
+    /// Build the runner image from inline dockerfile content. `config.image`
+    /// has already been resolved to the content-hash tag by
+    /// [`resolve_runner_image`]. Mirrors the pull path: emits
+    /// `SnapshotCreating` here and lets the caller emit `SnapshotReady`.
+    async fn build_runner_image(&self, dockerfile: &str) -> crate::Result<EnsureImageOutcome> {
+        let tag = self.config.image.clone();
+        self.emit(SandboxEvent::SnapshotCreating { name: tag.clone() });
+        let context = build_single_file_tar("Dockerfile", dockerfile.as_bytes())?;
+        let options = BuildImageOptions {
+            dockerfile: "Dockerfile".to_string(),
+            t: tag.clone(),
+            labels: HashMap::from([(MANAGED_LABEL.to_string(), MANAGED_LABEL_VALUE.to_string())]),
+            ..Default::default()
+        };
+        let mut stream = self
+            .docker
+            .build_image(options, None, Some(Bytes::from(context)));
+        let mut infos = Vec::new();
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(info) => infos.push(info),
+                Err(err) => {
+                    // The daemon can close the build stream on failure
+                    // instead of delivering a final error frame; surface
+                    // any already-collected build error alongside the
+                    // transport error so root causes stay visible.
+                    return match first_build_stream_error(&infos) {
+                        Some(error) => Err(crate::Error::docker_image_build_stream(
+                            tag.clone(),
+                            format!("stream error ({err}); last build error: {error}"),
+                        )),
+                        None => Err(crate::Error::docker_image_build(tag.clone(), err)),
+                    };
+                }
+            }
+        }
+        if let Some(error) = first_build_stream_error(&infos) {
+            return Err(crate::Error::docker_image_build_stream(tag.clone(), error));
+        }
+        Ok(EnsureImageOutcome::Built)
     }
 
     async fn create_workspace(&self) -> crate::Result<()> {
@@ -1653,6 +1760,16 @@ fn bash_remediation(image: &str) -> String {
     format!("Failed to start Docker container from image '{image}'. {DOCKER_BASH_REQUIREMENT}")
 }
 
+/// First daemon-side build error from a completed build stream, if any.
+/// Build failures arrive as `BuildInfo.error` entries rather than transport
+/// errors, so they must be surfaced explicitly.
+fn first_build_stream_error(infos: &[BuildInfo]) -> Option<String> {
+    infos
+        .iter()
+        .filter_map(|info| info.error.clone())
+        .find(|error| !error.trim().is_empty())
+}
+
 fn build_single_file_tar(file_name: &str, bytes: &[u8]) -> crate::Result<Vec<u8>> {
     let mut tar_builder = tar::Builder::new(Vec::new());
     let mut header = tar::Header::new_gnu();
@@ -1711,7 +1828,11 @@ impl Sandbox for DockerSandbox {
         let pull_start = Instant::now();
         match self.ensure_image().await {
             Ok(EnsureImageOutcome::Skipped) => {}
-            Ok(EnsureImageOutcome::AlreadyLocal | EnsureImageOutcome::Pulled) => {
+            Ok(
+                EnsureImageOutcome::AlreadyLocal
+                | EnsureImageOutcome::Pulled
+                | EnsureImageOutcome::Built,
+            ) => {
                 let pull_duration =
                     u64::try_from(pull_start.elapsed().as_millis()).unwrap_or(u64::MAX);
                 self.emit(SandboxEvent::SnapshotReady {
@@ -2785,6 +2906,109 @@ mod tests {
             classify_docker_clone_result(&result, CredentialContext::FreshApp),
             None
         );
+    }
+
+    #[test]
+    fn runner_image_tag_is_content_hash_prefix() {
+        // Worked example computed independently of the implementation:
+        // sha256("FROM buildpack-deps:noble\nRUN apt-get update && apt-get install -y
+        // ripgrep\n")
+        //   = 0c8fa34fef47f2d1b9fbb4d39b4e3a720225b37c8a9db5d509f649363090846b
+        assert_eq!(
+            runner_image_tag(
+                "FROM buildpack-deps:noble\nRUN apt-get update && apt-get install -y ripgrep\n"
+            ),
+            "fabro-runner-0c8fa34fef47"
+        );
+    }
+
+    #[test]
+    fn runner_image_tag_changes_with_content() {
+        let a = runner_image_tag("FROM ubuntu:24.04\n");
+        let b = runner_image_tag("FROM ubuntu:25.04\n");
+        assert_ne!(a, b);
+        assert!(a.starts_with("fabro-runner-") && b.starts_with("fabro-runner-"));
+    }
+
+    #[test]
+    fn resolve_runner_image_derives_tag_from_inline_dockerfile() {
+        let mut options = DockerSandboxOptions {
+            dockerfile: Some(DockerfileSource::Inline(
+                "FROM buildpack-deps:noble\nRUN apt-get update && apt-get install -y ripgrep\n"
+                    .to_string(),
+            )),
+            ..DockerSandboxOptions::default()
+        };
+
+        resolve_runner_image(&mut options).expect("inline dockerfile should resolve");
+
+        assert_eq!(options.image, "fabro-runner-0c8fa34fef47");
+    }
+
+    #[test]
+    fn resolve_runner_image_rejects_unresolved_path() {
+        let mut options = DockerSandboxOptions {
+            dockerfile: Some(DockerfileSource::Path {
+                path: "Dockerfile".to_string(),
+            }),
+            ..DockerSandboxOptions::default()
+        };
+
+        let err = resolve_runner_image(&mut options)
+            .expect_err("path dockerfile must be inlined before sandbox creation");
+
+        let message = err.to_string();
+        assert!(
+            message.contains("resolved to inline content"),
+            "unexpected error: {message}"
+        );
+        assert_eq!(options.image, DockerSandboxOptions::default().image);
+    }
+
+    #[test]
+    fn resolve_runner_image_keeps_configured_image_without_dockerfile() {
+        let mut options = DockerSandboxOptions {
+            image: "registry.example/team/runner:2".to_string(),
+            ..DockerSandboxOptions::default()
+        };
+
+        resolve_runner_image(&mut options).expect("no dockerfile should be a no-op");
+
+        assert_eq!(options.image, "registry.example/team/runner:2");
+    }
+
+    #[test]
+    fn first_build_stream_error_reports_daemon_error_text() {
+        let infos = vec![
+            BuildInfo {
+                stream: Some("Step 1/2 : FROM ubuntu".to_string()),
+                ..BuildInfo::default()
+            },
+            BuildInfo {
+                error: Some("failed to solve: no such host".to_string()),
+                ..BuildInfo::default()
+            },
+            BuildInfo {
+                error: Some("later error".to_string()),
+                ..BuildInfo::default()
+            },
+        ];
+
+        assert_eq!(
+            first_build_stream_error(&infos).as_deref(),
+            Some("failed to solve: no such host"),
+            "the first daemon-side build error must be surfaced"
+        );
+    }
+
+    #[test]
+    fn first_build_stream_error_is_none_for_clean_stream() {
+        let infos = vec![BuildInfo {
+            stream: Some("Successfully built abc123".to_string()),
+            ..BuildInfo::default()
+        }];
+
+        assert_eq!(first_build_stream_error(&infos), None);
     }
 
     #[test]
