@@ -78,8 +78,8 @@ pub use event_envelope::EventEnvelope;
 pub use fabro_model::ReasoningEffort;
 pub use failure_signature::FailureSignature;
 pub use graph::{
-    AttrValue, ContextKeyAttr, Edge, Graph, KNOWN_HANDLER_TYPES, Node, OnFailure,
-    is_known_handler_type, is_llm_handler_type, shape_to_handler_type,
+    AttrValue, ContextKeyAttr, Edge, Graph, KNOWN_HANDLER_TYPES, Node, OnFailure, OnFailureScope,
+    ResolvedOnFailure, is_known_handler_type, is_llm_handler_type, shape_to_handler_type,
 };
 pub use input_scalar::{JsonScalarToTomlError, json_scalar_to_toml_value};
 pub use interview::{

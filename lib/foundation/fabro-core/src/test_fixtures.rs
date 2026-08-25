@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use async_trait::async_trait;
-use fabro_types::OnFailure;
+use fabro_types::{OnFailure, OnFailureScope, ResolvedOnFailure};
 
 use crate::context::Context;
 use crate::error::{Error, HandlerErrorDetail, Result};
@@ -119,11 +119,12 @@ impl EdgeSpec for TestEdge {
 
 #[derive(Debug, Clone)]
 pub struct TestGraph {
-    pub nodes:         Vec<TestNode>,
-    pub edges:         Vec<TestEdge>,
-    pub start_node_id: String,
-    pub retry_targets: HashMap<String, String>,
-    pub on_failure:    OnFailure,
+    pub nodes:           Vec<TestNode>,
+    pub edges:           Vec<TestEdge>,
+    pub start_node_id:   String,
+    pub retry_targets:   HashMap<String, String>,
+    pub on_failure:      OnFailure,
+    pub node_on_failure: HashMap<String, OnFailure>,
 }
 
 impl TestGraph {
@@ -134,6 +135,7 @@ impl TestGraph {
             start_node_id: start.to_string(),
             retry_targets: HashMap::new(),
             on_failure: OnFailure::Route,
+            node_on_failure: HashMap::new(),
         }
     }
 
@@ -146,6 +148,12 @@ impl TestGraph {
     #[must_use]
     pub fn with_on_failure(mut self, on_failure: OnFailure) -> Self {
         self.on_failure = on_failure;
+        self
+    }
+
+    #[must_use]
+    pub fn with_node_on_failure(mut self, node_id: &str, on_failure: OnFailure) -> Self {
+        self.node_on_failure.insert(node_id.to_string(), on_failure);
         self
     }
 }
@@ -217,7 +225,9 @@ impl Graph for TestGraph {
             }
         }
 
-        if outcome.status.is_failure() && self.on_failure == OnFailure::Exit {
+        if outcome.status.is_failure()
+            && self.resolve_on_failure(node.id()).policy == OnFailure::Exit
+        {
             return None;
         }
 
@@ -257,8 +267,17 @@ impl Graph for TestGraph {
         self.retry_targets.get(failed_node_id).cloned()
     }
 
-    fn on_failure(&self) -> OnFailure {
-        self.on_failure
+    fn resolve_on_failure(&self, node_id: &str) -> ResolvedOnFailure {
+        match self.node_on_failure.get(node_id) {
+            Some(policy) => ResolvedOnFailure {
+                policy: *policy,
+                scope:  OnFailureScope::Node,
+            },
+            None => ResolvedOnFailure {
+                policy: self.on_failure,
+                scope:  OnFailureScope::Graph,
+            },
+        }
     }
 }
 

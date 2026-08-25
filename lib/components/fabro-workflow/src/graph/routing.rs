@@ -75,7 +75,7 @@ pub(crate) fn select_edge<'a>(
         }
     }
 
-    if outcome.status.is_failure() && graph.on_failure() == OnFailure::Exit {
+    if outcome.status.is_failure() && graph.resolve_on_failure(&node.id).policy == OnFailure::Exit {
         return None;
     }
 
@@ -261,6 +261,13 @@ mod tests {
         graph.attrs.insert(
             "on_failure".to_string(),
             AttrValue::String(on_failure.to_string()),
+        );
+    }
+
+    fn set_node_on_failure(graph: &mut Graph, node_id: &str, value: &str) {
+        graph.nodes.get_mut(node_id).unwrap().attrs.insert(
+            "on_failure".to_string(),
+            AttrValue::String(value.to_string()),
         );
     }
 
@@ -522,6 +529,84 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn node_exit_overrides_graph_route_and_blocks_unconditional_edge() {
+        for graph_policy in [None, Some(OnFailure::Route)] {
+            let mut graph = make_graph_with_edges(vec![Edge::new("a", "b")]);
+            if let Some(policy) = graph_policy {
+                set_on_failure(&mut graph, policy);
+            }
+            set_node_on_failure(&mut graph, "a", "exit");
+            let node = graph.nodes.get("a").unwrap();
+            let outcome = Outcome::fail_classify("boom");
+
+            assert!(
+                select_edge(node, &outcome, &Context::new(), &graph, "deterministic").is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn node_route_overrides_graph_exit_and_takes_unconditional_edge() {
+        let mut graph = make_graph_with_edges(vec![Edge::new("a", "b")]);
+        set_on_failure(&mut graph, OnFailure::Exit);
+        set_node_on_failure(&mut graph, "a", "route");
+        let node = graph.nodes.get("a").unwrap();
+        let outcome = Outcome::fail_classify("boom");
+
+        let selected =
+            select_edge(node, &outcome, &Context::new(), &graph, "deterministic").unwrap();
+
+        assert_eq!(selected.edge.to, "b");
+        assert_eq!(selected.reason, "unconditional");
+    }
+
+    #[test]
+    fn node_policy_does_not_affect_routing_from_other_nodes() {
+        let mut graph = make_graph_with_edges(vec![Edge::new("a", "b")]);
+        set_node_on_failure(&mut graph, "b", "exit");
+        let node = graph.nodes.get("a").unwrap();
+        let outcome = Outcome::fail_classify("boom");
+
+        let selected =
+            select_edge(node, &outcome, &Context::new(), &graph, "deterministic").unwrap();
+
+        assert_eq!(selected.edge.to, "b");
+        assert_eq!(selected.reason, "unconditional");
+    }
+
+    #[test]
+    fn invalid_node_on_failure_value_inherits_graph_policy() {
+        let mut graph = make_graph_with_edges(vec![Edge::new("a", "b")]);
+        set_on_failure(&mut graph, OnFailure::Exit);
+        set_node_on_failure(&mut graph, "a", "bogus");
+        let node = graph.nodes.get("a").unwrap();
+        let outcome = Outcome::fail_classify("boom");
+
+        assert!(select_edge(node, &outcome, &Context::new(), &graph, "deterministic").is_none());
+    }
+
+    #[test]
+    fn failed_human_gate_ignores_node_route_override() {
+        let mut graph = make_graph_with_edges(vec![
+            Edge::new("gate", "approve"),
+            Edge::new("gate", "skip"),
+        ]);
+        set_on_failure(&mut graph, OnFailure::Exit);
+        set_node_on_failure(&mut graph, "gate", "route");
+        let gate = graph.nodes.get_mut("gate").unwrap();
+        gate.attrs.insert(
+            "shape".to_string(),
+            AttrValue::String("hexagon".to_string()),
+        );
+        let node = graph.nodes.get("gate").unwrap().clone();
+        let outcome = Outcome::fail_deterministic(
+            "human interaction interrupted before an answer was provided",
+        );
+
+        assert!(select_edge(&node, &outcome, &Context::new(), &graph, "deterministic").is_none());
     }
 
     #[test]

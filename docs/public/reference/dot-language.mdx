@@ -199,6 +199,7 @@ Other node types still need their shape, because their attributes don't identify
 | `class` | String | Classes for [stylesheet](/workflows/stylesheets) targeting. Separate multiple classes with spaces. Commas are also accepted for compatibility. |
 | `timeout` | Duration | Execution timeout (e.g. `900s`). An agent's wait for human input does not consume this budget. On a human node, this is the response deadline. |
 | `max_visits` | Integer | Max times this node can execute in a run. Overrides the graph-level `max_node_visits` for this node. |
+| `on_failure` | String | Failed-node routing policy for this node: `route` or `exit`. Overrides the graph-level `on_failure`. |
 | `max_retries` | Integer | Override default retry count |
 | `retry_policy` | String | Named preset: `none`, `standard`, `aggressive`, `linear`, `patient` |
 | `retry_target` | String | Node ID to jump to on retry |

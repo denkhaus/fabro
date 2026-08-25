@@ -6,7 +6,7 @@ use std::sync::Arc;
 use fabro_core::error::{Error as CoreError, Result as CoreResult};
 use fabro_core::graph::{EdgeSelection as CoreEdgeSelection, EdgeSpec, Graph, NodeSpec};
 use fabro_graphviz::graph::types::{Edge as GvEdge, Graph as GvGraph, Node as GvNode};
-use fabro_types::OnFailure;
+use fabro_types::ResolvedOnFailure;
 
 use crate::context::Context;
 use crate::outcome::{BilledModelUsage, Outcome};
@@ -131,7 +131,7 @@ impl Graph for WorkflowGraph {
         routing::get_retry_target(failed_node_id, self.inner())
     }
 
-    fn on_failure(&self) -> OnFailure {
-        self.inner().on_failure()
+    fn resolve_on_failure(&self, node_id: &str) -> ResolvedOnFailure {
+        self.inner().resolve_on_failure(node_id)
     }
 }

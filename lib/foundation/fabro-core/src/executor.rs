@@ -283,13 +283,15 @@ impl<G: Graph + 'static> Executor<G> {
                 NextStep::End => {
                     let mut outcome = last_outcome.clone();
                     if outcome.status.is_failure() {
-                        let message = match graph.on_failure() {
+                        let resolved = graph.resolve_on_failure(node.id());
+                        let message = match resolved.policy {
                             OnFailure::Route => {
                                 format!("stage {} failed with no outgoing fail edge", node.id())
                             }
                             OnFailure::Exit => format!(
-                                "stage {} failed and graph on_failure=exit stopped routing",
-                                node.id()
+                                "stage {} failed and {} on_failure=exit stopped routing",
+                                node.id(),
+                                resolved.scope
                             ),
                         };
                         outcome = Outcome::fail(&message);
@@ -2258,6 +2260,70 @@ mod tests {
         let log = log.lock().unwrap();
         assert_eq!(log.checkpoints, vec![("work".to_string(), None)]);
         assert_eq!(log.run_end.as_ref(), Some(&outcome));
+    }
+
+    #[tokio::test]
+    async fn executor_node_exit_policy_overrides_graph_route_and_names_node_scope() {
+        let graph = TestGraph::new(
+            vec![
+                TestNode::new("work"),
+                TestNode::new("downstream"),
+                TestNode::terminal("end"),
+            ],
+            vec![
+                TestEdge::new("work", "downstream"),
+                TestEdge::new("downstream", "end"),
+            ],
+            "work",
+        )
+        .with_node_on_failure("work", OnFailure::Exit);
+        let state = ExecutionState::new(&graph).unwrap();
+        let executor = ExecutorBuilder::new(
+            Arc::new(AlwaysFailHandler::new("boom")) as Arc<dyn NodeHandler<TestGraph>>
+        )
+        .build();
+
+        let (outcome, state) = executor.run(&graph, state).await.unwrap();
+
+        assert_eq!(outcome.status, StageOutcome::Failed {
+            retry_requested: false,
+        });
+        assert_eq!(
+            outcome
+                .failure
+                .as_ref()
+                .map(|failure| failure.message.as_str()),
+            Some("stage work failed and node on_failure=exit stopped routing")
+        );
+        assert!(!state.node_outcomes.contains_key("downstream"));
+    }
+
+    #[tokio::test]
+    async fn executor_node_route_policy_overrides_graph_exit() {
+        let graph = TestGraph::new(
+            vec![
+                TestNode::new("work"),
+                TestNode::new("downstream"),
+                TestNode::terminal("end"),
+            ],
+            vec![
+                TestEdge::new("work", "downstream"),
+                TestEdge::new("downstream", "end"),
+            ],
+            "work",
+        )
+        .with_on_failure(OnFailure::Exit)
+        .with_node_on_failure("work", OnFailure::Route);
+        let state = ExecutionState::new(&graph).unwrap();
+        let handler = DispatchHandler::new(Arc::new(AlwaysSucceedHandler))
+            .with_handler("work", Arc::new(AlwaysFailHandler::new("boom")));
+        let executor =
+            ExecutorBuilder::new(Arc::new(handler) as Arc<dyn NodeHandler<TestGraph>>).build();
+
+        let (outcome, state) = executor.run(&graph, state).await.unwrap();
+
+        assert_eq!(outcome.status, StageOutcome::Succeeded);
+        assert!(state.node_outcomes.contains_key("downstream"));
     }
 
     #[tokio::test]
