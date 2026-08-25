@@ -118,6 +118,7 @@ fn success_reason_json_tokens_match_openapi() {
     assert_string_json(SuccessReason::Completed, "completed");
     assert_string_json(SuccessReason::PartialSuccess, "partial_success");
     assert_string_json(SuccessReason::PublishBlocked, "publish_blocked");
+    assert_string_json(SuccessReason::Boundary, "boundary");
 }
 
 #[test]

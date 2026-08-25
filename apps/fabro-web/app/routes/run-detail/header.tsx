@@ -260,6 +260,11 @@ function StatusPopover({ lifecycle }: { lifecycle: RunLifecycle }) {
             Publish blocked — work done, delivery failed; see the error below
           </PopoverRow>
         )}
+        {status.kind === "succeeded" && status.reason === "boundary" && (
+          <PopoverRow label="Reason">
+            Boundary — run parked with work preserved; re-run to resume; see the error below
+          </PopoverRow>
+        )}
         {lifecycle.error && (
           <PopoverRow label="Error">
             <span className="break-words">{lifecycle.error.message}</span>

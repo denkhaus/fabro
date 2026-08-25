@@ -15,13 +15,14 @@
 
 
 /**
- * Reason attached to a successful terminal run status. `publish_blocked` marks a green run whose branch push or pull request failed: the work is done and checkpointed, only the outward delivery is blocked; the run error carries the remediation.
+ * Reason attached to a successful terminal run status. `publish_blocked` marks a green run whose branch push or pull request failed: the work is done and checkpointed, only the outward delivery is blocked; the run error carries the remediation. `boundary` marks a run parked at a declared boundary exit (kind=\"boundary\"): work is preserved, the goal is not terminal, the next run re-enters autonomously; the run error says why it parked.
  */
 
 export const SuccessReason = {
     COMPLETED: 'completed',
     PARTIAL_SUCCESS: 'partial_success',
-    PUBLISH_BLOCKED: 'publish_blocked'
+    PUBLISH_BLOCKED: 'publish_blocked',
+    BOUNDARY: 'boundary'
 } as const;
 
 export type SuccessReason = typeof SuccessReason[keyof typeof SuccessReason];

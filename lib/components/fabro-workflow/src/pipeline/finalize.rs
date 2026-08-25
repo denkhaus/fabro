@@ -58,6 +58,31 @@ pub fn classify_engine_result(
     }
 }
 
+/// Upgrade a terminal engine error parked at a boundary exit into a
+/// success-shaped outcome (fabro-08b4).
+///
+/// `kind="boundary"` on the exit edge declares: the failure parked the
+/// loop, it did not break it. The error becomes the attached failure
+/// detail (same surface as publish-blocked), so conclusion and terminal
+/// event agree on green plus why-it-parked. Every other exit kind passes
+/// the outcome through untouched.
+fn apply_boundary_upgrade(
+    outcome: Result<Outcome, Error>,
+    exit_kind: &str,
+) -> (Result<Outcome, Error>, Option<RunFailure>) {
+    match outcome {
+        Err(error) if exit_kind == "boundary" => {
+            let mut parked = Outcome::success();
+            parked.failure = Some(error.to_failure_detail());
+            (
+                Ok(parked),
+                Some(run_failure_from_error(&error, error.failure_reason())),
+            )
+        }
+        other => (other, None),
+    }
+}
+
 /// Convert a publish error into the terminal failure detail for a
 /// publish-blocked run (fabro-67e5).
 ///
@@ -478,6 +503,7 @@ pub(crate) fn build_terminal_event(
     billing: Option<BilledTokenCounts>,
     exit_kind: Option<&str>,
     publish_failure: Option<RunFailure>,
+    boundary_failure: Option<RunFailure>,
 ) -> Event {
     let outcome_status = outcome.as_ref().map_or(
         StageOutcome::Failed {
@@ -494,15 +520,18 @@ pub(crate) fn build_terminal_event(
             timing,
             artifact_count,
             status: outcome_status.to_string(),
-            reason: match (outcome_status, publish_failure.as_ref()) {
+            reason: match (exit_kind, outcome_status, publish_failure.as_ref()) {
+                // A declared park point outranks everything: work is
+                // preserved and the loop re-enters next run (fabro-08b4).
+                (Some("boundary"), _, _) => SuccessReason::Boundary,
                 // Publish-blocked outranks the partial-success marker: the
                 // actionable state is "work done, delivery blocked", and the
                 // execution detail stays visible through the status string.
-                (_, Some(_)) => SuccessReason::PublishBlocked,
-                (StageOutcome::PartiallySucceeded, None) => SuccessReason::PartialSuccess,
+                (_, _, Some(_)) => SuccessReason::PublishBlocked,
+                (_, StageOutcome::PartiallySucceeded, None) => SuccessReason::PartialSuccess,
                 _ => SuccessReason::Completed,
             },
-            failure: publish_failure,
+            failure: boundary_failure.or(publish_failure),
             total_usd_micros,
             final_git_commit_sha,
             final_patch,
@@ -678,12 +707,22 @@ pub async fn finalize(published: Published, options: &FinalizeOptions) -> Result
         (Ok(outcome), None) => (Ok(outcome), None),
     };
 
+    // Boundary upgrade (fabro-08b4): a graph-declared park point
+    // (exit edge kind="boundary") turns a stage-failure terminal into a
+    // success-shaped state — work is preserved, the goal is not terminal,
+    // the next run re-enters autonomously.
+    let (outcome, boundary_failure) =
+        apply_boundary_upgrade(outcome, conclusion.exit_kind.as_str());
+
     let (final_status, failure, _run_status) = classify_engine_result(&outcome);
     conclusion.status = final_status;
-    // A publish failure is the actionable blocker; an execution-level
-    // failure detail (partial success) stays visible through the stage
-    // summaries and the outcome status string.
-    conclusion.failure = publish_failure.clone().or(failure);
+    // A publish or boundary failure is the actionable detail; an
+    // execution-level failure detail (partial success) stays visible
+    // through the stage summaries and the outcome status string.
+    conclusion.failure = boundary_failure
+        .clone()
+        .or(publish_failure.clone())
+        .or(failure);
 
     write_finalize_commit(&run_options, &services, &conclusion).await;
 
@@ -706,6 +745,7 @@ pub async fn finalize(published: Published, options: &FinalizeOptions) -> Result
         conclusion.billing.clone(),
         exit_kind,
         publish_failure.clone(),
+        boundary_failure.clone(),
     );
     services.emitter.emit(&terminal_event);
 
@@ -1027,6 +1067,7 @@ mod tests {
             None,
             None,
             Some(publish_failure),
+            None,
         );
 
         match event {
@@ -1047,6 +1088,84 @@ mod tests {
         }
     }
 
+    /// fabro-08b4: a boundary exit upgrades a terminal engine error into
+    /// the success-shaped park state — the failure detail survives.
+    #[test]
+    fn boundary_upgrade_parks_engine_error_green() {
+        let error = Error::engine("reviewer exhausted retries after 401s");
+        let (outcome, boundary_failure) = apply_boundary_upgrade(Err(error.clone()), "boundary");
+
+        let parked = outcome.expect("boundary upgrades the error to a green outcome");
+        assert_eq!(parked.status, StageOutcome::Succeeded);
+        assert!(
+            parked.failure.is_some(),
+            "the engine failure detail must survive the upgrade"
+        );
+        let failure = boundary_failure.expect("boundary failure detail");
+        assert_eq!(
+            failure.detail.message,
+            "reviewer exhausted retries after 401s"
+        );
+    }
+
+    /// Only the declared boundary kind upgrades; soft, deadlock, and natural
+    /// exits keep the engine error terminal.
+    #[test]
+    fn boundary_upgrade_ignores_other_exit_kinds() {
+        for kind in ["soft", "deadlock", "natural", ""] {
+            let (outcome, boundary_failure) =
+                apply_boundary_upgrade(Err(Error::engine("boom")), kind);
+            assert!(outcome.is_err(), "kind={kind:?} must stay a failure");
+            assert!(boundary_failure.is_none());
+        }
+        // A green outcome passes through untouched even on a boundary exit.
+        let (outcome, boundary_failure) =
+            apply_boundary_upgrade(Ok(Outcome::success()), "boundary");
+        assert!(outcome.is_ok());
+        assert!(boundary_failure.is_none());
+    }
+
+    /// The terminal event on a boundary exit reads
+    /// succeeded(boundary) with the parked failure attached.
+    #[test]
+    fn boundary_exit_kind_reports_boundary_reason() {
+        // Post-upgrade shape: finalize() already parked the engine error
+        // into a green outcome with the failure detail attached.
+        let mut parked = Outcome::success();
+        parked.failure = Some(fabro_types::FailureDetail::new(
+            "reviewer gave up mid-run",
+            fabro_types::FailureCategory::Deterministic,
+        ));
+        let parked_failure = RunFailure {
+            reason: FailureReason::WorkflowError,
+            detail: fabro_types::FailureDetail::new(
+                "reviewer gave up mid-run",
+                fabro_types::FailureCategory::Deterministic,
+            ),
+        };
+        let event = build_terminal_event(
+            &Ok(parked),
+            fabro_types::RunTiming::wall_only(10),
+            0,
+            None,
+            None,
+            None,
+            None,
+            Some("boundary"),
+            None,
+            Some(parked_failure),
+        );
+        match event {
+            Event::WorkflowRunCompleted {
+                reason, failure, ..
+            } => {
+                assert_eq!(reason, SuccessReason::Boundary);
+                assert!(failure.is_some_and(|failure| failure.detail.message.contains("reviewer")));
+            }
+            other => panic!("expected run.completed, got {other:?}"),
+        }
+    }
+
     #[test]
     fn publish_error_builds_publish_failed_terminal_event() {
         let event = build_terminal_event(
@@ -1055,6 +1174,7 @@ mod tests {
             0,
             Some("final-sha".to_string()),
             Some("diff".to_string()),
+            None,
             None,
             None,
             None,
@@ -1084,6 +1204,7 @@ mod tests {
             None,
             Some("deadlock"),
             None,
+            None,
         );
         match event {
             Event::WorkflowRunFailed { failure, .. } => {
@@ -1106,6 +1227,7 @@ mod tests {
             None,
             Some("soft"),
             None,
+            None,
         );
         match event {
             Event::WorkflowRunFailed { failure, .. } => {
@@ -1122,6 +1244,7 @@ mod tests {
             &Ok(failed),
             fabro_types::RunTiming::wall_only(10),
             0,
+            None,
             None,
             None,
             None,

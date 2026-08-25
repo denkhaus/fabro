@@ -9066,11 +9066,15 @@ components:
         `publish_blocked` marks a green run whose branch push or pull request
         failed: the work is done and checkpointed, only the outward delivery
         is blocked; the run error carries the remediation.
+        `boundary` marks a run parked at a declared boundary exit
+        (kind="boundary"): work is preserved, the goal is not terminal, the
+        next run re-enters autonomously; the run error says why it parked.
       type: string
       enum:
         - completed
         - partial_success
         - publish_blocked
+        - boundary
 
     FailureReason:
       description: Reason attached to a failed terminal run status.

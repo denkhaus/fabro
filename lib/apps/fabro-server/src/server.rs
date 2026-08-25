@@ -980,16 +980,18 @@ fn slack_lifecycle_completed_result(
 ) -> String {
     let status = status.trim();
     let publish_blocked = reason == SuccessReason::PublishBlocked;
+    let boundary = reason == SuccessReason::Boundary;
     let reason = reason.to_string();
     let base = if status.is_empty() || status == reason {
         reason
     } else {
         format!("{status} — {reason}")
     };
-    // Publish-blocked completions carry the delivery blocker so the channel
-    // sees the remediation, not just a green checkmark (fabro-67e5).
+    // Publish-blocked and boundary completions carry their parked detail so
+    // the channel sees the blocker or park reason, not just a green
+    // checkmark (fabro-67e5, fabro-08b4).
     match failure {
-        Some(failure) if publish_blocked => {
+        Some(failure) if publish_blocked || boundary => {
             let message = failure.detail.message.trim();
             if message.is_empty() {
                 base

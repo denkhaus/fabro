@@ -245,6 +245,11 @@ evidence -> exit [kind="soft", label="Capture failed"]
   open, commits pushed); a human decides next.
 - `kind="soft"` -> `FailureReason::SoftStop`: infrastructure could not finish;
   the next run re-enters without human work on the code.
+- `kind="boundary"` -> `SuccessReason::Boundary`: the graph parked at a designed
+  point — the work is green and preserved, the goal is not terminal, and the
+  next run re-enters autonomously; nobody needs to act. A stage failure routed
+  to a boundary exit is upgraded to this success-shaped terminal state with
+  the failure detail attached (same surface as a publish-blocked run).
 - unset -> `natural`: ordinary completion or hard error.
 
 Precedence: edge kind over an exit-node `kind` attribute, default natural.

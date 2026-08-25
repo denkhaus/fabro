@@ -281,6 +281,13 @@ pub enum PendingReason {
 pub enum SuccessReason {
     Completed,
     PartialSuccess,
+    /// The graph reached a declared park point: work is preserved (seeds
+    /// stay open, commits pushed), the goal is not terminal, and the next
+    /// run re-enters autonomously — nobody needs to act (fabro-08b4).
+    /// Set by an exit edge `kind="boundary"`; a stage failure routed there
+    /// is upgraded to this success-shaped terminal state with the failure
+    /// detail attached, mirroring `PublishBlocked`.
+    Boundary,
     /// Execution finished green but publishing (branch push or pull request)
     /// failed. The run's work is done and persisted in checkpoints; only the
     /// outward delivery is blocked. The terminal `run.completed` event still

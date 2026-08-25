@@ -114,8 +114,8 @@ fn print_human_output(
     // Publish-blocked completions stay green — the work is done and
     // checkpointed — but the delivery blocker is printed as a follow-up line
     // so the operator sees the remediation (fabro-67e5).
-    let publish_block = matches!(status, RunStatus::Succeeded {
-        reason: SuccessReason::PublishBlocked,
+    let parked_detail = matches!(status, RunStatus::Succeeded {
+        reason: SuccessReason::PublishBlocked | SuccessReason::Boundary,
     });
     let (style, label) = match status {
         RunStatus::Succeeded { .. } => (&styles.bold_green, "Succeeded"),
@@ -149,21 +149,28 @@ fn print_human_output(
         styles.dim.apply_to(run_id),
     );
 
-    if publish_block {
+    if parked_detail {
         let remediation = conclusion
             .and_then(|c| c.failure.as_ref())
             .map(|failure| failure.detail.message.trim())
             .filter(|message| !message.is_empty());
-        let fallback = "the run branch or pull request could not be delivered";
+        let (label, fallback) = match status {
+            RunStatus::Succeeded {
+                reason: SuccessReason::PublishBlocked,
+            } => (
+                "Publish blocked:",
+                "the run branch or pull request could not be delivered",
+            ),
+            _ => (
+                "Boundary:",
+                "run parked at a boundary — re-run to resume the loop",
+            ),
+        };
         let message = remediation
             .map(str::trim)
             .filter(|message| !message.is_empty())
             .unwrap_or(fallback);
-        fabro_util::printerr!(
-            printer,
-            "{} {message}",
-            styles.bold.apply_to("Publish blocked:"),
-        );
+        fabro_util::printerr!(printer, "{} {message}", styles.bold.apply_to(label),);
     }
 }
 
