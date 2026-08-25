@@ -8,7 +8,7 @@ use fabro_server::jwt_auth::resolve_auth_mode_with_lookup;
 use fabro_server::server::{AppState, RouterOptions, build_router_with_options};
 use fabro_server::test_support::test_app_state_with_store_and_runtime_settings;
 use fabro_store::auth_session_store::{AuthSessionRecord, InitialRefreshToken};
-use fabro_store::{ArtifactStore, AuthCode, Database};
+use fabro_store::{ArtifactStore, PendingCliAuthorization};
 use object_store::memory::InMemory;
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;
@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::helpers::{body_json, settings_from_toml};
 
-fn test_app(source: &str) -> (axum::Router, Arc<Database>, Arc<AppState>) {
+fn test_app(source: &str) -> (axum::Router, Arc<AppState>) {
     let settings = settings_from_toml(source);
     let object_store: Arc<dyn object_store::ObjectStore> = Arc::new(InMemory::new());
     let store = Arc::new(fabro_store::test_support::test_database(
@@ -41,7 +41,7 @@ fn test_app(source: &str) -> (axum::Router, Arc<Database>, Arc<AppState>) {
         artifact_store,
     );
     let app = build_router_with_options(Arc::clone(&state), &auth_mode, RouterOptions::default());
-    (app, store, state)
+    (app, state)
 }
 
 fn pkce_challenge(verifier: &str) -> String {
@@ -54,7 +54,7 @@ fn hash_refresh_secret(secret: &str) -> [u8; 32] {
 
 #[tokio::test]
 async fn cli_auth_token_exchanges_code_over_public_router() {
-    let (app, store, _state) = test_app(
+    let (app, state) = test_app(
         r#"
 _version = 1
 
@@ -71,10 +71,9 @@ url = "https://fabro.example"
 client_id = "Iv1.test"
 "#,
     );
-    let auth_codes = store.auth_codes().await.unwrap();
-    auth_codes
-        .insert(AuthCode {
-            code:           "integration-code".to_string(),
+    state
+        .test_auth_code_store()
+        .issue("integration-code", &PendingCliAuthorization {
             identity:       fabro_types::IdpIdentity::new("https://github.com", "12345").unwrap(),
             login:          "octocat".to_string(),
             name:           "The Octocat".to_string(),
@@ -122,7 +121,7 @@ client_id = "Iv1.test"
 
 #[tokio::test]
 async fn cli_auth_refresh_replay_revokes_chain_over_public_router() {
-    let (app, _store, state) = test_app(
+    let (app, state) = test_app(
         r#"
 _version = 1
 

@@ -31,6 +31,7 @@ impl Record for Blob {
 
     const PREFIX: &'static str = "blobs/sha256";
 
+    #[cfg(test)]
     fn id(&self) -> Self::Id {
         BlobHash::new(&self.0)
     }

@@ -783,10 +783,12 @@ where
     )
     .await
     .context("activating SQLite blob storage")?;
-    let auth_code_store = store.auth_codes().await?;
     // Refresh tokens now live in SQLite. Nothing reads the old records and no
     // reaper collects them any more, so clear them out once rather than
-    // leaving them in the object store forever.
+    // leaving them in the object store forever. Pending authorization codes
+    // also moved to SQLite, but their old records are left in place: at most a
+    // handful exist at cutover, every binary rejects them within 60 seconds of
+    // issue, and nothing reads their keyspace again.
     match store.retire_refresh_token_keyspace().await {
         Ok(0) => {}
         Ok(removed) => info!(removed, "Removed retired SlateDB refresh token records"),
@@ -857,7 +859,7 @@ where
     .await?;
 
     spawn_auth_store_reapers(
-        Arc::clone(&auth_code_store),
+        Arc::clone(&state.stores.auth_codes),
         Arc::clone(&state.stores.auth_sessions),
         shutdown.clone(),
     );
