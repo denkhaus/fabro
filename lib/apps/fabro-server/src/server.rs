@@ -946,6 +946,7 @@ fn slack_lifecycle_details(event: &RunEvent) -> Option<SlackLifecycleDetails> {
             result:             Some(slack_lifecycle_completed_result(
                 &props.status,
                 props.reason,
+                props.failure.as_ref(),
             )),
             duration_ms:        Some(props.timing.wall_time_ms),
         }),
@@ -959,13 +960,44 @@ fn slack_lifecycle_details(event: &RunEvent) -> Option<SlackLifecycleDetails> {
     }
 }
 
-fn slack_lifecycle_completed_result(status: &str, reason: SuccessReason) -> String {
+/// Publish-blocked terminal status (fabro-67e5): the run stays green, the
+/// reason marks the blocked delivery.
+fn publish_blocked_status() -> RunStatus {
+    RunStatus::Succeeded {
+        reason: SuccessReason::PublishBlocked,
+    }
+}
+
+/// Compact one-line rendering of a failure detail for the managed-run error.
+fn render_failure_compact(failure: &fabro_types::RunFailure) -> String {
+    render_compact_with_causes(&failure.detail.message, &failure.detail.causes)
+}
+
+fn slack_lifecycle_completed_result(
+    status: &str,
+    reason: SuccessReason,
+    failure: Option<&fabro_types::RunFailure>,
+) -> String {
     let status = status.trim();
+    let publish_blocked = reason == SuccessReason::PublishBlocked;
     let reason = reason.to_string();
-    if status.is_empty() || status == reason {
+    let base = if status.is_empty() || status == reason {
         reason
     } else {
         format!("{status} — {reason}")
+    };
+    // Publish-blocked completions carry the delivery blocker so the channel
+    // sees the remediation, not just a green checkmark (fabro-67e5).
+    match failure {
+        Some(failure) if publish_blocked => {
+            let message = failure.detail.message.trim();
+            if message.is_empty() {
+                base
+            } else {
+                format!("{base}: {message}")
+            }
+        }
+        _ => base,
     }
 }
 
@@ -3480,7 +3512,10 @@ fn update_live_run_from_event(state: &AppState, run_id: RunId, event: &RunEvent)
             managed_run.status = RunStatus::Succeeded {
                 reason: props.reason,
             };
-            managed_run.error = None;
+            // Publish-blocked completions keep the run green but surface the
+            // blocked delivery as the run error so list/detail views render
+            // the remediation (fabro-67e5).
+            managed_run.error = props.failure.as_ref().map(render_failure_compact);
             managed_run.active_api_targets.clear();
             managed_run.active_steerable_stages.clear();
             managed_run.active_non_steerable_stages.clear();
@@ -4204,11 +4239,22 @@ async fn execute_run_in_process(state: Arc<AppState>, run_id: RunId) {
                 // A run can fail either before it produces a `Started` or in
                 // its own outcome; both carry the same `WorkflowError`.
                 let outcome = match result.as_ref() {
-                    Ok(started) => started.finalized.outcome.as_ref().map(|_| ()),
+                    Ok(started) => started
+                        .finalized
+                        .outcome
+                        .as_ref()
+                        .map(|_| started.finalized.publish_failure.clone()),
                     Err(e) => Err(e),
                 };
                 match outcome {
-                    Ok(()) => {
+                    // Publish-blocked runs stay green with the blocked
+                    // delivery attached as the run error (fabro-67e5).
+                    Ok(Some(publish_failure)) => {
+                        info!(run_id = %run_id, "Run completed with a blocked publish");
+                        managed_run.status = publish_blocked_status();
+                        managed_run.error = Some(render_failure_compact(&publish_failure));
+                    }
+                    Ok(None) => {
                         info!(run_id = %run_id, "Run completed");
                         managed_run.status = RunStatus::Succeeded {
                             reason: SuccessReason::Completed,

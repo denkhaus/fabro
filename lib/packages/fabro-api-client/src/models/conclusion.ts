@@ -46,10 +46,7 @@ export interface Conclusion {
     'total_retries': number;
     'diff': RunDiff;
     /**
-     * Exit-kind classification: the `kind` attribute of the exit node the
-     * graph routed through ('natural' when unset). Soft-stop kinds
-     * (deadlock, soft) distinguish needs-a-human / re-enterable from hard
-     * errors.
+     * Exit-kind classification of the exit node the graph routed through (\"natural\" when unset): deadlock, soft, or natural. Terminal-event routing uses it to distinguish needs-a-human and re-enterable stops from hard errors.
      */
     'exit_kind'?: string;
 }

@@ -167,6 +167,7 @@ mod tests {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,

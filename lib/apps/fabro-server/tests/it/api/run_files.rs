@@ -115,6 +115,7 @@ async fn append_completed_run_with_final_patch(
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string()),
             final_patch:          Some(final_patch.to_string()),

@@ -5311,6 +5311,81 @@ channel = "#deploys"
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
+            total_usd_micros:     None,
+            final_git_commit_sha: None,
+            final_patch:          None,
+            diff_summary:         None,
+            billing:              None,
+        },
+    )
+    .await;
+
+    service.handle_event(state.as_ref(), &envelope, None).await;
+
+    post.assert_async().await;
+}
+
+/// fabro-67e5: a publish-blocked completion routes through run.completed
+/// (not run.failed) and the Slack result carries the remediation.
+#[tokio::test]
+async fn slack_lifecycle_publish_blocked_completion_posts_remediation() {
+    let server = MockServer::start_async().await;
+    let post = mock_slack_post(
+        &server,
+        vec![
+            r##""channel":"#deploys""##.to_string(),
+            "Fabro run completed".to_string(),
+            "succeeded — publish_blocked".to_string(),
+            "the run branch 'fabro/run/1' was pushed".to_string(),
+            "1m 5s".to_string(),
+        ],
+        "100.2",
+    )
+    .await;
+    let state = test_app_state();
+    let service = slack_lifecycle_service(server.base_url(), None);
+    let run_id = fixtures::RUN_1;
+    let settings = workflow_settings_with_run_notifications(
+        r##"
+[run.notifications.deploys]
+enabled = true
+provider = "slack"
+events = ["run.completed"]
+
+[run.notifications.deploys.slack]
+channel = "#deploys"
+"##,
+        Some("Deploy workflow"),
+    );
+    let run_store = create_slack_notification_run(&state, run_id, settings, "deploy", None).await;
+    workflow_event::append_event(&run_store, &run_id, &workflow_event::Event::RunRunnable {
+        source: fabro_types::RunRunnableSource::StartRequested,
+        actor:  None,
+    })
+    .await
+    .unwrap();
+    workflow_event::append_event(&run_store, &run_id, &workflow_event::Event::RunStarting)
+        .await
+        .unwrap();
+    workflow_event::append_event(&run_store, &run_id, &workflow_event::Event::RunRunning)
+        .await
+        .unwrap();
+    let envelope = append_slack_notification_event(
+        &run_store,
+        run_id,
+        &workflow_event::Event::WorkflowRunCompleted {
+            timing:               fabro_types::RunTiming::wall_only(65_432),
+            artifact_count:       0,
+            status:               "succeeded".to_string(),
+            reason:               SuccessReason::PublishBlocked,
+            failure:              Some(fabro_types::RunFailure {
+                reason: fabro_types::FailureReason::PublishFailed,
+                detail: FailureDetail::new(
+                    "Work done, publish blocked — the run branch 'fabro/run/1' was pushed",
+                    FailureCategory::Deterministic,
+                ),
+            }),
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -5546,6 +5621,7 @@ channel = "#deploys"
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -5663,6 +5739,7 @@ async fn persist_cancelled_run_status_ignores_already_terminal_runs() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -5699,6 +5776,7 @@ async fn delete_terminal_managed_run_does_not_send_cancel_signal() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -7228,6 +7306,7 @@ async fn create_unreadable_durable_run(state: &Arc<AppState>, run_id: RunId) {
             artifact_count:       0,
             status:               "legacy-status".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -7570,6 +7649,7 @@ async fn create_completed_run_ready_for_pull_request(
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: Some("final-sha".to_string()),
             final_patch:          Some(final_patch.to_string()),
@@ -13098,6 +13178,7 @@ async fn patch_run_title_updates_active_and_archived_runs() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -13382,6 +13463,7 @@ async fn retry_succeeded_run_creates_and_queues_new_run() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -13521,6 +13603,7 @@ async fn cancel_terminal_durable_run_returns_conflict() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -13571,6 +13654,7 @@ async fn steer_terminal_durable_run_returns_run_not_steerable() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -13851,6 +13935,59 @@ fn injected_runnable_event_does_not_make_submitted_run_schedulable() {
 
     let runs = state.runs.lock().expect("runs lock poisoned");
     assert_eq!(runs.get(&run_id).unwrap().status, RunStatus::Starting);
+}
+
+/// fabro-67e5: a publish-blocked completion keeps the run green
+/// (`Succeeded { PublishBlocked }`) while surfacing the delivery blocker as
+/// the run error, so list and detail views render the remediation.
+#[tokio::test]
+async fn publish_blocked_completion_stays_succeeded_with_error_detail() {
+    let state = test_app_state();
+    let run_id = fixtures::RUN_1;
+    let temp_dir = tempfile::tempdir().unwrap();
+    {
+        let mut runs = state.runs.lock().expect("runs lock poisoned");
+        runs.insert(
+            run_id,
+            managed_run(
+                String::new(),
+                RunStatus::Running,
+                chrono::Utc::now(),
+                temp_dir.path().join(run_id.to_string()),
+                RunExecutionMode::Start,
+            ),
+        );
+    }
+
+    let completed =
+        workflow_event::to_run_event(&run_id, &workflow_event::Event::WorkflowRunCompleted {
+            timing:               fabro_types::RunTiming::wall_only(65_432),
+            artifact_count:       0,
+            status:               "succeeded".to_string(),
+            reason:               SuccessReason::PublishBlocked,
+            failure:              Some(fabro_types::RunFailure {
+                reason: fabro_types::FailureReason::PublishFailed,
+                detail: FailureDetail::new(
+                    "failed to create pull request Work done, publish blocked — the run \
+                     branch 'fabro/run/1' was pushed",
+                    FailureCategory::Deterministic,
+                ),
+            }),
+            total_usd_micros:     None,
+            final_git_commit_sha: None,
+            final_patch:          None,
+            diff_summary:         None,
+            billing:              None,
+        });
+    update_live_run_from_event(&state, run_id, &completed);
+
+    let runs = state.runs.lock().expect("runs lock poisoned");
+    let run = runs.get(&run_id).expect("run present");
+    assert_eq!(run.status, RunStatus::Succeeded {
+        reason: SuccessReason::PublishBlocked,
+    });
+    let error = run.error.as_deref().expect("publish blocker as error");
+    assert!(error.contains("publish blocked"), "{error}");
 }
 
 #[test]
@@ -14442,6 +14579,7 @@ async fn archive_and_unarchive_updates_listing_visibility() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -14559,6 +14697,7 @@ fn workflow_completed_event() -> workflow_event::Event {
         artifact_count:       0,
         status:               "succeeded".to_string(),
         reason:               SuccessReason::Completed,
+        failure:              None,
         total_usd_micros:     None,
         final_git_commit_sha: None,
         final_patch:          None,
@@ -15386,6 +15525,7 @@ async fn delete_run_retry_after_missing_provider_resource_removes_metadata() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -16971,6 +17111,7 @@ async fn attach_stream_replays_agent_message_reasoning() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -17665,6 +17806,7 @@ async fn list_runs_excludes_archived_by_default() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -17709,6 +17851,7 @@ async fn list_runs_includes_archived_when_flag_set() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -17729,6 +17872,7 @@ async fn list_runs_includes_archived_when_flag_set() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -17787,6 +17931,7 @@ async fn get_run_exposes_canonical_operator_statuses() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -17872,6 +18017,7 @@ async fn list_runs_preserves_underlying_run_status_payloads() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -18157,6 +18303,7 @@ async fn list_runs_status_filter_accepts_repeated_values() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,
@@ -18294,6 +18441,7 @@ async fn list_runs_sort_by_status_groups_by_bucket() {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,

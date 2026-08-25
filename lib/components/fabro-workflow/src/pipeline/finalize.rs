@@ -10,6 +10,7 @@ use fabro_util::error::collect_causes;
 use fabro_util::time::elapsed_ms;
 
 use super::types::{Concluded, Executed, FinalizeOptions, Finalized, PublishOutcome, Published};
+use crate::context::keys;
 use crate::error::{Error, run_failure_from_error, run_failure_from_outcome_failure};
 use crate::event::{Event, RunNoticeCode, RunNoticeLevel};
 use crate::outcome::{Outcome, StageOutcome};
@@ -55,6 +56,30 @@ pub fn classify_engine_result(
             )
         }
     }
+}
+
+/// Convert a publish error into the terminal failure detail for a
+/// publish-blocked run (fabro-67e5).
+///
+/// The remediation differs by how far delivery got: a pushed branch means the
+/// work is safely on the remote and only the pull request is missing, while a
+/// failed push keeps the work in checkpoints and the sandbox.
+fn publish_failure_from_error(error: &Error, pushed_branch: Option<&str>) -> RunFailure {
+    let mut failure = run_failure_from_error(error, FailureReason::PublishFailed);
+    let remediation = match pushed_branch {
+        Some(branch) => format!(
+            "Work done, publish blocked — the run branch '{branch}' was pushed; fix the \
+             token's pull-requests scope or open the pull request manually."
+        ),
+        None => "Work done, publish blocked — the run branch was NOT pushed; the work is \
+                 preserved in checkpoints, retry the run or push the checkpoint manually."
+            .to_string(),
+    };
+    if !failure.detail.message.is_empty() {
+        failure.detail.message.push(' ');
+    }
+    failure.detail.message.push_str(&remediation);
+    failure
 }
 
 pub(crate) async fn build_conclusion_from_store(
@@ -452,6 +477,7 @@ pub(crate) fn build_terminal_event(
     diff_summary: Option<DiffSummary>,
     billing: Option<BilledTokenCounts>,
     exit_kind: Option<&str>,
+    publish_failure: Option<RunFailure>,
 ) -> Event {
     let outcome_status = outcome.as_ref().map_or(
         StageOutcome::Failed {
@@ -468,10 +494,15 @@ pub(crate) fn build_terminal_event(
             timing,
             artifact_count,
             status: outcome_status.to_string(),
-            reason: match outcome_status {
-                StageOutcome::PartiallySucceeded => SuccessReason::PartialSuccess,
+            reason: match (outcome_status, publish_failure.as_ref()) {
+                // Publish-blocked outranks the partial-success marker: the
+                // actionable state is "work done, delivery blocked", and the
+                // execution detail stays visible through the status string.
+                (_, Some(_)) => SuccessReason::PublishBlocked,
+                (StageOutcome::PartiallySucceeded, None) => SuccessReason::PartialSuccess,
                 _ => SuccessReason::Completed,
             },
+            failure: publish_failure,
             total_usd_micros,
             final_git_commit_sha,
             final_patch,
@@ -586,7 +617,7 @@ pub async fn conclude(executed: Executed, options: &FinalizeOptions) -> Result<C
     // Exit-kind (fabro-b907): carried in the conclusion for the terminal
     // event; empty string = natural exit (no kind attribute).
     conclusion.exit_kind = final_context
-        .get(crate::context::keys::INTERNAL_EXIT_KIND)
+        .get(keys::INTERNAL_EXIT_KIND)
         .and_then(|v| v.as_str().map(str::to_owned))
         .unwrap_or_default();
 
@@ -631,16 +662,28 @@ pub async fn finalize(published: Published, options: &FinalizeOptions) -> Result
         pushed_branch,
         pr_url,
     } = publish_outcome;
-    // An execution failure outranks a publish failure: publish only runs after
-    // a successful execution, so the two are never both set.
-    let outcome = match (execution_outcome, publish_error) {
-        (Err(error), _) | (Ok(_), Some(error)) => Err(error),
-        (Ok(outcome), None) => Ok(outcome),
+    // An execution failure outranks a publish failure: publish only runs
+    // after a successful execution, so the two are never both set. A publish
+    // failure on a green execution no longer fails the run (fabro-67e5): the
+    // work is done and checkpointed, only the outward delivery is blocked.
+    // The outcome stays successful and the publish failure travels as a
+    // two-part terminal state — status `Succeeded` with a `PublishBlocked`
+    // reason plus a `PublishFailed` failure detail for remediation.
+    let (outcome, publish_failure) = match (execution_outcome, publish_error) {
+        (Err(error), _) => (Err(error), None),
+        (Ok(outcome), Some(error)) => (
+            Ok(outcome),
+            Some(publish_failure_from_error(&error, pushed_branch.as_deref())),
+        ),
+        (Ok(outcome), None) => (Ok(outcome), None),
     };
 
     let (final_status, failure, _run_status) = classify_engine_result(&outcome);
     conclusion.status = final_status;
-    conclusion.failure = failure;
+    // A publish failure is the actionable blocker; an execution-level
+    // failure detail (partial success) stays visible through the stage
+    // summaries and the outcome status string.
+    conclusion.failure = publish_failure.clone().or(failure);
 
     write_finalize_commit(&run_options, &services, &conclusion).await;
 
@@ -652,7 +695,7 @@ pub async fn finalize(published: Published, options: &FinalizeOptions) -> Result
         );
     }
 
-    let exit_kind = (!conclusion.exit_kind.is_empty()).then(|| conclusion.exit_kind.as_str());
+    let exit_kind = (!conclusion.exit_kind.is_empty()).then_some(conclusion.exit_kind.as_str());
     let terminal_event = build_terminal_event(
         &outcome,
         conclusion.timing,
@@ -661,7 +704,8 @@ pub async fn finalize(published: Published, options: &FinalizeOptions) -> Result
         conclusion.diff.patch.clone(),
         conclusion.diff.summary,
         conclusion.billing.clone(),
-        exit_kind.as_deref(),
+        exit_kind,
+        publish_failure.clone(),
     );
     services.emitter.emit(&terminal_event);
 
@@ -702,6 +746,7 @@ pub async fn finalize(published: Published, options: &FinalizeOptions) -> Result
         conclusion,
         pushed_branch,
         pr_url,
+        publish_failure,
     })
 }
 
@@ -961,6 +1006,47 @@ mod tests {
 
     use crate::test_support::test_usage;
 
+    /// fabro-67e5: publish-blocked outranks the partial-success marker in the
+    /// reason, while the status string keeps the execution detail.
+    #[test]
+    fn partial_success_with_publish_failure_reports_publish_blocked() {
+        let mut partial = Outcome::success();
+        partial.status = StageOutcome::PartiallySucceeded;
+        let publish_failure = publish_failure_from_error(
+            &Error::publish("pull request creation failed"),
+            Some("fabro/run/test"),
+        );
+
+        let event = build_terminal_event(
+            &Ok(partial),
+            fabro_types::RunTiming::wall_only(10),
+            0,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(publish_failure),
+        );
+
+        match event {
+            Event::WorkflowRunCompleted {
+                status,
+                reason,
+                failure,
+                ..
+            } => {
+                assert_eq!(status, "partially_succeeded");
+                assert_eq!(reason, SuccessReason::PublishBlocked);
+                assert_eq!(
+                    failure.as_ref().map(|failure| failure.reason),
+                    Some(FailureReason::PublishFailed)
+                );
+            }
+            other => panic!("expected run.completed, got {other:?}"),
+        }
+    }
+
     #[test]
     fn publish_error_builds_publish_failed_terminal_event() {
         let event = build_terminal_event(
@@ -969,6 +1055,7 @@ mod tests {
             0,
             Some("final-sha".to_string()),
             Some("diff".to_string()),
+            None,
             None,
             None,
             None,
@@ -981,7 +1068,6 @@ mod tests {
             other => panic!("expected run failure, got {other:?}"),
         }
     }
-
 
     #[test]
     fn deadlock_exit_kind_reclassifies_failure_reason() {
@@ -997,6 +1083,7 @@ mod tests {
             None,
             None,
             Some("deadlock"),
+            None,
         );
         match event {
             Event::WorkflowRunFailed { failure, .. } => {
@@ -1018,6 +1105,7 @@ mod tests {
             None,
             None,
             Some("soft"),
+            None,
         );
         match event {
             Event::WorkflowRunFailed { failure, .. } => {
@@ -1034,6 +1122,7 @@ mod tests {
             &Ok(failed),
             fabro_types::RunTiming::wall_only(10),
             0,
+            None,
             None,
             None,
             None,
@@ -1279,7 +1368,8 @@ mod tests {
             billing:              None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
-            exit_kind: String::new(),};
+            exit_kind:            String::new(),
+        };
         let emitter = Arc::new(Emitter::new(test_run_id()));
         let events = record_events(&emitter);
         let services = test_services(
@@ -1342,7 +1432,8 @@ mod tests {
             billing:              None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
-            exit_kind: String::new(),};
+            exit_kind:            String::new(),
+        };
 
         write_finalize_commit(&run_options, &services, &conclusion).await;
 
@@ -1394,7 +1485,8 @@ mod tests {
             billing:              None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
-            exit_kind: String::new(),};
+            exit_kind:            String::new(),
+        };
 
         write_finalize_commit(&run_options, &services, &conclusion).await;
 
@@ -1561,13 +1653,15 @@ mod tests {
         ));
         let finalized = finalize(published, &options).await.unwrap();
 
-        assert!(matches!(
-            finalized.outcome,
-            Err(Error::Stage {
-                stage: ErrorStage::Publish,
-                ..
-            })
-        ));
+        // fabro-67e5: a green run whose push failed no longer reads as a
+        // plain failure — the execution outcome stays successful and the
+        // publish failure travels as the two-part terminal state.
+        assert!(finalized.outcome.is_ok());
+        assert_eq!(finalized.conclusion.status, StageOutcome::Succeeded);
+        assert_eq!(
+            finalized.publish_failure.as_ref().map(|f| f.reason),
+            Some(FailureReason::PublishFailed)
+        );
         assert_eq!(
             finalized
                 .conclusion
@@ -1576,11 +1670,22 @@ mod tests {
                 .map(|failure| failure.reason),
             Some(FailureReason::PublishFailed)
         );
+        // The branch never reached the remote, so the remediation must say
+        // the work lives in checkpoints, not on the pushed branch.
+        assert!(
+            finalized
+                .publish_failure
+                .expect("publish failure present")
+                .detail
+                .message
+                .contains("NOT pushed"),
+            "remediation should name the missing push"
+        );
         let events = events.lock().unwrap();
         let names = events.iter().map(RunEvent::event_name).collect::<Vec<_>>();
         // Exactly one durable git.push event per high-level push — retries
         // nest inside it as attempts, never as extra events.
-        assert_eq!(names, vec!["git.push", "run.failed"]);
+        assert_eq!(names, vec!["git.push", "run.completed"]);
         match &events.first().unwrap().body {
             EventBody::GitPush(props) => {
                 assert!(!props.success);
@@ -1591,10 +1696,14 @@ mod tests {
             other => panic!("expected git.push, got {other:?}"),
         }
         match &events.last().unwrap().body {
-            EventBody::RunFailed(props) => {
-                assert_eq!(props.failure.reason, FailureReason::PublishFailed);
+            EventBody::RunCompleted(props) => {
+                assert_eq!(props.reason, SuccessReason::PublishBlocked);
+                assert_eq!(
+                    props.failure.as_ref().map(|failure| failure.reason),
+                    Some(FailureReason::PublishFailed)
+                );
             }
-            other => panic!("expected run.failed, got {other:?}"),
+            other => panic!("expected run.completed, got {other:?}"),
         }
     }
 
@@ -1729,6 +1838,9 @@ mod tests {
         assert_eq!(finalized.conclusion.final_git_commit_sha, None);
     }
 
+    /// fabro-67e5: a pull-request failure after a successful push keeps the
+    /// run green (`succeeded` + `publish_blocked`) so the dev loop does not
+    /// read the finished work as broken.
     #[tokio::test]
     async fn pull_request_failure_precedes_terminal_publish_failure() {
         let repo_dir = tempfile::tempdir().unwrap();
@@ -1787,24 +1899,40 @@ mod tests {
         .await;
         let finalized = finalize(published, &options).await.unwrap();
 
-        assert!(matches!(
-            finalized.outcome,
-            Err(Error::Stage {
-                stage: ErrorStage::Publish,
-                ..
-            })
-        ));
+        assert!(finalized.outcome.is_ok());
+        assert_eq!(finalized.conclusion.status, StageOutcome::Succeeded);
+        assert_eq!(
+            finalized.publish_failure.as_ref().map(|f| f.reason),
+            Some(FailureReason::PublishFailed)
+        );
         // The push landed before the pull request failed, so the branch is
         // still reported — that is exactly the run where the user needs it.
         assert_eq!(finalized.pushed_branch.as_deref(), Some("fabro/run/test"));
+        assert!(
+            finalized
+                .publish_failure
+                .expect("publish failure present")
+                .detail
+                .message
+                .contains("was pushed"),
+            "remediation should name the pushed branch"
+        );
         let events = events.lock().unwrap();
         let names = events.iter().map(RunEvent::event_name).collect::<Vec<_>>();
-        assert_eq!(names, vec!["git.push", "pull_request.failed", "run.failed"]);
+        assert_eq!(names, vec![
+            "git.push",
+            "pull_request.failed",
+            "run.completed"
+        ]);
         match &events.last().unwrap().body {
-            EventBody::RunFailed(props) => {
-                assert_eq!(props.failure.reason, FailureReason::PublishFailed);
+            EventBody::RunCompleted(props) => {
+                assert_eq!(props.reason, SuccessReason::PublishBlocked);
+                assert_eq!(
+                    props.failure.as_ref().map(|failure| failure.reason),
+                    Some(FailureReason::PublishFailed)
+                );
             }
-            other => panic!("expected run.failed, got {other:?}"),
+            other => panic!("expected run.completed, got {other:?}"),
         }
     }
 

@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::future::Future;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
@@ -562,6 +563,103 @@ async fn enable_auto_merge_if_requested(
     }
 }
 
+/// How many pull-request creation attempts a publish gets: 5xx answers and
+/// transport failures earn one short-backoff retry, deterministic 4xx
+/// answers fail immediately (fabro-67e5).
+const PR_CREATE_ATTEMPTS: u32 = 2;
+const PR_CREATE_RETRY_DELAY: Duration = Duration::from_millis(500);
+
+/// Create the pull request with one bounded retry for transient failures.
+///
+/// Classification mirrors the preflight REST probe: 5xx answers and transport
+/// errors are retried once after a short backoff; 4xx answers fail
+/// immediately, carrying the scope remediation so the failure explains the
+/// git-push-works-but-PR-does-not mismatch.
+async fn create_pull_request_with_retry(
+    req: &OpenPullRequestRequest<'_>,
+    owner: &str,
+    repo: &str,
+    title: &str,
+    body: &str,
+) -> Result<github_app::CreatedPullRequest, String> {
+    create_pull_request_with_attempts(owner, repo, || {
+        github_app::create_pull_request(
+            &req.github,
+            owner,
+            repo,
+            req.base_branch,
+            req.head_branch,
+            title,
+            body,
+            req.draft,
+        )
+    })
+    .await
+}
+
+/// Retry policy core, independent of the HTTP transport so tests can drive
+/// the attempt classification directly.
+async fn create_pull_request_with_attempts<F, Fut>(
+    owner: &str,
+    repo: &str,
+    mut create: F,
+) -> Result<github_app::CreatedPullRequest, String>
+where
+    F: FnMut() -> Fut,
+    Fut:
+        Future<Output = Result<github_app::CreatedPullRequest, github_app::CreatePullRequestError>>,
+{
+    let mut attempts: Vec<String> = Vec::new();
+    // All attempts except the last: retryable failures earn one backoff.
+    for attempt in 1..PR_CREATE_ATTEMPTS {
+        let error = match create().await {
+            Ok(created) => return Ok(created),
+            Err(error) if error.is_retryable() => error,
+            Err(error) => {
+                attempts.push(attempt_line(attempt, owner, repo, &error));
+                return Err(final_create_error(&attempts, &error));
+            }
+        };
+        attempts.push(attempt_line(attempt, owner, repo, &error));
+        warn!(
+            attempt,
+            error = %error,
+            "Transient pull request creation failure; retrying after a short backoff"
+        );
+        sleep(PR_CREATE_RETRY_DELAY).await;
+    }
+    // Final attempt: whatever it answers is the result.
+    let error = match create().await {
+        Ok(created) => return Ok(created),
+        Err(error) => error,
+    };
+    attempts.push(attempt_line(PR_CREATE_ATTEMPTS, owner, repo, &error));
+    Err(final_create_error(&attempts, &error))
+}
+
+/// One bounded line per attempt for the failure detail.
+fn attempt_line(
+    attempt: u32,
+    owner: &str,
+    repo: &str,
+    error: &github_app::CreatePullRequestError,
+) -> String {
+    format!("attempt {attempt} ({owner}/{repo}): {error:#}")
+}
+
+/// Render the terminal create error: deterministic answers carry the scope
+/// remediation so the publish-blocked rendering can tell the operator what
+/// to fix, with the attempt history in parentheses so a transient-then-
+/// deterministic sequence (e.g. 503 then 403) keeps its 5xx context.
+fn final_create_error(attempts: &[String], error: &github_app::CreatePullRequestError) -> String {
+    let history = attempts.join("; ");
+    match error.scope_hint() {
+        Some(hint) if history.is_empty() => format!("pull request creation failed — {hint}"),
+        Some(hint) => format!("pull request creation failed — {hint} ({history})"),
+        None => history,
+    }
+}
+
 /// How many times to read the remote branch head before giving up.
 ///
 /// `GET /repos/{owner}/{repo}/branches/{branch}` is replica-served, so shortly
@@ -648,28 +746,17 @@ pub async fn open_pull_request(
     let body = truncate_pr_body(&content.body);
     let title = content.title;
 
-    let created = match github_app::create_pull_request(
-        &req.github,
-        &owner,
-        &repo,
-        req.base_branch,
-        req.head_branch,
-        &title,
-        &body,
-        req.draft,
-    )
-    .await
-    {
+    let created = match create_pull_request_with_retry(&req, &owner, &repo, &title, &body).await {
         Ok(created) => created,
         Err(create_err) => {
             match reconcile_existing_pull_request(&req, &owner, &repo, "after a failed create")
                 .await
             {
                 Ok(Some(existing)) => return Ok(existing),
-                Ok(None) => return Err(format!("{create_err:#}")),
+                Ok(None) => return Err(create_err),
                 Err(reconcile_err) => {
                     return Err(format!(
-                        "{create_err:#}; failed to reconcile the pull request after creation: {reconcile_err:#}"
+                        "{create_err}; failed to reconcile the pull request after creation: {reconcile_err:#}"
                     ));
                 }
             }
@@ -2009,6 +2096,7 @@ mod tests {
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          Some(
@@ -2038,6 +2126,105 @@ mod tests {
             creds,
             run_store: run_store.into(),
         }
+    }
+
+    // ── PR creation retry policy (fabro-67e5) ────────────────────────
+
+    fn created_pr() -> github_app::CreatedPullRequest {
+        github_app::CreatedPullRequest {
+            html_url: "https://example.test/owner/repo/pull/1".to_string(),
+            number:   1,
+            node_id:  "PR_retry".to_string(),
+            title:    "Retried title".to_string(),
+        }
+    }
+
+    /// A 5xx answer earns exactly one short-backoff retry; success on the
+    /// second attempt is reported as created.
+    #[tokio::test]
+    async fn pr_creation_retries_transient_5xx_once() {
+        let mut calls = 0;
+        let created = create_pull_request_with_attempts("owner", "repo", || {
+            calls += 1;
+            async move {
+                if calls == 1 {
+                    Err(github_app::CreatePullRequestError::Status {
+                        status: 502,
+                        body:   "upstream deploy".to_string(),
+                    })
+                } else {
+                    Ok(created_pr())
+                }
+            }
+        })
+        .await
+        .expect("second attempt should create the pull request");
+        assert_eq!(created.number, 1);
+        assert_eq!(calls, 2);
+    }
+
+    /// A transport failure is retryable exactly like a 5xx answer.
+    #[tokio::test]
+    async fn pr_creation_retries_transport_failure_once() {
+        let mut calls = 0;
+        let result = create_pull_request_with_attempts("owner", "repo", || {
+            calls += 1;
+            async move {
+                if calls == 1 {
+                    Err(github_app::CreatePullRequestError::Transport(
+                        anyhow::anyhow!("connection reset by peer"),
+                    ))
+                } else {
+                    Ok(created_pr())
+                }
+            }
+        })
+        .await;
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(calls, 2);
+    }
+
+    /// A 4xx answer repeats identically, so it must fail immediately with
+    /// the scope remediation instead of burning the retry.
+    #[tokio::test]
+    async fn pr_creation_403_fails_immediately_with_scope_hint() {
+        let mut calls = 0;
+        let error = create_pull_request_with_attempts("owner", "repo", || {
+            calls += 1;
+            async move {
+                Err(github_app::CreatePullRequestError::Status {
+                    status: 403,
+                    body:   "Resource not accessible by integration".to_string(),
+                })
+            }
+        })
+        .await
+        .expect_err("403 must fail immediately");
+        assert_eq!(calls, 1, "deterministic answers must not be retried");
+        assert!(error.contains("403 Forbidden"), "{error}");
+        assert!(error.contains("pull-requests permission"), "{error}");
+    }
+
+    /// Two transient failures exhaust the retry budget; the error names both
+    /// attempts so the timeline is diagnosable.
+    #[tokio::test]
+    async fn pr_creation_reports_both_attempts_after_exhausted_retry() {
+        let mut calls = 0;
+        let error = create_pull_request_with_attempts("owner", "repo", || {
+            calls += 1;
+            let attempt = calls;
+            async move {
+                Err(github_app::CreatePullRequestError::Status {
+                    status: 503,
+                    body:   format!("unavailable (try {attempt})"),
+                })
+            }
+        })
+        .await
+        .expect_err("both attempts failed");
+        assert_eq!(calls, 2);
+        assert!(error.contains("attempt 1"), "{error}");
+        assert!(error.contains("attempt 2"), "{error}");
     }
 
     /// An open pull request already exists for the head branch at the

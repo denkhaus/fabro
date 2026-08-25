@@ -244,6 +244,11 @@ pub struct RunCompletedProps {
     pub artifact_count:       usize,
     pub status:               String,
     pub reason:               SuccessReason,
+    /// Publish failure detail when `reason` is `publish_blocked`: execution
+    /// finished green, but the branch push or pull request failed. `None`
+    /// for ordinary completions (fabro-67e5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure:              Option<RunFailure>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_usd_micros:     Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

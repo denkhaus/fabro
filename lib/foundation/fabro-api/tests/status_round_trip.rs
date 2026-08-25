@@ -88,6 +88,15 @@ fn run_status_json_matches_openapi_shape() {
         }),
     );
     assert_json(
+        RunStatus::Succeeded {
+            reason: SuccessReason::PublishBlocked,
+        },
+        json!({
+            "kind": "succeeded",
+            "reason": "publish_blocked"
+        }),
+    );
+    assert_json(
         RunStatus::Failed {
             reason: FailureReason::Cancelled,
         },
@@ -108,6 +117,7 @@ fn run_status_json_matches_openapi_shape() {
 fn success_reason_json_tokens_match_openapi() {
     assert_string_json(SuccessReason::Completed, "completed");
     assert_string_json(SuccessReason::PartialSuccess, "partial_success");
+    assert_string_json(SuccessReason::PublishBlocked, "publish_blocked");
 }
 
 #[test]

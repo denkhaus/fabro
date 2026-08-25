@@ -245,7 +245,7 @@ function humanizeFailureReason(reason: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-/** Shown only when the run failed or is archived — see `showStatusPopover`. */
+/** Shown when the run failed, is publish-blocked, or is archived — see `showStatusPopover`. */
 function StatusPopover({ lifecycle }: { lifecycle: RunLifecycle }) {
   const status = lifecycle.status;
   return (
@@ -254,6 +254,11 @@ function StatusPopover({ lifecycle }: { lifecycle: RunLifecycle }) {
       <PopoverRows>
         {status.kind === "failed" && (
           <PopoverRow label="Reason">{humanizeFailureReason(status.reason)}</PopoverRow>
+        )}
+        {status.kind === "succeeded" && status.reason === "publish_blocked" && (
+          <PopoverRow label="Reason">
+            Publish blocked — work done, delivery failed; see the error below
+          </PopoverRow>
         )}
         {lifecycle.error && (
           <PopoverRow label="Error">

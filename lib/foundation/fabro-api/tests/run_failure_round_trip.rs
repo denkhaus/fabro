@@ -80,7 +80,7 @@ fn conclusion_json_uses_failure_object() {
             billing:              None,
             total_retries:        0,
             diff:                 Default::default(),
-            exit_kind: String::new(),
+            exit_kind:            String::new(),
         },
         json!({
             "timestamp": "2026-05-13T12:00:00Z",
@@ -99,7 +99,8 @@ fn conclusion_json_uses_failure_object() {
                 }
             },
             "total_retries": 0,
-            "diff": {}
+            "diff": {},
+            "exit_kind": ""
         }),
     );
 }

@@ -68,6 +68,7 @@ async fn execute_and_emit_terminal(initialized: InitializedState) -> Executed {
         None,
         billing,
         None,
+        None,
     );
     executed.engine.run.emitter.emit(&event);
     initialized

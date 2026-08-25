@@ -741,16 +741,14 @@ fn resolve_pr_model(
             None
         }
     };
-    match resolved_model {
-        Some(model) => model,
-        None => {
-            tracing::warn!(
-                model = %model_ref,
-                "run.pull_request.model could not be resolved to a concrete model; falling back to the run model"
-            );
-            run_model.to_string()
-        }
+    if let Some(model) = resolved_model {
+        return model;
     }
+    tracing::warn!(
+        model = %model_ref,
+        "run.pull_request.model could not be resolved to a concrete model; falling back to the run model"
+    );
+    run_model.to_string()
 }
 
 fn resolve_start_llm(
@@ -2656,7 +2654,8 @@ reasoning = false
             billing:              None,
             total_retries:        0,
             diff:                 fabro_types::RunDiff::default(),
-            exit_kind: String::new(),};
+            exit_kind:            String::new(),
+        };
         let run_store = store.open_run(&fixtures::RUN_1).await.unwrap();
         crate::event::append_event(&run_store, &fixtures::RUN_1, &Event::CheckpointCompleted {
             graph_visit: None,
@@ -2703,6 +2702,7 @@ reasoning = false
             artifact_count:       0,
             status:               "succeeded".to_string(),
             reason:               crate::run_status::SuccessReason::Completed,
+            failure:              None,
             total_usd_micros:     None,
             final_git_commit_sha: None,
             final_patch:          None,

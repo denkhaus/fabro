@@ -187,6 +187,8 @@ pub enum Event {
         status:               String,
         reason:               SuccessReason,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        failure:              Option<RunFailure>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         total_usd_micros:     Option<i64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         final_git_commit_sha: Option<String>,

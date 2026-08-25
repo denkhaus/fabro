@@ -94,6 +94,65 @@ impl<'a> GitHubContext<'a> {
     }
 }
 
+/// Structured pull-request creation failure so callers can separate
+/// retryable transport/5xx conditions from deterministic 4xx answers and
+/// attach scope remediation (fabro-67e5).
+#[derive(Debug, thiserror::Error)]
+pub enum CreatePullRequestError {
+    /// Installation-token minting failed before any REST call.
+    #[error("failed to mint installation token: {0:#}")]
+    Token(#[source] anyhow::Error),
+    /// Constructing the HTTP client failed — a configuration problem, not a
+    /// transient network condition; deterministic.
+    #[error("HTTP client setup failed: {0:#}")]
+    Client(#[source] anyhow::Error),
+    /// The HTTP request itself failed (network error or timeout) — retryable.
+    #[error("pull request request failed: {0:#}")]
+    Transport(#[source] anyhow::Error),
+    /// GitHub answered with a non-2xx status; classify by `status`.
+    #[error("GitHub returned status {status} creating the pull request: {body}")]
+    Status { status: u16, body: String },
+    /// A 2xx response could not be parsed.
+    #[error("failed to parse pull request response: {0:#}")]
+    Parse(#[source] anyhow::Error),
+}
+
+impl CreatePullRequestError {
+    /// Transport failures and 5xx answers are worth one bounded retry;
+    /// everything else repeats identically.
+    #[must_use]
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::Transport(_) => true,
+            Self::Status { status, .. } => *status >= 500,
+            Self::Token(_) | Self::Client(_) | Self::Parse(_) => false,
+        }
+    }
+
+    /// Remediation for deterministic REST rejections, mirroring the
+    /// preflight probe's status mapping (fabro-67e5): a git push covers
+    /// contents, pull-request creation needs the REST pull-requests scope.
+    #[must_use]
+    pub fn scope_hint(&self) -> Option<String> {
+        match self {
+            Self::Status { status: 401, .. } => {
+                Some("401 Unauthorized — token invalid for API use".to_string())
+            }
+            Self::Status { status: 403, .. } => Some(
+                "403 Forbidden — token lacks the scope for this API call (check the \
+                 pull-requests permission of the token or installation)"
+                    .to_string(),
+            ),
+            Self::Status { status: 404, .. } => Some(
+                "404 Not Found — token cannot see this repository via the API (missing \
+                 metadata/read scope or wrong repository)"
+                    .to_string(),
+            ),
+            _ => None,
+        }
+    }
+}
+
 /// Errors returned by pull-request endpoints. Callers branch on `NotFound` to
 /// distinguish a missing PR from any other failure.
 #[derive(Debug, thiserror::Error)]
@@ -872,8 +931,8 @@ pub async fn create_pull_request(
     title: &str,
     body: &str,
     draft: bool,
-) -> anyhow::Result<CreatedPullRequest> {
-    let client = ctx.http_client()?;
+) -> Result<CreatedPullRequest, CreatePullRequestError> {
+    let client = ctx.http_client().map_err(CreatePullRequestError::Client)?;
     create_pull_request_with_client(&client, ctx, owner, repo, base, head, title, body, draft).await
 }
 
@@ -891,7 +950,7 @@ pub async fn create_pull_request_with_client(
     title: &str,
     body: &str,
     draft: bool,
-) -> anyhow::Result<CreatedPullRequest> {
+) -> Result<CreatedPullRequest, CreatePullRequestError> {
     #[derive(Deserialize)]
     struct PullRequestResponse {
         html_url: String,
@@ -908,7 +967,8 @@ pub async fn create_pull_request_with_client(
             ctx.base_url,
             serde_json::json!({ "contents": "write", "pull_requests": "write" }),
         )
-        .await?;
+        .await
+        .map_err(CreatePullRequestError::Token)?;
 
     tracing::info!(title = %title, head = %head, base = %base, draft, "Creating pull request");
 
@@ -930,31 +990,19 @@ pub async fn create_pull_request_with_client(
         Some(&pr_body),
     )
     .await
-    .context("Failed to create pull request")?;
+    .map_err(CreatePullRequestError::Transport)?;
 
-    match resp.status {
-        201 => {}
-        422 => {
-            bail!("Pull request could not be created (422): {}", resp.text());
-        }
-        401 | 403 => {
-            bail!(
-                "Authentication failed creating pull request ({})",
-                resp.status
-            );
-        }
-        _ => {
-            bail!(
-                "Unexpected status {} creating pull request: {}",
-                resp.status,
-                resp.text()
-            );
-        }
+    // GitHub answers 201 on creation; every other status (including other
+    // 2xx) is surfaced verbatim through the structured error so callers can
+    // classify retryable 5xx from deterministic 4xx.
+    if resp.status != 201 {
+        return Err(CreatePullRequestError::Status {
+            status: resp.status,
+            body:   resp.text().to_string(),
+        });
     }
 
-    let pr: PullRequestResponse = resp
-        .json()
-        .context("Failed to parse pull request response")?;
+    let pr: PullRequestResponse = resp.json().map_err(CreatePullRequestError::Parse)?;
 
     Ok(CreatedPullRequest {
         html_url: pr.html_url,
@@ -1979,6 +2027,82 @@ mod tests {
     // -----------------------------------------------------------------------
 
     use crate::tests_mock::{self, MockHttpClient};
+
+    // -----------------------------------------------------------------------
+    // CreatePullRequestError classification (fabro-67e5)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn create_pull_request_error_retryability_mirrors_preflight_probe() {
+        assert!(
+            CreatePullRequestError::Status {
+                status: 500,
+                body:   String::new(),
+            }
+            .is_retryable()
+        );
+        assert!(
+            CreatePullRequestError::Status {
+                status: 503,
+                body:   String::new(),
+            }
+            .is_retryable()
+        );
+        assert!(CreatePullRequestError::Transport(anyhow::anyhow!("timed out")).is_retryable());
+        for status in [401u16, 403, 404, 422] {
+            assert!(
+                !CreatePullRequestError::Status {
+                    status,
+                    body: String::new(),
+                }
+                .is_retryable(),
+                "{status} must be deterministic"
+            );
+        }
+        assert!(!CreatePullRequestError::Token(anyhow::anyhow!("mint failed")).is_retryable());
+    }
+
+    #[test]
+    fn create_pull_request_error_scope_hints_match_preflight_wording() {
+        let hint = |status: u16| {
+            CreatePullRequestError::Status {
+                status,
+                body: String::new(),
+            }
+            .scope_hint()
+        };
+        assert!(hint(401).is_some_and(|h| h.contains("401 Unauthorized")));
+        assert!(
+            hint(403).is_some_and(|h| h.contains("pull-requests permission")),
+            "403 must name the pull-requests scope"
+        );
+        assert!(hint(404).is_some_and(|h| h.contains("404 Not Found")));
+        assert!(hint(422).is_none());
+        assert!(hint(502).is_none());
+    }
+
+    #[tokio::test]
+    async fn create_pull_request_maps_403_to_status_error() {
+        let mock = MockHttpClient::new().on(
+            HttpMethod::Post,
+            "/repos/owner/repo/pulls",
+            403,
+            "Resource not accessible by integration",
+        );
+        let creds = GitHubCredentials::Pat("pat-token".to_string());
+        let ctx = GitHubContext::new(&creds, "https://api.example.test");
+
+        let error = create_pull_request_with_client(
+            &mock, &ctx, "owner", "repo", "main", "feature", "Title", "Body", false,
+        )
+        .await
+        .expect_err("403 must surface as a Status error");
+
+        let hint = error.scope_hint().expect("403 carries a scope hint");
+        assert!(hint.starts_with("403 Forbidden — token lacks the scope"));
+        assert!(hint.contains("pull-requests permission"), "{hint}");
+        assert!(!error.is_retryable());
+    }
 
     // -----------------------------------------------------------------------
     // create_installation_access_token — success

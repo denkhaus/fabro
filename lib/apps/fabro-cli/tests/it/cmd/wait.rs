@@ -105,6 +105,7 @@ fn wait_completed_run_json_outputs_status_and_duration() {
     {
       "run_id": "[ULID]",
       "status": "succeeded",
+      "reason": "completed",
       "timing": {
         "wall_time_ms": "[WALL_TIME_MS]",
         "inference_time_ms": "[INFERENCE_TIME_MS]",

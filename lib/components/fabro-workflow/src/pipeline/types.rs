@@ -5,13 +5,14 @@ use std::sync::Arc;
 use fabro_graphviz::graph::Graph;
 use fabro_interview::Interviewer;
 use fabro_mcp::config::McpServerSettings;
+use fabro_model::reasoning::ReasoningEffort;
 use fabro_model::{Catalog, ProviderId};
 use fabro_sandbox::SandboxSpec;
 use fabro_template::TemplateContext;
 use fabro_types::settings::run::{
     PullRequestSettings, ResolvedGithubIntegration, RunModelControls,
 };
-use fabro_types::{ManifestPath, RunId, RunProjection};
+use fabro_types::{ManifestPath, RunFailure, RunId, RunProjection};
 use fabro_validate::{Diagnostic, Severity};
 use fabro_vault::Vault;
 use tokio::sync::RwLock as AsyncRwLock;
@@ -380,11 +381,15 @@ pub struct Published {
 /// Output of the FINALIZE phase.
 #[non_exhaustive]
 pub struct Finalized {
-    pub run_id:        RunId,
-    pub outcome:       Result<Outcome, Error>,
-    pub conclusion:    Conclusion,
-    pub pushed_branch: Option<String>,
-    pub pr_url:        Option<String>,
+    pub run_id:          RunId,
+    pub outcome:         Result<Outcome, Error>,
+    pub conclusion:      Conclusion,
+    pub pushed_branch:   Option<String>,
+    pub pr_url:          Option<String>,
+    /// Publish failure on a green execution (fabro-67e5): the run stays
+    /// `Succeeded` with reason `PublishBlocked`; this carries the
+    /// `PublishFailed` detail for status writers that do not consume events.
+    pub publish_failure: Option<RunFailure>,
 }
 
 /// Options for the TRANSFORM phase.
@@ -421,5 +426,5 @@ pub struct PublishOptions {
     /// Model for the PR content call: the dedicated `[run.pull_request]`
     /// model when set (resolved against the catalog), else `pr_model`.
     pub pr_resolved_model:   String,
-    pub pr_reasoning_effort: Option<fabro_model::reasoning::ReasoningEffort>,
+    pub pr_reasoning_effort: Option<ReasoningEffort>,
 }

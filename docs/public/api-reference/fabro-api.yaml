@@ -9061,11 +9061,16 @@ components:
             - dead
 
     SuccessReason:
-      description: Reason attached to a successful terminal run status.
+      description: >-
+        Reason attached to a successful terminal run status.
+        `publish_blocked` marks a green run whose branch push or pull request
+        failed: the work is done and checkpointed, only the outward delivery
+        is blocked; the run error carries the remediation.
       type: string
       enum:
         - completed
         - partial_success
+        - publish_blocked
 
     FailureReason:
       description: Reason attached to a failed terminal run status.
@@ -11671,6 +11676,13 @@ components:
           minimum: 0
         diff:
           $ref: "#/components/schemas/RunDiff"
+        exit_kind:
+          type: string
+          description: >-
+            Exit-kind classification of the exit node the graph routed
+            through ("natural" when unset): deadlock, soft, or natural.
+            Terminal-event routing uses it to distinguish needs-a-human and
+            re-enterable stops from hard errors.
 
     CheckpointRecord:
       description: Sequence-tagged checkpoint history entry with the diff observed at that checkpoint.

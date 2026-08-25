@@ -15,12 +15,13 @@
 
 
 /**
- * Reason attached to a successful terminal run status.
+ * Reason attached to a successful terminal run status. `publish_blocked` marks a green run whose branch push or pull request failed: the work is done and checkpointed, only the outward delivery is blocked; the run error carries the remediation.
  */
 
 export const SuccessReason = {
     COMPLETED: 'completed',
-    PARTIAL_SUCCESS: 'partial_success'
+    PARTIAL_SUCCESS: 'partial_success',
+    PUBLISH_BLOCKED: 'publish_blocked'
 } as const;
 
 export type SuccessReason = typeof SuccessReason[keyof typeof SuccessReason];

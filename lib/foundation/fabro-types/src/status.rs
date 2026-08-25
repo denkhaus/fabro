@@ -281,6 +281,13 @@ pub enum PendingReason {
 pub enum SuccessReason {
     Completed,
     PartialSuccess,
+    /// Execution finished green but publishing (branch push or pull request)
+    /// failed. The run's work is done and persisted in checkpoints; only the
+    /// outward delivery is blocked. The terminal `run.completed` event still
+    /// carries a `failure` with [`FailureReason::PublishFailed`] so consumers
+    /// can render remediation (fabro-67e5). This is a success: the dev loop
+    /// keeps going instead of treating the run as broken.
+    PublishBlocked,
 }
 
 #[derive(

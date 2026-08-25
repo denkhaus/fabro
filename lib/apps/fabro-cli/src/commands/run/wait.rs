@@ -10,7 +10,7 @@
 use std::io::Write;
 
 use anyhow::{Result, bail};
-use fabro_types::RunId;
+use fabro_types::{RunId, SuccessReason};
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
 use fabro_workflow::records::Conclusion;
@@ -81,6 +81,11 @@ fn build_json_output(
         "run_id": run_id,
         "status": run_status_kind(status),
     });
+    // Publish-blocked completions stay "succeeded"; surface the reason and
+    // the remediation so --json consumers can distinguish them (fabro-67e5).
+    if let RunStatus::Succeeded { reason } = status {
+        value["reason"] = serde_json::to_value(reason).unwrap_or_else(|_| serde_json::Value::Null);
+    }
     if let Some(c) = conclusion {
         value["timing"] =
             serde_json::to_value(c.timing).unwrap_or_else(|_| serde_json::Value::Null);
@@ -90,6 +95,10 @@ fn build_json_output(
             .and_then(|billing| billing.total_usd_micros)
         {
             value["total_usd_micros"] = total_usd_micros.into();
+        }
+        if let Some(failure) = c.failure.as_ref() {
+            value["failure"] =
+                serde_json::to_value(failure).unwrap_or_else(|_| serde_json::Value::Null);
         }
     }
     value
@@ -102,6 +111,12 @@ fn print_human_output(
     styles: &Styles,
     printer: Printer,
 ) {
+    // Publish-blocked completions stay green — the work is done and
+    // checkpointed — but the delivery blocker is printed as a follow-up line
+    // so the operator sees the remediation (fabro-67e5).
+    let publish_block = matches!(status, RunStatus::Succeeded {
+        reason: SuccessReason::PublishBlocked,
+    });
     let (style, label) = match status {
         RunStatus::Succeeded { .. } => (&styles.bold_green, "Succeeded"),
         RunStatus::Failed { .. } => (&styles.bold_red, "Failed"),
@@ -133,6 +148,23 @@ fn print_human_output(
         status_display,
         styles.dim.apply_to(run_id),
     );
+
+    if publish_block {
+        let remediation = conclusion
+            .and_then(|c| c.failure.as_ref())
+            .map(|failure| failure.detail.message.trim())
+            .filter(|message| !message.is_empty());
+        let fallback = "the run branch or pull request could not be delivered";
+        let message = remediation
+            .map(str::trim)
+            .filter(|message| !message.is_empty())
+            .unwrap_or(fallback);
+        fabro_util::printerr!(
+            printer,
+            "{} {message}",
+            styles.bold.apply_to("Publish blocked:"),
+        );
+    }
 }
 
 #[cfg(test)]
@@ -170,7 +202,7 @@ mod tests {
             }),
             total_retries:        0,
             diff:                 RunDiff::default(),
-            exit_kind: String::new(),
+            exit_kind:            String::new(),
         };
         let json = build_json_output(
             RunStatus::Succeeded {
@@ -225,7 +257,7 @@ mod tests {
             billing:              None,
             total_retries:        0,
             diff:                 RunDiff::default(),
-            exit_kind: String::new(),
+            exit_kind:            String::new(),
         };
         let json = build_json_output(
             RunStatus::Failed {
@@ -260,7 +292,7 @@ mod tests {
             }),
             total_retries:        0,
             diff:                 RunDiff::default(),
-            exit_kind: String::new(),
+            exit_kind:            String::new(),
         };
         // Just verify no panic; actual stderr output is hard to capture
         print_human_output(
