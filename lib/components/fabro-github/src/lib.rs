@@ -617,8 +617,8 @@ async fn mint_installation_token_with_jwt(
                 str::to_string,
             );
             bail!(
-                "GitHub App is not installed for {owner}. \
-                 Install it at {install_url}"
+                "GitHub App is not installed for {owner}, or its installation does not \
+                 include {owner}/{primary_repo}. Check repository access at {install_url}"
             );
         }
         InstallationLookup::Failed(403) => {
