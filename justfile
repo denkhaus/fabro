@@ -36,8 +36,11 @@ cli_bin := env_var("HOME") + "/.fabro/bin/fabro"
 default:
     @just --list
 
-# Full pipeline: build binary + image, install CLI, start compose, wait for health
-up: clean build-image install-cli compose-up wait-healthy clean
+# Full pipeline: build binary + image, install CLI, start compose, wait for
+# health, smoke-test the routes a user hits (health, SPA index + every
+# referenced asset, SPA deep route, CLI API roundtrip). Smoke failure aborts
+# with an ALARM block instead of shipping a broken instance.
+up: clean build-image install-cli compose-up wait-healthy smoke clean
 
 # Build the release binary and the local docker image (cached; uses cargo dev docker-build)
 build-image: web-deps
@@ -75,9 +78,10 @@ logs:
 wait-healthy:
     nu scripts/wait-healthy.nu "{{ port }}"
 
-# Smoke check: health + CLI roundtrip against the running server
+# Smoke check: health, SPA index + every referenced asset, SPA deep route,
+# CLI API roundtrip against the running server (scripts/smoke.nu)
 smoke: wait-healthy
-    "{{ cli_bin }}" ps
+    nu scripts/smoke.nu "{{ port }}" "{{ cli_bin }}"
 
 # Clean stale host build artifacts from target/ without a full cargo clean.
 # Logic lives in scripts/clean-target.nu; see its header for the growth
