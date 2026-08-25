@@ -64,8 +64,9 @@ pub(crate) struct PreparedIntentTarget {
 
 /// Materialize filesystem-backed target facts after the effective environment
 /// has been admitted as Local and before run allocation. Folder targets are
-/// canonicalized once for durable identity. Optional Git observation follows
-/// this step under the same provider gate.
+/// canonicalized once for durable identity and their optional Git metadata is
+/// observed under the same provider gate, so rejected requests never scan host
+/// repositories. Other targets pass through with their validated projection.
 pub(crate) async fn prepare_intent_target(
     target: RunTarget,
     git: Option<GitContext>,
@@ -86,46 +87,31 @@ pub(crate) async fn prepare_intent_target(
     if !metadata.is_dir() {
         return Err(FolderTargetValidationError::NotDirectory);
     }
-    let canonical_text = canonical_folder_text(&canonical)?;
-
-    Ok(PreparedIntentTarget {
-        target: RunTarget::Folder {
-            path: canonical_text,
-        },
-        git,
-    })
-}
-
-/// Observe optional Git metadata only after provider policy has admitted the
-/// folder target. This keeps rejected requests from scanning host repositories.
-pub(crate) async fn observe_folder_git_context(target: &RunTarget) -> Option<GitContext> {
-    let RunTarget::Folder { path } = target else {
-        return None;
-    };
-    let canonical = PathBuf::from(path);
-    let observed_path = canonical.clone();
-    let observed = task::spawn_blocking(move || git::observe_git_context(&observed_path)).await;
-    let git = match observed {
-        Ok(Ok(git)) => git,
-        Ok(Err(error)) => {
+    let path = canonical_folder_text(&canonical)?;
+    let git = task::spawn_blocking(move || {
+        git::observe_git_context(&canonical).unwrap_or_else(|error| {
             tracing::warn!(
                 error = %error,
                 path = %canonical.display(),
                 "Failed to observe optional Git metadata for folder target"
             );
             None
-        }
-        Err(error) => {
-            tracing::warn!(
-                error = %error,
-                path = %canonical.display(),
-                "Folder target Git observation task failed"
-            );
-            None
-        }
-    };
+        })
+    })
+    .await
+    .unwrap_or_else(|error| {
+        tracing::warn!(
+            error = %error,
+            path,
+            "Folder target Git observation task failed"
+        );
+        None
+    });
 
-    git
+    Ok(PreparedIntentTarget {
+        target: RunTarget::Folder { path },
+        git,
+    })
 }
 
 fn canonical_folder_text(path: &Path) -> Result<String, FolderTargetValidationError> {

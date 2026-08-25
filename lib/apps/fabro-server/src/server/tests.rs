@@ -3529,33 +3529,35 @@ async fn generated_title_does_not_overwrite_user_title_edit() {
 }
 
 async fn post_run_manifest(app: &Router, manifest: serde_json::Value) -> serde_json::Value {
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(api("/runs"))
-                .header("content-type", "application/json")
-                .body(Body::from(manifest.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let response = post_run_intent_response(app, manifest).await;
     response_json!(response, StatusCode::CREATED).await
 }
 
 async fn post_run_intent_response(app: &Router, intent: serde_json::Value) -> Response {
     app.clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(api("/runs"))
-                .header("content-type", "application/json")
-                .body(Body::from(intent.to_string()))
-                .unwrap(),
-        )
+        .oneshot(json_request(Method::POST, "/runs", &intent))
         .await
         .unwrap()
+}
+
+/// App state whose default environment runs in place on the server, which is
+/// the only placement folder targets admit.
+fn local_test_app_state() -> Arc<AppState> {
+    TestAppStateBuilder::new()
+        .default_environment_provider(Some(EnvironmentProvider::Local))
+        .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .build()
+}
+
+fn folder_intent(
+    workflow_version_id: fabro_types::WorkflowVersionId,
+    path: impl serde::Serialize,
+) -> serde_json::Value {
+    json!({
+        "workflow_version_id": workflow_version_id,
+        "target": { "kind": "folder", "path": path },
+        "args": {}
+    })
 }
 
 async fn store_workflow_version(
@@ -3789,10 +3791,7 @@ async fn post_runs_run_intent_canonicalizes_and_persists_a_local_folder_target()
         .unwrap()
         .to_string_lossy()
         .to_string();
-    let state = TestAppStateBuilder::new()
-        .default_environment_provider(Some(EnvironmentProvider::Local))
-        .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
-        .build();
+    let state = local_test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let workflow_version_id = store_workflow_version(
         &state,
@@ -3803,14 +3802,7 @@ async fn post_runs_run_intent_canonicalizes_and_persists_a_local_folder_target()
 
     let body = post_run_manifest(
         &app,
-        json!({
-            "workflow_version_id": workflow_version_id,
-            "target": {
-                "kind": "folder",
-                "path": submitted.to_string_lossy()
-            },
-            "args": {}
-        }),
+        folder_intent(workflow_version_id, submitted.to_string_lossy()),
     )
     .await;
     let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
@@ -3872,22 +3864,11 @@ async fn post_runs_run_intent_observes_folder_git_metadata_without_a_remote_call
         .unwrap()
         .to_string_lossy()
         .to_string();
-    let state = TestAppStateBuilder::new()
-        .default_environment_provider(Some(EnvironmentProvider::Local))
-        .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
-        .build();
+    let state = local_test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
 
-    let body = post_run_manifest(
-        &app,
-        json!({
-            "workflow_version_id": workflow_version_id,
-            "target": { "kind": "folder", "path": canonical },
-            "args": {}
-        }),
-    )
-    .await;
+    let body = post_run_manifest(&app, folder_intent(workflow_version_id, canonical)).await;
     let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
     let projection = state
         .stores
@@ -3911,10 +3892,7 @@ async fn post_runs_run_intent_rejects_invalid_folder_paths_before_persistence() 
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("file");
     std::fs::write(&file, "not a directory").unwrap();
-    let state = TestAppStateBuilder::new()
-        .default_environment_provider(Some(EnvironmentProvider::Local))
-        .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
-        .build();
+    let state = local_test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
     let invalid_paths = [
@@ -3925,15 +3903,8 @@ async fn post_runs_run_intent_rejects_invalid_folder_paths_before_persistence() 
     ];
 
     for path in invalid_paths {
-        let response = post_run_intent_response(
-            &app,
-            json!({
-                "workflow_version_id": workflow_version_id,
-                "target": { "kind": "folder", "path": path },
-                "args": {}
-            }),
-        )
-        .await;
+        let response =
+            post_run_intent_response(&app, folder_intent(workflow_version_id, path)).await;
         let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
         assert_eq!(body["errors"][0]["code"], "target_invalid");
     }
@@ -3967,15 +3938,8 @@ async fn post_runs_run_intent_applies_the_folder_target_environment_matrix() {
     ] {
         let app = crate::test_support::build_test_router(Arc::clone(&state));
         let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
-        let response = post_run_intent_response(
-            &app,
-            json!({
-                "workflow_version_id": workflow_version_id,
-                "target": { "kind": "folder", "path": target },
-                "args": {}
-            }),
-        )
-        .await;
+        let response =
+            post_run_intent_response(&app, folder_intent(workflow_version_id, &target)).await;
         let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
         assert_eq!(body["errors"][0]["code"], "target_environment_unsupported");
         assert!(
@@ -4009,15 +3973,8 @@ enabled = false
         .build();
     let app = crate::test_support::build_test_router(Arc::clone(&disabled_state));
     let workflow_version_id = store_workflow_version(&disabled_state, MINIMAL_DOT, None).await;
-    let response = post_run_intent_response(
-        &app,
-        json!({
-            "workflow_version_id": workflow_version_id,
-            "target": { "kind": "folder", "path": target },
-            "args": {}
-        }),
-    )
-    .await;
+    let response =
+        post_run_intent_response(&app, folder_intent(workflow_version_id, &target)).await;
     let body = response_json!(response, StatusCode::SERVICE_UNAVAILABLE).await;
     assert_eq!(body["errors"][0]["code"], "integration_unavailable");
     assert!(
@@ -4237,10 +4194,7 @@ async fn post_runs_run_intent_maps_missing_version_environment_and_target_errors
 
 #[tokio::test]
 async fn post_runs_run_intent_rejects_none_target_with_local_environment_before_persistence() {
-    let state = TestAppStateBuilder::new()
-        .default_environment_provider(Some(EnvironmentProvider::Local))
-        .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
-        .build();
+    let state = local_test_app_state();
     let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let response = app

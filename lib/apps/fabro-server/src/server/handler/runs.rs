@@ -61,8 +61,7 @@ use crate::run_compiler::{
 use crate::run_files::{list_run_commits, list_run_files};
 use crate::run_intent::{
     EnvironmentSelectionError, PreparedIntentTarget, RunIntentAdmissionError,
-    lower_workflow_closure, observe_folder_git_context, pin_workflow_environment_authority,
-    prepare_intent_target,
+    lower_workflow_closure, pin_workflow_environment_authority, prepare_intent_target,
 };
 use crate::run_manifest;
 use crate::run_selector::{ResolveRunError, resolve_run_by_selector};
@@ -716,11 +715,13 @@ async fn create_run_from_intent(
         run_id: None,
         title,
         parent_id: intent.parent_id,
-        git: git.clone(),
+        // Target identity and its Git projection are attached after provider
+        // admission via `with_target_and_git`; the compiler never reads them.
+        git: None,
         storage_root: state.server_storage_dir(),
         workflow_slug: None,
         workflow_version_id: Some(intent.workflow_version_id),
-        target: Some(target.clone()),
+        target: None,
         provenance: run_provenance(&headers, &actor),
         web_url: None,
         submitted_manifest_bytes: None,
@@ -749,13 +750,10 @@ async fn create_run_from_intent(
     if let Err(error) = validate_intent_environment(&state, prepared.settings(), &target).await {
         return run_intent_admission_error(error.into());
     }
-    let PreparedIntentTarget { target, mut git } = match prepare_intent_target(target, git).await {
+    let PreparedIntentTarget { target, git } = match prepare_intent_target(target, git).await {
         Ok(prepared) => prepared,
         Err(error) => return run_intent_admission_error(error.into()),
     };
-    if matches!(target, RunTarget::Folder { .. }) {
-        git = observe_folder_git_context(&target).await;
-    }
     prepared = prepared.with_target_and_git(target, git);
     let (prepared, run_id) = prepared.resolve_run_id();
     if let Err(response) = validate_optional_parent(&state, run_id, prepared.parent_id()).await {
