@@ -49,6 +49,11 @@ const DOCKER_BASH_REQUIREMENT: &str = "Docker sandboxes require /bin/bash for ev
 
 pub(crate) const WORKING_DIRECTORY: &str = "/workspace";
 pub(crate) const REPOS_ROOT: &str = "/repos";
+// Beneath the system tmp dir so any container user can create it; the
+// trailing `runtime` component is load-bearing — materialized blobs at
+// `runtime/blobs/{hash}.json` are recognized as managed blob references and
+// normalized back to `blob://` in durable context.
+pub(crate) const RUNTIME_DIRECTORY: &str = "/tmp/fabro/runtime";
 const DEFAULT_GIT_CLONE_DEPTH: usize = RunCloneSettings::DEFAULT_DEPTH.unsigned_abs() as usize;
 const GIT_CLONE_TIMEOUT: Duration = Duration::from_mins(5);
 #[cfg(test)]
@@ -717,6 +722,28 @@ impl DockerSandbox {
         Ok(())
     }
 
+    /// Create the run-scoped Fabro runtime directory outside the repository
+    /// checkout. The umask keeps every created level owner-private.
+    async fn create_runtime_directory(&self) -> crate::Result<()> {
+        let result = self
+            .docker_exec_shell(
+                &format!("umask 077 && mkdir -p {}", shell_quote(RUNTIME_DIRECTORY)),
+                10_000,
+                Some("/"),
+                None,
+                None,
+            )
+            .await?;
+        if !result.is_success() {
+            return Err(crate::Error::message(format!(
+                "Failed to create Docker runtime directory (exit {}): {}",
+                result.display_exit_code(),
+                result.stderr
+            )));
+        }
+        Ok(())
+    }
+
     /// Verify the container evaluates commands as non-login Bash.
     ///
     /// Shared by fresh initialization and by `start` after a reconnect, so a
@@ -1144,14 +1171,16 @@ impl DockerSandbox {
             .to_string_lossy()
             .to_string();
 
+        // Fabro runtime files stay owner-private; repository files keep the
+        // conventional world-readable mode.
+        let is_runtime_path = container_path.starts_with(&format!("{RUNTIME_DIRECTORY}/"));
+        let mkdir_cmd = if is_runtime_path {
+            format!("umask 077 && mkdir -p {}", shell_quote(&parent_dir))
+        } else {
+            format!("mkdir -p {}", shell_quote(&parent_dir))
+        };
         let result = self
-            .docker_exec_shell(
-                &format!("mkdir -p {}", shell_quote(&parent_dir)),
-                10_000,
-                Some("/"),
-                None,
-                None,
-            )
+            .docker_exec_shell(&mkdir_cmd, 10_000, Some("/"), None, None)
             .await?;
         if !result.is_success() {
             return Err(crate::Error::message(format!(
@@ -1160,7 +1189,8 @@ impl DockerSandbox {
             )));
         }
 
-        let tar_bytes = build_single_file_tar(&file_name, bytes)?;
+        let file_mode = if is_runtime_path { 0o600 } else { 0o644 };
+        let tar_bytes = build_single_file_tar(&file_name, bytes, file_mode)?;
         let upload_opts = UploadToContainerOptions {
             path:                     parent_dir,
             no_overwrite_dir_non_dir: "false".to_string(),
@@ -1660,7 +1690,7 @@ fn bash_remediation(image: &str) -> String {
     format!("Failed to start Docker container from image '{image}'. {DOCKER_BASH_REQUIREMENT}")
 }
 
-fn build_single_file_tar(file_name: &str, bytes: &[u8]) -> crate::Result<Vec<u8>> {
+fn build_single_file_tar(file_name: &str, bytes: &[u8], mode: u32) -> crate::Result<Vec<u8>> {
     let mut tar_builder = tar::Builder::new(Vec::new());
     let mut header = tar::Header::new_gnu();
     header
@@ -1670,7 +1700,7 @@ fn build_single_file_tar(file_name: &str, bytes: &[u8]) -> crate::Result<Vec<u8>
         u64::try_from(bytes.len())
             .map_err(|_| crate::Error::message("file is too large for tar header"))?,
     );
-    header.set_mode(0o644);
+    header.set_mode(mode);
     header.set_cksum();
     tar_builder
         .append(&header, bytes)
@@ -1787,6 +1817,10 @@ impl Sandbox for DockerSandbox {
         let _ = self
             .cached_os_version
             .set(format!("linux {}", uname_output.trim()));
+
+        if let Err(e) = self.create_runtime_directory().await {
+            return Err(self.fail_init(init_start, e));
+        }
 
         let clone_decision = clone_source::decide_clone(
             self.config.skip_clone,
@@ -2311,6 +2345,10 @@ impl Sandbox for DockerSandbox {
         self.working_directory
             .get()
             .map_or(WORKING_DIRECTORY, String::as_str)
+    }
+
+    fn runtime_directory(&self) -> Option<&str> {
+        Some(RUNTIME_DIRECTORY)
     }
 
     async fn ssh_access_command(&self) -> crate::Result<Option<String>> {
@@ -3005,14 +3043,24 @@ mod tests {
 
     #[test]
     fn single_file_tar_contains_named_file() {
-        let bytes = build_single_file_tar("nested.txt", b"hello").unwrap();
+        let bytes = build_single_file_tar("nested.txt", b"hello", 0o644).unwrap();
         let mut archive = tar::Archive::new(Cursor::new(bytes));
         let mut entries = archive.entries().unwrap();
         let mut entry = entries.next().unwrap().unwrap();
         assert_eq!(entry.path().unwrap().to_string_lossy(), "nested.txt");
+        assert_eq!(entry.header().mode().unwrap(), 0o644);
         let mut content = String::new();
         entry.read_to_string(&mut content).unwrap();
         assert_eq!(content, "hello");
+    }
+
+    #[test]
+    fn single_file_tar_applies_private_mode() {
+        let bytes = build_single_file_tar("blob.json", b"{}", 0o600).unwrap();
+        let mut archive = tar::Archive::new(Cursor::new(bytes));
+        let mut entries = archive.entries().unwrap();
+        let entry = entries.next().unwrap().unwrap();
+        assert_eq!(entry.header().mode().unwrap(), 0o600);
     }
 
     fn test_docker_sandbox(docker: Docker, container_id: &str) -> DockerSandbox {
