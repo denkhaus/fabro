@@ -7,7 +7,10 @@
 // number at a single index (0, the default, means unset), and -format
 // selects the output mode globally: text (the default), json (JSON
 // Lines), pretty (right-aligned text columns), or table (values only,
-// right-justified). -json and -pretty are shortcuts for -format json
+// right-justified). -sum replaces the per-number output with a single
+// line carrying the big.Int sum of the Fibonacci numbers in the same
+// -start/-limit/-n intersection line mode would print (an empty range
+// sums to 0); it cannot be combined with a positive -seed. -json and -pretty are shortcuts for -format json
 // and -format pretty: with -format unset they keep their legacy
 // meaning (and plain -json -pretty lets JSON win), but an explicit
 // -format must agree with any also-given shortcut. The -version flag
@@ -35,6 +38,14 @@ const Version = "1.3.0"
 type fibLine struct {
 	Index int    `json:"index"`
 	Fib   string `json:"fib"`
+}
+
+// sumLine is the single JSON object emitted in -sum -json mode. The
+// sum is a string because it can exceed int64; index_range carries the
+// computed effective bounds [start, capped last] of the selected range.
+type sumLine struct {
+	IndexRange []int  `json:"index_range"`
+	Sum        string `json:"sum"`
 }
 
 // Fib returns the n-th Fibonacci number, with F(1) = F(2) = 1.
@@ -152,9 +163,19 @@ func resolveMode(format string, asJSON, pretty bool) (outputMode, error) {
 // -n, -start, and -limit, and the range-flag validation is skipped —
 // like -version, an invalid range flag alongside a positive seed is
 // ignored. A negative seed is rejected; seed 0 is the unset sentinel.
-// Otherwise run returns an error when count < 1, start < 0, or
+// A positive seed combined with sum is rejected with an error naming
+// both -seed and -sum (checked after mode resolution, so -version and
+// format-conflict precedence are unchanged). With sum set, run prints
+// exactly one line carrying the big.Int sum of the Fibonacci numbers
+// in the same selected range instead of the per-number output: text
+// mode prints "sum: <value>", json mode one object
+// {"index_range":[first,last],"sum":"<value>"} with the sum as a
+// string, and pretty/table print the bare value followed by a newline.
+// An empty selected range (e.g. limit below start) sums to 0 and is
+// not an error; index_range still reports the computed effective
+// bounds. Otherwise run returns an error when count < 1, start < 0, or
 // limit < 0.
-func run(w io.Writer, start, count, limit, seed int, format string, asJSON, pretty, version bool) error {
+func run(w io.Writer, start, count, limit, seed int, format string, asJSON, pretty, version, sum bool) error {
 	if version {
 		fmt.Fprintf(w, "gofib %s\n", Version)
 		return nil
@@ -165,6 +186,9 @@ func run(w io.Writer, start, count, limit, seed int, format string, asJSON, pret
 	}
 	if seed < 0 {
 		return fmt.Errorf("invalid value %d for flag -seed: must be >= 0", seed)
+	}
+	if seed > 0 && sum {
+		return fmt.Errorf("flags -seed and -sum conflict: -seed prints a single index but -sum prints the range sum")
 	}
 	if seed > 0 {
 		// Lookup mode: exactly one entry for index seed, regardless
@@ -194,6 +218,24 @@ func run(w io.Writer, start, count, limit, seed int, format string, asJSON, pret
 		last = limit
 	}
 	enc := json.NewEncoder(w)
+	if sum {
+		// Sum mode: one line with the big.Int total of the selected
+		// range instead of the per-number output. An empty range
+		// (start > last) leaves the total at 0 — not an error.
+		total := new(big.Int)
+		for i := start; i <= last; i++ {
+			total.Add(total, Fib(i))
+		}
+		switch mode {
+		case modeJSON:
+			return enc.Encode(sumLine{IndexRange: []int{start, last}, Sum: total.String()})
+		case modePretty, modeTable:
+			fmt.Fprintf(w, "%s\n", total)
+		default:
+			fmt.Fprintf(w, "sum: %v\n", total)
+		}
+		return nil
+	}
 	// Pretty and table text modes size their columns from the largest
 	// index and value printed: last and Fib(last).
 	idxW, valW := 0, 0
@@ -230,8 +272,9 @@ func main() {
 	asJSON := flag.Bool("json", false, "shortcut for -format json: emit JSON Lines instead of text (one {\"index\": i, \"fib\": \"value\"} object per number)")
 	pretty := flag.Bool("pretty", false, "shortcut for -format pretty: align text output into two right-aligned columns sized to the largest index and value")
 	version := flag.Bool("version", false, "print \"gofib <version>\" and exit; takes precedence over all other flags")
+	sum := flag.Bool("sum", false, "print the sum of the Fibonacci numbers in the selected range instead of the numbers themselves (cannot be combined with a positive -seed)")
 	flag.Parse()
-	if err := run(os.Stdout, *start, *n, *limit, *seed, *format, *asJSON, *pretty, *version); err != nil {
+	if err := run(os.Stdout, *start, *n, *limit, *seed, *format, *asJSON, *pretty, *version, *sum); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
