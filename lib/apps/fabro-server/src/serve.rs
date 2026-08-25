@@ -1224,7 +1224,6 @@ fn server_bind_title(bind: &Bind) -> String {
               test uses tokio::net::TcpListener separately"
 )]
 mod tests {
-    use fabro_static::EnvVars;
     use std::io;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -1234,6 +1233,7 @@ mod tests {
 
     use fabro_config::ServerSettingsBuilder;
     use fabro_config::bind::{Bind, BindRequest};
+    use fabro_static::EnvVars;
     use fabro_types::ServerSettings;
     use fabro_types::settings::server::{LogDestination, ObjectStoreSettings};
     use fabro_util::Home;
@@ -1642,6 +1642,7 @@ strategy = "token"
 
     #[expect(
         unsafe_code,
+        clippy::disallowed_methods,
         reason = "test-only env pin/restoration against the install-test leak (see install.rs)"
     )]
     #[test]
@@ -1728,6 +1729,7 @@ disk_cache = true
 
     #[expect(
         unsafe_code,
+        clippy::disallowed_methods,
         reason = "test-only env pin/restoration against cross-test leaks (see install.rs)"
     )]
     #[test]

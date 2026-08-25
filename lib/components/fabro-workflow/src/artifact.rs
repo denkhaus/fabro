@@ -280,7 +280,7 @@ async fn demote_until_within_budget(
                 .values()
                 .flat_map(|outcome| outcome.context_updates.values()),
         )
-        .map(|value| serialized_size(value))
+        .map(serialized_size)
         .sum();
     if total <= budget {
         return;
@@ -302,7 +302,7 @@ async fn demote_until_within_budget(
         }
     }
     for (node_id, outcome) in &*node_outcomes {
-        for (key, value) in outcome.context_updates.iter() {
+        for (key, value) in &outcome.context_updates {
             if is_large_value_marker(value)
                 || value
                     .as_str()
@@ -1805,7 +1805,7 @@ mod tests {
         for node in ["planner", "implementer", "reviewer"] {
             let mut outcome = Outcome::success();
             outcome.context_updates.insert(
-                context::keys::response_key(node).to_string(),
+                context::keys::response_key(node).clone(),
                 serde_json::json!(format!("{node}: {}", "r".repeat(6 * 1024))),
             );
             outcomes.insert(node.to_string(), outcome);

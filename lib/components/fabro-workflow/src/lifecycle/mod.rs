@@ -455,14 +455,16 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
         // node's own kind attribute, then "natural".
         if let Some(target) = self.graph.nodes.get(ctx.to) {
             if target.shape() == "Msquare" {
-                let edge_kind = ctx.edge.as_ref().and_then(|edge| edge.str_kind_attr("kind"));
+                let edge_kind = ctx
+                    .edge
+                    .as_ref()
+                    .and_then(|edge| edge.str_kind_attr("kind"));
                 let kind = edge_kind
                     .or_else(|| target.str_kind_attr("kind"))
                     .unwrap_or("natural");
-                state.context.set(
-                    context::keys::INTERNAL_EXIT_KIND,
-                    serde_json::json!(kind),
-                );
+                state
+                    .context
+                    .set(context::keys::INTERNAL_EXIT_KIND, serde_json::json!(kind));
             }
         }
         // Fidelity captures edge data
@@ -530,7 +532,6 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
     }
 }
 
-
 #[cfg(test)]
 mod lifecycle_exit_kind_tests {
     #[test]
@@ -541,10 +542,9 @@ mod lifecycle_exit_kind_tests {
         use fabro_graphviz::graph::{AttrValue, Graph, Node};
         let mut graph = Graph::new("t");
         let mut blocked = Node::new("exit_blocked");
-        blocked.attrs.insert(
-            "shape".to_string(),
-            AttrValue::String("Msquare".into()),
-        );
+        blocked
+            .attrs
+            .insert("shape".to_string(), AttrValue::String("Msquare".into()));
         blocked
             .attrs
             .insert("kind".to_string(), AttrValue::String("deadlock".into()));

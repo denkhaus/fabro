@@ -1467,19 +1467,23 @@ async fn check_primary_only_github_token(
                             ));
                             details.push(CheckDetail {
                                 text: format!("REST API probe failed: {err}"),
-                                warn:  true,
+                                warn: true,
                             });
                         }
                     }
                 }
                 checks.push(CheckResult {
-                    name:        "GitHub Token".into(),
-                    status:      if ok {
+                    name: "GitHub Token".into(),
+                    status: if ok {
                         CheckStatus::Pass
                     } else {
                         CheckStatus::Error
                     },
-                    summary:     if ok { "minted".into() } else { "scope mismatch".into() },
+                    summary: if ok {
+                        "minted".into()
+                    } else {
+                        "scope mismatch".into()
+                    },
                     details,
                     remediation,
                 });
@@ -1572,8 +1576,8 @@ async fn probe_rest_api_scope(token: &str, origin_url: &str) -> std::result::Res
     let https_url = fabro_github::ssh_url_to_https(origin_url);
     let (owner, repo) = fabro_github::parse_github_owner_repo(&https_url)
         .map_err(|err| format!("cannot parse repository slug from {origin_url}: {err}"))?;
-    let client = fabro_http::http_client()
-        .map_err(|err| format!("HTTP client setup failed: {err}"))?;
+    let client =
+        fabro_http::http_client().map_err(|err| format!("HTTP client setup failed: {err}"))?;
     let url = format!(
         "{}/repos/{owner}/{repo}",
         fabro_github::github_api_base_url()

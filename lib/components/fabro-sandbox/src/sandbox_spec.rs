@@ -276,12 +276,12 @@ fn runtime_layout_metadata(
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "docker")]
-    use crate::config::DockerfileSource;
-    #[cfg(feature = "docker")]
     use fabro_types::RunId;
 
     #[cfg(feature = "docker")]
     use super::*;
+    #[cfg(feature = "docker")]
+    use crate::config::DockerfileSource;
     #[cfg(feature = "docker")]
     use crate::test_support::MockSandbox;
 
@@ -359,7 +359,8 @@ mod tests {
             config:           DockerSandboxOptions {
                 dockerfile: Some(DockerfileSource::Inline(
                     "FROM ubuntu:24.04
-".to_string(),
+"
+                    .to_string(),
                 )),
                 ..DockerSandboxOptions::default()
             },

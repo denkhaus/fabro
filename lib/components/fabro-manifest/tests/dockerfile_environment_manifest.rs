@@ -9,6 +9,10 @@ use std::collections::HashMap;
 use fabro_config::SettingsLayer;
 use fabro_manifest::{ManifestBuildInput, build_run_manifest};
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test stages fixture files on disk"
+)]
 #[test]
 fn manifest_build_bundles_dockerfile_and_resolves_over_stored_image() {
     let tmp = tempfile::tempdir().unwrap();

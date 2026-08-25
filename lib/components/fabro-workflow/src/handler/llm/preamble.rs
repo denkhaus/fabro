@@ -2262,7 +2262,6 @@ mod tests {
     #[test]
     fn compact_renders_custom_context_updates_values() {
         let graph = Graph::new("test");
-        let context = Context::new();
         let completed_nodes = vec!["planner".to_string()];
         let mut node_outcomes: HashMap<String, Outcome> = HashMap::new();
         let mut outcome = Outcome::success();

@@ -2485,7 +2485,7 @@ index 1111111..2222222 160000
                 patch:   Some(patch.to_string()),
                 summary: None,
             },
-            exit_kind: String::new(),
+            exit_kind:            String::new(),
         });
         projection
     }

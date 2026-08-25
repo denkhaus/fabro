@@ -356,7 +356,7 @@ pub(crate) fn compact_response_value(node_id: &str, response_text: &str) -> serd
 /// Character-safe truncation for previews (cuts at char boundaries, never
 /// mid-UTF-8).
 fn truncate_chars(text: &str, max_chars: usize) -> String {
-    crate::handler::agent::truncate(text, max_chars).to_string()
+    super::agent::truncate(text, max_chars).to_string()
 }
 
 #[must_use]
@@ -1177,9 +1177,15 @@ mod tests {
         // copy of the same data.
         let value = compact_response_value("planner", "FULL RESPONSE TEXT ".repeat(100).as_str());
         let obj = value.as_object().expect("compact reference is an object");
-        assert_eq!(obj.get("output_key"), Some(&serde_json::json!("output.planner")));
+        assert_eq!(
+            obj.get("output_key"),
+            Some(&serde_json::json!("output.planner"))
+        );
         assert_eq!(obj.get("chars"), Some(&serde_json::json!(1_900)));
-        let preview = obj.get("preview").and_then(|v| v.as_str()).expect("preview");
+        let preview = obj
+            .get("preview")
+            .and_then(|v| v.as_str())
+            .expect("preview");
         assert!(preview.starts_with("FULL RESPONSE TEXT"));
         assert!(preview.chars().count() <= 200);
         assert!(
@@ -1191,10 +1197,7 @@ mod tests {
     #[test]
     fn compact_response_value_short_text_is_fully_previewed() {
         let value = compact_response_value("reviewer", "short");
-        assert_eq!(
-            value.get("preview"),
-            Some(&serde_json::json!("short"))
-        );
+        assert_eq!(value.get("preview"), Some(&serde_json::json!("short")));
         assert_eq!(value.get("chars"), Some(&serde_json::json!(5)));
     }
 }

@@ -767,10 +767,9 @@ mod tests {
             "condition".to_string(),
             AttrValue::String("seed_cycles.reviewer >= 3".into()),
         );
-        deadlock.attrs.insert(
-            "kind".to_string(),
-            AttrValue::String("deadlock".into()),
-        );
+        deadlock
+            .attrs
+            .insert("kind".to_string(), AttrValue::String("deadlock".into()));
         g.edges.push(deadlock);
         let mut cont = Edge::new("reviewer", "planner");
         cont.attrs.insert(

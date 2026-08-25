@@ -48,7 +48,6 @@ pub mod keys {
     /// from preambles (internal.*).
     pub const INTERNAL_EXIT_KIND: &str = "internal.exit_kind";
 
-
     /// Per-node stage visits since the last value change of the graph's
     /// `cycle_counter_reset_key` context key (e.g. the seed id the planner
     /// claimed). Object: { node_id -> visits_since_baseline }. Only set
@@ -707,7 +706,10 @@ mod seed_cycles_tests {
         claim(&context, "seed-b");
         update_seed_cycles(&context, "current_seed_id", "planner");
         assert_eq!(context.get(SEED_CYCLES), Some(json!({"planner": 1})));
-        assert_eq!(context.get(INTERNAL_SEED_CYCLE_ANCHOR), Some(json!("seed-b")));
+        assert_eq!(
+            context.get(INTERNAL_SEED_CYCLE_ANCHOR),
+            Some(json!("seed-b"))
+        );
     }
 
     #[test]

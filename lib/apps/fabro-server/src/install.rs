@@ -2594,6 +2594,7 @@ mod tests {
 
     #[expect(
         unsafe_code,
+        clippy::disallowed_methods,
         reason = "test-only env pin/restoration, same allowance as for_test_with_paths"
     )]
     #[tokio::test]

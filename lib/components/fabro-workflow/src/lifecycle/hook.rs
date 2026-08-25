@@ -189,20 +189,18 @@ mod tests {
     use std::time::Duration;
 
     use fabro_graphviz::graph::{AttrValue, Graph, Node};
-    use fabro_hooks::config::HookDefinition;
     use fabro_hooks::HookSettings;
+    use fabro_hooks::config::HookDefinition;
     use fabro_model::Catalog;
-    use fabro_util::shell::shell_quote;
     use fabro_types::fixtures;
+    use fabro_util::shell::shell_quote;
 
     use super::*;
 
     fn test_node(id: &str) -> WorkflowNode {
         let mut node = Node::new(id);
-        node.attrs.insert(
-            "shape".to_string(),
-            AttrValue::String("box".to_string()),
-        );
+        node.attrs
+            .insert("shape".to_string(), AttrValue::String("box".to_string()));
         WorkflowNode(Arc::new(node))
     }
 
@@ -216,7 +214,9 @@ mod tests {
         );
         graph.nodes.insert(start.id.clone(), start);
         graph.nodes.insert(id.to_string(), Node::new(id));
-        graph.edges.push(fabro_graphviz::graph::Edge::new("start", id));
+        graph
+            .edges
+            .push(fabro_graphviz::graph::Edge::new("start", id));
         let workflow_graph = WorkflowGraph(Arc::new(graph));
         ExecutionState::new(&workflow_graph).unwrap()
     }
@@ -243,9 +243,7 @@ mod tests {
         );
         HookLifecycle {
             hook_runner:            Some(Arc::new(runner)),
-            sandbox:                Arc::new(fabro_agent::LocalSandbox::new(
-                std::env::temp_dir(),
-            )),
+            sandbox:                Arc::new(fabro_agent::LocalSandbox::new(std::env::temp_dir())),
             hook_execution_context: HookExecutionContext::default(),
             run_id:                 fixtures::RUN_1,
             graph_name:             "test-wf".to_string(),
@@ -266,15 +264,17 @@ mod tests {
         )
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test reads a sync marker file the probe command wrote"
+    )]
     #[tokio::test]
     async fn after_node_carries_context_updates_to_stage_complete_hooks() {
         // Journal bridge (seed fabro-31b2): a completed stage's declared
         // context_updates must reach the hook — that is the only pipe the
         // stage-journal hook has to persist agent journal payloads.
-        let marker = std::env::temp_dir().join(format!(
-            "fabro-journal-bridge-{}.txt",
-            std::process::id()
-        ));
+        let marker =
+            std::env::temp_dir().join(format!("fabro-journal-bridge-{}.txt", std::process::id()));
         let _ = std::fs::remove_file(&marker);
         let lc = hook_lifecycle(probe_command("blob refs unreadable", &marker));
 
@@ -304,15 +304,17 @@ mod tests {
         );
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test reads a sync marker file the probe command wrote"
+    )]
     #[tokio::test]
     async fn after_node_leaves_updates_absent_when_stage_declared_none() {
         // Absent, not an empty map: hooks must distinguish "stage declared
         // nothing" from "bridge dropped the payload" — an empty {} would
         // look like a lost journal.
-        let marker = std::env::temp_dir().join(format!(
-            "fabro-journal-absent-{}.txt",
-            std::process::id()
-        ));
+        let marker =
+            std::env::temp_dir().join(format!("fabro-journal-absent-{}.txt", std::process::id()));
         let _ = std::fs::remove_file(&marker);
         let lc = hook_lifecycle(probe_command("context_updates", &marker));
 

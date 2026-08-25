@@ -635,7 +635,10 @@ mod tests {
         // fabro-6baf: seed_cycles is an object; edges address
         // seed_cycles.reviewer and compare numerically.
         let context = Context::new();
-        context.set("seed_cycles", serde_json::json!({"reviewer": 3, "tester": 1}));
+        context.set(
+            "seed_cycles",
+            serde_json::json!({"reviewer": 3, "tester": 1}),
+        );
         let outcome = make_outcome(StageOutcome::Succeeded);
 
         assert!(evaluate_condition(
@@ -679,7 +682,11 @@ mod tests {
         context.set("graph.goal", serde_json::json!("ship"));
         context.set("graph", serde_json::json!({"goal": "decoy"}));
         let outcome = make_outcome(StageOutcome::Succeeded);
-        assert!(evaluate_condition("context.graph.goal=ship", &outcome, &context));
+        assert!(evaluate_condition(
+            "context.graph.goal=ship",
+            &outcome,
+            &context
+        ));
     }
 
     #[test]
