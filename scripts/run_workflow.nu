@@ -15,7 +15,7 @@
 #          (PROVISIONAL until auto-merge works, fabro-ab2c; the leftover
 #          PR on GitHub can be closed as already-integrated)
 #   6. fabro ask <id> --json with scripts/prompts/improve.md
-#        -> answer saved to .fabro/reviews/<run-id>.md (with run header)
+#        -> answer saved to .fabro/reviews/<workflow>/<run-id>.md (with run header)
 #   7. commit + push the review file
 #
 # Any failure prints an ALARM block and exits 1; nothing is merged and no
@@ -166,7 +166,8 @@ def main [
         fail $"ask produced no answer text (events seen: ($events | length))"
     }
 
-    mkdir $REVIEWS_DIR
+    let review_dir = $"($REVIEWS_DIR)/($workflow)"
+    mkdir $review_dir
     let wall_min = (($info | get -o timing | get -o wall_time_ms | default 0) / 60000 | math round --precision 1)
     let cost = (($info | get -o total_usd_micros | default 0) / 1_000_000)
     let generated = (date now | format date '%Y-%m-%d %H:%M%z')
@@ -178,7 +179,7 @@ def main [
         + $"- generated: ($generated) by `fabro ask` with `scripts/prompts/improve.md`\n\n"
         + "---\n\n"
     )
-    let review_path = $"($REVIEWS_DIR)/($run_id).md"
+    let review_path = $"($review_dir)/($run_id).md"
     ($header + $review + "\n") | save --force $review_path
     print $"run_workflow: review saved ($review_path)"
 
