@@ -14,7 +14,7 @@ use fabro_config::{
 };
 use fabro_graphviz::parser;
 use fabro_template::{
-    BundleTemplateStore, GraphReference, GraphReferenceError, StaticReferenceError,
+    BundleTemplateStore, GraphPosition, GraphReference, GraphReferenceError, StaticReferenceError,
     TemplateDiscoveryError, TemplateSource, discover_static_dependency_closure,
     validate_static_reference, visit_graph_references,
 };
@@ -278,8 +278,13 @@ fn validate_graph_closure(
             path: path.clone(),
             source,
         })?;
+        let position = if &path == version.entrypoint() {
+            GraphPosition::Entrypoint
+        } else {
+            GraphPosition::Imported
+        };
 
-        visit_graph_references(&graph, |reference| match reference {
+        visit_graph_references(&graph, position, |reference| match reference {
             GraphReference::GoalFile { reference } => {
                 let target = resolve_reference(&path, ReferenceKind::GraphGoalFile, reference)?;
                 let content =
@@ -287,7 +292,9 @@ fn validate_graph_closure(
                 template_roots.push(&target, content);
                 Ok(())
             }
-            GraphReference::GoalInline { content } | GraphReference::InlinePrompt { content } => {
+            GraphReference::GoalInline { content }
+            | GraphReference::InlinePrompt { content }
+            | GraphReference::ModelStylesheetInline { content } => {
                 template_roots.push(&path, content);
                 Ok(())
             }
@@ -750,6 +757,69 @@ mod tests {
                 ..
             } if parent.to_string() == "workflow.fabro"
         ));
+    }
+
+    #[test]
+    fn validates_root_model_stylesheet_template_closure() {
+        let version = version_with(
+            [
+                (
+                    "workflow.fabro",
+                    r#"digraph W {
+                        graph [model_stylesheet="{% include 'styles/base.css' %}"]
+                    }"#,
+                ),
+                ("styles/base.css", "{% include 'nested.css' %}"),
+                ("styles/nested.css", "* { reasoning_effort: low; }"),
+            ],
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(version.version().files().len(), 3);
+
+        for template in [
+            "{% include 'missing.css' %}",
+            "{% include inputs.stylesheet %}",
+            "{% include '../outside.css' %}",
+        ] {
+            let graph = format!(r#"digraph W {{ graph [model_stylesheet="{template}"] }}"#);
+            let error = ValidatedWorkflowVersion::new(
+                WorkflowVersion::new(
+                    path("workflow.fabro"),
+                    BTreeMap::from([(path("workflow.fabro"), graph)]),
+                    BTreeMap::default(),
+                )
+                .unwrap(),
+            )
+            .unwrap_err();
+            assert!(
+                matches!(error, WorkflowVersionError::Template { .. }),
+                "template: {template}; error: {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn ignores_imported_model_stylesheet_template_closure() {
+        let version = version_with(
+            [
+                (
+                    "workflow.fabro",
+                    r#"digraph W { imported [import="child.fabro"] }"#,
+                ),
+                (
+                    "child.fabro",
+                    r#"digraph I {
+                        graph [model_stylesheet="{% include 'missing.css' %}"]
+                    }"#,
+                ),
+            ],
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(version.version().files().len(), 2);
     }
 
     #[test]

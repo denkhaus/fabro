@@ -996,6 +996,50 @@ reasoning = false
     }
 
     #[test]
+    fn unknown_input_in_model_stylesheet_warns_then_errors_at_run_create() {
+        let dot = r#"digraph Test {
+            graph [model_stylesheet="* { reasoning_effort: {{ inputs.effort }}; }"]
+            start [shape=Mdiamond, label="Start"]
+            exit  [shape=Msquare, label="Exit"]
+            work  [label="Work", prompt="Do work"]
+            start -> work -> exit
+        }"#;
+        let mut validated = validate_dot(dot, WorkflowSettings::default());
+
+        let diagnostic = validated
+            .diagnostics()
+            .iter()
+            .find(|diagnostic| diagnostic.rule == TEMPLATE_UNDEFINED_VARIABLE_RULE)
+            .expect("expected a template_undefined_variable diagnostic");
+        assert_eq!(diagnostic.severity, Severity::Warning);
+        assert!(
+            diagnostic
+                .message
+                .contains("graph attribute `model_stylesheet`"),
+            "message: {}",
+            diagnostic.message
+        );
+        assert!(
+            validated
+                .diagnostics()
+                .iter()
+                .all(|diagnostic| diagnostic.rule != "stylesheet_syntax")
+        );
+
+        validated.promote_template_undefined_variables_to_errors();
+        assert!(validated.has_errors());
+        assert_eq!(
+            validated
+                .diagnostics()
+                .iter()
+                .find(|diagnostic| diagnostic.rule == TEMPLATE_UNDEFINED_VARIABLE_RULE)
+                .unwrap()
+                .severity,
+            Severity::Error
+        );
+    }
+
+    #[test]
     fn vars_resolve_in_command_script_through_create_pipeline() {
         let dot = r#"digraph Test {
             graph [goal="Ship it"]

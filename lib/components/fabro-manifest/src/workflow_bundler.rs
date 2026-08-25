@@ -8,9 +8,9 @@ use fabro_config::project::WorkflowLocation;
 use fabro_config::{EnvironmentDockerfileLayer, EnvironmentImageLayer, SettingsLayer};
 use fabro_graphviz::parser;
 use fabro_template::{
-    BundleTemplateStore, FilesystemTemplateStore, GraphReference, GraphReferenceError,
-    RecordingTemplateStore, TemplateContext, TemplateDependencyClosure, TemplateRenderMode,
-    TemplateSource, validate_static_reference, visit_graph_references,
+    BundleTemplateStore, FilesystemTemplateStore, GraphPosition, GraphReference,
+    GraphReferenceError, RecordingTemplateStore, TemplateContext, TemplateDependencyClosure,
+    TemplateRenderMode, TemplateSource, validate_static_reference, visit_graph_references,
 };
 use fabro_types::ManifestPath;
 use fabro_types::graph::ReferenceKind;
@@ -87,7 +87,12 @@ impl<'a> WorkflowBundler<'a> {
                 .ok_or_else(|| anyhow!("invalid manifest workflow config path: {}", config.path))?;
             self.collect_config_dockerfile(&config_path, &config.source, &mut files)?;
         }
-        self.collect_workflow_files(&scan, &mut files, &mut visited_imports)?;
+        self.collect_workflow_files(
+            &scan,
+            &mut files,
+            &mut visited_imports,
+            GraphPosition::Entrypoint,
+        )?;
 
         self.workflows
             .insert(dot_key.clone(), types::ManifestWorkflow {
@@ -123,6 +128,7 @@ impl<'a> WorkflowBundler<'a> {
         workflow: &WorkflowScanInput,
         files: &mut HashMap<String, types::ManifestFileEntry>,
         visited_imports: &mut HashSet<String>,
+        position: GraphPosition,
     ) -> Result<()> {
         let graph = parser::parse(&workflow.source)
             .with_context(|| format!("Failed to parse {}", workflow.absolute_dot_path.display()))?;
@@ -137,7 +143,7 @@ impl<'a> WorkflowBundler<'a> {
         let mut imports = Vec::new();
         let mut children = Vec::new();
 
-        visit_graph_references(&graph, |reference| -> Result<()> {
+        visit_graph_references(&graph, position, |reference| -> Result<()> {
             match reference {
                 GraphReference::GoalFile { reference } => {
                     let bundled = self.collect_bundled_file(
@@ -151,15 +157,17 @@ impl<'a> WorkflowBundler<'a> {
                     self.collect_bundled_template_includes(files, &bundled, &workflow_template_root)
                 }
                 GraphReference::GoalInline { content }
-                | GraphReference::InlinePrompt { content } => self.collect_template_include_files(
-                    files,
-                    TemplateSource::new(
-                        workflow.dot_path.clone(),
-                        workflow_template_root.clone(),
-                        content.to_owned(),
+                | GraphReference::InlinePrompt { content }
+                | GraphReference::ModelStylesheetInline { content } => self
+                    .collect_template_include_files(
+                        files,
+                        TemplateSource::new(
+                            workflow.dot_path.clone(),
+                            workflow_template_root.clone(),
+                            content.to_owned(),
+                        ),
+                        Some(&workflow.dot_path),
                     ),
-                    Some(&workflow.dot_path),
-                ),
                 GraphReference::FileInline { key, reference } => {
                     let bundled = self.collect_bundled_file(
                         files,
@@ -212,7 +220,12 @@ impl<'a> WorkflowBundler<'a> {
                     dot_path:          imported.path,
                     source:            imported_source,
                 };
-                self.collect_workflow_files(&imported_scan, files, visited_imports)?;
+                self.collect_workflow_files(
+                    &imported_scan,
+                    files,
+                    visited_imports,
+                    GraphPosition::Imported,
+                )?;
             }
         }
         for child in children {
@@ -472,6 +485,101 @@ mod tests {
         let goal = &workflows["workflow.fabro"].files["@goal.md"];
         assert_eq!(goal.content, "goal\n");
         assert_eq!(goal.ref_.original, "@goal.md");
+    }
+
+    #[test]
+    fn root_model_stylesheet_bundles_nested_static_includes() {
+        let temp = tempfile::tempdir().expect("temp directory should be created");
+        let graph = temp.path().join("workflow.fabro");
+        write_file(
+            &graph,
+            r#"digraph Root {
+                graph [model_stylesheet="{% include 'styles/base.css' %}"]
+                start [shape=Mdiamond]
+                exit [shape=Msquare]
+                start -> exit
+            }"#,
+        );
+        write_file(
+            &temp.path().join("styles/base.css"),
+            "{% include 'nested.css' %}",
+        );
+        write_file(
+            &temp.path().join("styles/nested.css"),
+            "* { reasoning_effort: low; }",
+        );
+
+        let workflows = bundle_graph(temp.path(), &graph).expect("workflow should bundle");
+        let files = &workflows["workflow.fabro"].files;
+
+        assert_eq!(
+            files["styles/base.css"].content,
+            "{% include 'nested.css' %}"
+        );
+        assert_eq!(
+            files["styles/nested.css"].content,
+            "* { reasoning_effort: low; }"
+        );
+    }
+
+    #[test]
+    fn root_model_stylesheet_rejects_invalid_includes() {
+        for template in [
+            "{% include 'missing.css' %}",
+            "{% include inputs.stylesheet %}",
+            "{% include '../outside.css' %}",
+        ] {
+            let temp = tempfile::tempdir().expect("temp directory should be created");
+            let graph = temp.path().join("workflow.fabro");
+            write_file(
+                &graph,
+                &format!(
+                    r#"digraph Root {{
+                        graph [model_stylesheet="{template}"]
+                        start [shape=Mdiamond]
+                        exit [shape=Msquare]
+                        start -> exit
+                    }}"#,
+                ),
+            );
+
+            let error = bundle_graph(temp.path(), &graph)
+                .expect_err("invalid stylesheet include should fail bundling");
+            assert!(
+                error.to_string().contains("template dependencies"),
+                "template: {template}; error: {error:#}"
+            );
+        }
+    }
+
+    #[test]
+    fn imported_model_stylesheet_includes_are_not_bundled() {
+        let temp = tempfile::tempdir().expect("temp directory should be created");
+        let graph = temp.path().join("workflow.fabro");
+        write_file(
+            &graph,
+            r#"digraph Root {
+                start [shape=Mdiamond]
+                child [import="child.fabro"]
+                exit [shape=Msquare]
+                start -> child -> exit
+            }"#,
+        );
+        write_file(
+            &temp.path().join("child.fabro"),
+            r#"digraph Child {
+                graph [model_stylesheet="{% include 'missing.css' %}"]
+                start [shape=Mdiamond]
+                exit [shape=Msquare]
+                start -> exit
+            }"#,
+        );
+
+        let workflows = bundle_graph(temp.path(), &graph).expect("workflow should bundle");
+        let files = &workflows["workflow.fabro"].files;
+
+        assert!(files.contains_key("child.fabro"));
+        assert!(!files.contains_key("missing.css"));
     }
 
     #[test]
