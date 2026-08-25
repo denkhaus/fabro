@@ -38,6 +38,17 @@ signal and lied about the dev loop.
    credential probe (token validated against the GitHub REST API before
    the run starts) turns the 8-minute-late 403 into a 1-second refusal.
 
+   LANDED 2026-08-25 (fabro-67e5, platform seed closed): the terminal
+   state is `RunStatus::Succeeded { reason: SuccessReason::PublishBlocked }`
+   ("succeeded(publish_blocked)" — same intent as the provisional
+   `succeeded_with_publish_failure` name) plus a `failure` detail carrying
+   `PublishFailed` and the remediation on the terminal `run.completed`
+   event. Consumers see: run board stays green, CLI `run wait` prints a
+   "Publish blocked:" remediation line, Slack `run.completed` carries the
+   remediation text. Preflight probe and 5xx publish-retry classification
+   landed with it; a green-but-unmerged run self-heals next run via the
+   planner's verification-only path (stale tracker from the unmerged base).
+
 ## Consequences
 
 - Auto-PR merge-back is journal-collision-free; parallel runs from one
