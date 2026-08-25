@@ -454,6 +454,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn retry_preserves_none_target_without_git_or_source_directory() {
+        let store = memory_store();
+        let source_run_id = fixtures::RUN_1;
+        let source_store = store.create_run(&source_run_id).await.unwrap();
+        event::append_event(&source_store, &source_run_id, &Event::RunCreated {
+            run_id:              source_run_id,
+            title:               Some("None target".to_string()),
+            settings:            serde_json::to_value(WorkflowSettings::default()).unwrap(),
+            graph:               serde_json::to_value(Graph::new("none_target_retry")).unwrap(),
+            workflow_source:     Some("digraph none_target_retry { start -> exit }".to_string()),
+            labels:              BTreeMap::new(),
+            source_directory:    None,
+            workflow_slug:       Some("none-target-retry".to_string()),
+            workflow_version_id: Some(test_support::test_workflow_version_id()),
+            target:              Some(RunTarget::None {}),
+            automation:          None,
+            provenance:          provenance("source-user"),
+            manifest_blob:       None,
+            spec_blob:           None,
+            git:                 None,
+            fork_source_ref:     None,
+            retried_from:        None,
+            parent_id:           None,
+            web_url:             None,
+        })
+        .await
+        .unwrap();
+        event::append_event(&source_store, &source_run_id, &Event::RunSubmitted {
+            definition_blob: None,
+        })
+        .await
+        .unwrap();
+        append_failed(&source_store, source_run_id, FailureReason::WorkflowError).await;
+
+        let source_state = source_store.state().await.unwrap();
+        assert_eq!(source_state.status, RunStatus::Failed {
+            reason: FailureReason::WorkflowError,
+        });
+        assert_eq!(source_state.spec.target, Some(RunTarget::None {}));
+        assert_eq!(source_state.spec.git, None);
+        assert_eq!(source_state.spec.source_directory, None);
+
+        let outcome = retry_run(&store, &RetryRunInput {
+            source_run_id,
+            new_run_id: RunId::new(),
+            provenance: provenance("retry-user"),
+            web_url: None,
+        })
+        .await
+        .unwrap();
+
+        let retry_store = store.open_run(&outcome.new_run_id).await.unwrap();
+        let retry_events = retry_store.list_events().await.unwrap();
+        let retry_state = fabro_store::RunProjection::apply_events(&retry_events).unwrap();
+        assert_eq!(retry_events.len(), 2);
+        assert_eq!(retry_state.status, RunStatus::Submitted);
+        assert_eq!(retry_state.retried_from, Some(source_run_id));
+        assert_eq!(retry_state.spec.target, Some(RunTarget::None {}));
+        assert_eq!(retry_state.spec.git, None);
+        assert_eq!(retry_state.spec.source_directory, None);
+    }
+
+    #[tokio::test]
     async fn retry_creates_fresh_run_from_succeeded_source() {
         let store = memory_store();
         let source_run_id = fixtures::RUN_1;

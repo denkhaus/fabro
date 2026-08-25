@@ -788,7 +788,7 @@ mod tests {
             "security_findings",
             large_prompt_value(
                 1_843_279,
-                "/workspace/.fabro/blobs/findings.json",
+                "/tmp/fabro/runtime/blobs/findings.json",
                 "{\"findings\":[\n{\"severity\":\"high\"}",
             ),
         );
@@ -798,7 +798,7 @@ mod tests {
             keys::COMMAND_OUTPUT.to_string(),
             large_prompt_value(
                 12 * 1024,
-                "/workspace/.fabro/blobs/output.json",
+                "/tmp/fabro/runtime/blobs/output.json",
                 "first result\nsecond result",
             ),
         );
@@ -819,12 +819,12 @@ mod tests {
                 "\n## Completed stages\n",
                 "- **scan**: succeeded\n",
                 "  - Script: `scan --json`\n",
-                "  - Output (12.0 KB; full value: `/workspace/.fabro/blobs/output.json`)\n",
+                "  - Output (12.0 KB; full value: `/tmp/fabro/runtime/blobs/output.json`)\n",
                 "    Preview: first result\n",
                 "    second result…\n",
                 "\n## Context\n",
                 "- security_findings (1.8 MB; full value: ",
-                "`/workspace/.fabro/blobs/findings.json`)\n",
+                "`/tmp/fabro/runtime/blobs/findings.json`)\n",
                 "  Preview: {\"findings\":[\n",
                 "  {\"severity\":\"high\"}…\n",
             )
@@ -1703,7 +1703,7 @@ mod tests {
             "security_findings",
             large_prompt_value(
                 1_843_279,
-                "/workspace/.fabro/blobs/findings.json",
+                "/tmp/fabro/runtime/blobs/findings.json",
                 "{\"findings\": [\n{\"message\": \"a | b\"}]}",
             ),
         );
@@ -1718,7 +1718,7 @@ mod tests {
 
         assert!(preamble.contains(concat!(
             "| security_findings | 1.8 MB; full value: ",
-            "`/workspace/.fabro/blobs/findings.json`; Preview: ",
+            "`/tmp/fabro/runtime/blobs/findings.json`; Preview: ",
             "{\"findings\": [ {\"message\": \"a \\| b\"}]}… |",
         )));
         assert!(!preamble.contains("fabroLargeValue"));

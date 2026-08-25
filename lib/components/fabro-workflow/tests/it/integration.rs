@@ -10138,6 +10138,10 @@ impl fabro_agent::Sandbox for RemoteMockEnv {
         Ok(self.existing_paths.lock().unwrap().contains(path))
     }
 
+    fn runtime_directory(&self) -> Option<&str> {
+        Some("/tmp/fabro/runtime")
+    }
+
     async fn list_directory(
         &self,
         _path: &str,
@@ -10443,8 +10447,14 @@ async fn downstream_remote_execution_resolves_response_blob_refs_as_text() {
     assert!(
         written
             .iter()
-            .all(|(path, _)| path.contains("/.fabro/blobs/")),
-        "nothing is written outside the sandbox blob directory"
+            .all(|(path, _)| path.starts_with("/tmp/fabro/runtime/blobs/")),
+        "nothing is written outside the sandbox runtime blob directory"
+    );
+    assert!(
+        written
+            .iter()
+            .all(|(path, _)| !path.starts_with("/sandbox")),
+        "nothing is written inside the repository checkout"
     );
 }
 

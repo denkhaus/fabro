@@ -9,6 +9,7 @@ use fabro_types::{
 use futures::future::BoxFuture;
 use serde_json::Value;
 use tokio::fs;
+use tokio::io::AsyncWriteExt;
 
 use crate::context::{self, Context};
 use crate::error::{Error, Result};
@@ -451,20 +452,38 @@ async fn materialize_value_bytes(
         return Ok(path.display().to_string());
     }
 
-    let remote_path = format!("{}/.fabro/blobs/{blob_hash}.json", env.working_directory());
+    let remote_path = remote_materialized_blob_path(env, &blob_hash)?;
     if !env
         .file_exists(&remote_path)
         .await
         .map_err(|e| Error::engine_with_source("failed to check blob existence", e))?
     {
         persist_blob(bytes, run_store).await?;
-        let content = std::str::from_utf8(bytes)
-            .map_err(|e| Error::engine_with_source("artifact blob was not valid UTF-8 JSON", e))?;
-        env.write_file(&remote_path, content).await.map_err(|e| {
-            Error::engine_with_source("failed to write artifact blob to sandbox", e)
-        })?;
+        write_remote_blob_file(env, &remote_path, bytes).await?;
     }
     Ok(remote_path)
+}
+
+/// The sandbox file that materializes one blob for agent reads.
+///
+/// The file lives beneath the sandbox's run-scoped runtime directory, never
+/// the repository checkout, so materialization cannot dirty `git status` and
+/// a later checkpoint can never commit it. The `runtime/blobs` suffix keeps
+/// the path recognizable as a managed blob reference, so durable storage
+/// still records `blob://sha256/...` instead of this execution-local path.
+fn remote_materialized_blob_path(env: &dyn Sandbox, blob_hash: &BlobHash) -> Result<String> {
+    let runtime_directory = env.runtime_directory().ok_or_else(|| {
+        Error::engine("sandbox exposes no runtime directory for blob materialization")
+    })?;
+    Ok(format!("{runtime_directory}/blobs/{blob_hash}.json"))
+}
+
+async fn write_remote_blob_file(env: &dyn Sandbox, path: &str, bytes: &[u8]) -> Result<()> {
+    let content = std::str::from_utf8(bytes)
+        .map_err(|e| Error::engine_with_source("artifact blob was not valid UTF-8 JSON", e))?;
+    env.write_file(path, content)
+        .await
+        .map_err(|e| Error::engine_with_source("failed to write artifact blob to sandbox", e))
 }
 
 async fn persist_blob(bytes: &[u8], run_store: &RunStoreHandle) -> Result<()> {
@@ -871,33 +890,43 @@ async fn materialize_blob_ref(
         return Ok(format!("{ARTIFACT_POINTER_PREFIX}{}", path.display()));
     }
 
-    let remote_path = format!("{}/.fabro/blobs/{blob_hash}.json", env.working_directory());
+    let remote_path = remote_materialized_blob_path(env, blob_hash)?;
     if !env
         .file_exists(&remote_path)
         .await
         .map_err(|e| Error::engine_with_source("failed to check blob existence", e))?
     {
         let bytes = read_required_blob(blob_hash, run_store).await?;
-        let content = String::from_utf8(bytes.to_vec())
-            .map_err(|e| Error::engine_with_source("artifact blob was not valid UTF-8 JSON", e))?;
-        env.write_file(&remote_path, &content).await.map_err(|e| {
-            Error::engine_with_source("failed to write artifact blob to sandbox", e)
-        })?;
+        write_remote_blob_file(env, &remote_path, &bytes).await?;
     }
 
     Ok(format!("{ARTIFACT_POINTER_PREFIX}{remote_path}"))
 }
 
+/// Write a materialized blob file, keeping created directories and the file
+/// itself owner-private where the platform supports modes.
 async fn write_local_blob_file(path: &Path, bytes: &[u8]) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).await.map_err(|err| {
+        let mut builder = fs::DirBuilder::new();
+        builder.recursive(true);
+        #[cfg(unix)]
+        builder.mode(0o700);
+        builder.create(parent).await.map_err(|err| {
             Error::Io(format!(
                 "creating artifact blob directory {}: {err}",
                 parent.display()
             ))
         })?;
     }
-    fs::write(path, bytes)
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let mut file = options
+        .open(path)
+        .await
+        .map_err(|err| Error::Io(format!("writing artifact blob {}: {err}", path.display())))?;
+    file.write_all(bytes)
         .await
         .map_err(|err| Error::Io(format!("writing artifact blob {}: {err}", path.display())))
 }
@@ -1425,6 +1454,7 @@ mod tests {
         accessible:   bool,
         written:      Mutex<Vec<(String, String)>>,
         working_dir:  String,
+        runtime_dir:  Option<String>,
         exists_calls: Mutex<usize>,
     }
 
@@ -1434,8 +1464,14 @@ mod tests {
                 accessible,
                 written: Mutex::new(Vec::new()),
                 working_dir: working_dir.to_string(),
+                runtime_dir: None,
                 exists_calls: Mutex::new(0),
             }
+        }
+
+        fn with_runtime_directory(mut self, runtime_dir: &str) -> Self {
+            self.runtime_dir = Some(runtime_dir.to_string());
+            self
         }
     }
 
@@ -1524,6 +1560,10 @@ mod tests {
 
         fn working_directory(&self) -> &str {
             &self.working_dir
+        }
+
+        fn runtime_directory(&self) -> Option<&str> {
+            self.runtime_dir.as_deref()
         }
 
         fn platform(&self) -> &str {
@@ -1718,6 +1758,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn demote_materializes_remote_values_under_sandbox_runtime_directory() {
+        let run_store: RunStoreHandle = make_run_store("prompt-demote-remote").await.into();
+        let run_dir = tempfile::tempdir().unwrap();
+        let env =
+            TestSyncEnv::new(false, "/workspace").with_runtime_directory("/tmp/fabro/runtime");
+
+        let oversized = serde_json::json!("x".repeat(PROMPT_INLINE_VALUE_MAX + 1));
+        let expected_bytes = serde_json::to_vec(&oversized).unwrap();
+        let expected_path = format!(
+            "/tmp/fabro/runtime/blobs/{}.json",
+            BlobHash::new(&expected_bytes)
+        );
+        let mut values = HashMap::from([("dataset".to_string(), oversized)]);
+
+        demote_large_values_for_prompt(
+            &mut values,
+            &mut HashMap::new(),
+            DEFAULT_PREAMBLE_VALUE_BUDGET,
+            &run_store,
+            &env,
+            run_dir.path(),
+        )
+        .await;
+
+        let details = prompt_large_value(&values["dataset"])
+            .expect("oversized remote context value should demote");
+        assert_eq!(details.path, expected_path);
+        let written = env.written.lock().unwrap();
+        assert_eq!(written.len(), 1);
+        assert_eq!(written[0].0, expected_path);
+        assert_eq!(written[0].1.as_bytes(), expected_bytes);
+        assert!(
+            !written[0].0.starts_with("/workspace"),
+            "materialization must stay outside the repository checkout"
+        );
+    }
+
+    #[tokio::test]
     async fn aggregate_budget_never_demotes_small_contract_values() {
         let run_store: RunStoreHandle = make_run_store("prompt-demote-agg-floor").await.into();
         let tmp = tempfile::tempdir().unwrap();
@@ -1834,6 +1912,66 @@ mod tests {
             .filter(|v| v.get(LARGE_VALUE_MARKER_KEY).is_some())
             .count();
         assert!(demoted >= 1, "expected at least one demoted marker");
+    }
+
+    #[tokio::test]
+    async fn demote_keeps_value_inline_when_sandbox_has_no_runtime_directory() {
+        let run_store: RunStoreHandle = make_run_store("prompt-demote-no-runtime").await.into();
+        let run_dir = tempfile::tempdir().unwrap();
+        let env = TestSyncEnv::new(false, "/workspace");
+
+        let oversized = serde_json::json!("x".repeat(PROMPT_INLINE_VALUE_MAX + 1));
+        let mut values = HashMap::from([("dataset".to_string(), oversized.clone())]);
+
+        demote_large_values_for_prompt(
+            &mut values,
+            &mut HashMap::new(),
+            DEFAULT_PREAMBLE_VALUE_BUDGET,
+            &run_store,
+            &env,
+            run_dir.path(),
+        )
+        .await;
+
+        assert_eq!(values["dataset"], oversized);
+        assert!(env.written.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn resolve_context_materializes_remote_blob_refs_under_runtime_directory() {
+        let run_store = make_run_store("remote-blob-ref-resolution").await;
+        let report = serde_json::json!({"kind": "report"});
+        let report_bytes = serde_json::to_vec(&report).unwrap();
+        let blob_hash = run_store.write_blob(&report_bytes).await.unwrap();
+        let context = Context::new();
+        context.set("report", fabro_types::format_blob_ref(&blob_hash).into());
+        let env =
+            TestSyncEnv::new(false, "/workspace").with_runtime_directory("/tmp/fabro/runtime");
+        let run_dir = tempfile::tempdir().unwrap();
+
+        let resolved =
+            resolved_context_snapshot(&context, &run_store.clone().into(), &env, run_dir.path())
+                .await
+                .unwrap();
+
+        let expected_path = format!("/tmp/fabro/runtime/blobs/{blob_hash}.json");
+        assert_eq!(
+            resolved["report"],
+            serde_json::json!(format!("file://{expected_path}"))
+        );
+        let written = env.written.lock().unwrap();
+        assert_eq!(written.len(), 1);
+        assert_eq!(written[0].0, expected_path);
+        assert_eq!(written[0].1.as_bytes(), report_bytes);
+
+        // Durable normalization keeps the blob reference, not the
+        // execution-local runtime path.
+        let mut durable = resolved;
+        normalize_durable_updates(&mut durable);
+        assert_eq!(
+            durable["report"],
+            serde_json::json!(fabro_types::format_blob_ref(&blob_hash))
+        );
     }
 
     #[tokio::test]

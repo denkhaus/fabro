@@ -80,7 +80,11 @@ async fn connect_creates_parent_directory_and_migrate_is_idempotent() -> anyhow:
     .await?;
     assert_eq!(blobs_table_count, 1);
 
-    for table in ["auth_sessions", "refresh_tokens"] {
+    for table in [
+        "auth_sessions",
+        "refresh_tokens",
+        "oauth_authorization_codes",
+    ] {
         let count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
         )
@@ -580,6 +584,74 @@ async fn auth_sessions_schema_rejects_invalid_rows() -> anyhow::Result<()> {
         );
     }
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn authorization_code_schema_enforces_hash_identity_and_expiry_index() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let database = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
+    database.migrate().await?;
+
+    let columns = sqlx::query("PRAGMA table_info(oauth_authorization_codes)")
+        .fetch_all(database.pool())
+        .await?;
+    assert_eq!(columns.len(), 10);
+    assert_eq!(columns[0].get::<String, _>("name"), "code_hash");
+    assert_eq!(columns[0].get::<String, _>("type"), "BLOB");
+    assert_eq!(columns[0].get::<i64, _>("notnull"), 1);
+    assert_eq!(columns[0].get::<i64, _>("pk"), 1);
+
+    insert_authorization_code(database.pool(), &[1_u8; 32], "https://github.com", "12345").await?;
+    for (hash, issuer, subject) in [
+        (vec![2_u8; 31], "https://github.com", "12345"),
+        (vec![2_u8; 33], "https://github.com", "12345"),
+        (vec![2_u8; 32], "", "12345"),
+        (vec![2_u8; 32], "https://github.com", ""),
+    ] {
+        assert!(
+            insert_authorization_code(database.pool(), &hash, issuer, subject)
+                .await
+                .is_err(),
+            "invalid authorization code row should be rejected: hash_len={}, issuer={issuer:?}, subject={subject:?}",
+            hash.len()
+        );
+    }
+
+    let expiry_index: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master \
+         WHERE type = 'index' AND name = 'oauth_authorization_codes_by_expiry'",
+    )
+    .fetch_optional(database.pool())
+    .await?;
+    assert_eq!(
+        expiry_index.as_deref(),
+        Some("oauth_authorization_codes_by_expiry")
+    );
+
+    Ok(())
+}
+
+async fn insert_authorization_code(
+    pool: &fabro_db::DbPool,
+    code_hash: &[u8],
+    identity_issuer: &str,
+    identity_subject: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r"
+INSERT INTO oauth_authorization_codes (
+    code_hash, identity_issuer, identity_subject, login, name, email,
+    code_challenge, redirect_uri, expires_at_ms
+) VALUES (?, ?, ?, 'octocat', 'The Octocat', 'octocat@example.com',
+          'challenge', 'http://127.0.0.1/callback', 1000)
+",
+    )
+    .bind(code_hash)
+    .bind(identity_issuer)
+    .bind(identity_subject)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

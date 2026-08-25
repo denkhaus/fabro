@@ -1456,6 +1456,24 @@ pub trait Sandbox: Send + Sync {
     }
     async fn cleanup(&self) -> crate::Result<()>;
     fn working_directory(&self) -> &str;
+    /// Run-scoped directory for Fabro-owned runtime files inside the sandbox,
+    /// or `None` when the sandbox has no such directory.
+    ///
+    /// The directory sits outside every repository checkout, so runtime files
+    /// Fabro materializes beneath it — for example oversized prompt values
+    /// projected out of the durable blob store — never appear in `git status`
+    /// and can never be committed by a checkpoint. Its contents are
+    /// disposable: everything beneath it can be recreated from durable
+    /// storage on demand.
+    ///
+    /// Providers that provision an isolated per-run environment (Docker,
+    /// Daytona) create the directory during initialization with private
+    /// permissions and return its path. Sandboxes that execute directly on
+    /// the worker host return `None`; the workflow engine owns a host-side
+    /// runtime directory for those runs.
+    fn runtime_directory(&self) -> Option<&str> {
+        None
+    }
     fn platform(&self) -> &str;
     fn os_version(&self) -> String;
     /// Return a human-readable identifier for the sandbox (e.g. container ID,

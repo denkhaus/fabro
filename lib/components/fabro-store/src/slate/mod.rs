@@ -1,4 +1,3 @@
-mod auth_codes;
 mod projection_cache;
 mod run_catalog_index;
 mod run_store;
@@ -8,7 +7,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-pub use auth_codes::{AuthCode, AuthCodeStore};
 use chrono::{DateTime, Utc};
 use fabro_types::{Run, RunId, SessionId};
 use object_store::ObjectStore;
@@ -45,7 +43,6 @@ pub struct Database {
     active_runs: Arc<Mutex<HashMap<RunId, Arc<RunDatabaseInner>>>>,
     blobs: Arc<BlobStore>,
     catalog_index: Arc<OnceCell<Arc<RunCatalogIndex>>>,
-    auth_codes: Arc<OnceCell<Arc<AuthCodeStore>>>,
     projection_cache: Arc<RunProjectionCache>,
     projection_cache_warmed: Arc<OnceCell<()>>,
     run_summary_store: Arc<OnceLock<Arc<RunSummaryStore>>>,
@@ -78,7 +75,6 @@ impl Database {
             active_runs: Arc::new(Mutex::new(HashMap::new())),
             blobs,
             catalog_index: Arc::new(OnceCell::new()),
-            auth_codes: Arc::new(OnceCell::new()),
             projection_cache: Arc::new(RunProjectionCache::default()),
             projection_cache_warmed: Arc::new(OnceCell::new()),
             run_summary_store: Arc::new(OnceLock::new()),
@@ -417,17 +413,6 @@ impl Database {
         Ok(())
     }
 
-    pub async fn auth_codes(&self) -> Result<Arc<AuthCodeStore>> {
-        let store = self
-            .auth_codes
-            .get_or_try_init(|| async {
-                let db = Arc::new(self.open_db().await?);
-                Ok::<_, Error>(Arc::new(AuthCodeStore::new(db)))
-            })
-            .await?;
-        Ok(Arc::clone(store))
-    }
-
     pub async fn catalog_index(&self) -> Result<Arc<RunCatalogIndex>> {
         let store = self
             .catalog_index
@@ -585,8 +570,8 @@ mod tests {
                 .as_ref()
                 .to_vec()
         });
-        // "auth/code" sorts adjacent to "auth/refresh" and is still live, so
-        // it is the neighbour a too-wide prefix delete would take with it.
+        // "auth/code" sorts adjacent to "auth/refresh", so it is the
+        // neighbour a too-wide prefix delete would take with it.
         let auth_code_key = keys::SlateKey::new("auth")
             .with("code")
             .with("keep")

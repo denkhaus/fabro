@@ -28,8 +28,8 @@ use url::{Host, Url};
 
 use crate::auth::browser_shell::browser_shell;
 use crate::auth::{
-    self, AuthCode, AuthErrorCode, AuthSessionRecord, InitialRefreshToken, JwtSubject,
-    REFRESH_TOKEN_PREFIX, RotateOutcome,
+    self, AuthErrorCode, AuthSessionRecord, InitialRefreshToken, JwtSubject,
+    PendingCliAuthorization, REFRESH_TOKEN_PREFIX, RotateOutcome,
 };
 use crate::jwt_auth::{AuthMode, ConfiguredAuth, bearer_token_from_headers};
 use crate::principal_middleware::{
@@ -390,18 +390,12 @@ async fn token(
         );
     }
 
-    let auth_codes = match state.store_ref().auth_codes().await {
-        Ok(store) => store,
-        Err(err) => {
-            warn!(error = %err, "Failed to open auth code store");
-            return oauth_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "server_error",
-                "Could not complete authentication",
-            );
-        }
-    };
-    let Some(entry) = (match auth_codes.consume(code).await {
+    let Some(entry) = (match state
+        .stores
+        .auth_codes
+        .consume(code, chrono::Utc::now())
+        .await
+    {
         Ok(entry) => entry,
         Err(err) => {
             warn!(error = %err, "Failed to consume auth code");
@@ -1117,8 +1111,7 @@ async fn issue_auth_code_response(
     let Some(redirect_uri) = canonical_loopback_redirect_uri(redirect_uri) else {
         return static_error_page(INVALID_REDIRECT_URI);
     };
-    let entry = AuthCode {
-        code: code.clone(),
+    let entry = PendingCliAuthorization {
         identity,
         login: session.login.clone(),
         name: session.name.clone(),
@@ -1129,20 +1122,7 @@ async fn issue_auth_code_response(
         expires_at: chrono::Utc::now() + chrono::Duration::seconds(60),
     };
 
-    let store = match state.store_ref().auth_codes().await {
-        Ok(store) => store,
-        Err(err) => {
-            warn!(error = %err, "Failed to open auth code store");
-            return redirect_with_error(
-                &redirect_uri,
-                state_token,
-                "server_error",
-                "Could not complete GitHub sign-in",
-            );
-        }
-    };
-
-    if let Err(err) = store.insert(entry).await {
+    if let Err(err) = state.stores.auth_codes.issue(&code, &entry).await {
         warn!(error = %err, "Failed to persist auth code");
         return redirect_with_error(
             &redirect_uri,
@@ -1185,7 +1165,9 @@ mod tests {
         CliFlowCookie, DEV_TOKEN_LOGIN_INSTRUCTIONS, add_cli_flow_cookie, read_private_cli_flow,
         user_agent_fingerprint, web_routes,
     };
-    use crate::auth::{self, AuthCode, AuthErrorCode, AuthSessionRecord, InitialRefreshToken};
+    use crate::auth::{
+        self, AuthErrorCode, AuthSessionRecord, InitialRefreshToken, PendingCliAuthorization,
+    };
     use crate::jwt_auth::{AuthMode, ConfiguredAuth};
     use crate::principal_middleware::{AuthStatus, RequestAuthContext};
     use crate::server::AppState;
@@ -1329,10 +1311,10 @@ client_id = "github-client-id"
     }
 
     async fn insert_auth_code(state: &crate::server::AppState, code: &str, verifier: &str) {
-        let auth_codes = state.store_ref().auth_codes().await.unwrap();
-        auth_codes
-            .insert(AuthCode {
-                code:           code.to_string(),
+        state
+            .stores
+            .auth_codes
+            .issue(code, &PendingCliAuthorization {
                 identity:       fabro_types::IdpIdentity::new("https://github.com", "12345")
                     .expect("identity should be valid"),
                 login:          "octocat".to_string(),
@@ -1721,9 +1703,10 @@ client_id = "github-client-id"
             .nth(1)
             .and_then(|segment| segment.split('&').next())
             .expect("auth code should be present");
-        let auth_codes = state.store_ref().auth_codes().await.unwrap();
-        let entry = auth_codes
-            .consume(code)
+        let entry = state
+            .stores
+            .auth_codes
+            .consume(code, chrono::Utc::now())
             .await
             .unwrap()
             .expect("code should exist");
@@ -2076,6 +2059,49 @@ client_id = "github-client-id"
             serde_json::from_slice(&to_bytes(second.into_body(), usize::MAX).await.unwrap())
                 .unwrap();
         assert_eq!(body["error"], "invalid_code");
+    }
+
+    #[tokio::test]
+    async fn token_storage_failure_returns_safe_oauth_error() {
+        let (app, state) = test_router(github_settings("https://fabro.example"));
+        state.stores.auth_codes.test_close().await;
+        let raw_code = "raw-code-that-must-not-escape";
+        let raw_verifier = "raw-verifier-that-must-not-escape";
+        let redirect_uri = "http://127.0.0.1:4444/callback";
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/cli/token")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({
+                            "grant_type": "authorization_code",
+                            "code": raw_code,
+                            "code_verifier": raw_verifier,
+                            "redirect_uri": redirect_uri
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let rendered = String::from_utf8(bytes.to_vec()).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&rendered).unwrap(),
+            json!({
+                "error": "server_error",
+                "error_description": "Could not complete authentication"
+            })
+        );
+        for sensitive in [raw_code, raw_verifier, redirect_uri] {
+            assert!(!rendered.contains(sensitive));
+        }
     }
 
     #[tokio::test]

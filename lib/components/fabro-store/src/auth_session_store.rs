@@ -11,7 +11,9 @@ use sqlx::sqlite::SqliteRow;
 use sqlx::{Row as _, SqlitePool};
 use uuid::Uuid;
 
-use crate::{Error, Result};
+use crate::{Error, Result, sqlite_row};
+
+const RECORD_NAME: &str = "auth session";
 
 /// A CLI auth session: one rotation chain, owned by one identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -176,7 +178,8 @@ INSERT INTO auth_sessions (
             .await?
             .into_iter()
             .map(|row| {
-                let expires_at = timestamp_from_row(&row, "expires_at_ms")?;
+                let expires_at =
+                    sqlite_row::timestamp_from_row(&row, RECORD_NAME, "expires_at_ms")?;
                 Ok(ActiveCliSession {
                     session: session_from_row(&row)?,
                     expires_at,
@@ -376,32 +379,17 @@ async fn load_session(
 }
 
 fn session_from_row(row: &SqliteRow) -> Result<AuthSessionRecord> {
-    let identity = IdpIdentity::new(
-        row.try_get::<String, _>("identity_issuer")?,
-        row.try_get::<String, _>("identity_subject")?,
-    )
-    .map_err(|err| {
-        Error::Other(format!(
-            "stored auth session has an invalid identity: {err}"
-        ))
-    })?;
     Ok(AuthSessionRecord {
-        id: parse_uuid(&row.try_get::<String, _>("id")?)?,
-        identity,
-        login: row.try_get("login")?,
-        name: row.try_get("name")?,
-        email: row.try_get("email")?,
-        avatar_url: row.try_get("avatar_url")?,
-        user_agent: row.try_get("user_agent")?,
-        created_at: timestamp_from_row(row, "created_at_ms")?,
-        last_used_at: timestamp_from_row(row, "last_used_at_ms")?,
+        id:           parse_uuid(&row.try_get::<String, _>("id")?)?,
+        identity:     sqlite_row::identity_from_row(row, RECORD_NAME)?,
+        login:        row.try_get("login")?,
+        name:         row.try_get("name")?,
+        email:        row.try_get("email")?,
+        avatar_url:   row.try_get("avatar_url")?,
+        user_agent:   row.try_get("user_agent")?,
+        created_at:   sqlite_row::timestamp_from_row(row, RECORD_NAME, "created_at_ms")?,
+        last_used_at: sqlite_row::timestamp_from_row(row, RECORD_NAME, "last_used_at_ms")?,
     })
-}
-
-fn timestamp_from_row(row: &SqliteRow, column: &str) -> Result<DateTime<Utc>> {
-    let millis: i64 = row.try_get(column)?;
-    DateTime::from_timestamp_millis(millis)
-        .ok_or_else(|| Error::Other(format!("stored auth session has an invalid {column}")))
 }
 
 fn parse_uuid(value: &str) -> Result<Uuid> {

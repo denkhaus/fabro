@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 
 mod artifact_store;
+mod auth_code_store;
 pub mod auth_session_store;
 mod blob_store;
 mod error;
@@ -13,6 +14,7 @@ mod run_state;
 mod run_summary_store;
 mod serializable_projection;
 mod slate;
+mod sqlite_row;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 mod types;
@@ -21,6 +23,7 @@ pub use artifact_store::{
     ArtifactKey, ArtifactStore, NodeArtifact, StageArtifactEntry, retry_storage_segment,
     stage_storage_segment,
 };
+pub use auth_code_store::{AuthCodeStore, PendingCliAuthorization};
 pub use auth_session_store::{
     ActiveCliSession, AuthSessionRecord, AuthSessionStore, InitialRefreshToken, RotateOutcome,
 };
@@ -44,10 +47,7 @@ pub use run_summary_store::{
     RunSummarySortDirection, RunSummaryStore, RunSummaryVisibility,
 };
 pub use serializable_projection::SerializableProjection;
-pub use slate::{
-    AuthCode, AuthCodeStore, CachedRunProjection, Database, RunCatalogIndex, RunDatabase, Runs,
-    UnreadableRun,
-};
+pub use slate::{CachedRunProjection, Database, RunCatalogIndex, RunDatabase, Runs, UnreadableRun};
 pub use types::EventPayload;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
