@@ -1,0 +1,273 @@
+{
+  "title": "Say hello and demonstrate a basic Fabro workflow",
+  "spec": {
+    "run_id": "01M0X36ZX6HVENZ83X536HKAJR",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "Say hello and demonstrate a basic Fabro workflow"
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {},
+        "model": {
+          "provider": "zai",
+          "name": "glm-5.3",
+          "fallbacks": {},
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [
+            {
+              "type": "script",
+              "script": "mise install"
+            },
+            {
+              "type": "script",
+              "script": "just bootstrap"
+            }
+          ],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false,
+          "commit_timeout_ms": 30000
+        },
+        "clone": {
+          "enabled": true,
+          "depth": 100
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "mise",
+          "provider": "docker",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "# Lab runner image, built on demand by fabro (image.dockerfile).\n#\n# Content-hash tagged by fabro (fabro-runner-<sha12>) and rebuilt only\n# when this file changes; docker layer cache keeps incremental rebuilds\n# cheap. The build context is EMPTY (fabro limitation): .mise.toml cannot\n# be COPY'd, so the toolset below mirrors [tools] in .mise.toml — keep\n# both in sync (bun/nushell/go/just/ripgrep versions MUST match). ripgrep\n# rides the mise aqua backend (NOT apt): one tool source, same pin in both\n# files, agent search tools resolve through the shims like every other\n# tool (run 01M0SS23MJ planner burned 4-5 calls on a missing rg).\n#\n# Restores what fabro-meta-a7c3 asked for: tools baked in, per-run\n# `mise install` becomes a no-op version check instead of ~24.5s setup.\nFROM ubuntu:24.04\n\nARG MISE_VERSION=v2026.8.10\n\nENV MISE_DATA_DIR=/mise \\\n    BUN_INSTALL=/mise/bun-global \\\n    PATH=/usr/local/bin:/mise/shims:/mise/bun-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n\n# Sandbox requirements (bash, git) + mise itself.\nRUN set -eux; \\\n    apt-get update; \\\n    apt-get install -y --no-install-recommends bash git ca-certificates curl xz-utils; \\\n    rm -rf /var/lib/apt/lists/*; \\\n    curl -fsSL \"https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64\" \\\n        -o /usr/local/bin/mise; \\\n    chmod +x /usr/local/bin/mise; \\\n    mise --version\n\n# Workspace toolset, mirroring .mise.toml [tools] (see header note).\n# `mise use -g` sets global defaults (needed: shims resolve versions from\n# config; the empty context has no .mise.toml to copy) and installs. The\n# workspace .mise.toml pins the same versions for runs, so per-run\n# `mise install` stays a no-op check.\nRUN mise use -g \\\n        bun@1.4.0 \\\n        aqua:nushell/nushell@0.115.0 \\\n        go@1.27.0 \\\n        just@1.58.0 \\\n        aqua:BurntSushi/ripgrep@15.2.0 \\\n    && bun --version \\\n    && nu --version \\\n    && go version \\\n    && just --version \\\n    && rg --version\n\n# npm-distributed CLIs into the pinned BUN_INSTALL dir (see\n# scripts/bootstrap.nu): sd + ml available without per-run install.\nRUN mise exec -- bun install -g \\\n        @os-eco/seeds-cli@0.5.15 \\\n        @os-eco/mulch-cli@0.10.7 \\\n    && sd --version \\\n    && ml --version\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": null
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": null
+          },
+          "labels": {
+            "purpose": "lean-mise-runner"
+          },
+          "env": {}
+        },
+        "notifications": {
+          "terminal": {
+            "enabled": true,
+            "provider": "slack",
+            "events": [
+              "run.completed",
+              "run.failed"
+            ],
+            "slack": {
+              "channel": "#fabro-reviews"
+            }
+          }
+        },
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": true,
+          "merge_strategy": "squash",
+          "model": "zai:glm-4.7"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {
+              "pull_requests": "write",
+              "contents": "write"
+            }
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "Hello",
+      "nodes": {
+        "start": {
+          "id": "start",
+          "attrs": {
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "label": {
+              "String": "Start"
+            }
+          }
+        },
+        "greet": {
+          "id": "greet",
+          "attrs": {
+            "label": {
+              "String": "Greet"
+            },
+            "prompt": {
+              "String": "Add a short haiku to README.md (create the file if missing). Do not build, test, or run any project tooling; this is a tiny edit-only task."
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "shape": {
+              "String": "Msquare"
+            },
+            "label": {
+              "String": "Exit"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "greet",
+          "attrs": {}
+        },
+        {
+          "from": "greet",
+          "to": "exit",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "goal": {
+          "String": "Say hello and demonstrate a basic Fabro workflow"
+        },
+        "rankdir": {
+          "String": "LR"
+        }
+      }
+    },
+    "graph_source": "digraph Hello {\n    graph [goal=\"Say hello and demonstrate a basic Fabro workflow\"]\n    rankdir=LR\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    greet [label=\"Greet\", prompt=\"Add a short haiku to README.md (create the file if missing). Do not build, test, or run any project tooling; this is a tiny edit-only task.\"]\n\n    start -> greet -> exit\n}\n",
+    "workflow_slug": "hello",
+    "source_directory": "/home/denkhaus/dev/fabro",
+    "provenance": {
+      "server": {
+        "version": "0.335.0-nightly.1"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.335.0-nightly.1",
+        "name": "fabro-cli",
+        "version": "0.335.0-nightly.1"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "fabro:dev",
+          "subject": "dev"
+        },
+        "login": "dev",
+        "auth_method": "dev_token"
+      }
+    },
+    "manifest_blob": "790c36610b349c89b9506919192847f9c6ce54a4c0676b407ca2da4e5ee0e85f",
+    "definition_blob": "4382d9d4bea90c5bbbfce2b1b9ce96c5ddaa9ef1f12ab41e62813ce6c154e181",
+    "spec_blob": "8ea3f02917ea54b22463297e2929917069a3303887fdce961edf6f1e7de47ff4",
+    "git": {
+      "origin_url": "https://github.com/denkhaus/fabro",
+      "branch": "denkhaus-lab",
+      "sha": "782055bc2d2b5007818176765c2bf307230ea2d6",
+      "dirty": "clean"
+    }
+  },
+  "web_url": "http://127.0.0.1:32276/runs/01M0X36ZX6HVENZ83X536HKAJR",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-08-25T18:34:09.086680876Z",
+  "last_event_at": "2026-08-25T18:34:13.412017084Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "docker"
+    },
+    "instance": {
+      "provider": "docker",
+      "image": "fabro-runner-f4ec112c0c4c",
+      "runtime": {
+        "id": "d3f7fea9574be80ec5f471a481f75665d17806a8eb3fac8feaae1a4bb0642936",
+        "working_directory": "/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/denkhaus/fabro",
+        "clone_branch": "denkhaus-lab",
+        "workspace_root": "/workspace",
+        "repos_root": "/repos",
+        "primary_repo_path": "/repos/denkhaus/fabro",
+        "primary_repo_link": "/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
