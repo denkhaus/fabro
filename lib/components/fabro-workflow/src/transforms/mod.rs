@@ -19,7 +19,6 @@ mod stylesheet_application;
 pub mod variable_expansion;
 
 pub use file_inlining::FileInliningTransform;
-pub(crate) use file_inlining::template_render_store;
 pub use import::ImportTransform;
 pub use model_resolution::ModelResolutionTransform;
 pub(crate) use model_stylesheet_template::ModelStylesheetTemplateTransform;

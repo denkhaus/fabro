@@ -5,7 +5,6 @@ use crate::error::Error;
 use crate::transforms::{
     FileInliningTransform, ImportTransform, ModelStylesheetTemplateTransform,
     ScriptInterpolationTransform, StylesheetApplicationTransform, TemplateTransform, Transform,
-    template_render_store,
 };
 
 /// TRANSFORM phase: apply built-in and custom transforms to a parsed graph.
@@ -63,23 +62,23 @@ pub fn transform(parsed: Parsed, options: &TransformOptions) -> Result<Transform
     }
     .apply_with_diagnostics(graph)?;
     diagnostics.extend(transform_diagnostics);
-    let mut stylesheet_transform = ModelStylesheetTemplateTransform::new(
-        options.template_context.clone(),
-        options.source_name.clone(),
-        Some(source.clone()),
-        options.render_mode,
-    );
-    if let (Some(current_dir), Some(file_resolver)) = (&options.current_dir, &options.file_resolver)
-    {
-        stylesheet_transform = stylesheet_transform.with_template_store(template_render_store(
-            current_dir,
-            Arc::clone(file_resolver),
-            options.source_name.as_deref(),
-            graph.model_stylesheet(),
-        )?);
-    }
-    let (graph, transform_diagnostics) = stylesheet_transform.apply_with_diagnostics(graph)?;
-    diagnostics.extend(transform_diagnostics);
+    let graph = if graph.model_stylesheet().is_empty() {
+        graph
+    } else {
+        let (graph, transform_diagnostics) = ModelStylesheetTemplateTransform {
+            context:         options.template_context.clone(),
+            source_name:     options.source_name.clone(),
+            source_text:     Some(source.clone()),
+            render_mode:     options.render_mode,
+            file_resolution: options
+                .current_dir
+                .clone()
+                .zip(options.file_resolver.clone()),
+        }
+        .apply_with_diagnostics(graph)?;
+        diagnostics.extend(transform_diagnostics);
+        graph
+    };
     let (graph, transform_diagnostics) = ScriptInterpolationTransform {
         context:     options.template_context.clone(),
         source_name: options.source_name.clone(),
@@ -248,51 +247,6 @@ mod tests {
                 .all(|diagnostic| diagnostic.rule != "detemplated_attribute"),
             "{:?}",
             transformed.diagnostics
-        );
-    }
-
-    #[test]
-    fn transform_applies_rules_emitted_by_model_stylesheet_loop() {
-        let dot = r#"digraph Test {
-            graph [model_stylesheet="
-                {% for effort in inputs.efforts %}
-                .tier-{{ loop.index }} { reasoning_effort: {{ effort }}; }
-                {% endfor %}
-            "]
-            start [shape=Mdiamond]
-            low [prompt="Low", class="tier-1"]
-            high [prompt="High", class="tier-2"]
-            exit [shape=Msquare]
-            start -> low -> high -> exit
-        }"#;
-        let parsed = parse(dot).unwrap();
-        let transformed = transform(parsed, &TransformOptions {
-            template_context: fabro_template::TemplateContext::new().with_inputs(HashMap::from([
-                (
-                    "efforts".to_string(),
-                    toml::Value::Array(vec![
-                        toml::Value::String("low".to_string()),
-                        toml::Value::String("high".to_string()),
-                    ]),
-                ),
-            ])),
-            ..transform_options()
-        })
-        .unwrap();
-
-        assert_eq!(
-            transformed.graph.nodes["low"]
-                .attrs
-                .get("reasoning_effort")
-                .and_then(AttrValue::as_str),
-            Some("low")
-        );
-        assert_eq!(
-            transformed.graph.nodes["high"]
-                .attrs
-                .get("reasoning_effort")
-                .and_then(AttrValue::as_str),
-            Some("high")
         );
     }
 

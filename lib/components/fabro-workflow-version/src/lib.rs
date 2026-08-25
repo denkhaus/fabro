@@ -14,7 +14,7 @@ use fabro_config::{
 };
 use fabro_graphviz::parser;
 use fabro_template::{
-    BundleTemplateStore, GraphReference, GraphReferenceError, StaticReferenceError,
+    BundleTemplateStore, GraphPosition, GraphReference, GraphReferenceError, StaticReferenceError,
     TemplateDiscoveryError, TemplateSource, discover_static_dependency_closure,
     validate_static_reference, visit_graph_references,
 };
@@ -278,9 +278,13 @@ fn validate_graph_closure(
             path: path.clone(),
             source,
         })?;
-        let is_entrypoint = &path == version.entrypoint();
+        let position = if &path == version.entrypoint() {
+            GraphPosition::Entrypoint
+        } else {
+            GraphPosition::Imported
+        };
 
-        visit_graph_references(&graph, |reference| match reference {
+        visit_graph_references(&graph, position, |reference| match reference {
             GraphReference::GoalFile { reference } => {
                 let target = resolve_reference(&path, ReferenceKind::GraphGoalFile, reference)?;
                 let content =
@@ -288,15 +292,12 @@ fn validate_graph_closure(
                 template_roots.push(&target, content);
                 Ok(())
             }
-            GraphReference::GoalInline { content } | GraphReference::InlinePrompt { content } => {
+            GraphReference::GoalInline { content }
+            | GraphReference::InlinePrompt { content }
+            | GraphReference::ModelStylesheetInline { content } => {
                 template_roots.push(&path, content);
                 Ok(())
             }
-            GraphReference::ModelStylesheetInline { content } if is_entrypoint => {
-                template_roots.push(&path, content);
-                Ok(())
-            }
-            GraphReference::ModelStylesheetInline { .. } => Ok(()),
             GraphReference::Import { reference } => {
                 let target = resolve_reference(&path, ReferenceKind::Import, reference)?;
                 require_file(version, &path, ReferenceKind::Import, target.clone())?;

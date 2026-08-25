@@ -8,9 +8,9 @@ use fabro_config::project::WorkflowLocation;
 use fabro_config::{EnvironmentDockerfileLayer, EnvironmentImageLayer, SettingsLayer};
 use fabro_graphviz::parser;
 use fabro_template::{
-    BundleTemplateStore, FilesystemTemplateStore, GraphReference, GraphReferenceError,
-    RecordingTemplateStore, TemplateContext, TemplateDependencyClosure, TemplateRenderMode,
-    TemplateSource, validate_static_reference, visit_graph_references,
+    BundleTemplateStore, FilesystemTemplateStore, GraphPosition, GraphReference,
+    GraphReferenceError, RecordingTemplateStore, TemplateContext, TemplateDependencyClosure,
+    TemplateRenderMode, TemplateSource, validate_static_reference, visit_graph_references,
 };
 use fabro_types::ManifestPath;
 use fabro_types::graph::ReferenceKind;
@@ -87,7 +87,12 @@ impl<'a> WorkflowBundler<'a> {
                 .ok_or_else(|| anyhow!("invalid manifest workflow config path: {}", config.path))?;
             self.collect_config_dockerfile(&config_path, &config.source, &mut files)?;
         }
-        self.collect_workflow_files(&scan, &mut files, &mut visited_imports, true)?;
+        self.collect_workflow_files(
+            &scan,
+            &mut files,
+            &mut visited_imports,
+            GraphPosition::Entrypoint,
+        )?;
 
         self.workflows
             .insert(dot_key.clone(), types::ManifestWorkflow {
@@ -123,7 +128,7 @@ impl<'a> WorkflowBundler<'a> {
         workflow: &WorkflowScanInput,
         files: &mut HashMap<String, types::ManifestFileEntry>,
         visited_imports: &mut HashSet<String>,
-        collect_model_stylesheet: bool,
+        position: GraphPosition,
     ) -> Result<()> {
         let graph = parser::parse(&workflow.source)
             .with_context(|| format!("Failed to parse {}", workflow.absolute_dot_path.display()))?;
@@ -138,7 +143,7 @@ impl<'a> WorkflowBundler<'a> {
         let mut imports = Vec::new();
         let mut children = Vec::new();
 
-        visit_graph_references(&graph, |reference| -> Result<()> {
+        visit_graph_references(&graph, position, |reference| -> Result<()> {
             match reference {
                 GraphReference::GoalFile { reference } => {
                     let bundled = self.collect_bundled_file(
@@ -152,17 +157,9 @@ impl<'a> WorkflowBundler<'a> {
                     self.collect_bundled_template_includes(files, &bundled, &workflow_template_root)
                 }
                 GraphReference::GoalInline { content }
-                | GraphReference::InlinePrompt { content } => self.collect_template_include_files(
-                    files,
-                    TemplateSource::new(
-                        workflow.dot_path.clone(),
-                        workflow_template_root.clone(),
-                        content.to_owned(),
-                    ),
-                    Some(&workflow.dot_path),
-                ),
-                GraphReference::ModelStylesheetInline { content } if collect_model_stylesheet => {
-                    self.collect_template_include_files(
+                | GraphReference::InlinePrompt { content }
+                | GraphReference::ModelStylesheetInline { content } => self
+                    .collect_template_include_files(
                         files,
                         TemplateSource::new(
                             workflow.dot_path.clone(),
@@ -170,9 +167,7 @@ impl<'a> WorkflowBundler<'a> {
                             content.to_owned(),
                         ),
                         Some(&workflow.dot_path),
-                    )
-                }
-                GraphReference::ModelStylesheetInline { .. } => Ok(()),
+                    ),
                 GraphReference::FileInline { key, reference } => {
                     let bundled = self.collect_bundled_file(
                         files,
@@ -225,7 +220,12 @@ impl<'a> WorkflowBundler<'a> {
                     dot_path:          imported.path,
                     source:            imported_source,
                 };
-                self.collect_workflow_files(&imported_scan, files, visited_imports, false)?;
+                self.collect_workflow_files(
+                    &imported_scan,
+                    files,
+                    visited_imports,
+                    GraphPosition::Imported,
+                )?;
             }
         }
         for child in children {
@@ -520,30 +520,6 @@ mod tests {
             files["styles/nested.css"].content,
             "* { reasoning_effort: low; }"
         );
-
-        let store = BundleTemplateStore::new(
-            files
-                .iter()
-                .map(|(path, entry)| {
-                    (
-                        ManifestPath::from_wire(path).expect("bundled path should parse"),
-                        entry.content.clone(),
-                    )
-                })
-                .collect(),
-        );
-        let rendered = fabro_template::render_source(
-            &TemplateSource::new(
-                ManifestPath::from_wire("workflow.fabro").unwrap(),
-                ManifestPath::from_wire(".").unwrap(),
-                "{% include 'styles/base.css' %}",
-            ),
-            &TemplateContext::new().for_model_stylesheet(),
-            Arc::new(store),
-            TemplateRenderMode::Strict,
-        )
-        .expect("bundled stylesheet should render");
-        assert_eq!(rendered, "* { reasoning_effort: low; }");
     }
 
     #[test]

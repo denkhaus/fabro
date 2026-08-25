@@ -686,7 +686,6 @@ impl ImportTransform {
                 &self.current_dir,
                 Arc::clone(&self.resolver),
                 self.source_name.as_deref(),
-                graph.goal(),
             )?);
         let parent_goal = render_template_for_target(
             graph.goal(),

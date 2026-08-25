@@ -68,11 +68,11 @@ pub enum GraphReference<'graph> {
     GoalFile { reference: &'graph str },
     /// A non-`@` graph `goal`: inline template content.
     GoalInline { content: &'graph str },
-    /// The root graph's inline `model_stylesheet` template content.
+    /// The entrypoint graph's inline `model_stylesheet` template content.
     ///
-    /// Consumers that recurse through imported graphs decide whether the
-    /// visited graph is the workflow entrypoint before treating this as a
-    /// template root.
+    /// Emitted only when the walked graph is [`GraphPosition::Entrypoint`];
+    /// imported stylesheets are ignored at runtime, so they are never
+    /// template roots.
     ModelStylesheetInline { content: &'graph str },
     /// `node [import="<reference>"]` — another graph file to walk.
     Import { reference: &'graph str },
@@ -97,13 +97,28 @@ pub enum GraphReferenceError<E> {
     Visit(E),
 }
 
+/// Whether the walked graph is the workflow's entrypoint or was reached
+/// through an `import`/`stack.child_workflow` reference.
+///
+/// Position-dependent reference semantics (today: `model_stylesheet` is a
+/// template root only on the entrypoint) live in the walker, so every
+/// consumer applies the same rule.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GraphPosition {
+    Entrypoint,
+    Imported,
+}
+
 /// Walk every static file reference and inline template in one parsed graph,
 /// validating that file references are template-free before emitting them.
 ///
 /// The walker covers a single graph; recursion into `Import` targets and
 /// resolution of references against a file source are the consumer's job.
+/// `position` tells the walker whether this graph is the workflow entrypoint,
+/// which gates position-dependent references such as `model_stylesheet`.
 pub fn visit_graph_references<'graph, E>(
     graph: &'graph Graph,
+    position: GraphPosition,
     mut visit: impl FnMut(GraphReference<'graph>) -> Result<(), E>,
 ) -> Result<(), GraphReferenceError<E>> {
     let goal = graph.goal();
@@ -119,7 +134,7 @@ pub fn visit_graph_references<'graph, E>(
     }
 
     let model_stylesheet = graph.model_stylesheet();
-    if !model_stylesheet.is_empty() {
+    if position == GraphPosition::Entrypoint && !model_stylesheet.is_empty() {
         visit(GraphReference::ModelStylesheetInline {
             content: model_stylesheet,
         })
@@ -166,7 +181,7 @@ mod tests {
 
     use fabro_types::graph::{AttrValue, Graph, Node, ReferenceKind};
 
-    use super::{GraphReference, GraphReferenceError, validate_static_reference};
+    use super::{GraphPosition, GraphReference, GraphReferenceError, validate_static_reference};
 
     #[test]
     fn static_reference_rejects_template_syntax() {
@@ -221,6 +236,7 @@ mod tests {
         let mut seen = BTreeSet::new();
         super::visit_graph_references(
             &graph,
+            GraphPosition::Entrypoint,
             |reference| -> Result<(), std::convert::Infallible> {
                 seen.insert(match reference {
                     GraphReference::GoalFile { reference } => format!("goal-file:{reference}"),
@@ -254,6 +270,24 @@ mod tests {
     }
 
     #[test]
+    fn imported_graphs_do_not_emit_model_stylesheet() {
+        let mut graph = Graph::new("test");
+        graph.attrs.insert(
+            "model_stylesheet".to_string(),
+            AttrValue::String("* { reasoning_effort: low; }".to_string()),
+        );
+
+        super::visit_graph_references(
+            &graph,
+            GraphPosition::Imported,
+            |reference| -> Result<(), std::convert::Infallible> {
+                panic!("imported graph emitted {reference:?}")
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn rejects_template_syntax_in_references_before_visiting() {
         let mut graph = Graph::new("test");
         graph.nodes.insert(
@@ -261,11 +295,14 @@ mod tests {
             node_with("imported", &[("import", "graphs/{{ name }}.fabro")]),
         );
 
-        let error =
-            super::visit_graph_references(&graph, |_| -> Result<(), std::convert::Infallible> {
+        let error = super::visit_graph_references(
+            &graph,
+            GraphPosition::Entrypoint,
+            |_| -> Result<(), std::convert::Infallible> {
                 panic!("references with template syntax must not be visited")
-            })
-            .unwrap_err();
+            },
+        )
+        .unwrap_err();
         assert!(matches!(error, GraphReferenceError::StaticReference(_)));
     }
 }

@@ -1,50 +1,33 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use fabro_graphviz::graph::{AttrValue, Graph};
 use fabro_template::TemplateContext;
 use fabro_validate::Diagnostic;
 
-use super::Transform;
+use super::file_inlining::template_render_store;
 use super::variable_expansion::{
-    RenderMode, TemplateRenderOutcome, TemplateRenderStore, TemplateRenderTarget,
-    render_template_for_target_outcome,
+    RenderMode, TemplateRenderOutcome, TemplateRenderTarget, render_template_for_target_outcome,
 };
 use crate::error::Error;
+use crate::file_resolver::FileResolver;
 
 /// Renders the root graph's `model_stylesheet` with its restricted template
 /// context after imports are expanded and before stylesheet parsing.
 pub(crate) struct ModelStylesheetTemplateTransform {
-    context:        TemplateContext,
-    source_name:    Option<String>,
-    source_text:    Option<String>,
-    render_mode:    RenderMode,
-    template_store: Option<TemplateRenderStore>,
+    pub context:         TemplateContext,
+    pub source_name:     Option<String>,
+    pub source_text:     Option<String>,
+    pub render_mode:     RenderMode,
+    /// Enables `{% include %}` resolution; without it the stylesheet renders
+    /// from its inline text alone.
+    pub file_resolution: Option<(PathBuf, Arc<dyn FileResolver>)>,
 }
 
 impl ModelStylesheetTemplateTransform {
-    #[must_use]
-    pub(crate) fn new(
-        context: TemplateContext,
-        source_name: Option<String>,
-        source_text: Option<String>,
-        render_mode: RenderMode,
-    ) -> Self {
-        Self {
-            context,
-            source_name,
-            source_text,
-            render_mode,
-            template_store: None,
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn with_template_store(mut self, template_store: TemplateRenderStore) -> Self {
-        self.template_store = Some(template_store);
-        self
-    }
-
     pub(crate) fn apply_with_diagnostics(
         &self,
-        graph: Graph,
+        mut graph: Graph,
     ) -> Result<(Graph, Vec<Diagnostic>), Error> {
         let stylesheet = graph.model_stylesheet();
         if stylesheet.is_empty() {
@@ -53,9 +36,17 @@ impl ModelStylesheetTemplateTransform {
 
         let mut target =
             TemplateRenderTarget::graph_attr(self.source_name.clone(), "model_stylesheet")
-                .with_source_origin(self.source_text.as_deref(), stylesheet);
-        if let Some(template_store) = self.template_store.clone() {
-            target = target.with_template_store(template_store);
+                .with_source_origin(self.source_text.as_deref(), stylesheet)
+                .with_restricted_namespace_fix(
+                    "`model_stylesheet` templates expose only `inputs` and `vars`; use one of \
+                     those values or a MiniJinja local value",
+                );
+        if let Some((current_dir, resolver)) = &self.file_resolution {
+            target = target.with_template_store(template_render_store(
+                current_dir,
+                Arc::clone(resolver),
+                self.source_name.as_deref(),
+            )?);
         }
 
         let mut diagnostics = Vec::new();
@@ -73,22 +64,10 @@ impl ModelStylesheetTemplateTransform {
             TemplateRenderOutcome::Unresolved => String::new(),
         };
 
-        let mut graph = graph;
         graph
             .attrs
             .insert("model_stylesheet".to_string(), AttrValue::String(rendered));
         Ok((graph, diagnostics))
-    }
-}
-
-impl Transform for ModelStylesheetTemplateTransform {
-    fn apply(&self, graph: Graph) -> Result<Graph, Error> {
-        let (graph, diagnostics) = self.apply_with_diagnostics(graph)?;
-        if diagnostics.is_empty() {
-            Ok(graph)
-        } else {
-            Err(Error::ValidationFailed { diagnostics })
-        }
     }
 }
 
@@ -115,14 +94,15 @@ mod tests {
         stylesheet: &str,
         render_mode: RenderMode,
     ) -> Result<(Graph, Vec<Diagnostic>), Error> {
-        ModelStylesheetTemplateTransform::new(
+        ModelStylesheetTemplateTransform {
             context,
-            Some("workflow.fabro".to_string()),
-            Some(format!(
+            source_name: Some("workflow.fabro".to_string()),
+            source_text: Some(format!(
                 "digraph Test {{ graph [model_stylesheet=\"{stylesheet}\"] }}"
             )),
             render_mode,
-        )
+            file_resolution: None,
+        }
         .apply_with_diagnostics(graph_with_stylesheet(stylesheet))
     }
 

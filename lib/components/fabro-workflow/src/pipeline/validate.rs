@@ -37,9 +37,8 @@ mod tests {
     use crate::pipeline::transform;
     use crate::pipeline::types::TransformOptions;
 
-    fn run_pipeline(dot: &str) -> Validated {
-        let parsed = parse(dot).unwrap();
-        let transformed = transform::transform(parsed, &TransformOptions {
+    fn transform_options() -> TransformOptions {
+        TransformOptions {
             current_dir:       None,
             file_resolver:     None,
             template_context:  fabro_template::TemplateContext::new(),
@@ -47,8 +46,12 @@ mod tests {
             render_mode:       crate::operations::RenderMode::Strict,
             custom_transforms: vec![],
             model_resolution:  None,
-        })
-        .unwrap();
+        }
+    }
+
+    fn run_pipeline(dot: &str) -> Validated {
+        let parsed = parse(dot).unwrap();
+        let transformed = transform::transform(parsed, &transform_options()).unwrap();
         validate(transformed, None, &[])
     }
 
@@ -118,18 +121,15 @@ mod tests {
             start -> exit
         }"#;
         let transformed = transform::transform(parse(dot).unwrap(), &TransformOptions {
-            current_dir:       None,
-            file_resolver:     None,
-            template_context:  fabro_template::TemplateContext::new().with_inputs(HashMap::from([
+            template_context: fabro_template::TemplateContext::new().with_inputs(HashMap::from([
                 (
                     "declaration".to_string(),
                     toml::Value::String("garbage garbage".to_string()),
                 ),
             ])),
-            source_name:       Some("workflow.fabro".to_string()),
-            render_mode:       crate::operations::RenderMode::Structural,
-            custom_transforms: vec![],
-            model_resolution:  None,
+            source_name: Some("workflow.fabro".to_string()),
+            render_mode: crate::operations::RenderMode::Structural,
+            ..transform_options()
         })
         .unwrap();
         let validated = validate(transformed, None, &[]);
@@ -153,13 +153,9 @@ mod tests {
             start -> exit
         }"#;
         let transformed = transform::transform(parse(dot).unwrap(), &TransformOptions {
-            current_dir:       None,
-            file_resolver:     None,
-            template_context:  fabro_template::TemplateContext::new(),
-            source_name:       Some("workflow.fabro".to_string()),
-            render_mode:       crate::operations::RenderMode::Structural,
-            custom_transforms: vec![],
-            model_resolution:  None,
+            source_name: Some("workflow.fabro".to_string()),
+            render_mode: crate::operations::RenderMode::Structural,
+            ..transform_options()
         })
         .unwrap();
         let validated = validate(transformed, None, &[]);

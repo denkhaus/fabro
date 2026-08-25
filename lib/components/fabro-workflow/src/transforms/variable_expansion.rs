@@ -38,13 +38,15 @@ pub enum RenderMode {
 
 #[derive(Clone)]
 pub(crate) struct TemplateRenderTarget {
-    pub source_name: Option<String>,
-    pub node_id:     Option<String>,
-    pub edge:        Option<(String, String)>,
-    pub owner:       String,
-    attribute_name:  String,
-    source_origin:   Option<TemplateSourceOrigin>,
-    template_store:  Option<TemplateRenderStore>,
+    pub source_name:          Option<String>,
+    pub node_id:              Option<String>,
+    pub edge:                 Option<(String, String)>,
+    pub owner:                String,
+    /// Fix text for undefined variables outside `inputs`/`vars`, set by
+    /// targets whose template context is a restricted projection.
+    restricted_namespace_fix: Option<String>,
+    source_origin:            Option<TemplateSourceOrigin>,
+    template_store:           Option<TemplateRenderStore>,
 }
 
 #[derive(Clone)]
@@ -84,7 +86,7 @@ impl TemplateRenderTarget {
             node_id: None,
             edge: None,
             owner: format!("graph attribute `{attr_name}`"),
-            attribute_name: attr_name,
+            restricted_namespace_fix: None,
             source_origin: None,
             template_store: None,
         }
@@ -103,7 +105,7 @@ impl TemplateRenderTarget {
             node_id: Some(node_id.clone()),
             edge: None,
             owner: format!("node `{node_id}` attribute `{attr_name}`"),
-            attribute_name: attr_name,
+            restricted_namespace_fix: None,
             source_origin: None,
             template_store: None,
         }
@@ -124,7 +126,7 @@ impl TemplateRenderTarget {
             node_id: None,
             edge: Some((from.clone(), to.clone())),
             owner: format!("edge `{from} -> {to}` attribute `{attr_name}`"),
-            attribute_name: attr_name,
+            restricted_namespace_fix: None,
             source_origin: None,
             template_store: None,
         }
@@ -147,6 +149,12 @@ impl TemplateRenderTarget {
     #[must_use]
     pub(crate) fn with_template_store(mut self, template_store: TemplateRenderStore) -> Self {
         self.template_store = Some(template_store);
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn with_restricted_namespace_fix(mut self, fix: impl Into<String>) -> Self {
+        self.restricted_namespace_fix = Some(fix.into());
         self
     }
 
@@ -261,27 +269,33 @@ fn template_diagnostic(error: &TemplateError, target: &TemplateRenderTarget) -> 
 
 fn template_variable_fix(expression: Option<&str>, target: &TemplateRenderTarget) -> String {
     let mut parts = expression.unwrap_or_default().split('.');
-    let namespace = parts.next().unwrap_or_default();
+    let namespace = parts.next().unwrap_or_default().parse::<Namespace>();
     let name = parts.next().unwrap_or("<name>");
 
-    match namespace {
-        "inputs" => input_binding_fix(name),
-        "vars" => format!("set it with `fabro variable set {name} <value>`"),
-        _ if target.attribute_name == "model_stylesheet" => {
-            "`model_stylesheet` templates expose only `inputs` and `vars`; use one of those values or a MiniJinja local value"
-                .to_string()
+    match (namespace, &target.restricted_namespace_fix) {
+        (Ok(Namespace::Inputs), _) => input_binding_fix(name),
+        (Ok(Namespace::Vars), _) => variable_binding_fix(name),
+        (_, Some(fix)) => fix.clone(),
+        (Ok(Namespace::Goal), None) => GOAL_BINDING_FIX.to_string(),
+        (Ok(namespace), None) => format!("`{namespace}` is not available in workflow templates"),
+        (Err(_), None) => {
+            format!(
+                "define `{}` in the template context",
+                expression.unwrap_or("the value")
+            )
         }
-        "goal" => "set a graph `goal` on the workflow".to_string(),
-        "env" | "secrets" => {
-            format!("`{namespace}` is not available in workflow templates")
-        }
-        _ => format!("define `{}` in the template context", expression.unwrap_or("the value")),
     }
 }
 
 fn input_binding_fix(name: &str) -> String {
     format!("bind `{name}` via `[run.inputs]` in workflow.toml, or pass `--input {name}=<value>`")
 }
+
+fn variable_binding_fix(name: &str) -> String {
+    format!("set it with `fabro variable set {name} <value>`")
+}
+
+const GOAL_BINDING_FIX: &str = "set a graph `goal` on the workflow";
 
 /// Substitutes `{{ goal }}`, `{{ inputs.* }}`, and `{{ vars.* }}` in one
 /// command node `script`.
@@ -395,7 +409,7 @@ fn script_interpolation_fix(err: &ResolveError, language: Option<&str>) -> Strin
     let name = &err.name;
     match err.namespace {
         Namespace::Inputs => input_binding_fix(name),
-        Namespace::Vars => format!("set it with `fabro variable set {name} <value>`"),
+        Namespace::Vars => variable_binding_fix(name),
         Namespace::Env if language == Some("python") => format!(
             "`script` does not interpolate environment variables; read it in Python as \
              `os.environ[\"{name}\"]` instead"
@@ -412,7 +426,7 @@ fn script_interpolation_fix(err: &ResolveError, language: Option<&str>) -> Strin
             "`script` does not interpolate secrets; expose `{name}` to the sandbox through \
              `[environments.<slug>.env]` and read it in the shell as `${name}`"
         ),
-        Namespace::Goal => "set a graph `goal` on the workflow".to_string(),
+        Namespace::Goal => GOAL_BINDING_FIX.to_string(),
     }
 }
 
