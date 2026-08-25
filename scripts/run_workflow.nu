@@ -107,6 +107,28 @@ def main [
     } | complete)
     ok $waited 'fabro wait'
     let info = ($waited.stdout | from json)
+
+    # Canonical workflow slug from the server (inspect --json works for
+    # terminal runs too, ps does not — fabro-204e): the CLI argument may be
+    # a file path or an alias — the slug is stable per workflow directory,
+    # so review folders never split on call spelling.
+    let inspected = (do {
+        ^$fabro_bin inspect $run_id --json --server $server
+    } | complete)
+    let slug = (if $inspected.exit_code == 0 {
+        try {
+            $inspected.stdout
+            | from json
+            | get -o workflow_slug
+            | default $workflow
+            | into string
+        } catch { $workflow }
+    } else {
+        $workflow
+    })
+    if $workflow != $slug {
+        print $"run_workflow: workflow slug '($slug)' (CLI arg: '($workflow)')"
+    }
     let status = ($info | get -o status | default '')
     let reason = ($info | get -o reason | default '')
     print $"run_workflow: terminal status ($status) ($reason)"
@@ -166,14 +188,14 @@ def main [
         fail $"ask produced no answer text (events seen: ($events | length))"
     }
 
-    let review_dir = $"($REVIEWS_DIR)/($workflow)"
+    let review_dir = $"($REVIEWS_DIR)/($slug)"
     mkdir $review_dir
     let wall_min = (($info | get -o timing | get -o wall_time_ms | default 0) / 60000 | math round --precision 1)
     let cost = (($info | get -o total_usd_micros | default 0) / 1_000_000)
     let generated = (date now | format date '%Y-%m-%d %H:%M%z')
     let header = (
         $"# Improve review — run ($run_id)\n\n"
-        + $"- workflow: ($workflow)\n"
+        + $"- workflow: ($slug)\n"
         + $"- branch integrated: ($branch)\n"
         + $"- status: ($status) \(($reason)), ($wall_min) min, \$($cost)\n"
         + $"- generated: ($generated) by `fabro ask` with `scripts/prompts/improve.md`\n\n"
