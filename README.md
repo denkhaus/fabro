@@ -283,3 +283,7 @@ small seeds, boundless sums
 one, one, two, three, five —
 the sequence whispers onward,
 infinity blooms
+
+silent big.Int grows —
+each term the sum of the two,
+terminal blooms gold
