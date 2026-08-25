@@ -61,7 +61,11 @@ const DAYTONA_BASH_SESSION_REMEDIATION: &str = "Daytona ran the direct command t
 
 pub(crate) const WORKING_DIRECTORY: &str = "/home/daytona/workspace";
 pub(crate) const REPOS_ROOT: &str = "/home/daytona/repos";
-pub(crate) const RUNTIME_DIRECTORY: &str = "/home/daytona/fabro/runtime";
+// Beneath the system tmp dir so any sandbox user can create it; the
+// trailing `runtime` component is load-bearing — materialized blobs at
+// `runtime/blobs/{hash}.json` are recognized as managed blob references and
+// normalized back to `blob://` in durable context.
+pub(crate) const RUNTIME_DIRECTORY: &str = "/tmp/fabro/runtime";
 const DEFAULT_SNAPSHOT: &str = "daytona-medium";
 pub const DEFAULT_DAYTONA_API_URL: &str = "https://app.daytona.io/api";
 pub(crate) const DAYTONA_DASHBOARD_SANDBOXES_URL: &str =

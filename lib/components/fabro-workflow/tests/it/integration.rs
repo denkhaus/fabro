@@ -10137,7 +10137,7 @@ impl fabro_agent::Sandbox for RemoteMockEnv {
     }
 
     fn runtime_directory(&self) -> Option<&str> {
-        Some("/fabro/runtime")
+        Some("/tmp/fabro/runtime")
     }
 
     async fn list_directory(
@@ -10445,7 +10445,7 @@ async fn downstream_remote_execution_resolves_response_blob_refs_as_text() {
     assert!(
         written
             .iter()
-            .all(|(path, _)| path.starts_with("/fabro/runtime/blobs/")),
+            .all(|(path, _)| path.starts_with("/tmp/fabro/runtime/blobs/")),
         "nothing is written outside the sandbox runtime blob directory"
     );
     assert!(

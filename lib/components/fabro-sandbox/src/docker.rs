@@ -49,7 +49,11 @@ const DOCKER_BASH_REQUIREMENT: &str = "Docker sandboxes require /bin/bash for ev
 
 pub(crate) const WORKING_DIRECTORY: &str = "/workspace";
 pub(crate) const REPOS_ROOT: &str = "/repos";
-pub(crate) const RUNTIME_DIRECTORY: &str = "/fabro/runtime";
+// Beneath the system tmp dir so any container user can create it; the
+// trailing `runtime` component is load-bearing — materialized blobs at
+// `runtime/blobs/{hash}.json` are recognized as managed blob references and
+// normalized back to `blob://` in durable context.
+pub(crate) const RUNTIME_DIRECTORY: &str = "/tmp/fabro/runtime";
 const DEFAULT_GIT_CLONE_DEPTH: usize = RunCloneSettings::DEFAULT_DEPTH.unsigned_abs() as usize;
 const GIT_CLONE_TIMEOUT: Duration = Duration::from_mins(5);
 #[cfg(test)]

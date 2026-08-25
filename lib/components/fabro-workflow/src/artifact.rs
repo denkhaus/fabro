@@ -1543,12 +1543,13 @@ mod tests {
     async fn demote_materializes_remote_values_under_sandbox_runtime_directory() {
         let run_store: RunStoreHandle = make_run_store("prompt-demote-remote").await.into();
         let run_dir = tempfile::tempdir().unwrap();
-        let env = TestSyncEnv::new(false, "/workspace").with_runtime_directory("/fabro/runtime");
+        let env =
+            TestSyncEnv::new(false, "/workspace").with_runtime_directory("/tmp/fabro/runtime");
 
         let oversized = serde_json::json!("x".repeat(PROMPT_INLINE_VALUE_MAX + 1));
         let expected_bytes = serde_json::to_vec(&oversized).unwrap();
         let expected_path = format!(
-            "/fabro/runtime/blobs/{}.json",
+            "/tmp/fabro/runtime/blobs/{}.json",
             BlobHash::new(&expected_bytes)
         );
         let mut values = HashMap::from([("dataset".to_string(), oversized)]);
@@ -1605,7 +1606,8 @@ mod tests {
         let blob_hash = run_store.write_blob(&report_bytes).await.unwrap();
         let context = Context::new();
         context.set("report", fabro_types::format_blob_ref(&blob_hash).into());
-        let env = TestSyncEnv::new(false, "/workspace").with_runtime_directory("/fabro/runtime");
+        let env =
+            TestSyncEnv::new(false, "/workspace").with_runtime_directory("/tmp/fabro/runtime");
         let run_dir = tempfile::tempdir().unwrap();
 
         let resolved =
@@ -1613,7 +1615,7 @@ mod tests {
                 .await
                 .unwrap();
 
-        let expected_path = format!("/fabro/runtime/blobs/{blob_hash}.json");
+        let expected_path = format!("/tmp/fabro/runtime/blobs/{blob_hash}.json");
         assert_eq!(
             resolved["report"],
             serde_json::json!(format!("file://{expected_path}"))
