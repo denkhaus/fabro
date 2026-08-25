@@ -3,8 +3,9 @@ use std::sync::Arc;
 use super::types::{Parsed, TransformOptions, Transformed};
 use crate::error::Error;
 use crate::transforms::{
-    FileInliningTransform, ImportTransform, ScriptInterpolationTransform,
-    StylesheetApplicationTransform, TemplateTransform, Transform,
+    FileInliningTransform, ImportTransform, ModelStylesheetTemplateTransform,
+    ScriptInterpolationTransform, StylesheetApplicationTransform, TemplateTransform, Transform,
+    template_render_store,
 };
 
 /// TRANSFORM phase: apply built-in and custom transforms to a parsed graph.
@@ -61,6 +62,23 @@ pub fn transform(parsed: Parsed, options: &TransformOptions) -> Result<Transform
         render_mode: options.render_mode,
     }
     .apply_with_diagnostics(graph)?;
+    diagnostics.extend(transform_diagnostics);
+    let mut stylesheet_transform = ModelStylesheetTemplateTransform::new(
+        options.template_context.clone(),
+        options.source_name.clone(),
+        Some(source.clone()),
+        options.render_mode,
+    );
+    if let (Some(current_dir), Some(file_resolver)) = (&options.current_dir, &options.file_resolver)
+    {
+        stylesheet_transform = stylesheet_transform.with_template_store(template_render_store(
+            current_dir,
+            Arc::clone(file_resolver),
+            options.source_name.as_deref(),
+            graph.model_stylesheet(),
+        )?);
+    }
+    let (graph, transform_diagnostics) = stylesheet_transform.apply_with_diagnostics(graph)?;
     diagnostics.extend(transform_diagnostics);
     let (graph, transform_diagnostics) = ScriptInterpolationTransform {
         context:     options.template_context.clone(),
@@ -160,6 +178,188 @@ mod tests {
         assert_eq!(
             transformed.graph.nodes["work"].attrs.get("model"),
             Some(&AttrValue::String("claude-sonnet-5".into()))
+        );
+    }
+
+    #[test]
+    fn transform_renders_model_stylesheet_before_applying_and_resolving_it() {
+        let dot = r#"digraph Test {
+            graph [
+                goal="Test",
+                model_stylesheet="
+                    * { reasoning_effort: low; }
+                    {# MiniJinja comments can sit beside CSS braces. #}
+                    {% if inputs.effort == 'deep' %}
+                    .variable { model: sonnet; reasoning_effort: high; }
+                    {% endif %}
+                "
+            ]
+            start [shape=Mdiamond]
+            baseline [prompt="Baseline"]
+            selected [prompt="Selected", class="variable"]
+            explicit [prompt="Explicit", class="variable", reasoning_effort="medium"]
+            exit [shape=Msquare]
+            start -> baseline -> selected -> explicit -> exit
+        }"#;
+        let parsed = parse(dot).unwrap();
+        let transformed = transform(parsed, &TransformOptions {
+            template_context: fabro_template::TemplateContext::new().with_inputs(HashMap::from([
+                (
+                    "effort".to_string(),
+                    toml::Value::String("deep".to_string()),
+                ),
+            ])),
+            ..transform_options()
+        })
+        .unwrap();
+
+        assert_eq!(
+            transformed.graph.nodes["baseline"]
+                .attrs
+                .get("reasoning_effort")
+                .and_then(AttrValue::as_str),
+            Some("low")
+        );
+        assert_eq!(
+            transformed.graph.nodes["selected"]
+                .attrs
+                .get("reasoning_effort")
+                .and_then(AttrValue::as_str),
+            Some("high")
+        );
+        assert_eq!(
+            transformed.graph.nodes["selected"]
+                .attrs
+                .get("model")
+                .and_then(AttrValue::as_str),
+            Some("claude-sonnet-5")
+        );
+        assert_eq!(
+            transformed.graph.nodes["explicit"]
+                .attrs
+                .get("reasoning_effort")
+                .and_then(AttrValue::as_str),
+            Some("medium")
+        );
+        assert!(
+            transformed
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.rule != "detemplated_attribute"),
+            "{:?}",
+            transformed.diagnostics
+        );
+    }
+
+    #[test]
+    fn transform_applies_rules_emitted_by_model_stylesheet_loop() {
+        let dot = r#"digraph Test {
+            graph [model_stylesheet="
+                {% for effort in inputs.efforts %}
+                .tier-{{ loop.index }} { reasoning_effort: {{ effort }}; }
+                {% endfor %}
+            "]
+            start [shape=Mdiamond]
+            low [prompt="Low", class="tier-1"]
+            high [prompt="High", class="tier-2"]
+            exit [shape=Msquare]
+            start -> low -> high -> exit
+        }"#;
+        let parsed = parse(dot).unwrap();
+        let transformed = transform(parsed, &TransformOptions {
+            template_context: fabro_template::TemplateContext::new().with_inputs(HashMap::from([
+                (
+                    "efforts".to_string(),
+                    toml::Value::Array(vec![
+                        toml::Value::String("low".to_string()),
+                        toml::Value::String("high".to_string()),
+                    ]),
+                ),
+            ])),
+            ..transform_options()
+        })
+        .unwrap();
+
+        assert_eq!(
+            transformed.graph.nodes["low"]
+                .attrs
+                .get("reasoning_effort")
+                .and_then(AttrValue::as_str),
+            Some("low")
+        );
+        assert_eq!(
+            transformed.graph.nodes["high"]
+                .attrs
+                .get("reasoning_effort")
+                .and_then(AttrValue::as_str),
+            Some("high")
+        );
+    }
+
+    #[test]
+    fn transform_renders_model_stylesheet_static_include() {
+        let dir = tempfile::tempdir().unwrap();
+        write_file(
+            &dir.path().join("styles.partial"),
+            ".selected { model: sonnet; }",
+        );
+        let source_name = dir.path().join("workflow.fabro");
+        let dot = r#"digraph Test {
+            graph [model_stylesheet="{% include 'styles.partial' %}"]
+            start [shape=Mdiamond]
+            selected [prompt="Selected", class="selected"]
+            exit [shape=Msquare]
+            start -> selected -> exit
+        }"#;
+        let parsed = parse(dot).unwrap();
+        let transformed = transform(parsed, &TransformOptions {
+            current_dir: Some(dir.path().to_path_buf()),
+            file_resolver: Some(Arc::new(FilesystemFileResolver::new(None))),
+            source_name: Some(source_name.display().to_string()),
+            ..transform_options()
+        })
+        .unwrap();
+
+        assert_eq!(
+            transformed.graph.nodes["selected"]
+                .attrs
+                .get("model")
+                .and_then(AttrValue::as_str),
+            Some("claude-sonnet-5")
+        );
+    }
+
+    #[test]
+    fn structural_model_stylesheet_undefined_value_skips_stylesheet_parsing() {
+        let dot = r#"digraph Test {
+            graph [model_stylesheet="* { reasoning_effort: {{ inputs.effort }}; }"]
+            start [shape=Mdiamond]
+            work [prompt="Work"]
+            exit [shape=Msquare]
+            start -> work -> exit
+        }"#;
+        let parsed = parse(dot).unwrap();
+        let transformed = transform(parsed, &TransformOptions {
+            render_mode: crate::operations::RenderMode::Structural,
+            model_resolution: None,
+            ..transform_options()
+        })
+        .unwrap();
+
+        assert_eq!(transformed.graph.model_stylesheet(), "");
+        assert_eq!(
+            transformed
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.rule == TEMPLATE_UNDEFINED_VARIABLE_RULE)
+                .count(),
+            1
+        );
+        assert!(
+            transformed
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.rule != "detemplated_attribute")
         );
     }
 

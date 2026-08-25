@@ -75,7 +75,7 @@ rankdir=LR
 |---|---|---|
 | `goal` | String | Workflow objective — guides agent behavior |
 | `rankdir` | Identifier | Layout direction: `LR` (left-to-right) or `TB` (top-to-bottom) |
-| `model_stylesheet` | String | CSS-like rules for model assignment (see [Model Stylesheets](/workflows/stylesheets)) |
+| `model_stylesheet` | String | CSS-like rules for model assignment. The root value supports a MiniJinja template with `inputs` and `vars` (see [Model Stylesheets](/workflows/stylesheets)) |
 | `default_max_retries` | Integer | Default retry count for all nodes (default: 0) |
 | `on_failure` | String | Failed-node routing policy: `route` (default) or `exit` |
 | `retry_target` | String | Default node ID to jump to on retry |

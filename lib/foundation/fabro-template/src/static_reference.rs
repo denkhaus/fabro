@@ -2,9 +2,9 @@
 //!
 //! Workflow graphs name other files through a fixed attribute vocabulary
 //! (`import`, `stack.child_workflow`, `@`-prefixed `prompt`/`output_schema`
-//! values, and the graph `goal`). These references are *static*: they may not
-//! contain template syntax, because they are resolved before any template
-//! rendering happens.
+//! values, the graph `goal`, and inline root template fields such as
+//! `model_stylesheet`). File references are *static*: they may not contain
+//! template syntax, because they are resolved before template rendering.
 //!
 //! [`visit_graph_references`] is the one walker over that vocabulary. The
 //! manifest bundler and workflow-version validation both consume it, so a new
@@ -68,6 +68,12 @@ pub enum GraphReference<'graph> {
     GoalFile { reference: &'graph str },
     /// A non-`@` graph `goal`: inline template content.
     GoalInline { content: &'graph str },
+    /// The root graph's inline `model_stylesheet` template content.
+    ///
+    /// Consumers that recurse through imported graphs decide whether the
+    /// visited graph is the workflow entrypoint before treating this as a
+    /// template root.
+    ModelStylesheetInline { content: &'graph str },
     /// `node [import="<reference>"]` — another graph file to walk.
     Import { reference: &'graph str },
     /// `node [stack.child_workflow="<reference>"]`.
@@ -110,6 +116,14 @@ pub fn visit_graph_references<'graph, E>(
             visit(GraphReference::GoalInline { content: goal })
                 .map_err(GraphReferenceError::Visit)?;
         }
+    }
+
+    let model_stylesheet = graph.model_stylesheet();
+    if !model_stylesheet.is_empty() {
+        visit(GraphReference::ModelStylesheetInline {
+            content: model_stylesheet,
+        })
+        .map_err(GraphReferenceError::Visit)?;
     }
 
     for node in graph.nodes.values() {
@@ -191,6 +205,10 @@ mod tests {
             "goal".to_string(),
             AttrValue::String("@goal.md".to_string()),
         );
+        graph.attrs.insert(
+            "model_stylesheet".to_string(),
+            AttrValue::String("{% include 'styles.partial' %}".to_string()),
+        );
         for node in [
             node_with("imported", &[("import", "graphs/child.fabro")]),
             node_with("child", &[("stack.child_workflow", "children/check.fabro")]),
@@ -207,6 +225,9 @@ mod tests {
                 seen.insert(match reference {
                     GraphReference::GoalFile { reference } => format!("goal-file:{reference}"),
                     GraphReference::GoalInline { content } => format!("goal-inline:{content}"),
+                    GraphReference::ModelStylesheetInline { content } => {
+                        format!("stylesheet-inline:{content}")
+                    }
                     GraphReference::Import { reference } => format!("import:{reference}"),
                     GraphReference::ChildWorkflow { reference } => format!("child:{reference}"),
                     GraphReference::FileInline { key, reference } => {
@@ -227,6 +248,7 @@ mod tests {
                 "child:children/check.fabro".to_string(),
                 "file:prompt:prompts/task.md".to_string(),
                 "inline:Do the {{ thing }}".to_string(),
+                "stylesheet-inline:{% include 'styles.partial' %}".to_string(),
             ])
         );
     }
