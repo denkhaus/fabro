@@ -9298,10 +9298,12 @@ components:
       description: Workspace content and location requested for a run.
       oneOf:
         - $ref: "#/components/schemas/GitRunTarget"
+        - $ref: "#/components/schemas/NoneRunTarget"
       discriminator:
         propertyName: kind
         mapping:
           git: "#/components/schemas/GitRunTarget"
+          none: "#/components/schemas/NoneRunTarget"
 
     GitRunTarget:
       description: Public github.com repository target.
@@ -9329,6 +9331,21 @@ components:
           description: >-
             Optional exact commit. The server lowercase-normalizes its syntax
             but does not resolve it or prove branch ancestry.
+
+    NoneRunTarget:
+      description: >-
+        Empty workspace with no repository. Docker and Daytona accept this
+        target and suppress cloning even when workflow settings enable it.
+        Local environments reject it; Local scratch allocation is a separate
+        future capability.
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum: [none]
 
     RunManifest:
       description: Self-contained workflow run manifest.

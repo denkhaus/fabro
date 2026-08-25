@@ -15,10 +15,10 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { GitRunTarget } from './git-run-target';
+import type { RunIntentArgs } from './run-intent-args';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { RunIntentArgs } from './run-intent-args';
+import type { RunTarget } from './run-target';
 
 /**
  * A request to create, but not start, one run from an immutable workflow version and an explicit workspace target.
@@ -28,7 +28,7 @@ export interface RunIntent {
      * SHA-256 identity of validated canonical workflow-version bytes. Hex input is case-insensitive; Fabro emits the canonical lowercase form.
      */
     'workflow_version_id': string;
-    'target': GitRunTarget;
+    'target': RunTarget;
     'args': RunIntentArgs;
     /**
      * Server environment catalog ID. Omission selects `default`.

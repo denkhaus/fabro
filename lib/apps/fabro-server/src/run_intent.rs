@@ -46,8 +46,8 @@ pub(crate) enum EnvironmentSelectionError {
     },
     #[error("environment `{id}` not found")]
     NotFound { id: EnvironmentId },
-    #[error("Git targets require a compatible clone-enabled Docker or Daytona environment")]
-    TargetUnsupported,
+    #[error("{detail}")]
+    TargetUnsupported { detail: &'static str },
     #[error("{detail}")]
     ProviderDisabled {
         provider: SandboxProviderKind,
