@@ -616,10 +616,6 @@ async fn create_run_from_intent(
         Ok(validated) => validated,
         Err(error) => return run_intent_admission_error(error.into()),
     };
-    let PreparedIntentTarget { target, git } = match prepare_intent_target(target, git).await {
-        Ok(prepared) => prepared,
-        Err(error) => return run_intent_admission_error(error.into()),
-    };
     let environment_id = match select_intent_environment_id(
         &state,
         intent
@@ -720,7 +716,7 @@ async fn create_run_from_intent(
         run_id: None,
         title,
         parent_id: intent.parent_id,
-        git,
+        git: git.clone(),
         storage_root: state.server_storage_dir(),
         workflow_slug: None,
         workflow_version_id: Some(intent.workflow_version_id),
@@ -753,10 +749,14 @@ async fn create_run_from_intent(
     if let Err(error) = validate_intent_environment(&state, prepared.settings(), &target).await {
         return run_intent_admission_error(error.into());
     }
+    let PreparedIntentTarget { target, mut git } = match prepare_intent_target(target, git).await {
+        Ok(prepared) => prepared,
+        Err(error) => return run_intent_admission_error(error.into()),
+    };
     if matches!(target, RunTarget::Folder { .. }) {
-        let git = observe_folder_git_context(&target).await;
-        prepared = prepared.with_git(git);
+        git = observe_folder_git_context(&target).await;
     }
+    prepared = prepared.with_target_and_git(target, git);
     let (prepared, run_id) = prepared.resolve_run_id();
     if let Err(response) = validate_optional_parent(&state, run_id, prepared.parent_id()).await {
         return response;

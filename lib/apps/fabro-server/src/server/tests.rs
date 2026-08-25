@@ -3953,7 +3953,10 @@ async fn post_runs_run_intent_rejects_invalid_folder_paths_before_persistence() 
 #[tokio::test]
 async fn post_runs_run_intent_applies_the_folder_target_environment_matrix() {
     let dir = tempfile::tempdir().unwrap();
-    let target = dir.path().to_string_lossy().to_string();
+    // A missing path proves provider admission wins over filesystem
+    // materialization. Touching the path first would return `target_invalid`
+    // instead of the provider-specific errors asserted below.
+    let target = dir.path().join("missing").to_string_lossy().to_string();
 
     for state in [
         test_app_state(),

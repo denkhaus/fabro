@@ -62,10 +62,10 @@ pub(crate) struct PreparedIntentTarget {
     pub(crate) git:    Option<GitContext>,
 }
 
-/// Materialize filesystem-backed target facts before any workflow-version
-/// store reads or run allocation. Folder targets are canonicalized once for
-/// durable identity. Optional Git observation is deferred until the effective
-/// environment has been admitted as Local.
+/// Materialize filesystem-backed target facts after the effective environment
+/// has been admitted as Local and before run allocation. Folder targets are
+/// canonicalized once for durable identity. Optional Git observation follows
+/// this step under the same provider gate.
 pub(crate) async fn prepare_intent_target(
     target: RunTarget,
     git: Option<GitContext>,
