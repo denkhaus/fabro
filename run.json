@@ -632,7 +632,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-25T16:38:39.040804403Z",
-  "last_event_at": "2026-08-25T16:42:56.803848369Z",
+  "last_event_at": "2026-08-25T16:43:03.862020558Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -998,15 +998,227 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 204,
       "checkpoint": {
-        "timestamp": "2026-08-25T16:42:57.082604891Z",
+        "timestamp": "2026-08-25T16:43:03.407003453Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
           "planner",
           "implementer",
           "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3101,
+            "preview": "Implemented. Summary: added a `-sum` bool flag to gofib that prints the big.Int sum of the selected `-start`/`-limit`/`-n` range in the active output mode, with a `-seed`/`-sum` conflict check placed "
+          },
+          "internal.run_id": "01M0WWKAQCWZC0Q0JK019H0ZC7",
+          "command.output": "blob://sha256/24ecf26bc71c3357d7b67af7b6b397907394084c8c9fc29fdafe3ee03ca16758",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2802,
+            "preview": "Fabro-f74b is the only open seed in the tracker; I've claimed it and distilled the brief from the seed spec plus the current `main.go` flag surface, resolving two spec ambiguities (empty-range `index_"
+          },
+          "internal.retry_count.tester": 0,
+          "internal.node_visit_count": 1,
+          "preferred_label": "Implemented",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1
+          },
+          "outcome": "succeeded",
+          "thread.implementer.current_node": "tester",
+          "thread.planner.current_node": "implementer",
+          "internal.seed_cycle_anchor": "fabro-f74b",
+          "graph.preamble_budget_kb": "24",
+          "last_stage": "implementer",
+          "failure_class": "",
+          "current_seed_id": "fabro-f74b",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_title": "gofib: -sum flag printing the checksum of the selected range",
+          "internal.thread_id": "implementer",
+          "internal.retry_count.planner": 0,
+          "graph.rankdir": "LR",
+          "implementation_summary": "Added -sum to gofib: main.go gains the bool flag, a sumLine JSON struct, a run() sum branch (big.Int accumulation over the same effective range, per-mode rendering: 'sum: <v>' text, one json object with index_range+string sum, bare value for pretty/table), and a seed/sum conflict check after mode resolution. fib_test.go updated for the new run param plus TestRunSum, TestRunSumSeedConflict, TestRunSumVersionPrecedence. README gains a -sum example and flag-reference row. gofmt/vet/test all green; no artifacts left. Per-criterion report: PASS -sum flag + doc comment (main.go); PASS per-mode output incl. json string sum (TestRunSum); PASS empty range sums 0, inverted index_range (TestRunSum, wantSumJSON(5,3)); PASS seed/sum conflict, seed 0 legal, negative seed unchanged, version/format precedence (TestRunSumSeedConflict, TestRunSumVersionPrecedence); PASS big.Int end-to-end, Fib-only computation (main.go sum branch); PASS table-driven test coverage (fib_test.go); PASS README flag reference + example; PASS gofmt/vet/test green.",
+          "last_response": "Implemented. Summary: added a `-sum` bool flag to gofib that prints the big.Int sum of the selected `-start`/`-limit`/`-n` range in the active output mode, with a `-seed`/`-sum` conflict check placed ",
+          "thread.start.current_node": "planner",
+          "current_seed_brief": "Add a `-sum` bool flag (default false) to gofib in `/workspace/fabro/main.go`: when set, print exactly one line with the big.Int sum of the Fibonacci numbers the same -start/-limit/-n intersection as line mode would print. Acceptance criteria:\n- `-sum` parsed via the flag package with help text mirroring existing style; package doc comment in `/workspace/fabro/main.go` updated to mention it\n- text mode prints `sum: <value>`; json mode prints one JSON object `{\"index_range\":[first,last],\"sum\":\"<value>\"}` with sum as string (can exceed int64); pretty/table print the bare value + newline\n- empty selected range (e.g. -limit < -start) prints sum 0, no error — chosen reading for the spec's silence on json here: `index_range` uses the computed effective bounds [start, capped last] even when inverted (e.g. -start 5 -limit 3 → [5,3])\n- positive `-seed` + `-sum` is an error: non-zero exit, stderr message naming both -seed and -sum; `-seed 0` (unset sentinel) + `-sum` is legal; negative `-seed` keeps its existing error; place the conflict check after mode resolution so `-version` and format-conflict precedence are unchanged\n- values stay big.Int end to end; Fib(n) remains the only Fibonacci computation, the sum accumulates big.Ints\n- table-driven tests in `/workspace/fabro/fib_test.go` covering: default range sum, -start/-limit narrowing, empty range → 0, -seed + -sum rejected, each format mode rendering the sum, -version precedence\n- README `/workspace/fabro/README.md`: -sum documented in the flag reference with one example line\n- gate green: gofmt, go vet, go build, go test",
+          "current_node": "tester",
+          "internal.work_dir": "/workspace/fabro",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "none"
+            ]
+          },
+          "internal.fidelity": "compact",
+          "graph.max_node_visits": "40",
+          "graph.goal": "Implement product seed fabro-f74b: gofib -sum flag printing the checksum of the selected range. Work seed-by-seed until fabro-f74b is closed and no other open product seed remains.",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.implementer": 0,
+          "failure_signature": ""
+        },
+        "node_outcomes": {
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/24ecf26bc71c3357d7b67af7b6b397907394084c8c9fc29fdafe3ee03ca16758"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1023,
+              "active_time_ms": 1023
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "none"
+                ]
+              },
+              "last_response": "Implemented. Summary: added a `-sum` bool flag to gofib that prints the big.Int sum of the selected `-start`/`-limit`/`-n` range in the active output mode, with a `-seed`/`-sum` conflict check placed ",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3101,
+                "preview": "Implemented. Summary: added a `-sum` bool flag to gofib that prints the big.Int sum of the selected `-start`/`-limit`/`-n` range in the active output mode, with a `-seed`/`-sum` conflict check placed "
+              },
+              "last_stage": "implementer",
+              "implementation_summary": "Added -sum to gofib: main.go gains the bool flag, a sumLine JSON struct, a run() sum branch (big.Int accumulation over the same effective range, per-mode rendering: 'sum: <v>' text, one json object with index_range+string sum, bare value for pretty/table), and a seed/sum conflict check after mode resolution. fib_test.go updated for the new run param plus TestRunSum, TestRunSumSeedConflict, TestRunSumVersionPrecedence. README gains a -sum example and flag-reference row. gofmt/vet/test all green; no artifacts left. Per-criterion report: PASS -sum flag + doc comment (main.go); PASS per-mode output incl. json string sum (TestRunSum); PASS empty range sums 0, inverted index_range (TestRunSum, wantSumJSON(5,3)); PASS seed/sum conflict, seed 0 legal, negative seed unchanged, version/format precedence (TestRunSumSeedConflict, TestRunSumVersionPrecedence); PASS big.Int end-to-end, Fib-only computation (main.go sum branch); PASS table-driven test coverage (fib_test.go); PASS README flag reference + example; PASS gofmt/vet/test green."
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 35562,
+                    "output_tokens": 5318,
+                    "reasoning_tokens": 2061,
+                    "cache_read_tokens": 429312,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 193857
+            },
+            "files_touched": [
+              "/workspace/fabro/README.md",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 135040,
+              "tool_time_ms": 14424,
+              "active_time_ms": 149464
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2802,
+                "preview": "Fabro-f74b is the only open seed in the tracker; I've claimed it and distilled the brief from the seed spec plus the current `main.go` flag surface, resolving two spec ambiguities (empty-range `index_"
+              },
+              "last_response": "Fabro-f74b is the only open seed in the tracker; I've claimed it and distilled the brief from the seed spec plus the current `main.go` flag surface, resolving two spec ambiguities (empty-range `index_",
+              "current_seed_brief": "Add a `-sum` bool flag (default false) to gofib in `/workspace/fabro/main.go`: when set, print exactly one line with the big.Int sum of the Fibonacci numbers the same -start/-limit/-n intersection as line mode would print. Acceptance criteria:\n- `-sum` parsed via the flag package with help text mirroring existing style; package doc comment in `/workspace/fabro/main.go` updated to mention it\n- text mode prints `sum: <value>`; json mode prints one JSON object `{\"index_range\":[first,last],\"sum\":\"<value>\"}` with sum as string (can exceed int64); pretty/table print the bare value + newline\n- empty selected range (e.g. -limit < -start) prints sum 0, no error — chosen reading for the spec's silence on json here: `index_range` uses the computed effective bounds [start, capped last] even when inverted (e.g. -start 5 -limit 3 → [5,3])\n- positive `-seed` + `-sum` is an error: non-zero exit, stderr message naming both -seed and -sum; `-seed 0` (unset sentinel) + `-sum` is legal; negative `-seed` keeps its existing error; place the conflict check after mode resolution so `-version` and format-conflict precedence are unchanged\n- values stay big.Int end to end; Fib(n) remains the only Fibonacci computation, the sum accumulates big.Ints\n- table-driven tests in `/workspace/fabro/fib_test.go` covering: default range sum, -start/-limit narrowing, empty range → 0, -seed + -sum rejected, each format mode rendering the sum, -version precedence\n- README `/workspace/fabro/README.md`: -sum documented in the flag reference with one example line\n- gate green: gofmt, go vet, go build, go test",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-f74b is the ONLY open seed in the tracker (sd list count 1), so once it closes the next planner pass should route Tracker empty — goal condition 'no other open product seed remains' is then satisfied",
+                  "spec ambiguity resolved in brief: json `index_range` for an empty range was unspecified; chose computed effective bounds [start, capped last] even when inverted",
+                  "spec nuance: '-seed with -sum is an error' applies only to positive -seed, since 0 is the unset sentinel; -version precedence unchanged means it outranks even the -seed/-sum conflict"
+                ]
+              },
+              "current_seed_title": "gofib: -sum flag printing the checksum of the selected range",
+              "current_seed_id": "fabro-f74b"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14002,
+                    "output_tokens": 853,
+                    "reasoning_tokens": 2650,
+                    "cache_read_tokens": 50944,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 48254
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 75023,
+              "tool_time_ms": 1581,
+              "active_time_ms": 76604
+            }
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "00300ec19bd464adc9cf32f403cde3be63091e37",
+        "node_visits": {
+          "planner": 1,
+          "implementer": 1,
+          "start": 1,
+          "tester": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M0WWKAQCWZC0Q0JK019H0ZC7.jsonl b/.fabro/journal/01M0WWKAQCWZC0Q0JK019H0ZC7.jsonl\nindex c403cbc..1df40c9 100644\n--- a/.fabro/journal/01M0WWKAQCWZC0Q0JK019H0ZC7.jsonl\n+++ b/.fabro/journal/01M0WWKAQCWZC0Q0JK019H0ZC7.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0WWKAQCWZC0Q0JK019H0ZC7\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-25T16:38:41Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0WWKAQCWZC0Q0JK019H0ZC7\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-25T16:40:04Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-f74b is the ONLY open seed in the tracker (sd list count 1), so once it closes the next planner pass should route Tracker empty — goal condition 'no other open product seed remains' is then satisfied\",\"spec ambiguity resolved in brief: json `index_range` for an empty range was unspecified; chose computed effective bounds [start, capped last] even when inverted\",\"spec nuance: '-seed with -sum is an error' applies only to positive -seed, since 0 is the unset sentinel; -version precedence unchanged means it outranks even the -seed/-sum conflict\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0WWKAQCWZC0Q0JK019H0ZC7\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-25T16:42:48Z\",\"data\":{\"painpoints\":[],\"observations\":[\"none\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M0WWKAQCWZC0Q0JK019H0ZC7\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-25T16:42:57Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 223,
+          "deletions": 33
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-25T16:43:04.177700888Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence"
         ],
         "node_retries": {},
         "context_values": {
@@ -1032,24 +1244,27 @@
             "preview": "Implemented. Summary: added a `-sum` bool flag to gofib that prints the big.Int sum of the selected `-start`/`-limit`/`-n` range in the active output mode, with a `-seed`/`-sum` conflict check placed "
           },
           "thread.implementer.current_node": "tester",
-          "command.output": "blob://sha256/24ecf26bc71c3357d7b67af7b6b397907394084c8c9fc29fdafe3ee03ca16758",
+          "command.output": "blob://sha256/3aedadc75ace2916166321adfa3fc8e93d6f1ec37b31de48cd21c6978e714abc",
           "outcome": "succeeded",
           "failure_class": "",
           "implementation_summary": "Added -sum to gofib: main.go gains the bool flag, a sumLine JSON struct, a run() sum branch (big.Int accumulation over the same effective range, per-mode rendering: 'sum: <v>' text, one json object with index_range+string sum, bare value for pretty/table), and a seed/sum conflict check after mode resolution. fib_test.go updated for the new run param plus TestRunSum, TestRunSumSeedConflict, TestRunSumVersionPrecedence. README gains a -sum example and flag-reference row. gofmt/vet/test all green; no artifacts left. Per-criterion report: PASS -sum flag + doc comment (main.go); PASS per-mode output incl. json string sum (TestRunSum); PASS empty range sums 0, inverted index_range (TestRunSum, wantSumJSON(5,3)); PASS seed/sum conflict, seed 0 legal, negative seed unchanged, version/format precedence (TestRunSumSeedConflict, TestRunSumVersionPrecedence); PASS big.Int end-to-end, Fib-only computation (main.go sum branch); PASS table-driven test coverage (fib_test.go); PASS README flag reference + example; PASS gofmt/vet/test green.",
-          "internal.thread_id": "implementer",
+          "internal.thread_id": "tester",
           "internal.retry_count.implementer": 0,
           "internal.run_id": "01M0WWKAQCWZC0Q0JK019H0ZC7",
           "last_response": "Implemented. Summary: added a `-sum` bool flag to gofib that prints the big.Int sum of the selected `-start`/`-limit`/`-n` range in the active output mode, with a `-seed`/`-sum` conflict check placed ",
+          "thread.tester.current_node": "evidence",
           "graph.preamble_budget_kb": "24",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
-            "tester": 1
+            "tester": 1,
+            "evidence": 1
           },
           "internal.node_visit_count": 1,
-          "current_node": "tester",
+          "current_node": "evidence",
           "graph.cycle_counter_reset_key": "current_seed_id",
           "internal.retry_count.start": 0,
+          "internal.retry_count.evidence": 0,
           "journal": {
             "painpoints": [],
             "observations": [
@@ -1175,6 +1390,20 @@
               "active_time_ms": 149464
             }
           },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/3aedadc75ace2916166321adfa3fc8e93d6f1ec37b31de48cd21c6978e714abc"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 406,
+              "active_time_ms": 406
+            }
+          },
           "tester": {
             "status": "succeeded",
             "context_updates": {
@@ -1190,11 +1419,12 @@
             }
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
           "planner": 1,
           "start": 1,
           "tester": 1,
+          "evidence": 1,
           "implementer": 1
         }
       },
@@ -1634,6 +1864,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 1023,
         "active_time_ms": 1023
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 207,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-08-25T16:43:03.862020558Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/3aedadc75ace2916166321adfa3fc8e93d6f1ec37b31de48cd21c6978e714abc",
+        "exit_code": 0,
+        "duration_ms": 406,
+        "termination": "exited",
+        "output_bytes": 22123,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 22123,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-08-25T16:43:03.435166060Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 412,
+        "inference_time_ms": 0,
+        "tool_time_ms": 406,
+        "active_time_ms": 406
       },
       "usage": {
         "input_tokens": 0,
