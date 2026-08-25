@@ -245,7 +245,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-25T18:34:13.438277892Z",
-  "last_event_at": "2026-08-25T18:34:50.092283303Z",
+  "last_event_at": "2026-08-25T18:34:58.445673919Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -285,9 +285,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 68,
       "checkpoint": {
-        "timestamp": "2026-08-25T18:34:50.158715708Z",
+        "timestamp": "2026-08-25T18:34:56.800504462Z",
         "current_node": "greet",
         "completed_nodes": [
           "start",
@@ -295,26 +295,30 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.thread_id": "start",
+          "last_stage": "greet",
           "internal.node_visit_count": 1,
           "internal.retry_count.start": 0,
-          "internal.run_id": "01M0X36ZX6HVENZ83X536HKAJR",
-          "response.greet": "Done — hello from a Fabro greet run! 👋\n\n**Change:** appended one new haiku to the existing `## Haiku` section in `README.md` (+4 lines):\n\n> silent big.Int grows —\n> each term the sum of the two,\n> terminal blooms gold\n\nNotes:\n- `README.md` already existed (with two prior greet-run haikus), so I appended rather than created, matching the section's format.\n- Edit-only as requested — no builds, tests, or project tooling were run; verified via `git diff` only.",
-          "internal.retry_count.greet": 0,
-          "last_response": "Done — hello from a Fabro greet run! 👋\n\n**Change:** appended one new haiku to the existing `## Haiku` section in `README.md` (+4 lines):\n\n> silent big.Int grows —\n> each term the sum of the two",
-          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
           "internal.work_dir": "/workspace/fabro",
-          "failure_signature": "",
-          "internal.exit_kind": "natural",
           "graph.rankdir": "LR",
-          "last_stage": "greet",
+          "response.greet": "Done — hello from a Fabro greet run! 👋\n\n**Change:** appended one new haiku to the existing `## Haiku` section in `README.md` (+4 lines):\n\n> silent big.Int grows —\n> each term the sum of the two,\n> terminal blooms gold\n\nNotes:\n- `README.md` already existed (with two prior greet-run haikus), so I appended rather than created, matching the section's format.\n- Edit-only as requested — no builds, tests, or project tooling were run; verified via `git diff` only.",
+          "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
+          "internal.run_id": "01M0X36ZX6HVENZ83X536HKAJR",
+          "internal.retry_count.greet": 0,
           "outcome": "succeeded",
-          "internal.fidelity": "compact",
-          "failure_class": "",
           "thread.start.current_node": "greet",
-          "current_node": "greet"
+          "current_node": "greet",
+          "internal.exit_kind": "natural",
+          "failure_class": "",
+          "failure_signature": "",
+          "internal.fidelity": "compact",
+          "internal.thread_id": "start",
+          "last_response": "Done — hello from a Fabro greet run! 👋\n\n**Change:** appended one new haiku to the existing `## Haiku` section in `README.md` (+4 lines):\n\n> silent big.Int grows —\n> each term the sum of the two"
         },
         "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
           "greet": {
             "status": "succeeded",
             "context_updates": {
@@ -353,22 +357,80 @@
               "tool_time_ms": 757,
               "active_time_ms": 29576
             }
-          },
-          "start": {
-            "status": "succeeded",
-            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "7a756ba8def48145f86b3db90aee1614746a40c6",
         "node_visits": {
           "start": 1,
           "greet": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/README.md b/README.md\nindex 71a383b..b065d05 100644\n--- a/README.md\n+++ b/README.md\n@@ -283,3 +283,7 @@ small seeds, boundless sums\n one, one, two, three, five —\n the sequence whispers onward,\n infinity blooms\n+\n+silent big.Int grows —\n+each term the sum of the two,\n+terminal blooms gold\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-08-25T18:34:56.832613728Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 41463,
+      "inference_time_ms": 28819,
+      "tool_time_ms": 757,
+      "active_time_ms": 29576
+    },
+    "final_git_commit_sha": "7a756ba8def48145f86b3db90aee1614746a40c6",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "greet",
+        "stage_label": "greet",
+        "timing": {
+          "wall_time_ms": 32022,
+          "inference_time_ms": 28819,
+          "tool_time_ms": 757,
+          "active_time_ms": 29576
+        },
+        "billing_usd_micros": 28215,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 10783,
+      "output_tokens": 338,
+      "total_tokens": 43393,
+      "reasoning_tokens": 784,
+      "cache_read_tokens": 31488,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 28215
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/README.md b/README.md\nindex 71a383b..b065d05 100644\n--- a/README.md\n+++ b/README.md\n@@ -283,3 +283,7 @@ small seeds, boundless sums\n one, one, two, three, five —\n the sequence whispers onward,\n infinity blooms\n+\n+silent big.Int grows —\n+each term the sum of the two,\n+terminal blooms gold\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -398,7 +460,12 @@
       "first_event_seq": 26,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: greet",
+        "failure_reason": null,
+        "timestamp": "2026-08-25T18:34:50.158477641Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -412,8 +479,12 @@
       "started_at": "2026-08-25T18:34:16.220691486Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 30717,
-      "live_tool_ms": 754,
+      "timing": {
+        "wall_time_ms": 32022,
+        "inference_time_ms": 28819,
+        "tool_time_ms": 757,
+        "active_time_ms": 29576
+      },
       "usage": {
         "input_tokens": 10783,
         "output_tokens": 338,
@@ -750,7 +821,7 @@
         "warnings": []
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "succeeded"
     },
     "start@1": {
       "first_event_seq": 22,
@@ -770,6 +841,42 @@
       "output": null,
       "started_at": "2026-08-25T18:34:16.161718157Z",
       "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 71,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-25T18:34:56.800667281Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-25T18:34:56.800605897Z",
+      "handler": "exit",
       "graph_visit": 1,
       "timing": {
         "wall_time_ms": 0,

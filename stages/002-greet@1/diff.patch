@@ -1,0 +1,12 @@
+diff --git a/README.md b/README.md
+index 71a383b..b065d05 100644
+--- a/README.md
++++ b/README.md
+@@ -283,3 +283,7 @@ small seeds, boundless sums
+ one, one, two, three, five —
+ the sequence whispers onward,
+ infinity blooms
++
++silent big.Int grows —
++each term the sum of the two,
++terminal blooms gold
