@@ -131,7 +131,7 @@ def main [
         print 'run_workflow: auto-merge already landed — fast-forward pull'
         ok (do { git pull --ff-only origin $branch } | complete) 'git pull'
     } else {
-        print $"run_workflow: squash-merging ($run_branch) into ($branch) (provisional auto-merge, fabro-ab2c)"
+        print $"run_workflow: squash-merging ($run_branch) into ($branch) \(provisional auto-merge, fabro-ab2c)"
         ok (do { git merge --squash $run_branch } | complete) 'squash merge'
         let nothing_staged = ((do { git diff --cached --quiet } | complete).exit_code == 0)
         if $nothing_staged {
@@ -171,12 +171,12 @@ def main [
     let cost = (($info | get -o total_usd_micros | default 0) / 1_000_000)
     let generated = (date now | format date '%Y-%m-%d %H:%M%z')
     let header = (
-        "# Improve review — run ($run_id)\n\n"
+        $"# Improve review — run ($run_id)\n\n"
         + $"- workflow: ($workflow)\n"
         + $"- branch integrated: ($branch)\n"
         + $"- status: ($status) \(($reason)), ($wall_min) min, \$($cost)\n"
         + $"- generated: ($generated) by `fabro ask` with `scripts/prompts/improve.md`\n\n"
-        + '---\n\n'
+        + "---\n\n"
     )
     let review_path = $"($REVIEWS_DIR)/($run_id).md"
     ($header + $review + "\n") | save --force $review_path
