@@ -127,7 +127,7 @@ def main [
         $workflow
     })
     if $workflow != $slug {
-        print $"run_workflow: workflow slug '($slug)' (CLI arg: '($workflow)')"
+        print $"run_workflow: workflow slug '($slug)' \(CLI arg: '($workflow)')"
     }
     let status = ($info | get -o status | default '')
     let reason = ($info | get -o reason | default '')
@@ -185,7 +185,7 @@ def main [
     let turn = ($events | where event == 'run.session.turn.succeeded' | last)
     let review = ($turn | get -o properties | get -o output | default '' | into string)
     if ($review | str trim | is-empty) {
-        fail $"ask produced no answer text (events seen: ($events | length))"
+        fail $"ask produced no answer text \(events seen: ($events | length))"
     }
 
     let review_dir = $"($REVIEWS_DIR)/($slug)"
