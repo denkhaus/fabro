@@ -115,13 +115,18 @@ def main [
     let inspected = (do {
         ^$fabro_bin inspect $run_id --json --server $server
     } | complete)
+    # inspect --json answers with a LIST of run records; the slug sits at
+    # run_spec.workflow_slug. Guard both shape and emptiness — a bad slug
+    # must fall back to the CLI argument, never become '[]' or ''.
     let slug = (if $inspected.exit_code == 0 {
         try {
-            $inspected.stdout
-            | from json
-            | get -o workflow_slug
-            | default $workflow
-            | into string
+            let record = ($inspected.stdout | from json | first)
+            let found = ($record | get -o run_spec | get -o workflow_slug | default '')
+            if (($found | describe) == 'string') and (not ($found | str trim | is-empty)) {
+                $found
+            } else {
+                $workflow
+            }
         } catch { $workflow }
     } else {
         $workflow
