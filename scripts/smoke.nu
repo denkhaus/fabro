@@ -18,9 +18,15 @@
 # instead of shipping a broken instance.
 
 # One probe: {name, ok, detail}. curl via complete keeps a 404 a data
-# point, not a script crash (same pattern as wait-healthy).
-def probe [name: string, url: string]: nothing -> record {
-    let res = (do { ^curl -sS -m 5 -o /dev/null -w "%{http_code}" $url } | complete)
+# point, not a script crash (same pattern as wait-healthy). `--html`
+# sends a browser Accept header: the SPA fallback serves index.html only
+# to navigations that accept HTML — a bare curl gets 404 BY DESIGN.
+def probe [name: string, url: string, --html]: nothing -> record {
+    let res = (if $html {
+        do { ^curl -sS -m 5 -H "Accept: text/html" -o /dev/null -w "%{http_code}" $url } | complete
+    } else {
+        do { ^curl -sS -m 5 -o /dev/null -w "%{http_code}" $url } | complete
+    })
     let status = ($res.stdout | str trim)
     {
         name: $name
@@ -58,8 +64,8 @@ def main [port: string = "32276", cli: string = "~/.fabro/bin/fabro"]: nothing -
         $results = ($results | append (probe $"asset ($asset)" $"($base)/($asset)"))
     }
 
-    # 4. SPA deep route falls back to the index
-    $results = ($results | append (probe "SPA deep route /runs" $"($base)/runs"))
+    # 4. SPA deep route falls back to the index (browser navigation)
+    $results = ($results | append (probe "SPA deep route /runs" $"($base)/runs" --html))
 
     # 5. CLI API roundtrip
     let ps = (do { ^$cli ps } | complete)
