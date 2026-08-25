@@ -273,3 +273,9 @@ $ echo $?
 With no `-format`, plain `-pretty` and `-json` together is not an
 error; JSON mode simply wins and the output is identical to `-json`
 alone.
+
+## Haiku
+
+golden spirals grow —
+each number born from the last,
+small seeds, boundless sums
