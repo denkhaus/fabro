@@ -35,15 +35,25 @@ validation + TestCountFlagRejects`. The reviewer judges from context
 first — this report is what lets it approve without hunting. A FAIL you
 cannot resolve is a deviation: say so explicitly instead of hiding it.
 
-## Platform scope is off-limits — use the painpoint channel
+## Platform scope is off-limits — use the journal
 
 You build the PRODUCT. Never modify workflow assets or repo wiring:
 `.fabro/`, `scripts/`, `justfile`, `.mise.toml`, `AGENTS.md`, `CONTEXT.md`,
 `docs/`. When your work reveals friction in these (a script bug, a prompt
-gap, a gate blind spot), do NOT fix it here. Emit it in your JSON under
-`context_updates.journal`, e.g.
-{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}]}}.
-The engine records it durably per stage (no restating, no rewriting).
+gap, a gate blind spot), do NOT fix it here — report it.
+
+Report through `context_updates.journal` on EVERY pass. Silence is a
+missing report, not an empty one — two full runs shipped zero journal
+lines because answering was optional. Always emit BOTH keys:
+
+{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<a surprise, near-miss, or shortcut risk you hit while implementing: file, what, why it matters>"]}}
+
+- `painpoints`: dev-loop friction in platform assets. `[]` when nothing hurt.
+- `observations`: at least one entry. The literal `"none"` is a valid
+  answer when the pass was genuinely unremarkable — but the key must be
+  present every time.
+The engine records it durably per stage (no restating, no rewriting);
+nobody re-reads your prose, only the JSON survives.
 
 ## Verification-only briefs
 
@@ -74,7 +84,8 @@ Implemented:
   "outcome": "succeeded",
   "preferred_next_label": "Implemented",
   "context_updates": {
-    "implementation_summary": "<files touched and what was built, one short paragraph; then the per-criterion PASS/FAIL verification report>"
+    "implementation_summary": "<files touched and what was built, one short paragraph; then the per-criterion PASS/FAIL verification report>",
+    "journal": {"painpoints": [], "observations": ["none"]}
   }
 }
 

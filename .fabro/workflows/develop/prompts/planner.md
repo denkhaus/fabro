@@ -48,13 +48,21 @@ Do not implement anything yourself. Do not review. Planning and tracker writes o
 
 When you write text that flows into context (briefs, feedback), wrap absolute paths in backticks. Never write a bare slash-word surrounded by spaces — later agent stages parse such tokens as skill references and crash on them.
 
-## Painpoint channel
+## Journal — every pass answers
 
-If planning revealed friction in the dev loop itself (workflow, scripts,
-gate), do not fix platform assets — emit it in your JSON under
-`context_updates.journal`, e.g.
-{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}]}}.
-The engine records it durably per stage (no restating, no rewriting).
+Report through `context_updates.journal` on EVERY pass. Silence is a
+missing report, not an empty one — two full runs shipped zero journal
+lines because answering was optional. Always emit BOTH keys:
+
+{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<what the next planner should know: a surprise in the tracker or spec, a stale seed, a contradiction you resolved in the brief>"]}}
+
+- `painpoints`: friction in the dev loop itself (workflow, scripts, gate).
+  Do not fix platform assets — report them here. `[]` when nothing hurt.
+- `observations`: at least one entry. The literal `"none"` is a valid
+  answer when the pass was genuinely unremarkable — but the key must be
+  present every time.
+The engine records it durably per stage (no restating, no rewriting);
+nobody re-reads your prose, only the JSON survives.
 
 ## Outcome contract
 
@@ -74,7 +82,8 @@ Claimed a seed:
   "context_updates": {
     "current_seed_id": "<the seed id, e.g. proj-a1b2>",
     "current_seed_title": "<its title>",
-    "current_seed_brief": "<one short paragraph: what must be built, acceptance criteria, review feedback if re-plan>"
+    "current_seed_brief": "<one short paragraph: what must be built, acceptance criteria, review feedback if re-plan>",
+    "journal": {"painpoints": [], "observations": ["none"]}
   }
 }
 
@@ -83,7 +92,8 @@ Tracker empty (the goal is achieved, not an error):
   "outcome": "succeeded",
   "preferred_next_label": "Tracker empty",
   "context_updates": {
-    "review_verdict": ""
+    "review_verdict": "",
+    "journal": {"painpoints": [], "observations": ["none"]}
   }
 }
 
