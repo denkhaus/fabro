@@ -40,7 +40,35 @@ default:
 # health, smoke-test the routes a user hits (health, SPA index + every
 # referenced asset, SPA deep route, CLI API roundtrip). Smoke failure aborts
 # with an ALARM block instead of shipping a broken instance.
-up: clean build-image install-cli compose-up wait-healthy smoke clean
+#
+# LOCK (fabro-332e, partial): two overlapping `just up` runs raced the SPA
+# dist mirror on 2026-08-25 and shipped an instance whose UI 404'd every
+# asset while health stayed green. The lock file (tmp/just-up.lock, held by
+# flock on an open fd for the WHOLE pipeline) makes the second run abort
+# immediately with the holder's pid instead of corrupting the mirror.
+up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p tmp
+    exec 9>tmp/just-up.lock
+    if ! flock -n 9; then
+        holder=$(cat tmp/just-up.lock.pid 2>/dev/null || echo "unknown pid")
+        echo "" >&2
+        echo "╔══ ALARM: another 'just up' is already running ($holder) ══╗" >&2
+        echo "║ A second pipeline would race bun build + the SPA dist mirror ║" >&2
+        echo "║ and can ship an instance with a dead UI (2026-08-25 incident).║" >&2
+        echo "║ Wait for the running one, or kill $holder first.             ║" >&2
+        echo "╚══════════════════════════════════════════════════════════════╝" >&2
+        exit 1
+    fi
+    echo $$ > tmp/just-up.lock.pid
+    just clean
+    just build-image
+    just install-cli
+    just compose-up
+    just wait-healthy
+    just smoke
+    just clean
 
 # Build the release binary and the local docker image (cached; uses cargo dev docker-build)
 build-image: web-deps
