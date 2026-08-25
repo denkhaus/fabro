@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use walkdir::WalkDir;
 
-use super::spa_refresh::{TempDir, mirror_dist, run_bun_build};
+use super::spa_refresh::{SpaRefreshLock, TempDir, mirror_dist, run_bun_build};
 use super::workspace_root;
 
 const DEFAULT_ASSET_BUDGET_BYTES: u64 = 15 * 1024 * 1024;
@@ -34,6 +34,7 @@ pub(crate) struct SpaCheckArgs {
 )]
 pub(crate) fn spa_check(args: SpaCheckArgs) -> Result<()> {
     let root = args.root.unwrap_or_else(workspace_root);
+    let _lock = SpaRefreshLock::acquire(&root)?;
     let web_dir = root.join("apps/fabro-web");
     let dist_dir = web_dir.join("dist");
     let asset_dir = root.join("lib/apps/fabro-spa/assets");
