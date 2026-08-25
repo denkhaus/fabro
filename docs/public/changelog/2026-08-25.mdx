@@ -1,0 +1,24 @@
+---
+title: "Stop workflows when a node fails"
+date: "2026-08-25"
+---
+
+Workflows can now set graph-level `on_failure="exit"` to stop after a failed
+node when no explicit recovery route matches. Fabro skips the unconditional
+edge, checks configured retry targets, and ends the run as failed if no retry
+target exists.
+
+The default `on_failure="route"` preserves existing workflow behavior.
+
+```dot
+digraph Build {
+    graph [on_failure="exit"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    plan [prompt="Plan the work"]
+    implement [prompt="Implement the plan"]
+    verify [prompt="Verify the implementation"]
+
+    start -> plan -> implement -> verify -> exit
+}
+```

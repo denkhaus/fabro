@@ -2,8 +2,39 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use strum::VariantNames;
 
 use crate::AgentBackend;
+
+/// Policy for routing a failed node when no explicit recovery edge matches.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    strum::Display,
+    strum::EnumString,
+    strum::IntoStaticStr,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum OnFailure {
+    #[default]
+    Route,
+    Exit,
+}
+
+impl OnFailure {
+    #[must_use]
+    pub fn expected_values() -> String {
+        <Self as VariantNames>::VARIANTS.join(", ")
+    }
+}
 
 /// Typed attribute values for nodes, edges, and graph-level attributes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -538,6 +569,18 @@ impl Graph {
             .and_then(AttrValue::as_str)
     }
 
+    /// Graph-level failure routing policy. Invalid values are rejected during
+    /// workflow validation, so runtime resolution can use the compatibility
+    /// default.
+    #[must_use]
+    pub fn on_failure(&self) -> OnFailure {
+        self.attrs
+            .get("on_failure")
+            .and_then(AttrValue::as_str)
+            .and_then(|value| value.parse().ok())
+            .unwrap_or_default()
+    }
+
     /// Graph-level `default_fidelity`.
     pub fn default_fidelity(&self) -> Option<&str> {
         self.attrs
@@ -665,6 +708,33 @@ pub fn reference_kind_for_attribute(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn on_failure_parses_and_displays_supported_values() {
+        assert_eq!("route".parse::<OnFailure>().unwrap(), OnFailure::Route);
+        assert_eq!("exit".parse::<OnFailure>().unwrap(), OnFailure::Exit);
+        assert_eq!(OnFailure::Route.to_string(), "route");
+        assert_eq!(OnFailure::Exit.to_string(), "exit");
+        assert_eq!(OnFailure::expected_values(), "route, exit");
+    }
+
+    #[test]
+    fn graph_on_failure_defaults_to_route_and_resolves_explicit_values() {
+        let mut graph = Graph::new("test");
+        assert_eq!(graph.on_failure(), OnFailure::Route);
+
+        graph.attrs.insert(
+            "on_failure".to_string(),
+            AttrValue::String("route".to_string()),
+        );
+        assert_eq!(graph.on_failure(), OnFailure::Route);
+
+        graph.attrs.insert(
+            "on_failure".to_string(),
+            AttrValue::String("exit".to_string()),
+        );
+        assert_eq!(graph.on_failure(), OnFailure::Exit);
+    }
 
     #[test]
     fn attr_value_as_str() {

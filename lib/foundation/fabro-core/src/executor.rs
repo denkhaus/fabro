@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
+use fabro_types::OnFailure;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
@@ -282,10 +283,16 @@ impl<G: Graph + 'static> Executor<G> {
                 NextStep::End => {
                     let mut outcome = last_outcome.clone();
                     if outcome.status.is_failure() {
-                        outcome = Outcome::fail(&format!(
-                            "stage {} failed with no outgoing fail edge",
-                            node.id()
-                        ));
+                        let message = match graph.on_failure() {
+                            OnFailure::Route => {
+                                format!("stage {} failed with no outgoing fail edge", node.id())
+                            }
+                            OnFailure::Exit => format!(
+                                "stage {} failed and graph on_failure=exit stopped routing",
+                                node.id()
+                            ),
+                        };
+                        outcome = Outcome::fail(&message);
                     }
                     self.lifecycle.on_run_end(&outcome, &state).await;
                     return Ok((outcome, state));
@@ -2178,6 +2185,113 @@ mod tests {
         let (result, _) = executor.run(&g, state).await.unwrap();
         assert_eq!(result.status, StageOutcome::Succeeded);
         assert_eq!(handler.calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn executor_exit_policy_ends_failed_run_with_policy_message_and_no_next_node() {
+        #[derive(Default)]
+        struct ExitPolicyLog {
+            checkpoints: Vec<(String, Option<String>)>,
+            run_end:     Option<Outcome>,
+        }
+
+        struct ExitPolicyLifecycle(Arc<Mutex<ExitPolicyLog>>);
+
+        #[async_trait]
+        impl RunLifecycle<TestGraph> for ExitPolicyLifecycle {
+            async fn on_checkpoint(
+                &self,
+                node: &TestNode,
+                _result: &NodeResult,
+                next_node_id: Option<&str>,
+                _state: &ExecutionState,
+            ) -> Result<()> {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .checkpoints
+                    .push((node.id().to_string(), next_node_id.map(ToOwned::to_owned)));
+                Ok(())
+            }
+
+            async fn on_run_end(&self, outcome: &Outcome, _state: &ExecutionState) {
+                self.0.lock().unwrap().run_end = Some(outcome.clone());
+            }
+        }
+
+        let graph = TestGraph::new(
+            vec![
+                TestNode::new("work"),
+                TestNode::new("downstream"),
+                TestNode::terminal("end"),
+            ],
+            vec![
+                TestEdge::new("work", "downstream"),
+                TestEdge::new("downstream", "end"),
+            ],
+            "work",
+        )
+        .with_on_failure(OnFailure::Exit);
+        let state = ExecutionState::new(&graph).unwrap();
+        let log = Arc::new(Mutex::new(ExitPolicyLog::default()));
+        let executor = ExecutorBuilder::new(
+            Arc::new(AlwaysFailHandler::new("boom")) as Arc<dyn NodeHandler<TestGraph>>
+        )
+        .lifecycle(Box::new(ExitPolicyLifecycle(Arc::clone(&log))))
+        .build();
+
+        let (outcome, state) = executor.run(&graph, state).await.unwrap();
+
+        assert_eq!(outcome.status, StageOutcome::Failed {
+            retry_requested: false,
+        });
+        assert_eq!(
+            outcome
+                .failure
+                .as_ref()
+                .map(|failure| failure.message.as_str()),
+            Some("stage work failed and graph on_failure=exit stopped routing")
+        );
+        assert!(state.node_outcomes.contains_key("work"));
+        assert!(!state.node_outcomes.contains_key("downstream"));
+
+        let log = log.lock().unwrap();
+        assert_eq!(log.checkpoints, vec![("work".to_string(), None)]);
+        assert_eq!(log.run_end.as_ref(), Some(&outcome));
+    }
+
+    #[tokio::test]
+    async fn executor_exit_policy_uses_retry_target_before_termination() {
+        let handler = Arc::new(CountingHandler::new(vec![
+            Ok(Outcome::fail("boom")),
+            Ok(Outcome::success()),
+        ]));
+        let graph = TestGraph::new(
+            vec![
+                TestNode::new("work"),
+                TestNode::new("downstream"),
+                TestNode::new("recovery"),
+                TestNode::terminal("end"),
+            ],
+            vec![
+                TestEdge::new("work", "downstream"),
+                TestEdge::new("downstream", "end"),
+                TestEdge::new("recovery", "end"),
+            ],
+            "work",
+        )
+        .with_retry_target("work", "recovery")
+        .with_on_failure(OnFailure::Exit);
+        let state = ExecutionState::new(&graph).unwrap();
+        let executor =
+            ExecutorBuilder::new(Arc::clone(&handler) as Arc<dyn NodeHandler<TestGraph>>).build();
+
+        let (outcome, state) = executor.run(&graph, state).await.unwrap();
+
+        assert_eq!(outcome.status, StageOutcome::Succeeded);
+        assert_eq!(handler.calls(), 2);
+        assert!(state.node_outcomes.contains_key("recovery"));
+        assert!(!state.node_outcomes.contains_key("downstream"));
     }
 
     #[tokio::test]
