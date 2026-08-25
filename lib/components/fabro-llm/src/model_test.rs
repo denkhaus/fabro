@@ -55,19 +55,20 @@ pub async fn run_model_test(
     }
 }
 
+/// Output budget for tests where reasoning or tool rounds consume completion
+/// tokens before the final answer.
+const EXPANDED_MAX_TOKENS: i64 = 1024;
+
 async fn run_basic_test(
     info: &Model,
     reasoning_effort: Option<ReasoningEffort>,
     client: Arc<Client>,
 ) -> ModelTestOutcome {
-    let params = build_basic_test_params(
+    basic_probe(
         info.id.as_str(),
         info.provider.to_string(),
         reasoning_effort,
         client,
-    );
-    basic_model_probe_outcome(
-        generate::generate(params),
         Duration::from_secs(ModelTestMode::Basic.timeout_secs()),
     )
     .await
@@ -95,8 +96,17 @@ pub async fn run_basic_model_probe_with_timeout(
     client: Arc<Client>,
     probe_timeout: Duration,
 ) -> ModelTestOutcome {
-    let params = build_basic_test_params(model_id, provider.to_string(), None, client);
+    basic_probe(model_id, provider.to_string(), None, client, probe_timeout).await
+}
 
+async fn basic_probe(
+    model_id: &str,
+    provider: String,
+    reasoning_effort: Option<ReasoningEffort>,
+    client: Arc<Client>,
+    probe_timeout: Duration,
+) -> ModelTestOutcome {
+    let params = build_basic_test_params(model_id, provider, reasoning_effort, client);
     basic_model_probe_outcome(generate::generate(params), probe_timeout).await
 }
 
@@ -106,7 +116,11 @@ fn build_basic_test_params(
     reasoning_effort: Option<ReasoningEffort>,
     client: Arc<Client>,
 ) -> GenerateParams {
-    let max_tokens = if reasoning_effort.is_some() { 1024 } else { 16 };
+    let max_tokens = if reasoning_effort.is_some() {
+        EXPANDED_MAX_TOKENS
+    } else {
+        16
+    };
     let mut params = GenerateParams::new(model_id, client)
         .provider(provider)
         .prompt("Say OK")
@@ -196,7 +210,7 @@ fn build_tools_test_params(
         )
         .tools(vec![add_tool])
         .max_tool_rounds(5)
-        .max_tokens(1024);
+        .max_tokens(EXPANDED_MAX_TOKENS);
 
     if let Some(reasoning_effort) = reasoning_effort {
         params = params.reasoning_effort(reasoning_effort);

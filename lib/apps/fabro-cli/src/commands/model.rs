@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail};
 use cli_table::format::{Border, Justify, Separator};
 use cli_table::{Cell, CellStruct, Color, Style, Table};
 use fabro_api::types as api_types;
-use fabro_model::{Model, ModelTestMode, ProviderId, ReasoningEffort};
+use fabro_model::{Model, ModelTestMode, ProviderId};
 use fabro_util::terminal::Styles;
 use futures::{StreamExt, stream};
 use serde::Serialize;
@@ -254,15 +254,15 @@ fn model_test_row_from_status(model: &Model, status: &str, result_color: Color) 
 )]
 async fn test_models_via_server(
     client: &server_client::Client,
-    provider: Option<&str>,
-    model: Option<&str>,
-    tools: bool,
-    reasoning_effort: Option<ReasoningEffort>,
-    jobs: usize,
+    args: &ModelTestArgs,
     styles: &Styles,
     json_output: bool,
 ) -> Result<()> {
-    let request_mode = tools.then_some(ModelTestMode::Deep);
+    let provider = args.provider.as_deref();
+    let model = args.model.as_deref();
+    let jobs = args.jobs;
+    let reasoning_effort = args.reasoning_effort;
+    let request_mode = args.tools.then_some(ModelTestMode::Deep);
 
     let use_color = styles.use_color;
     let mut title = models_title(use_color);
@@ -497,25 +497,8 @@ async fn run_models(
                 print_models_table(&models, &styles);
             }
         }
-        ModelsCommand::Test(ModelTestArgs {
-            provider,
-            model,
-            tools,
-            reasoning_effort,
-            jobs,
-            ..
-        }) => {
-            test_models_via_server(
-                client,
-                provider.as_deref(),
-                model.as_deref(),
-                tools,
-                reasoning_effort,
-                jobs,
-                &styles,
-                json_output,
-            )
-            .await?;
+        ModelsCommand::Test(args) => {
+            test_models_via_server(client, &args, &styles, json_output).await?;
         }
     }
 
@@ -531,7 +514,8 @@ impl Default for ModelsCommand {
 #[cfg(test)]
 mod tests {
     use fabro_model::{
-        ModelControls, ModelCosts, ModelFeatures, ModelLimits, ReasoningEffortFeature,
+        ModelControls, ModelCosts, ModelFeatures, ModelLimits, ReasoningEffort,
+        ReasoningEffortFeature,
     };
 
     use super::*;
@@ -825,18 +809,14 @@ mod tests {
 
         let client = test_client(&server.url(""));
 
-        test_models_via_server(
-            &client,
-            None,
-            Some("venice-large"),
-            false,
-            None,
-            1,
-            &Styles::new(false),
-            true,
-        )
-        .await
-        .unwrap();
+        let args = ModelTestArgs {
+            model: Some("venice-large".to_string()),
+            jobs: 1,
+            ..ModelTestArgs::default()
+        };
+        test_models_via_server(&client, &args, &Styles::new(false), true)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -897,13 +877,13 @@ mod tests {
             })
             .await;
 
+        let args = ModelTestArgs {
+            jobs: 2,
+            ..ModelTestArgs::default()
+        };
         test_models_via_server(
             &test_client(&server.url("")),
-            None,
-            None,
-            false,
-            None,
-            2,
+            &args,
             &Styles::new(false),
             true,
         )

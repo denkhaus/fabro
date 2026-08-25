@@ -2904,6 +2904,7 @@ dependencies = [
 name = "fabro-model"
 version = "0.336.0-nightly.1"
 dependencies = [
+ "clap",
  "fabro-static",
  "http 1.4.0",
  "insta",

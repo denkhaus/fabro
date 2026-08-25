@@ -1096,8 +1096,8 @@ pub(crate) struct ModelTestArgs {
     #[arg(long, alias = "deep")]
     pub(crate) tools: bool,
 
-    /// Request a reasoning-effort level (low, medium, high, xhigh, or max)
-    #[arg(long)]
+    /// Request a reasoning-effort level
+    #[arg(long, value_enum)]
     pub(crate) reasoning_effort: Option<ReasoningEffort>,
 }
 
