@@ -29,6 +29,20 @@ or rebase it.
 3. Deployed server state: if the instance was just built from the current
    tree, note it — the final `just up` will rebuild on the merged tree.
 
+## Resume after an interrupted session (2026-08-25 lesson)
+
+If a previous merge session died (disk space, crash): the merge commit may
+already exist and be committed while verification/push/deploy never ran.
+Reconstruct state first — `git log`, `git status`, `ls .git/MERGE_HEAD`,
+`git log origin/denkhaus..denkhaus` — instead of re-merging. A wiped
+`target/` means full rebuild (~10 min build + ~10 min test compile).
+
+Disk guards before/during `just up`: check `df -h /`. Safe reclaim:
+`docker builder prune -f`, unused `fabro-runner-<sha12>` images (verify no
+running container uses them first). NEVER `docker volume prune` — the
+release build cache lives in the `fabro-docker-cargo-target-<arch>` volume
+(a prune turns the 8-min cached build into a ~40-min cold one).
+
 ## Merge phase
 
 Run `git merge upstream/main`. On conflicts, apply the resolution policy
@@ -50,6 +64,8 @@ Order matters; a red earlier step means fix before continuing.
    `ulimit -n 8192 && unset FABRO_SERVER && cargo nextest run -p fabro-sandbox -p fabro-workflow -p fabro-api -p fabro-server -p fabro-cli --no-fail-fast --test-threads 4`
    A test that fails only under full parallelism but passes isolated is a
    LOAD signal, not a regression — note it, do not chase it endlessly.
+   (2026-08-25, v0.336.0: `cmd::config::create_explicit_workflow_path_…`
+   failed SQLite seeding under load, passed isolated — known flake.)
 4. `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings` — zero.
 5. Web: `cd apps/fabro-web && bun run typecheck && bun run test` — 0 fail.
 

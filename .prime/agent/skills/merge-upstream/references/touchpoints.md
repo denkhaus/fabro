@@ -31,3 +31,9 @@ Upstream directions that may supersede our work — re-evaluate per merge:
 - Upstream exit-kind/terminal-status evolution could overlap our
   PublishBlocked/Boundary taxonomy — if upstream ships an equivalent,
   port ours onto it and close the local seed as superseded.
+- Graph `on_failure=exit` policy (PR #804, v0.336.0): blocks only the
+  unconditional fallback edge for failed nodes; explicit conditions,
+  preferred/suggested routes and retry targets still match. Orthogonal to
+  our exit kinds (deadlock/soft classify the terminal event; on_failure
+  only constrains routing). Do not adopt in `develop` — its edges already
+  route every failure explicitly and the exit kinds classify better.
