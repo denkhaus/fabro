@@ -1127,6 +1127,171 @@ impl Handler for AlwaysFailHandler {
     }
 }
 
+struct OnFailureRecordingHandler {
+    visits: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+#[async_trait::async_trait]
+impl Handler for OnFailureRecordingHandler {
+    async fn execute(
+        &self,
+        node: &Node,
+        _context: &fabro_workflow::context::Context,
+        _graph: &Graph,
+        _run_dir: &Path,
+        _services: &fabro_workflow::handler::EngineServices,
+    ) -> Result<Outcome, fabro_workflow::error::Error> {
+        self.visits.lock().unwrap().push(node.id.clone());
+        if node.id == "work" {
+            Ok(Outcome::fail_classify("forced work failure"))
+        } else {
+            Ok(Outcome::success())
+        }
+    }
+}
+
+/// Builds the linear on_failure test graph, splicing `extra` statements
+/// (policy attribute, recovery edges, node attributes) into the DOT source so
+/// tests exercise the real parser path for the `on_failure` attribute.
+fn on_failure_graph(extra: &str) -> Graph {
+    let input = format!(
+        r"digraph OnFailureTest {{
+        {extra}
+        start [shape=Mdiamond]
+        exit [shape=Msquare]
+        work
+        downstream
+        start -> work -> downstream -> exit
+    }}"
+    );
+    parse(&input).expect("on_failure test graph should parse")
+}
+
+fn on_failure_registry(visits: Arc<std::sync::Mutex<Vec<String>>>) -> HandlerRegistry {
+    let mut registry = HandlerRegistry::new(Box::new(OnFailureRecordingHandler { visits }));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry
+}
+
+struct OnFailureRun {
+    outcome:  Outcome,
+    state:    fabro_store::RunProjection,
+    visits:   Arc<std::sync::Mutex<Vec<String>>>,
+    _run_dir: tempfile::TempDir,
+}
+
+async fn run_on_failure(graph: &Graph, emitter: Emitter) -> OnFailureRun {
+    let visits = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let engine = WorkflowRunner::new(
+        on_failure_registry(Arc::clone(&visits)),
+        Arc::new(emitter),
+        local_env(),
+    );
+    let run_dir = tempfile::tempdir().expect("temporary run dir should be created");
+    let (outcome, state) = engine
+        .run_with_state(graph, &make_run_options(run_dir.path()))
+        .await
+        .expect("on_failure run should complete without engine errors");
+    OnFailureRun {
+        outcome,
+        state,
+        visits,
+        _run_dir: run_dir,
+    }
+}
+
+#[tokio::test]
+async fn on_failure_exit_stops_linear_workflow_and_records_failed_lifecycle() {
+    let graph = on_failure_graph(r#"graph [on_failure="exit"]"#);
+    let emitter = Emitter::default();
+    let events = collect_events(&emitter);
+    let run = run_on_failure(&graph, emitter).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Failed {
+        retry_requested: false,
+    });
+    assert_eq!(
+        run.outcome.failure_reason(),
+        Some("stage work failed and graph on_failure=exit stopped routing")
+    );
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work"]);
+
+    let checkpoint = run
+        .state
+        .current_checkpoint()
+        .expect("failed work should be checkpointed");
+    assert_eq!(checkpoint.current_node, "work");
+    assert_eq!(checkpoint.next_node_id, None);
+    assert!(!checkpoint.node_outcomes.contains_key("downstream"));
+
+    let events = events.lock().unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(&event.body, EventBody::RunFailed(_)))
+    );
+    assert!(events.iter().any(|event| {
+        matches!(
+            &event.body,
+            EventBody::CheckpointCompleted(properties)
+                if properties.current_node == "work" && properties.next_node_id.is_none()
+        )
+    }));
+    assert!(!events.iter().any(|event| {
+        matches!(
+            &event.body,
+            EventBody::EdgeSelected(properties) if properties.from_node == "work"
+        )
+    }));
+}
+
+#[tokio::test]
+async fn on_failure_route_and_absent_policy_preserve_unconditional_fallback() {
+    for policy_attr in ["", r#"graph [on_failure="route"]"#] {
+        let graph = on_failure_graph(policy_attr);
+        let run = run_on_failure(&graph, Emitter::default()).await;
+
+        assert_eq!(run.outcome.status, StageOutcome::Succeeded);
+        assert_eq!(*run.visits.lock().unwrap(), vec!["work", "downstream"]);
+        assert!(
+            run.state
+                .current_checkpoint()
+                .expect("downstream should be checkpointed")
+                .node_outcomes
+                .contains_key("downstream")
+        );
+    }
+}
+
+#[tokio::test]
+async fn on_failure_exit_allows_explicit_failure_recovery_edge() {
+    let graph = on_failure_graph(
+        r#"graph [on_failure="exit"]
+        recovery
+        work -> recovery [condition="outcome=failed"]
+        recovery -> exit"#,
+    );
+    let run = run_on_failure(&graph, Emitter::default()).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Succeeded);
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work", "recovery"]);
+}
+
+#[tokio::test]
+async fn on_failure_exit_uses_retry_target_instead_of_unconditional_edge() {
+    let graph = on_failure_graph(
+        r#"graph [on_failure="exit"]
+        work [retry_target="recovery"]
+        recovery
+        recovery -> exit"#,
+    );
+    let run = run_on_failure(&graph, Emitter::default()).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Succeeded);
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work", "recovery"]);
+}
+
 #[tokio::test]
 async fn goal_gate_routes_to_retry_target_on_failure() {
     // Pipeline:

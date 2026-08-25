@@ -358,3 +358,21 @@ fn invalid() {
       × Validation failed
     ");
 }
+
+#[test]
+fn invalid_on_failure_is_a_validation_failure() {
+    let context = test_context!();
+    let mut cmd = context.validate();
+    cmd.arg(fixture("on_failure_invalid.fabro"));
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+    Workflow: InvalidOnFailure (2 nodes, 1 edges)
+    Graph: [FIXTURES]/on_failure_invalid.fabro
+    error: Graph has invalid on_failure value 'stop' (on_failure_valid)
+      fix: Use one of: route, exit
+      × Validation failed
+    ");
+}
