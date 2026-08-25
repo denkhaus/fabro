@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail};
 use cli_table::format::{Border, Justify, Separator};
 use cli_table::{Cell, CellStruct, Color, Style, Table};
 use fabro_api::types as api_types;
-use fabro_model::{Model, ModelTestMode, ProviderId};
+use fabro_model::{Model, ModelTestMode, ProviderId, ReasoningEffort};
 use fabro_util::terminal::Styles;
 use futures::{StreamExt, stream};
 use serde::Serialize;
@@ -256,12 +256,13 @@ async fn test_models_via_server(
     client: &server_client::Client,
     provider: Option<&str>,
     model: Option<&str>,
-    deep: bool,
+    tools: bool,
+    reasoning_effort: Option<ReasoningEffort>,
     jobs: usize,
     styles: &Styles,
     json_output: bool,
 ) -> Result<()> {
-    let request_mode = deep.then_some(ModelTestMode::Deep);
+    let request_mode = tools.then_some(ModelTestMode::Deep);
 
     let use_color = styles.use_color;
     let mut title = models_title(use_color);
@@ -288,7 +289,12 @@ async fn test_models_via_server(
             } else {
                 Some(
                     client
-                        .test_model(model_id, requested_provider.as_ref(), request_mode)
+                        .test_model(
+                            model_id,
+                            requested_provider.as_ref(),
+                            request_mode,
+                            reasoning_effort,
+                        )
                         .await,
                 )
             };
@@ -375,7 +381,12 @@ async fn test_models_via_server(
                 let client = client.clone();
                 async move {
                     let result = client
-                        .test_model(info.id.as_str(), Some(&info.provider), request_mode)
+                        .test_model(
+                            info.id.as_str(),
+                            Some(&info.provider),
+                            request_mode,
+                            reasoning_effort,
+                        )
                         .await;
                     if !json_output {
                         eprintln!("Testing {}... done", info.id);
@@ -489,7 +500,8 @@ async fn run_models(
         ModelsCommand::Test(ModelTestArgs {
             provider,
             model,
-            deep,
+            tools,
+            reasoning_effort,
             jobs,
             ..
         }) => {
@@ -497,7 +509,8 @@ async fn run_models(
                 client,
                 provider.as_deref(),
                 model.as_deref(),
-                deep,
+                tools,
+                reasoning_effort,
                 jobs,
                 &styles,
                 json_output,
@@ -674,20 +687,24 @@ mod tests {
             .await;
 
         let client = test_client(&server.url(""));
-        let response = client.test_model("test-model", None, None).await.unwrap();
+        let response = client
+            .test_model("test-model", None, None, None)
+            .await
+            .unwrap();
 
         assert_eq!(response.status, api_types::ModelTestResultStatus::Ok);
         assert!(response.error_message.is_none());
     }
 
     #[tokio::test]
-    async fn test_model_via_server_passes_mode_and_parses_error() {
+    async fn test_model_via_server_passes_mode_and_reasoning_effort() {
         let server = httpmock::MockServer::start_async().await;
         server
             .mock_async(|when, then| {
                 when.method("POST")
                     .path("/api/v1/models/test-model/test")
-                    .query_param("mode", "deep");
+                    .query_param("mode", "deep")
+                    .query_param("reasoning_effort", "high");
                 then.status(200)
                     .header("Content-Type", "application/json")
                     .body(
@@ -704,7 +721,12 @@ mod tests {
 
         let client = test_client(&server.url(""));
         let response = client
-            .test_model("test-model", None, Some(ModelTestMode::Deep))
+            .test_model(
+                "test-model",
+                None,
+                Some(ModelTestMode::Deep),
+                Some(ReasoningEffort::High),
+            )
             .await
             .unwrap();
 
@@ -732,7 +754,10 @@ mod tests {
             .await;
 
         let client = test_client(&server.url(""));
-        let response = client.test_model("kimi-k2.5", None, None).await.unwrap();
+        let response = client
+            .test_model("kimi-k2.5", None, None, None)
+            .await
+            .unwrap();
 
         assert_eq!(response.status, api_types::ModelTestResultStatus::Skip);
         assert!(response.error_message.is_none());
@@ -756,7 +781,7 @@ mod tests {
             .await;
 
         let client = test_client(&server.url(""));
-        let result = client.test_model("bad-model", None, None).await;
+        let result = client.test_model("bad-model", None, None, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Model not found"));
     }
@@ -805,6 +830,7 @@ mod tests {
             None,
             Some("venice-large"),
             false,
+            None,
             1,
             &Styles::new(false),
             true,
@@ -876,6 +902,7 @@ mod tests {
             None,
             None,
             false,
+            None,
             2,
             &Styles::new(false),
             true,

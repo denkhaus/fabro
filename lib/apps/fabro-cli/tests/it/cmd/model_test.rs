@@ -86,19 +86,107 @@ fn help() {
     Usage: fabro model test [OPTIONS]
 
     Options:
-          --json                 Output as JSON [env: FABRO_JSON=]
-          --server <SERVER>      Fabro server target: http(s) URL or absolute Unix socket path [env: FABRO_SERVER=]
-          --debug                Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
-      -p, --provider <PROVIDER>  Filter by provider
-      -m, --model <MODEL>        Test a specific model
-          --no-upgrade-check     Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
-      -j, --jobs <JOBS>          Number of model tests to run concurrently in bulk mode [default: 4]
-          --quiet                Suppress non-essential output [env: FABRO_QUIET=]
-          --deep                 Run a multi-turn tool-use test (catches reasoning round-trip bugs)
-          --verbose              Enable verbose output [env: FABRO_VERBOSE=]
-      -h, --help                 Print help
+          --json
+              Output as JSON [env: FABRO_JSON=]
+          --server <SERVER>
+              Fabro server target: http(s) URL or absolute Unix socket path [env: FABRO_SERVER=]
+          --debug
+              Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+      -p, --provider <PROVIDER>
+              Filter by provider
+      -m, --model <MODEL>
+              Test a specific model
+          --no-upgrade-check
+              Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
+      -j, --jobs <JOBS>
+              Number of model tests to run concurrently in bulk mode [default: 4]
+          --quiet
+              Suppress non-essential output [env: FABRO_QUIET=]
+          --tools
+              Run a multi-turn tool-use test
+          --verbose
+              Enable verbose output [env: FABRO_VERBOSE=]
+          --reasoning-effort <REASONING_EFFORT>
+              Request a reasoning-effort level (low, medium, high, xhigh, or max)
+      -h, --help
+              Print help
     ----- stderr -----
     ");
+}
+
+#[test]
+fn model_test_tools_and_reasoning_effort_are_forwarded() {
+    let context = test_context!();
+    let server = MockServer::start();
+    context.set_http_target(&server.base_url());
+    let list = mock_model_list(&server, [model_json("test-model", "anthropic", true)]);
+    let test = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/models/test-model/test")
+            .query_param("mode", "deep")
+            .query_param("reasoning_effort", "low");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(serde_json::json!({
+                "model_id": "test-model",
+                "provider": "anthropic",
+                "status": "ok"
+            }));
+    });
+
+    let mut cmd = context.command();
+    cmd.args([
+        "model",
+        "test",
+        "--model",
+        "test-model",
+        "--tools",
+        "--reasoning-effort",
+        "low",
+    ]);
+    let output = cmd.output().expect("command should execute");
+
+    assert!(
+        output.status.success(),
+        "model test should succeed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    list.assert();
+    test.assert();
+}
+
+#[test]
+fn model_test_deep_remains_an_alias_for_tools() {
+    let context = test_context!();
+    let server = MockServer::start();
+    context.set_http_target(&server.base_url());
+    let list = mock_model_list(&server, [model_json("test-model", "anthropic", true)]);
+    let test = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/models/test-model/test")
+            .query_param("mode", "deep");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(serde_json::json!({
+                "model_id": "test-model",
+                "provider": "anthropic",
+                "status": "ok"
+            }));
+    });
+
+    let mut cmd = context.command();
+    cmd.args(["model", "test", "--model", "test-model", "--deep"]);
+    let output = cmd.output().expect("command should execute");
+
+    assert!(
+        output.status.success(),
+        "model test should succeed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    list.assert();
+    test.assert();
 }
 
 #[test]

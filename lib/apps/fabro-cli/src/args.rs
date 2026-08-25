@@ -5,6 +5,7 @@ use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use fabro_agent::cli::AgentArgs;
 use fabro_config::{CliLayer, CliLoggingLayer, CliOutputLayer, CliUpdatesLayer};
+use fabro_model::ReasoningEffort;
 use fabro_server::serve::DEFAULT_TCP_PORT;
 use fabro_static::EnvVars;
 use fabro_types::settings::cli::{OutputFormat, OutputVerbosity};
@@ -1091,9 +1092,13 @@ pub(crate) struct ModelTestArgs {
     )]
     pub(crate) jobs: usize,
 
-    /// Run a multi-turn tool-use test (catches reasoning round-trip bugs)
+    /// Run a multi-turn tool-use test
+    #[arg(long, alias = "deep")]
+    pub(crate) tools: bool,
+
+    /// Request a reasoning-effort level (low, medium, high, xhigh, or max)
     #[arg(long)]
-    pub(crate) deep: bool,
+    pub(crate) reasoning_effort: Option<ReasoningEffort>,
 }
 
 #[derive(Args)]

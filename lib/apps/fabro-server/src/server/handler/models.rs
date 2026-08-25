@@ -3,7 +3,7 @@ use std::sync::Arc;
 use fabro_auth::ApiCredential;
 use fabro_llm::client::Client as LlmClient;
 use fabro_llm::model_test::{ModelTestStatus, run_basic_model_probe};
-use fabro_model::ModelSelectionError;
+use fabro_model::{ModelSelectionError, ReasoningEffort};
 use fabro_redact::redact_string;
 
 use super::super::{
@@ -41,9 +41,11 @@ struct ModelListParams {
 #[derive(serde::Deserialize)]
 struct ModelTestParams {
     #[serde(default)]
-    mode:     Option<String>,
+    mode:             Option<String>,
     #[serde(default)]
-    provider: Option<String>,
+    provider:         Option<String>,
+    #[serde(default)]
+    reasoning_effort: Option<String>,
 }
 
 async fn list_models(
@@ -207,6 +209,19 @@ async fn test_model(
         },
         None => ModelTestMode::Basic,
     };
+    let reasoning_effort = match params.reasoning_effort.as_deref() {
+        Some(value) => match ReasoningEffort::from_str(value) {
+            Ok(reasoning_effort) => Some(reasoning_effort),
+            Err(_) => {
+                return ApiError::new(
+                    StatusCode::BAD_REQUEST,
+                    format!("invalid reasoning effort: {value}"),
+                )
+                .into_response();
+            }
+        },
+        None => None,
+    };
     let llm_result = match state.resolve_llm_client().await {
         Ok(result) => result,
         Err(err) => {
@@ -253,7 +268,7 @@ async fn test_model(
     }
     let client = Arc::new(llm_result.client);
 
-    let outcome = run_model_test(info, mode, client).await;
+    let outcome = run_model_test(info, mode, reasoning_effort, client).await;
     Json(serde_json::json!({
         "model_id": info.id,
         "provider": info.provider,
