@@ -5692,6 +5692,7 @@ paths:
           description: The canonical model ID or an alias.
         - $ref: "#/components/parameters/ModelTestProviderParam"
         - $ref: "#/components/parameters/ModelTestModeParam"
+        - $ref: "#/components/parameters/ModelTestReasoningEffortParam"
       responses:
         "200":
           description: Test result
@@ -5700,7 +5701,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ModelTestResult"
         "400":
-          description: Invalid test mode
+          description: Invalid test mode or reasoning effort
           headers:
             x-request-id:
               $ref: "#/components/headers/XRequestId"
@@ -6233,6 +6234,15 @@ components:
       schema:
         $ref: "#/components/schemas/ProviderId"
       example: openrouter
+
+    ModelTestReasoningEffortParam:
+      name: reasoning_effort
+      in: query
+      required: false
+      description: Optional native reasoning-effort level for the model test.
+      schema:
+        $ref: "#/components/schemas/ReasoningEffort"
+      example: high
 
   headers:
     XRequestId:

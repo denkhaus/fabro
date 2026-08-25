@@ -8054,6 +8054,117 @@ async fn test_model_invalid_mode_returns_400() {
 }
 
 #[tokio::test]
+async fn test_model_invalid_reasoning_effort_returns_400() {
+    let state = test_app_state_with_env_lookup(
+        default_test_server_settings(),
+        RunLayer::default(),
+        5,
+        |_| None,
+    );
+    let app = crate::test_support::build_test_router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(api("/models/claude-opus-4-6/test?reasoning_effort=bogus"))
+        .header("content-type", "application/json")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_status!(response, StatusCode::BAD_REQUEST).await;
+}
+
+#[tokio::test]
+async fn test_model_forwards_and_validates_reasoning_effort() {
+    let upstream = MockServer::start();
+    let completion = upstream.mock(|when, then| {
+        when.method(POST)
+            .path("/chat/completions")
+            .json_body_includes(r#"{"model":"acme-reasoner","reasoning_effort":"low"}"#);
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "id": "chatcmpl-test",
+                "model": "acme-reasoner",
+                "choices": [{
+                    "message": {"role": "assistant", "content": "OK"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2
+                }
+            }));
+    });
+    let settings: LlmCatalogSettings = toml::from_str(&format!(
+        r#"
+[providers.acme]
+display_name = "Acme"
+adapter = "openai_compatible"
+agent_profile = "openai"
+base_url = "{}"
+priority = 120
+
+[providers.acme.auth]
+credentials = ["vault:ACME_API_KEY"]
+
+[providers.acme.models.acme-reasoner]
+display_name = "Acme Reasoner"
+family = "acme"
+default = true
+
+[providers.acme.models.acme-reasoner.limits]
+context_window = 128000
+
+[providers.acme.models.acme-reasoner.features]
+tools = true
+vision = false
+reasoning = true
+reasoning_effort = "levels"
+
+[providers.acme.models.acme-reasoner.controls]
+reasoning_effort = ["low", "high"]
+"#,
+        upstream.base_url()
+    ))
+    .expect("catalog fixture should parse");
+    let state = TestAppStateBuilder::new()
+        .llm_catalog_settings(settings)
+        .vault_entries([("ACME_API_KEY", "acme-test-key")])
+        .build();
+    let app = crate::test_support::build_test_router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(api(
+            "/models/acme-reasoner/test?provider=acme&reasoning_effort=low",
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(req).await.unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+    assert_eq!(body["status"], "ok");
+
+    let unsupported = Request::builder()
+        .method("POST")
+        .uri(api(
+            "/models/acme-reasoner/test?provider=acme&reasoning_effort=medium",
+        ))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(unsupported).await.unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+    assert_eq!(body["status"], "error");
+    assert_eq!(
+        body["error_message"],
+        "Invalid request: model 'acme-reasoner' does not support reasoning_effort 'medium'; allowed values: low, high"
+    );
+    completion.assert_calls(1);
+}
+
+#[tokio::test]
 async fn test_provider_credentials_uses_app_state_catalog() {
     let upstream = MockServer::start();
     let completion = upstream.mock(|when, then| {

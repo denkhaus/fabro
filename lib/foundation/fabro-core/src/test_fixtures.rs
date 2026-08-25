@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use async_trait::async_trait;
+use fabro_types::OnFailure;
 
 use crate::context::Context;
 use crate::error::{Error, HandlerErrorDetail, Result};
@@ -122,6 +123,7 @@ pub struct TestGraph {
     pub edges:         Vec<TestEdge>,
     pub start_node_id: String,
     pub retry_targets: HashMap<String, String>,
+    pub on_failure:    OnFailure,
 }
 
 impl TestGraph {
@@ -131,12 +133,19 @@ impl TestGraph {
             edges,
             start_node_id: start.to_string(),
             retry_targets: HashMap::new(),
+            on_failure: OnFailure::Route,
         }
     }
 
     #[must_use]
     pub fn with_retry_target(mut self, from: &str, to: &str) -> Self {
         self.retry_targets.insert(from.to_string(), to.to_string());
+        self
+    }
+
+    #[must_use]
+    pub fn with_on_failure(mut self, on_failure: OnFailure) -> Self {
+        self.on_failure = on_failure;
         self
     }
 }
@@ -208,6 +217,10 @@ impl Graph for TestGraph {
             }
         }
 
+        if outcome.status.is_failure() && self.on_failure == OnFailure::Exit {
+            return None;
+        }
+
         // Fourth: unconditional (no label)
         if let Some(e) = edges.iter().find(|e| e.label.is_none()) {
             return Some(EdgeSelection {
@@ -242,6 +255,10 @@ impl Graph for TestGraph {
 
     fn get_retry_target(&self, failed_node_id: &str) -> Option<String> {
         self.retry_targets.get(failed_node_id).cloned()
+    }
+
+    fn on_failure(&self) -> OnFailure {
+        self.on_failure
     }
 }
 
