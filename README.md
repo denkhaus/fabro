@@ -236,6 +236,17 @@ $ gofib -version
 gofib 1.3.0
 ```
 
+`-sum` replaces the per-number output with a single line carrying the
+`math/big` sum of the Fibonacci numbers in the same `-start`/`-limit`/
+`-n` intersection line mode would print (an empty range sums to `0`),
+rendered per output mode — `sum: <value>` in text, one JSON object in
+json, the bare value in pretty/table:
+
+```
+$ gofib -n 10 -sum
+sum: 143
+```
+
 An invalid count fails with a non-zero exit and an error on stderr:
 
 ```
@@ -256,6 +267,7 @@ $ echo $?
 | `-format <mode>` | Output-mode flag: selects the output style globally — `text` (the default), `json` (JSON Lines), `pretty` (right-aligned text columns), or `table` (compact: values only, one per line, right-justified to the width of the widest value printed, no index column). Composes with `-start`, `-n`, `-limit`, and `-seed` as usual. An invalid value exits non-zero with `invalid value "xml" for flag -format: must be one of text, json, pretty, table` on stderr. `-json` and `-pretty` are **shortcuts** for `-format json` / `-format pretty`: with `-format` unset they keep their legacy meaning (plain `-json -pretty` is still not an error — JSON wins), but an explicitly set `-format` must **agree** with any also-given shortcut, so e.g. `-pretty -format json` exits non-zero with an error naming both flags (agreeing combos like `-json -format json` are fine). `-version` still wins over everything, including an invalid or conflicting `-format`. |
 | `-json` | JSON mode: emit JSON Lines instead of text — one `{"index":<int>,"fib":"<string>"}` object per number. `fib` is a string by decision (ADR-0001), since F(100) overflows int64. Never a JSON array. Shortcut for `-format json`; conflicts with an explicit `-format` selecting another mode. |
 | `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. Shortcut for `-format pretty`; conflicts with an explicit `-format` selecting another mode. |
+| `-sum` | Sum flag: print exactly one line with the `math/big` sum of the Fibonacci numbers in the same `-start`/`-limit`/`-n` intersection line mode would print — text mode prints `sum: <value>`, json mode one object `{"index_range":[first,last],"sum":"<string>"}` (sum as string since it can exceed int64; `index_range` reports the computed effective bounds even when the range is empty/inverted), pretty/table print the bare value + newline. An empty selected range (`-limit < -start`) sums to `0`, not an error. A positive `-seed` with `-sum` exits non-zero with an error naming both flags; `-seed 0` (unset sentinel) is legal. `-version` still wins. |
 | `-version` | Prints exactly `gofib 1.3.0` (from the `Version` const in `main.go`) and takes precedence over every other flag — even an otherwise-invalid combination like `-version -n 0 -json` prints the version and exits `0`. |
 
 With no `-format`, plain `-pretty` and `-json` together is not an
