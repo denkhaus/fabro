@@ -10,7 +10,7 @@ use bytes::Bytes;
 use fabro_api::types;
 use fabro_http::header::{ACCEPT, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
 use fabro_http::multipart::{Form, Part};
-use fabro_model::{Model, ModelTestMode, ProviderId};
+use fabro_model::{Model, ModelTestMode, ProviderId, ReasoningEffort};
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{
     ArtifactUpload, BlobHash, EventEnvelope, PairId, PairMessageRecord, PairMessageRequest,
@@ -865,6 +865,7 @@ impl Client {
         id: &str,
         provider: Option<&ProviderId>,
         mode: Option<ModelTestMode>,
+        reasoning_effort: Option<ReasoningEffort>,
     ) -> Result<types::ModelTestResult> {
         let response = self
             .send_api(|client| async move {
@@ -874,6 +875,9 @@ impl Client {
                 }
                 if let Some(mode) = mode {
                     request = request.mode(mode);
+                }
+                if let Some(reasoning_effort) = reasoning_effort {
+                    request = request.reasoning_effort(reasoning_effort);
                 }
                 request.send().await
             })
