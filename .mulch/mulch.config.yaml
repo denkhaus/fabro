@@ -9,6 +9,7 @@ domains:
   testing: {}
   agent: {}
   api: {}
+  build: {}
 governance:
   max_entries: 100
   warn_entries: 150
