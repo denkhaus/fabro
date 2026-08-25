@@ -217,6 +217,9 @@ def main [
         print 'run_workflow: review unchanged — nothing to commit'
     } else {
         ok (do { git commit -m $"reviews: ($run_id)" } | complete) 'git commit'
+        # A late auto-merge can move origin while the ask ran: rebase
+        # before pushing so the review commit lands on top.
+        ok (do { git pull --rebase origin $branch } | complete) 'git pull --rebase'
         ok (do { git push origin $branch } | complete) 'git push'
     }
 
