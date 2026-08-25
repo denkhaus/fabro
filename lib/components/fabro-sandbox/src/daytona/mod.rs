@@ -61,6 +61,7 @@ const DAYTONA_BASH_SESSION_REMEDIATION: &str = "Daytona ran the direct command t
 
 pub(crate) const WORKING_DIRECTORY: &str = "/home/daytona/workspace";
 pub(crate) const REPOS_ROOT: &str = "/home/daytona/repos";
+pub(crate) const RUNTIME_DIRECTORY: &str = "/home/daytona/fabro/runtime";
 const DEFAULT_SNAPSHOT: &str = "daytona-medium";
 pub const DEFAULT_DAYTONA_API_URL: &str = "https://app.daytona.io/api";
 pub(crate) const DAYTONA_DASHBOARD_SANDBOXES_URL: &str =
@@ -786,6 +787,41 @@ impl DaytonaSandbox {
         Self::probe_bash_session(sandbox).await
     }
 
+    /// Create the run-scoped Fabro runtime directory outside the repository
+    /// checkout, with owner-private permissions on each created level.
+    async fn create_runtime_directory(sandbox: &daytona_sdk::Sandbox) -> crate::Result<()> {
+        let fs_svc = sandbox
+            .fs()
+            .await
+            .map_err(|e| crate::Error::context("Failed to get Daytona fs service", e))?;
+        let runtime_parent = Path::new(RUNTIME_DIRECTORY)
+            .parent()
+            .map(|parent| parent.to_string_lossy().to_string());
+        if let Some(runtime_parent) = runtime_parent {
+            fs_svc
+                .create_folder(&runtime_parent, Some("0700"))
+                .await
+                .map_err(|e| {
+                    wrap_fs_error(
+                        "Failed to create Daytona runtime parent directory",
+                        &runtime_parent,
+                        e,
+                    )
+                })?;
+        }
+        fs_svc
+            .create_folder(RUNTIME_DIRECTORY, Some("0700"))
+            .await
+            .map_err(|e| {
+                wrap_fs_error(
+                    "Failed to create Daytona runtime directory",
+                    RUNTIME_DIRECTORY,
+                    e,
+                )
+            })?;
+        Ok(())
+    }
+
     /// Probe Bash over the direct process-exec transport.
     async fn probe_bash_exec(sandbox: &daytona_sdk::Sandbox) -> crate::Result<()> {
         let start = Instant::now();
@@ -1470,6 +1506,13 @@ impl Sandbox for DaytonaSandbox {
             return Err(self.fail_init(init_start, err));
         }
 
+        if let Err(runtime_error) = Self::create_runtime_directory(&sandbox).await {
+            let err = self
+                .finish_failed_initialization(sandbox, runtime_error)
+                .await;
+            return Err(self.fail_init(init_start, err));
+        }
+
         let clone_decision = clone_source::decide_clone(
             self.config.skip_clone,
             self.clone_origin_url.as_deref(),
@@ -1870,6 +1913,10 @@ impl Sandbox for DaytonaSandbox {
         self.working_directory
             .get()
             .map_or(WORKING_DIRECTORY, String::as_str)
+    }
+
+    fn runtime_directory(&self) -> Option<&str> {
+        Some(RUNTIME_DIRECTORY)
     }
 
     fn platform(&self) -> &'static str {
