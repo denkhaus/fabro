@@ -1,0 +1,14 @@
+diff --git a/README.md b/README.md
+index f9cb1b4..113133e 100644
+--- a/README.md
++++ b/README.md
+@@ -273,3 +273,9 @@ $ echo $?
+ With no `-format`, plain `-pretty` and `-json` together is not an
+ error; JSON mode simply wins and the output is identical to `-json`
+ alone.
++
++## Haiku
++
++golden spirals grow —
++each number born from the last,
++small seeds, boundless sums
