@@ -2261,40 +2261,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn executor_exit_policy_uses_retry_target_before_termination() {
-        let handler = Arc::new(CountingHandler::new(vec![
-            Ok(Outcome::fail("boom")),
-            Ok(Outcome::success()),
-        ]));
-        let graph = TestGraph::new(
-            vec![
-                TestNode::new("work"),
-                TestNode::new("downstream"),
-                TestNode::new("recovery"),
-                TestNode::terminal("end"),
-            ],
-            vec![
-                TestEdge::new("work", "downstream"),
-                TestEdge::new("downstream", "end"),
-                TestEdge::new("recovery", "end"),
-            ],
-            "work",
-        )
-        .with_retry_target("work", "recovery")
-        .with_on_failure(OnFailure::Exit);
-        let state = ExecutionState::new(&graph).unwrap();
-        let executor =
-            ExecutorBuilder::new(Arc::clone(&handler) as Arc<dyn NodeHandler<TestGraph>>).build();
-
-        let (outcome, state) = executor.run(&graph, state).await.unwrap();
-
-        assert_eq!(outcome.status, StageOutcome::Succeeded);
-        assert_eq!(handler.calls(), 2);
-        assert!(state.node_outcomes.contains_key("recovery"));
-        assert!(!state.node_outcomes.contains_key("downstream"));
-    }
-
-    #[tokio::test]
     async fn executor_goal_gate_retry_target_to_terminal_fails_without_looping() {
         let terminal_visits = Arc::new(AtomicU32::new(0));
 

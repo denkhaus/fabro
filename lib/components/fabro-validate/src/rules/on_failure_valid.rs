@@ -16,39 +16,40 @@ impl LintRule for Rule {
 
     fn apply(&self, graph: &Graph) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
-        let expected_values = OnFailure::expected_values();
 
-        match graph.attrs.get("on_failure") {
-            None => {}
-            Some(AttrValue::String(value)) if value.parse::<OnFailure>().is_ok() => {}
-            Some(AttrValue::String(value)) => diagnostics.push(Diagnostic {
+        let invalid_value_message = match graph.attrs.get("on_failure") {
+            None => None,
+            Some(AttrValue::String(value)) if value.parse::<OnFailure>().is_ok() => None,
+            Some(AttrValue::String(value)) => {
+                Some(format!("Graph has invalid on_failure value '{value}'"))
+            }
+            Some(_) => Some("Graph attribute 'on_failure' must be a string".to_string()),
+        };
+        if let Some(message) = invalid_value_message {
+            diagnostics.push(Diagnostic {
                 rule: self.name().to_string(),
                 severity: Severity::Error,
-                message: format!("Graph has invalid on_failure value '{value}'"),
-                fix: Some(format!("Use one of: {expected_values}")),
+                message,
+                fix: Some(format!("Use one of: {}", OnFailure::expected_values())),
                 ..Diagnostic::default()
-            }),
-            Some(_) => diagnostics.push(Diagnostic {
-                rule: self.name().to_string(),
-                severity: Severity::Error,
-                message: "Graph attribute 'on_failure' must be a string".to_string(),
-                fix: Some(format!("Use one of: {expected_values}")),
-                ..Diagnostic::default()
-            }),
+            });
         }
+
+        let misplaced = |subject: String| Diagnostic {
+            rule: self.name().to_string(),
+            severity: Severity::Warning,
+            message: format!(
+                "{subject} sets 'on_failure', which has no effect outside graph scope"
+            ),
+            fix: Some("Move 'on_failure' to the graph attributes".to_string()),
+            ..Diagnostic::default()
+        };
 
         for node in graph.nodes.values() {
             if node.attrs.contains_key("on_failure") {
                 diagnostics.push(Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: Severity::Warning,
-                    message: format!(
-                        "Node '{}' sets 'on_failure', which has no effect outside graph scope",
-                        node.id
-                    ),
                     node_id: Some(node.id.clone()),
-                    fix: Some("Move 'on_failure' to the graph attributes".to_string()),
-                    ..Diagnostic::default()
+                    ..misplaced(format!("Node '{}'", node.id))
                 });
             }
         }
@@ -56,15 +57,8 @@ impl LintRule for Rule {
         for edge in &graph.edges {
             if edge.attrs.contains_key("on_failure") {
                 diagnostics.push(Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: Severity::Warning,
-                    message: format!(
-                        "Edge '{} -> {}' sets 'on_failure', which has no effect outside graph scope",
-                        edge.from, edge.to
-                    ),
                     edge: Some((edge.from.clone(), edge.to.clone())),
-                    fix: Some("Move 'on_failure' to the graph attributes".to_string()),
-                    ..Diagnostic::default()
+                    ..misplaced(format!("Edge '{} -> {}'", edge.from, edge.to))
                 });
             }
         }
@@ -75,10 +69,10 @@ impl LintRule for Rule {
 
 #[cfg(test)]
 mod tests {
-    use fabro_graphviz::graph::{AttrValue, Edge, Node};
+    use fabro_graphviz::graph::{AttrValue, Edge};
 
     use super::Rule;
-    use crate::rules::test_support::minimal_graph;
+    use crate::rules::test_support::{minimal_graph, node_with_attrs};
     use crate::{LintRule, Severity};
 
     #[test]
@@ -137,12 +131,10 @@ mod tests {
     #[test]
     fn warns_for_node_and_edge_placement() {
         let mut graph = minimal_graph();
-        let mut node = Node::new("work");
-        node.attrs.insert(
-            "on_failure".to_string(),
-            AttrValue::String("exit".to_string()),
+        graph.nodes.insert(
+            "work".to_string(),
+            node_with_attrs("work", &[("on_failure", "exit")]),
         );
-        graph.nodes.insert("work".to_string(), node);
 
         let mut edge = Edge::new("start", "work");
         edge.attrs.insert(
