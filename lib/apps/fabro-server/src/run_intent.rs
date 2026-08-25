@@ -91,9 +91,9 @@ pub(crate) async fn prepare_intent_target(
     let git = task::spawn_blocking(move || {
         git::observe_git_context(&canonical).unwrap_or_else(|error| {
             tracing::warn!(
-                error = %error,
+                error = ?error,
                 path = %canonical.display(),
-                "Failed to observe optional Git metadata for folder target"
+                "failed to observe optional git metadata for folder target"
             );
             None
         })
@@ -101,9 +101,9 @@ pub(crate) async fn prepare_intent_target(
     .await
     .unwrap_or_else(|error| {
         tracing::warn!(
-            error = %error,
+            error = ?error,
             path,
-            "Folder target Git observation task failed"
+            "folder target git observation task failed"
         );
         None
     });
