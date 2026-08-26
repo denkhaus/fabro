@@ -3,10 +3,13 @@
 # required `lab-check` context never went green and GitHub auto-merge
 # never engaged. scripts/run_workflow.nu now posts the status locally
 # (gh api repos/denkhaus/fabro/statuses/<run-sha> -f context=lab-check)
-# once the run is terminal-succeeded; branch protection keeps requiring
-# `lab-check` but unpinned from the GitHub Actions app.
-# Revert: uncomment everything below and re-pin the check to the Actions
-# app in branch protection. Original workflow kept verbatim:
+# once the run is terminal-succeeded. The required context is
+# `lab-check-local` — a name the Actions app never reported, so GitHub
+# keeps it unpinned and a local commit status satisfies it (a plain
+# `lab-check` context auto-repins to the Actions app, app_id 15368,
+# because that app owns check runs of that name).
+# Revert: uncomment everything below and switch branch protection back
+# to the `lab-check` context. Original workflow kept verbatim:
 # Lightweight check for the lab world branch.
 #
 # Purpose: a REQUIRED status check on denkhaus-lab so GitHub auto-merge

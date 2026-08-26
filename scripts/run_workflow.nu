@@ -155,13 +155,18 @@ def main [
         }
         fail $"run branch ($run_branch) not found — nothing to integrate"
     }
-    # Variant B (fabro-ab2c): post the required `lab-check` context
-    # locally on the run branch head. GitHub auto-merge (enabled by the
+    # Variant B (fabro-ab2c): post the required `lab-check-local`
+    # context locally on the run branch head. The name deliberately
+    # differs from the workflow's `lab-check`: GitHub auto-resolves a
+    # plain context string to the app that last reported a check run of
+    # that name (Actions, app 15368) — pinning it so a commit status can
+    # never satisfy it. `lab-check-local` has no app history and stays
+    # plain (commit statuses count). GitHub auto-merge (enabled by the
     # platform at PR creation, project.toml auto_merge = true) merges the
     # PR without any Actions runner. Failure is a WARN, not fatal — the
     # squash fallback below still integrates the work.
     let run_sha = ((do { git rev-parse $run_branch } | complete).stdout | str trim)
-    let posted = (do { ^gh api $"repos/($GITHUB_REPO)/statuses/($run_sha)" -f state=success -f context=lab-check -f description='local lab-check (run terminal-succeeded)' } | complete)
+    let posted = (do { ^gh api $"repos/($GITHUB_REPO)/statuses/($run_sha)" -f state=success -f context=lab-check-local -f description='local lab-check (run terminal-succeeded)' } | complete)
     if $posted.exit_code != 0 {
         let detail = ($posted.stderr | str trim | default $posted.stdout | str trim)
         print $"run_workflow: WARN local lab-check post failed — auto-merge cannot engage, squash fallback will integrate: ($detail)"
