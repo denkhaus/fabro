@@ -3598,7 +3598,7 @@ async fn store_workflow_version(
 }
 
 #[tokio::test]
-async fn post_runs_run_intent_creates_submitted_version_backed_git_target_without_starting() {
+async fn post_runs_run_intent_persists_tagged_exact_git_target_without_starting() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let workflow_version_id = store_workflow_version(
@@ -3638,6 +3638,7 @@ docker = "workflow-owned:latest"
                 "kind": "git",
                 "repo": "fabro-sh/fabro",
                 "branch": "feature/run-intent",
+                "tag": "v1.2.3",
                 "sha": submitted_sha
             },
             "args": {
@@ -3671,11 +3672,12 @@ docker = "workflow-owned:latest"
     );
     assert_eq!(
         projection.spec.target,
-        Some(fabro_types::RunTarget::Git {
+        Some(fabro_types::RunTarget::Git(fabro_types::GitRunTarget {
             repo:   "fabro-sh/fabro".to_string(),
             branch: "feature/run-intent".to_string(),
+            tag:    Some("v1.2.3".to_string()),
             sha:    Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
-        })
+        }))
     );
     assert_eq!(
         projection

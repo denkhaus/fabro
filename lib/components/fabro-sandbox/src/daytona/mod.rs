@@ -109,6 +109,20 @@ const DAYTONA_STATE_CHANGE_POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// leaked by a dead worker. An explicit `0` disables auto-stop entirely.
 const DEFAULT_AUTO_STOP_INTERVAL_MINUTES: i32 = 120;
 
+fn git_clone_selector(
+    branch: Option<&str>,
+    tag: Option<&str>,
+    commit_sha: Option<&str>,
+) -> Option<String> {
+    if commit_sha.is_some() {
+        branch.map(str::to_string)
+    } else if let Some(tag) = tag {
+        Some(format!("refs/tags/{tag}"))
+    } else {
+        branch.map(str::to_string)
+    }
+}
+
 pub(crate) fn daytona_not_found(err: &DaytonaError) -> bool {
     matches!(err, DaytonaError::NotFound { .. }) || err.status_code() == Some(404)
 }
@@ -464,6 +478,7 @@ pub struct DaytonaSandbox {
     /// Explicit branch to clone. When set, overrides the branch detected by
     /// the submitted run spec.
     clone_branch:      Option<String>,
+    clone_tag:         Option<String>,
     clone_commit_sha:  Option<String>,
 }
 
@@ -478,14 +493,16 @@ impl DaytonaSandbox {
         run_id: Option<RunId>,
         clone_origin_url: Option<String>,
         clone_branch: Option<String>,
+        clone_tag: Option<String>,
         clone_commit_sha: Option<String>,
         api_key: Option<String>,
     ) -> crate::Result<Self> {
-        if clone_commit_sha.is_some() {
+        if clone_tag.is_some() || clone_commit_sha.is_some() {
             clone_source::decide_clone(
                 config.skip_clone,
                 clone_origin_url.as_deref(),
                 clone_branch.as_deref(),
+                clone_tag.as_deref(),
                 clone_commit_sha.as_deref(),
             )?;
         }
@@ -512,6 +529,7 @@ impl DaytonaSandbox {
             run_id,
             clone_origin_url,
             clone_branch,
+            clone_tag,
             clone_commit_sha,
         })
     }
@@ -565,6 +583,7 @@ impl DaytonaSandbox {
             run_id: None,
             clone_origin_url,
             clone_branch,
+            clone_tag: None,
             clone_commit_sha: None,
         })
     }
@@ -681,6 +700,33 @@ impl DaytonaSandbox {
         )
         .await?;
         clone_source::verify_exact_head(&head, expected_sha)
+    }
+
+    /// Attach a tag clone's peeled commit to the requested working branch.
+    async fn attach_tag_branch(
+        process_svc: &daytona_sdk::ProcessService,
+        checkout_path: &str,
+        branch: &str,
+        deadline: time::Instant,
+    ) -> crate::Result<()> {
+        Self::run_required_post_clone_command(
+            process_svc,
+            &clone_source::exact_branch_checkout_command(checkout_path, branch, "HEAD^{commit}"),
+            "/",
+            "git checkout tag commit",
+            deadline,
+        )
+        .await?;
+        let head = Self::run_required_post_clone_command(
+            process_svc,
+            &clone_source::exact_head_revision_command(checkout_path),
+            "/",
+            "git rev-parse HEAD after tag checkout",
+            deadline,
+        )
+        .await?;
+        clone_source::verify_resolved_head(&head)?;
+        Ok(())
     }
 
     /// Execute one post-clone command under the shared setup deadline.
@@ -1521,6 +1567,7 @@ impl Sandbox for DaytonaSandbox {
             self.config.skip_clone,
             self.clone_origin_url.as_deref(),
             self.clone_branch.as_deref(),
+            self.clone_tag.as_deref(),
             self.clone_commit_sha.as_deref(),
         )
         .map_err(|e| self.fail_init(init_start, e))?;
@@ -1549,6 +1596,7 @@ impl Sandbox for DaytonaSandbox {
             CloneDecision::GitHub {
                 origin_url,
                 branch,
+                tag,
                 commit_sha,
             } => {
                 let layout =
@@ -1647,6 +1695,8 @@ impl Sandbox for DaytonaSandbox {
                     self.fail_init(init_start, err)
                 })?;
 
+                let clone_selector =
+                    git_clone_selector(branch.as_deref(), tag.as_deref(), commit_sha.as_deref());
                 let clone_plan = git_retry::RetryPlan::clone_default(None);
                 let clone_result = git_retry::retry_git_operation(
                     SandboxProviderKind::Daytona,
@@ -1657,7 +1707,7 @@ impl Sandbox for DaytonaSandbox {
                         let origin = origin_url.as_str();
                         let target = layout.primary_repo_path.as_str();
                         let options = GitCloneOptions {
-                            branch: branch.clone(),
+                            branch: clone_selector.clone(),
                             commit_id: commit_sha.clone(),
                             username: username.clone(),
                             password: password.clone(),
@@ -1717,6 +1767,27 @@ impl Sandbox for DaytonaSandbox {
                         &layout.primary_repo_path,
                         branch,
                         expected_sha,
+                        post_clone_deadline,
+                    )
+                    .await
+                    {
+                        return Err(self
+                            .fail_clone_initialization(sandbox, &origin_url, init_start, err)
+                            .await);
+                    }
+                } else if tag.is_some() {
+                    let Some(branch) = branch.as_deref().filter(|branch| !branch.trim().is_empty())
+                    else {
+                        let err =
+                            crate::Error::message("Tag checkout requires a repository branch");
+                        return Err(self
+                            .fail_clone_initialization(sandbox, &origin_url, init_start, err)
+                            .await);
+                    };
+                    if let Err(err) = Self::attach_tag_branch(
+                        &process_svc,
+                        &layout.primary_repo_path,
+                        branch,
                         post_clone_deadline,
                     )
                     .await
@@ -3193,6 +3264,23 @@ mod tests {
     use super::*;
     use crate::sandbox::BASH_PROBE_MARKER;
 
+    #[test]
+    fn daytona_clone_selector_uses_fully_qualified_tag_unless_sha_is_exact() {
+        assert_eq!(
+            git_clone_selector(Some("release-work"), Some("v1.2.3"), None).as_deref(),
+            Some("refs/tags/v1.2.3")
+        );
+        assert_eq!(
+            git_clone_selector(
+                Some("release-work"),
+                Some("v1.2.3"),
+                Some("0123456789abcdef0123456789abcdef01234567"),
+            )
+            .as_deref(),
+            Some("release-work")
+        );
+    }
+
     #[tokio::test]
     async fn invalid_exact_sha_fails_before_daytona_client_construction() {
         let error = DaytonaSandbox::new(
@@ -3201,6 +3289,7 @@ mod tests {
             None,
             Some("https://github.com/acme/widgets".to_string()),
             Some("main".to_string()),
+            None,
             Some("not-a-sha".to_string()),
             Some("dtn_not_used".to_string()),
         )
@@ -3219,6 +3308,7 @@ mod tests {
             None,
             None,
             Some("https://github.com/acme/widgets".to_string()),
+            None,
             None,
             Some("0123456789abcdef0123456789abcdef01234567".to_string()),
             Some("dtn_not_used".to_string()),
@@ -3547,6 +3637,7 @@ mod tests {
             run_id: None,
             clone_origin_url: None,
             clone_branch: None,
+            clone_tag: None,
             clone_commit_sha: None,
         }
     }
@@ -3726,6 +3817,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some("dtn_test".to_string()),
         )
         .await
@@ -3760,6 +3852,7 @@ mod tests {
                     auto_stop_interval: Some(interval),
                     ..DaytonaConfig::default()
                 },
+                None,
                 None,
                 None,
                 None,
@@ -4090,6 +4183,7 @@ mod tests {
             },
             None,
             Some(run_id),
+            None,
             None,
             None,
             None,

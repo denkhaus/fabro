@@ -809,12 +809,12 @@ async fn batch_archive_runs(
     State(state): State<Arc<AppState>>,
     Json(request): Json<BatchRunLifecycleRequest>,
 ) -> Response {
-    batch_run_archive_action(
+    Box::pin(batch_run_archive_action(
         state,
         Principal::User(user),
         request,
         ArchiveAction::Archive,
-    )
+    ))
     .await
 }
 
@@ -823,12 +823,12 @@ async fn batch_unarchive_runs(
     State(state): State<Arc<AppState>>,
     Json(request): Json<BatchRunLifecycleRequest>,
 ) -> Response {
-    batch_run_archive_action(
+    Box::pin(batch_run_archive_action(
         state,
         Principal::User(user),
         request,
         ArchiveAction::Unarchive,
-    )
+    ))
     .await
 }
 

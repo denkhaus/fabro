@@ -5,7 +5,7 @@ use fabro_types::run::{DirtyStatus, ForkSourceRef, GitContext, RunSpec};
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::RunGoal;
 use fabro_types::test_support::{test_run_provenance, test_workflow_version_id};
-use fabro_types::{AutomationRef, RunTarget, WorkflowSettings, fixtures};
+use fabro_types::{AutomationRef, GitRunTarget, RunTarget, WorkflowSettings, fixtures};
 
 fn templated_settings() -> WorkflowSettings {
     let mut settings = WorkflowSettings::default();
@@ -22,11 +22,12 @@ fn run_spec_round_trips_templated_settings() {
         graph_source:        None,
         workflow_slug:       Some("demo".to_string()),
         workflow_version_id: Some(test_workflow_version_id()),
-        target:              Some(RunTarget::Git {
+        target:              Some(RunTarget::Git(GitRunTarget {
             repo:   "fabro-sh/fabro".to_string(),
             branch: "main".to_string(),
+            tag:    None,
             sha:    Some("abc123".to_string()),
-        }),
+        })),
         automation:          Some(AutomationRef {
             id:         "nightly".to_string(),
             name:       Some("Nightly".to_string()),

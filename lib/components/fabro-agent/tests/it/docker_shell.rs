@@ -29,6 +29,7 @@ async fn shell_reports_real_docker_process_outcome() {
         None,
         None,
         None,
+        None,
     ) else {
         return;
     };

@@ -208,6 +208,7 @@ async fn create_env_with_github_app(
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?")
@@ -413,7 +414,7 @@ async fn daytona_snapshot_sandbox() {
     };
 
     let creds = load_github_app_credentials();
-    let env = DaytonaSandbox::new(config, Some(creds), None, None, None, None, None)
+    let env = DaytonaSandbox::new(config, Some(creds), None, None, None, None, None, None)
         .await
         .expect("Failed to create Daytona client — is DAYTONA_API_KEY set?");
     env.initialize().await.unwrap();
@@ -1618,7 +1619,7 @@ async fn daytona_computer_use_browser_screenshot() {
         skip_clone: true,
         ..DaytonaConfig::default()
     };
-    let env = DaytonaSandbox::new(config, None, None, None, None, None, None)
+    let env = DaytonaSandbox::new(config, None, None, None, None, None, None, None)
         .await
         .expect("DAYTONA_API_KEY must be set");
     env.initialize().await.unwrap();
@@ -1766,7 +1767,7 @@ async fn daytona_playwright_mcp_sandbox_transport() {
         skip_clone: true,
         ..DaytonaConfig::default()
     };
-    let sandbox = DaytonaSandbox::new(config, None, None, None, None, None, None)
+    let sandbox = DaytonaSandbox::new(config, None, None, None, None, None, None, None)
         .await
         .expect("DAYTONA_API_KEY must be set");
     sandbox.initialize().await.unwrap();

@@ -156,6 +156,7 @@ pub struct DockerSandbox {
     run_id:            Option<RunId>,
     clone_origin_url:  Option<String>,
     clone_branch:      Option<String>,
+    clone_tag:         Option<String>,
     clone_commit_sha:  Option<String>,
     container_id:      OnceCell<String>,
     repo_cloned:       OnceCell<bool>,
@@ -187,13 +188,15 @@ impl DockerSandbox {
         run_id: Option<RunId>,
         clone_origin_url: Option<String>,
         clone_branch: Option<String>,
+        clone_tag: Option<String>,
         clone_commit_sha: Option<String>,
     ) -> crate::Result<Self> {
-        if clone_commit_sha.is_some() {
+        if clone_tag.is_some() || clone_commit_sha.is_some() {
             clone_source::decide_clone(
                 config.skip_clone,
                 clone_origin_url.as_deref(),
                 clone_branch.as_deref(),
+                clone_tag.as_deref(),
                 clone_commit_sha.as_deref(),
             )?;
         }
@@ -205,6 +208,7 @@ impl DockerSandbox {
             run_id,
             clone_origin_url,
             clone_branch,
+            clone_tag,
             clone_commit_sha,
         )
     }
@@ -216,6 +220,7 @@ impl DockerSandbox {
         run_id: Option<RunId>,
         clone_origin_url: Option<String>,
         clone_branch: Option<String>,
+        clone_tag: Option<String>,
         clone_commit_sha: Option<String>,
     ) -> crate::Result<Self> {
         let push_credentials = PushCredentialState::new(push_credentials::build_token_source(
@@ -229,6 +234,7 @@ impl DockerSandbox {
             run_id,
             clone_origin_url,
             clone_branch,
+            clone_tag,
             clone_commit_sha,
             container_id: OnceCell::new(),
             repo_cloned: OnceCell::new(),
@@ -255,6 +261,7 @@ impl DockerSandbox {
             run_id,
             clone_origin_url.clone(),
             clone_branch,
+            None,
             None,
         )?;
         sandbox.validate_managed_container(container_id).await?;
@@ -903,6 +910,7 @@ impl DockerSandbox {
         &self,
         origin_url: String,
         branch: Option<String>,
+        tag: Option<String>,
         commit_sha: Option<String>,
     ) -> crate::Result<()> {
         self.verify_git_available().await?;
@@ -1028,6 +1036,64 @@ impl DockerSandbox {
                 Err(error) => return Err(self.report_clone_failure(&origin_url, error)),
             };
             if let Err(error) = clone_source::verify_exact_head(&head.stdout, expected_sha) {
+                return Err(self.report_clone_failure(&origin_url, error));
+            }
+        } else if let Some(tag) = tag.as_deref() {
+            let Some(branch) = branch.as_deref().filter(|branch| !branch.trim().is_empty()) else {
+                let error = crate::Error::message("Tag checkout requires a repository branch");
+                return Err(self.report_clone_failure(&origin_url, error));
+            };
+
+            let init_command =
+                clone_source::exact_repository_init_command(clone_url, &layout.primary_repo_path);
+            if let Err(error) = self
+                .run_exact_local_git_command(
+                    &init_command,
+                    "initialize Docker tag repository checkout",
+                    clone_deadline,
+                    auth_url.as_ref(),
+                )
+                .await
+            {
+                return Err(self.report_clone_failure(&origin_url, error));
+            }
+
+            let fetch_command = clone_source::tag_fetch_command(
+                &layout.primary_repo_path,
+                "origin",
+                tag,
+                self.config.clone_depth,
+            );
+            if let Err(failure) = self
+                .retry_git_transfer(
+                    &fetch_command,
+                    "fetch",
+                    "Docker tag fetch",
+                    "git fetch tag",
+                    clone_deadline,
+                    clone_credential_context,
+                    auth_url.as_ref(),
+                )
+                .await
+            {
+                return Err(self.report_clone_failure(&origin_url, failure.error));
+            }
+
+            let checkout_command =
+                clone_source::tag_checkout_verify_command(&layout.primary_repo_path, branch);
+            let head = match self
+                .run_exact_local_git_command(
+                    &checkout_command,
+                    "git checkout tag",
+                    clone_deadline,
+                    auth_url.as_ref(),
+                )
+                .await
+            {
+                Ok(result) => result,
+                Err(error) => return Err(self.report_clone_failure(&origin_url, error)),
+            };
+            if let Err(error) = clone_source::verify_resolved_head(&head.stdout) {
                 return Err(self.report_clone_failure(&origin_url, error));
             }
         } else {
@@ -1826,6 +1892,7 @@ impl Sandbox for DockerSandbox {
             self.config.skip_clone,
             self.clone_origin_url.as_deref(),
             self.clone_branch.as_deref(),
+            self.clone_tag.as_deref(),
             self.clone_commit_sha.as_deref(),
         )
         .map_err(|e| self.fail_init(init_start, e))?;
@@ -1847,9 +1914,13 @@ impl Sandbox for DockerSandbox {
             CloneDecision::GitHub {
                 origin_url,
                 branch,
+                tag,
                 commit_sha,
             } => {
-                if let Err(e) = self.clone_github_repo(origin_url, branch, commit_sha).await {
+                if let Err(e) = self
+                    .clone_github_repo(origin_url, branch, tag, commit_sha)
+                    .await
+                {
                     return Err(self.fail_init(init_start, e));
                 }
             }
@@ -2668,6 +2739,7 @@ mod tests {
             None,
             Some("https://github.com/acme/widgets".to_string()),
             Some("main".to_string()),
+            None,
             Some("not-a-sha".to_string()),
         )
         .err()
@@ -2684,6 +2756,7 @@ mod tests {
             None,
             None,
             Some("https://github.com/acme/widgets".to_string()),
+            None,
             None,
             Some("0123456789abcdef0123456789abcdef01234567".to_string()),
         )
@@ -3067,6 +3140,7 @@ mod tests {
         let sandbox = DockerSandbox::with_docker_client(
             docker,
             DockerSandboxOptions::default(),
+            None,
             None,
             None,
             None,

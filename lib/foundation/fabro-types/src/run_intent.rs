@@ -45,16 +45,25 @@ pub struct RunIntentArgs {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[strum(serialize_all = "snake_case")]
 pub enum RunTarget {
-    Git {
-        repo:   String,
-        branch: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        sha:    Option<String>,
-    },
+    Git(GitRunTarget),
     None {},
-    Folder {
-        path: String,
-    },
+    Folder { path: String },
+}
+
+/// A Git-backed run target.
+///
+/// `branch` is always the attached working branch. When present, `tag` names
+/// the requested release identity. An exact `sha` is authoritative over both
+/// selectors while preserving the tag in durable state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GitRunTarget {
+    pub repo:   String,
+    pub branch: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag:    Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha:    Option<String>,
 }
 
 impl RunTarget {
@@ -71,7 +80,12 @@ impl RunTarget {
     /// filesystem validation and canonicalization during provider admission.
     pub fn validate(self) -> Result<ValidatedRunTarget, TargetValidationError> {
         match self {
-            Self::Git { repo, branch, sha } => {
+            Self::Git(GitRunTarget {
+                repo,
+                branch,
+                tag,
+                sha,
+            }) => {
                 let slug = GitHubRepositorySlug::try_new(&repo)
                     .ok_or(TargetValidationError::Repository)?;
                 // The selector grammar is checked on the bare branch name so
@@ -86,6 +100,15 @@ impl RunTarget {
                 {
                     return Err(TargetValidationError::Branch);
                 }
+                if tag.as_deref().is_some_and(|tag| {
+                    tag == "HEAD"
+                        || tag.starts_with("tags/")
+                        || tag.starts_with("refs/")
+                        || repository::normalize_git_commit_sha(tag).is_some()
+                        || !repository::is_valid_github_ref_selector(tag)
+                }) {
+                    return Err(TargetValidationError::Tag);
+                }
                 let sha = sha
                     .map(|sha| {
                         repository::normalize_git_commit_sha(&sha).ok_or(TargetValidationError::Sha)
@@ -98,7 +121,12 @@ impl RunTarget {
                     dirty:      DirtyStatus::Clean,
                 };
                 Ok(ValidatedRunTarget {
-                    target: Self::Git { repo, branch, sha },
+                    target: Self::Git(GitRunTarget {
+                        repo,
+                        branch,
+                        tag,
+                        sha,
+                    }),
                     git:    Some(git),
                 })
             }
@@ -129,6 +157,8 @@ pub enum TargetValidationError {
     Repository,
     #[error("target branch must be a non-empty branch name, not a ref or commit selector")]
     Branch,
+    #[error("target tag must be a non-empty bare tag name, not a ref or commit selector")]
+    Tag,
     #[error("target SHA must be exactly 40 ASCII hexadecimal characters")]
     Sha,
 }

@@ -8,6 +8,7 @@ pub(crate) enum CloneDecision {
     GitHub {
         origin_url: String,
         branch:     Option<String>,
+        tag:        Option<String>,
         commit_sha: Option<String>,
     },
 }
@@ -105,6 +106,25 @@ pub(crate) fn exact_fetch_command(
     )
 }
 
+/// Fetch one fully-qualified tag without consulting a same-named branch.
+#[cfg(any(feature = "docker", test))]
+pub(crate) fn tag_fetch_command(
+    checkout_path: &str,
+    fetch_source: &str,
+    tag: &str,
+    depth: Option<usize>,
+) -> String {
+    let depth_arg = depth_argument(depth);
+    let tag_ref = format!("refs/tags/{tag}");
+    format!(
+        "{git} -C {} fetch{depth_arg} --no-tags {} -- {}",
+        sandbox::shell_quote(checkout_path),
+        sandbox::shell_quote(fetch_source),
+        sandbox::shell_quote(&tag_ref),
+        git = sandbox::GIT,
+    )
+}
+
 /// Leading-space ` --depth N` fragment for a Git command, or empty when
 /// `depth` is `None` to fetch full history.
 #[cfg(any(feature = "docker", test))]
@@ -155,6 +175,13 @@ pub(crate) fn exact_checkout_verify_command(
     )
 }
 
+/// Peel the fetched tag to a commit, attach it to the working branch, and
+/// print the resolved commit ID.
+#[cfg(any(feature = "docker", test))]
+pub(crate) fn tag_checkout_verify_command(checkout_path: &str, branch: &str) -> String {
+    exact_checkout_verify_command(checkout_path, branch, "FETCH_HEAD^{commit}")
+}
+
 pub(crate) fn verify_exact_head(output: &str, expected_sha: &str) -> crate::Result<()> {
     let actual_sha = output.trim();
     let actual_sha = normalize_exact_commit_sha(actual_sha).map_err(|err| {
@@ -166,6 +193,12 @@ pub(crate) fn verify_exact_head(output: &str, expected_sha: &str) -> crate::Resu
         ));
     }
     Ok(())
+}
+
+pub(crate) fn verify_resolved_head(output: &str) -> crate::Result<String> {
+    normalize_exact_commit_sha(output.trim()).map_err(|err| {
+        crate::Error::context("Tag checkout produced an invalid HEAD commit ID", err)
+    })
 }
 
 fn trim_root(root: &str) -> &str {
@@ -194,31 +227,48 @@ pub(crate) fn decide_clone(
     skip_clone: bool,
     clone_origin_url: Option<&str>,
     clone_branch: Option<&str>,
+    clone_tag: Option<&str>,
     clone_commit_sha: Option<&str>,
 ) -> crate::Result<CloneDecision> {
+    let tag = clone_tag
+        .map(|tag| {
+            if tag.trim().is_empty() {
+                Err(crate::Error::message(
+                    "Tag checkout requires a non-empty tag",
+                ))
+            } else {
+                Ok(tag.to_string())
+            }
+        })
+        .transpose()?;
     let commit_sha = clone_commit_sha
         .map(normalize_exact_commit_sha)
         .transpose()?;
 
-    if commit_sha.is_some() {
+    if tag.is_some() || commit_sha.is_some() {
+        let selector = if commit_sha.is_some() {
+            "Exact commit checkout"
+        } else {
+            "Tag checkout"
+        };
         if skip_clone {
-            return Err(crate::Error::message(
-                "Exact commit checkout requires cloning to be enabled",
-            ));
+            return Err(crate::Error::message(format!(
+                "{selector} requires cloning to be enabled"
+            )));
         }
         if clone_origin_url.is_none_or(|url| url.trim().is_empty()) {
-            return Err(crate::Error::message(
-                "Exact commit checkout requires a repository origin",
-            ));
+            return Err(crate::Error::message(format!(
+                "{selector} requires a repository origin"
+            )));
         }
         // The branch names the checkout the run works on; it is not used to
         // constrain which commits may be fetched. No layer proves branch/SHA
         // ancestry, and an unavailable exact commit fails without falling back
         // to branch HEAD.
         if clone_branch.is_none_or(|branch| branch.trim().is_empty()) {
-            return Err(crate::Error::message(
-                "Exact commit checkout requires a repository branch",
-            ));
+            return Err(crate::Error::message(format!(
+                "{selector} requires a repository branch"
+            )));
         }
     }
 
@@ -246,6 +296,7 @@ pub(crate) fn decide_clone(
         branch: clone_branch
             .filter(|branch| !branch.trim().is_empty())
             .map(str::to_string),
+        tag,
         commit_sha,
     })
 }
@@ -267,7 +318,7 @@ pub(crate) fn repo_cloned_for_record(
     clone_origin_url: Option<&str>,
 ) -> Option<bool> {
     Some(matches!(
-        decide_clone(skip_clone, clone_origin_url, None, None).ok()?,
+        decide_clone(skip_clone, clone_origin_url, None, None, None).ok()?,
         CloneDecision::GitHub { .. }
     ))
 }
@@ -307,23 +358,27 @@ mod tests {
         String::from_utf8(output.stdout).expect("git output should be UTF-8")
     }
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "hermetic command-builder proof intentionally runs local Bash synchronously"
-    )]
     fn run_shell(cwd: &Path, command: &str) -> String {
-        let output = isolated_command(Command::new("/bin/bash").current_dir(cwd).args([
-            "--noprofile",
-            "--norc",
-            "-c",
-            command,
-        ]));
+        let output = run_shell_output(cwd, command);
         assert!(
             output.status.success(),
             "command failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
         String::from_utf8(output.stdout).expect("command output should be UTF-8")
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "hermetic command-builder proof intentionally runs local Bash synchronously"
+    )]
+    fn run_shell_output(cwd: &Path, command: &str) -> Output {
+        isolated_command(Command::new("/bin/bash").current_dir(cwd).args([
+            "--noprofile",
+            "--norc",
+            "-c",
+            command,
+        ]))
     }
 
     #[test]
@@ -333,6 +388,7 @@ mod tests {
                 true,
                 Some("https://gitlab.com/acme/widgets.git"),
                 Some("main"),
+                None,
                 None,
             )
             .unwrap(),
@@ -345,7 +401,7 @@ mod tests {
     #[test]
     fn missing_origin_creates_empty_workspace() {
         assert_eq!(
-            decide_clone(false, None, None, None).unwrap(),
+            decide_clone(false, None, None, None, None).unwrap(),
             CloneDecision::EmptyWorkspace {
                 reason: EmptyWorkspaceReason::MissingOrigin,
             }
@@ -360,13 +416,47 @@ mod tests {
                 Some("git@github.com:acme/widgets.git"),
                 Some("feature/work"),
                 None,
+                None,
             )
             .unwrap(),
             CloneDecision::GitHub {
                 origin_url: "https://github.com/acme/widgets".to_string(),
                 branch:     Some("feature/work".to_string()),
+                tag:        None,
                 commit_sha: None,
             }
+        );
+    }
+
+    #[test]
+    fn tag_clone_keeps_working_branch_and_bare_tag_distinct() {
+        assert_eq!(
+            decide_clone(
+                false,
+                Some("https://github.com/acme/widgets"),
+                Some("release"),
+                Some("v1.2.3"),
+                None,
+            )
+            .unwrap(),
+            CloneDecision::GitHub {
+                origin_url: "https://github.com/acme/widgets".to_string(),
+                branch:     Some("release".to_string()),
+                tag:        Some("v1.2.3".to_string()),
+                commit_sha: None,
+            }
+        );
+    }
+
+    #[test]
+    fn tag_fetch_and_checkout_commands_use_the_fully_qualified_tag() {
+        assert_eq!(
+            tag_fetch_command("/repos/acme/widgets", "origin", "release/v1", Some(10)),
+            "git -c maintenance.auto=0 -c gc.auto=0 -C /repos/acme/widgets fetch --depth 10 --no-tags origin -- refs/tags/release/v1"
+        );
+        assert_eq!(
+            tag_checkout_verify_command("/repos/acme/widgets", "release"),
+            "git -c maintenance.auto=0 -c gc.auto=0 -C /repos/acme/widgets checkout -B release FETCH_HEAD'^{commit}' && git -c maintenance.auto=0 -c gc.auto=0 -C /repos/acme/widgets rev-parse HEAD"
         );
     }
 
@@ -375,6 +465,7 @@ mod tests {
         let error = decide_clone(
             false,
             Some("https://gitlab.com/acme/widgets.git"),
+            None,
             None,
             None,
         )
@@ -392,12 +483,14 @@ mod tests {
                 false,
                 Some("https://github.com/acme/widgets"),
                 Some("moving-branch"),
+                Some("release"),
                 Some(lowercase),
             )
             .unwrap(),
             CloneDecision::GitHub {
                 origin_url: "https://github.com/acme/widgets".to_string(),
                 branch:     Some("moving-branch".to_string()),
+                tag:        Some("release".to_string()),
                 commit_sha: Some(lowercase.to_string()),
             }
         );
@@ -406,12 +499,14 @@ mod tests {
                 false,
                 Some("https://github.com/acme/widgets"),
                 Some("main"),
+                None,
                 Some(uppercase),
             )
             .unwrap(),
             CloneDecision::GitHub {
                 origin_url: "https://github.com/acme/widgets".to_string(),
                 branch:     Some("main".to_string()),
+                tag:        None,
                 commit_sha: Some(uppercase.to_ascii_lowercase()),
             }
         );
@@ -432,6 +527,7 @@ mod tests {
                 false,
                 Some("https://github.com/acme/widgets"),
                 None,
+                None,
                 Some(sha),
             )
             .expect_err("invalid exact commit SHA should fail");
@@ -449,13 +545,14 @@ mod tests {
             true,
             Some("https://github.com/acme/widgets"),
             Some("main"),
+            None,
             Some(sha),
         )
         .expect_err("exact checkout with skip-clone should fail");
         assert!(skip_error.to_string().contains("requires cloning"));
 
         for origin in [None, Some(""), Some("   ")] {
-            let error = decide_clone(false, origin, Some("main"), Some(sha))
+            let error = decide_clone(false, origin, Some("main"), None, Some(sha))
                 .expect_err("exact checkout without an origin should fail");
             assert!(error.to_string().contains("requires a repository origin"));
         }
@@ -465,9 +562,51 @@ mod tests {
                 false,
                 Some("https://github.com/acme/widgets"),
                 branch,
+                None,
                 Some(sha),
             )
             .expect_err("exact checkout without a branch should fail");
+            assert!(error.to_string().contains("requires a repository branch"));
+        }
+    }
+
+    #[test]
+    fn tag_checkout_requires_nonempty_tag_clone_origin_and_branch() {
+        let empty_tag = decide_clone(
+            false,
+            Some("https://github.com/acme/widgets"),
+            Some("main"),
+            Some(""),
+            None,
+        )
+        .expect_err("empty tags should fail");
+        assert!(empty_tag.to_string().contains("non-empty tag"));
+
+        let skip_error = decide_clone(
+            true,
+            Some("https://github.com/acme/widgets"),
+            Some("main"),
+            Some("v1"),
+            None,
+        )
+        .expect_err("tag checkout with skip-clone should fail");
+        assert!(skip_error.to_string().contains("requires cloning"));
+
+        for origin in [None, Some(""), Some("   ")] {
+            let error = decide_clone(false, origin, Some("main"), Some("v1"), None)
+                .expect_err("tag checkout without an origin should fail");
+            assert!(error.to_string().contains("requires a repository origin"));
+        }
+
+        for branch in [None, Some(""), Some("   ")] {
+            let error = decide_clone(
+                false,
+                Some("https://github.com/acme/widgets"),
+                branch,
+                Some("v1"),
+                None,
+            )
+            .expect_err("tag checkout without a branch should fail");
             assert!(error.to_string().contains("requires a repository branch"));
         }
     }
@@ -536,7 +675,7 @@ mod tests {
         clippy::disallowed_methods,
         reason = "hermetic Git proof uses isolated synchronous temp-repository I/O"
     )]
-    fn exact_checkout_fetches_admitted_commit_after_branch_advances() {
+    fn exact_checkout_fetches_admitted_commit_after_branch_and_tag_advance() {
         let temp = tempfile::tempdir().expect("tempdir");
         let remote = temp.path().join("remote.git");
         let source = temp.path().join("source");
@@ -561,10 +700,14 @@ mod tests {
         ]);
         run_git(&source, &["push", "-u", "origin", "main"]);
         let admitted_sha = run_git(&source, &["rev-parse", "HEAD"]).trim().to_string();
+        run_git(&source, &["tag", "release"]);
+        run_git(&source, &["push", "origin", "refs/tags/release"]);
 
         fs::write(source.join("revision.txt"), "B\n").expect("write commit B");
         run_git(&source, &["commit", "-am", "commit B"]);
         run_git(&source, &["push", "origin", "main"]);
+        run_git(&source, &["tag", "-f", "release"]);
+        run_git(&source, &["push", "--force", "origin", "refs/tags/release"]);
         let advanced_sha = run_git(&source, &["rev-parse", "HEAD"]).trim().to_string();
         assert_ne!(admitted_sha, advanced_sha);
 
@@ -607,6 +750,79 @@ mod tests {
             .trim(),
             advanced_sha
         );
+    }
+
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "hermetic Git proof uses isolated synchronous temp-repository I/O"
+    )]
+    fn tag_checkout_peels_lightweight_and_annotated_tags_without_branch_fallback() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let remote = temp.path().join("remote.git");
+        let source = temp.path().join("source");
+        fs::create_dir(&source).expect("source directory");
+
+        run_git(temp.path(), &[
+            "init",
+            "--bare",
+            remote.to_str().expect("UTF-8 remote path"),
+        ]);
+        run_git(&source, &["init"]);
+        fs::write(source.join("revision.txt"), "release\n").expect("write release commit");
+        run_git(&source, &["add", "revision.txt"]);
+        run_git(&source, &["commit", "-m", "release"]);
+        run_git(&source, &["branch", "-M", "main"]);
+        let release_sha = run_git(&source, &["rev-parse", "HEAD"]).trim().to_string();
+        run_git(&source, &["tag", "lightweight"]);
+        run_git(&source, &["tag", "-a", "annotated", "-m", "annotated"]);
+        run_git(&source, &[
+            "remote",
+            "add",
+            "origin",
+            remote.to_str().expect("UTF-8 remote path"),
+        ]);
+        run_git(&source, &["push", "origin", "main", "--tags"]);
+
+        let remote_path = remote.to_str().expect("UTF-8 remote path");
+        for tag in ["lightweight", "annotated"] {
+            let checkout = temp.path().join(format!("checkout-{tag}"));
+            let checkout_path = checkout.to_str().expect("UTF-8 checkout path");
+            run_shell(
+                temp.path(),
+                &exact_repository_init_command(remote_path, checkout_path),
+            );
+            run_shell(
+                temp.path(),
+                &tag_fetch_command(checkout_path, "origin", tag, Some(10)),
+            );
+            let head = run_shell(
+                temp.path(),
+                &tag_checkout_verify_command(checkout_path, "release-work"),
+            );
+
+            assert_eq!(verify_resolved_head(&head).unwrap(), release_sha);
+            assert_eq!(
+                run_git(&checkout, &["symbolic-ref", "HEAD"]).trim(),
+                "refs/heads/release-work"
+            );
+        }
+
+        let missing = temp.path().join("missing");
+        let missing_path = missing.to_str().expect("UTF-8 checkout path");
+        run_shell(
+            temp.path(),
+            &exact_repository_init_command(remote_path, missing_path),
+        );
+        let output = run_shell_output(
+            temp.path(),
+            &tag_fetch_command(missing_path, "origin", "main", Some(10)),
+        );
+        assert!(
+            !output.status.success(),
+            "a branch must not satisfy a tag fetch"
+        );
+        assert!(!missing.join("revision.txt").exists());
     }
 
     #[test]

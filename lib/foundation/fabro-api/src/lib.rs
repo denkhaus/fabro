@@ -48,7 +48,7 @@ pub mod types {
         AgentToolsAvailableProps, AskFabro, AuthMethod, AutomationRef, BilledTokenCounts, BlobHash,
         CommandTermination, Conclusion, ContentPart, CreateVariableRequest, DiffStats, DiffSummary,
         DirtyStatus, EventEnvelope, ExecOutputTail, FailureCategory, FailureDetail,
-        FailureSignature, GitContext, IdpIdentity, IntegrationConnectionKind,
+        FailureSignature, GitContext, GitRunTarget, IdpIdentity, IntegrationConnectionKind,
         IntegrationConnectionState, IntegrationConnectionStatus, IntegrationProvider,
         IntegrationStatus, InterviewOption, InterviewQuestionRecord, LlmOutputKind,
         McpServerDraft as CreateMcpServerRequest, McpServerProjection,
