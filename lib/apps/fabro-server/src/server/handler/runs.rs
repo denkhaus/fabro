@@ -60,8 +60,8 @@ use crate::run_compiler::{
 };
 use crate::run_files::{list_run_commits, list_run_files};
 use crate::run_intent::{
-    EnvironmentSelectionError, RunIntentAdmissionError, lower_workflow_closure,
-    pin_workflow_environment_authority,
+    EnvironmentSelectionError, PreparedIntentTarget, RunIntentAdmissionError,
+    lower_workflow_closure, pin_workflow_environment_authority, prepare_intent_target,
 };
 use crate::run_manifest;
 use crate::run_selector::{ResolveRunError, resolve_run_by_selector};
@@ -697,6 +697,9 @@ async fn create_run_from_intent(
     let raw_compiler_input = RawRunCompilerInput {
         workflow_bundle: lowered.workflow_bundle,
         entrypoint: lowered.entrypoint,
+        // Intent compilation is isolated from target-project content. Folder
+        // identity is projected to `source_directory` during persistence and
+        // must never become a compiler lookup root.
         cwd: PathBuf::from("/workspace"),
         server_run_defaults: state.manifest_run_defaults().as_ref().clone(),
         server_environment_defaults: state.environment_store().catalog_layer().as_ref().clone(),
@@ -712,11 +715,13 @@ async fn create_run_from_intent(
         run_id: None,
         title,
         parent_id: intent.parent_id,
-        git,
+        // Target identity and its Git projection are attached after provider
+        // admission via `with_target_and_git`; the compiler never reads them.
+        git: None,
         storage_root: state.server_storage_dir(),
         workflow_slug: None,
         workflow_version_id: Some(intent.workflow_version_id),
-        target: Some(target.clone()),
+        target: None,
         provenance: run_provenance(&headers, &actor),
         web_url: None,
         submitted_manifest_bytes: None,
@@ -738,13 +743,18 @@ async fn create_run_from_intent(
             });
         }
     };
-    let prepared = match run_compiler::apply_run_variables(layered, vars) {
+    let mut prepared = match run_compiler::apply_run_variables(layered, vars) {
         Ok(prepared) => prepared,
         Err(error) => return run_intent_admission_error(error.into()),
     };
     if let Err(error) = validate_intent_environment(&state, prepared.settings(), &target).await {
         return run_intent_admission_error(error.into());
     }
+    let PreparedIntentTarget { target, git } = match prepare_intent_target(target, git).await {
+        Ok(prepared) => prepared,
+        Err(error) => return run_intent_admission_error(error.into()),
+    };
+    prepared = prepared.with_target_and_git(target, git);
     let (prepared, run_id) = prepared.resolve_run_id();
     if let Err(response) = validate_optional_parent(&state, run_id, prepared.parent_id()).await {
         return response;
@@ -978,7 +988,9 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
                 "Run intent admission rejected"
             );
         }
-        RunIntentAdmissionError::Target(_) | RunIntentAdmissionError::Environment(_) => {}
+        RunIntentAdmissionError::Target(_)
+        | RunIntentAdmissionError::FolderTarget(_)
+        | RunIntentAdmissionError::Environment(_) => {}
     }
 
     match error {
@@ -993,6 +1005,11 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
             "workflow_version_unusable",
         ),
         RunIntentAdmissionError::Target(error) => intent_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            error.to_string(),
+            "target_invalid",
+        ),
+        RunIntentAdmissionError::FolderTarget(error) => intent_error(
             StatusCode::UNPROCESSABLE_ENTITY,
             error.to_string(),
             "target_invalid",
@@ -1081,6 +1098,10 @@ async fn validate_intent_environment(
         RunTarget::None {} => (
             provider == SandboxProviderKind::Local,
             "none targets require a compatible Docker or Daytona environment",
+        ),
+        RunTarget::Folder { .. } => (
+            provider != SandboxProviderKind::Local,
+            "folder targets require a Local environment",
         ),
     };
     if image_incompatible || target_incompatible {

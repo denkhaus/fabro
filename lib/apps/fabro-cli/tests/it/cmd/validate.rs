@@ -378,6 +378,42 @@ fn invalid() {
 }
 
 #[test]
+fn invalid_node_on_failure_is_a_validation_failure() {
+    let context = test_context!();
+    let mut cmd = context.validate();
+    cmd.arg(fixture("on_failure_node_invalid.fabro"));
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+    Workflow: InvalidNodeOnFailure (3 nodes, 2 edges)
+    Graph: [FIXTURES]/on_failure_node_invalid.fabro
+    error [node: work]: Node 'work' has invalid on_failure value 'stop' (on_failure_valid)
+      fix: Use one of: route, exit, succeed
+      × Validation failed
+    ");
+}
+
+#[test]
+fn deprecated_auto_status_warns_with_succeed_policy_replacement() {
+    let context = test_context!();
+    let mut cmd = context.validate();
+    cmd.arg(fixture("auto_status_deprecated.fabro"));
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    ----- stderr -----
+    Workflow: DeprecatedAutoStatus (3 nodes, 2 edges)
+    Graph: [FIXTURES]/auto_status_deprecated.fabro
+    warning [node: scan]: Node 'scan' sets deprecated 'auto_status=true' (auto_status_deprecated)
+      fix: Use on_failure=\"succeed\" instead
+    Validation: OK
+    ");
+}
+
+#[test]
 fn invalid_on_failure_is_a_validation_failure() {
     let context = test_context!();
     let mut cmd = context.validate();
@@ -390,7 +426,7 @@ fn invalid_on_failure_is_a_validation_failure() {
     Workflow: InvalidOnFailure (2 nodes, 1 edges)
     Graph: [FIXTURES]/on_failure_invalid.fabro
     error: Graph has invalid on_failure value 'stop' (on_failure_valid)
-      fix: Use one of: route, exit
+      fix: Use one of: route, exit, succeed
       × Validation failed
     ");
 }

@@ -52,10 +52,14 @@ pub enum RunTarget {
         sha:    Option<String>,
     },
     None {},
+    Folder {
+        path: String,
+    },
 }
 
 impl RunTarget {
-    /// The wire `kind` discriminator (`git`, `none`), for diagnostics.
+    /// The wire `kind` discriminator (`git`, `none`, or `folder`), for
+    /// diagnostics.
     pub fn kind_name(&self) -> &'static str {
         self.into()
     }
@@ -63,7 +67,8 @@ impl RunTarget {
     /// Validates and canonicalizes the target without any network resolution.
     ///
     /// Git targets include their derived operational Git projection. Targets
-    /// without a repository return no projection.
+    /// without a repository return no projection. Folder paths require
+    /// filesystem validation and canonicalization during provider admission.
     pub fn validate(self) -> Result<ValidatedRunTarget, TargetValidationError> {
         match self {
             Self::Git { repo, branch, sha } => {
@@ -99,6 +104,10 @@ impl RunTarget {
             }
             Self::None {} => Ok(ValidatedRunTarget {
                 target: Self::None {},
+                git:    None,
+            }),
+            Self::Folder { path } => Ok(ValidatedRunTarget {
+                target: Self::Folder { path },
                 git:    None,
             }),
         }

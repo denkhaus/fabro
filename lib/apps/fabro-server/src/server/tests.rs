@@ -3529,19 +3529,35 @@ async fn generated_title_does_not_overwrite_user_title_edit() {
 }
 
 async fn post_run_manifest(app: &Router, manifest: serde_json::Value) -> serde_json::Value {
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(api("/runs"))
-                .header("content-type", "application/json")
-                .body(Body::from(manifest.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let response = post_run_intent_response(app, manifest).await;
     response_json!(response, StatusCode::CREATED).await
+}
+
+async fn post_run_intent_response(app: &Router, intent: serde_json::Value) -> Response {
+    app.clone()
+        .oneshot(json_request(Method::POST, "/runs", &intent))
+        .await
+        .unwrap()
+}
+
+/// App state whose default environment runs in place on the server, which is
+/// the only placement folder targets admit.
+fn local_test_app_state() -> Arc<AppState> {
+    TestAppStateBuilder::new()
+        .default_environment_provider(Some(EnvironmentProvider::Local))
+        .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .build()
+}
+
+fn folder_intent(
+    workflow_version_id: fabro_types::WorkflowVersionId,
+    path: impl serde::Serialize,
+) -> serde_json::Value {
+    json!({
+        "workflow_version_id": workflow_version_id,
+        "target": { "kind": "folder", "path": path },
+        "args": {}
+    })
 }
 
 async fn store_workflow_version(
@@ -3760,6 +3776,219 @@ async fn post_runs_run_intent_creates_submitted_none_target_without_git_projecti
 }
 
 #[tokio::test]
+async fn post_runs_run_intent_canonicalizes_and_persists_a_local_folder_target() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("workspace");
+    let hop = dir.path().join("hop");
+    std::fs::create_dir(&workspace).unwrap();
+    std::fs::create_dir(&hop).unwrap();
+    // Target-project files are not compiler inputs for a version-backed run.
+    std::fs::write(workspace.join("workflow.toml"), "not valid TOML").unwrap();
+    std::fs::write(workspace.join("goal.md"), "Goal from target folder").unwrap();
+    let submitted = hop.join("..").join("workspace");
+    let canonical = workspace
+        .canonicalize()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    let state = local_test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(
+        &state,
+        MINIMAL_DOT,
+        Some("_version = 1\n[run.goal]\nfile = \"goal.md\"\n"),
+    )
+    .await;
+
+    let body = post_run_manifest(
+        &app,
+        folder_intent(workflow_version_id, submitted.to_string_lossy()),
+    )
+    .await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    assert_eq!(body["lifecycle"]["status"]["kind"], "submitted");
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    let events = run_store.list_events().await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.event.event_name())
+            .collect::<Vec<_>>(),
+        vec!["run.created", "run.submitted"]
+    );
+    let projection = run_store.state().await.unwrap();
+    assert_eq!(
+        projection.spec.target,
+        Some(fabro_types::RunTarget::Folder {
+            path: canonical.clone(),
+        })
+    );
+    assert_eq!(
+        projection.spec.source_directory.as_deref(),
+        Some(canonical.as_str())
+    );
+    assert_eq!(projection.spec.git, None);
+    assert_eq!(
+        projection.spec.graph.goal(),
+        "Goal loaded from immutable version bytes"
+    );
+    assert_eq!(
+        projection.spec.settings.run.environment.provider,
+        EnvironmentProvider::Local
+    );
+    assert_eq!(projection.spec.manifest_blob, None);
+    assert!(projection.spec.definition_blob.is_some());
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_observes_folder_git_metadata_without_a_remote_call() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = git2::Repository::init(dir.path()).unwrap();
+    let mut index = repo.index().unwrap();
+    let tree_id = index.write_tree().unwrap();
+    drop(index);
+    let tree = repo.find_tree(tree_id).unwrap();
+    let signature = git2::Signature::now("Fabro Test", "fabro@example.com").unwrap();
+    let commit = repo
+        .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+        .unwrap();
+    let commit = commit.to_string();
+    drop(tree);
+    repo.remote("origin", "https://github.com/acme/widgets.git")
+        .unwrap();
+    drop(repo);
+    let canonical = dir
+        .path()
+        .canonicalize()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    let state = local_test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+
+    let body = post_run_manifest(&app, folder_intent(workflow_version_id, canonical)).await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+    let projection = state
+        .stores
+        .runs
+        .open_run_reader(&run_id)
+        .await
+        .unwrap()
+        .state()
+        .await
+        .unwrap();
+    let git = projection.spec.git.unwrap();
+
+    assert_eq!(git.origin_url, "https://github.com/acme/widgets");
+    assert!(!git.branch.is_empty());
+    assert_eq!(git.sha.as_deref(), Some(commit.as_str()));
+    assert_eq!(git.dirty, fabro_types::DirtyStatus::Clean);
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_rejects_invalid_folder_paths_before_persistence() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("file");
+    std::fs::write(&file, "not a directory").unwrap();
+    let state = local_test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let invalid_paths = [
+        String::new(),
+        "relative/path".to_string(),
+        dir.path().join("missing").to_string_lossy().to_string(),
+        file.to_string_lossy().to_string(),
+    ];
+
+    for path in invalid_paths {
+        let response =
+            post_run_intent_response(&app, folder_intent(workflow_version_id, path)).await;
+        let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+        assert_eq!(body["errors"][0]["code"], "target_invalid");
+    }
+
+    assert!(state.runs.lock().expect("runs lock poisoned").is_empty());
+    assert!(
+        state
+            .stores
+            .run_summaries
+            .list_identities()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_applies_the_folder_target_environment_matrix() {
+    let dir = tempfile::tempdir().unwrap();
+    // A missing path proves provider admission wins over filesystem
+    // materialization. Touching the path first would return `target_invalid`
+    // instead of the provider-specific errors asserted below.
+    let target = dir.path().join("missing").to_string_lossy().to_string();
+
+    for state in [
+        test_app_state(),
+        TestAppStateBuilder::new()
+            .default_environment_provider(Some(EnvironmentProvider::Daytona))
+            .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .build(),
+    ] {
+        let app = crate::test_support::build_test_router(Arc::clone(&state));
+        let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+        let response =
+            post_run_intent_response(&app, folder_intent(workflow_version_id, &target)).await;
+        let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+        assert_eq!(body["errors"][0]["code"], "target_environment_unsupported");
+        assert!(
+            state
+                .stores
+                .run_summaries
+                .list_identities()
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    let disabled_state = TestAppStateBuilder::new()
+        .runtime_settings(
+            server_settings_from_toml(
+                r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[server.sandbox.providers.local]
+enabled = false
+"#,
+            ),
+            RunLayer::default(),
+        )
+        .default_environment_provider(Some(EnvironmentProvider::Local))
+        .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .build();
+    let app = crate::test_support::build_test_router(Arc::clone(&disabled_state));
+    let workflow_version_id = store_workflow_version(&disabled_state, MINIMAL_DOT, None).await;
+    let response =
+        post_run_intent_response(&app, folder_intent(workflow_version_id, &target)).await;
+    let body = response_json!(response, StatusCode::SERVICE_UNAVAILABLE).await;
+    assert_eq!(body["errors"][0]["code"], "integration_unavailable");
+    assert!(
+        disabled_state
+            .stores
+            .run_summaries
+            .list_identities()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn post_runs_run_intent_accepts_none_target_with_ready_daytona_environment() {
     let state = TestAppStateBuilder::new()
         .default_environment_provider(Some(EnvironmentProvider::Daytona))
@@ -3965,10 +4194,7 @@ async fn post_runs_run_intent_maps_missing_version_environment_and_target_errors
 
 #[tokio::test]
 async fn post_runs_run_intent_rejects_none_target_with_local_environment_before_persistence() {
-    let state = TestAppStateBuilder::new()
-        .default_environment_provider(Some(EnvironmentProvider::Local))
-        .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
-        .build();
+    let state = local_test_app_state();
     let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let response = app

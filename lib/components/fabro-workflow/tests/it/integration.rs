@@ -1143,7 +1143,11 @@ impl Handler for OnFailureRecordingHandler {
     ) -> Result<Outcome, fabro_workflow::error::Error> {
         self.visits.lock().unwrap().push(node.id.clone());
         if node.id == "work" {
-            Ok(Outcome::fail_classify("forced work failure"))
+            let mut outcome = Outcome::fail_classify("forced work failure");
+            outcome
+                .context_updates
+                .insert("recovery_ready".to_string(), serde_json::json!(true));
+            Ok(outcome)
         } else {
             Ok(Outcome::success())
         }
@@ -1290,6 +1294,154 @@ async fn on_failure_exit_uses_retry_target_instead_of_unconditional_edge() {
 
     assert_eq!(run.outcome.status, StageOutcome::Succeeded);
     assert_eq!(*run.visits.lock().unwrap(), vec!["work", "recovery"]);
+}
+
+#[tokio::test]
+async fn node_on_failure_exit_overrides_graph_route_policy() {
+    let graph = on_failure_graph(r#"work [on_failure="exit"]"#);
+    let run = run_on_failure(&graph, Emitter::default()).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Failed {
+        retry_requested: false,
+    });
+    assert_eq!(
+        run.outcome.failure_reason(),
+        Some("stage work failed and node on_failure=exit stopped routing")
+    );
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work"]);
+}
+
+#[tokio::test]
+async fn node_on_failure_route_overrides_graph_exit_policy() {
+    let graph = on_failure_graph(
+        r#"graph [on_failure="exit"]
+        work [on_failure="route"]"#,
+    );
+    let run = run_on_failure(&graph, Emitter::default()).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Succeeded);
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work", "downstream"]);
+}
+
+#[tokio::test]
+async fn node_on_failure_succeed_promotes_failed_node_and_keeps_failure_in_events() {
+    let graph = on_failure_graph(
+        r#"graph [on_failure="exit"]
+        work [on_failure="succeed"]"#,
+    );
+    let emitter = Emitter::default();
+    let events = collect_events(&emitter);
+    let run = run_on_failure(&graph, emitter).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Succeeded);
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work", "downstream"]);
+
+    let checkpoint = run
+        .state
+        .current_checkpoint()
+        .expect("downstream should be checkpointed");
+    let work = &checkpoint.node_outcomes["work"];
+    assert_eq!(work.status, StageOutcome::Succeeded);
+    assert_eq!(work.failure_reason(), Some("forced work failure"));
+    assert_eq!(
+        work.notes.as_deref(),
+        Some("node on_failure=succeed promoted a failed outcome to succeeded")
+    );
+
+    let events = events.lock().unwrap();
+    let completed = events
+        .iter()
+        .find_map(|event| match &event.body {
+            EventBody::StageCompleted(props) if event.node_id.as_deref() == Some("work") => {
+                Some(props.clone())
+            }
+            _ => None,
+        })
+        .expect("promoted work stage should emit stage.completed");
+    assert_eq!(completed.status, StageOutcome::Succeeded);
+    assert_eq!(
+        completed
+            .failure
+            .as_ref()
+            .map(|failure| failure.message.as_str()),
+        Some("forced work failure")
+    );
+    assert!(!events.iter().any(|event| {
+        matches!(&event.body, EventBody::StageFailed(_)) && event.node_id.as_deref() == Some("work")
+    }));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(&event.body, EventBody::RunCompleted(_)))
+    );
+}
+
+#[tokio::test]
+async fn auto_status_true_is_an_alias_for_on_failure_succeed() {
+    let graph = on_failure_graph(
+        r#"graph [on_failure="exit"]
+        work [auto_status=true]"#,
+    );
+    let run = run_on_failure(&graph, Emitter::default()).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Succeeded);
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work", "downstream"]);
+    let checkpoint = run
+        .state
+        .current_checkpoint()
+        .expect("downstream should be checkpointed");
+    assert_eq!(
+        checkpoint.node_outcomes["work"].status,
+        StageOutcome::Succeeded
+    );
+}
+
+#[tokio::test]
+async fn node_on_failure_succeed_prefers_explicit_failure_edge() {
+    let graph = on_failure_graph(
+        r#"work [on_failure="succeed"]
+        recovery
+        work -> recovery [condition="outcome=failed"]
+        recovery -> exit"#,
+    );
+    let run = run_on_failure(&graph, Emitter::default()).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Succeeded);
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work", "recovery"]);
+    let checkpoint = run
+        .state
+        .current_checkpoint()
+        .expect("recovery should be checkpointed");
+    assert!(checkpoint.node_outcomes["work"].status.is_failure());
+}
+
+#[tokio::test]
+async fn node_on_failure_succeed_tests_recovery_edge_with_pending_result_context() {
+    let graph = on_failure_graph(
+        r#"work [on_failure="succeed"]
+        recovery
+        work -> recovery [condition="outcome=failed && context.recovery_ready=true && context.failure_class=deterministic"]
+        recovery -> exit"#,
+    );
+    let run = run_on_failure(&graph, Emitter::default()).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Succeeded);
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work", "recovery"]);
+    let checkpoint = run
+        .state
+        .current_checkpoint()
+        .expect("recovery should be checkpointed");
+    assert!(checkpoint.node_outcomes["work"].status.is_failure());
+}
+
+#[tokio::test]
+async fn node_on_failure_succeed_satisfies_goal_gate_without_retry_target() {
+    let graph =
+        on_failure_graph(r#"work [on_failure="succeed" goal_gate=true retry_target="start"]"#);
+    let run = run_on_failure(&graph, Emitter::default()).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Succeeded);
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work", "downstream"]);
 }
 
 #[tokio::test]

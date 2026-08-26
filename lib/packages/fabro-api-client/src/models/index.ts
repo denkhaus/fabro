@@ -123,6 +123,7 @@ export * from './failure-detail';
 export * from './failure-reason';
 export * from './file-checkpoint';
 export * from './file-diff';
+export * from './folder-run-target';
 export * from './fork-request';
 export * from './fork-response';
 export * from './fork-source-ref';

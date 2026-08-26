@@ -9318,11 +9318,13 @@ components:
       oneOf:
         - $ref: "#/components/schemas/GitRunTarget"
         - $ref: "#/components/schemas/NoneRunTarget"
+        - $ref: "#/components/schemas/FolderRunTarget"
       discriminator:
         propertyName: kind
         mapping:
           git: "#/components/schemas/GitRunTarget"
           none: "#/components/schemas/NoneRunTarget"
+          folder: "#/components/schemas/FolderRunTarget"
 
     GitRunTarget:
       description: Public github.com repository target.
@@ -9365,6 +9367,30 @@ components:
         kind:
           type: string
           enum: [none]
+
+    FolderRunTarget:
+      description: >-
+        Existing directory on the Fabro server, executed in place by a Local
+        environment. The submitted path must be absolute and name an existing
+        directory; Fabro resolves symlinks and persists its canonical UTF-8
+        path. This target is intended for trusted single-tenant deployments.
+        Docker and Daytona environments always reject it. This target does not
+        add Local Git cloning or Local scratch workspaces. Folder runs execute
+        in place without Fabro Git checkpoints, so fork and rewind are
+        unavailable.
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - path
+      properties:
+        kind:
+          type: string
+          enum: [folder]
+        path:
+          type: string
+          minLength: 1
+          description: Absolute path on the Fabro server, not on the API caller's machine.
 
     RunManifest:
       description: Self-contained workflow run manifest.

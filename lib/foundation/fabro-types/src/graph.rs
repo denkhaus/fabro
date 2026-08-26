@@ -6,7 +6,11 @@ use strum::VariantNames;
 
 use crate::AgentBackend;
 
-/// Policy for routing a failed node when no explicit recovery edge matches.
+/// Policy for a failed node when no explicit recovery route matches.
+///
+/// Explicit routes (a jump, a matching edge condition, a matching preferred
+/// label, or a matching suggested next node) take priority under every
+/// policy. The policy decides what happens when none of them match.
 #[derive(
     Debug,
     Clone,
@@ -24,9 +28,15 @@ use crate::AgentBackend;
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum OnFailure {
+    /// The outcome stays `failed` and may take an unconditional edge.
     #[default]
     Route,
+    /// The outcome stays `failed` and skips the unconditional edge, so the
+    /// run ends unless a retry target applies.
     Exit,
+    /// The outcome becomes `succeeded` and follows normal success routing.
+    /// The original failure details stay on the outcome for observability.
+    Succeed,
 }
 
 /// Default per-value preamble inline ceiling (KB). A single context or
@@ -44,6 +54,42 @@ impl OnFailure {
     #[must_use]
     pub fn expected_values() -> String {
         <Self as VariantNames>::VARIANTS.join(", ")
+    }
+}
+
+/// A failure routing policy together with the scope that supplied it, so
+/// failure messages can name the attribute that stopped routing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResolvedOnFailure {
+    policy: OnFailure,
+    scope:  AttributeScope,
+}
+
+impl ResolvedOnFailure {
+    #[must_use]
+    pub const fn node(policy: OnFailure) -> Self {
+        Self {
+            policy,
+            scope: AttributeScope::Node,
+        }
+    }
+
+    #[must_use]
+    pub const fn graph(policy: OnFailure) -> Self {
+        Self {
+            policy,
+            scope: AttributeScope::Graph,
+        }
+    }
+
+    #[must_use]
+    pub const fn policy(self) -> OnFailure {
+        self.policy
+    }
+
+    #[must_use]
+    pub const fn scope(self) -> AttributeScope {
+        self.scope
     }
 }
 
@@ -324,6 +370,20 @@ impl Node {
         self.str_attr("fallback_retry_target")
     }
 
+    /// Node-level failure policy override. `None` means the node inherits
+    /// the graph-level policy. Invalid values are rejected during workflow
+    /// validation, so runtime resolution treats them as absent.
+    ///
+    /// The deprecated `auto_status=true` attribute is a compatibility alias
+    /// for `on_failure="succeed"`. An explicit `on_failure` attribute wins.
+    #[must_use]
+    pub fn on_failure(&self) -> Option<OnFailure> {
+        match self.attrs.get("on_failure") {
+            Some(value) => value.as_str().and_then(|value| value.parse().ok()),
+            None => self.auto_status().then_some(OnFailure::Succeed),
+        }
+    }
+
     #[must_use]
     pub fn fidelity(&self) -> Option<&str> {
         self.str_attr("fidelity")
@@ -395,6 +455,8 @@ impl Node {
         self.str_attr("speed")
     }
 
+    /// Deprecated spelling of `on_failure="succeed"`. Validation warns when
+    /// it is present; [`Node::on_failure`] resolves the alias at runtime.
     #[must_use]
     pub fn auto_status(&self) -> bool {
         self.bool_attr("auto_status").unwrap_or(false)
@@ -637,7 +699,7 @@ impl Graph {
             .and_then(AttrValue::as_str)
     }
 
-    /// Graph-level failure routing policy. Invalid values are rejected during
+    /// Graph-level failure policy. Invalid values are rejected during
     /// workflow validation, so runtime resolution can use the compatibility
     /// default.
     #[must_use]
@@ -647,6 +709,17 @@ impl Graph {
             .and_then(AttrValue::as_str)
             .and_then(|value| value.parse().ok())
             .unwrap_or_default()
+    }
+
+    /// Effective failure policy for a node. A node-level `on_failure`
+    /// attribute overrides the graph level; an absent (or invalid, hence
+    /// validation-rejected) node attribute inherits the graph policy.
+    #[must_use]
+    pub fn resolve_on_failure(&self, node: &Node) -> ResolvedOnFailure {
+        match node.on_failure() {
+            Some(policy) => ResolvedOnFailure::node(policy),
+            None => ResolvedOnFailure::graph(self.on_failure()),
+        }
     }
 
     /// Graph-level `default_fidelity`.
@@ -748,7 +821,8 @@ impl Graph {
 }
 
 /// Where an attribute appears in a workflow graph.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, strum::Display, strum::IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum AttributeScope {
     Graph,
     Node,
@@ -850,9 +924,11 @@ mod tests {
     fn on_failure_parses_and_displays_supported_values() {
         assert_eq!("route".parse::<OnFailure>().unwrap(), OnFailure::Route);
         assert_eq!("exit".parse::<OnFailure>().unwrap(), OnFailure::Exit);
+        assert_eq!("succeed".parse::<OnFailure>().unwrap(), OnFailure::Succeed);
         assert_eq!(OnFailure::Route.to_string(), "route");
         assert_eq!(OnFailure::Exit.to_string(), "exit");
-        assert_eq!(OnFailure::expected_values(), "route, exit");
+        assert_eq!(OnFailure::Succeed.to_string(), "succeed");
+        assert_eq!(OnFailure::expected_values(), "route, exit, succeed");
     }
 
     #[test]
@@ -871,6 +947,100 @@ mod tests {
             AttrValue::String("exit".to_string()),
         );
         assert_eq!(graph.on_failure(), OnFailure::Exit);
+    }
+
+    #[test]
+    fn node_on_failure_parses_valid_values_and_ignores_invalid_ones() {
+        let mut node = Node::new("work");
+        assert_eq!(node.on_failure(), None);
+
+        node.attrs.insert(
+            "on_failure".to_string(),
+            AttrValue::String("exit".to_string()),
+        );
+        assert_eq!(node.on_failure(), Some(OnFailure::Exit));
+
+        node.attrs.insert(
+            "on_failure".to_string(),
+            AttrValue::String("stop".to_string()),
+        );
+        assert_eq!(node.on_failure(), None);
+
+        node.attrs
+            .insert("on_failure".to_string(), AttrValue::Boolean(true));
+        assert_eq!(node.on_failure(), None);
+    }
+
+    #[test]
+    fn node_auto_status_is_an_alias_for_on_failure_succeed() {
+        let mut node = Node::new("work");
+        node.attrs
+            .insert("auto_status".to_string(), AttrValue::Boolean(true));
+        assert!(node.auto_status());
+        assert_eq!(node.on_failure(), Some(OnFailure::Succeed));
+
+        // An explicit on_failure attribute wins over the alias.
+        node.attrs.insert(
+            "on_failure".to_string(),
+            AttrValue::String("exit".to_string()),
+        );
+        assert_eq!(node.on_failure(), Some(OnFailure::Exit));
+
+        // auto_status=false does not set a policy.
+        let mut node = Node::new("work");
+        node.attrs
+            .insert("auto_status".to_string(), AttrValue::Boolean(false));
+        assert_eq!(node.on_failure(), None);
+    }
+
+    #[test]
+    fn explicit_invalid_on_failure_does_not_fall_back_to_auto_status() {
+        for value in [
+            AttrValue::String("invalid".to_string()),
+            AttrValue::Boolean(true),
+        ] {
+            let mut node = Node::new("work");
+            node.attrs
+                .insert("auto_status".to_string(), AttrValue::Boolean(true));
+            node.attrs.insert("on_failure".to_string(), value);
+
+            assert_eq!(node.on_failure(), None);
+        }
+    }
+
+    #[test]
+    fn resolve_on_failure_prefers_node_policy_over_graph_policy() {
+        let mut graph = Graph::new("test");
+        graph.attrs.insert(
+            "on_failure".to_string(),
+            AttrValue::String("exit".to_string()),
+        );
+        graph.nodes.insert("bare".to_string(), Node::new("bare"));
+        let mut invalid = Node::new("invalid");
+        invalid.attrs.insert(
+            "on_failure".to_string(),
+            AttrValue::String("bogus".to_string()),
+        );
+        graph.nodes.insert("invalid".to_string(), invalid);
+        let mut route = Node::new("route");
+        route.attrs.insert(
+            "on_failure".to_string(),
+            AttrValue::String("route".to_string()),
+        );
+        graph.nodes.insert("route".to_string(), route);
+
+        // Node attribute wins over the graph policy.
+        assert_eq!(
+            graph.resolve_on_failure(&graph.nodes["route"]),
+            ResolvedOnFailure::node(OnFailure::Route)
+        );
+        // Absent and invalid node attributes inherit the graph policy.
+        for node_id in ["bare", "invalid"] {
+            assert_eq!(
+                graph.resolve_on_failure(&graph.nodes[node_id]),
+                ResolvedOnFailure::graph(OnFailure::Exit)
+            );
+        }
     }
 
     #[test]

@@ -3,11 +3,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use async_trait::async_trait;
-use fabro_types::OnFailure;
+use fabro_types::{OnFailure, ResolvedOnFailure};
 
 use crate::context::Context;
 use crate::error::{Error, HandlerErrorDetail, Result};
-use crate::graph::{EdgeSelection, EdgeSpec, Graph, NodeSpec};
+use crate::graph::{EdgeSelection, EdgeSelectionReason, EdgeSpec, Graph, NodeSpec};
 use crate::handler::NodeHandler;
 use crate::outcome::{FailureCategory, FailureDetail, Outcome, StageOutcome};
 use crate::retry::RetryPolicy;
@@ -20,6 +20,7 @@ pub struct TestNode {
     pub terminal:   bool,
     pub max_visits: Option<usize>,
     pub goal_gate:  Option<(String, StageOutcome)>,
+    pub on_failure: Option<OnFailure>,
 }
 
 impl TestNode {
@@ -29,6 +30,7 @@ impl TestNode {
             terminal:   false,
             max_visits: None,
             goal_gate:  None,
+            on_failure: None,
         }
     }
 
@@ -38,6 +40,7 @@ impl TestNode {
             terminal:   true,
             max_visits: None,
             goal_gate:  None,
+            on_failure: None,
         }
     }
 
@@ -50,6 +53,12 @@ impl TestNode {
     #[must_use]
     pub fn with_goal_gate(mut self, node_id: &str, required_status: StageOutcome) -> Self {
         self.goal_gate = Some((node_id.to_string(), required_status));
+        self
+    }
+
+    #[must_use]
+    pub fn with_on_failure(mut self, on_failure: OnFailure) -> Self {
+        self.on_failure = Some(on_failure);
         self
     }
 }
@@ -190,7 +199,7 @@ impl Graph for TestGraph {
             {
                 return Some(EdgeSelection {
                     edge:   e.clone(),
-                    reason: "preferred_label",
+                    reason: EdgeSelectionReason::PreferredLabel,
                 });
             }
         }
@@ -203,7 +212,7 @@ impl Graph for TestGraph {
         {
             return Some(EdgeSelection {
                 edge:   e.clone(),
-                reason: "condition",
+                reason: EdgeSelectionReason::Condition,
             });
         }
 
@@ -212,20 +221,16 @@ impl Graph for TestGraph {
             if let Some(e) = edges.iter().find(|e| e.to == *suggested) {
                 return Some(EdgeSelection {
                     edge:   e.clone(),
-                    reason: "suggested_next",
+                    reason: EdgeSelectionReason::SuggestedNext,
                 });
             }
-        }
-
-        if outcome.status.is_failure() && self.on_failure == OnFailure::Exit {
-            return None;
         }
 
         // Fourth: unconditional (no label)
         if let Some(e) = edges.iter().find(|e| e.label.is_none()) {
             return Some(EdgeSelection {
                 edge:   e.clone(),
-                reason: "unconditional",
+                reason: EdgeSelectionReason::Unconditional,
             });
         }
 
@@ -257,8 +262,11 @@ impl Graph for TestGraph {
         self.retry_targets.get(failed_node_id).cloned()
     }
 
-    fn on_failure(&self) -> OnFailure {
-        self.on_failure
+    fn resolve_on_failure(&self, node: &Self::Node) -> ResolvedOnFailure {
+        match node.on_failure {
+            Some(policy) => ResolvedOnFailure::node(policy),
+            None => ResolvedOnFailure::graph(self.on_failure),
+        }
     }
 }
 
@@ -519,7 +527,7 @@ mod tests {
         let ctx = Context::new();
         let sel = g.select_edge(&node, &outcome, &ctx).unwrap();
         assert_eq!(sel.edge.target(), "b");
-        assert_eq!(sel.reason, "condition");
+        assert_eq!(sel.reason, EdgeSelectionReason::Condition);
     }
 
     #[test]
@@ -530,7 +538,7 @@ mod tests {
         let ctx = Context::new();
         let sel = g.select_edge(&node, &outcome, &ctx).unwrap();
         assert_eq!(sel.edge.target(), "end");
-        assert_eq!(sel.reason, "unconditional");
+        assert_eq!(sel.reason, EdgeSelectionReason::Unconditional);
     }
 
     #[test]

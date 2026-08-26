@@ -9,6 +9,35 @@ pub(super) fn rule() -> Box<dyn LintRule> {
 
 struct Rule;
 
+fn invalid_value_diagnostic(
+    rule: &str,
+    node_id: Option<&str>,
+    value: &AttrValue,
+) -> Option<Diagnostic> {
+    let message = match value {
+        AttrValue::String(value) if value.parse::<OnFailure>().is_ok() => return None,
+        AttrValue::String(value) => match node_id {
+            Some(node_id) => format!("Node '{node_id}' has invalid on_failure value '{value}'"),
+            None => format!("Graph has invalid on_failure value '{value}'"),
+        },
+        _ => match node_id {
+            Some(node_id) => {
+                format!("Node '{node_id}' attribute 'on_failure' must be a string")
+            }
+            None => "Graph attribute 'on_failure' must be a string".to_string(),
+        },
+    };
+
+    Some(Diagnostic {
+        rule: rule.to_string(),
+        severity: Severity::Error,
+        message,
+        node_id: node_id.map(str::to_string),
+        fix: Some(format!("Use one of: {}", OnFailure::expected_values())),
+        ..Diagnostic::default()
+    })
+}
+
 impl LintRule for Rule {
     fn name(&self) -> &'static str {
         "on_failure_valid"
@@ -17,48 +46,36 @@ impl LintRule for Rule {
     fn apply(&self, graph: &Graph) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
-        let invalid_value_message = match graph.attrs.get("on_failure") {
-            None => None,
-            Some(AttrValue::String(value)) if value.parse::<OnFailure>().is_ok() => None,
-            Some(AttrValue::String(value)) => {
-                Some(format!("Graph has invalid on_failure value '{value}'"))
-            }
-            Some(_) => Some("Graph attribute 'on_failure' must be a string".to_string()),
-        };
-        if let Some(message) = invalid_value_message {
-            diagnostics.push(Diagnostic {
-                rule: self.name().to_string(),
-                severity: Severity::Error,
-                message,
-                fix: Some(format!("Use one of: {}", OnFailure::expected_values())),
-                ..Diagnostic::default()
-            });
+        if let Some(value) = graph.attrs.get("on_failure") {
+            diagnostics.extend(invalid_value_diagnostic(self.name(), None, value));
         }
 
-        let misplaced = |subject: String| Diagnostic {
-            rule: self.name().to_string(),
-            severity: Severity::Warning,
-            message: format!(
-                "{subject} sets 'on_failure', which has no effect outside graph scope"
-            ),
-            fix: Some("Move 'on_failure' to the graph attributes".to_string()),
-            ..Diagnostic::default()
-        };
-
-        for node in graph.nodes.values() {
-            if node.attrs.contains_key("on_failure") {
-                diagnostics.push(Diagnostic {
-                    node_id: Some(node.id.clone()),
-                    ..misplaced(format!("Node '{}'", node.id))
-                });
-            }
+        let mut node_values: Vec<_> = graph
+            .nodes
+            .iter()
+            .filter_map(|(node_id, node)| {
+                node.attrs
+                    .get("on_failure")
+                    .map(|value| (node_id.as_str(), value))
+            })
+            .collect();
+        node_values.sort_unstable_by_key(|(node_id, _)| *node_id);
+        for (node_id, value) in node_values {
+            diagnostics.extend(invalid_value_diagnostic(self.name(), Some(node_id), value));
         }
 
         for edge in &graph.edges {
             if edge.attrs.contains_key("on_failure") {
                 diagnostics.push(Diagnostic {
+                    rule: self.name().to_string(),
+                    severity: Severity::Warning,
+                    message: format!(
+                        "Edge '{} -> {}' sets 'on_failure', which has no effect on edges",
+                        edge.from, edge.to
+                    ),
+                    fix: Some("Set 'on_failure' on the graph or the source node".to_string()),
                     edge: Some((edge.from.clone(), edge.to.clone())),
-                    ..misplaced(format!("Edge '{} -> {}'", edge.from, edge.to))
+                    ..Diagnostic::default()
                 });
             }
         }
@@ -80,10 +97,22 @@ mod tests {
         let mut graph = minimal_graph();
         assert!(Rule.apply(&graph).is_empty());
 
-        for value in ["route", "exit"] {
+        for value in ["route", "exit", "succeed"] {
             graph.attrs.insert(
                 "on_failure".to_string(),
                 AttrValue::String(value.to_string()),
+            );
+            assert!(Rule.apply(&graph).is_empty());
+        }
+    }
+
+    #[test]
+    fn accepts_supported_node_values() {
+        let mut graph = minimal_graph();
+        for value in ["route", "exit", "succeed"] {
+            graph.nodes.insert(
+                "work".to_string(),
+                node_with_attrs("work", &[("on_failure", value)]),
             );
             assert!(Rule.apply(&graph).is_empty());
         }
@@ -107,7 +136,7 @@ mod tests {
         );
         assert_eq!(
             diagnostics[0].fix.as_deref(),
-            Some("Use one of: route, exit")
+            Some("Use one of: route, exit, succeed")
         );
     }
 
@@ -129,13 +158,49 @@ mod tests {
     }
 
     #[test]
-    fn warns_for_node_and_edge_placement() {
+    fn rejects_unsupported_node_value() {
         let mut graph = minimal_graph();
         graph.nodes.insert(
             "work".to_string(),
-            node_with_attrs("work", &[("on_failure", "exit")]),
+            node_with_attrs("work", &[("on_failure", "stop")]),
         );
 
+        let diagnostics = Rule.apply(&graph);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].severity, Severity::Error);
+        assert_eq!(
+            diagnostics[0].message,
+            "Node 'work' has invalid on_failure value 'stop'"
+        );
+        assert_eq!(diagnostics[0].node_id.as_deref(), Some("work"));
+        assert_eq!(
+            diagnostics[0].fix.as_deref(),
+            Some("Use one of: route, exit, succeed")
+        );
+    }
+
+    #[test]
+    fn rejects_non_string_node_value() {
+        let mut graph = minimal_graph();
+        let mut node = node_with_attrs("work", &[]);
+        node.attrs
+            .insert("on_failure".to_string(), AttrValue::Boolean(true));
+        graph.nodes.insert("work".to_string(), node);
+
+        let diagnostics = Rule.apply(&graph);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].severity, Severity::Error);
+        assert_eq!(
+            diagnostics[0].message,
+            "Node 'work' attribute 'on_failure' must be a string"
+        );
+    }
+
+    #[test]
+    fn warns_for_edge_placement() {
+        let mut graph = minimal_graph();
         let mut edge = Edge::new("start", "work");
         edge.attrs.insert(
             "on_failure".to_string(),
@@ -145,24 +210,19 @@ mod tests {
 
         let diagnostics = Rule.apply(&graph);
 
-        assert_eq!(diagnostics.len(), 2);
-        assert!(
-            diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.severity == Severity::Warning)
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].severity, Severity::Warning);
+        assert_eq!(
+            diagnostics[0].message,
+            "Edge 'start -> work' sets 'on_failure', which has no effect on edges"
         );
-        assert!(
-            diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.message.contains("graph scope"))
+        assert_eq!(
+            diagnostics[0].fix.as_deref(),
+            Some("Set 'on_failure' on the graph or the source node")
         );
-        assert!(
-            diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.node_id.as_deref() == Some("work"))
+        assert_eq!(
+            diagnostics[0].edge,
+            Some(("start".to_string(), "work".to_string()))
         );
-        assert!(diagnostics.iter().any(|diagnostic| {
-            diagnostic.edge == Some(("start".to_string(), "work".to_string()))
-        }));
     }
 }

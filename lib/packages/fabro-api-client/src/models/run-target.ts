@@ -15,6 +15,9 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
+import type { FolderRunTarget } from './folder-run-target';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { GitRunTarget } from './git-run-target';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -24,4 +27,4 @@ import type { NoneRunTarget } from './none-run-target';
  * @type RunTarget
  * Workspace content and location requested for a run.
  */
-export type RunTarget = { kind: 'git' } & GitRunTarget | { kind: 'none' } & NoneRunTarget;
+export type RunTarget = { kind: 'folder' } & FolderRunTarget | { kind: 'git' } & GitRunTarget | { kind: 'none' } & NoneRunTarget;
