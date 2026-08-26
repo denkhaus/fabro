@@ -191,8 +191,13 @@ pub(crate) struct McpStartArgs {
     pub(crate) connection: ServerConnectionArgs,
 }
 
-#[derive(Args, Debug, Clone, Default)]
+#[derive(Args, Debug, Clone)]
 pub(crate) struct McpConfigArgs {
+    /// Name of the mcpServers entry; use distinct names to register multiple
+    /// Fabro servers
+    #[arg(long, value_name = "NAME", default_value = fabro_mcp_server::SERVER_NAME, value_parser = clap::builder::NonEmptyStringValueParser::new())]
+    pub(crate) name: String,
+
     #[command(flatten)]
     pub(crate) connection: ServerConnectionArgs,
 }
@@ -202,7 +207,7 @@ pub(crate) struct McpInitArgs {
     pub(crate) agent: McpAgent,
 
     #[command(flatten)]
-    pub(crate) connection: ServerConnectionArgs,
+    pub(crate) config: McpConfigArgs,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
