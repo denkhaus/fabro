@@ -135,6 +135,13 @@ digraph Develop {
         fidelity="summary:high",
         reasoning_effort="low",
         preamble_stages_ignore="planner,implementer,reviewer",
+        // fabro-9467: the reviewer is a prompt node (no tools) — a demoted
+        // evidence value (8KB default ceiling) is a preview it can never
+        // open. Evidence captures reach ~14KB (first auto-merge run), so
+        // 16KB inline keeps them whole. Graph budget is 24KB: no conflict
+        // with the aggregate demote pass (preamble_inline_max_within_budget
+        // stays quiet).
+        preamble_inline_max_kb=16,
         output_schema="routing",
         output_retries=2,
         max_visits=20,
