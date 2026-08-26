@@ -1405,7 +1405,7 @@ fn spawn_generated_title_task(task: GeneratedTitleTask) {
         let run_store = match task.state.stores.runs.open_run(&task.run_id).await {
             Ok(store) => store,
             Err(err) => {
-                tracing::debug!(run_id = %task.run_id, error = %err, "Failed to open run store for title update");
+                tracing::warn!(run_id = %task.run_id, error = %err, "Failed to open run store for title update");
                 return;
             }
         };
@@ -1423,7 +1423,7 @@ fn spawn_generated_title_task(task: GeneratedTitleTask) {
         )
         .await
         {
-            tracing::debug!(run_id = %task.run_id, error = %err, "Failed to append generated run title event");
+            tracing::warn!(run_id = %task.run_id, error = %err, "Failed to append generated run title event");
         }
     });
 }
