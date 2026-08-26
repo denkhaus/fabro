@@ -11,6 +11,7 @@ import {
   AutomationFormFields,
   automationToFormValues,
   isFormValid,
+  targetFromFormValues,
   triggersFromFormValues,
   type AutomationFormValues,
 } from "../components/automation-form";
@@ -85,14 +86,8 @@ function EditAutomationForm({ automation }: { automation: Automation }) {
         automationsApi.replaceAutomation(automation.id, automation.revision, {
           name:        trimmedName,
           description: values.description.trim() || null,
-          target:      {
-            kind:   "git",
-            repo:   values.repository.trim(),
-            branch: values.branch.trim(),
-            tag:    values.tag.trim() || undefined,
-            sha:    values.sha.trim().toLowerCase() || undefined,
-          },
-          workflow: values.workflow.trim(),
+          target:      targetFromFormValues(values),
+          workflow:    values.workflow.trim(),
           triggers: triggersFromFormValues(values),
         }),
       );

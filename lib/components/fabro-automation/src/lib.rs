@@ -10,6 +10,6 @@ pub use id::{AutomationId, AutomationRevision, AutomationRevisionParseError, Aut
 pub use migrations::{ImportReport, import_legacy_directory_once};
 pub use model::{
     ApiTrigger, Automation, AutomationDraft, AutomationReplace, AutomationTrigger, ScheduleTrigger,
-    parse_github_repository_slug, parse_schedule_expression,
+    parse_schedule_expression,
 };
 pub use store::AutomationStore;

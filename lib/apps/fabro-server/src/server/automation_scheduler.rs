@@ -714,7 +714,7 @@ mod tests {
 
     #[tokio::test]
     async fn failing_materializer_waits_until_next_cron_occurrence() {
-        let materializer = TestAutomationRunMaterializer::fail_invalid_target("boom");
+        let materializer = TestAutomationRunMaterializer::fail_invalid_target();
         let state = test_state_with_materializer(materializer.clone());
         create_automation(state.as_ref(), "nightly", "Nightly", vec![
             schedule_trigger("schedule", "* * * * *", true),

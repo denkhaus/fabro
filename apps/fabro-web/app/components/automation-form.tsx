@@ -8,7 +8,12 @@ import type {
   WorkflowSettings,
 } from "@qltysh/fabro-api-client";
 
-import { findApiTrigger, findScheduleTrigger } from "../lib/automation";
+import {
+  findApiTrigger,
+  findScheduleTrigger,
+  gitTarget,
+  type GitRunTarget,
+} from "../lib/automation";
 import { Panel, Row } from "./settings-panel";
 import { INPUT_CLASS } from "./ui";
 import { sandboxRuntime } from "../lib/run-sandbox-lifecycle";
@@ -51,7 +56,7 @@ const CRON_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
 export function automationToFormValues(automation: Automation): AutomationFormValues {
   const apiTrigger = findApiTrigger(automation);
   const scheduleTrigger = findScheduleTrigger(automation);
-  const target = automation.target.kind === "git" ? automation.target : null;
+  const target = gitTarget(automation.target);
   return {
     id:              automation.id,
     name:            automation.name,
@@ -84,9 +89,7 @@ export function automationFormValuesFromRun(
     run.workflow.graph_name,
     name,
   );
-  const canonicalTarget = runState?.spec.target?.kind === "git"
-    ? runState.spec.target
-    : null;
+  const canonicalTarget = gitTarget(runState?.spec.target);
   const repository = canonicalTarget?.repo
     ?? githubRepositoryFromSettings(settings)
     ?? githubRepositoryName(run.repository?.name)
@@ -129,9 +132,28 @@ export function isFormValid(values: AutomationFormValues): boolean {
     values.name.trim() !== "" &&
     values.repository.trim() !== "" &&
     values.branch.trim() !== "" &&
-    (values.sha.trim() === "" || /^[0-9a-fA-F]{40}$/.test(values.sha.trim())) &&
+    isOptionalShaValid(values.sha) &&
     values.workflow.trim() !== ""
   );
+}
+
+const GIT_SHA_RE = /^[0-9a-fA-F]{40}$/;
+
+/** An empty SHA means "no pin"; anything else must be a full 40-hex commit id. */
+function isOptionalShaValid(sha: string): boolean {
+  const trimmed = sha.trim();
+  return trimmed === "" || GIT_SHA_RE.test(trimmed);
+}
+
+/** Canonical Git target sent in create/replace requests. */
+export function targetFromFormValues(values: AutomationFormValues): GitRunTarget {
+  return {
+    kind:   "git",
+    repo:   values.repository.trim(),
+    branch: values.branch.trim(),
+    tag:    values.tag.trim() || undefined,
+    sha:    values.sha.trim().toLowerCase() || undefined,
+  };
 }
 
 function kebabify(value: string): string {
@@ -212,8 +234,7 @@ export function AutomationFormFields({
   lockIdAndTarget = false,
 }: AutomationFormFieldsProps) {
   const slugTouchedRef = useRef(values.id.length > 0);
-  const sha = values.sha.trim();
-  const shaValid = sha === "" || /^[0-9a-fA-F]{40}$/.test(sha);
+  const shaValid = isOptionalShaValid(values.sha);
 
   function patch(partial: Partial<AutomationFormValues>) {
     onChange({ ...values, ...partial });

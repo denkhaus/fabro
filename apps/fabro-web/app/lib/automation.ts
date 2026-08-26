@@ -1,4 +1,13 @@
-import type { Automation, AutomationTrigger } from "@qltysh/fabro-api-client";
+import type { Automation, AutomationTrigger, RunTarget } from "@qltysh/fabro-api-client";
+
+export type GitRunTarget = Extract<RunTarget, { kind: "git" }>;
+
+/** Label shown in place of a repository when an automation's target is not Git-backed. */
+export const UNSUPPORTED_TARGET_LABEL = "Unsupported target";
+
+export function gitTarget(target: RunTarget | null | undefined): GitRunTarget | null {
+  return target?.kind === "git" ? target : null;
+}
 
 type TriggerOfType<K extends AutomationTrigger["type"]> = Extract<
   AutomationTrigger,

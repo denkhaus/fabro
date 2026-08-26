@@ -15,8 +15,6 @@ pub enum AutomationValidationError {
     InvalidAutomationTriggerId { value: String },
     #[error("automation name must not be empty")]
     EmptyName,
-    #[error("repository slug {value:?} must be a GitHub owner/repo slug")]
-    InvalidRepositorySlug { value: String },
     #[error("automation target kind {kind:?} is not supported; only Git targets are accepted")]
     UnsupportedTarget { kind: String },
     #[error("automation Git target is invalid")]

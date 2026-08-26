@@ -96,7 +96,12 @@ fn parse_legacy_automation(
         .map_err(|source| AutomationStoreError::invalid_utf8(path, source))?;
     let legacy: LegacyPersistedAutomation =
         toml::from_str(content).map_err(|source| AutomationStoreError::parse(path, source))?;
-    let (target, workflow) = legacy_target(legacy.target, path)?;
+    let LegacyAutomationTarget {
+        repository,
+        selector,
+        workflow,
+    } = legacy.target;
+    let target = legacy_target(repository, &selector, path)?;
     Automation::from_stored(id.clone(), revision, AutomationReplace {
         name: legacy.name,
         description: legacy.description,
@@ -108,10 +113,10 @@ fn parse_legacy_automation(
 }
 
 fn legacy_target(
-    legacy: LegacyAutomationTarget,
+    repository: String,
+    selector: &str,
     path: &Path,
-) -> Result<(RunTarget, String), AutomationStoreError> {
-    let selector = legacy.selector.as_str();
+) -> Result<RunTarget, AutomationStoreError> {
     let (branch, tag, sha) = if let Some(sha) = repository::normalize_git_commit_sha(selector) {
         ("main".to_string(), None, Some(sha))
     } else if let Some(tag) = selector
@@ -129,19 +134,18 @@ fn legacy_target(
     } else {
         (selector.to_string(), None, None)
     };
-    let target = RunTarget::Git(GitRunTarget {
-        repo: legacy.repository,
+    RunTarget::Git(GitRunTarget {
+        repo: repository,
         branch,
         tag,
         sha,
     })
     .validate()
+    .map(|validated| validated.target)
     .map_err(|source| AutomationStoreError::LegacyTarget {
         path: path.to_path_buf(),
         source,
-    })?
-    .target;
-    Ok((target, legacy.workflow))
+    })
 }
 
 async fn legacy_automation_paths(

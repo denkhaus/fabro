@@ -95,7 +95,7 @@ impl AutomationStore {
         draft: AutomationReplace,
     ) -> Result<Automation, AutomationStoreError> {
         let (automation, _) = Automation::from_replace(id.clone(), draft)?;
-        let target = git_target(&automation.target);
+        let target = stored_git_target(&automation);
         let mut transaction = self.pool.begin().await?;
         let result = sqlx::query(
             r"
@@ -283,7 +283,7 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     transaction: &mut Transaction<'_, Sqlite>,
     automation: &Automation,
 ) -> Result<bool, AutomationStoreError> {
-    let target = git_target(&automation.target);
+    let target = stored_git_target(automation);
     let result = sqlx::query(
         r"
         INSERT INTO automations (
@@ -320,13 +320,10 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     Ok(true)
 }
 
-fn git_target(target: &RunTarget) -> &GitRunTarget {
-    match target {
-        RunTarget::Git(target) => target,
-        RunTarget::None {} | RunTarget::Folder { .. } => {
-            unreachable!("stored automations have already passed Git-only validation")
-        }
-    }
+fn stored_git_target(automation: &Automation) -> &GitRunTarget {
+    automation
+        .git_target()
+        .expect("stored automations have already passed Git-only validation")
 }
 
 async fn insert_schedule_triggers(

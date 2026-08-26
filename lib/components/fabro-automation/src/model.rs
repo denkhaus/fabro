@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use croner::Cron;
 use croner::errors::CronError;
 use croner::parser::{CronParser, Seconds, Year};
-use fabro_types::{GitHubRepositorySlug, GitRunTarget, RunTarget};
+use fabro_types::{GitRunTarget, RunTarget};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -330,16 +330,6 @@ fn normalize_replace(
     Ok(value)
 }
 
-pub fn parse_github_repository_slug(
-    value: &str,
-) -> Result<GitHubRepositorySlug, AutomationValidationError> {
-    GitHubRepositorySlug::try_new(value).ok_or_else(|| {
-        AutomationValidationError::InvalidRepositorySlug {
-            value: value.to_string(),
-        }
-    })
-}
-
 fn validate_target(target: RunTarget) -> Result<RunTarget, AutomationValidationError> {
     if !matches!(&target, RunTarget::Git(_)) {
         return Err(AutomationValidationError::UnsupportedTarget {
@@ -530,30 +520,6 @@ enabled = true
             .collect::<Vec<_>>();
 
         assert_eq!(trigger_ids, vec!["nightly"]);
-    }
-
-    #[test]
-    fn repository_slug_parser_returns_the_shared_type() {
-        let slug: fabro_types::GitHubRepositorySlug =
-            crate::parse_github_repository_slug("owner/.github").unwrap();
-
-        assert_eq!(slug.owner(), "owner");
-        assert_eq!(slug.repo(), ".github");
-    }
-
-    #[test]
-    fn invalid_repository_slug_preserves_the_automation_error() {
-        let error = crate::parse_github_repository_slug("not/github/slug").unwrap_err();
-
-        assert!(matches!(
-            &error,
-            AutomationValidationError::InvalidRepositorySlug { value }
-                if value == "not/github/slug"
-        ));
-        assert_eq!(
-            error.to_string(),
-            "repository slug \"not/github/slug\" must be a GitHub owner/repo slug"
-        );
     }
 
     #[test]

@@ -94,20 +94,10 @@ ALTER TABLE automations ADD COLUMN target_sha TEXT
 
 UPDATE automations
 SET
-    target_branch = (
-        SELECT branch
-        FROM automation_target_migration_candidates
-        WHERE automation_target_migration_candidates.id = automations.id
-    ),
-    target_tag = (
-        SELECT tag
-        FROM automation_target_migration_candidates
-        WHERE automation_target_migration_candidates.id = automations.id
-    ),
-    target_sha = (
-        SELECT sha
-        FROM automation_target_migration_candidates
-        WHERE automation_target_migration_candidates.id = automations.id
-    );
+    target_branch = candidates.branch,
+    target_tag = candidates.tag,
+    target_sha = candidates.sha
+FROM automation_target_migration_candidates AS candidates
+WHERE candidates.id = automations.id;
 
 DROP TABLE automation_target_migration_candidates;

@@ -18,7 +18,12 @@ import type {
 
 import { toRunWithStatus } from "../data/runs";
 import { ApiError, apiData, automationsApi } from "../lib/api-client";
-import { findApiTrigger, findScheduleTrigger } from "../lib/automation";
+import {
+  UNSUPPORTED_TARGET_LABEL,
+  findApiTrigger,
+  findScheduleTrigger,
+  gitTarget,
+} from "../lib/automation";
 import { useAutomation, useAutomationRuns } from "../lib/queries";
 import { queryKeys } from "../lib/query-keys";
 import { useDataUpdatedAt } from "../hooks/use-data-updated-at";
@@ -93,7 +98,7 @@ function AutomationHeader({ automation }: { automation: Automation }) {
 
   const scheduleTrigger = findScheduleTrigger(automation);
   const apiTrigger = findApiTrigger(automation);
-  const target = automation.target.kind === "git" ? automation.target : null;
+  const target = gitTarget(automation.target);
   const canRun = apiTrigger?.enabled === true;
 
   async function onRun() {
@@ -140,7 +145,7 @@ function AutomationHeader({ automation }: { automation: Automation }) {
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
             <Chip icon={FolderIcon}>
-              {target?.repo ?? "Unsupported target"}
+              {target?.repo ?? UNSUPPORTED_TARGET_LABEL}
               {target ? (
                 <span className="text-fg-muted/70">
                   {" · "}{target.branch}
