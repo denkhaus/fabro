@@ -678,22 +678,18 @@ fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
             TargetValidationError::Sha => "persisted Git run target has an invalid SHA",
         })
     })?;
-    let tag = match &validated.target {
-        RunTarget::Git(target) => target.tag.clone(),
-        RunTarget::None {} | RunTarget::Folder { .. } => None,
-    };
     // A target with no Git projection (`none` or `folder`) supplies no clone
     // source. Folder targets only reach the Local provider, where `skip_clone`
     // is unused.
-    Ok(match validated.git {
-        Some(git) => CloneSourceForRun {
+    Ok(match (validated.target, validated.git) {
+        (RunTarget::Git(target), Some(git)) => CloneSourceForRun {
             origin_url: Some(git.origin_url),
-            branch: Some(git.branch),
-            tag,
+            branch:     Some(target.branch),
+            tag:        target.tag,
             commit_sha: git.sha,
             skip_clone: false,
         },
-        None => CloneSourceForRun {
+        _ => CloneSourceForRun {
             origin_url: None,
             branch:     None,
             tag:        None,

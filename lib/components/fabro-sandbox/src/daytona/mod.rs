@@ -27,7 +27,7 @@ use tokio::task::JoinHandle;
 use tokio::{fs, time};
 use tokio_util::sync::CancellationToken;
 
-use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason};
+use crate::clone_source::{self, CloneDecision, EmptyWorkspaceReason, PinnedRevision};
 use crate::git_retry::{self, CredentialContext, GitRetryReason};
 use crate::push_credentials::{self, PushCredentialState};
 use crate::redact::redact_auth_url;
@@ -109,17 +109,13 @@ const DAYTONA_STATE_CHANGE_POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// leaked by a dead worker. An explicit `0` disables auto-stop entirely.
 const DEFAULT_AUTO_STOP_INTERVAL_MINUTES: i32 = 120;
 
-fn git_clone_selector(
-    branch: Option<&str>,
-    tag: Option<&str>,
-    commit_sha: Option<&str>,
-) -> Option<String> {
-    if commit_sha.is_some() {
-        branch.map(str::to_string)
-    } else if let Some(tag) = tag {
-        Some(format!("refs/tags/{tag}"))
-    } else {
-        branch.map(str::to_string)
+/// The ref Daytona's native clone checks out. A pinned tag is fetched by its
+/// fully-qualified ref so a same-named branch is never consulted; with an
+/// exact commit, `commit_id` drives the checkout and the branch is only a name.
+fn git_clone_selector(branch: Option<&str>, pin: Option<&PinnedRevision>) -> Option<String> {
+    match pin {
+        Some(PinnedRevision::Tag(tag)) => Some(clone_source::tag_ref(tag)),
+        Some(PinnedRevision::Commit(_)) | None => branch.map(str::to_string),
     }
 }
 
@@ -669,25 +665,29 @@ impl DaytonaSandbox {
         self.fail_init(init_start, err)
     }
 
-    /// Point the admitted branch at the exact commit and verify the resulting
-    /// HEAD.
+    /// Point the admitted branch at the pinned revision and verify the
+    /// resulting HEAD.
     ///
     /// Daytona's native clone honors `commit_id`, but leaves the workspace on
-    /// whatever ref its own checkout produced. Re-pointing the branch keeps the
-    /// admitted branch name readable back out of the workspace, matching what
-    /// the Docker provider produces for the same inputs.
-    async fn attach_exact_commit_branch(
+    /// whatever ref its own checkout produced (a detached tag, or the exact
+    /// commit). Re-pointing the branch keeps the admitted branch name readable
+    /// back out of the workspace, matching what the Docker provider produces
+    /// for the same inputs.
+    async fn attach_pinned_branch(
         process_svc: &daytona_sdk::ProcessService,
         checkout_path: &str,
         branch: &str,
-        expected_sha: &str,
+        pin: &PinnedRevision,
         deadline: time::Instant,
     ) -> crate::Result<()> {
+        // An exact commit is named directly; a tag clone is already sitting on
+        // the tag, so peel whatever HEAD points at to its commit.
+        let revision = pin.expected_sha().unwrap_or("HEAD^{commit}");
         Self::run_required_post_clone_command(
             process_svc,
-            &clone_source::exact_branch_checkout_command(checkout_path, branch, expected_sha),
+            &clone_source::exact_branch_checkout_command(checkout_path, branch, revision),
             "/",
-            "git checkout exact commit",
+            "git checkout pinned revision",
             deadline,
         )
         .await?;
@@ -695,37 +695,11 @@ impl DaytonaSandbox {
             process_svc,
             &clone_source::exact_head_revision_command(checkout_path),
             "/",
-            "git rev-parse HEAD after exact checkout",
+            "git rev-parse HEAD after pinned checkout",
             deadline,
         )
         .await?;
-        clone_source::verify_exact_head(&head, expected_sha)
-    }
-
-    /// Attach a tag clone's peeled commit to the requested working branch.
-    async fn attach_tag_branch(
-        process_svc: &daytona_sdk::ProcessService,
-        checkout_path: &str,
-        branch: &str,
-        deadline: time::Instant,
-    ) -> crate::Result<()> {
-        Self::run_required_post_clone_command(
-            process_svc,
-            &clone_source::exact_branch_checkout_command(checkout_path, branch, "HEAD^{commit}"),
-            "/",
-            "git checkout tag commit",
-            deadline,
-        )
-        .await?;
-        let head = Self::run_required_post_clone_command(
-            process_svc,
-            &clone_source::exact_head_revision_command(checkout_path),
-            "/",
-            "git rev-parse HEAD after tag checkout",
-            deadline,
-        )
-        .await?;
-        clone_source::verify_resolved_head(&head)?;
+        pin.verify_head(&head)?;
         Ok(())
     }
 
@@ -1695,8 +1669,8 @@ impl Sandbox for DaytonaSandbox {
                     self.fail_init(init_start, err)
                 })?;
 
-                let clone_selector =
-                    git_clone_selector(branch.as_deref(), tag.as_deref(), commit_sha.as_deref());
+                let pin = PinnedRevision::from_selectors(tag.as_deref(), commit_sha.as_deref());
+                let clone_selector = git_clone_selector(branch.as_deref(), pin.as_ref());
                 let clone_plan = git_retry::RetryPlan::clone_default(None);
                 let clone_result = git_retry::retry_git_operation(
                     SandboxProviderKind::Daytona,
@@ -1752,42 +1726,22 @@ impl Sandbox for DaytonaSandbox {
                     }
                 };
 
-                if let Some(expected_sha) = commit_sha.as_deref() {
+                if let Some(pin) = &pin {
                     let Some(branch) = branch.as_deref().filter(|branch| !branch.trim().is_empty())
                     else {
-                        let err = crate::Error::message(
-                            "Exact commit checkout requires a repository branch",
-                        );
+                        let err = crate::Error::message(format!(
+                            "{} requires a repository branch",
+                            pin.label()
+                        ));
                         return Err(self
                             .fail_clone_initialization(sandbox, &origin_url, init_start, err)
                             .await);
                     };
-                    if let Err(err) = Self::attach_exact_commit_branch(
+                    if let Err(err) = Self::attach_pinned_branch(
                         &process_svc,
                         &layout.primary_repo_path,
                         branch,
-                        expected_sha,
-                        post_clone_deadline,
-                    )
-                    .await
-                    {
-                        return Err(self
-                            .fail_clone_initialization(sandbox, &origin_url, init_start, err)
-                            .await);
-                    }
-                } else if tag.is_some() {
-                    let Some(branch) = branch.as_deref().filter(|branch| !branch.trim().is_empty())
-                    else {
-                        let err =
-                            crate::Error::message("Tag checkout requires a repository branch");
-                        return Err(self
-                            .fail_clone_initialization(sandbox, &origin_url, init_start, err)
-                            .await);
-                    };
-                    if let Err(err) = Self::attach_tag_branch(
-                        &process_svc,
-                        &layout.primary_repo_path,
-                        branch,
+                        pin,
                         post_clone_deadline,
                     )
                     .await
@@ -3266,17 +3220,19 @@ mod tests {
 
     #[test]
     fn daytona_clone_selector_uses_fully_qualified_tag_unless_sha_is_exact() {
+        let sha = "0123456789abcdef0123456789abcdef01234567";
+        let tag = PinnedRevision::from_selectors(Some("v1.2.3"), None);
         assert_eq!(
-            git_clone_selector(Some("release-work"), Some("v1.2.3"), None).as_deref(),
+            git_clone_selector(Some("release-work"), tag.as_ref()).as_deref(),
             Some("refs/tags/v1.2.3")
         );
+        let commit = PinnedRevision::from_selectors(Some("v1.2.3"), Some(sha));
         assert_eq!(
-            git_clone_selector(
-                Some("release-work"),
-                Some("v1.2.3"),
-                Some("0123456789abcdef0123456789abcdef01234567"),
-            )
-            .as_deref(),
+            git_clone_selector(Some("release-work"), commit.as_ref()).as_deref(),
+            Some("release-work")
+        );
+        assert_eq!(
+            git_clone_selector(Some("release-work"), None).as_deref(),
             Some("release-work")
         );
     }

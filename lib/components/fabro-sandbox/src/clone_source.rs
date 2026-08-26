@@ -83,44 +83,95 @@ pub(crate) fn exact_repository_init_command(clone_url: &str, checkout_path: &str
     )
 }
 
-/// Fetch a single admitted commit with the same history depth a branch clone
-/// gets, so both paths can reach the same number of parent commits.
+/// A revision the checkout is pinned to instead of the branch's current HEAD.
 ///
-/// The fetch names the commit directly rather than the branch. No layer proves
-/// that the submitted commit belongs to the submitted branch: the branch names
-/// the working branch, while a fetchable exact commit is checked out as-is.
-#[cfg(any(feature = "docker", test))]
-pub(crate) fn exact_fetch_command(
-    checkout_path: &str,
-    fetch_source: &str,
-    commit_sha: &str,
-    depth: Option<usize>,
-) -> String {
-    let depth_arg = depth_argument(depth);
-    format!(
-        "{git} -C {} fetch{depth_arg} --no-tags {} -- {}",
-        sandbox::shell_quote(checkout_path),
-        sandbox::shell_quote(fetch_source),
-        sandbox::shell_quote(commit_sha),
-        git = sandbox::GIT,
-    )
+/// The working branch names the checkout the run works on; it never constrains
+/// which revision is fetched. No layer proves branch/revision ancestry, and an
+/// unavailable revision fails without falling back to branch HEAD.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PinnedRevision {
+    /// An exact commit SHA, already normalized by
+    /// [`normalize_exact_commit_sha`].
+    Commit(String),
+    /// A bare tag name, fetched as `refs/tags/<tag>` so a same-named branch is
+    /// never consulted.
+    Tag(String),
 }
 
-/// Fetch one fully-qualified tag without consulting a same-named branch.
+impl PinnedRevision {
+    /// An exact commit is authoritative over a tag; the tag stays on the run
+    /// target as durable identity but does not drive the checkout.
+    pub(crate) fn from_selectors(tag: Option<&str>, commit_sha: Option<&str>) -> Option<Self> {
+        match (commit_sha, tag) {
+            (Some(sha), _) => Some(Self::Commit(sha.to_string())),
+            (None, Some(tag)) => Some(Self::Tag(tag.to_string())),
+            (None, None) => None,
+        }
+    }
+
+    /// Human-readable prefix for error messages.
+    pub(crate) fn label(&self) -> &'static str {
+        match self {
+            Self::Commit(_) => "Exact commit checkout",
+            Self::Tag(_) => "Tag checkout",
+        }
+    }
+
+    /// The refspec handed to `git fetch`.
+    pub(crate) fn fetch_refspec(&self) -> String {
+        match self {
+            Self::Commit(sha) => sha.clone(),
+            Self::Tag(tag) => tag_ref(tag),
+        }
+    }
+
+    /// The commit HEAD must resolve to after checkout, when one is known.
+    pub(crate) fn expected_sha(&self) -> Option<&str> {
+        match self {
+            Self::Commit(sha) => Some(sha),
+            Self::Tag(_) => None,
+        }
+    }
+
+    /// Validate the `rev-parse HEAD` output of a pinned checkout and return the
+    /// resolved commit ID.
+    pub(crate) fn verify_head(&self, output: &str) -> crate::Result<String> {
+        let actual_sha = verify_resolved_head(output)?;
+        if self
+            .expected_sha()
+            .is_some_and(|expected| expected != actual_sha)
+        {
+            return Err(crate::Error::message(
+                "Exact checkout HEAD did not match the requested commit",
+            ));
+        }
+        Ok(actual_sha)
+    }
+}
+
+/// Fully-qualified ref for a bare tag name.
+pub(crate) fn tag_ref(tag: &str) -> String {
+    format!("refs/tags/{tag}")
+}
+
+/// Fetch a single pinned refspec with the same history depth a branch clone
+/// gets, so both paths can reach the same number of parent commits.
+///
+/// The fetch names the revision directly rather than the branch, and
+/// `--no-tags` keeps unrelated tags from being pulled alongside it.
 #[cfg(any(feature = "docker", test))]
-pub(crate) fn tag_fetch_command(
+pub(crate) fn pinned_fetch_command(
     checkout_path: &str,
     fetch_source: &str,
-    tag: &str,
+    refspec: &str,
     depth: Option<usize>,
 ) -> String {
     let depth_arg = depth_argument(depth);
-    let tag_ref = format!("refs/tags/{tag}");
     format!(
         "{git} -C {} fetch{depth_arg} --no-tags {} -- {}",
         sandbox::shell_quote(checkout_path),
         sandbox::shell_quote(fetch_source),
-        sandbox::shell_quote(&tag_ref),
+        sandbox::shell_quote(refspec),
         git = sandbox::GIT,
     )
 }
@@ -151,7 +202,8 @@ pub(crate) fn exact_branch_checkout_command(
     )
 }
 
-/// Print the current HEAD commit and nothing else, for [`verify_exact_head`].
+/// Print the current HEAD commit and nothing else, for
+/// [`PinnedRevision::verify_head`].
 pub(crate) fn exact_head_revision_command(checkout_path: &str) -> String {
     format!(
         "{git} -C {path} rev-parse HEAD",
@@ -161,7 +213,8 @@ pub(crate) fn exact_head_revision_command(checkout_path: &str) -> String {
 }
 
 /// Check out the admitted branch and print the resulting HEAD in one shell
-/// command; stdout is the `rev-parse HEAD` output for [`verify_exact_head`].
+/// command; stdout is the `rev-parse HEAD` output for
+/// [`PinnedRevision::verify_head`].
 #[cfg(any(feature = "docker", test))]
 pub(crate) fn exact_checkout_verify_command(
     checkout_path: &str,
@@ -175,29 +228,16 @@ pub(crate) fn exact_checkout_verify_command(
     )
 }
 
-/// Peel the fetched tag to a commit, attach it to the working branch, and
-/// print the resolved commit ID.
+/// The peeled commit behind whatever `git fetch` just wrote to `FETCH_HEAD`;
+/// a commit peels to itself, an annotated tag to the commit it points at.
 #[cfg(any(feature = "docker", test))]
-pub(crate) fn tag_checkout_verify_command(checkout_path: &str, branch: &str) -> String {
-    exact_checkout_verify_command(checkout_path, branch, "FETCH_HEAD^{commit}")
-}
+pub(crate) const FETCH_HEAD_COMMIT: &str = "FETCH_HEAD^{commit}";
 
-pub(crate) fn verify_exact_head(output: &str, expected_sha: &str) -> crate::Result<()> {
-    let actual_sha = output.trim();
-    let actual_sha = normalize_exact_commit_sha(actual_sha).map_err(|err| {
-        crate::Error::context("Exact checkout produced an invalid HEAD commit ID", err)
-    })?;
-    if actual_sha != expected_sha {
-        return Err(crate::Error::message(
-            "Exact checkout HEAD did not match the requested commit",
-        ));
-    }
-    Ok(())
-}
-
+/// Validate that a `rev-parse HEAD` output is a single commit ID and return it
+/// normalized.
 pub(crate) fn verify_resolved_head(output: &str) -> crate::Result<String> {
     normalize_exact_commit_sha(output.trim()).map_err(|err| {
-        crate::Error::context("Tag checkout produced an invalid HEAD commit ID", err)
+        crate::Error::context("Pinned checkout produced an invalid HEAD commit ID", err)
     })
 }
 
@@ -230,27 +270,18 @@ pub(crate) fn decide_clone(
     clone_tag: Option<&str>,
     clone_commit_sha: Option<&str>,
 ) -> crate::Result<CloneDecision> {
-    let tag = clone_tag
-        .map(|tag| {
-            if tag.trim().is_empty() {
-                Err(crate::Error::message(
-                    "Tag checkout requires a non-empty tag",
-                ))
-            } else {
-                Ok(tag.to_string())
-            }
-        })
-        .transpose()?;
+    if clone_tag.is_some_and(|tag| tag.trim().is_empty()) {
+        return Err(crate::Error::message(
+            "Tag checkout requires a non-empty tag",
+        ));
+    }
+    let tag = clone_tag.map(str::to_string);
     let commit_sha = clone_commit_sha
         .map(normalize_exact_commit_sha)
         .transpose()?;
 
-    if tag.is_some() || commit_sha.is_some() {
-        let selector = if commit_sha.is_some() {
-            "Exact commit checkout"
-        } else {
-            "Tag checkout"
-        };
+    if let Some(pin) = PinnedRevision::from_selectors(tag.as_deref(), commit_sha.as_deref()) {
+        let selector = pin.label();
         if skip_clone {
             return Err(crate::Error::message(format!(
                 "{selector} requires cloning to be enabled"
@@ -449,13 +480,26 @@ mod tests {
     }
 
     #[test]
-    fn tag_fetch_and_checkout_commands_use_the_fully_qualified_tag() {
+    fn pinned_revision_prefers_exact_commit_and_qualifies_tags() {
+        let sha = "0123456789abcdef0123456789abcdef01234567";
+        assert_eq!(PinnedRevision::from_selectors(None, None), None);
+        let tag = PinnedRevision::from_selectors(Some("release/v1"), None).unwrap();
+        assert_eq!(tag.fetch_refspec(), "refs/tags/release/v1");
+        assert_eq!(tag.expected_sha(), None);
+        let commit = PinnedRevision::from_selectors(Some("release/v1"), Some(sha)).unwrap();
+        assert_eq!(commit.fetch_refspec(), sha);
+        assert_eq!(commit.expected_sha(), Some(sha));
         assert_eq!(
-            tag_fetch_command("/repos/acme/widgets", "origin", "release/v1", Some(10)),
+            pinned_fetch_command(
+                "/repos/acme/widgets",
+                "origin",
+                &tag.fetch_refspec(),
+                Some(10)
+            ),
             "git -c maintenance.auto=0 -c gc.auto=0 -C /repos/acme/widgets fetch --depth 10 --no-tags origin -- refs/tags/release/v1"
         );
         assert_eq!(
-            tag_checkout_verify_command("/repos/acme/widgets", "release"),
+            exact_checkout_verify_command("/repos/acme/widgets", "release", FETCH_HEAD_COMMIT),
             "git -c maintenance.auto=0 -c gc.auto=0 -C /repos/acme/widgets checkout -B release FETCH_HEAD'^{commit}' && git -c maintenance.auto=0 -c gc.auto=0 -C /repos/acme/widgets rev-parse HEAD"
         );
     }
@@ -539,39 +583,41 @@ mod tests {
     }
 
     #[test]
-    fn exact_checkout_requires_clone_origin_and_branch() {
+    fn pinned_checkout_requires_clone_origin_and_branch() {
         let sha = "0123456789abcdef0123456789abcdef01234567";
-        let skip_error = decide_clone(
-            true,
-            Some("https://github.com/acme/widgets"),
-            Some("main"),
-            None,
-            Some(sha),
-        )
-        .expect_err("exact checkout with skip-clone should fail");
-        assert!(skip_error.to_string().contains("requires cloning"));
-
-        for origin in [None, Some(""), Some("   ")] {
-            let error = decide_clone(false, origin, Some("main"), None, Some(sha))
-                .expect_err("exact checkout without an origin should fail");
-            assert!(error.to_string().contains("requires a repository origin"));
-        }
-
-        for branch in [None, Some(""), Some("   ")] {
-            let error = decide_clone(
-                false,
+        for (tag, commit_sha) in [(None, Some(sha)), (Some("v1"), None)] {
+            let skip_error = decide_clone(
+                true,
                 Some("https://github.com/acme/widgets"),
-                branch,
-                None,
-                Some(sha),
+                Some("main"),
+                tag,
+                commit_sha,
             )
-            .expect_err("exact checkout without a branch should fail");
-            assert!(error.to_string().contains("requires a repository branch"));
+            .expect_err("pinned checkout with skip-clone should fail");
+            assert!(skip_error.to_string().contains("requires cloning"));
+
+            for origin in [None, Some(""), Some("   ")] {
+                let error = decide_clone(false, origin, Some("main"), tag, commit_sha)
+                    .expect_err("pinned checkout without an origin should fail");
+                assert!(error.to_string().contains("requires a repository origin"));
+            }
+
+            for branch in [None, Some(""), Some("   ")] {
+                let error = decide_clone(
+                    false,
+                    Some("https://github.com/acme/widgets"),
+                    branch,
+                    tag,
+                    commit_sha,
+                )
+                .expect_err("pinned checkout without a branch should fail");
+                assert!(error.to_string().contains("requires a repository branch"));
+            }
         }
     }
 
     #[test]
-    fn tag_checkout_requires_nonempty_tag_clone_origin_and_branch() {
+    fn tag_checkout_rejects_empty_tag() {
         let empty_tag = decide_clone(
             false,
             Some("https://github.com/acme/widgets"),
@@ -581,34 +627,6 @@ mod tests {
         )
         .expect_err("empty tags should fail");
         assert!(empty_tag.to_string().contains("non-empty tag"));
-
-        let skip_error = decide_clone(
-            true,
-            Some("https://github.com/acme/widgets"),
-            Some("main"),
-            Some("v1"),
-            None,
-        )
-        .expect_err("tag checkout with skip-clone should fail");
-        assert!(skip_error.to_string().contains("requires cloning"));
-
-        for origin in [None, Some(""), Some("   ")] {
-            let error = decide_clone(false, origin, Some("main"), Some("v1"), None)
-                .expect_err("tag checkout without an origin should fail");
-            assert!(error.to_string().contains("requires a repository origin"));
-        }
-
-        for branch in [None, Some(""), Some("   ")] {
-            let error = decide_clone(
-                false,
-                Some("https://github.com/acme/widgets"),
-                branch,
-                Some("v1"),
-                None,
-            )
-            .expect_err("tag checkout without a branch should fail");
-            assert!(error.to_string().contains("requires a repository branch"));
-        }
     }
 
     #[test]
@@ -618,7 +636,7 @@ mod tests {
             "https://token@example.com/acme/widgets.git?x=a b",
             "/repos/acme's widgets",
         );
-        let fetch = exact_fetch_command(
+        let fetch = pinned_fetch_command(
             "/repos/acme's widgets",
             "https://token@example.com/acme/widgets.git?x=a b",
             sha,
@@ -642,9 +660,9 @@ mod tests {
     }
 
     #[test]
-    fn exact_fetch_omits_depth_for_full_history() {
+    fn pinned_fetch_omits_depth_for_full_history() {
         assert_eq!(
-            exact_fetch_command(
+            pinned_fetch_command(
                 "/repos/acme/widgets",
                 "origin",
                 "0123456789abcdef0123456789abcdef01234567",
@@ -657,15 +675,18 @@ mod tests {
     #[test]
     fn exact_checkout_verification_rejects_invalid_or_mismatched_head() {
         let expected = "0123456789abcdef0123456789abcdef01234567";
-        verify_exact_head("0123456789ABCDEF0123456789ABCDEF01234567\n", expected)
+        let pin = PinnedRevision::Commit(expected.to_string());
+        pin.verify_head("0123456789ABCDEF0123456789ABCDEF01234567\n")
             .expect("uppercase command output should normalize");
 
-        let invalid = verify_exact_head("fatal: not a revision", expected)
+        let invalid = pin
+            .verify_head("fatal: not a revision")
             .expect_err("non-SHA output should fail verification");
         assert!(invalid.to_string().contains("invalid HEAD commit ID"));
         assert!(!invalid.to_string().contains("fatal: not a revision"));
 
-        let mismatched = verify_exact_head("1123456789abcdef0123456789abcdef01234567", expected)
+        let mismatched = pin
+            .verify_head("1123456789abcdef0123456789abcdef01234567")
             .expect_err("mismatched SHA should fail verification");
         assert!(mismatched.to_string().contains("did not match"));
     }
@@ -719,11 +740,11 @@ mod tests {
         );
         run_shell(
             temp.path(),
-            &exact_fetch_command(checkout_path, remote_path, &admitted_sha, Some(10)),
+            &pinned_fetch_command(checkout_path, remote_path, &admitted_sha, Some(10)),
         );
         let checked_out_sha = run_shell(
             temp.path(),
-            &exact_checkout_verify_command(checkout_path, "main", "FETCH_HEAD"),
+            &exact_checkout_verify_command(checkout_path, "main", FETCH_HEAD_COMMIT),
         );
 
         assert_eq!(checked_out_sha.trim(), admitted_sha);
@@ -794,11 +815,11 @@ mod tests {
             );
             run_shell(
                 temp.path(),
-                &tag_fetch_command(checkout_path, "origin", tag, Some(10)),
+                &pinned_fetch_command(checkout_path, "origin", &tag_ref(tag), Some(10)),
             );
             let head = run_shell(
                 temp.path(),
-                &tag_checkout_verify_command(checkout_path, "release-work"),
+                &exact_checkout_verify_command(checkout_path, "release-work", FETCH_HEAD_COMMIT),
             );
 
             assert_eq!(verify_resolved_head(&head).unwrap(), release_sha);
@@ -816,7 +837,7 @@ mod tests {
         );
         let output = run_shell_output(
             temp.path(),
-            &tag_fetch_command(missing_path, "origin", "main", Some(10)),
+            &pinned_fetch_command(missing_path, "origin", &tag_ref("main"), Some(10)),
         );
         assert!(
             !output.status.success(),
