@@ -75,7 +75,10 @@ pub(crate) fn select_edge<'a>(
         }
     }
 
-    if outcome.status.is_failure() && graph.resolve_on_failure(node).policy() == OnFailure::Exit {
+    // A failed outcome takes an unconditional edge only under `route`. Under
+    // `exit` the run stops here; under `succeed` the executor promotes the
+    // outcome to `succeeded` and routes it again.
+    if outcome.status.is_failure() && graph.resolve_on_failure(node).policy() != OnFailure::Route {
         return None;
     }
 
@@ -529,6 +532,81 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn succeed_policy_blocks_unconditional_edge_for_failed_outcome() {
+        let mut graph = make_graph_with_edges(vec![Edge::new("a", "b")]);
+        set_on_failure(&mut graph, OnFailure::Succeed);
+        let node = graph.nodes.get("a").unwrap();
+        let outcome = Outcome::fail_classify("boom");
+
+        assert!(select_edge(node, &outcome, &Context::new(), &graph, "deterministic").is_none());
+    }
+
+    #[test]
+    fn succeed_policy_allows_matching_failure_condition() {
+        let mut recovery = Edge::new("a", "recover");
+        recovery.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("outcome=failed".to_string()),
+        );
+        let mut graph = make_graph_with_edges(vec![recovery, Edge::new("a", "fallback")]);
+        set_on_failure(&mut graph, OnFailure::Succeed);
+        let node = graph.nodes.get("a").unwrap();
+        let outcome = Outcome::fail_classify("boom");
+
+        let selected =
+            select_edge(node, &outcome, &Context::new(), &graph, "deterministic").unwrap();
+
+        assert_eq!(selected.edge.to, "recover");
+        assert_eq!(selected.reason, "condition");
+    }
+
+    #[test]
+    fn succeed_policy_routes_promoted_outcome_as_succeeded() {
+        let mut on_success = Edge::new("a", "next");
+        on_success.attrs.insert(
+            "condition".to_string(),
+            AttrValue::String("outcome=succeeded".to_string()),
+        );
+        let mut graph = make_graph_with_edges(vec![on_success, Edge::new("a", "fallback")]);
+        set_on_failure(&mut graph, OnFailure::Succeed);
+        let node = graph.nodes.get("a").unwrap();
+        let mut outcome = Outcome::fail_classify("boom");
+        outcome.promote_to_succeeded(graph.resolve_on_failure(node));
+
+        let selected =
+            select_edge(node, &outcome, &Context::new(), &graph, "deterministic").unwrap();
+
+        assert_eq!(selected.edge.to, "next");
+        assert_eq!(selected.reason, "condition");
+    }
+
+    #[test]
+    fn node_succeed_overrides_graph_route_and_blocks_unconditional_edge() {
+        let mut graph = make_graph_with_edges(vec![Edge::new("a", "b")]);
+        set_node_on_failure(&mut graph, "a", "succeed");
+        let node = graph.nodes.get("a").unwrap();
+        let outcome = Outcome::fail_classify("boom");
+
+        assert!(select_edge(node, &outcome, &Context::new(), &graph, "deterministic").is_none());
+    }
+
+    #[test]
+    fn auto_status_alias_resolves_to_succeed_policy() {
+        let mut graph = make_graph_with_edges(vec![Edge::new("a", "b")]);
+        graph
+            .nodes
+            .get_mut("a")
+            .unwrap()
+            .attrs
+            .insert("auto_status".to_string(), AttrValue::Boolean(true));
+        let node = graph.nodes.get("a").unwrap();
+
+        assert_eq!(graph.resolve_on_failure(node).policy(), OnFailure::Succeed);
+        let outcome = Outcome::fail_classify("boom");
+        assert!(select_edge(node, &outcome, &Context::new(), &graph, "deterministic").is_none());
     }
 
     #[test]

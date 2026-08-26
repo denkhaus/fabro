@@ -226,7 +226,8 @@ impl Graph for TestGraph {
             }
         }
 
-        if outcome.status.is_failure() && self.resolve_on_failure(node).policy() == OnFailure::Exit
+        // A failed outcome takes an unconditional edge only under `route`.
+        if outcome.status.is_failure() && self.resolve_on_failure(node).policy() != OnFailure::Route
         {
             return None;
         }

@@ -1,4 +1,5 @@
 mod all_conditional_edges;
+mod auto_status_deprecated;
 mod backend_valid;
 mod command_requires_script;
 mod condition_syntax;
@@ -65,6 +66,7 @@ pub fn built_in_rules() -> Vec<Box<dyn LintRule>> {
         all_conditional_edges::rule(),
         orphan_custom_outcome::rule(),
         on_failure_valid::rule(),
+        auto_status_deprecated::rule(),
         script_absolute_cd::rule(),
         command_requires_script::rule(),
         import_error::rule(),

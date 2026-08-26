@@ -1,5 +1,4 @@
 pub(crate) mod artifact;
-pub(crate) mod auto_status;
 pub(crate) mod circuit_breaker;
 pub(crate) mod event;
 pub(crate) mod fidelity;
@@ -26,7 +25,6 @@ use fabro_sandbox::Sandbox;
 use fabro_types::RunId;
 
 use self::artifact::ArtifactLifecycle;
-use self::auto_status::AutoStatusLifecycle;
 use self::circuit_breaker::CircuitBreakerLifecycle;
 use self::event::EventLifecycle;
 use self::fidelity::FidelityLifecycle;
@@ -56,7 +54,6 @@ pub(crate) struct WorkflowLifecycle {
     event:                 EventLifecycle,
     hook:                  HookLifecycle,
     fidelity:              FidelityLifecycle,
-    auto_status:           AutoStatusLifecycle,
     circuit_breaker:       Arc<CircuitBreakerLifecycle>,
     git:                   GitLifecycle,
     artifact:              ArtifactLifecycle,
@@ -187,7 +184,6 @@ impl WorkflowLifecycle {
             event,
             hook,
             fidelity,
-            auto_status: AutoStatusLifecycle,
             circuit_breaker,
             git,
             artifact,
@@ -361,7 +357,6 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
         result: &mut WfNodeResult,
         state: &WfRunState,
     ) -> CoreResult<()> {
-        self.auto_status.after_node(node, result, state).await?;
         self.circuit_breaker.after_node(node, result, state).await?;
         self.artifact.after_node(node, result, state).await?;
         self.event.after_node(node, result, state).await?;

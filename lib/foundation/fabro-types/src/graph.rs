@@ -6,7 +6,11 @@ use strum::VariantNames;
 
 use crate::AgentBackend;
 
-/// Policy for routing a failed node when no explicit recovery edge matches.
+/// Policy for a failed node when no explicit recovery route matches.
+///
+/// Explicit routes (a jump, a matching edge condition, a matching preferred
+/// label, or a matching suggested next node) take priority under every
+/// policy. The policy decides what happens when none of them match.
 #[derive(
     Debug,
     Clone,
@@ -24,9 +28,15 @@ use crate::AgentBackend;
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum OnFailure {
+    /// The outcome stays `failed` and may take an unconditional edge.
     #[default]
     Route,
+    /// The outcome stays `failed` and skips the unconditional edge, so the
+    /// run ends unless a retry target applies.
     Exit,
+    /// The outcome becomes `succeeded` and follows normal success routing.
+    /// The original failure details stay on the outcome for observability.
+    Succeed,
 }
 
 impl OnFailure {
@@ -349,13 +359,17 @@ impl Node {
         self.str_attr("fallback_retry_target")
     }
 
-    /// Node-level failure routing policy override. `None` means the node
-    /// inherits the graph-level policy. Invalid values are rejected during
-    /// workflow validation, so runtime resolution treats them as absent.
+    /// Node-level failure policy override. `None` means the node inherits
+    /// the graph-level policy. Invalid values are rejected during workflow
+    /// validation, so runtime resolution treats them as absent.
+    ///
+    /// The deprecated `auto_status=true` attribute is a compatibility alias
+    /// for `on_failure="succeed"`. An explicit `on_failure` attribute wins.
     #[must_use]
     pub fn on_failure(&self) -> Option<OnFailure> {
         self.str_attr("on_failure")
             .and_then(|value| value.parse().ok())
+            .or_else(|| self.auto_status().then_some(OnFailure::Succeed))
     }
 
     #[must_use]
@@ -392,6 +406,8 @@ impl Node {
         self.str_attr("speed")
     }
 
+    /// Deprecated spelling of `on_failure="succeed"`. Validation warns when
+    /// it is present; [`Node::on_failure`] resolves the alias at runtime.
     #[must_use]
     pub fn auto_status(&self) -> bool {
         self.bool_attr("auto_status").unwrap_or(false)
@@ -614,7 +630,7 @@ impl Graph {
             .and_then(AttrValue::as_str)
     }
 
-    /// Graph-level failure routing policy. Invalid values are rejected during
+    /// Graph-level failure policy. Invalid values are rejected during
     /// workflow validation, so runtime resolution can use the compatibility
     /// default.
     #[must_use]
@@ -626,7 +642,7 @@ impl Graph {
             .unwrap_or_default()
     }
 
-    /// Effective failure routing policy for a node. A node-level `on_failure`
+    /// Effective failure policy for a node. A node-level `on_failure`
     /// attribute overrides the graph level; an absent (or invalid, hence
     /// validation-rejected) node attribute inherits the graph policy.
     #[must_use]
@@ -770,9 +786,11 @@ mod tests {
     fn on_failure_parses_and_displays_supported_values() {
         assert_eq!("route".parse::<OnFailure>().unwrap(), OnFailure::Route);
         assert_eq!("exit".parse::<OnFailure>().unwrap(), OnFailure::Exit);
+        assert_eq!("succeed".parse::<OnFailure>().unwrap(), OnFailure::Succeed);
         assert_eq!(OnFailure::Route.to_string(), "route");
         assert_eq!(OnFailure::Exit.to_string(), "exit");
-        assert_eq!(OnFailure::expected_values(), "route, exit");
+        assert_eq!(OnFailure::Succeed.to_string(), "succeed");
+        assert_eq!(OnFailure::expected_values(), "route, exit, succeed");
     }
 
     #[test]
@@ -812,6 +830,28 @@ mod tests {
 
         node.attrs
             .insert("on_failure".to_string(), AttrValue::Boolean(true));
+        assert_eq!(node.on_failure(), None);
+    }
+
+    #[test]
+    fn node_auto_status_is_an_alias_for_on_failure_succeed() {
+        let mut node = Node::new("work");
+        node.attrs
+            .insert("auto_status".to_string(), AttrValue::Boolean(true));
+        assert!(node.auto_status());
+        assert_eq!(node.on_failure(), Some(OnFailure::Succeed));
+
+        // An explicit on_failure attribute wins over the alias.
+        node.attrs.insert(
+            "on_failure".to_string(),
+            AttrValue::String("exit".to_string()),
+        );
+        assert_eq!(node.on_failure(), Some(OnFailure::Exit));
+
+        // auto_status=false does not set a policy.
+        let mut node = Node::new("work");
+        node.attrs
+            .insert("auto_status".to_string(), AttrValue::Boolean(false));
         assert_eq!(node.on_failure(), None);
     }
 
