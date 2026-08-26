@@ -1,0 +1,12 @@
+diff --git a/README.md b/README.md
+index b065d05..519b659 100644
+--- a/README.md
++++ b/README.md
+@@ -287,3 +287,7 @@ infinity blooms
+ silent big.Int grows —
+ each term the sum of the two,
+ terminal blooms gold
++
++new branch, one small change —
++the pull request blooms at dawn,
++merged before coffee

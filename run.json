@@ -245,7 +245,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-26T15:09:22.598051956Z",
-  "last_event_at": "2026-08-26T15:10:00.703625626Z",
+  "last_event_at": "2026-08-26T15:10:07.367652152Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -285,9 +285,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 64,
       "checkpoint": {
-        "timestamp": "2026-08-26T15:10:00.764537401Z",
+        "timestamp": "2026-08-26T15:10:06.145642674Z",
         "current_node": "greet",
         "completed_nodes": [
           "start",
@@ -295,30 +295,26 @@
         ],
         "node_retries": {},
         "context_values": {
-          "internal.thread_id": "start",
-          "outcome": "succeeded",
-          "last_response": "Done. Hello from a basic Fabro workflow run! 👋\n\n**Change:** appended one new haiku to the existing `## Haiku` section in `README.md` (the file already existed, so no creation was needed):\n\n> new br",
+          "failure_signature": "",
           "graph.goal": "Say hello and demonstrate a basic Fabro workflow",
           "internal.exit_kind": "natural",
-          "current_node": "greet",
-          "failure_signature": "",
-          "response.greet": "Done. Hello from a basic Fabro workflow run! 👋\n\n**Change:** appended one new haiku to the existing `## Haiku` section in `README.md` (the file already existed, so no creation was needed):\n\n> new branch, one small change —\n> the pull request blooms at dawn,\n> merged before coffee\n\nIt's workflow-themed to match this run's demo. The edit is uncommitted in the working tree; per your instructions I ran no builds, tests, or project tooling (`sd`/`ml`/`just` included).",
-          "internal.retry_count.start": 0,
-          "failure_class": "",
-          "internal.run_id": "01M0Z9WJGZ7E016T2A57W3MNRY",
-          "internal.node_visit_count": 1,
-          "last_stage": "greet",
-          "internal.retry_count.greet": 0,
-          "thread.start.current_node": "greet",
+          "internal.fidelity": "compact",
           "internal.work_dir": "/workspace/fabro",
+          "response.greet": "Done. Hello from a basic Fabro workflow run! 👋\n\n**Change:** appended one new haiku to the existing `## Haiku` section in `README.md` (the file already existed, so no creation was needed):\n\n> new branch, one small change —\n> the pull request blooms at dawn,\n> merged before coffee\n\nIt's workflow-themed to match this run's demo. The edit is uncommitted in the working tree; per your instructions I ran no builds, tests, or project tooling (`sd`/`ml`/`just` included).",
           "graph.rankdir": "LR",
-          "internal.fidelity": "compact"
+          "outcome": "succeeded",
+          "failure_class": "",
+          "internal.retry_count.start": 0,
+          "thread.start.current_node": "greet",
+          "internal.retry_count.greet": 0,
+          "current_node": "greet",
+          "internal.node_visit_count": 1,
+          "last_response": "Done. Hello from a basic Fabro workflow run! 👋\n\n**Change:** appended one new haiku to the existing `## Haiku` section in `README.md` (the file already existed, so no creation was needed):\n\n> new br",
+          "last_stage": "greet",
+          "internal.run_id": "01M0Z9WJGZ7E016T2A57W3MNRY",
+          "internal.thread_id": "start"
         },
         "node_outcomes": {
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "greet": {
             "status": "succeeded",
             "context_updates": {
@@ -357,18 +353,84 @@
               "tool_time_ms": 476,
               "active_time_ms": 29416
             }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "8f1cb3bca67812dee272ff0cfa1f655e5c74e78d",
         "node_visits": {
           "greet": 1,
           "start": 1
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/README.md b/README.md\nindex b065d05..519b659 100644\n--- a/README.md\n+++ b/README.md\n@@ -287,3 +287,7 @@ infinity blooms\n silent big.Int grows —\n each term the sum of the two,\n terminal blooms gold\n+\n+new branch, one small change —\n+the pull request blooms at dawn,\n+merged before coffee\n",
+        "summary": {
+          "files_changed": 1,
+          "additions": 4,
+          "deletions": 0
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-08-26T15:10:06.181241868Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 38551,
+      "inference_time_ms": 28940,
+      "tool_time_ms": 476,
+      "active_time_ms": 29416
+    },
+    "final_git_commit_sha": "8f1cb3bca67812dee272ff0cfa1f655e5c74e78d",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "greet",
+        "stage_label": "greet",
+        "timing": {
+          "wall_time_ms": 30921,
+          "inference_time_ms": 28940,
+          "tool_time_ms": 476,
+          "active_time_ms": 29416
+        },
+        "billing_usd_micros": 27452,
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 10737,
+      "output_tokens": 312,
+      "total_tokens": 43369,
+      "reasoning_tokens": 640,
+      "cache_read_tokens": 31680,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 27452
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/README.md b/README.md\nindex b065d05..519b659 100644\n--- a/README.md\n+++ b/README.md\n@@ -287,3 +287,7 @@ infinity blooms\n silent big.Int grows —\n each term the sum of the two,\n terminal blooms gold\n+\n+new branch, one small change —\n+the pull request blooms at dawn,\n+merged before coffee\n",
+      "summary": {
+        "files_changed": 1,
+        "additions": 4,
+        "deletions": 0
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -430,11 +492,52 @@
       "agent_control": "running",
       "state": "succeeded"
     },
+    "exit@1": {
+      "first_event_seq": 67,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-26T15:10:06.146799291Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-26T15:10:06.146717258Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "greet@1": {
       "first_event_seq": 26,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: greet",
+        "failure_reason": null,
+        "timestamp": "2026-08-26T15:10:00.762910590Z"
+      },
       "provider_used": {
         "mode": "agent",
         "provider": "zai",
@@ -448,8 +551,12 @@
       "started_at": "2026-08-26T15:09:27.306389459Z",
       "handler": "agent",
       "graph_visit": 1,
-      "live_inference_ms": 31459,
-      "live_tool_ms": 475,
+      "timing": {
+        "wall_time_ms": 30921,
+        "inference_time_ms": 28940,
+        "tool_time_ms": 476,
+        "active_time_ms": 29416
+      },
       "usage": {
         "input_tokens": 10737,
         "output_tokens": 312,
@@ -786,7 +893,7 @@
         "warnings": []
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "succeeded"
     }
   }
 }
