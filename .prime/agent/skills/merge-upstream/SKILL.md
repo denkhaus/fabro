@@ -66,6 +66,8 @@ Order matters; a red earlier step means fix before continuing.
    LOAD signal, not a regression — note it, do not chase it endlessly.
    (2026-08-25, v0.336.0: `cmd::config::create_explicit_workflow_path_…`
    failed SQLite seeding under load, passed isolated — known flake.)
+   (2026-08-26, v0.337.0: `cmd::server_start::start_already_running_exits_
+   with_error` failed at --test-threads 4, passed isolated — same class.)
 4. `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings` — zero.
 5. Web: `cd apps/fabro-web && bun run typecheck && bun run test` — 0 fail.
 
