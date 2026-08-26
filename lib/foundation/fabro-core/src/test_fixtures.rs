@@ -7,7 +7,7 @@ use fabro_types::{OnFailure, ResolvedOnFailure};
 
 use crate::context::Context;
 use crate::error::{Error, HandlerErrorDetail, Result};
-use crate::graph::{EdgeSelection, EdgeSpec, Graph, NodeSpec};
+use crate::graph::{EdgeSelection, EdgeSelectionReason, EdgeSpec, Graph, NodeSpec};
 use crate::handler::NodeHandler;
 use crate::outcome::{FailureCategory, FailureDetail, Outcome, StageOutcome};
 use crate::retry::RetryPolicy;
@@ -199,7 +199,7 @@ impl Graph for TestGraph {
             {
                 return Some(EdgeSelection {
                     edge:   e.clone(),
-                    reason: "preferred_label",
+                    reason: EdgeSelectionReason::PreferredLabel,
                 });
             }
         }
@@ -212,7 +212,7 @@ impl Graph for TestGraph {
         {
             return Some(EdgeSelection {
                 edge:   e.clone(),
-                reason: "condition",
+                reason: EdgeSelectionReason::Condition,
             });
         }
 
@@ -221,22 +221,16 @@ impl Graph for TestGraph {
             if let Some(e) = edges.iter().find(|e| e.to == *suggested) {
                 return Some(EdgeSelection {
                     edge:   e.clone(),
-                    reason: "suggested_next",
+                    reason: EdgeSelectionReason::SuggestedNext,
                 });
             }
-        }
-
-        // A failed outcome takes an unconditional edge only under `route`.
-        if outcome.status.is_failure() && self.resolve_on_failure(node).policy() != OnFailure::Route
-        {
-            return None;
         }
 
         // Fourth: unconditional (no label)
         if let Some(e) = edges.iter().find(|e| e.label.is_none()) {
             return Some(EdgeSelection {
                 edge:   e.clone(),
-                reason: "unconditional",
+                reason: EdgeSelectionReason::Unconditional,
             });
         }
 
@@ -533,7 +527,7 @@ mod tests {
         let ctx = Context::new();
         let sel = g.select_edge(&node, &outcome, &ctx).unwrap();
         assert_eq!(sel.edge.target(), "b");
-        assert_eq!(sel.reason, "condition");
+        assert_eq!(sel.reason, EdgeSelectionReason::Condition);
     }
 
     #[test]
@@ -544,7 +538,7 @@ mod tests {
         let ctx = Context::new();
         let sel = g.select_edge(&node, &outcome, &ctx).unwrap();
         assert_eq!(sel.edge.target(), "end");
-        assert_eq!(sel.reason, "unconditional");
+        assert_eq!(sel.reason, EdgeSelectionReason::Unconditional);
     }
 
     #[test]

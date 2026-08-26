@@ -8,7 +8,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use strum::{Display, EnumString, IntoStaticStr};
 
-use crate::{ExecOutputTail, FailureSignature, ResolvedOnFailure, StageTiming, SystemActorKind};
+use crate::{
+    ExecOutputTail, FailureSignature, OnFailure, ResolvedOnFailure, StageTiming, SystemActorKind,
+};
 
 pub trait OutcomeMeta:
     Default + Clone + Send + Sync + fmt::Debug + Serialize + DeserializeOwned + 'static
@@ -330,13 +332,14 @@ impl<M: OutcomeMeta> Outcome<M> {
         }
     }
 
-    /// Applies the `on_failure="succeed"` policy: a `failed` outcome becomes
-    /// `succeeded`. The original `failure` stays on the outcome so durable
-    /// events and collected results keep the diagnostic, and `notes` records
-    /// which scope promoted it. Other statuses are left unchanged.
-    pub fn promote_to_succeeded(&mut self, policy: ResolvedOnFailure) {
-        if !self.status.is_failure() {
-            return;
+    /// Applies a resolved failure policy to this outcome.
+    ///
+    /// `succeed` promotes a `failed` outcome and records the policy scope.
+    /// The original `failure` stays available for durable diagnostics. Other
+    /// policies and statuses do not change the outcome.
+    pub fn apply_on_failure(&mut self, policy: ResolvedOnFailure) -> bool {
+        if policy.policy() != OnFailure::Succeed || !self.status.is_failure() {
+            return false;
         }
         self.status = StageOutcome::Succeeded;
         let note = format!(
@@ -347,6 +350,7 @@ impl<M: OutcomeMeta> Outcome<M> {
             Some(existing) => format!("{existing}\n{note}"),
             None => note,
         });
+        true
     }
 }
 
@@ -358,9 +362,9 @@ mod tests {
     use crate::{OnFailure, ResolvedOnFailure};
 
     #[test]
-    fn promote_to_succeeded_keeps_failure_and_records_scope() {
+    fn apply_on_failure_keeps_failure_and_records_scope() {
         let mut outcome: Outcome = Outcome::fail("boom");
-        outcome.promote_to_succeeded(ResolvedOnFailure::node(OnFailure::Succeed));
+        assert!(outcome.apply_on_failure(ResolvedOnFailure::node(OnFailure::Succeed)));
 
         assert_eq!(outcome.status, StageOutcome::Succeeded);
         assert_eq!(
@@ -377,10 +381,10 @@ mod tests {
     }
 
     #[test]
-    fn promote_to_succeeded_appends_to_existing_notes() {
+    fn apply_on_failure_appends_to_existing_notes() {
         let mut outcome: Outcome = Outcome::fail("boom");
         outcome.notes = Some("handler note".to_string());
-        outcome.promote_to_succeeded(ResolvedOnFailure::graph(OnFailure::Succeed));
+        assert!(outcome.apply_on_failure(ResolvedOnFailure::graph(OnFailure::Succeed)));
 
         assert_eq!(
             outcome.notes.as_deref(),
@@ -389,15 +393,26 @@ mod tests {
     }
 
     #[test]
-    fn promote_to_succeeded_ignores_non_failed_outcomes() {
+    fn apply_on_failure_ignores_non_failed_outcomes() {
         let mut partial: Outcome = Outcome::success();
         partial.status = StageOutcome::PartiallySucceeded;
         let mut skipped: Outcome = Outcome::skipped("not needed");
 
         for outcome in [&mut partial, &mut skipped] {
             let before = outcome.clone();
-            outcome.promote_to_succeeded(ResolvedOnFailure::node(OnFailure::Succeed));
+            assert!(!outcome.apply_on_failure(ResolvedOnFailure::node(OnFailure::Succeed)));
             assert_eq!(*outcome, before);
+        }
+    }
+
+    #[test]
+    fn apply_on_failure_ignores_non_succeed_policies() {
+        for policy in [OnFailure::Route, OnFailure::Exit] {
+            let mut outcome: Outcome = Outcome::fail("boom");
+            let before = outcome.clone();
+
+            assert!(!outcome.apply_on_failure(ResolvedOnFailure::node(policy)));
+            assert_eq!(outcome, before);
         }
     }
 

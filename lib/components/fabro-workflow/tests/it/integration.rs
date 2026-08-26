@@ -1143,7 +1143,11 @@ impl Handler for OnFailureRecordingHandler {
     ) -> Result<Outcome, fabro_workflow::error::Error> {
         self.visits.lock().unwrap().push(node.id.clone());
         if node.id == "work" {
-            Ok(Outcome::fail_classify("forced work failure"))
+            let mut outcome = Outcome::fail_classify("forced work failure");
+            outcome
+                .context_updates
+                .insert("recovery_ready".to_string(), serde_json::json!(true));
+            Ok(outcome)
         } else {
             Ok(Outcome::success())
         }
@@ -1398,6 +1402,25 @@ async fn node_on_failure_succeed_prefers_explicit_failure_edge() {
         r#"work [on_failure="succeed"]
         recovery
         work -> recovery [condition="outcome=failed"]
+        recovery -> exit"#,
+    );
+    let run = run_on_failure(&graph, Emitter::default()).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Succeeded);
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work", "recovery"]);
+    let checkpoint = run
+        .state
+        .current_checkpoint()
+        .expect("recovery should be checkpointed");
+    assert!(checkpoint.node_outcomes["work"].status.is_failure());
+}
+
+#[tokio::test]
+async fn node_on_failure_succeed_tests_recovery_edge_with_pending_result_context() {
+    let graph = on_failure_graph(
+        r#"work [on_failure="succeed"]
+        recovery
+        work -> recovery [condition="outcome=failed && context.recovery_ready=true && context.failure_class=deterministic"]
         recovery -> exit"#,
     );
     let run = run_on_failure(&graph, Emitter::default()).await;

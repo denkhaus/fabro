@@ -367,9 +367,10 @@ impl Node {
     /// for `on_failure="succeed"`. An explicit `on_failure` attribute wins.
     #[must_use]
     pub fn on_failure(&self) -> Option<OnFailure> {
-        self.str_attr("on_failure")
-            .and_then(|value| value.parse().ok())
-            .or_else(|| self.auto_status().then_some(OnFailure::Succeed))
+        match self.attrs.get("on_failure") {
+            Some(value) => value.as_str().and_then(|value| value.parse().ok()),
+            None => self.auto_status().then_some(OnFailure::Succeed),
+        }
     }
 
     #[must_use]
@@ -853,6 +854,21 @@ mod tests {
         node.attrs
             .insert("auto_status".to_string(), AttrValue::Boolean(false));
         assert_eq!(node.on_failure(), None);
+    }
+
+    #[test]
+    fn explicit_invalid_on_failure_does_not_fall_back_to_auto_status() {
+        for value in [
+            AttrValue::String("invalid".to_string()),
+            AttrValue::Boolean(true),
+        ] {
+            let mut node = Node::new("work");
+            node.attrs
+                .insert("auto_status".to_string(), AttrValue::Boolean(true));
+            node.attrs.insert("on_failure".to_string(), value);
+
+            assert_eq!(node.on_failure(), None);
+        }
     }
 
     #[test]

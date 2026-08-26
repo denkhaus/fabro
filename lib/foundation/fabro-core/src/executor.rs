@@ -9,13 +9,15 @@ use tokio_util::sync::CancellationToken;
 
 use crate::context::Context;
 use crate::error::{Error, Result, VisitLimitSource};
-use crate::graph::{EdgeSpec, Graph, NodeSpec};
+use crate::graph::{EdgeSelection, EdgeSpec, Graph, NodeSpec};
 use crate::handler::NodeHandler;
 use crate::lifecycle::{
     AttemptContext, AttemptResultContext, EdgeContext, EdgeDecision, NodeDecision, NoopLifecycle,
     RunLifecycle,
 };
-use crate::outcome::{NodeResult, NodeResultExt, Outcome, OutcomeMeta};
+use crate::outcome::{
+    FailureDetail, NodeResult, NodeResultExt, Outcome, OutcomeMeta, StageOutcome,
+};
 use crate::state::ExecutionState;
 
 /// Build a [`NodeResult`] from an attempt outcome, pulling the inference and
@@ -64,6 +66,34 @@ enum NextStep {
     Jump(String),
     LoopRestart(String),
     End,
+}
+
+#[derive(PartialEq)]
+struct RoutingFingerprint {
+    status:             StageOutcome,
+    preferred_label:    Option<String>,
+    suggested_next_ids: Vec<String>,
+    context_updates:    std::collections::HashMap<String, serde_json::Value>,
+    jump_to_node:       Option<String>,
+    failure:            Option<FailureDetail>,
+}
+
+impl<M: OutcomeMeta> From<&Outcome<M>> for RoutingFingerprint {
+    fn from(outcome: &Outcome<M>) -> Self {
+        Self {
+            status:             outcome.status,
+            preferred_label:    outcome.preferred_label.clone(),
+            suggested_next_ids: outcome.suggested_next_ids.clone(),
+            context_updates:    outcome.context_updates.clone(),
+            jump_to_node:       outcome.jump_to_node.clone(),
+            failure:            outcome.failure.clone(),
+        }
+    }
+}
+
+struct PreparedEdgeSelection<G: Graph> {
+    fingerprint: RoutingFingerprint,
+    selection:   Option<EdgeSelection<G>>,
 }
 
 pub struct ExecutorBuilder<G: Graph> {
@@ -208,49 +238,56 @@ impl<G: Graph + 'static> Executor<G> {
             state.increment_visits(node.id());
 
             // before_node lifecycle
-            let node_result = match self.lifecycle.before_node(&node, &state).await? {
-                NodeDecision::Skip(outcome) => {
-                    let mut result = NodeResult::from_skip(*outcome);
-                    self.lifecycle
-                        .after_node(&node, &mut result, &state)
-                        .await?;
-                    result
-                }
-                NodeDecision::Block(msg) => {
-                    return Err(Error::blocked(msg));
-                }
-                NodeDecision::Continue => {
-                    // Execute with retry, racing against stall token
-                    let execution_result = if let Some(ref stall) = self.options.stall_token {
-                        tokio::select! {
-                            r = self.execute_with_retry(&node, &state, graph) => r,
-                            () = stall.cancelled() => {
-                                return Err(Error::StallTimeout {
-                                    node_id: node.id().to_string(),
-                                });
+            let (node_result, prepared_selection) =
+                match self.lifecycle.before_node(&node, &state).await? {
+                    NodeDecision::Skip(outcome) => {
+                        let mut result = NodeResult::from_skip(*outcome);
+                        self.lifecycle
+                            .after_node(&node, &mut result, &state)
+                            .await?;
+                        (result, None)
+                    }
+                    NodeDecision::Block(msg) => {
+                        return Err(Error::blocked(msg));
+                    }
+                    NodeDecision::Continue => {
+                        // Execute with retry, racing against stall token
+                        let execution_result = if let Some(ref stall) = self.options.stall_token {
+                            tokio::select! {
+                                r = self.execute_with_retry(&node, &state, graph) => r,
+                                () = stall.cancelled() => {
+                                    return Err(Error::StallTimeout {
+                                        node_id: node.id().to_string(),
+                                    });
+                                }
                             }
+                        } else {
+                            self.execute_with_retry(&node, &state, graph).await
+                        };
+                        let mut result = match execution_result {
+                            Ok(result) => result,
+                            Err(Error::Cancelled) => {
+                                state.cancelled = true;
+                                let outcome = Outcome::fail("run cancelled");
+                                self.lifecycle.on_run_end(&outcome, &state).await;
+                                return Err(Error::Cancelled);
+                            }
+                            Err(err) => return Err(err),
+                        };
+                        let mut prepared_selection = self
+                            .apply_succeed_policy(&node, &mut result, &state, graph)
+                            .await?;
+                        self.lifecycle
+                            .after_node(&node, &mut result, &state)
+                            .await?;
+                        if prepared_selection.as_ref().is_some_and(|prepared| {
+                            prepared.fingerprint != RoutingFingerprint::from(&result.outcome)
+                        }) {
+                            prepared_selection = None;
                         }
-                    } else {
-                        self.execute_with_retry(&node, &state, graph).await
-                    };
-                    let mut result = match execution_result {
-                        Ok(result) => result,
-                        Err(Error::Cancelled) => {
-                            state.cancelled = true;
-                            let outcome = Outcome::fail("run cancelled");
-                            self.lifecycle.on_run_end(&outcome, &state).await;
-                            return Err(Error::Cancelled);
-                        }
-                        Err(err) => return Err(err),
-                    };
-                    self.apply_succeed_policy(&node, &mut result, &state, graph)
-                        .await?;
-                    self.lifecycle
-                        .after_node(&node, &mut result, &state)
-                        .await?;
-                    result
-                }
-            };
+                        (result, prepared_selection)
+                    }
+                };
 
             state.record(node.id(), &node_result);
             self.lifecycle
@@ -260,7 +297,7 @@ impl<G: Graph + 'static> Executor<G> {
             // Determine next step
             let last_outcome = &state.node_outcomes[node.id()];
             let next = self
-                .resolve_next_step(&node, last_outcome, &state, graph)
+                .resolve_next_step(&node, last_outcome, &state, graph, prepared_selection)
                 .await?;
 
             // Checkpoint AFTER edge selection so next_node_id is known
@@ -434,38 +471,50 @@ impl<G: Graph + 'static> Executor<G> {
     /// outcome, context keys, goal gates, events, and routing all see the
     /// effective outcome. Explicit recovery routes take priority: a failed
     /// outcome that carries a jump, or that an explicit edge would route,
-    /// stays `failed`. Under `succeed`, `select_edge` never returns an
-    /// unconditional edge for a failed outcome, so any selection here is an
-    /// explicit route.
+    /// stays `failed`.
     async fn apply_succeed_policy(
         &self,
         node: &G::Node,
         result: &mut NodeResult<G::Meta>,
         state: &ExecutionState<G::Meta>,
         graph: &G,
-    ) -> Result<()> {
+    ) -> Result<Option<PreparedEdgeSelection<G>>> {
         let outcome = &result.outcome;
         if !outcome.status.is_failure() || outcome.jump_to_node.is_some() {
-            return Ok(());
+            return Ok(None);
         }
         let resolved = graph.resolve_on_failure(node);
         if resolved.policy() != OnFailure::Succeed {
-            return Ok(());
+            return Ok(None);
         }
+        let projected_context = state.context.fork();
+        projected_context.apply_updates(&result.outcome.context_updates);
+        graph.project_result_context(node, result, &projected_context);
         let routing_context = self
             .handler
-            .context_for_edge_selection(&state.context, graph)
+            .context_for_edge_selection(&projected_context, graph)
             .await?;
-        if graph.select_edge(node, outcome, &routing_context).is_some() {
-            return Ok(());
+        if let Some(selection) = graph
+            .select_edge(node, outcome, &routing_context)
+            .filter(|selection| selection.reason.is_explicit())
+        {
+            return Ok(Some(PreparedEdgeSelection {
+                fingerprint: RoutingFingerprint::from(&result.outcome),
+                selection:   Some(selection),
+            }));
         }
-        tracing::debug!(
-            node = %node.id(),
-            scope = %resolved.scope(),
-            "on_failure=succeed promoted failed outcome"
-        );
-        result.outcome.promote_to_succeeded(resolved);
-        Ok(())
+        if result.outcome.apply_on_failure(resolved) {
+            tracing::debug!(
+                node = %node.id(),
+                scope = %resolved.scope(),
+                "on_failure=succeed promoted failed outcome"
+            );
+        }
+        graph.project_result_context(node, result, &routing_context);
+        Ok(Some(PreparedEdgeSelection {
+            fingerprint: RoutingFingerprint::from(&result.outcome),
+            selection:   graph.select_edge(node, &result.outcome, &routing_context),
+        }))
     }
 
     async fn resolve_next_step(
@@ -474,6 +523,7 @@ impl<G: Graph + 'static> Executor<G> {
         outcome: &Outcome<G::Meta>,
         state: &ExecutionState<G::Meta>,
         graph: &G,
+        prepared_selection: Option<PreparedEdgeSelection<G>>,
     ) -> Result<NextStep> {
         // Jump takes priority
         if let Some(ref target) = outcome.jump_to_node {
@@ -492,14 +542,26 @@ impl<G: Graph + 'static> Executor<G> {
             }
         }
 
-        // Normal edge selection
-        let routing_context = self
-            .handler
-            .context_for_edge_selection(&state.context, graph)
-            .await?;
-        if let Some(selection) = graph.select_edge(node, outcome, &routing_context) {
+        // Normal edge selection. A failed `succeed` result prepared this
+        // decision while its original failure context was still available.
+        let selection = if let Some(prepared) = prepared_selection {
+            prepared.selection
+        } else {
+            let routing_context = self
+                .handler
+                .context_for_edge_selection(&state.context, graph)
+                .await?;
+            graph.select_edge(node, outcome, &routing_context)
+        }
+        .filter(|selection| {
+            !outcome.status.is_failure()
+                || selection.reason.is_explicit()
+                || graph.resolve_on_failure(node).policy() == OnFailure::Route
+        });
+        if let Some(selection) = selection {
             let target = selection.edge.target().to_string();
             let is_restart = selection.edge.is_loop_restart();
+            let reason: &'static str = selection.reason.into();
 
             let ctx = EdgeContext {
                 from: node.id(),
@@ -507,7 +569,7 @@ impl<G: Graph + 'static> Executor<G> {
                 edge: Some(selection.edge.clone()),
                 is_jump: false,
                 outcome,
-                reason: selection.reason,
+                reason,
             };
             match self.lifecycle.on_edge_selected(&ctx, state).await? {
                 EdgeDecision::Continue => {
@@ -2445,6 +2507,46 @@ mod tests {
             ],
             "after_node observes the effective outcome"
         );
+    }
+
+    #[tokio::test]
+    async fn executor_succeed_policy_resolves_routing_context_once_per_node() {
+        struct CountingHandler(Arc<AtomicU32>);
+
+        #[async_trait]
+        impl NodeHandler<TestGraph> for CountingHandler {
+            async fn execute(
+                &self,
+                node: &TestNode,
+                _context: &Context,
+                _graph: &TestGraph,
+            ) -> Result<Outcome> {
+                if node.id() == "work" {
+                    Ok(Outcome::fail("boom"))
+                } else {
+                    Ok(Outcome::success())
+                }
+            }
+
+            async fn context_for_edge_selection(
+                &self,
+                context: &Context,
+                _graph: &TestGraph,
+            ) -> Result<Context> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok(context.clone())
+            }
+        }
+
+        let graph = succeed_policy_graph();
+        let state = ExecutionState::new(&graph).unwrap();
+        let calls = Arc::new(AtomicU32::new(0));
+        let executor = ExecutorBuilder::new(Arc::new(CountingHandler(Arc::clone(&calls)))).build();
+
+        let (outcome, _) = executor.run(&graph, state).await.unwrap();
+
+        assert_eq!(outcome.status, StageOutcome::Succeeded);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]

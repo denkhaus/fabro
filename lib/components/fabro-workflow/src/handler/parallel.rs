@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use fabro_core::error::Error as CoreError;
 use fabro_graphviz::graph::{AttrValue, Graph, Node, is_llm_handler_type};
 use fabro_hooks::{HookContext, HookEvent};
-use fabro_types::{OnFailure, ParallelBranchId, ParallelBranchResult, StageId, StageOutcome};
+use fabro_types::{ParallelBranchId, ParallelBranchResult, StageId, StageOutcome};
 use fabro_util::text;
 use futures::FutureExt;
 use tokio::sync::{Semaphore, SemaphorePermit};
@@ -574,12 +574,7 @@ async fn run_branches(
                     // under that policy always counts as succeeded in the
                     // parent's aggregate, with its failure kept on the
                     // outcome.
-                    if outcome.status.is_failure() {
-                        let policy = graph.resolve_on_failure(&target);
-                        if policy.policy() == OnFailure::Succeed {
-                            outcome.promote_to_succeeded(policy);
-                        }
-                    }
+                    outcome.apply_on_failure(graph.resolve_on_failure(&target));
 
                     let context_updates = branch_context_updates(
                         &parent_snapshot,
