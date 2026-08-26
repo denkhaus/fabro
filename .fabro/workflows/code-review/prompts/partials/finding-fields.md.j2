@@ -1,0 +1,19 @@
+Report each candidate finding with:
+
+- `file`: the repository-relative path;
+- `line`: the line in the reviewed revision the finding anchors to;
+- `summary`: one sentence stating the defect;
+- `short_summary`: the same claim compressed to at most 60 characters, with no
+  rationale or consequence clause;
+- `failure_scenario`: the concrete inputs or state and the wrong output or
+  crash they produce. For the cleanup categories (`reuse`, `simplification`,
+  `efficiency`, `altitude`, `conventions`, `test-coverage`), state the
+  concrete cost instead: what is duplicated, wasted, or harder to maintain,
+  or which AGENTS.md or CLAUDE.md rule is broken;
+- `category`: `correctness` for bugs, otherwise the cleanup category that
+  names the problem;
+- `severity`: `HIGH`, `MEDIUM`, or `LOW`, for how much the defect matters;
+- `confidence`: `HIGH`, `MEDIUM`, or `LOW`, for how certain you are;
+- `rule_id`: the violated check's compiled `id`, verbatim. It is required for
+  rule-audit findings. In other jobs, include it only when the assignment
+  supplies the violated check; omit it otherwise.

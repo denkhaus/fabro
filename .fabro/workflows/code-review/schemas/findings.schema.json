@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "maxItems": 25,
+      "items": {
+        "type": "object",
+        "required": [
+          "file",
+          "line",
+          "summary",
+          "short_summary",
+          "failure_scenario",
+          "category",
+          "severity",
+          "confidence"
+        ],
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "rule_id": { "type": "string" },
+          "summary": { "type": "string" },
+          "short_summary": { "type": "string", "maxLength": 60 },
+          "failure_scenario": { "type": "string" },
+          "category": {
+            "type": "string",
+            "enum": [
+              "correctness",
+              "reuse",
+              "simplification",
+              "efficiency",
+              "altitude",
+              "conventions",
+              "test-coverage"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["HIGH", "MEDIUM", "LOW"]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["HIGH", "MEDIUM", "LOW"]
+          }
+        }
+      }
+    }
+  }
+}
