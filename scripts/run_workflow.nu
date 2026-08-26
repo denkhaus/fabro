@@ -9,11 +9,14 @@
 #   3. fabro start <id> + fabro attach <id>      -> live output
 #   4. fabro wait <id> --json                    -> status/reason truth
 #   5. integrate (fetch origin first):
-#        - run branch already contained in origin/<branch> -> pull --ff-only
-#          (auto-merge did its job)
+#        - post the required `lab-check` status LOCALLY on the run branch
+#          head (variant B, fabro-ab2c: no Actions runner involved; the
+#          lab-check.yml workflow is disabled/commented in the tree)
+#        - GitHub auto-merge merges the PR -> run branch contained in
+#          origin/<branch> -> pull --ff-only
 #        - else squash-merge fabro/run/<id> into <branch>, push
-#          (PROVISIONAL until auto-merge works, fabro-ab2c; the leftover
-#          PR on GitHub can be closed as already-integrated)
+#          (fallback when auto-merge cannot engage; the leftover PR on
+#          GitHub can be closed as already-integrated)
 #   6. fabro ask <id> --json with scripts/prompts/improve.md
 #        -> answer saved to .fabro/reviews/<workflow>/<run-id>.md (with run header)
 #   7. commit + push the review file
@@ -29,6 +32,7 @@
 const PROMPT_FILE = 'scripts/prompts/improve.md'
 const REVIEWS_DIR = '.fabro/reviews'
 const SERVER_DEFAULT = 'http://127.0.0.1:32276'
+const GITHUB_REPO = 'denkhaus/fabro'  # lab world repo (variant B status posts)
 
 # Terminal failure: loud ALARM block on stderr, exit 1.
 def fail [msg: string]: nothing -> nothing {
@@ -151,9 +155,30 @@ def main [
         }
         fail $"run branch ($run_branch) not found — nothing to integrate"
     }
-    let already_merged = ((do {
-        git merge-base --is-ancestor $run_branch $"origin/($branch)"
-    } | complete).exit_code == 0)
+    # Variant B (fabro-ab2c): post the required `lab-check` context
+    # locally on the run branch head. GitHub auto-merge (enabled by the
+    # platform at PR creation, project.toml auto_merge = true) merges the
+    # PR without any Actions runner. Failure is a WARN, not fatal — the
+    # squash fallback below still integrates the work.
+    let run_sha = ((do { git rev-parse $run_branch } | complete).stdout | str trim)
+    let posted = (do { ^gh api $"repos/($GITHUB_REPO)/statuses/($run_sha)" -f state=success -f context=lab-check -f description='local lab-check (run terminal-succeeded)' } | complete)
+    if $posted.exit_code != 0 {
+        let detail = ($posted.stderr | str trim | default $posted.stdout | str trim)
+        print $"run_workflow: WARN local lab-check post failed — auto-merge cannot engage, squash fallback will integrate: ($detail)"
+    }
+
+    # Auto-merge engages within seconds of the status; poll briefly so
+    # the ff-pull path wins over the local squash fallback.
+    mut auto_merged = false
+    for _ in 1..9 {
+        sleep 10sec
+        let _ = (do { git fetch origin $branch } | complete)
+        $auto_merged = ((do {
+            git merge-base --is-ancestor $run_branch $"origin/($branch)"
+        } | complete).exit_code == 0)
+        if $auto_merged { break }
+    }
+    let already_merged = $auto_merged
     if $already_merged {
         print 'run_workflow: auto-merge already landed — fast-forward pull'
         ok (do { git pull --ff-only origin $branch } | complete) 'git pull'
