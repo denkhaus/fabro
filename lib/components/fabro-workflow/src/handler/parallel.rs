@@ -528,7 +528,7 @@ async fn run_branches(
                     );
 
                     let mut attempt = 0_u32;
-                    let outcome = loop {
+                    let mut outcome = loop {
                         attempt = attempt.saturating_add(1);
                         let attempt_result = node_handler::execute_single_attempt(
                             &target,
@@ -569,6 +569,12 @@ async fn run_branches(
                         backoff_or_cancel(delay, &branch_services).await?;
                         permit = acquire_branch_permit(&semaphore, &branch_services).await?;
                     };
+                    // Branches have no edge routing, so `succeed` has no
+                    // explicit recovery route to defer to: a failed branch
+                    // under that policy always counts as succeeded in the
+                    // parent's aggregate, with its failure kept on the
+                    // outcome.
+                    outcome.apply_on_failure(graph.resolve_on_failure(&target));
 
                     let context_updates = branch_context_updates(
                         &parent_snapshot,
@@ -1399,6 +1405,122 @@ mod tests {
                 Some(serde_json::Value::Null)
             );
         }
+    }
+
+    /// Fails the named branch node and succeeds everywhere else.
+    struct FailNamedBranchHandler(&'static str);
+
+    #[async_trait]
+    impl Handler for FailNamedBranchHandler {
+        async fn execute(
+            &self,
+            node: &Node,
+            _context: &Context,
+            _graph: &Graph,
+            _run_dir: &Path,
+            _services: &EngineServices,
+        ) -> Result<Outcome, Error> {
+            if node.id == self.0 {
+                Ok(Outcome::fail_classify("branch boom"))
+            } else {
+                Ok(Outcome::success())
+            }
+        }
+    }
+
+    /// Mutates a test graph to opt a branch into the `succeed` policy.
+    type PolicyEdit = fn(&mut Graph);
+
+    async fn run_parallel_with_failing_branch_a(graph: &Graph, node: &Node) -> Outcome {
+        let mut services = make_services();
+        services.registry = Arc::new(super::super::HandlerRegistry::new(Box::new(
+            FailNamedBranchHandler("branch_a"),
+        )));
+        ParallelHandler
+            .execute(
+                node,
+                &test_context(),
+                graph,
+                Path::new("/tmp/test"),
+                &services,
+            )
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn parallel_handler_failed_branch_without_policy_is_partial() {
+        let (node, graph) = parallel_graph();
+
+        let outcome = run_parallel_with_failing_branch_a(&graph, &node).await;
+
+        assert_eq!(outcome.status, StageOutcome::PartiallySucceeded);
+        let results: Vec<ParallelBranchResult> =
+            serde_json::from_value(outcome.context_updates[keys::PARALLEL_RESULTS].clone())
+                .unwrap();
+        assert!(results[0].status.is_failure());
+        assert_eq!(results[1].status, StageOutcome::Succeeded);
+    }
+
+    #[tokio::test]
+    async fn parallel_handler_succeed_policy_counts_failed_branch_as_succeeded() {
+        let cases: [(&str, PolicyEdit); 3] = [
+            ("node", |graph| {
+                graph.nodes.get_mut("branch_a").unwrap().attrs.insert(
+                    "on_failure".to_string(),
+                    AttrValue::String("succeed".to_string()),
+                );
+            }),
+            ("graph", |graph| {
+                graph.attrs.insert(
+                    "on_failure".to_string(),
+                    AttrValue::String("succeed".to_string()),
+                );
+            }),
+            ("alias", |graph| {
+                graph
+                    .nodes
+                    .get_mut("branch_a")
+                    .unwrap()
+                    .attrs
+                    .insert("auto_status".to_string(), AttrValue::Boolean(true));
+            }),
+        ];
+        for (scope, apply) in cases {
+            let (node, mut graph) = parallel_graph();
+            apply(&mut graph);
+
+            let outcome = run_parallel_with_failing_branch_a(&graph, &node).await;
+
+            assert_eq!(outcome.status, StageOutcome::Succeeded, "scope {scope}");
+            assert_eq!(
+                outcome.notes.as_deref(),
+                Some("Parallel node dispatched 2 branches (2 succeeded, 0 failed)"),
+                "scope {scope}"
+            );
+            let results: Vec<ParallelBranchResult> =
+                serde_json::from_value(outcome.context_updates[keys::PARALLEL_RESULTS].clone())
+                    .unwrap();
+            assert!(
+                results
+                    .iter()
+                    .all(|result| result.status == StageOutcome::Succeeded),
+                "scope {scope}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn parallel_handler_exit_policy_does_not_change_branch_outcomes() {
+        let (node, mut graph) = parallel_graph();
+        graph.attrs.insert(
+            "on_failure".to_string(),
+            AttrValue::String("exit".to_string()),
+        );
+
+        let outcome = run_parallel_with_failing_branch_a(&graph, &node).await;
+
+        assert_eq!(outcome.status, StageOutcome::PartiallySucceeded);
     }
 
     #[tokio::test]

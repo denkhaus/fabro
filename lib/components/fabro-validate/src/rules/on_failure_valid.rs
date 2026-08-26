@@ -97,7 +97,7 @@ mod tests {
         let mut graph = minimal_graph();
         assert!(Rule.apply(&graph).is_empty());
 
-        for value in ["route", "exit"] {
+        for value in ["route", "exit", "succeed"] {
             graph.attrs.insert(
                 "on_failure".to_string(),
                 AttrValue::String(value.to_string()),
@@ -109,7 +109,7 @@ mod tests {
     #[test]
     fn accepts_supported_node_values() {
         let mut graph = minimal_graph();
-        for value in ["route", "exit"] {
+        for value in ["route", "exit", "succeed"] {
             graph.nodes.insert(
                 "work".to_string(),
                 node_with_attrs("work", &[("on_failure", value)]),
@@ -136,7 +136,7 @@ mod tests {
         );
         assert_eq!(
             diagnostics[0].fix.as_deref(),
-            Some("Use one of: route, exit")
+            Some("Use one of: route, exit, succeed")
         );
     }
 
@@ -176,7 +176,7 @@ mod tests {
         assert_eq!(diagnostics[0].node_id.as_deref(), Some("work"));
         assert_eq!(
             diagnostics[0].fix.as_deref(),
-            Some("Use one of: route, exit")
+            Some("Use one of: route, exit, succeed")
         );
     }
 

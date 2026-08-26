@@ -5,10 +5,11 @@ use std::sync::Arc;
 
 use fabro_core::error::{Error as CoreError, Result as CoreResult};
 use fabro_core::graph::{EdgeSelection as CoreEdgeSelection, EdgeSpec, Graph, NodeSpec};
+use fabro_core::outcome::NodeResult;
 use fabro_graphviz::graph::types::{Edge as GvEdge, Graph as GvGraph, Node as GvNode};
 use fabro_types::ResolvedOnFailure;
 
-use crate::context::Context;
+use crate::context::{self, Context};
 use crate::outcome::{BilledModelUsage, Outcome};
 
 // ---- WorkflowNode ----
@@ -118,6 +119,20 @@ impl Graph for WorkflowGraph {
             edge:   WorkflowEdge(Arc::new(sel.edge.clone())),
             reason: sel.reason,
         })
+    }
+
+    fn project_result_context(
+        &self,
+        node: &Self::Node,
+        result: &NodeResult<Self::Meta>,
+        context: &Context,
+    ) {
+        context::apply_recorded_outcome_context(
+            context,
+            node.id(),
+            &result.outcome,
+            result.attempts.saturating_sub(1),
+        );
     }
 
     fn check_goal_gates(
