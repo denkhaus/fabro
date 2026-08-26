@@ -52,9 +52,21 @@ def counterpart-ref [branch: string]: nothing -> any {
 # enough (ignored clutter still wastes disk and confuses agents).
 const PLATFORM_EXCLUSIVE = [".github", ".cargo", "apps", "lib", "node_modules", "tmp", "target", "docs/agents", "docs/internal", "docs/public", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rustfmt.toml", "clippy.toml", "deny.toml"]
 
+# World-owned exceptions under otherwise platform-exclusive paths
+# (fabro-ab2c): the product world carries exactly ONE CI workflow —
+# the required `lab-check` for denkhaus-lab branch protection, without
+# which GitHub auto-merge never engages (PRs rot open, BLOCKED). The
+# blanket .github ban flagged it as a leak on 2026-08-26 and its removal
+# silently disabled auto-merge (PR #7). Allowlist the file BY NAME; any
+# other .github content stays a leak.
+const WORLD_OWNED = [".github/workflows/lab-check.yml"]
+
 def leak-guard []: nothing -> nothing {
     let tracked = (git ls-tree -r --name-only HEAD | lines)
-    let leaks = ($tracked | where {|path| ($PLATFORM_EXCLUSIVE | any {|p| $path == $p or ($path | str starts-with $"($p)/")})})
+    let leaks = ($tracked | where {|path|
+        (($PLATFORM_EXCLUSIVE | any {|p| $path == $p or ($path | str starts-with $"($p)/")})
+        and not ($WORLD_OWNED | any {|p| $path == $p})
+    )})
     if ($leaks | is-not-empty) {
         print "sync-check: PLATFORM LEAK — platform-only paths tracked on this world branch:"
         $leaks | each {|p| print $"  ($p)"}
