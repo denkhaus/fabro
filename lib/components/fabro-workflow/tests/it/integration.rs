@@ -1692,6 +1692,66 @@ fn stylesheet_comments_apply_via_parsed_graph() {
 }
 
 #[test]
+fn model_stylesheet_template_renders_through_pipeline() {
+    use fabro_workflow::pipeline::{TransformOptions, transform, validate};
+
+    let input = r#"digraph StyleTemplate {
+        graph [
+            goal="Review the change",
+            model_stylesheet="
+                * { reasoning_effort: low; }
+                {% for effort in inputs.efforts %}
+                .tier-{{ loop.index }} { reasoning_effort: {{ effort }}; }
+                {% endfor %}
+            "
+        ]
+        start [shape=Mdiamond]
+        baseline [prompt="Baseline"]
+        selected [prompt="Selected", class="tier-2"]
+        exit [shape=Msquare]
+        start -> baseline -> selected -> exit
+    }"#;
+    let parsed = fabro_workflow::pipeline::parse(input).expect("parse should succeed");
+    let transformed = transform(parsed, &TransformOptions {
+        current_dir:       None,
+        file_resolver:     None,
+        template_context:  fabro_template::TemplateContext::new().with_inputs(
+            std::collections::HashMap::from([(
+                "efforts".to_string(),
+                toml::Value::Array(vec![
+                    toml::Value::String("medium".to_string()),
+                    toml::Value::String("high".to_string()),
+                ]),
+            )]),
+        ),
+        source_name:       Some("style-template.fabro".to_string()),
+        render_mode:       fabro_workflow::operations::RenderMode::Structural,
+        custom_transforms: vec![],
+        model_resolution:  None,
+    })
+    .expect("transform should succeed");
+    let validated = validate(transformed, None, &[]);
+    validated
+        .raise_on_errors()
+        .expect("rendered stylesheet should validate");
+
+    assert_eq!(
+        validated.graph().nodes["baseline"]
+            .attrs
+            .get("reasoning_effort")
+            .and_then(AttrValue::as_str),
+        Some("low")
+    );
+    assert_eq!(
+        validated.graph().nodes["selected"]
+            .attrs
+            .get("reasoning_effort")
+            .and_then(AttrValue::as_str),
+        Some("high")
+    );
+}
+
+#[test]
 fn stylesheet_application_matches_space_separated_classes_from_dot() {
     let input = r#"digraph StyleTest {
         graph [

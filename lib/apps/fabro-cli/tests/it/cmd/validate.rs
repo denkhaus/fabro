@@ -199,9 +199,27 @@ fn bare_fabro_with_unbound_inputs_validates_structurally_with_warning() {
     Workflow: TemplatedUnbound (3 nodes, 2 edges)
     Graph: [FIXTURES]/templated_unbound.fabro
     warning: [FIXTURES]/templated_unbound.fabro:2:26: undefined template variable `inputs.app_dir` in graph attribute `goal` (template_undefined_variable)
-      fix: bind `inputs.app_dir` via `[run.inputs]` in workflow.toml, or pass `--input inputs.app_dir=<value>`
+      fix: bind `app_dir` via `[run.inputs]` in workflow.toml, or pass `--input app_dir=<value>`
     warning: [FIXTURES]/templated_unbound.fabro:7:44: undefined template variable `inputs.app_dir` in node `work` attribute `prompt` [node: work] (template_undefined_variable)
-      fix: bind `inputs.app_dir` via `[run.inputs]` in workflow.toml, or pass `--input inputs.app_dir=<value>`
+      fix: bind `app_dir` via `[run.inputs]` in workflow.toml, or pass `--input app_dir=<value>`
+    Validation: OK
+    ");
+}
+
+#[test]
+fn unbound_model_stylesheet_input_warns_without_css_error() {
+    let context = test_context!();
+    let mut cmd = context.validate();
+    cmd.arg(fixture("model_stylesheet_unbound.fabro"));
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    ----- stderr -----
+    Workflow: ModelStylesheetUnbound (3 nodes, 2 edges)
+    Graph: [FIXTURES]/model_stylesheet_unbound.fabro
+    warning: [FIXTURES]/model_stylesheet_unbound.fabro:4:38: undefined template variable `inputs.effort` in graph attribute `model_stylesheet` (template_undefined_variable)
+      fix: bind `effort` via `[run.inputs]` in workflow.toml, or pass `--input effort=<value>`
     Validation: OK
     ");
 }
@@ -224,7 +242,7 @@ fn bare_fabro_with_unbound_inputs_in_imported_prompt_validates_structurally_with
     Workflow: TemplatedUnboundImported (3 nodes, 2 edges)
     Graph: [FIXTURES]/templated_unbound_imported/workflow.fabro
     warning: [FIXTURES]/templated_unbound_imported/work.md:1:12: undefined template variable `inputs.app_dir` in node `work` attribute `prompt` [node: work] (template_undefined_variable)
-      fix: bind `inputs.app_dir` via `[run.inputs]` in workflow.toml, or pass `--input inputs.app_dir=<value>`
+      fix: bind `app_dir` via `[run.inputs]` in workflow.toml, or pass `--input app_dir=<value>`
     Validation: OK
     ");
 }
@@ -246,7 +264,7 @@ fn bare_fabro_with_unbound_inputs_in_template_partial_validates_structurally_wit
     Workflow: TemplatedUnboundPartial (3 nodes, 2 edges)
     Graph: [FIXTURES]/templated_unbound_partial/workflow.fabro
     warning: [FIXTURES]/templated_unbound_partial/test-include.partial.md:1:4: undefined template variable `inputs.hello` in node `test_imported_include` attribute `prompt` [node: test_imported_include] (template_undefined_variable)
-      fix: bind `inputs.hello` via `[run.inputs]` in workflow.toml, or pass `--input inputs.hello=<value>`
+      fix: bind `hello` via `[run.inputs]` in workflow.toml, or pass `--input hello=<value>`
     Validation: OK
     ");
 }
