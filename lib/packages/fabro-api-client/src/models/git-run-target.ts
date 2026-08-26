@@ -15,7 +15,7 @@
 
 
 /**
- * Public github.com repository target.
+ * Public github.com repository target. The branch names the attached working branch. An optional tag selects a release at worker start, and an optional exact SHA is authoritative when both are present.
  */
 export interface GitRunTarget {
     'kind': GitRunTargetKindEnum;
@@ -24,11 +24,15 @@ export interface GitRunTarget {
      */
     'repo': string;
     /**
-     * Required branch name, preserved exactly.
+     * Required attached working branch name, preserved exactly.
      */
     'branch': string;
     /**
-     * Optional exact commit. The server lowercase-normalizes its syntax but does not resolve it or prove branch ancestry.
+     * Optional bare tag name. Prefixes such as `refs/tags/` and `tags/` are rejected. Without `sha`, the worker resolves this tag when the sandbox starts and fails if it is unavailable.
+     */
+    'tag'?: string;
+    /**
+     * Optional exact commit. The server lowercase-normalizes its syntax but does not resolve it, prove branch ancestry, or prove that it matches an accompanying tag. When present, this exact commit wins.
      */
     'sha'?: string;
 }

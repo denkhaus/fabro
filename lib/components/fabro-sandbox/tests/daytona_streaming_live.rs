@@ -38,6 +38,7 @@ mod daytona_streaming_live {
                 None,
                 None,
                 None,
+                None,
             )
             .await?,
         );
@@ -70,6 +71,7 @@ mod daytona_streaming_live {
                 skip_clone: true,
                 ..Default::default()
             },
+            None,
             None,
             None,
             None,
@@ -182,6 +184,7 @@ mod daytona_streaming_live {
             None,
             None,
             None,
+            None,
         )
         .await?;
 
@@ -229,6 +232,7 @@ mod daytona_streaming_live {
             None,
             None,
             Some("https://github.com/brynary/rack-test".to_string()),
+            None,
             None,
             None,
             None,
@@ -294,6 +298,7 @@ mod daytona_streaming_live {
                 skip_clone: true,
                 ..Default::default()
             },
+            None,
             None,
             None,
             None,

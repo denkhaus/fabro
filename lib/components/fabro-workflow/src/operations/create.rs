@@ -478,7 +478,7 @@ pub async fn persist_create_run(
     let (source_directory, git) = match target.as_ref() {
         Some(RunTarget::None {}) => (None, None),
         Some(RunTarget::Folder { path }) => (Some(path.clone()), git),
-        Some(RunTarget::Git { .. }) | None => (Some(source_directory), git),
+        Some(RunTarget::Git(_)) | None => (Some(source_directory), git),
     };
     let persisted_run_dir = run_dir.clone();
     let persisted = spawn_blocking(move || {

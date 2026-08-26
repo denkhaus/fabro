@@ -16,6 +16,8 @@ use fabro_sandbox::from_environment::{
 };
 use fabro_sandbox::{DockerSandboxOptions, SandboxSpec};
 use fabro_static::EnvVars;
+#[cfg(test)]
+use fabro_types::GitRunTarget;
 use fabro_types::settings::run::{
     ApprovalMode, McpServerSettings as ResolvedMcpServerSettings, PullRequestSettings,
     ResolvedGithubIntegration, ResolvedMcpEntry, RunMode, RunNamespace as ResolvedRunSettings,
@@ -470,7 +472,7 @@ impl RunSession {
         }
         let sandbox = match sandbox_provider {
             SandboxProviderKind::Local => match record.target.as_ref() {
-                Some(target @ (RunTarget::Git { .. } | RunTarget::None {})) => {
+                Some(target @ (RunTarget::Git(_) | RunTarget::None {})) => {
                     return Err(Error::engine(format!(
                         "persisted {} run targets require a clone-based sandbox provider",
                         target.kind_name()
@@ -502,6 +504,7 @@ impl RunSession {
                     run_id: Some(record.run_id),
                     clone_origin_url: clone_source.origin_url,
                     clone_branch: clone_source.branch,
+                    clone_tag: clone_source.tag,
                     clone_commit_sha: clone_source.commit_sha,
                 }
             }
@@ -517,6 +520,7 @@ impl RunSession {
                     run_id: Some(record.run_id),
                     clone_origin_url: clone_source.origin_url,
                     clone_branch: clone_source.branch,
+                    clone_tag: clone_source.tag,
                     clone_commit_sha: clone_source.commit_sha,
                     api_key,
                 }
@@ -599,6 +603,7 @@ impl RunSession {
 struct CloneSourceForRun {
     origin_url: Option<String>,
     branch:     Option<String>,
+    tag:        Option<String>,
     commit_sha: Option<String>,
     /// The target asked for an empty workspace, so the provider must not
     /// clone even when it would otherwise inherit an origin.
@@ -652,6 +657,7 @@ fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
         return Ok(CloneSourceForRun {
             origin_url: record.repo_origin_url().map(str::to_string),
             branch:     record.base_branch().map(str::to_string),
+            tag:        None,
             commit_sha: None,
             skip_clone: false,
         });
@@ -668,22 +674,25 @@ fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
                 "persisted Git run target has an invalid repository slug"
             }
             TargetValidationError::Branch => "persisted Git run target has an invalid branch",
+            TargetValidationError::Tag => "persisted Git run target has an invalid tag",
             TargetValidationError::Sha => "persisted Git run target has an invalid SHA",
         })
     })?;
     // A target with no Git projection (`none` or `folder`) supplies no clone
     // source. Folder targets only reach the Local provider, where `skip_clone`
     // is unused.
-    Ok(match validated.git {
-        Some(git) => CloneSourceForRun {
+    Ok(match (validated.target, validated.git) {
+        (RunTarget::Git(target), Some(git)) => CloneSourceForRun {
             origin_url: Some(git.origin_url),
-            branch:     Some(git.branch),
+            branch:     Some(target.branch),
+            tag:        target.tag,
             commit_sha: git.sha,
             skip_clone: false,
         },
-        None => CloneSourceForRun {
+        _ => CloneSourceForRun {
             origin_url: None,
             branch:     None,
+            tag:        None,
             commit_sha: None,
             skip_clone: true,
         },
@@ -3175,11 +3184,12 @@ reasoning = false
         let mut spec = test_support::test_run_spec();
         let submitted_sha = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
         let normalized_sha = "abcdef0123456789abcdef0123456789abcdef01";
-        spec.target = Some(RunTarget::Git {
+        spec.target = Some(RunTarget::Git(GitRunTarget {
             repo:   "fabro-sh/fabro".to_string(),
             branch: "feature/run-intent".to_string(),
+            tag:    Some("v1.2.3".to_string()),
             sha:    Some(submitted_sha.to_string()),
-        });
+        }));
         spec.git = Some(fabro_types::GitContext {
             origin_url: "https://github.com/fabro-sh/fabro".to_string(),
             branch:     "feature/run-intent".to_string(),
@@ -3194,17 +3204,19 @@ reasoning = false
             Some("https://github.com/fabro-sh/fabro")
         );
         assert_eq!(source.branch.as_deref(), Some("feature/run-intent"));
+        assert_eq!(source.tag.as_deref(), Some("v1.2.3"));
         assert_eq!(source.commit_sha.as_deref(), Some(normalized_sha));
     }
 
     #[test]
     fn clone_commit_persisted_git_target_without_sha_keeps_branch_unpinned() {
         let mut spec = test_support::test_run_spec();
-        spec.target = Some(RunTarget::Git {
+        spec.target = Some(RunTarget::Git(GitRunTarget {
             repo:   "fabro-sh/fabro".to_string(),
             branch: "feature/run-intent".to_string(),
+            tag:    None,
             sha:    None,
-        });
+        }));
         spec.git = Some(fabro_types::GitContext {
             origin_url: "https://github.com/fabro-sh/fabro".to_string(),
             branch:     "feature/run-intent".to_string(),
@@ -3219,13 +3231,31 @@ reasoning = false
     }
 
     #[test]
+    fn clone_source_preserves_unpinned_tag_separately_from_working_branch() {
+        let mut spec = test_support::test_run_spec();
+        spec.target = Some(RunTarget::Git(GitRunTarget {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "release-work".to_string(),
+            tag:    Some("v1.2.3".to_string()),
+            sha:    None,
+        }));
+
+        let source = clone_source_for_run(&spec).unwrap();
+
+        assert_eq!(source.branch.as_deref(), Some("release-work"));
+        assert_eq!(source.tag.as_deref(), Some("v1.2.3"));
+        assert_eq!(source.commit_sha, None);
+    }
+
+    #[test]
     fn clone_commit_persisted_git_target_is_authoritative_over_projection() {
         let mut spec = test_support::test_run_spec();
-        spec.target = Some(RunTarget::Git {
+        spec.target = Some(RunTarget::Git(GitRunTarget {
             repo:   "fabro-sh/fabro".to_string(),
             branch: "main".to_string(),
+            tag:    None,
             sha:    None,
-        });
+        }));
         // A drifted (or absent) projection never feeds the clone source: the
         // validated target alone does.
         spec.git = Some(fabro_types::GitContext {

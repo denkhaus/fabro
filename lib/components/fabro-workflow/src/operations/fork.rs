@@ -407,11 +407,12 @@ mod tests {
             source_directory:    Some("/client/source".to_string()),
             workflow_slug:       Some("fork-source".to_string()),
             workflow_version_id: Some(workflow_version_id),
-            target:              Some(fabro_types::RunTarget::Git {
+            target:              Some(fabro_types::RunTarget::Git(fabro_types::GitRunTarget {
                 repo:   "example/repo".to_string(),
                 branch: "main".to_string(),
+                tag:    None,
                 sha:    None,
-            }),
+            })),
             automation:          None,
             provenance:          test_support::test_run_provenance(),
             manifest_blob:       None,
@@ -500,11 +501,12 @@ mod tests {
         );
         assert_eq!(
             forked_state.spec.target,
-            Some(fabro_types::RunTarget::Git {
+            Some(fabro_types::RunTarget::Git(fabro_types::GitRunTarget {
                 repo:   "example/repo".to_string(),
                 branch: "main".to_string(),
+                tag:    None,
                 sha:    None,
-            })
+            }))
         );
         assert_eq!(
             forked_state.spec.fork_source_ref.unwrap().source_run_id,

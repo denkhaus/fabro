@@ -1091,7 +1091,7 @@ async fn validate_intent_environment(
         SandboxProviderKind::Daytona => image.docker.is_some(),
     };
     let (target_incompatible, detail) = match target {
-        RunTarget::Git { .. } => (
+        RunTarget::Git(_) => (
             provider == SandboxProviderKind::Local || !settings.run.clone.enabled,
             "Git targets require a compatible clone-enabled Docker or Daytona environment",
         ),
