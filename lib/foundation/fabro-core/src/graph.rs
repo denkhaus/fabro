@@ -44,5 +44,5 @@ pub trait Graph: Send + Sync {
     fn get_retry_target(&self, failed_node_id: &str) -> Option<String>;
     /// Effective failure routing policy for a node: node-level `on_failure`
     /// overrides the graph level, and an absent node attribute inherits it.
-    fn resolve_on_failure(&self, node_id: &str) -> ResolvedOnFailure;
+    fn resolve_on_failure(&self, node: &Self::Node) -> ResolvedOnFailure;
 }

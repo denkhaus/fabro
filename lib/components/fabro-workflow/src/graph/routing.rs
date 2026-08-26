@@ -75,7 +75,7 @@ pub(crate) fn select_edge<'a>(
         }
     }
 
-    if outcome.status.is_failure() && graph.resolve_on_failure(&node.id).policy == OnFailure::Exit {
+    if outcome.status.is_failure() && graph.resolve_on_failure(node).policy() == OnFailure::Exit {
         return None;
     }
 

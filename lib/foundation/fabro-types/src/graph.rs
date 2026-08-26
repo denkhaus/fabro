@@ -36,20 +36,40 @@ impl OnFailure {
     }
 }
 
-/// The scope whose `on_failure` attribute supplied a resolved policy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display, strum::IntoStaticStr)]
-#[strum(serialize_all = "snake_case")]
-pub enum OnFailureScope {
-    Node,
-    Graph,
-}
-
 /// A failure routing policy together with the scope that supplied it, so
 /// failure messages can name the attribute that stopped routing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResolvedOnFailure {
-    pub policy: OnFailure,
-    pub scope:  OnFailureScope,
+    policy: OnFailure,
+    scope:  AttributeScope,
+}
+
+impl ResolvedOnFailure {
+    #[must_use]
+    pub const fn node(policy: OnFailure) -> Self {
+        Self {
+            policy,
+            scope: AttributeScope::Node,
+        }
+    }
+
+    #[must_use]
+    pub const fn graph(policy: OnFailure) -> Self {
+        Self {
+            policy,
+            scope: AttributeScope::Graph,
+        }
+    }
+
+    #[must_use]
+    pub const fn policy(self) -> OnFailure {
+        self.policy
+    }
+
+    #[must_use]
+    pub const fn scope(self) -> AttributeScope {
+        self.scope
+    }
 }
 
 /// Typed attribute values for nodes, edges, and graph-level attributes.
@@ -610,17 +630,10 @@ impl Graph {
     /// attribute overrides the graph level; an absent (or invalid, hence
     /// validation-rejected) node attribute inherits the graph policy.
     #[must_use]
-    pub fn resolve_on_failure(&self, node_id: &str) -> ResolvedOnFailure {
-        let node_policy = self.nodes.get(node_id).and_then(Node::on_failure);
-        match node_policy {
-            Some(policy) => ResolvedOnFailure {
-                policy,
-                scope: OnFailureScope::Node,
-            },
-            None => ResolvedOnFailure {
-                policy: self.on_failure(),
-                scope:  OnFailureScope::Graph,
-            },
+    pub fn resolve_on_failure(&self, node: &Node) -> ResolvedOnFailure {
+        match node.on_failure() {
+            Some(policy) => ResolvedOnFailure::node(policy),
+            None => ResolvedOnFailure::graph(self.on_failure()),
         }
     }
 
@@ -677,7 +690,8 @@ impl Graph {
 }
 
 /// Where an attribute appears in a workflow graph.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, strum::Display, strum::IntoStaticStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum AttributeScope {
     Graph,
     Node,
@@ -823,16 +837,16 @@ mod tests {
         graph.nodes.insert("route".to_string(), route);
 
         // Node attribute wins over the graph policy.
-        assert_eq!(graph.resolve_on_failure("route"), ResolvedOnFailure {
-            policy: OnFailure::Route,
-            scope:  OnFailureScope::Node,
-        });
-        // Absent, invalid, and unknown nodes inherit the graph policy.
-        for node_id in ["bare", "invalid", "missing"] {
-            assert_eq!(graph.resolve_on_failure(node_id), ResolvedOnFailure {
-                policy: OnFailure::Exit,
-                scope:  OnFailureScope::Graph,
-            });
+        assert_eq!(
+            graph.resolve_on_failure(&graph.nodes["route"]),
+            ResolvedOnFailure::node(OnFailure::Route)
+        );
+        // Absent and invalid node attributes inherit the graph policy.
+        for node_id in ["bare", "invalid"] {
+            assert_eq!(
+                graph.resolve_on_failure(&graph.nodes[node_id]),
+                ResolvedOnFailure::graph(OnFailure::Exit)
+            );
         }
     }
 

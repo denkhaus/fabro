@@ -9,6 +9,35 @@ pub(super) fn rule() -> Box<dyn LintRule> {
 
 struct Rule;
 
+fn invalid_value_diagnostic(
+    rule: &str,
+    node_id: Option<&str>,
+    value: &AttrValue,
+) -> Option<Diagnostic> {
+    let message = match value {
+        AttrValue::String(value) if value.parse::<OnFailure>().is_ok() => return None,
+        AttrValue::String(value) => match node_id {
+            Some(node_id) => format!("Node '{node_id}' has invalid on_failure value '{value}'"),
+            None => format!("Graph has invalid on_failure value '{value}'"),
+        },
+        _ => match node_id {
+            Some(node_id) => {
+                format!("Node '{node_id}' attribute 'on_failure' must be a string")
+            }
+            None => "Graph attribute 'on_failure' must be a string".to_string(),
+        },
+    };
+
+    Some(Diagnostic {
+        rule: rule.to_string(),
+        severity: Severity::Error,
+        message,
+        node_id: node_id.map(str::to_string),
+        fix: Some(format!("Use one of: {}", OnFailure::expected_values())),
+        ..Diagnostic::default()
+    })
+}
+
 impl LintRule for Rule {
     fn name(&self) -> &'static str {
         "on_failure_valid"
@@ -17,39 +46,22 @@ impl LintRule for Rule {
     fn apply(&self, graph: &Graph) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
-        let invalid_value = |subject: &str, value: &AttrValue| -> Option<Diagnostic> {
-            let message = match value {
-                AttrValue::String(value) if value.parse::<OnFailure>().is_ok() => return None,
-                AttrValue::String(value) => {
-                    format!("{subject} has invalid on_failure value '{value}'")
-                }
-                _ => format!("{subject} attribute 'on_failure' must be a string"),
-            };
-            Some(Diagnostic {
-                rule: self.name().to_string(),
-                severity: Severity::Error,
-                message,
-                fix: Some(format!("Use one of: {}", OnFailure::expected_values())),
-                ..Diagnostic::default()
-            })
-        };
-
         if let Some(value) = graph.attrs.get("on_failure") {
-            diagnostics.extend(invalid_value("Graph", value));
+            diagnostics.extend(invalid_value_diagnostic(self.name(), None, value));
         }
 
-        let mut node_ids: Vec<&String> = graph.nodes.keys().collect();
-        node_ids.sort();
-        for node_id in node_ids {
-            let node = &graph.nodes[node_id];
-            if let Some(value) = node.attrs.get("on_failure") {
-                if let Some(diagnostic) = invalid_value(&format!("Node '{node_id}'"), value) {
-                    diagnostics.push(Diagnostic {
-                        node_id: Some(node_id.clone()),
-                        ..diagnostic
-                    });
-                }
-            }
+        let mut node_values: Vec<_> = graph
+            .nodes
+            .iter()
+            .filter_map(|(node_id, node)| {
+                node.attrs
+                    .get("on_failure")
+                    .map(|value| (node_id.as_str(), value))
+            })
+            .collect();
+        node_values.sort_unstable_by_key(|(node_id, _)| *node_id);
+        for (node_id, value) in node_values {
+            diagnostics.extend(invalid_value_diagnostic(self.name(), Some(node_id), value));
         }
 
         for edge in &graph.edges {

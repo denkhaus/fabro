@@ -131,7 +131,7 @@ impl Graph for WorkflowGraph {
         routing::get_retry_target(failed_node_id, self.inner())
     }
 
-    fn resolve_on_failure(&self, node_id: &str) -> ResolvedOnFailure {
-        self.inner().resolve_on_failure(node_id)
+    fn resolve_on_failure(&self, node: &Self::Node) -> ResolvedOnFailure {
+        self.inner().resolve_on_failure(node.inner())
     }
 }

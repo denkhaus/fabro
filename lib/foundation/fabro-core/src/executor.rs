@@ -283,15 +283,15 @@ impl<G: Graph + 'static> Executor<G> {
                 NextStep::End => {
                     let mut outcome = last_outcome.clone();
                     if outcome.status.is_failure() {
-                        let resolved = graph.resolve_on_failure(node.id());
-                        let message = match resolved.policy {
+                        let resolved = graph.resolve_on_failure(&node);
+                        let message = match resolved.policy() {
                             OnFailure::Route => {
                                 format!("stage {} failed with no outgoing fail edge", node.id())
                             }
                             OnFailure::Exit => format!(
                                 "stage {} failed and {} on_failure=exit stopped routing",
                                 node.id(),
-                                resolved.scope
+                                resolved.scope()
                             ),
                         };
                         outcome = Outcome::fail(&message);
@@ -2266,7 +2266,7 @@ mod tests {
     async fn executor_node_exit_policy_overrides_graph_route_and_names_node_scope() {
         let graph = TestGraph::new(
             vec![
-                TestNode::new("work"),
+                TestNode::new("work").with_on_failure(OnFailure::Exit),
                 TestNode::new("downstream"),
                 TestNode::terminal("end"),
             ],
@@ -2275,8 +2275,7 @@ mod tests {
                 TestEdge::new("downstream", "end"),
             ],
             "work",
-        )
-        .with_node_on_failure("work", OnFailure::Exit);
+        );
         let state = ExecutionState::new(&graph).unwrap();
         let executor = ExecutorBuilder::new(
             Arc::new(AlwaysFailHandler::new("boom")) as Arc<dyn NodeHandler<TestGraph>>
@@ -2302,7 +2301,7 @@ mod tests {
     async fn executor_node_route_policy_overrides_graph_exit() {
         let graph = TestGraph::new(
             vec![
-                TestNode::new("work"),
+                TestNode::new("work").with_on_failure(OnFailure::Route),
                 TestNode::new("downstream"),
                 TestNode::terminal("end"),
             ],
@@ -2312,8 +2311,7 @@ mod tests {
             ],
             "work",
         )
-        .with_on_failure(OnFailure::Exit)
-        .with_node_on_failure("work", OnFailure::Route);
+        .with_on_failure(OnFailure::Exit);
         let state = ExecutionState::new(&graph).unwrap();
         let handler = DispatchHandler::new(Arc::new(AlwaysSucceedHandler))
             .with_handler("work", Arc::new(AlwaysFailHandler::new("boom")));
