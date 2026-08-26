@@ -29,6 +29,17 @@ pub enum OnFailure {
     Exit,
 }
 
+/// Default per-value preamble inline ceiling (KB). A single context or
+/// outcome value larger than this is demoted to a preview plus a file
+/// reference before prompt assembly. Shared by fabro-workflow (the demote
+/// pass) and fabro-validate (the budget lint) — one source of truth.
+pub const DEFAULT_PREAMBLE_INLINE_MAX_KB: usize = 8;
+
+/// Default aggregate preamble budget (KB): the total serialized bytes all
+/// preamble-visible values may contribute before the aggregate pass demotes
+/// the fattest values largest-first.
+pub const DEFAULT_PREAMBLE_BUDGET_KB: usize = 12;
+
 impl OnFailure {
     #[must_use]
     pub fn expected_values() -> String {
@@ -339,6 +350,20 @@ impl Node {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Node-level `preamble_inline_max_kb`: raises this node's per-value
+    /// inline ceiling above the graph default
+    /// ([`Graph::preamble_inline_max_kb`]). A prompt node without tools
+    /// uses this to keep evidence-sized values (which it could never open
+    /// from a demotion marker) inline. Values below 1 are ignored.
+    ///
+    /// The aggregate budget (`preamble_budget_kb`) still bounds the sum of
+    /// all preamble values — raise both when inlining fat values.
+    #[must_use]
+    pub fn preamble_inline_max_kb(&self) -> Option<usize> {
+        self.int_attr("preamble_inline_max_kb")
+            .and_then(|kb| usize::try_from(kb).ok().filter(|kb| *kb >= 1))
     }
 
     #[must_use]
@@ -656,6 +681,32 @@ impl Graph {
             .and_then(|kb| usize::try_from(kb).ok().filter(|kb| *kb >= 1))
     }
 
+    /// Graph-level `preamble_inline_max_kb`: the per-value inline ceiling
+    /// this graph's preambles apply before a single context or outcome
+    /// value is demoted to a preview plus a file reference. Nodes override
+    /// it with the same attribute (see [`Node::preamble_inline_max_kb`]).
+    /// Defaults to [`DEFAULT_PREAMBLE_INLINE_MAX_KB`]. Values below 1 are
+    /// ignored (the default applies).
+    ///
+    /// An integer attribute:
+    ///
+    /// ```text
+    /// digraph {
+    ///   graph [preamble_inline_max_kb=16]
+    /// }
+    /// ```
+    ///
+    /// Values at or above the 100KB blob-offload threshold never render
+    /// inline regardless of this ceiling: they are persisted as blob
+    /// references before preamble assembly runs.
+    #[must_use]
+    pub fn preamble_inline_max_kb(&self) -> Option<usize> {
+        self.attrs
+            .get("preamble_inline_max_kb")
+            .and_then(AttrValue::as_i64)
+            .and_then(|kb| usize::try_from(kb).ok().filter(|kb| *kb >= 1))
+    }
+
     /// Graph-level `loop_restart_signature_limit` (default 3).
     /// When the same failure signature repeats this many times, the pipeline
     /// aborts.
@@ -771,6 +822,29 @@ pub fn reference_kind_for_attribute(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preamble_inline_max_kb_parses_graph_and_node() {
+        let mut graph = Graph::new("t");
+        graph
+            .attrs
+            .insert("preamble_inline_max_kb".to_string(), AttrValue::Integer(16));
+        assert_eq!(graph.preamble_inline_max_kb(), Some(16));
+
+        let mut node = Node::new("work");
+        node.attrs
+            .insert("preamble_inline_max_kb".to_string(), AttrValue::Integer(24));
+        assert_eq!(node.preamble_inline_max_kb(), Some(24));
+
+        // Values below 1 are ignored (default applies).
+        graph
+            .attrs
+            .insert("preamble_inline_max_kb".to_string(), AttrValue::Integer(0));
+        assert_eq!(graph.preamble_inline_max_kb(), None);
+        node.attrs
+            .insert("preamble_inline_max_kb".to_string(), AttrValue::Integer(-4));
+        assert_eq!(node.preamble_inline_max_kb(), None);
+    }
 
     #[test]
     fn on_failure_parses_and_displays_supported_values() {

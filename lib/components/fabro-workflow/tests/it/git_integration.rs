@@ -468,6 +468,7 @@ async fn remote_prompt_demotion_stays_outside_checkout_and_survives_checkpoint()
     artifact::demote_large_values_for_prompt(
         &mut values,
         &mut HashMap::new(),
+        artifact::PROMPT_INLINE_VALUE_MAX,
         64 * 1024,
         &run_store,
         &sandbox,

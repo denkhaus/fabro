@@ -18,6 +18,7 @@ mod on_failure_valid;
 mod orphan_custom_outcome;
 mod parallel_branch;
 mod parallel_branch_inert_attribute;
+mod preamble_inline_max_within_budget;
 mod preamble_stages_ignore_targets_exist;
 mod prompt_on_llm_nodes;
 mod random_selection_no_conditions;
@@ -56,6 +57,7 @@ pub fn built_in_rules() -> Vec<Box<dyn LintRule>> {
         backend_valid::rule(),
         fidelity_valid::rule(),
         preamble_stages_ignore_targets_exist::rule(),
+        preamble_inline_max_within_budget::rule(),
         retry_target_exists::rule(),
         goal_gate_has_retry::rule(),
         prompt_on_llm_nodes::rule(),

@@ -205,9 +205,14 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
                 .graph
                 .preamble_budget_kb()
                 .map_or(artifact::DEFAULT_PREAMBLE_VALUE_BUDGET, |kb| kb * 1024);
+            let inline_max = gv_node
+                .preamble_inline_max_kb()
+                .or_else(|| self.graph.preamble_inline_max_kb())
+                .map_or(artifact::PROMPT_INLINE_VALUE_MAX, |kb| kb * 1024);
             artifact::demote_large_values_for_prompt(
                 &mut resolved_values,
                 &mut resolved_outcomes,
+                inline_max,
                 budget,
                 &self.run_store,
                 &*self.sandbox,
@@ -747,6 +752,116 @@ mod tests {
         assert!(
             preamble.contains("fabroLargeValue") || preamble.contains("full value:"),
             "aggregate pass should demote at 1KB graph budget: {preamble}"
+        );
+    }
+
+    #[tokio::test]
+    async fn node_preamble_inline_max_kb_keeps_evidence_inline() {
+        // fabro-9467: a prompt node without tools raises its per-value
+        // inline ceiling — a 9KB evidence value (over the 8KB default,
+        // under the raised 16KB ceiling) stays inline instead of demoting
+        // to a marker whose file reference the node could never open.
+        let mut graph = Graph::new("inline-max");
+        let mut start = Node::new("start");
+        start
+            .attrs
+            .insert("shape".to_string(), str_attr("Mdiamond"));
+        let mut reviewer = Node::new("reviewer");
+        reviewer
+            .attrs
+            .insert("prompt".to_string(), str_attr("review it"));
+        reviewer
+            .attrs
+            .insert("preamble_inline_max_kb".to_string(), AttrValue::Integer(16));
+        let mut control = Node::new("control");
+        control
+            .attrs
+            .insert("prompt".to_string(), str_attr("check it"));
+        graph.nodes.insert(start.id.clone(), start);
+        graph.nodes.insert(reviewer.id.clone(), reviewer);
+        graph.nodes.insert(control.id.clone(), control);
+        graph.edges.push(Edge::new("start", "reviewer"));
+        graph.edges.push(Edge::new("reviewer", "control"));
+        let workflow_graph = WorkflowGraph(Arc::new(graph));
+
+        let run_dir = tempfile::tempdir().unwrap();
+        let lifecycle = test_lifecycle(&workflow_graph, run_dir.path()).await;
+        let state: WfRunState = ExecutionState::new(&workflow_graph).unwrap();
+
+        state
+            .context
+            .set("evidence", serde_json::json!("e".repeat(9 * 1024)));
+
+        let reviewer_node = workflow_graph.get_node("reviewer").unwrap();
+        lifecycle.before_node(&reviewer_node, &state).await.unwrap();
+        let preamble = state.context.get_string(keys::CURRENT_PREAMBLE, "");
+        // Inline means the WHOLE 9KB value renders: the preamble carries
+        // it verbatim (length check — a demote preview is only ~300 chars
+        // and would not reach 9KB even with scaffolding).
+        assert!(
+            preamble.len() > 9 * 1024,
+            "raised inline ceiling must keep the 9KB value inline: {} bytes",
+            preamble.len()
+        );
+        assert!(
+            !preamble.contains("full value:"),
+            "9KB value must not demote under a 16KB ceiling: {preamble}"
+        );
+
+        // Control node without the attribute still demotes the same value.
+        let control_node = workflow_graph.get_node("control").unwrap();
+        lifecycle.before_node(&control_node, &state).await.unwrap();
+        let preamble = state.context.get_string(keys::CURRENT_PREAMBLE, "");
+        assert!(
+            preamble.contains("full value:"),
+            "default 8KB ceiling must demote the 9KB value: {preamble}"
+        );
+        assert!(
+            preamble.len() < 4 * 1024,
+            "demoted preamble carries only the preview, not 9KB: {} bytes",
+            preamble.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn graph_preamble_inline_max_kb_raises_ceiling_for_all_nodes() {
+        // Graph-level default: the raised ceiling applies where no node
+        // attribute overrides it.
+        let mut graph = Graph::new("inline-max-graph");
+        graph
+            .attrs
+            .insert("preamble_inline_max_kb".to_string(), AttrValue::Integer(16));
+        let mut start = Node::new("start");
+        start
+            .attrs
+            .insert("shape".to_string(), str_attr("Mdiamond"));
+        let mut work = Node::new("work");
+        work.attrs.insert("prompt".to_string(), str_attr("do work"));
+        graph.nodes.insert(start.id.clone(), start);
+        graph.nodes.insert(work.id.clone(), work);
+        graph.edges.push(Edge::new("start", "work"));
+        let workflow_graph = WorkflowGraph(Arc::new(graph));
+
+        let run_dir = tempfile::tempdir().unwrap();
+        let lifecycle = test_lifecycle(&workflow_graph, run_dir.path()).await;
+        let state: WfRunState = ExecutionState::new(&workflow_graph).unwrap();
+
+        state
+            .context
+            .set("evidence", serde_json::json!("e".repeat(9 * 1024)));
+
+        let work_node = workflow_graph.get_node("work").unwrap();
+        lifecycle.before_node(&work_node, &state).await.unwrap();
+
+        let preamble = state.context.get_string(keys::CURRENT_PREAMBLE, "");
+        assert!(
+            preamble.len() > 9 * 1024,
+            "graph ceiling must keep the 9KB value inline: {} bytes",
+            preamble.len()
+        );
+        assert!(
+            !preamble.contains("full value:"),
+            "9KB value must not demote under the raised graph ceiling: {preamble}"
         );
     }
 

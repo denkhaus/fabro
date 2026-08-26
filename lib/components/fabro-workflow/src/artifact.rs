@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use fabro_agent::Sandbox;
 use fabro_config::RunScratch;
+use fabro_types::graph::{DEFAULT_PREAMBLE_BUDGET_KB, DEFAULT_PREAMBLE_INLINE_MAX_KB};
 use fabro_types::{
     BlobHash, ParallelBranchResult, format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref,
 };
@@ -22,7 +23,9 @@ const BLOB_OFFLOAD_THRESHOLD: usize = 100 * 1024;
 
 /// Largest serialized JSON one context or outcome value may contribute to a
 /// prompt preamble before it is demoted to a preview plus a file reference.
-const PROMPT_INLINE_VALUE_MAX: usize = 8 * 1024;
+/// Default ceiling; nodes and graphs raise it via `preamble_inline_max_kb`
+/// (see [`demote_large_values_for_prompt`]).
+pub const PROMPT_INLINE_VALUE_MAX: usize = DEFAULT_PREAMBLE_INLINE_MAX_KB * 1024;
 
 /// Default aggregate budget: total serialized bytes all preamble values may
 /// contribute before the aggregate pass starts demoting. The per-value pass
@@ -30,7 +33,7 @@ const PROMPT_INLINE_VALUE_MAX: usize = 8 * 1024;
 /// mid-sized values (e.g. one response per loop cycle) growing the preamble
 /// without any single value crossing [`PROMPT_INLINE_VALUE_MAX`]. Workflows
 /// can override it per node via the `preamble_budget_kb` attribute.
-pub(crate) const DEFAULT_PREAMBLE_VALUE_BUDGET: usize = 12 * 1024;
+pub(crate) const DEFAULT_PREAMBLE_VALUE_BUDGET: usize = DEFAULT_PREAMBLE_BUDGET_KB * 1024;
 
 /// Values at or below this size are never demoted by the aggregate pass.
 /// Contract keys, ids, and enums stay inline for free without a keep-list;
@@ -182,12 +185,20 @@ fn serialized_if_over(value: &Value, threshold: usize) -> Result<Option<Vec<u8>>
 /// demoted wholesale: the set is small, and over-demoting a prompt-only copy
 /// is harmless.
 ///
+/// `inline_max` is the per-value ceiling for this node's preamble (the
+/// `preamble_inline_max_kb` attribute, node override over graph default,
+/// resolved by the caller in lifecycle/fidelity.rs). `budget` bounds the
+/// aggregate sum afterward. A node without tools (a prompt stage) raises
+/// `inline_max` so evidence-sized values stay inline — it could never open
+/// the demotion marker's file reference.
+///
 /// Demotion is an optimization of prompt size, not a correctness gate: a
 /// value that fails to demote is left inline and logged rather than failing
 /// the node.
 pub async fn demote_large_values_for_prompt(
     values: &mut HashMap<String, Value>,
     node_outcomes: &mut HashMap<String, Outcome>,
+    inline_max: usize,
     budget: usize,
     run_store: &RunStoreHandle,
     env: &dyn Sandbox,
@@ -198,30 +209,17 @@ pub async fn demote_large_values_for_prompt(
         if context::keys::is_preamble_hidden_key(key) {
             continue;
         }
-        if let Err(err) = demote_value_for_prompt(
-            value,
-            PROMPT_INLINE_VALUE_MAX,
-            run_store,
-            env,
-            run_dir,
-            &mut locality,
-        )
-        .await
+        if let Err(err) =
+            demote_value_for_prompt(value, inline_max, run_store, env, run_dir, &mut locality).await
         {
             tracing::warn!(key, %err, "prompt value demotion failed; kept inline");
         }
     }
     for (node_id, outcome) in &mut *node_outcomes {
         for (key, value) in &mut outcome.context_updates {
-            if let Err(err) = demote_value_for_prompt(
-                value,
-                PROMPT_INLINE_VALUE_MAX,
-                run_store,
-                env,
-                run_dir,
-                &mut locality,
-            )
-            .await
+            if let Err(err) =
+                demote_value_for_prompt(value, inline_max, run_store, env, run_dir, &mut locality)
+                    .await
             {
                 tracing::warn!(
                     node_id,
@@ -1664,6 +1662,7 @@ mod tests {
         demote_large_values_for_prompt(
             &mut values,
             &mut outcomes,
+            PROMPT_INLINE_VALUE_MAX,
             DEFAULT_PREAMBLE_VALUE_BUDGET,
             &run_store,
             &sandbox,
@@ -1732,6 +1731,7 @@ mod tests {
         demote_large_values_for_prompt(
             &mut values,
             &mut outcomes,
+            PROMPT_INLINE_VALUE_MAX,
             DEFAULT_PREAMBLE_VALUE_BUDGET,
             &run_store,
             &sandbox,
@@ -1775,6 +1775,7 @@ mod tests {
         demote_large_values_for_prompt(
             &mut values,
             &mut HashMap::new(),
+            PROMPT_INLINE_VALUE_MAX,
             DEFAULT_PREAMBLE_VALUE_BUDGET,
             &run_store,
             &env,
@@ -1826,6 +1827,7 @@ mod tests {
         demote_large_values_for_prompt(
             &mut values,
             &mut outcomes,
+            PROMPT_INLINE_VALUE_MAX,
             DEFAULT_PREAMBLE_VALUE_BUDGET,
             &run_store,
             &sandbox,
@@ -1856,6 +1858,7 @@ mod tests {
         demote_large_values_for_prompt(
             &mut values,
             &mut outcomes,
+            PROMPT_INLINE_VALUE_MAX,
             DEFAULT_PREAMBLE_VALUE_BUDGET,
             &run_store,
             &sandbox,
@@ -1892,6 +1895,7 @@ mod tests {
         demote_large_values_for_prompt(
             &mut values,
             &mut outcomes,
+            PROMPT_INLINE_VALUE_MAX,
             DEFAULT_PREAMBLE_VALUE_BUDGET,
             &run_store,
             &sandbox,
@@ -1926,6 +1930,7 @@ mod tests {
         demote_large_values_for_prompt(
             &mut values,
             &mut HashMap::new(),
+            PROMPT_INLINE_VALUE_MAX,
             DEFAULT_PREAMBLE_VALUE_BUDGET,
             &run_store,
             &env,
@@ -1991,6 +1996,7 @@ mod tests {
         demote_large_values_for_prompt(
             &mut values,
             &mut HashMap::new(),
+            PROMPT_INLINE_VALUE_MAX,
             DEFAULT_PREAMBLE_VALUE_BUDGET,
             &run_store,
             &sandbox,

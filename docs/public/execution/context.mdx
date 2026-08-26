@@ -321,6 +321,21 @@ In fidelity modes that render context or completed-stage output, one value can c
 
 This prompt limit is separate from durable artifact offloading. If Fabro cannot demote a value, it logs a warning and keeps that value inline so the stage can continue.
 
+#### Raising the per-value ceiling — `preamble_inline_max_kb`
+
+A prompt node (shape=tab) has no tools: when an evidence-sized value demotes, the node can never open the referenced file and judges only the 300-character preview. The `preamble_inline_max_kb` attribute raises the per-value inline ceiling for exactly that case — the workflow author pays prompt tokens for full-fidelity review:
+
+```dot
+digraph {
+  graph [goal="...", preamble_inline_max_kb=16]  // graph-wide default
+  reviewer [prompt="Review the evidence", preamble_inline_max_kb=16]  // per-node override
+}
+```
+
+The node attribute wins over the graph attribute; both default to 8. Values at or above the 100KB blob-offload threshold can never render inline — they become blob refs before preamble assembly, regardless of this ceiling.
+
+The **aggregate budget still applies**: `preamble_inline_max_kb` bounds a single value, `preamble_budget_kb` bounds the sum. A raised ceiling above the budget triggers the validation warning `preamble_inline_max_within_budget` — raise both when inlining fat values.
+
 ## Artifact offloading
 
 When a stage produces a large output (over 100KB of serialized JSON), Fabro stores the serialized bytes in a global content-addressed blob store and replaces the context value with a durable blob ref. Command output is always finalized into a blob ref after command completion, even when it is small or empty:
