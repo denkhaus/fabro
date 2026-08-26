@@ -172,12 +172,21 @@ digraph Develop {
 
     start -> planner
 
+    // Tracker empty = the goal is achieved (NOT an error): the planner
+    // emits preferred_next_label "Tracker empty" when no open seed
+    // remains. Without this edge that case fell through to the
+    // unconditional "Seed claimed" edge and the loop re-entered
+    // implementation with no seed claimed (GRAPH-03, gate red since
+    // the journal-contract prompt). Plain edge: natural completion.
+    planner -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
     // Cycle-guard exit (run 01M0SS23MJ): the planner prompt routes Blocked
     // after the third review/gate cycle on one seed, but the graph had no
     // matching edge — the guard could never fire. Seed stays open for a
     // human; only an approved review closes it. Listed BEFORE the generic
     // outcome=failed edge so the specific label wins the routing.
-    planner -> exit [kind="deadlock", label="Blocked (seed stays open for a human)", condition="preferred_label=\"Blocked\""]
+    // Label is exactly "Blocked" — the prompt declares that string and
+    // the label contract requires an exact match (GRAPH-03).
+    planner -> exit [kind="deadlock", label="Blocked", condition="preferred_label=\"Blocked\""]
     planner -> exit        [label="Planner failed", condition="outcome=failed"]
     planner -> implementer [label="Seed claimed"]
 

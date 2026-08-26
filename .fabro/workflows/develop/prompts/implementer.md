@@ -21,7 +21,7 @@ Tracker mechanics (sd is installed and authoritative):
 1. Re-read the seed requirements from `sd show <current_seed_id>`. The seed description is the specification; follow it literally.
 2. Implement it in the current worktree: create and edit files, keep the project's conventions (commands run through its `just` recipes).
 3. Write or update tests exactly as the seed demands.
-4. Do NOT run the quality gate — NOT `just qualitygate`, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Your check: compile (`go build`, `go vet`) or ONE focused test — nothing that formats, lints, or runs the full suite.
+4. Do NOT run the quality gate — NOT `just qualitygate`, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Your check: the project's compile check or ONE focused test — nothing that formats, lints, or runs the full suite.
 5. Do NOT close the seed and do NOT review — the Reviewer decides, the deterministic Closeout closes.
 6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced.
 
