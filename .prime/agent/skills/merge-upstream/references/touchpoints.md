@@ -37,3 +37,14 @@ Upstream directions that may supersede our work — re-evaluate per merge:
   our exit kinds (deadlock/soft classify the terminal event; on_failure
   only constrains routing). Do not adopt in `develop` — its edges already
   route every failure explicitly and the exit kinds classify better.
+
+## 2026-08-26 (v0.337.0-nightly.0)
+
+- Model stylesheet templates landed (PR #805): root `model_stylesheet`
+  renders via MiniJinja pre-parse with restricted projection
+  (`for_model_stylesheet()` = inputs+vars only). Per-node context work
+  (fabro-900e) should reuse the `for_*()` restricted-projection pattern
+  instead of a new mechanism.
+- Watchlist add: `upstream/node-on-failure` branch = node-level
+  on_failure override (fabro-types/graph.rs, executor, routing) —
+  adjacent to our exit-kind taxonomy; evaluate at next merge.
