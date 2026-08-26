@@ -93,6 +93,7 @@ function AutomationHeader({ automation }: { automation: Automation }) {
 
   const scheduleTrigger = findScheduleTrigger(automation);
   const apiTrigger = findApiTrigger(automation);
+  const target = automation.target.kind === "git" ? automation.target : null;
   const canRun = apiTrigger?.enabled === true;
 
   async function onRun() {
@@ -139,10 +140,16 @@ function AutomationHeader({ automation }: { automation: Automation }) {
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
             <Chip icon={FolderIcon}>
-              {automation.target.repository}
-              <span className="text-fg-muted/70"> · {automation.target.ref}</span>
+              {target?.repo ?? "Unsupported target"}
+              {target ? (
+                <span className="text-fg-muted/70">
+                  {" · "}{target.branch}
+                  {target.tag ? ` · ${target.tag}` : ""}
+                  {target.sha ? ` · ${target.sha.slice(0, 8)}` : ""}
+                </span>
+              ) : null}
             </Chip>
-            <Chip icon={RectangleStackIcon}>{automation.target.workflow}</Chip>
+            <Chip icon={RectangleStackIcon}>{automation.workflow}</Chip>
             {scheduleTrigger ? (
               <Chip icon={ClockIcon}>{scheduleTrigger.expression}</Chip>
             ) : null}

@@ -8,7 +8,7 @@ use croner::errors::CronError;
 use fabro_automation::{
     Automation, AutomationId, AutomationRevision, AutomationTriggerId, parse_schedule_expression,
 };
-use fabro_types::{AutomationRef, Principal, RunId, SystemActorKind};
+use fabro_types::{AutomationRef, Principal, RunId, RunTarget, SystemActorKind};
 use tokio::time::sleep;
 use tracing::{Instrument, error, info, info_span, warn};
 
@@ -229,10 +229,18 @@ async fn fire_scheduled_automation_run(
 ) {
     let automation_id = automation.id.clone();
     let run_id = RunId::new();
+    let Some(target) = automation.git_target().cloned() else {
+        error!(
+            automation_id = %automation_id,
+            "Stored automation target is not Git-backed",
+        );
+        return;
+    };
     let materialized = match state
         .materialize_automation_run(AutomationRunMaterializeInput {
             automation_id: automation_id.clone(),
-            target: automation.target.clone(),
+            target,
+            workflow: automation.workflow.clone(),
             run_id,
             user_settings_path: state.active_config_path().to_path_buf(),
             temp_root: state.automation_temp_root(),
@@ -243,7 +251,7 @@ async fn fire_scheduled_automation_run(
         Err(err) => {
             error!(
                 due_at = %due_at,
-                error = %err,
+                error = ?err,
                 "Failed to materialize scheduled automation run",
             );
             return;
@@ -271,6 +279,7 @@ async fn fire_scheduled_automation_run(
             actor: actor.clone(),
             headers: HeaderMap::new(),
             automation: Some(automation_ref),
+            target: Some(RunTarget::Git(materialized.target)),
         },
     ))
     .await;
@@ -335,10 +344,10 @@ fn run_due_schedules_once<'a>(
 #[cfg(test)]
 mod tests {
     use fabro_api::types::RunManifest;
-    use fabro_automation::{AutomationDraft, AutomationTarget, AutomationTrigger, ScheduleTrigger};
+    use fabro_automation::{AutomationDraft, AutomationTrigger, ScheduleTrigger};
     use fabro_static::EnvVars;
     use fabro_store::ListRunsQuery;
-    use fabro_types::RunStatus;
+    use fabro_types::{GitRunTarget, RunStatus};
     use serde_json::json;
 
     use super::*;
@@ -350,12 +359,17 @@ mod tests {
             .with_timezone(&Utc)
     }
 
-    fn target() -> AutomationTarget {
-        AutomationTarget {
-            repository:   "fabro-sh/fabro".to_string(),
-            ref_selector: "main".to_string(),
-            workflow:     "workflow.fabro".to_string(),
+    fn git_target() -> GitRunTarget {
+        GitRunTarget {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "main".to_string(),
+            tag:    None,
+            sha:    None,
         }
+    }
+
+    fn target() -> RunTarget {
+        RunTarget::Git(git_target())
     }
 
     fn schedule_trigger(id: &str, expression: &str, enabled: bool) -> AutomationTrigger {
@@ -373,6 +387,7 @@ mod tests {
             name: name.to_string(),
             description: None,
             target: target(),
+            workflow: "workflow.fabro".to_string(),
             triggers,
         }
     }
@@ -390,6 +405,7 @@ mod tests {
                 name: name.to_string(),
                 description: None,
                 target: target(),
+                workflow: "workflow.fabro".to_string(),
                 triggers,
             })
             .await
@@ -422,7 +438,9 @@ mod tests {
         let manifest = minimal_manifest();
         let submitted_manifest_bytes =
             serde_json::to_vec(&manifest).expect("manifest should serialize");
-        TestAutomationRunMaterializer::succeed(manifest, submitted_manifest_bytes)
+        let mut exact_target = git_target();
+        exact_target.sha = Some("0123456789abcdef0123456789abcdef01234567".to_string());
+        TestAutomationRunMaterializer::succeed(manifest, submitted_manifest_bytes, exact_target)
     }
 
     fn test_state_with_materializer(materializer: TestAutomationRunMaterializer) -> Arc<AppState> {

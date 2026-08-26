@@ -4,6 +4,7 @@ import type {
   Automation,
   AutomationTrigger,
   Run,
+  RunProjection,
   WorkflowSettings,
 } from "@qltysh/fabro-api-client";
 
@@ -17,7 +18,9 @@ export interface AutomationFormValues {
   name: string;
   description: string;
   repository: string;
-  ref: string;
+  branch: string;
+  tag: string;
+  sha: string;
   workflow: string;
   manualEnabled: boolean;
   scheduleEnabled: boolean;
@@ -29,7 +32,9 @@ export const EMPTY_AUTOMATION_FORM: AutomationFormValues = {
   name:            "",
   description:     "",
   repository:      "",
-  ref:             "main",
+  branch:          "main",
+  tag:             "",
+  sha:             "",
   workflow:        "",
   manualEnabled:   true,
   scheduleEnabled: false,
@@ -46,13 +51,16 @@ const CRON_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
 export function automationToFormValues(automation: Automation): AutomationFormValues {
   const apiTrigger = findApiTrigger(automation);
   const scheduleTrigger = findScheduleTrigger(automation);
+  const target = automation.target.kind === "git" ? automation.target : null;
   return {
     id:              automation.id,
     name:            automation.name,
     description:     automation.description ?? "",
-    repository:      automation.target.repository,
-    ref:             automation.target.ref,
-    workflow:        automation.target.workflow,
+    repository:      target?.repo ?? "",
+    branch:          target?.branch ?? EMPTY_AUTOMATION_FORM.branch,
+    tag:             target?.tag ?? "",
+    sha:             target?.sha ?? "",
+    workflow:        automation.workflow,
     manualEnabled:   apiTrigger?.enabled ?? false,
     scheduleEnabled: scheduleTrigger?.enabled ?? false,
     cron:            scheduleTrigger?.expression ?? "0 9 * * 1-5",
@@ -61,6 +69,7 @@ export function automationToFormValues(automation: Automation): AutomationFormVa
 
 export function automationFormValuesFromRun(
   run: Run,
+  runState?: RunProjection | null,
   settings?: WorkflowSettings | null,
 ): AutomationFormValues {
   const name = firstPresentString(
@@ -75,7 +84,11 @@ export function automationFormValuesFromRun(
     run.workflow.graph_name,
     name,
   );
-  const repository = githubRepositoryFromSettings(settings)
+  const canonicalTarget = runState?.spec.target?.kind === "git"
+    ? runState.spec.target
+    : null;
+  const repository = canonicalTarget?.repo
+    ?? githubRepositoryFromSettings(settings)
     ?? githubRepositoryName(run.repository?.name)
     ?? githubRepositoryFromOriginUrl(run.repository?.origin_url)
     ?? "";
@@ -85,7 +98,11 @@ export function automationFormValuesFromRun(
     id:         kebabify(name),
     name,
     repository,
-    ref:        cloneBranch ?? EMPTY_AUTOMATION_FORM.ref,
+    branch:     canonicalTarget?.branch
+      ?? cloneBranch
+      ?? EMPTY_AUTOMATION_FORM.branch,
+    tag:        canonicalTarget?.tag ?? "",
+    sha:        canonicalTarget?.sha ?? "",
     workflow:   run.workflow.slug?.trim() || kebabify(workflowName),
   };
 }
@@ -111,7 +128,8 @@ export function isFormValid(values: AutomationFormValues): boolean {
     values.id.trim() !== "" &&
     values.name.trim() !== "" &&
     values.repository.trim() !== "" &&
-    values.ref.trim() !== "" &&
+    values.branch.trim() !== "" &&
+    (values.sha.trim() === "" || /^[0-9a-fA-F]{40}$/.test(values.sha.trim())) &&
     values.workflow.trim() !== ""
   );
 }
@@ -194,6 +212,8 @@ export function AutomationFormFields({
   lockIdAndTarget = false,
 }: AutomationFormFieldsProps) {
   const slugTouchedRef = useRef(values.id.length > 0);
+  const sha = values.sha.trim();
+  const shaValid = sha === "" || /^[0-9a-fA-F]{40}$/.test(sha);
 
   function patch(partial: Partial<AutomationFormValues>) {
     onChange({ ...values, ...partial });
@@ -277,14 +297,54 @@ export function AutomationFormFields({
             className={`${INPUT_CLASS} font-mono`}
           />
         </Row>
-        <Row title={<Label required>Branch</Label>} help="Default branch to run against.">
+        <Row
+          title={<Label required>Working branch</Label>}
+          help="Attached branch retained with the run, including when a tag or exact commit is selected."
+        >
           <input
             type="text"
             name="branch"
-            aria-label="Default branch"
-            value={values.ref}
-            onChange={(e) => patch({ ref: e.target.value })}
+            aria-label="Working branch"
+            value={values.branch}
+            onChange={(e) => patch({ branch: e.target.value })}
             placeholder="main"
+            autoComplete="off"
+            spellCheck={false}
+            className={`${INPUT_CLASS} font-mono`}
+          />
+        </Row>
+        <Row
+          title={<Label optional>Tag</Label>}
+          help="Bare tag name resolved when the automation fires. Used only when exact SHA is empty."
+        >
+          <input
+            type="text"
+            name="tag"
+            aria-label="Tag"
+            value={values.tag}
+            onChange={(e) => patch({ tag: e.target.value })}
+            placeholder="v1.2.3"
+            autoComplete="off"
+            spellCheck={false}
+            className={`${INPUT_CLASS} font-mono`}
+          />
+        </Row>
+        <Row
+          title={<Label optional>Exact SHA</Label>}
+          help={
+            shaValid
+              ? "A 40-character commit SHA pins exact content and takes precedence over branch and tag."
+              : <span className="text-coral">Enter exactly 40 hexadecimal characters.</span>
+          }
+        >
+          <input
+            type="text"
+            name="sha"
+            aria-label="Exact commit SHA"
+            aria-invalid={!shaValid}
+            value={values.sha}
+            onChange={(e) => patch({ sha: e.target.value })}
+            placeholder="0123456789abcdef0123456789abcdef01234567"
             autoComplete="off"
             spellCheck={false}
             className={`${INPUT_CLASS} font-mono`}

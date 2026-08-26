@@ -64,7 +64,6 @@ models/automation-list-meta.ts
 models/automation-list-response.ts
 models/automation-ref.ts
 models/automation-schedule-trigger.ts
-models/automation-target.ts
 models/automation-trigger.ts
 models/automation.ts
 models/batch-delete-runs-request.ts

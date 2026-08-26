@@ -81,17 +81,20 @@ const MENU_ITEM_DANGER_CLASS =
 
 function mapAutomations(result: AutomationListResponse | undefined): AutomationRow[] {
   const automations = result?.data ?? [];
-  return automations.map((a) => ({
-    id:         a.id,
-    revision:   a.revision,
-    name:       a.name,
-    workflow:   a.target.workflow,
-    repository: a.target.repository,
-    schedule:   findScheduleTrigger(a)?.expression,
-    apiEnabled: hasEnabledApiTrigger(a),
-    icon:       slugIconMap[a.target.workflow] ?? CodeBracketIcon,
-    color:      slugColorMap[a.target.workflow] ?? "var(--color-teal-500)",
-  }));
+  return automations.map((a) => {
+    const target = a.target.kind === "git" ? a.target : null;
+    return {
+      id:         a.id,
+      revision:   a.revision,
+      name:       a.name,
+      workflow:   a.workflow,
+      repository: target?.repo ?? "Unsupported target",
+      schedule:   findScheduleTrigger(a)?.expression,
+      apiEnabled: hasEnabledApiTrigger(a),
+      icon:       slugIconMap[a.workflow] ?? CodeBracketIcon,
+      color:      slugColorMap[a.workflow] ?? "var(--color-teal-500)",
+    };
+  });
 }
 
 function PlayIcon({ className }: { className?: string }) {

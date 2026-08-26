@@ -6738,6 +6738,7 @@ components:
         - name
         - description
         - target
+        - workflow
         - triggers
       properties:
         id:
@@ -6756,33 +6757,15 @@ components:
           type: ["string", "null"]
           example: Keeps dependencies fresh.
         target:
-          $ref: "#/components/schemas/AutomationTarget"
+          $ref: "#/components/schemas/RunTarget"
+        workflow:
+          type: string
+          description: Workflow slug or path resolved in the selected repository checkout.
+          example: dependency-update
         triggers:
           type: array
           items:
             $ref: "#/components/schemas/AutomationTrigger"
-
-    AutomationTarget:
-      description: Repository and workflow selected by an automation.
-      type: object
-      additionalProperties: false
-      required:
-        - repository
-        - ref
-        - workflow
-      properties:
-        repository:
-          type: string
-          description: GitHub repository slug in `owner/repo` form.
-          example: fabro-sh/fabro
-        ref:
-          type: string
-          description: Branch, tag, or SHA selector resolved when materializing a run.
-          example: main
-        workflow:
-          type: string
-          description: Workflow slug or path resolved in the target repository.
-          example: dependency-update
 
     AutomationTrigger:
       description: |
@@ -6850,6 +6833,7 @@ components:
         - id
         - name
         - target
+        - workflow
         - triggers
       properties:
         id:
@@ -6863,7 +6847,11 @@ components:
           type: ["string", "null"]
           example: Keeps dependencies fresh.
         target:
-          $ref: "#/components/schemas/AutomationTarget"
+          $ref: "#/components/schemas/RunTarget"
+        workflow:
+          type: string
+          description: Workflow slug or path resolved in the selected repository checkout.
+          example: dependency-update
         triggers:
           type: array
           items:
@@ -6876,6 +6864,7 @@ components:
       required:
         - name
         - target
+        - workflow
         - triggers
       properties:
         name:
@@ -6885,7 +6874,11 @@ components:
           type: ["string", "null"]
           example: Keeps dependencies fresh.
         target:
-          $ref: "#/components/schemas/AutomationTarget"
+          $ref: "#/components/schemas/RunTarget"
+        workflow:
+          type: string
+          description: Workflow slug or path resolved in the selected repository checkout.
+          example: dependency-update
         triggers:
           type: array
           items:

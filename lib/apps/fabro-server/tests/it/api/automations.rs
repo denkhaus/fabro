@@ -8,6 +8,7 @@ use fabro_server::test_support::{
     TestAppStateBuilder, TestAutomationRunMaterializer, build_test_router, test_auth_mode,
 };
 use fabro_static::EnvVars;
+use fabro_types::GitRunTarget;
 use serde_json::{Value, json};
 use sqlx::Row as _;
 use tower::ServiceExt;
@@ -23,10 +24,11 @@ fn automation_body(id: &str, name: &str) -> Value {
         "name": name,
         "description": "Runs on a schedule.",
         "target": {
-            "repository": "fabro-sh/fabro",
-            "ref": "main",
-            "workflow": "release"
+            "kind": "git",
+            "repo": "fabro-sh/fabro",
+            "branch": "main"
         },
+        "workflow": "release",
         "triggers": [
             {
                 "type": "api",
@@ -48,10 +50,11 @@ fn replacement_body(name: &str) -> Value {
         "name": name,
         "description": null,
         "target": {
-            "repository": "fabro-sh/fabro",
-            "ref": "main",
-            "workflow": "release"
+            "kind": "git",
+            "repo": "fabro-sh/fabro",
+            "branch": "main"
         },
+        "workflow": "release",
         "triggers": [
             {
                 "type": "api",
@@ -91,6 +94,12 @@ fn automation_app_with_fake_materializer() -> (axum::Router, tempfile::TempDir, 
         .automation_materializer(TestAutomationRunMaterializer::succeed(
             materialized_manifest,
             submitted_manifest_bytes,
+            GitRunTarget {
+                repo:   "fabro-sh/fabro".to_string(),
+                branch: "main".to_string(),
+                tag:    None,
+                sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+            },
         ))
         .build();
     (build_test_router(state), temp_dir, sqlite_path)

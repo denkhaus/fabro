@@ -86,10 +86,13 @@ function EditAutomationForm({ automation }: { automation: Automation }) {
           name:        trimmedName,
           description: values.description.trim() || null,
           target:      {
-            repository: values.repository.trim(),
-            ref:        values.ref.trim(),
-            workflow:   values.workflow.trim(),
+            kind:   "git",
+            repo:   values.repository.trim(),
+            branch: values.branch.trim(),
+            tag:    values.tag.trim() || undefined,
+            sha:    values.sha.trim().toLowerCase() || undefined,
           },
+          workflow: values.workflow.trim(),
           triggers: triggersFromFormValues(values),
         }),
       );

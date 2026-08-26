@@ -15,10 +15,10 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { AutomationTarget } from './automation-target';
+import type { AutomationTrigger } from './automation-trigger';
 // May contain unused imports in some cases
 // @ts-ignore
-import type { AutomationTrigger } from './automation-trigger';
+import type { RunTarget } from './run-target';
 
 /**
  * Public automation definition.
@@ -31,6 +31,10 @@ export interface Automation {
     'revision': string;
     'name': string;
     'description': string | null;
-    'target': AutomationTarget;
+    'target': RunTarget;
+    /**
+     * Workflow slug or path resolved in the selected repository checkout.
+     */
+    'workflow': string;
     'triggers': Array<AutomationTrigger>;
 }
