@@ -72,6 +72,42 @@ fn run_intent_none_target_rejects_unknown_fields() {
 }
 
 #[test]
+fn run_intent_round_trips_the_strict_folder_shape() {
+    let mut intent = intent();
+    intent.target = RunTarget::Folder {
+        path: "/srv/fabro/workspaces/example".to_string(),
+    };
+
+    let value = serde_json::to_value(&intent).expect("intent should serialize");
+
+    assert_eq!(
+        value["target"],
+        json!({
+            "kind": "folder",
+            "path": "/srv/fabro/workspaces/example",
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<RunIntent>(value).expect("intent should deserialize"),
+        intent
+    );
+}
+
+#[test]
+fn run_intent_folder_target_rejects_unknown_and_missing_fields() {
+    let mut value = serde_json::to_value(intent()).expect("intent should serialize");
+    value["target"] = json!({
+        "kind": "folder",
+        "path": "/srv/fabro/workspaces/example",
+        "unexpected": true,
+    });
+    assert!(serde_json::from_value::<RunIntent>(value.clone()).is_err());
+
+    value["target"] = json!({ "kind": "folder" });
+    assert!(serde_json::from_value::<RunIntent>(value).is_err());
+}
+
+#[test]
 fn run_intent_rejects_unknown_fields_at_every_object_boundary() {
     let value = serde_json::to_value(intent()).expect("intent should serialize");
 
@@ -149,6 +185,18 @@ fn target_validation_normalizes_sha_without_network_resolution() {
 fn run_intent_none_target_validates_without_a_git_projection() {
     let validated = RunTarget::None {}.validate().unwrap();
     assert_eq!(validated.target, RunTarget::None {});
+    assert_eq!(validated.git, None);
+}
+
+#[test]
+fn run_intent_folder_target_is_preserved_for_provider_admission() {
+    let target = RunTarget::Folder {
+        path: "/srv/fabro/workspaces/example".to_string(),
+    };
+
+    let validated = target.clone().validate().unwrap();
+
+    assert_eq!(validated.target, target);
     assert_eq!(validated.git, None);
 }
 

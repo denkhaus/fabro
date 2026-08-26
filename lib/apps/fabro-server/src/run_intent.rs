@@ -6,11 +6,14 @@ use fabro_config::{EnvironmentLayer, RunEnvironmentLayer, RunGoalLayer, Settings
 use fabro_environment::{EnvironmentId, EnvironmentValidationError};
 use fabro_types::settings::InterpString;
 use fabro_types::{
-    ManifestPath, SandboxProviderKind, TargetValidationError, WorkflowPath, WorkflowVersionId,
+    GitContext, ManifestPath, RunTarget, SandboxProviderKind, TargetValidationError, WorkflowPath,
+    WorkflowVersionId,
 };
+use fabro_workflow::git;
 use fabro_workflow::workflow_bundle::{BundledWorkflow, ParsedWorkflowConfig, WorkflowBundle};
 use fabro_workflow_version::{LoadedWorkflowVersionClosure, ValidatedWorkflowVersion};
 use thiserror::Error;
+use tokio::{fs, task};
 
 use crate::run_compiler::{RunCompilerError, settings_layer_with_resolved_dockerfiles};
 
@@ -26,6 +29,8 @@ pub(crate) enum RunIntentAdmissionError {
     #[error(transparent)]
     Target(#[from] TargetValidationError),
     #[error(transparent)]
+    FolderTarget(#[from] FolderTargetValidationError),
+    #[error(transparent)]
     Environment(#[from] EnvironmentSelectionError),
     #[error(transparent)]
     Compiler(#[from] RunCompilerError),
@@ -34,6 +39,85 @@ pub(crate) enum RunIntentAdmissionError {
         #[source]
         source: fabro_variable::Error,
     },
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum FolderTargetValidationError {
+    #[error("folder target path must be absolute")]
+    Relative,
+    #[error("folder target path does not name an accessible filesystem entry")]
+    Canonicalize {
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("folder target path must name a directory")]
+    NotDirectory,
+    #[error("folder target canonical path must be valid UTF-8")]
+    NonUtf8,
+}
+
+#[derive(Debug)]
+pub(crate) struct PreparedIntentTarget {
+    pub(crate) target: RunTarget,
+    pub(crate) git:    Option<GitContext>,
+}
+
+/// Materialize filesystem-backed target facts after the effective environment
+/// has been admitted as Local and before run allocation. Folder targets are
+/// canonicalized once for durable identity and their optional Git metadata is
+/// observed under the same provider gate, so rejected requests never scan host
+/// repositories. Other targets pass through with their validated projection.
+pub(crate) async fn prepare_intent_target(
+    target: RunTarget,
+    git: Option<GitContext>,
+) -> Result<PreparedIntentTarget, FolderTargetValidationError> {
+    let RunTarget::Folder { path } = target else {
+        return Ok(PreparedIntentTarget { target, git });
+    };
+    let submitted = PathBuf::from(path);
+    if !submitted.is_absolute() {
+        return Err(FolderTargetValidationError::Relative);
+    }
+    let canonical = fs::canonicalize(&submitted)
+        .await
+        .map_err(|source| FolderTargetValidationError::Canonicalize { source })?;
+    let metadata = fs::metadata(&canonical)
+        .await
+        .map_err(|source| FolderTargetValidationError::Canonicalize { source })?;
+    if !metadata.is_dir() {
+        return Err(FolderTargetValidationError::NotDirectory);
+    }
+    let path = canonical_folder_text(&canonical)?;
+    let git = task::spawn_blocking(move || {
+        git::observe_git_context(&canonical).unwrap_or_else(|error| {
+            tracing::warn!(
+                error = ?error,
+                path = %canonical.display(),
+                "failed to observe optional git metadata for folder target"
+            );
+            None
+        })
+    })
+    .await
+    .unwrap_or_else(|error| {
+        tracing::warn!(
+            error = ?error,
+            path,
+            "folder target git observation task failed"
+        );
+        None
+    });
+
+    Ok(PreparedIntentTarget {
+        target: RunTarget::Folder { path },
+        git,
+    })
+}
+
+fn canonical_folder_text(path: &Path) -> Result<String, FolderTargetValidationError> {
+    path.to_str()
+        .map(str::to_string)
+        .ok_or(FolderTargetValidationError::NonUtf8)
 }
 
 #[derive(Debug, Error)]
@@ -375,6 +459,81 @@ mod tests {
             WorkflowVersion::new(workflow_path(entrypoint), files, dependencies).unwrap(),
         )
         .unwrap()
+    }
+
+    #[tokio::test]
+    async fn prepares_a_canonical_folder_target_without_git_projection() {
+        let dir = tempfile::tempdir().unwrap();
+        let target_dir = dir.path().join("target");
+        std::fs::create_dir(&target_dir).unwrap();
+        std::fs::create_dir(dir.path().join("nested")).unwrap();
+        let submitted = dir.path().join("nested").join("..").join("target");
+
+        let prepared = prepare_intent_target(
+            RunTarget::Folder {
+                path: submitted.to_string_lossy().to_string(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let canonical = target_dir.canonicalize().unwrap();
+
+        assert_eq!(prepared.git, None);
+        assert_eq!(prepared.target, RunTarget::Folder {
+            path: canonical.to_string_lossy().to_string(),
+        });
+    }
+
+    #[tokio::test]
+    async fn rejects_relative_missing_and_file_folder_targets() {
+        let relative = prepare_intent_target(
+            RunTarget::Folder {
+                path: "relative/path".to_string(),
+            },
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(relative, FolderTargetValidationError::Relative));
+
+        let dir = tempfile::tempdir().unwrap();
+        let missing = prepare_intent_target(
+            RunTarget::Folder {
+                path: dir.path().join("missing").to_string_lossy().to_string(),
+            },
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            missing,
+            FolderTargetValidationError::Canonicalize { .. }
+        ));
+
+        let file = dir.path().join("file");
+        fs::write(&file, "not a directory").await.unwrap();
+        let file = prepare_intent_target(
+            RunTarget::Folder {
+                path: file.to_string_lossy().to_string(),
+            },
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(file, FolderTargetValidationError::NotDirectory));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_a_non_utf8_canonical_folder_target() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt as _;
+
+        let path = PathBuf::from(OsString::from_vec(vec![b'f', b'o', 0x80]));
+        let error = canonical_folder_text(&path).unwrap_err();
+
+        assert!(matches!(error, FolderTargetValidationError::NonUtf8));
     }
 
     #[tokio::test]

@@ -475,10 +475,11 @@ pub async fn persist_create_run(
         source_directory,
         labels,
     } = materialized;
-    // An empty-workspace target has no submitter cwd to project; `git` is
-    // already `None` for it because admission derives it from the target.
-    let source_directory =
-        (!matches!(target.as_ref(), Some(RunTarget::None {}))).then_some(source_directory);
+    let (source_directory, git) = match target.as_ref() {
+        Some(RunTarget::None {}) => (None, None),
+        Some(RunTarget::Folder { path }) => (Some(path.clone()), git),
+        Some(RunTarget::Git { .. }) | None => (Some(source_directory), git),
+    };
     let persisted_run_dir = run_dir.clone();
     let persisted = spawn_blocking(move || {
         let run_spec = RunSpec {
@@ -2361,6 +2362,70 @@ reasoning = false
             Some(RunTarget::None {})
         );
         assert_eq!(created.persisted.run_spec().git, None);
+    }
+
+    #[tokio::test]
+    async fn create_folder_target_projects_its_path_over_the_compiler_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = dir.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        let canonical = workspace
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        let storage_root = dir.path().join("storage");
+        let store = memory_store();
+        let git = fabro_types::GitContext {
+            origin_url: "https://github.com/fabro-sh/fabro".to_string(),
+            branch:     "main".to_string(),
+            sha:        None,
+            dirty:      fabro_types::DirtyStatus::Clean,
+        };
+        let created = create(
+            &store,
+            CreateRunInput {
+                workflow: WorkflowInput::DotSource {
+                    source:   MINIMAL_DOT.to_string(),
+                    base_dir: None,
+                },
+                settings: test_default_settings(),
+                vars: HashMap::new(),
+                cwd: dir.path().to_path_buf(),
+                workflow_slug: None,
+                workflow_path: None,
+                workflow_bundle: None,
+                target: Some(RunTarget::Folder {
+                    path: canonical.clone(),
+                }),
+                submitted_manifest_bytes: None,
+                run_id: Some(fixtures::RUN_2),
+                title: None,
+                automation: None,
+                git: Some(git.clone()),
+                fork_source_ref: None,
+                parent_id: None,
+                provenance: test_support::test_run_provenance(),
+                configured_providers: test_provider_ids(),
+                web_url: None,
+            },
+            storage_root,
+            test_catalog(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            created.persisted.run_spec().target,
+            Some(RunTarget::Folder {
+                path: canonical.clone(),
+            })
+        );
+        assert_eq!(
+            created.persisted.run_spec().source_directory.as_deref(),
+            Some(canonical.as_str())
+        );
+        assert_eq!(created.persisted.run_spec().git, Some(git));
     }
 
     #[tokio::test]
