@@ -10,6 +10,7 @@ domains:
   agent: {}
   api: {}
   build: {}
+  server: {}
 governance:
   max_entries: 100
   warn_entries: 150
