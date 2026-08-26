@@ -48,3 +48,17 @@ Upstream directions that may supersede our work — re-evaluate per merge:
 - Watchlist add: `upstream/node-on-failure` branch = node-level
   on_failure override (fabro-types/graph.rs, executor, routing) —
   adjacent to our exit-kind taxonomy; evaluate at next merge.
+## 2026-08-26 (v0.337.0-nightly.1)
+
+- node-on-failure LANDED (PR #806) + on_failure="succeed" (PR #811). Reaffirmed:
+  do NOT adopt in `develop` — its edges route every failure explicitly, exit kinds
+  classify better, and `succeed` would mask quality-gate failures. Orthogonal, no port.
+- seed_cycles (fabro-45d0) re-attached behind apply_recorded_outcome_context —
+  after_record is now a CONFLICT HOTSPOT whenever upstream reshapes outcome context.
+- Watchlist add: upstream PR #751 (open, fork, unreviewed since 2026-08-17) —
+  run-level `[run.agent] skill_dirs` (extra dirs, NOT per-node scoping). Does not
+  solve fabro-d0d6 (per-stage skill scoping); if it lands, build node-level
+  scoping on its LlmSpec/SessionOptions plumbing (model_stylesheet pattern).
+  Seed fabro-d0d6 updated with this note (2026-08-26).
+- Folder run target (PR #790) gated behind "Local admission": RunIntent admission
+  is the validated gate layer — dock future fork admission work (branch/SHA) there.

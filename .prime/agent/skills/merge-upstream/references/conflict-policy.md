@@ -34,3 +34,10 @@ upstream's new signatures; never revert upstream, never drop our features.
   `pr_content_model` resolution fields alongside.
 - 2026-08-25 v0.336.0: `build_single_file_tar` gained `mode: u32`.
   Keep our helper functions; adopt the mode param (Dockerfile: 0o644).
+- 2026-08-26 v0.337.0-nightly.1: `after_record` in lifecycle/mod.rs — upstream
+  consolidated the manual context sets into `context::apply_recorded_outcome_context`
+  (same keys our fork set by hand). Take upstream's helper call, re-attach our
+  seed_cycles update (fabro-45d0) behind it. Verify via `-E 'test(seed_cycles)'`.
+- 2026-08-26 v0.337.0-nightly.1 (call-site, no conflict marker): `sel.reason` in
+  graph/routing.rs is now `fabro_core::graph::EdgeSelectionReason` instead of `&str`;
+  string assertions in our local tests fail to COMPILE — adapt to the enum variant.
