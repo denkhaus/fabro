@@ -62,6 +62,8 @@ digraph Build {
 
 Fabro still uses an explicit recovery edge, such as `condition="outcome=failed"`, before it applies this policy. Matching preferred labels and suggested next node IDs also remain explicit routes. If no explicit edge matches, `exit` skips the unconditional edge and checks retry targets. The run ends as failed only when no retry target exists.
 
+Set `on_failure` on a node to control that node alone. The node-level attribute overrides the graph level, in both directions: a node can opt out of a graph-level `exit` with `on_failure="route"`, or stop the run on its own failure with `on_failure="exit"` while the rest of the graph keeps the default. A node without the attribute inherits the graph policy. See [Failed-node routing policy](/workflows/transitions#failed-node-routing-policy).
+
 The policy applies only to `failed`. Other outcomes keep their normal routing behavior. For parallel nodes, the policy uses the completed parallel node's final outcome. It does not stop or cancel individual branches early.
 
 ## Retry layers
@@ -330,7 +332,7 @@ A node failure does **not** automatically terminate the run. Fabro follows this 
 4. **Node retries** — re-execute the entire handler (per the retry policy)
 5. **Direct jump** — use `jump_to_node` when the outcome supplies one
 6. **Explicit edge routing** — look for a matching condition, preferred label, or suggested next node
-7. **Failure policy** — with `on_failure="exit"`, skip the unconditional edge; with `route` or no attribute, keep normal fallback routing
+7. **Failure policy** — with an effective `on_failure="exit"` (node-level `on_failure` first, then graph-level), skip the unconditional edge; with `route` or no attribute, keep normal fallback routing
 8. **Unconditional edge** — in `route` mode, use an edge without a condition as the fallback
 9. **Retry target** — if no edge was selected, check `retry_target` and `fallback_retry_target` on the node, then on the graph
 10. **Run failure** — if none of the above produces a path forward, the run terminates

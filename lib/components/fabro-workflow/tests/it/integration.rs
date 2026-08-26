@@ -1293,6 +1293,33 @@ async fn on_failure_exit_uses_retry_target_instead_of_unconditional_edge() {
 }
 
 #[tokio::test]
+async fn node_on_failure_exit_overrides_graph_route_policy() {
+    let graph = on_failure_graph(r#"work [on_failure="exit"]"#);
+    let run = run_on_failure(&graph, Emitter::default()).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Failed {
+        retry_requested: false,
+    });
+    assert_eq!(
+        run.outcome.failure_reason(),
+        Some("stage work failed and node on_failure=exit stopped routing")
+    );
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work"]);
+}
+
+#[tokio::test]
+async fn node_on_failure_route_overrides_graph_exit_policy() {
+    let graph = on_failure_graph(
+        r#"graph [on_failure="exit"]
+        work [on_failure="route"]"#,
+    );
+    let run = run_on_failure(&graph, Emitter::default()).await;
+
+    assert_eq!(run.outcome.status, StageOutcome::Succeeded);
+    assert_eq!(*run.visits.lock().unwrap(), vec!["work", "downstream"]);
+}
+
+#[tokio::test]
 async fn goal_gate_routes_to_retry_target_on_failure() {
     // Pipeline:
     //   start -> gated_work -> exit

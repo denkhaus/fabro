@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use fabro_types::OnFailure;
+use fabro_types::ResolvedOnFailure;
 
 use crate::context::Context;
 use crate::error::Result;
@@ -42,5 +42,7 @@ pub trait Graph: Send + Sync {
         outcomes: &HashMap<String, Outcome<Self::Meta>>,
     ) -> std::result::Result<(), String>;
     fn get_retry_target(&self, failed_node_id: &str) -> Option<String>;
-    fn on_failure(&self) -> OnFailure;
+    /// Effective failure routing policy for a node: node-level `on_failure`
+    /// overrides the graph level, and an absent node attribute inherits it.
+    fn resolve_on_failure(&self, node: &Self::Node) -> ResolvedOnFailure;
 }

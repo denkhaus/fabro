@@ -10,6 +10,11 @@ target exists.
 
 The default `on_failure="route"` preserves existing workflow behavior.
 
+A node can also set its own `on_failure` to override the graph policy in
+either direction: a best-effort node can use `on_failure="route"` inside an
+`exit` graph, or a single critical node can use `on_failure="exit"` while the
+rest of the graph keeps the default.
+
 ```dot
 digraph Build {
     graph [on_failure="exit"]
