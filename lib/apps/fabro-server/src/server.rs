@@ -86,7 +86,7 @@ use fabro_slack::{blocks as slack_blocks, connection as slack_connection};
 use fabro_static::EnvVars;
 use fabro_store::{
     ArtifactKey, ArtifactStore, AuthCodeStore, AuthSessionStore, CachedRunProjection, Database,
-    EventEnvelope, EventPayload, KeyedMutex, NodeArtifact, PendingInterviewRecord, RunRecordStore,
+    EventEnvelope, EventPayload, KeyedMutex, NodeArtifact, PendingInterviewRecord, RunSummaryStore,
     StageArtifactEntry, StageId,
 };
 #[cfg(test)]
@@ -1153,7 +1153,7 @@ pub struct AppState {
 
 pub(crate) struct AppStores {
     pub(crate) runs:          Arc<Database>,
-    pub(crate) run_records:   Arc<RunRecordStore>,
+    pub(crate) run_summaries: Arc<RunSummaryStore>,
     pub(crate) auth_codes:    Arc<AuthCodeStore>,
     pub(crate) auth_sessions: Arc<AuthSessionStore>,
     pub(crate) automations:   Arc<AutomationStore>,
@@ -2447,7 +2447,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         })
         .context("load environments")?,
     );
-    let run_records = store.run_record_store();
+    let run_summaries = store.run_summary_store();
     let auth_codes = Arc::new(AuthCodeStore::new(db_pool.clone()));
     let auth_sessions = Arc::new(AuthSessionStore::new(db_pool.clone()));
     let mcp_server_dir = mcp_server_dir_for_active_config(&active_config_path);
@@ -2555,7 +2555,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         aggregate_billing: Mutex::new(BillingAccumulator::default()),
         stores: AppStores {
             runs: store,
-            run_records,
+            run_summaries,
             auth_codes,
             auth_sessions,
             automations: automation_store,

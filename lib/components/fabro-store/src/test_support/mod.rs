@@ -9,7 +9,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use crate::keys::SlateKey;
 #[cfg(test)]
 use crate::{AuthCodeStore, AuthSessionStore};
-use crate::{BlobStore, Database, Result, RunRecordStore};
+use crate::{BlobStore, Database, Result, RunSummaryStore};
 
 /// Returns an isolated SQLite blob authority backed by its own in-memory
 /// database.
@@ -25,11 +25,11 @@ pub fn test_blob_store() -> Arc<BlobStore> {
     ])))
 }
 
-/// Returns an isolated SQLite run-record store backed by its own in-memory
+/// Returns an isolated SQLite run-summary store backed by its own in-memory
 /// database and the production `runs` and `run_events` schemas.
 #[must_use]
-pub fn test_run_record_store() -> Arc<RunRecordStore> {
-    Arc::new(RunRecordStore::new(lazy_in_memory_pool(&[
+pub fn test_run_summary_store() -> Arc<RunSummaryStore> {
+    Arc::new(RunSummaryStore::new(lazy_in_memory_pool(&[
         fabro_db::RUNS_MIGRATION_SQL,
         fabro_db::RUN_EVENTS_MIGRATION_SQL,
     ])))
@@ -141,7 +141,7 @@ pub fn test_database_with_blobs(
         flush_interval,
         cache_path,
         blobs,
-        test_run_record_store(),
+        test_run_summary_store(),
     )
 }
 
@@ -156,7 +156,7 @@ pub fn test_database_with_stores(
     flush_interval: Duration,
     cache_path: Option<PathBuf>,
     blobs: Arc<BlobStore>,
-    run_records: Arc<RunRecordStore>,
+    run_summaries: Arc<RunSummaryStore>,
 ) -> Database {
     Database::new(
         object_store,
@@ -164,7 +164,7 @@ pub fn test_database_with_stores(
         flush_interval,
         cache_path,
         blobs,
-        run_records,
+        run_summaries,
     )
 }
 
@@ -217,13 +217,13 @@ pub(crate) async fn sqlite_auth_code_store() -> (tempfile::TempDir, AuthCodeStor
 }
 
 #[cfg(test)]
-pub(crate) async fn sqlite_run_record_store() -> (tempfile::TempDir, RunRecordStore) {
+pub(crate) async fn sqlite_run_summary_store() -> (tempfile::TempDir, RunSummaryStore) {
     let directory = tempfile::tempdir().unwrap();
-    let store = sqlite_run_record_store_at(directory.path()).await;
+    let store = sqlite_run_summary_store_at(directory.path()).await;
     (directory, store)
 }
 
 #[cfg(test)]
-pub(crate) async fn sqlite_run_record_store_at(directory: &Path) -> RunRecordStore {
-    RunRecordStore::new(sqlite_test_pool(directory).await)
+pub(crate) async fn sqlite_run_summary_store_at(directory: &Path) -> RunSummaryStore {
+    RunSummaryStore::new(sqlite_test_pool(directory).await)
 }

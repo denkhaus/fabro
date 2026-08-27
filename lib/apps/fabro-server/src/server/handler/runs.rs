@@ -335,7 +335,7 @@ async fn run_summary_at(
     run_id: &RunId,
     now: DateTime<Utc>,
 ) -> fabro_store::Result<Option<Run>> {
-    let Some(mut summary) = state.stores.run_records.get(run_id, now).await? else {
+    let Some(mut summary) = state.stores.run_summaries.get(run_id, now).await? else {
         return Ok(None);
     };
     if summary.timestamps.completed_at.is_none() {
@@ -361,7 +361,7 @@ pub(super) async fn run_summary_page_response(
     state: &AppState,
     query: &RunSummaryListQuery,
 ) -> Response {
-    match state.stores.run_records.list(query, Utc::now()).await {
+    match state.stores.run_summaries.list(query, Utc::now()).await {
         Ok(page) => {
             let data = state.decorate_run_summaries(page.data).await;
             (
@@ -415,7 +415,7 @@ async fn resolve_run(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ResolveRunQuery>,
 ) -> Response {
-    let identities = match state.stores.run_records.list_identities().await {
+    let identities = match state.stores.run_summaries.list_identities().await {
         Ok(identities) => identities,
         Err(err) => {
             return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())

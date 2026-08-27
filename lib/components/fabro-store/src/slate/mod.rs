@@ -19,7 +19,7 @@ use slatedb::config::{CompressionCodec, Settings};
 use tokio::sync::{Mutex, OnceCell};
 use tracing::warn;
 
-use crate::{BlobStore, Error, ListRunsQuery, Result, RunProjection, RunRecordStore, keys};
+use crate::{BlobStore, Error, ListRunsQuery, Result, RunProjection, RunSummaryStore, keys};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnreadableRun {
@@ -45,7 +45,7 @@ pub struct Database {
     catalog_index: Arc<OnceCell<Arc<RunCatalogIndex>>>,
     projection_cache: Arc<RunProjectionCache>,
     projection_cache_warmed: Arc<OnceCell<()>>,
-    run_record_store: Arc<RunRecordStore>,
+    run_summary_store: Arc<RunSummaryStore>,
 }
 
 impl std::fmt::Debug for Database {
@@ -65,7 +65,7 @@ impl Database {
         flush_interval: Duration,
         cache_path: Option<PathBuf>,
         blobs: Arc<BlobStore>,
-        run_record_store: Arc<RunRecordStore>,
+        run_summary_store: Arc<RunSummaryStore>,
     ) -> Self {
         Self {
             object_store,
@@ -78,13 +78,13 @@ impl Database {
             catalog_index: Arc::new(OnceCell::new()),
             projection_cache: Arc::new(RunProjectionCache::default()),
             projection_cache_warmed: Arc::new(OnceCell::new()),
-            run_record_store,
+            run_summary_store,
         }
     }
 
     #[must_use]
-    pub fn run_record_store(&self) -> Arc<RunRecordStore> {
-        Arc::clone(&self.run_record_store)
+    pub fn run_summary_store(&self) -> Arc<RunSummaryStore> {
+        Arc::clone(&self.run_summary_store)
     }
 
     fn shared_db_prefix(&self) -> String {
@@ -140,7 +140,7 @@ impl Database {
             read_only,
             self.blobs(),
             Arc::clone(&self.projection_cache),
-            self.run_record_store(),
+            self.run_summary_store(),
         )
         .await
     }
@@ -238,7 +238,7 @@ impl Database {
                         }
                     }
                 }
-                self.run_record_store.reconcile(&entries).await?;
+                self.run_summary_store.reconcile(&entries).await?;
                 self.projection_cache.replace_all(entries).await;
                 Ok::<_, Error>(())
             })
@@ -385,7 +385,7 @@ impl Database {
         self.delete_session_indexes_for_run(run_id).await?;
         self.catalog_index().await?.remove(run_id).await?;
         self.remove_cached_run(run_id).await;
-        self.run_record_store.delete(run_id).await?;
+        self.run_summary_store.delete(run_id).await?;
         Ok(())
     }
 
@@ -552,8 +552,8 @@ mod tests {
         (object_store, store)
     }
 
-    fn make_store_with_run_records(
-        run_records: Arc<RunRecordStore>,
+    fn make_store_with_run_summaries(
+        run_summaries: Arc<RunSummaryStore>,
     ) -> (Arc<dyn ObjectStore>, Database) {
         let object_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
         let store = store_test_support::test_database_with_stores(
@@ -562,7 +562,7 @@ mod tests {
             Duration::from_millis(1),
             None,
             store_test_support::test_blob_store(),
-            run_records,
+            run_summaries,
         );
         (object_store, store)
     }
@@ -605,8 +605,8 @@ mod tests {
         );
     }
 
-    async fn make_run_record_store() -> (tempfile::TempDir, Arc<RunRecordStore>) {
-        let (directory, store) = store_test_support::sqlite_run_record_store().await;
+    async fn make_run_summary_store() -> (tempfile::TempDir, Arc<RunSummaryStore>) {
+        let (directory, store) = store_test_support::sqlite_run_summary_store().await;
         (directory, Arc::new(store))
     }
 
@@ -981,8 +981,8 @@ mod tests {
 
     #[tokio::test]
     async fn rejected_transition_leaves_reconciled_summary_present() {
-        let (_directory, summaries) = make_run_record_store().await;
-        let (_object_store, store) = make_store_with_run_records(Arc::clone(&summaries));
+        let (_directory, summaries) = make_run_summary_store().await;
+        let (_object_store, store) = make_store_with_run_summaries(Arc::clone(&summaries));
         let run_id = test_run_id("run-1");
         let run = store.create_run(&run_id).await.unwrap();
         append_runnable(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
@@ -1003,9 +1003,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn best_effort_run_record_update_failure_keeps_slate_append_repairable() {
-        let (directory, summaries) = make_run_record_store().await;
-        let (object_store, store) = make_store_with_run_records(Arc::clone(&summaries));
+    async fn best_effort_run_summary_update_failure_keeps_slate_append_repairable() {
+        let (directory, summaries) = make_run_summary_store().await;
+        let (object_store, store) = make_store_with_run_summaries(Arc::clone(&summaries));
         let run_id = test_run_id("run-1");
         let run = store.create_run(&run_id).await.unwrap();
         append_created(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
@@ -1029,7 +1029,7 @@ mod tests {
         assert_eq!(stored.event, result.unwrap().event);
 
         let repaired_summaries =
-            Arc::new(store_test_support::sqlite_run_record_store_at(directory.path()).await);
+            Arc::new(store_test_support::sqlite_run_summary_store_at(directory.path()).await);
         let stale = repaired_summaries
             .get(&run_id, Utc::now())
             .await
@@ -1665,9 +1665,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn required_run_record_append_refreshes_cache_and_delete_removes_rows() {
-        let (_directory, summaries) = make_run_record_store().await;
-        let (_object_store, store) = make_store_with_run_records(Arc::clone(&summaries));
+    async fn required_run_summary_append_refreshes_cache_and_delete_removes_rows() {
+        let (_directory, summaries) = make_run_summary_store().await;
+        let (_object_store, store) = make_store_with_run_summaries(Arc::clone(&summaries));
         let run = store.create_run(&test_run_id("run-1")).await.unwrap();
         append_created(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
         store.warm_projection_cache().await.unwrap();
@@ -1841,12 +1841,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn required_run_record_warmup_backfills_sqlite_run_records() {
+    async fn required_run_summary_warmup_backfills_sqlite_run_summaries() {
         let (object_store, store) = make_store();
         let run = store.create_run(&test_run_id("run-1")).await.unwrap();
         append_completed(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
 
-        let (_directory, summaries) = make_run_record_store().await;
+        let (_directory, summaries) = make_run_summary_store().await;
         let reopened = store_test_support::test_database_with_stores(
             object_store,
             "runs",

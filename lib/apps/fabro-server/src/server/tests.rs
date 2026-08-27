@@ -3915,7 +3915,7 @@ async fn post_runs_run_intent_rejects_invalid_folder_paths_before_persistence() 
     assert!(
         state
             .stores
-            .run_records
+            .run_summaries
             .list_identities()
             .await
             .unwrap()
@@ -3947,7 +3947,7 @@ async fn post_runs_run_intent_applies_the_folder_target_environment_matrix() {
         assert!(
             state
                 .stores
-                .run_records
+                .run_summaries
                 .list_identities()
                 .await
                 .unwrap()
@@ -3982,7 +3982,7 @@ enabled = false
     assert!(
         disabled_state
             .stores
-            .run_records
+            .run_summaries
             .list_identities()
             .await
             .unwrap()
@@ -4224,7 +4224,7 @@ async fn post_runs_run_intent_rejects_none_target_with_local_environment_before_
     assert!(
         state
             .stores
-            .run_records
+            .run_summaries
             .list_identities()
             .await
             .unwrap()
@@ -4269,7 +4269,7 @@ async fn assert_run_intent_targets_unavailable(state: &Arc<AppState>) {
     assert!(
         state
             .stores
-            .run_records
+            .run_summaries
             .list_identities()
             .await
             .unwrap()

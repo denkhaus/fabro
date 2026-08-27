@@ -20,7 +20,7 @@ static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 /// the production blob schema without a filesystem path into this crate.
 pub const BLOBS_MIGRATION_SQL: &str = include_str!("../migrations/2026081301_blobs.sql");
 
-/// The run-record migration, exposed so fixtures in other crates can install
+/// The run summary migration, exposed so fixtures in other crates can install
 /// the production schema without a filesystem path into this crate.
 pub const RUNS_MIGRATION_SQL: &str = include_str!("../migrations/2026071104_runs.sql");
 

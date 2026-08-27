@@ -1153,7 +1153,7 @@ mod tests {
                 Duration::from_millis(1),
                 None,
                 Arc::clone(&target),
-                store_test_support::test_run_record_store(),
+                store_test_support::test_run_summary_store(),
             );
             let source_db = source.open_db().await?;
             Ok(Self {
@@ -1854,7 +1854,7 @@ mod tests {
             Duration::from_millis(1),
             None,
             Arc::clone(&target),
-            store_test_support::test_run_record_store(),
+            store_test_support::test_run_summary_store(),
         );
 
         let mut connection = pool.acquire().await?;

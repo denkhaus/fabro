@@ -183,17 +183,17 @@ pub struct RunSummaryPage {
 }
 
 #[derive(Clone)]
-pub struct RunRecordStore {
+pub struct RunSummaryStore {
     pool: SqlitePool,
 }
 
-impl std::fmt::Debug for RunRecordStore {
+impl std::fmt::Debug for RunSummaryStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RunRecordStore").finish_non_exhaustive()
+        f.debug_struct("RunSummaryStore").finish_non_exhaustive()
     }
 }
 
-impl RunRecordStore {
+impl RunSummaryStore {
     #[must_use]
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
@@ -344,7 +344,7 @@ FROM runs",
         reason = "the atomic SQL run path stays inactive until the authority cutover"
     )
 )]
-impl RunRecordStore {
+impl RunSummaryStore {
     pub(crate) async fn insert_first_event_on_connection(
         connection: &mut SqliteConnection,
         entry: &CachedRunProjection,
@@ -999,8 +999,8 @@ mod tests {
     use ulid::Ulid;
 
     use super::{
-        INSERT_EVENT_SQL, RunRecordStore, RunSummaryListQuery, RunSummarySort,
-        RunSummarySortDirection, RunSummaryVisibility, decode_event_row,
+        INSERT_EVENT_SQL, RunSummaryListQuery, RunSummarySort, RunSummarySortDirection,
+        RunSummaryStore, RunSummaryVisibility, decode_event_row,
     };
     use crate::slate::CachedRunProjection;
     use crate::{Error, EventPayload, test_support as store_test_support};
@@ -1042,8 +1042,8 @@ mod tests {
         CachedRunProjection::from_projection(projection.spec.run_id, projection, last_seq)
     }
 
-    async fn store() -> (tempfile::TempDir, RunRecordStore) {
-        store_test_support::sqlite_run_record_store().await
+    async fn store() -> (tempfile::TempDir, RunSummaryStore) {
+        store_test_support::sqlite_run_summary_store().await
     }
 
     fn sql_event_payload(
@@ -1097,7 +1097,7 @@ mod tests {
     }
 
     async fn seed_sql_event(
-        store: &RunRecordStore,
+        store: &RunSummaryStore,
         run_id: &RunId,
         seq: u32,
         payload: &EventPayload,
@@ -1149,7 +1149,7 @@ mod tests {
         let first_payload = created_payload(&id);
 
         let mut transaction = store.pool.begin().await.unwrap();
-        let first_envelope = RunRecordStore::insert_first_event_on_connection(
+        let first_envelope = RunSummaryStore::insert_first_event_on_connection(
             &mut transaction,
             &first,
             &first_payload,
@@ -1173,7 +1173,7 @@ mod tests {
 
         let mut duplicate_first = store.pool.begin().await.unwrap();
         assert!(
-            RunRecordStore::insert_first_event_on_connection(
+            RunSummaryStore::insert_first_event_on_connection(
                 &mut duplicate_first,
                 &first,
                 &first_payload,
@@ -1186,7 +1186,7 @@ mod tests {
         let rolled_back_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 2);
         let rolled_back = entry(projection(rolled_back_id, "rollback", created_at), 1);
         let mut transaction = store.pool.begin().await.unwrap();
-        RunRecordStore::insert_first_event_on_connection(
+        RunSummaryStore::insert_first_event_on_connection(
             &mut transaction,
             &rolled_back,
             &created_payload(&rolled_back_id),
@@ -1212,7 +1212,7 @@ mod tests {
             serde_json::json!({ "title": "too early" }),
         );
         let mut transaction = store.pool.begin().await.unwrap();
-        let error = RunRecordStore::insert_first_event_on_connection(
+        let error = RunSummaryStore::insert_first_event_on_connection(
             &mut transaction,
             &invalid,
             &invalid_payload,
@@ -1235,7 +1235,7 @@ mod tests {
         let rejected = entry(projection(rejected_id, "rejected", created_at), 1);
         let mut transaction = store.pool.begin().await.unwrap();
         assert!(
-            RunRecordStore::insert_first_event_on_connection(
+            RunSummaryStore::insert_first_event_on_connection(
                 &mut transaction,
                 &rejected,
                 &created_payload(&rejected_id),
@@ -1268,7 +1268,7 @@ mod tests {
             serde_json::json!({ "title": "updated" }),
         );
         let mut transaction = store.pool.begin().await.unwrap();
-        RunRecordStore::append_event_on_connection(&mut transaction, 1, &second, &second_payload)
+        RunSummaryStore::append_event_on_connection(&mut transaction, 1, &second, &second_payload)
             .await
             .unwrap();
         transaction.commit().await.unwrap();
@@ -1291,7 +1291,7 @@ mod tests {
 
         let mut stale = store.pool.begin().await.unwrap();
         let stale_error =
-            RunRecordStore::append_event_on_connection(&mut stale, 1, &second, &second_payload)
+            RunSummaryStore::append_event_on_connection(&mut stale, 1, &second, &second_payload)
                 .await
                 .unwrap_err();
         assert!(matches!(stale_error, Error::RunHeadMismatch {
@@ -1315,7 +1315,7 @@ mod tests {
         let mismatched_payload: EventPayload = serde_json::from_value(mismatched_value).unwrap();
         let mut invalid = store.pool.begin().await.unwrap();
         assert!(
-            RunRecordStore::append_event_on_connection(
+            RunSummaryStore::append_event_on_connection(
                 &mut invalid,
                 2,
                 &third,
@@ -1326,7 +1326,7 @@ mod tests {
         );
         invalid.rollback().await.unwrap();
         let mut rollback = store.pool.begin().await.unwrap();
-        RunRecordStore::append_event_on_connection(&mut rollback, 2, &third, &third_payload)
+        RunSummaryStore::append_event_on_connection(&mut rollback, 2, &third, &third_payload)
             .await
             .unwrap();
         rollback.rollback().await.unwrap();
@@ -1334,7 +1334,7 @@ mod tests {
         seed_sql_event(&store, &id, 3, &third_payload).await;
         let mut duplicate = store.pool.begin().await.unwrap();
         assert!(
-            RunRecordStore::append_event_on_connection(&mut duplicate, 2, &third, &third_payload,)
+            RunSummaryStore::append_event_on_connection(&mut duplicate, 2, &third, &third_payload,)
                 .await
                 .is_err()
         );
@@ -1353,7 +1353,7 @@ mod tests {
             .await
             .unwrap();
         let mut transaction = store.pool.begin().await.unwrap();
-        RunRecordStore::append_event_on_connection(&mut transaction, 2, &third, &third_payload)
+        RunSummaryStore::append_event_on_connection(&mut transaction, 2, &third, &third_payload)
             .await
             .unwrap();
         transaction.commit().await.unwrap();
@@ -1374,7 +1374,7 @@ mod tests {
         let id = run_id(created_at.timestamp_millis().cast_unsigned(), 11);
         let first = entry(projection(id, "created", created_at), 1);
         let mut transaction = store.pool.begin().await.unwrap();
-        RunRecordStore::insert_first_event_on_connection(
+        RunSummaryStore::insert_first_event_on_connection(
             &mut transaction,
             &first,
             &created_payload(&id),
@@ -1438,16 +1438,16 @@ mod tests {
             .unwrap();
 
         let mut connection = store.pool.acquire().await.unwrap();
-        let all = RunRecordStore::list_events_on_connection(&mut connection, &id)
+        let all = RunSummaryStore::list_events_on_connection(&mut connection, &id)
             .await
             .unwrap();
         assert_eq!(seqs(&all), vec![1, 2, 3, 4, 5, 6]);
         let forward =
-            RunRecordStore::list_events_from_with_limit_on_connection(&mut connection, &id, 2, 2)
+            RunSummaryStore::list_events_from_with_limit_on_connection(&mut connection, &id, 2, 2)
                 .await
                 .unwrap();
         assert_eq!(seqs(&forward), vec![2, 3, 4]);
-        let reverse = RunRecordStore::list_events_before_with_limit_on_connection(
+        let reverse = RunSummaryStore::list_events_before_with_limit_on_connection(
             &mut connection,
             &id,
             Some(5),
@@ -1456,7 +1456,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(seqs(&reverse), vec![4, 3, 2]);
-        let exact = RunRecordStore::get_event_on_connection(&mut connection, &id, 5)
+        let exact = RunSummaryStore::get_event_on_connection(&mut connection, &id, 5)
             .await
             .unwrap()
             .unwrap();
@@ -1466,35 +1466,38 @@ mod tests {
             payloads[3].as_value().clone()
         );
 
-        let visit_one_events = RunRecordStore::list_events_for_stage_from_with_limit_on_connection(
-            &mut connection,
-            &id,
-            &visit_one,
-            1,
-            10,
-        )
-        .await
-        .unwrap();
+        let visit_one_events =
+            RunSummaryStore::list_events_for_stage_from_with_limit_on_connection(
+                &mut connection,
+                &id,
+                &visit_one,
+                1,
+                10,
+            )
+            .await
+            .unwrap();
         assert_eq!(seqs(&visit_one_events), vec![2, 4]);
-        let visit_two_events = RunRecordStore::list_events_for_stage_from_with_limit_on_connection(
-            &mut connection,
-            &id,
-            &visit_two,
-            1,
-            10,
-        )
-        .await
-        .unwrap();
+        let visit_two_events =
+            RunSummaryStore::list_events_for_stage_from_with_limit_on_connection(
+                &mut connection,
+                &id,
+                &visit_two,
+                1,
+                10,
+            )
+            .await
+            .unwrap();
         assert_eq!(seqs(&visit_two_events), vec![3]);
-        let session_events = RunRecordStore::list_events_for_session_from_with_limit_on_connection(
-            &mut connection,
-            &id,
-            &session_id,
-            1,
-            10,
-        )
-        .await
-        .unwrap();
+        let session_events =
+            RunSummaryStore::list_events_for_session_from_with_limit_on_connection(
+                &mut connection,
+                &id,
+                &session_id,
+                1,
+                10,
+            )
+            .await
+            .unwrap();
         assert_eq!(seqs(&session_events), vec![5]);
         drop(connection);
 
@@ -1504,7 +1507,7 @@ mod tests {
             .await
             .unwrap();
         let mut connection = store.pool.acquire().await.unwrap();
-        let gapped = RunRecordStore::list_events_on_connection(&mut connection, &id)
+        let gapped = RunSummaryStore::list_events_on_connection(&mut connection, &id)
             .await
             .unwrap();
         assert_eq!(gapped.last().unwrap().seq, 6);
@@ -1561,7 +1564,7 @@ mod tests {
                 .await
                 .unwrap();
             let mut connection = store.pool.acquire().await.unwrap();
-            let error = RunRecordStore::get_event_on_connection(&mut connection, &id, 2)
+            let error = RunSummaryStore::get_event_on_connection(&mut connection, &id, 2)
                 .await
                 .unwrap_err();
             assert!(matches!(
@@ -1586,7 +1589,7 @@ mod tests {
             .unwrap();
         let mut connection = store.pool.acquire().await.unwrap();
         assert!(matches!(
-            RunRecordStore::get_event_on_connection(&mut connection, &id, 2)
+            RunSummaryStore::get_event_on_connection(&mut connection, &id, 2)
                 .await
                 .unwrap_err(),
             Error::RunEventMismatch {
@@ -1617,7 +1620,7 @@ mod tests {
     }
 
     async fn seed_sql_event_restore(
-        store: &RunRecordStore,
+        store: &RunSummaryStore,
         run_id: &RunId,
         seq: u32,
         payload: &EventPayload,
