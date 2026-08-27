@@ -647,7 +647,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-27T13:22:50.898009719Z",
-  "last_event_at": "2026-08-27T13:39:03.808010689Z",
+  "last_event_at": "2026-08-27T13:39:12.876819277Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -4270,9 +4270,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 762,
       "checkpoint": {
-        "timestamp": "2026-08-27T13:39:04.034483070Z",
+        "timestamp": "2026-08-27T13:39:08.185441758Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -4293,6 +4293,328 @@
         ],
         "node_retries": {},
         "context_values": {
+          "thread.reviewer.current_node": "closeout",
+          "current_node": "implementer",
+          "internal.work_dir": "/workspace/fabro",
+          "current_seed_title": "gofib: add -o flag to write output to a file",
+          "preferred_label": "Implemented",
+          "internal.retry_count.evidence": 0,
+          "last_stage": "implementer",
+          "internal.run_id": "01M11P68SHFS165HP9ATK6094V",
+          "current_seed_brief": "Add a `-o <path>` flag to `/workspace/fabro/main.go` (default empty = stdout, behavior unchanged when unset). Acceptance criteria: - `-o <path>` flag: default empty means stdout; unset behavior byte-identical to today - `-o` set: ALL output goes to the file — every format mode (text/json/pretty/table/csv), `-sum` output, and `-version` output (uniform rule, no mode exceptions) - File semantics: create or truncate via os.Create; on success print NOTHING to stdout, exit 0 - Open failure (unwritable dir, permission): exit 1 with `gofib: cannot open <path>: <os error>` on stderr, no stdout output - Usage text explains the default (empty = stdout) - Structure: keep `run(w io.Writer, opts)` unchanged; resolve the writer in `main` or via a small `resolveOutput(path) (io.WriteCloser, error)` helper next to `parseOptions` in `/workspace/fabro/main.go`. Scope note: the previous seed's journal suggested simplifying run's mode resolution — this spec pins run's shape, so that refactor is OUT of scope; resolve only the writer. Version output already flows through run's `w`, so it is captured by `-o` for free. - Tests in `/workspace/fabro/fib_test.go`: `-o` to a temp-dir file produces byte-identical content to the equivalent stdout invocation (table-driven across text, json, csv modes); `-o` to a non-creatable path returns the error; `-version -o` writes the version line into the file - No external dependencies; update README.md flag reference with `-o` and examples; `just qualitygate` green - Done when `gofib -o out.txt -n 3` writes 3 lines to out.txt, stdout stays empty, exit code 0",
+          "internal.retry_count.closeout": 0,
+          "internal.retry_count.reviewer": 0,
+          "internal.seed_cycle_anchor": "fabro-c295",
+          "graph.goal": "Implement product seed fabro-44b6 -format csv output mode first, then continue seed-by-seed through fabro-28e8 options refactor and fabro-c295 -o flag until no open seed remains.",
+          "implementation_summary": "Added the `-o <path>` flag to `/workspace/fabro/main.go`: new `output` field in `options`, `-o` registered in `parseOptions` (default empty = stdout, usage text explains the default), and a `resolveOutput(path) (io.WriteCloser, error)` helper next to `parseOptions` (empty → nil,nil = stdout; otherwise `os.Create`, failure wrapped as `gofib: cannot open <path>: <os error>`). `main` resolves the writer between parse and run, closing the file only when it opened one; `run(w io.Writer, opts)` untouched. Package doc comment mentions `-o`. `/workspace/fabro/fib_test.go`: added TestResolveOutputEmptyStdout, TestResolveOutputError (prefix-checked message, nil writer), and TestOutputToFile (table: text/json/csv/version — file content byte-identical to the equivalent stdout invocation via `run` into a buffer). `/workspace/fabro/README.md`: `-o` row in the flag reference plus an examples block (success, `-version -o`, open-failure exit 1). gofmt/vet/test green; smoke test in `/tmp` confirmed `gofib -o out.txt -n 3` → 3 lines in file, empty stdout, exit 0, binary removed.\n\nVerification report:\n- PASS `-o` default empty = stdout, unset behavior byte-identical: `resolveOutput` empty-path branch in main.go + TestResolveOutputEmptyStdout\n- PASS `-o` set routes ALL output (all modes, -sum, -version) to the file: writer resolved once in `main`, passed to unchanged `run` (main.go) + TestOutputToFile (text/json/csv/version)\n- PASS create-or-truncate via os.Create, silent stdout, exit 0 on success: `resolveOutput` uses `os.Create`; main prints nothing on success (main.go) + smoke test\n- PASS open failure exits 1 with `gofib: cannot open <path>: <os error>` on stderr, no stdout: `resolveOutput` error wrapping + main error path (main.go) + TestResolveOutputError\n- PASS usage text explains default (empty = stdout): `-o` flag registration string in `parseOptions` (main.go)\n- PASS `run(w io.Writer, opts)` unchanged; writer resolved via `resolveOutput` next to `parseOptions`: main.go (run body untouched, helper placement)\n- PASS tests: temp-dir file byte-identical to stdout invocation across text/json/csv: TestOutputToFile in fib_test.go\n- PASS tests: `-o` to non-creatable path returns the error: TestResolveOutputError in fib_test.go\n- PASS tests: `-version -o` writes version line into file: TestOutputToFile {\"version\"} case in fib_test.go\n- PASS no external dependencies; README flag reference updated with `-o` and examples: README.md; imports unchanged (os/fmt/io already present)\n- PASS done-when `gofib -o out.txt -n 3` → 3 lines to file, empty stdout, exit 0: smoke test (binary built to `/tmp`, removed after)",
+          "internal.thread_id": "planner",
+          "thread.closeout.current_node": "planner",
+          "graph.preamble_budget_kb": "24",
+          "internal.fidelity": "summary:high",
+          "thread.tester.current_node": "evidence",
+          "thread.implementer.current_node": "tester",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2911,
+            "preview": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,"
+          },
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "review_verdict": "approved",
+          "thread.planner.current_node": "implementer",
+          "graph.rankdir": "LR",
+          "internal.node_visit_count": 3,
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "resolveOutput signals stdout with (nil, nil) rather than returning os.Stdout, so main only closes what it opened — an explicit convention worth keeping for any future writer-resolving helpers (main.go)",
+              "The previous seed's options-struct comment already reserved the -o extension path ('adding a future -o output path means adding one field, one Var registration'), and the prediction held exactly: this seed needed no validation rule since -o has no invalid values at parse time"
+            ]
+          },
+          "internal.retry_count.planner": 0,
+          "internal.retry_count.implementer": 0,
+          "last_response": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Added the `-o <path>` flag to `/workspace/fabro/main.go`: new `o",
+          "thread.start.current_node": "planner",
+          "failure_class": "",
+          "command.output": "blob://sha256/b99b2936f2316dcb8f0ecea8555fde7b8b7d18e551b11204dce9f70081bd4626",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.tester": 0,
+          "current_seed_id": "fabro-c295",
+          "thread.evidence.current_node": "reviewer",
+          "failure_signature": "",
+          "graph.max_node_visits": "40",
+          "outcome": "succeeded",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3337,
+            "preview": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Added the `-o <path>` flag to `/workspace/fabro/main.go`: new `o"
+          },
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2683,
+            "preview": "Confirmed: `run(w io.Writer, opts)` already writes everything (including version) through `w`, so resolving the writer in `main` composes cleanly. Note: the previous journal's \"simplify resolveMode\" i"
+          },
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          }
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2683,
+                "preview": "Confirmed: `run(w io.Writer, opts)` already writes everything (including version) through `w`, so resolving the writer in `main` composes cleanly. Note: the previous journal's \"simplify resolveMode\" i"
+              },
+              "current_seed_id": "fabro-c295",
+              "last_response": "Confirmed: `run(w io.Writer, opts)` already writes everything (including version) through `w`, so resolving the writer in `main` composes cleanly. Note: the previous journal's \"simplify resolveMode\" i",
+              "current_seed_title": "gofib: add -o flag to write output to a file",
+              "current_seed_brief": "Add a `-o <path>` flag to `/workspace/fabro/main.go` (default empty = stdout, behavior unchanged when unset). Acceptance criteria: - `-o <path>` flag: default empty means stdout; unset behavior byte-identical to today - `-o` set: ALL output goes to the file — every format mode (text/json/pretty/table/csv), `-sum` output, and `-version` output (uniform rule, no mode exceptions) - File semantics: create or truncate via os.Create; on success print NOTHING to stdout, exit 0 - Open failure (unwritable dir, permission): exit 1 with `gofib: cannot open <path>: <os error>` on stderr, no stdout output - Usage text explains the default (empty = stdout) - Structure: keep `run(w io.Writer, opts)` unchanged; resolve the writer in `main` or via a small `resolveOutput(path) (io.WriteCloser, error)` helper next to `parseOptions` in `/workspace/fabro/main.go`. Scope note: the previous seed's journal suggested simplifying run's mode resolution — this spec pins run's shape, so that refactor is OUT of scope; resolve only the writer. Version output already flows through run's `w`, so it is captured by `-o` for free. - Tests in `/workspace/fabro/fib_test.go`: `-o` to a temp-dir file produces byte-identical content to the equivalent stdout invocation (table-driven across text, json, csv modes); `-o` to a non-creatable path returns the error; `-version -o` writes the version line into the file - No external dependencies; update README.md flag reference with `-o` and examples; `just qualitygate` green - Done when `gofib -o out.txt -n 3` writes 3 lines to out.txt, stdout stays empty, exit code 0",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-c295 is the last open seed — sd ready returned exactly one issue; if it closes clean, the tracker is empty next pass",
+                  "Spec contradiction resolved: fabro-28e8's journal floated simplifying run's resolveMode for c295, but c295's spec pins run(w, opts) unchanged — brief marks the mode-resolution refactor out of scope to avoid reviewer ping-pong",
+                  "run() already writes the version line through its io.Writer, so `-version -o` needs no special-casing once the writer is resolved in main"
+                ]
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 10600,
+                    "output_tokens": 927,
+                    "reasoning_tokens": 1111,
+                    "cache_read_tokens": 37248,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 33486
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 41127,
+              "tool_time_ms": 819,
+              "active_time_ms": 41946
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3337,
+                "preview": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Added the `-o <path>` flag to `/workspace/fabro/main.go`: new `o"
+              },
+              "last_response": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Added the `-o <path>` flag to `/workspace/fabro/main.go`: new `o",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "resolveOutput signals stdout with (nil, nil) rather than returning os.Stdout, so main only closes what it opened — an explicit convention worth keeping for any future writer-resolving helpers (main.go)",
+                  "The previous seed's options-struct comment already reserved the -o extension path ('adding a future -o output path means adding one field, one Var registration'), and the prediction held exactly: this seed needed no validation rule since -o has no invalid values at parse time"
+                ]
+              },
+              "implementation_summary": "Added the `-o <path>` flag to `/workspace/fabro/main.go`: new `output` field in `options`, `-o` registered in `parseOptions` (default empty = stdout, usage text explains the default), and a `resolveOutput(path) (io.WriteCloser, error)` helper next to `parseOptions` (empty → nil,nil = stdout; otherwise `os.Create`, failure wrapped as `gofib: cannot open <path>: <os error>`). `main` resolves the writer between parse and run, closing the file only when it opened one; `run(w io.Writer, opts)` untouched. Package doc comment mentions `-o`. `/workspace/fabro/fib_test.go`: added TestResolveOutputEmptyStdout, TestResolveOutputError (prefix-checked message, nil writer), and TestOutputToFile (table: text/json/csv/version — file content byte-identical to the equivalent stdout invocation via `run` into a buffer). `/workspace/fabro/README.md`: `-o` row in the flag reference plus an examples block (success, `-version -o`, open-failure exit 1). gofmt/vet/test green; smoke test in `/tmp` confirmed `gofib -o out.txt -n 3` → 3 lines in file, empty stdout, exit 0, binary removed.\n\nVerification report:\n- PASS `-o` default empty = stdout, unset behavior byte-identical: `resolveOutput` empty-path branch in main.go + TestResolveOutputEmptyStdout\n- PASS `-o` set routes ALL output (all modes, -sum, -version) to the file: writer resolved once in `main`, passed to unchanged `run` (main.go) + TestOutputToFile (text/json/csv/version)\n- PASS create-or-truncate via os.Create, silent stdout, exit 0 on success: `resolveOutput` uses `os.Create`; main prints nothing on success (main.go) + smoke test\n- PASS open failure exits 1 with `gofib: cannot open <path>: <os error>` on stderr, no stdout: `resolveOutput` error wrapping + main error path (main.go) + TestResolveOutputError\n- PASS usage text explains default (empty = stdout): `-o` flag registration string in `parseOptions` (main.go)\n- PASS `run(w io.Writer, opts)` unchanged; writer resolved via `resolveOutput` next to `parseOptions`: main.go (run body untouched, helper placement)\n- PASS tests: temp-dir file byte-identical to stdout invocation across text/json/csv: TestOutputToFile in fib_test.go\n- PASS tests: `-o` to non-creatable path returns the error: TestResolveOutputError in fib_test.go\n- PASS tests: `-version -o` writes version line into file: TestOutputToFile {\"version\"} case in fib_test.go\n- PASS no external dependencies; README flag reference updated with `-o` and examples: README.md; imports unchanged (os/fmt/io already present)\n- PASS done-when `gofib -o out.txt -n 3` → 3 lines to file, empty stdout, exit 0: smoke test (binary built to `/tmp`, removed after)",
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21913,
+                    "output_tokens": 3590,
+                    "reasoning_tokens": 606,
+                    "cache_read_tokens": 266240,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 118345
+            },
+            "files_touched": [
+              "/workspace/fabro/README.md",
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 108140,
+              "tool_time_ms": 3640,
+              "active_time_ms": 111780
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_stage": "reviewer",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2911,
+                "preview": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,"
+              },
+              "last_response": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,",
+              "review_verdict": "approved",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Evidence diff is taken against the run base, so fabro-28e8's capture still contains fabro-44b6's closed csv hunks (main.go/fib_test.go/README); distinguishing per-seed scope required cross-checking the closed 44b6 spec — a per-seed base (previous seed's commit) would make scope attribution mechanical (run 01M11P68SHFS165HP9ATK6094V).",
+                  "Verified via direct repo reads because the blob ref truncated mid-diff (~8KB omitted covering TestParseOptionsDefaults/TestParseOptionsInvalid/TestRunSumSeedConflict); everything the spec names was confirmed present and exact.",
+                  "run() retains a defensive unreachable resolveMode error since options stores only flag values; noted as a possible simplification (store resolved mode) for fabro-c295, not a blocker."
+                ]
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 28211,
+                    "output_tokens": 962,
+                    "reasoning_tokens": 492,
+                    "cache_read_tokens": 61184,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 61795
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 36896,
+              "tool_time_ms": 413,
+              "active_time_ms": 37309
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/34c320538832aa5fedb71e444d7413a3b0a24a4d749d86edd299efd54ac1a2ba"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1181,
+              "active_time_ms": 1181
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "closeout": {
+            "status": "succeeded",
+            "preferred_label": "More seeds",
+            "context_updates": {
+              "command.output": "blob://sha256/b99b2936f2316dcb8f0ecea8555fde7b8b7d18e551b11204dce9f70081bd4626"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 475,
+              "active_time_ms": 475
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/57c40598fd8358e1f3b3d5e9b110fba065bfffce50929e1ab4e84b3c38d8c238"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 267,
+              "active_time_ms": 267
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "124d04c5f608b11c2e2c1590fcdf63b524168be8",
+        "node_visits": {
+          "reviewer": 2,
+          "closeout": 2,
+          "implementer": 3,
+          "evidence": 2,
+          "start": 1,
+          "planner": 3,
+          "tester": 2
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl b/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl\nindex 9aeb614..d246f0e 100644\n--- a/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl\n+++ b/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl\n@@ -12,3 +12,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"reviewer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:35:55Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Evidence diff is taken against the run base, so fabro-28e8's capture still contains fabro-44b6's closed csv hunks (main.go/fib_test.go/README); distinguishing per-seed scope required cross-checking the closed 44b6 spec — a per-seed base (previous seed's commit) would make scope attribution mechanical (run 01M11P68SHFS165HP9ATK6094V).\",\"Verified via direct repo reads because the blob ref truncated mid-diff (~8KB omitted covering TestParseOptionsDefaults/TestParseOptionsInvalid/TestRunSumSeedConflict); everything the spec names was confirmed present and exact.\",\"run() retains a defensive unreachable resolveMode error since options stores only flag values; noted as a possible simplification (store resolved mode) for fabro-c295, not a blocker.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"closeout\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:36:00Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"planner\",\"visit\":3,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:36:52Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-c295 is the last open seed — sd ready returned exactly one issue; if it closes clean, the tracker is empty next pass\",\"Spec contradiction resolved: fabro-28e8's journal floated simplifying run's resolveMode for c295, but c295's spec pins run(w, opts) unchanged — brief marks the mode-resolution refactor out of scope to avoid reviewer ping-pong\",\"run() already writes the version line through its io.Writer, so `-version -o` needs no special-casing once the writer is resolved in main\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"implementer\",\"visit\":3,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:39:04Z\",\"data\":{\"painpoints\":[],\"observations\":[\"resolveOutput signals stdout with (nil, nil) rather than returning os.Stdout, so main only closes what it opened — an explicit convention worth keeping for any future writer-resolving helpers (main.go)\",\"The previous seed's options-struct comment already reserved the -o extension path ('adding a future -o output path means adding one field, one Var registration'), and the prediction held exactly: this seed needed no validation rule since -o has no invalid values at parse time\"]}}\ndiff --git a/README.md b/README.md\nindex 6b45bb5..71699d8 100644\n--- a/README.md\n+++ b/README.md\n@@ -265,6 +265,27 @@ $ gofib -n 10 -sum -format csv\n sum,1,10,143\n ```\n \n+`-o <path>` redirects all output — any format mode, `-sum`, even\n+`-version` — into a file instead of stdout (empty/unset means stdout,\n+unchanged). On success nothing prints to stdout:\n+\n+```\n+$ gofib -o out.txt -n 3\n+$ cat out.txt\n+1: 1\n+2: 1\n+3: 2\n+\n+$ gofib -o version.txt -version\n+$ cat version.txt\n+gofib 1.3.0\n+\n+$ gofib -o /root/no/out.txt -n 3\n+gofib: cannot open /root/no/out.txt: open /root/no/out.txt: no such file or directory\n+$ echo $?\n+1\n+```\n+\n An invalid count fails with a non-zero exit and an error on stderr:\n \n ```\n@@ -287,6 +308,7 @@ $ echo $?\n | `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. Shortcut for `-format pretty`; conflicts with an explicit `-format` selecting another mode. |\n | `-sum` | Sum flag: print exactly one line with the `math/big` sum of the Fibonacci numbers in the same `-start`/`-limit`/`-n` intersection line mode would print — text mode prints `sum: <value>`, json mode one object `{\"index_range\":[first,last],\"sum\":\"<string>\"}` (sum as string since it can exceed int64; `index_range` reports the computed effective bounds even when the range is empty/inverted), csv mode one record `sum,<start>,<last>,<total>` (mirroring json's bounds+sum), pretty/table print the bare value + newline. An empty selected range (`-limit < -start`) sums to `0`, not an error. A positive `-seed` with `-sum` exits non-zero with an error naming both flags; `-seed 0` (unset sentinel) is legal. `-version` still wins. |\n | `-version` | Prints exactly `gofib 1.3.0` (from the `Version` const in `main.go`) and takes precedence over every other flag — even an otherwise-invalid combination like `-version -n 0 -json` prints the version and exits `0`. |\n+| `-o <path>` | Output flag: write **all** output to `<path>` instead of stdout — every format mode (`text`/`json`/`pretty`/`table`/`csv`), `-sum` output, and `-version` output alike; there are no mode exceptions. Default empty means **stdout**, and unset behavior is byte-identical. The file is created or truncated (`os.Create`); on success gofib prints nothing to stdout and exits `0`. If the file cannot be opened (unwritable directory, missing permission), gofib exits `1` with `gofib: cannot open <path>: <os error>` on stderr and no stdout output. |\n \n With no `-format`, plain `-pretty` and `-json` together is not an\n error; JSON mode simply wins and the output is identical to `-json`\ndiff --git a/fib_test.go b/fib_test.go\nindex dba8de7..fa1ee09 100644\n--- a/fib_test.go\n+++ b/fib_test.go\n@@ -5,6 +5,8 @@ import (\n \t\"encoding/json\"\n \t\"fmt\"\n \t\"math/big\"\n+\t\"os\"\n+\t\"path/filepath\"\n \t\"strconv\"\n \t\"strings\"\n \t\"testing\"\n@@ -1115,3 +1117,82 @@ func TestParseOptionsVersionShortCircuit(t *testing.T) {\n \t\t})\n \t}\n }\n+\n+// TestResolveOutputEmptyStdout pins the default: an empty -o path means\n+// stdout, signalled by a nil writer and no error.\n+func TestResolveOutputEmptyStdout(t *testing.T) {\n+\tw, err := resolveOutput(\"\")\n+\tif w != nil || err != nil {\n+\t\tt.Errorf(`resolveOutput(\"\") = (%v, %v), want (nil, nil)`, w, err)\n+\t}\n+}\n+\n+// TestResolveOutputError pins the open-failure path: a non-creatable\n+// path returns the gofib-prefixed error, never a writer.\n+func TestResolveOutputError(t *testing.T) {\n+\t// A path whose parent directory does not exist cannot be created.\n+\tbad := filepath.Join(t.TempDir(), \"no-such-dir\", \"out.txt\")\n+\tw, err := resolveOutput(bad)\n+\tif err == nil {\n+\t\tt.Fatalf(\"resolveOutput(%q) succeeded, want error\", bad)\n+\t}\n+\tif w != nil {\n+\t\tt.Errorf(\"resolveOutput(%q) returned a writer alongside an error\", bad)\n+\t}\n+\tif prefix := \"gofib: cannot open \" + bad + \": \"; !strings.HasPrefix(err.Error(), prefix) {\n+\t\tt.Errorf(\"resolveOutput(%q) error = %q, want prefix %q\", bad, err.Error(), prefix)\n+\t}\n+}\n+\n+// TestOutputToFile covers -o end to end for text, json, and csv: the\n+// file content is byte-identical to the equivalent stdout invocation,\n+// and -version -o writes the version line into the file.\n+func TestOutputToFile(t *testing.T) {\n+\tfor _, tt := range []struct {\n+\t\tname string\n+\t\targs []string\n+\t}{\n+\t\t{\"text mode\", []string{\"-n\", \"3\"}},\n+\t\t{\"json mode\", []string{\"-n\", \"3\", \"-format\", \"json\"}},\n+\t\t{\"csv mode\", []string{\"-n\", \"3\", \"-format\", \"csv\"}},\n+\t\t{\"version\", []string{\"-version\"}},\n+\t} {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tpath := filepath.Join(t.TempDir(), \"out.txt\")\n+\t\t\tfileOpts, err := parseOptions(append(append([]string{}, tt.args...), \"-o\", path))\n+\t\t\tif err != nil {\n+\t\t\t\tt.Fatalf(\"parseOptions(%v -o %s) returned error: %v\", tt.args, path, err)\n+\t\t\t}\n+\t\t\tout, err := resolveOutput(fileOpts.output)\n+\t\t\tif err != nil {\n+\t\t\t\tt.Fatalf(\"resolveOutput(%q) returned error: %v\", path, err)\n+\t\t\t}\n+\t\t\tif out == nil {\n+\t\t\t\tt.Fatalf(\"resolveOutput(%q) returned nil writer\", path)\n+\t\t\t}\n+\t\t\tif err := run(out, fileOpts); err != nil {\n+\t\t\t\tout.Close()\n+\t\t\t\tt.Fatalf(\"run with -o returned error: %v\", err)\n+\t\t\t}\n+\t\t\tif err := out.Close(); err != nil {\n+\t\t\t\tt.Fatalf(\"closing output file: %v\", err)\n+\t\t\t}\n+\t\t\tgot, err := os.ReadFile(path)\n+\t\t\tif err != nil {\n+\t\t\t\tt.Fatalf(\"reading output file: %v\", err)\n+\t\t\t}\n+\t\t\t// The equivalent stdout invocation: same flags, no -o.\n+\t\t\tstdOpts, err := parseOptions(tt.args)\n+\t\t\tif err != nil {\n+\t\t\t\tt.Fatalf(\"parseOptions(%v) returned error: %v\", tt.args, err)\n+\t\t\t}\n+\t\t\tvar want bytes.Buffer\n+\t\t\tif err := run(&want, stdOpts); err != nil {\n+\t\t\t\tt.Fatalf(\"run without -o returned error: %v\", err)\n+\t\t\t}\n+\t\t\tif string(got) != want.String() {\n+\t\t\t\tt.Errorf(\"-o file content = %q, want byte-identical stdout output %q\", got, want.String())\n+\t\t\t}\n+\t\t})\n+\t}\n+}\ndiff --git a/main.go b/main.go\nindex ebda847..dbdb484 100644\n--- a/main.go\n+++ b/main.go\n@@ -14,7 +14,9 @@\n // sums to 0); it cannot be combined with a positive -seed. -json and -pretty are shortcuts for -format json\n // and -format pretty: with -format unset they keep their legacy\n // meaning (and plain -json -pretty lets JSON win), but an explicit\n-// -format must agree with any also-given shortcut. The -version flag\n+// -format must agree with any also-given shortcut. The -o flag\n+// redirects all output (any mode, -sum, -version) to a file instead of\n+// stdout; the default empty value means stdout. The -version flag\n // prints \"gofib <Version>\" and takes precedence over every other flag.\n package main\n \n@@ -155,6 +157,7 @@ type options struct {\n \tpretty  bool\n \tversion bool\n \tsum     bool\n+\toutput  string\n }\n \n // parseOptions registers gofib's flags, parses args, and applies every\n@@ -189,6 +192,7 @@ func parseOptions(args []string) (options, error) {\n \tfs.BoolVar(&opts.pretty, \"pretty\", false, \"shortcut for -format pretty: align text output into two right-aligned columns sized to the largest index and value\")\n \tfs.BoolVar(&opts.version, \"version\", false, \"print \\\"gofib <version>\\\" and exit; takes precedence over all other flags\")\n \tfs.BoolVar(&opts.sum, \"sum\", false, \"print the sum of the Fibonacci numbers in the selected range instead of the numbers themselves (cannot be combined with a positive -seed)\")\n+\tfs.StringVar(&opts.output, \"o\", \"\", \"write output to this file instead of stdout (default empty = stdout)\")\n \tfs.Parse(args)\n \tif opts.version {\n \t\treturn opts, nil\n@@ -305,13 +309,39 @@ func run(w io.Writer, opts options) error {\n \treturn nil\n }\n \n+// resolveOutput maps the -o value to a writer. An empty path means\n+// stdout, returned unclosable (closing stdout is main's job only if it\n+// opened the file itself). Any other path is created or truncated; a\n+// failure to open is reported with the gofib-prefixed message callers\n+// print on stderr.\n+func resolveOutput(path string) (io.WriteCloser, error) {\n+\tif path == \"\" {\n+\t\treturn nil, nil\n+\t}\n+\tf, err := os.Create(path)\n+\tif err != nil {\n+\t\treturn nil, fmt.Errorf(\"gofib: cannot open %s: %v\", path, err)\n+\t}\n+\treturn f, nil\n+}\n+\n func main() {\n \topts, err := parseOptions(os.Args[1:])\n \tif err != nil {\n \t\tfmt.Fprintln(os.Stderr, err)\n \t\tos.Exit(1)\n \t}\n-\tif err := run(os.Stdout, opts); err != nil {\n+\tw := io.Writer(os.Stdout)\n+\tout, err := resolveOutput(opts.output)\n+\tif err != nil {\n+\t\tfmt.Fprintln(os.Stderr, err)\n+\t\tos.Exit(1)\n+\t}\n+\tif out != nil {\n+\t\tdefer out.Close()\n+\t\tw = out\n+\t}\n+\tif err := run(w, opts); err != nil {\n \t\tfmt.Fprintln(os.Stderr, err)\n \t\tos.Exit(1)\n \t}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 524,
+          "deletions": 163
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-27T13:39:13.081349083Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
           "preferred_label": "Implemented",
           "failure_signature": "",
           "current_seed_title": "gofib: add -o flag to write output to a file",
@@ -4305,7 +4627,7 @@
             "preview": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Added the `-o <path>` flag to `/workspace/fabro/main.go`: new `o"
           },
           "thread.implementer.current_node": "tester",
-          "current_node": "implementer",
+          "current_node": "tester",
           "internal.run_id": "01M11P68SHFS165HP9ATK6094V",
           "last_stage": "implementer",
           "implementation_summary": "Added the `-o <path>` flag to `/workspace/fabro/main.go`: new `output` field in `options`, `-o` registered in `parseOptions` (default empty = stdout, usage text explains the default), and a `resolveOutput(path) (io.WriteCloser, error)` helper next to `parseOptions` (empty → nil,nil = stdout; otherwise `os.Create`, failure wrapped as `gofib: cannot open <path>: <os error>`). `main` resolves the writer between parse and run, closing the file only when it opened one; `run(w io.Writer, opts)` untouched. Package doc comment mentions `-o`. `/workspace/fabro/fib_test.go`: added TestResolveOutputEmptyStdout, TestResolveOutputError (prefix-checked message, nil writer), and TestOutputToFile (table: text/json/csv/version — file content byte-identical to the equivalent stdout invocation via `run` into a buffer). `/workspace/fabro/README.md`: `-o` row in the flag reference plus an examples block (success, `-version -o`, open-failure exit 1). gofmt/vet/test green; smoke test in `/tmp` confirmed `gofib -o out.txt -n 3` → 3 lines in file, empty stdout, exit 0, binary removed.\n\nVerification report:\n- PASS `-o` default empty = stdout, unset behavior byte-identical: `resolveOutput` empty-path branch in main.go + TestResolveOutputEmptyStdout\n- PASS `-o` set routes ALL output (all modes, -sum, -version) to the file: writer resolved once in `main`, passed to unchanged `run` (main.go) + TestOutputToFile (text/json/csv/version)\n- PASS create-or-truncate via os.Create, silent stdout, exit 0 on success: `resolveOutput` uses `os.Create`; main prints nothing on success (main.go) + smoke test\n- PASS open failure exits 1 with `gofib: cannot open <path>: <os error>` on stderr, no stdout: `resolveOutput` error wrapping + main error path (main.go) + TestResolveOutputError\n- PASS usage text explains default (empty = stdout): `-o` flag registration string in `parseOptions` (main.go)\n- PASS `run(w io.Writer, opts)` unchanged; writer resolved via `resolveOutput` next to `parseOptions`: main.go (run body untouched, helper placement)\n- PASS tests: temp-dir file byte-identical to stdout invocation across text/json/csv: TestOutputToFile in fib_test.go\n- PASS tests: `-o` to non-creatable path returns the error: TestResolveOutputError in fib_test.go\n- PASS tests: `-version -o` writes version line into file: TestOutputToFile {\"version\"} case in fib_test.go\n- PASS no external dependencies; README flag reference updated with `-o` and examples: README.md; imports unchanged (os/fmt/io already present)\n- PASS done-when `gofib -o out.txt -n 3` → 3 lines to file, empty stdout, exit 0: smoke test (binary built to `/tmp`, removed after)",
@@ -4322,9 +4644,10 @@
           "review_verdict": "approved",
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
-          "command.output": "blob://sha256/b99b2936f2316dcb8f0ecea8555fde7b8b7d18e551b11204dce9f70081bd4626",
+          "command.output": "blob://sha256/244df217ee4421837d1c1092b5b6850cd8124af369dc0d5df804398da249cce8",
           "internal.retry_count.evidence": 0,
           "thread.evidence.current_node": "reviewer",
           "internal.retry_count.closeout": 0,
@@ -4338,11 +4661,11 @@
             ]
           },
           "internal.retry_count.planner": 0,
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "thread.closeout.current_node": "planner",
           "graph.rankdir": "LR",
           "failure_class": "",
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "thread.planner.current_node": "implementer",
           "internal.retry_count.start": 0,
           "last_response": "Implemented:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Implemented\",\n  \"context_updates\": {\n    \"implementation_summary\": \"Added the `-o <path>` flag to `/workspace/fabro/main.go`: new `o",
@@ -4369,15 +4692,15 @@
           "tester": {
             "status": "succeeded",
             "context_updates": {
-              "command.output": "blob://sha256/34c320538832aa5fedb71e444d7413a3b0a24a4d749d86edd299efd54ac1a2ba"
+              "command.output": "blob://sha256/244df217ee4421837d1c1092b5b6850cd8124af369dc0d5df804398da249cce8"
             },
             "notes": "Script completed: just qualitygate",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 1181,
-              "active_time_ms": 1181
+              "tool_time_ms": 1182,
+              "active_time_ms": 1182
             }
           },
           "evidence": {
@@ -4569,10 +4892,10 @@
             }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
           "start": 1,
-          "tester": 2,
+          "tester": 3,
           "planner": 3,
           "reviewer": 2,
           "evidence": 2,
@@ -4973,6 +5296,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@3": {
+      "first_event_seq": 765,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-08-27T13:39:12.876819277Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 600000
+      },
+      "script_timing": {
+        "output": "blob://sha256/244df217ee4421837d1c1092b5b6850cd8124af369dc0d5df804398da249cce8",
+        "exit_code": 0,
+        "duration_ms": 1182,
+        "termination": "exited",
+        "output_bytes": 288,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 288,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-08-27T13:39:08.344374708Z",
+      "handler": "command",
+      "graph_visit": 3,
+      "timing": {
+        "wall_time_ms": 1188,
+        "inference_time_ms": 0,
+        "tool_time_ms": 1182,
+        "active_time_ms": 1182
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
