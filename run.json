@@ -647,7 +647,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-27T13:22:50.898009719Z",
-  "last_event_at": "2026-08-27T13:26:55.099866787Z",
+  "last_event_at": "2026-08-27T13:27:03.147552076Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1014,15 +1014,228 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 227,
       "checkpoint": {
-        "timestamp": "2026-08-27T13:26:55.300204069Z",
+        "timestamp": "2026-08-27T13:27:02.841748774Z",
         "current_node": "tester",
         "completed_nodes": [
           "start",
           "planner",
           "implementer",
           "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "current_seed_brief": "Extend gofib's -format family in `/workspace/fabro/main.go` with a fifth mode csv: one plain CSV record per line, no header. Stdlib only (fmt suffices). Acceptance criteria: - `gofib -format csv` prints one record per number: `<index>,<fib>` (decimal index, unquoted fib string; no header; one-record-per-line symmetry with JSON mode). Example: `gofib -format csv -n 3` prints `1,1`, `2,1`, `3,2`. - csv combines with `-n`, `-start`, `-limit` exactly like every other mode (`-format csv -n 5` → 5 records; `-start 10 -limit 12` → indices 10..12, three records). - `-seed` lookup in csv prints the single record `<index>,<fib>` for the requested index. - `-sum` in csv prints exactly one record `sum,<start>,<last>,<total>` with start/last the effective bounds (mirrors JSON's index_range+sum; empty range prints `sum,<start>,<last>,0` with last < start). - `parseMode` accepts `csv`; new `modeCSV`; `modeName(modeCSV)` returns `csv`; the invalid-format error names all five modes: `text, json, pretty, table, csv`. - NO `-csv` shortcut flag; shortcut agreement rules unchanged (`-json` or `-pretty` alongside explicit `-format csv` still errors, naming both flags). - csv emits via the existing per-mode switches in `run` (line and sum paths). - Tests in `/workspace/fabro/fib_test.go`, table-driven per existing patterns: csv default, csv+-n, csv+-start+-limit, csv+-seed, csv+-sum, plus csv added where mode lists appear in `TestRunFormatModes`, `TestRunFormatShortcutEquivalence`, `TestRunRejectsInvalidFormat` (exact names; spec abbreviates them). - Update `/workspace/fabro/README.md` flag reference: csv under -format with examples. - Done when `gofib -format csv -n 3` prints the three records above, the invalid-format error lists csv, all tests pass, and `just qualitygate` is green. Note: seed fabro-28e8 (options refactor) and fabro-c295 (-o flag) follow after this one — keep this change minimal, no flag-parsing refactor here.",
+          "thread.start.current_node": "planner",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1
+          },
+          "internal.fidelity": "compact",
+          "implementation_summary": "Added the fifth output mode csv to gofib in `/workspace/fabro/main.go`: new `modeCSV` constant, `modeName`/`parseMode` cases, invalid-format error now listing `text, json, pretty, table, csv`, and two `modeCSV` branches in `run` — `<index>,<fib>` per line and `sum,<start>,<last>,<total>` for `-sum` (empty range prints `sum,<start>,<last>,0`). No `-csv` shortcut; agreement rules untouched. `/workspace/fabro/fib_test.go` gained table-driven `TestRunCSV` (default, -n, -start+-limit, -seed, -sum, empty-range sum), csv rows in `TestRunFormatModes`/`TestRunSum`, csv conflict cases in `TestRunFormatConflicts`, a no-shortcut csv subtest in `TestRunFormatShortcutEquivalence`, and the updated exact error in `TestRunRejectsInvalidFormat`. `/workspace/fabro/README.md` updated (usage examples, flag reference, error text). `go vet` clean, all csv/format/sum tests pass, binary smoke-tested from `/tmp` and removed. Verification report: PASS csv record format (main.go + TestRunCSV default); PASS -n/-start/-limit composition (TestRunCSV, TestRunFormatModes csv row); PASS -seed single record (TestRunCSV); PASS -sum record incl. empty range (TestRunCSV, TestRunSum csv rows); PASS parseMode/modeName/five-mode error (main.go + TestRunRejectsInvalidFormat); PASS no -csv shortcut, conflicts still error (TestRunFormatShortcutEquivalence csv subtest, TestRunFormatConflicts); PASS per-mode switches in run (main.go line+sum switches); PASS tests table-driven per patterns (TestRunCSV); PASS README updated (flag reference + examples); PASS smoke check `-format csv -n 3` → 1,1/2,1/3,2 and error lists csv.",
+          "internal.thread_id": "implementer",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3132,
+            "preview": "Seed claimed. Brief distilled from the spec, cross-checked against `main.go` (examples consistent: `Fib(1)=1, Fib(2)=1, Fib(3)=2`; `-start 10 -limit 12` with default `-n` yields 10..12). One ambiguity"
+          },
+          "last_response": "Implementation complete. Everything checks out: csv mode emits per-mode in both the line and sum switches, all five modes appear in the invalid-format error, no `-csv` shortcut exists, README updated,",
+          "internal.retry_count.planner": 0,
+          "graph.goal": "Implement product seed fabro-44b6 -format csv output mode first, then continue seed-by-seed through fabro-28e8 options refactor and fabro-c295 -o flag until no open seed remains.",
+          "preferred_label": "Implemented",
+          "graph.preamble_budget_kb": "24",
+          "failure_class": "",
+          "last_stage": "implementer",
+          "current_seed_title": "gofib: add -format csv output mode",
+          "internal.retry_count.implementer": 0,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_id": "fabro-44b6",
+          "internal.seed_cycle_anchor": "fabro-44b6",
+          "graph.max_node_visits": "40",
+          "current_node": "tester",
+          "failure_signature": "",
+          "command.output": "blob://sha256/8c9ef88c9df34f3eded44bcac447f5f22fb5584480f1f33caadc379eeeed8ea3",
+          "internal.node_visit_count": 1,
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Near-miss while editing `/workspace/fabro/fib_test.go`: an edit_file replacement that swapped a table-literal tail accidentally deleted TestRunFormatShortcutEquivalence's entire loop body (the old_string spanned it). Caught by re-reading the region immediately after; `go vet` would have flagged the syntax break anyway. Lesson: when editing struct-literal tails inside test tables, keep old_string scoped to the literal lines only, never let it swallow the following loop."
+            ]
+          },
+          "outcome": "succeeded",
+          "internal.run_id": "01M11P68SHFS165HP9ATK6094V",
+          "thread.implementer.current_node": "tester",
+          "thread.planner.current_node": "implementer",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 4437,
+            "preview": "Implementation complete. Everything checks out: csv mode emits per-mode in both the line and sum switches, all five modes appear in the invalid-format error, no `-csv` shortcut exists, README updated,"
+          },
+          "internal.retry_count.start": 0,
+          "internal.retry_count.tester": 0,
+          "graph.rankdir": "LR",
+          "internal.work_dir": "/workspace/fabro"
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Extend gofib's -format family in `/workspace/fabro/main.go` with a fifth mode csv: one plain CSV record per line, no header. Stdlib only (fmt suffices). Acceptance criteria: - `gofib -format csv` prints one record per number: `<index>,<fib>` (decimal index, unquoted fib string; no header; one-record-per-line symmetry with JSON mode). Example: `gofib -format csv -n 3` prints `1,1`, `2,1`, `3,2`. - csv combines with `-n`, `-start`, `-limit` exactly like every other mode (`-format csv -n 5` → 5 records; `-start 10 -limit 12` → indices 10..12, three records). - `-seed` lookup in csv prints the single record `<index>,<fib>` for the requested index. - `-sum` in csv prints exactly one record `sum,<start>,<last>,<total>` with start/last the effective bounds (mirrors JSON's index_range+sum; empty range prints `sum,<start>,<last>,0` with last < start). - `parseMode` accepts `csv`; new `modeCSV`; `modeName(modeCSV)` returns `csv`; the invalid-format error names all five modes: `text, json, pretty, table, csv`. - NO `-csv` shortcut flag; shortcut agreement rules unchanged (`-json` or `-pretty` alongside explicit `-format csv` still errors, naming both flags). - csv emits via the existing per-mode switches in `run` (line and sum paths). - Tests in `/workspace/fabro/fib_test.go`, table-driven per existing patterns: csv default, csv+-n, csv+-start+-limit, csv+-seed, csv+-sum, plus csv added where mode lists appear in `TestRunFormatModes`, `TestRunFormatShortcutEquivalence`, `TestRunRejectsInvalidFormat` (exact names; spec abbreviates them). - Update `/workspace/fabro/README.md` flag reference: csv under -format with examples. - Done when `gofib -format csv -n 3` prints the three records above, the invalid-format error lists csv, all tests pass, and `just qualitygate` is green. Note: seed fabro-28e8 (options refactor) and fabro-c295 (-o flag) follow after this one — keep this change minimal, no flag-parsing refactor here.",
+              "current_seed_title": "gofib: add -format csv output mode",
+              "last_stage": "planner",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Goal ordering (fabro-44b6 → fabro-28e8 → fabro-c295) matches tracker state: all three ready, none in_progress, no blockers between them; planner picked fabro-44b6 first per explicit goal ordering.",
+                  "Spec abbreviates test names (ShortcutEquivalence/RejectsInvalidFormat); actual names are TestRunFormatShortcutEquivalence/TestRunRejectsInvalidFormat — brief uses exact names to avoid implementer confusion.",
+                  "Empty-range -sum in csv was unspecified verbatim; resolved as `sum,<start>,<last>,0` mirroring JSON's index_range semantics, annotated in the brief."
+                ]
+              },
+              "current_seed_id": "fabro-44b6",
+              "last_response": "Seed claimed. Brief distilled from the spec, cross-checked against `main.go` (examples consistent: `Fib(1)=1, Fib(2)=1, Fib(3)=2`; `-start 10 -limit 12` with default `-n` yields 10..12). One ambiguity",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3132,
+                "preview": "Seed claimed. Brief distilled from the spec, cross-checked against `main.go` (examples consistent: `Fib(1)=1, Fib(2)=1, Fib(3)=2`; `-start 10 -limit 12` with default `-n` yields 10..12). One ambiguity"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15084,
+                    "output_tokens": 1206,
+                    "reasoning_tokens": 1225,
+                    "cache_read_tokens": 72256,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 50591
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 56832,
+              "tool_time_ms": 1636,
+              "active_time_ms": 58468
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/8c9ef88c9df34f3eded44bcac447f5f22fb5584480f1f33caadc379eeeed8ea3"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 978,
+              "active_time_ms": 978
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 4437,
+                "preview": "Implementation complete. Everything checks out: csv mode emits per-mode in both the line and sum switches, all five modes appear in the invalid-format error, no `-csv` shortcut exists, README updated,"
+              },
+              "last_response": "Implementation complete. Everything checks out: csv mode emits per-mode in both the line and sum switches, all five modes appear in the invalid-format error, no `-csv` shortcut exists, README updated,",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Near-miss while editing `/workspace/fabro/fib_test.go`: an edit_file replacement that swapped a table-literal tail accidentally deleted TestRunFormatShortcutEquivalence's entire loop body (the old_string spanned it). Caught by re-reading the region immediately after; `go vet` would have flagged the syntax break anyway. Lesson: when editing struct-literal tails inside test tables, keep old_string scoped to the literal lines only, never let it swallow the following loop."
+                ]
+              },
+              "implementation_summary": "Added the fifth output mode csv to gofib in `/workspace/fabro/main.go`: new `modeCSV` constant, `modeName`/`parseMode` cases, invalid-format error now listing `text, json, pretty, table, csv`, and two `modeCSV` branches in `run` — `<index>,<fib>` per line and `sum,<start>,<last>,<total>` for `-sum` (empty range prints `sum,<start>,<last>,0`). No `-csv` shortcut; agreement rules untouched. `/workspace/fabro/fib_test.go` gained table-driven `TestRunCSV` (default, -n, -start+-limit, -seed, -sum, empty-range sum), csv rows in `TestRunFormatModes`/`TestRunSum`, csv conflict cases in `TestRunFormatConflicts`, a no-shortcut csv subtest in `TestRunFormatShortcutEquivalence`, and the updated exact error in `TestRunRejectsInvalidFormat`. `/workspace/fabro/README.md` updated (usage examples, flag reference, error text). `go vet` clean, all csv/format/sum tests pass, binary smoke-tested from `/tmp` and removed. Verification report: PASS csv record format (main.go + TestRunCSV default); PASS -n/-start/-limit composition (TestRunCSV, TestRunFormatModes csv row); PASS -seed single record (TestRunCSV); PASS -sum record incl. empty range (TestRunCSV, TestRunSum csv rows); PASS parseMode/modeName/five-mode error (main.go + TestRunRejectsInvalidFormat); PASS no -csv shortcut, conflicts still error (TestRunFormatShortcutEquivalence csv subtest, TestRunFormatConflicts); PASS per-mode switches in run (main.go line+sum switches); PASS tests table-driven per patterns (TestRunCSV); PASS README updated (flag reference + examples); PASS smoke check `-format csv -n 3` → 1,1/2,1/3,2 and error lists csv.",
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 41083,
+                    "output_tokens": 7583,
+                    "reasoning_tokens": 1432,
+                    "cache_read_tokens": 443200,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 212395
+            },
+            "files_touched": [
+              "/workspace/fabro/README.md",
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 136241,
+              "tool_time_ms": 11919,
+              "active_time_ms": 148160
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "evidence",
+        "git_commit_sha": "190e59a42fcd22f88d1667cf04fc90e3e5ca1ef6",
+        "node_visits": {
+          "tester": 1,
+          "implementer": 1,
+          "planner": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl b/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl\nindex e5d1ce0..63ec1cc 100644\n--- a/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl\n+++ b/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl\n@@ -1,3 +1,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:22:53Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:23:59Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Goal ordering (fabro-44b6 → fabro-28e8 → fabro-c295) matches tracker state: all three ready, none in_progress, no blockers between them; planner picked fabro-44b6 first per explicit goal ordering.\",\"Spec abbreviates test names (ShortcutEquivalence/RejectsInvalidFormat); actual names are TestRunFormatShortcutEquivalence/TestRunRejectsInvalidFormat — brief uses exact names to avoid implementer confusion.\",\"Empty-range -sum in csv was unspecified verbatim; resolved as `sum,<start>,<last>,0` mirroring JSON's index_range semantics, annotated in the brief.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:26:50Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Near-miss while editing `/workspace/fabro/fib_test.go`: an edit_file replacement that swapped a table-literal tail accidentally deleted TestRunFormatShortcutEquivalence's entire loop body (the old_string spanned it). Caught by re-reading the region immediately after; `go vet` would have flagged the syntax break anyway. Lesson: when editing struct-literal tails inside test tables, keep old_string scoped to the literal lines only, never let it swallow the following loop.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:26:55Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 127,
+          "deletions": 15
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-27T13:27:03.372436721Z",
+        "current_node": "evidence",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence"
         ],
         "node_retries": {},
         "context_values": {
@@ -1038,7 +1251,7 @@
             "preview": "Implementation complete. Everything checks out: csv mode emits per-mode in both the line and sum switches, all five modes appear in the invalid-format error, no `-csv` shortcut exists, README updated,"
           },
           "thread.implementer.current_node": "tester",
-          "current_node": "tester",
+          "current_node": "evidence",
           "internal.run_id": "01M11P68SHFS165HP9ATK6094V",
           "last_stage": "implementer",
           "implementation_summary": "Added the fifth output mode csv to gofib in `/workspace/fabro/main.go`: new `modeCSV` constant, `modeName`/`parseMode` cases, invalid-format error now listing `text, json, pretty, table, csv`, and two `modeCSV` branches in `run` — `<index>,<fib>` per line and `sum,<start>,<last>,<total>` for `-sum` (empty range prints `sum,<start>,<last>,0`). No `-csv` shortcut; agreement rules untouched. `/workspace/fabro/fib_test.go` gained table-driven `TestRunCSV` (default, -n, -start+-limit, -seed, -sum, empty-range sum), csv rows in `TestRunFormatModes`/`TestRunSum`, csv conflict cases in `TestRunFormatConflicts`, a no-shortcut csv subtest in `TestRunFormatShortcutEquivalence`, and the updated exact error in `TestRunRejectsInvalidFormat`. `/workspace/fabro/README.md` updated (usage examples, flag reference, error text). `go vet` clean, all csv/format/sum tests pass, binary smoke-tested from `/tmp` and removed. Verification report: PASS csv record format (main.go + TestRunCSV default); PASS -n/-start/-limit composition (TestRunCSV, TestRunFormatModes csv row); PASS -seed single record (TestRunCSV); PASS -sum record incl. empty range (TestRunCSV, TestRunSum csv rows); PASS parseMode/modeName/five-mode error (main.go + TestRunRejectsInvalidFormat); PASS no -csv shortcut, conflicts still error (TestRunFormatShortcutEquivalence csv subtest, TestRunFormatConflicts); PASS per-mode switches in run (main.go line+sum switches); PASS tests table-driven per patterns (TestRunCSV); PASS README updated (flag reference + examples); PASS smoke check `-format csv -n 3` → 1,1/2,1/3,2 and error lists csv.",
@@ -1055,9 +1268,11 @@
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
-            "tester": 1
+            "tester": 1,
+            "evidence": 1
           },
-          "command.output": "blob://sha256/8c9ef88c9df34f3eded44bcac447f5f22fb5584480f1f33caadc379eeeed8ea3",
+          "command.output": "blob://sha256/aad50bf8cc583ffb6d560db271582c89f4691741e9e2b45660463df5599fd3b1",
+          "internal.retry_count.evidence": 0,
           "internal.work_dir": "/workspace/fabro",
           "current_seed_brief": "Extend gofib's -format family in `/workspace/fabro/main.go` with a fifth mode csv: one plain CSV record per line, no header. Stdlib only (fmt suffices). Acceptance criteria: - `gofib -format csv` prints one record per number: `<index>,<fib>` (decimal index, unquoted fib string; no header; one-record-per-line symmetry with JSON mode). Example: `gofib -format csv -n 3` prints `1,1`, `2,1`, `3,2`. - csv combines with `-n`, `-start`, `-limit` exactly like every other mode (`-format csv -n 5` → 5 records; `-start 10 -limit 12` → indices 10..12, three records). - `-seed` lookup in csv prints the single record `<index>,<fib>` for the requested index. - `-sum` in csv prints exactly one record `sum,<start>,<last>,<total>` with start/last the effective bounds (mirrors JSON's index_range+sum; empty range prints `sum,<start>,<last>,0` with last < start). - `parseMode` accepts `csv`; new `modeCSV`; `modeName(modeCSV)` returns `csv`; the invalid-format error names all five modes: `text, json, pretty, table, csv`. - NO `-csv` shortcut flag; shortcut agreement rules unchanged (`-json` or `-pretty` alongside explicit `-format csv` still errors, naming both flags). - csv emits via the existing per-mode switches in `run` (line and sum paths). - Tests in `/workspace/fabro/fib_test.go`, table-driven per existing patterns: csv default, csv+-n, csv+-start+-limit, csv+-seed, csv+-sum, plus csv added where mode lists appear in `TestRunFormatModes`, `TestRunFormatShortcutEquivalence`, `TestRunRejectsInvalidFormat` (exact names; spec abbreviates them). - Update `/workspace/fabro/README.md` flag reference: csv under -format with examples. - Done when `gofib -format csv -n 3` prints the three records above, the invalid-format error lists csv, all tests pass, and `just qualitygate` is green. Note: seed fabro-28e8 (options refactor) and fabro-c295 (-o flag) follow after this one — keep this change minimal, no flag-parsing refactor here.",
           "journal": {
@@ -1067,7 +1282,7 @@
             ]
           },
           "internal.retry_count.planner": 0,
-          "internal.thread_id": "implementer",
+          "internal.thread_id": "tester",
           "graph.rankdir": "LR",
           "failure_class": "",
           "internal.fidelity": "compact",
@@ -1075,6 +1290,7 @@
           "internal.retry_count.start": 0,
           "last_response": "Implementation complete. Everything checks out: csv mode emits per-mode in both the line and sum switches, all five modes appear in the invalid-format error, no `-csv` shortcut exists, README updated,",
           "outcome": "succeeded",
+          "thread.tester.current_node": "evidence",
           "graph.preamble_budget_kb": "24",
           "internal.node_visit_count": 1,
           "graph.cycle_counter_reset_key": "current_seed_id",
@@ -1152,6 +1368,20 @@
               "active_time_ms": 58468
             }
           },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/aad50bf8cc583ffb6d560db271582c89f4691741e9e2b45660463df5599fd3b1"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 269,
+              "active_time_ms": 269
+            }
+          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -1207,11 +1437,12 @@
             }
           }
         },
-        "next_node_id": "evidence",
+        "next_node_id": "reviewer",
         "node_visits": {
           "start": 1,
           "tester": 1,
           "planner": 1,
+          "evidence": 1,
           "implementer": 1
         }
       },
@@ -1687,6 +1918,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 978,
         "active_time_ms": 978
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "evidence@1": {
+      "first_event_seq": 230,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+        "failure_reason": null,
+        "timestamp": "2026-08-27T13:27:03.147552076Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/evidence.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/evidence.nu",
+        "language": "shell",
+        "timeout_ms": 120000
+      },
+      "script_timing": {
+        "output": "blob://sha256/aad50bf8cc583ffb6d560db271582c89f4691741e9e2b45660463df5599fd3b1",
+        "exit_code": 0,
+        "duration_ms": 269,
+        "termination": "exited",
+        "output_bytes": 21781,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 21781,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-08-27T13:27:02.860652603Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 275,
+        "inference_time_ms": 0,
+        "tool_time_ms": 269,
+        "active_time_ms": 269
       },
       "usage": {
         "input_tokens": 0,
