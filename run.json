@@ -437,8 +437,8 @@
   "status": {
     "kind": "running"
   },
-  "status_updated_at": "2026-08-27T20:09:17.081290845Z",
-  "last_event_at": "2026-08-27T20:09:17.081290845Z",
+  "status_updated_at": "2026-08-27T20:09:58.350622054Z",
+  "last_event_at": "2026-08-27T20:09:58.350622054Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -636,15 +636,128 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 60,
       "checkpoint": {
-        "timestamp": "2026-08-27T20:09:17.116659337Z",
+        "timestamp": "2026-08-27T20:09:28.381724536Z",
         "current_node": "multiple_choice",
         "completed_nodes": [
           "start",
           "yes_no",
           "confirmation",
           "multiple_choice"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "thread.confirmation.current_node": "multiple_choice",
+          "preferred_label": "[Q] Open questions",
+          "internal.retry_count.yes_no": 0,
+          "thread.yes_no.current_node": "confirmation",
+          "current_node": "multiple_choice",
+          "internal.run_id": "01M12DCDACAM5DE5MVHPZ50M21",
+          "human.gate.confirmation.question": "Confirm that you want to continue into more structured questions.",
+          "human.gate.confirmation.answer": "yes",
+          "thread.start.current_node": "yes_no",
+          "internal.thread_id": "confirmation",
+          "human.gate.multiple_choice.label": "[Q] Open questions",
+          "graph.goal": "Run a progressive human interview and summarize the answers",
+          "graph.rankdir": "LR",
+          "failure_class": "",
+          "human.gate.multiple_choice.question": "Which theme should be the center of the final summary?",
+          "internal.node_visit_count": 1,
+          "human.gate.confirmation.label": "[Y] Continue",
+          "human.gate.multiple_choice.answer": "Q",
+          "human.gate.selected": "Q",
+          "human.gate.yes_no.label": "[Y] Yes",
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "human.gate.yes_no.question": "Is this interview workflow easy to follow so far?",
+          "internal.retry_count.confirmation": 0,
+          "human.gate.yes_no.answer": "yes",
+          "outcome": "succeeded",
+          "human.gate.label": "[Q] Open questions",
+          "internal.retry_count.multiple_choice": 0,
+          "failure_signature": "",
+          "internal.fidelity": "compact"
+        },
+        "node_outcomes": {
+          "yes_no": {
+            "status": "succeeded",
+            "preferred_label": "[Y] Yes",
+            "suggested_next_ids": [
+              "confirmation"
+            ],
+            "context_updates": {
+              "human.gate.selected": "Y",
+              "human.gate.yes_no.answer": "yes",
+              "human.gate.yes_no.question": "Is this interview workflow easy to follow so far?",
+              "human.gate.label": "[Y] Yes",
+              "human.gate.yes_no.label": "[Y] Yes"
+            },
+            "usage": null
+          },
+          "confirmation": {
+            "status": "succeeded",
+            "preferred_label": "[Y] Continue",
+            "suggested_next_ids": [
+              "multiple_choice"
+            ],
+            "context_updates": {
+              "human.gate.label": "[Y] Continue",
+              "human.gate.confirmation.question": "Confirm that you want to continue into more structured questions.",
+              "human.gate.selected": "Y",
+              "human.gate.confirmation.answer": "yes",
+              "human.gate.confirmation.label": "[Y] Continue"
+            },
+            "usage": null
+          },
+          "multiple_choice": {
+            "status": "succeeded",
+            "preferred_label": "[Q] Open questions",
+            "suggested_next_ids": [
+              "multi_select"
+            ],
+            "context_updates": {
+              "human.gate.selected": "Q",
+              "human.gate.multiple_choice.question": "Which theme should be the center of the final summary?",
+              "human.gate.multiple_choice.answer": "Q",
+              "human.gate.label": "[Q] Open questions",
+              "human.gate.multiple_choice.label": "[Q] Open questions"
+            },
+            "usage": null
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "multi_select",
+        "git_commit_sha": "4f7935009f8f716d7790c15ba72f4c31ed64bdf0",
+        "node_visits": {
+          "multiple_choice": 1,
+          "yes_no": 1,
+          "start": 1,
+          "confirmation": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-27T20:09:58.375519789Z",
+        "current_node": "multi_select",
+        "completed_nodes": [
+          "start",
+          "yes_no",
+          "confirmation",
+          "multiple_choice",
+          "multi_select"
         ],
         "node_retries": {},
         "context_values": {
@@ -656,26 +769,31 @@
           "human.gate.yes_no.question": "Is this interview workflow easy to follow so far?",
           "thread.yes_no.current_node": "confirmation",
           "human.gate.multiple_choice.answer": "Q",
+          "human.gate.multi_select.answer": "D, B, S, N",
           "human.gate.confirmation.answer": "yes",
-          "current_node": "multiple_choice",
+          "current_node": "multi_select",
+          "human.gate.multi_select.question": "Which supporting areas should the final summary emphasize?",
           "internal.fidelity": "compact",
-          "internal.thread_id": "confirmation",
+          "internal.thread_id": "multiple_choice",
           "internal.retry_count.start": 0,
           "human.gate.yes_no.answer": "yes",
-          "preferred_label": "[Q] Open questions",
+          "preferred_label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
+          "internal.retry_count.multi_select": 0,
           "human.gate.yes_no.label": "[Y] Yes",
           "failure_signature": "",
           "human.gate.multiple_choice.question": "Which theme should be the center of the final summary?",
           "thread.start.current_node": "yes_no",
-          "human.gate.label": "[Q] Open questions",
+          "human.gate.label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
+          "human.gate.multi_select.label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
           "human.gate.confirmation.label": "[Y] Continue",
           "internal.node_visit_count": 1,
           "graph.goal": "Run a progressive human interview and summarize the answers",
           "thread.confirmation.current_node": "multiple_choice",
           "internal.retry_count.confirmation": 0,
+          "thread.multiple_choice.current_node": "multi_select",
           "failure_class": "",
           "internal.run_id": "01M12DCDACAM5DE5MVHPZ50M21",
-          "human.gate.selected": "Q",
+          "human.gate.selected": "D,B,S,N",
           "human.gate.multiple_choice.label": "[Q] Open questions",
           "internal.retry_count.multiple_choice": 0
         },
@@ -714,6 +832,21 @@
             "status": "succeeded",
             "usage": null
           },
+          "multi_select": {
+            "status": "succeeded",
+            "preferred_label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
+            "suggested_next_ids": [
+              "freeform"
+            ],
+            "context_updates": {
+              "human.gate.multi_select.answer": "D, B, S, N",
+              "human.gate.multi_select.question": "Which supporting areas should the final summary emphasize?",
+              "human.gate.label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
+              "human.gate.multi_select.label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
+              "human.gate.selected": "D,B,S,N"
+            },
+            "usage": null
+          },
           "multiple_choice": {
             "status": "succeeded",
             "preferred_label": "[Q] Open questions",
@@ -730,10 +863,11 @@
             "usage": null
           }
         },
-        "next_node_id": "multi_select",
+        "next_node_id": "freeform",
         "node_visits": {
           "multiple_choice": 1,
           "yes_no": 1,
+          "multi_select": 1,
           "confirmation": 1,
           "start": 1
         }
@@ -767,6 +901,31 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "multi_select@1": {
+      "first_event_seq": 63,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-27T20:09:28.420746996Z",
+      "handler": "human",
+      "graph_visit": 1,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "running"
+    },
     "start@1": {
       "first_event_seq": 23,
       "prompt": null,
@@ -807,7 +966,12 @@
       "first_event_seq": 51,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-27T20:09:17.115047840Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": null,
@@ -817,6 +981,12 @@
       "started_at": "2026-08-27T20:08:45.091030195Z",
       "handler": "human",
       "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 28872,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -826,7 +996,7 @@
         "cache_write_tokens": 0
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "succeeded"
     },
     "yes_no@1": {
       "first_event_seq": 27,
