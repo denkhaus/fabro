@@ -11,6 +11,7 @@ domains:
   api: {}
   build: {}
   server: {}
+  engine: {}
 governance:
   max_entries: 100
   warn_entries: 150
