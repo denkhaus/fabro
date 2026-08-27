@@ -1,0 +1,6 @@
+{
+  "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+  "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+  "language": "shell",
+  "timeout_ms": 60000
+}

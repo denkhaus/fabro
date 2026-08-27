@@ -647,7 +647,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-27T13:22:50.898009719Z",
-  "last_event_at": "2026-08-27T13:35:55.543954396Z",
+  "last_event_at": "2026-08-27T13:36:00.803406221Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -3309,9 +3309,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 589,
       "checkpoint": {
-        "timestamp": "2026-08-27T13:35:55.743783187Z",
+        "timestamp": "2026-08-27T13:36:00.062898751Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -3329,7 +3329,328 @@
         ],
         "node_retries": {},
         "context_values": {
+          "thread.start.current_node": "planner",
+          "internal.retry_count.evidence": 0,
+          "internal.node_visit_count": 2,
+          "internal.thread_id": "evidence",
+          "review_verdict": "approved",
+          "last_response": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2911,
+            "preview": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,"
+          },
+          "current_node": "reviewer",
+          "current_seed_title": "gofib: consolidate flag parsing and validation into an options struct",
+          "internal.retry_count.reviewer": 0,
+          "internal.retry_count.closeout": 0,
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "internal.retry_count.start": 0,
+          "internal.retry_count.implementer": 0,
+          "thread.closeout.current_node": "planner",
+          "graph.max_node_visits": "40",
+          "thread.evidence.current_node": "reviewer",
+          "thread.reviewer.current_node": "closeout",
+          "last_stage": "reviewer",
+          "current_seed_id": "fabro-28e8",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Evidence diff is taken against the run base, so fabro-28e8's capture still contains fabro-44b6's closed csv hunks (main.go/fib_test.go/README); distinguishing per-seed scope required cross-checking the closed 44b6 spec — a per-seed base (previous seed's commit) would make scope attribution mechanical (run 01M11P68SHFS165HP9ATK6094V).",
+              "Verified via direct repo reads because the blob ref truncated mid-diff (~8KB omitted covering TestParseOptionsDefaults/TestParseOptionsInvalid/TestRunSumSeedConflict); everything the spec names was confirmed present and exact.",
+              "run() retains a defensive unreachable resolveMode error since options stores only flag values; noted as a possible simplification (store resolved mode) for fabro-c295, not a blocker."
+            ]
+          },
+          "failure_signature": "",
+          "internal.run_id": "01M11P68SHFS165HP9ATK6094V",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.goal": "Implement product seed fabro-44b6 -format csv output mode first, then continue seed-by-seed through fabro-28e8 options refactor and fabro-c295 -o flag until no open seed remains.",
+          "thread.tester.current_node": "evidence",
+          "failure_class": "",
+          "graph.preamble_budget_kb": "24",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 4364,
+            "preview": "Claimed fabro-28e8. Two spec readings I resolved in the brief: the `-version` print branch is output behavior (stays in `run`; only rejection logic moves to `parseOptions`), and the positive-`-seed` r"
+          },
           "preferred_label": "Approved",
+          "internal.fidelity": "summary:high",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "implementation_summary": "Refactored `/workspace/fabro/main.go`: new `options` struct (n, start, limit, seed, format, json, pretty, version, sum) and `parseOptions(args)` using a fresh ExitOnError FlagSet, owning all validation in the pinned order (version short-circuit → mode → seed<0 → seed+sum → range checks skipped when seed>0); `run(w, opts)` now has zero validation branches (only the version print, seed lookup override, and rendering, with a defensive unreachable resolveMode); `main` shrank to parseOptions → stderr/exit 1 → run. `/workspace/fabro/fib_test.go`: added `opts(...)` helper adapting every run call site (assertions untouched), rerouted the five rejection tests through parseOptions, and added TestParseOptionsDefaults, TestParseOptionsInvalid (all nine rejections, exact messages), TestParseOptionsVersionShortCircuit. gofmt/vet/test green; smoke test confirmed exit 2 on `-n=abc`, version short-circuit, seed-skip, csv output. Verification report: PASS options struct fields (main.go); PASS parseOptions single rejection point with byte-identical errors (main.go + TestParseOptionsInvalid); PASS validation order incl. version-before-validation and seed-skips-range (parseOptions + TestParseOptionsVersionShortCircuit + TestRunSeed); PASS run(w, opts) no validation, version print stays, doc comment output-only (main.go run); PASS main shrunk (main.go main); PASS flag-syntax errors exit 2 with usage (ExitOnError FlagSet + smoke test); PASS TestParseOptionsInvalid covers all nine cases (fib_test.go); PASS TestParseOptionsDefaults (fib_test.go); PASS version short-circuit pinned (TestParseOptionsVersionShortCircuit); PASS no behavior change, no deps, README untouched (full suite green, only main.go/fib_test.go modified).",
+          "graph.rankdir": "LR",
+          "command.output": "blob://sha256/57c40598fd8358e1f3b3d5e9b110fba065bfffce50929e1ab4e84b3c38d8c238",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5869,
+            "preview": "Implemented fabro-28e8: the options-struct refactor of `/workspace/fabro/main.go` plus call-site adaptation in `/workspace/fabro/fib_test.go`.\n\n**What changed in `main.go`:** added `type options struc"
+          },
+          "internal.seed_cycle_anchor": "fabro-28e8",
+          "outcome": "succeeded",
+          "current_seed_brief": "Behavior-preserving refactor of `/workspace/fabro/main.go` (plus tests in `/workspace/fabro/fib_test.go`): move flag parsing and ALL validation out of `run` into an options struct + `parseOptions`, keeping every error string and all behavior byte-identical. No `-o` flag, no `resolveOutput` helper — that is the follow-up seed fabro-c295; only leave room so adding `-o` is a one-field change. Acceptance criteria: - `type options struct` in `main.go` holding every flag value with those names: n, start, limit, seed, format, json, pretty, version, sum. - `parseOptions(args []string) (options, error)` owns flag registration + Parse and every rejection currently inside `run`: invalid n/start/limit/seed, seed+sum conflict, format validity (parseMode), format-vs-shortcut disagreement (resolveMode). Error strings byte-identical — existing tests pin them. - Validation ORDER preserved exactly as today: `-version` short-circuits BEFORE any validation (parseOptions returns the version flag with no error even alongside invalid flags); then mode resolution (bad format, then shortcut conflicts); then seed<0; then seed+sum; then n/start/limit checks — and the range checks are SKIPPED when seed>0 (today `-seed 5 -n 0` prints one line; a naive validate-everything parseOptions would break it). - `run` becomes `run(w io.Writer, opts options) error` containing NO rejection logic; the `-version` print branch STAYS in run (it is output, not validation — that is the chosen reading of the spec, since main must shrink to parse→run); mode derivation from opts introduces no new error paths; run's doc comment updated to describe output only (validation comments move with the code). - `main` shrinks to: `opts, err := parseOptions(os.Args[1:])`; on error print to stderr and exit 1; else call `run(os.Stdout, opts)`. - Flag-SYNTAX errors (e.g. `-n=abc`) keep today's flag-package behavior: usage on stderr, exit 2, never a returned error — e.g. parse via `flag.CommandLine.Parse(args)` rather than a ContinueOnError FlagSet. - New table-driven `TestParseOptionsInvalid` covering EVERY rejection case with its exact error message: n=0, n=-1, start<0, limit<0, seed<0, seed+sum, bad format value, `-format json` with `-pretty`, `-format pretty` with `-json`. - New `TestParseOptionsDefaults` pinning defaults: n=100, start=0, limit=0, seed=0, format=\"\", all bools false. - A test pins the `-version` short-circuit: parseOptions with `-version` plus invalid flags (e.g. `-n 0` or a bad format) returns no error. - No behavior change: all existing tests pass with ONLY call-site adaptation to the new run signature (table constructors updated, assertions untouched); no external dependencies; README untouched (nothing user-visible changes); `just qualitygate` green. Done when run() contains zero validation branches, parseOptions is the single rejection point, the new tables cover every rejection above, and the full suite plus gate are green.",
+          "internal.retry_count.tester": 0,
+          "internal.retry_count.planner": 0,
+          "thread.planner.current_node": "implementer",
+          "thread.implementer.current_node": "tester"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Refactored `/workspace/fabro/main.go`: new `options` struct (n, start, limit, seed, format, json, pretty, version, sum) and `parseOptions(args)` using a fresh ExitOnError FlagSet, owning all validation in the pinned order (version short-circuit → mode → seed<0 → seed+sum → range checks skipped when seed>0); `run(w, opts)` now has zero validation branches (only the version print, seed lookup override, and rendering, with a defensive unreachable resolveMode); `main` shrank to parseOptions → stderr/exit 1 → run. `/workspace/fabro/fib_test.go`: added `opts(...)` helper adapting every run call site (assertions untouched), rerouted the five rejection tests through parseOptions, and added TestParseOptionsDefaults, TestParseOptionsInvalid (all nine rejections, exact messages), TestParseOptionsVersionShortCircuit. gofmt/vet/test green; smoke test confirmed exit 2 on `-n=abc`, version short-circuit, seed-skip, csv output. Verification report: PASS options struct fields (main.go); PASS parseOptions single rejection point with byte-identical errors (main.go + TestParseOptionsInvalid); PASS validation order incl. version-before-validation and seed-skips-range (parseOptions + TestParseOptionsVersionShortCircuit + TestRunSeed); PASS run(w, opts) no validation, version print stays, doc comment output-only (main.go run); PASS main shrunk (main.go main); PASS flag-syntax errors exit 2 with usage (ExitOnError FlagSet + smoke test); PASS TestParseOptionsInvalid covers all nine cases (fib_test.go); PASS TestParseOptionsDefaults (fib_test.go); PASS version short-circuit pinned (TestParseOptionsVersionShortCircuit); PASS no behavior change, no deps, README untouched (full suite green, only main.go/fib_test.go modified).",
+              "last_response": "Implemented fabro-28e8: the options-struct refactor of `/workspace/fabro/main.go` plus call-site adaptation in `/workspace/fabro/fib_test.go`.\n\n**What changed in `main.go`:** added `type options struc",
+              "last_stage": "implementer",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The brief's 'all existing tests pass with ONLY call-site adaptation, assertions untouched' is unsatisfiable as literally written: five rejection tests (TestRunRejectsInvalidCount/Start/Limit/Seed, TestRunSumSeedConflict) asserted that run() itself errors, and run() now has zero validation. I kept the assertions (exact error strings) but rerouted those tests through parseOptions with CLI-style args — the minimal faithful adaptation; the reviewer should expect this deviation in wording, not substance.",
+                  "run() keeps a defensive `mode, err := resolveMode(...)` with an unreachable error return, because options deliberately stores only flag values (per the field list in the brief). fabro-c295 or a later seed may prefer storing the resolved mode in options to delete even this defensive branch."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5869,
+                "preview": "Implemented fabro-28e8: the options-struct refactor of `/workspace/fabro/main.go` plus call-site adaptation in `/workspace/fabro/fib_test.go`.\n\n**What changed in `main.go`:** added `type options struc"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 57734,
+                    "output_tokens": 13277,
+                    "reasoning_tokens": 3334,
+                    "cache_read_tokens": 1276608,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 485797
+            },
+            "files_touched": [
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 277610,
+              "tool_time_ms": 6095,
+              "active_time_ms": 283705
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "preferred_label": "More seeds",
+            "context_updates": {
+              "command.output": "blob://sha256/a390abca8e2b1d7aa68448c920e91fbcd0362f3daf2784e39d599b9dfc528fca"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 368,
+              "active_time_ms": 368
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_id": "fabro-28e8",
+              "last_stage": "planner",
+              "current_seed_brief": "Behavior-preserving refactor of `/workspace/fabro/main.go` (plus tests in `/workspace/fabro/fib_test.go`): move flag parsing and ALL validation out of `run` into an options struct + `parseOptions`, keeping every error string and all behavior byte-identical. No `-o` flag, no `resolveOutput` helper — that is the follow-up seed fabro-c295; only leave room so adding `-o` is a one-field change. Acceptance criteria: - `type options struct` in `main.go` holding every flag value with those names: n, start, limit, seed, format, json, pretty, version, sum. - `parseOptions(args []string) (options, error)` owns flag registration + Parse and every rejection currently inside `run`: invalid n/start/limit/seed, seed+sum conflict, format validity (parseMode), format-vs-shortcut disagreement (resolveMode). Error strings byte-identical — existing tests pin them. - Validation ORDER preserved exactly as today: `-version` short-circuits BEFORE any validation (parseOptions returns the version flag with no error even alongside invalid flags); then mode resolution (bad format, then shortcut conflicts); then seed<0; then seed+sum; then n/start/limit checks — and the range checks are SKIPPED when seed>0 (today `-seed 5 -n 0` prints one line; a naive validate-everything parseOptions would break it). - `run` becomes `run(w io.Writer, opts options) error` containing NO rejection logic; the `-version` print branch STAYS in run (it is output, not validation — that is the chosen reading of the spec, since main must shrink to parse→run); mode derivation from opts introduces no new error paths; run's doc comment updated to describe output only (validation comments move with the code). - `main` shrinks to: `opts, err := parseOptions(os.Args[1:])`; on error print to stderr and exit 1; else call `run(os.Stdout, opts)`. - Flag-SYNTAX errors (e.g. `-n=abc`) keep today's flag-package behavior: usage on stderr, exit 2, never a returned error — e.g. parse via `flag.CommandLine.Parse(args)` rather than a ContinueOnError FlagSet. - New table-driven `TestParseOptionsInvalid` covering EVERY rejection case with its exact error message: n=0, n=-1, start<0, limit<0, seed<0, seed+sum, bad format value, `-format json` with `-pretty`, `-format pretty` with `-json`. - New `TestParseOptionsDefaults` pinning defaults: n=100, start=0, limit=0, seed=0, format=\"\", all bools false. - A test pins the `-version` short-circuit: parseOptions with `-version` plus invalid flags (e.g. `-n 0` or a bad format) returns no error. - No behavior change: all existing tests pass with ONLY call-site adaptation to the new run signature (table constructors updated, assertions untouched); no external dependencies; README untouched (nothing user-visible changes); `just qualitygate` green. Done when run() contains zero validation branches, parseOptions is the single rejection point, the new tables cover every rejection above, and the full suite plus gate are green.",
+              "current_seed_title": "gofib: consolidate flag parsing and validation into an options struct",
+              "last_response": "Claimed fabro-28e8. Two spec readings I resolved in the brief: the `-version` print branch is output behavior (stays in `run`; only rejection logic moves to `parseOptions`), and the positive-`-seed` r",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-44b6 closed by closeout; sd ready showed exactly fabro-28e8 and fabro-c295, both Medium/unblocked. Chose fabro-28e8 per the goal's stated order AND because fabro-c295's spec presumes the options struct exists ('keep run(w io.Writer, opts) unchanged', 'resolveOutput added next to parseOptions') — claiming c295 first would force a rewrite.",
+                  "Spec subtleties folded into the brief: positive -seed must still skip n/start/limit validation inside parseOptions (pinned behavior), validation order must stay version→mode→seed<0→seed+sum→range, and flag-syntax errors must stay ExitOnError-style (usage+exit 2) — the natural 'fresh FlagSet with ContinueOnError' reading would silently change CLI behavior."
+                ]
+              },
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 4364,
+                "preview": "Claimed fabro-28e8. Two spec readings I resolved in the brief: the `-version` print branch is output behavior (stays in `run`; only rejection logic moves to `parseOptions`), and the positive-`-seed` r"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 18133,
+                    "output_tokens": 1310,
+                    "reasoning_tokens": 3933,
+                    "cache_read_tokens": 42752,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 59565
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 77487,
+              "tool_time_ms": 689,
+              "active_time_ms": 78176
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/34c320538832aa5fedb71e444d7413a3b0a24a4d749d86edd299efd54ac1a2ba"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1181,
+              "active_time_ms": 1181
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/57c40598fd8358e1f3b3d5e9b110fba065bfffce50929e1ab4e84b3c38d8c238"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 267,
+              "active_time_ms": 267
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_stage": "reviewer",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2911,
+                "preview": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,"
+              },
+              "last_response": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,",
+              "review_verdict": "approved",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Evidence diff is taken against the run base, so fabro-28e8's capture still contains fabro-44b6's closed csv hunks (main.go/fib_test.go/README); distinguishing per-seed scope required cross-checking the closed 44b6 spec — a per-seed base (previous seed's commit) would make scope attribution mechanical (run 01M11P68SHFS165HP9ATK6094V).",
+                  "Verified via direct repo reads because the blob ref truncated mid-diff (~8KB omitted covering TestParseOptionsDefaults/TestParseOptionsInvalid/TestRunSumSeedConflict); everything the spec names was confirmed present and exact.",
+                  "run() retains a defensive unreachable resolveMode error since options stores only flag values; noted as a possible simplification (store resolved mode) for fabro-c295, not a blocker."
+                ]
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 28211,
+                    "output_tokens": 962,
+                    "reasoning_tokens": 492,
+                    "cache_read_tokens": 61184,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 61795
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 36896,
+              "tool_time_ms": 413,
+              "active_time_ms": 37309
+            }
+          }
+        },
+        "next_node_id": "closeout",
+        "git_commit_sha": "c4d1d9d5842e1ae4521f4c5dbd8cb3da7a5c88fa",
+        "node_visits": {
+          "implementer": 2,
+          "planner": 2,
+          "start": 1,
+          "tester": 2,
+          "closeout": 1,
+          "reviewer": 2,
+          "evidence": 2
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl b/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl\nindex bf395b2..93bb9a4 100644\n--- a/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl\n+++ b/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl\n@@ -9,3 +9,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"implementer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:34:55Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The brief's 'all existing tests pass with ONLY call-site adaptation, assertions untouched' is unsatisfiable as literally written: five rejection tests (TestRunRejectsInvalidCount/Start/Limit/Seed, TestRunSumSeedConflict) asserted that run() itself errors, and run() now has zero validation. I kept the assertions (exact error strings) but rerouted those tests through parseOptions with CLI-style args — the minimal faithful adaptation; the reviewer should expect this deviation in wording, not substance.\",\"run() keeps a defensive `mode, err := resolveMode(...)` with an unreachable error return, because options deliberately stores only flag values (per the field list in the brief). fabro-c295 or a later seed may prefer storing the resolved mode in options to delete even this defensive branch.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"tester\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:35:00Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"evidence\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:35:05Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"reviewer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:35:55Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Evidence diff is taken against the run base, so fabro-28e8's capture still contains fabro-44b6's closed csv hunks (main.go/fib_test.go/README); distinguishing per-seed scope required cross-checking the closed 44b6 spec — a per-seed base (previous seed's commit) would make scope attribution mechanical (run 01M11P68SHFS165HP9ATK6094V).\",\"Verified via direct repo reads because the blob ref truncated mid-diff (~8KB omitted covering TestParseOptionsDefaults/TestParseOptionsInvalid/TestRunSumSeedConflict); everything the spec names was confirmed present and exact.\",\"run() retains a defensive unreachable resolveMode error since options stores only flag values; noted as a possible simplification (store resolved mode) for fabro-c295, not a blocker.\"]}}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 386,
+          "deletions": 161
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-27T13:36:01.003056673Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "preferred_label": "More seeds",
           "failure_signature": "",
           "current_seed_title": "gofib: consolidate flag parsing and validation into an options struct",
           "internal.seed_cycle_anchor": "fabro-28e8",
@@ -3341,7 +3662,7 @@
             "preview": "Implemented fabro-28e8: the options-struct refactor of `/workspace/fabro/main.go` plus call-site adaptation in `/workspace/fabro/fib_test.go`.\n\n**What changed in `main.go`:** added `type options struc"
           },
           "thread.implementer.current_node": "tester",
-          "current_node": "reviewer",
+          "current_node": "closeout",
           "internal.run_id": "01M11P68SHFS165HP9ATK6094V",
           "last_stage": "reviewer",
           "implementation_summary": "Refactored `/workspace/fabro/main.go`: new `options` struct (n, start, limit, seed, format, json, pretty, version, sum) and `parseOptions(args)` using a fresh ExitOnError FlagSet, owning all validation in the pinned order (version short-circuit → mode → seed<0 → seed+sum → range checks skipped when seed>0); `run(w, opts)` now has zero validation branches (only the version print, seed lookup override, and rendering, with a defensive unreachable resolveMode); `main` shrank to parseOptions → stderr/exit 1 → run. `/workspace/fabro/fib_test.go`: added `opts(...)` helper adapting every run call site (assertions untouched), rerouted the five rejection tests through parseOptions, and added TestParseOptionsDefaults, TestParseOptionsInvalid (all nine rejections, exact messages), TestParseOptionsVersionShortCircuit. gofmt/vet/test green; smoke test confirmed exit 2 on `-n=abc`, version short-circuit, seed-skip, csv output. Verification report: PASS options struct fields (main.go); PASS parseOptions single rejection point with byte-identical errors (main.go + TestParseOptionsInvalid); PASS validation order incl. version-before-validation and seed-skips-range (parseOptions + TestParseOptionsVersionShortCircuit + TestRunSeed); PASS run(w, opts) no validation, version print stays, doc comment output-only (main.go run); PASS main shrunk (main.go main); PASS flag-syntax errors exit 2 with usage (ExitOnError FlagSet + smoke test); PASS TestParseOptionsInvalid covers all nine cases (fib_test.go); PASS TestParseOptionsDefaults (fib_test.go); PASS version short-circuit pinned (TestParseOptionsVersionShortCircuit); PASS no behavior change, no deps, README untouched (full suite green, only main.go/fib_test.go modified).",
@@ -3361,9 +3682,10 @@
             "implementer": 1,
             "tester": 1,
             "evidence": 1,
-            "reviewer": 1
+            "reviewer": 1,
+            "closeout": 1
           },
-          "command.output": "blob://sha256/57c40598fd8358e1f3b3d5e9b110fba065bfffce50929e1ab4e84b3c38d8c238",
+          "command.output": "blob://sha256/b99b2936f2316dcb8f0ecea8555fde7b8b7d18e551b11204dce9f70081bd4626",
           "internal.retry_count.evidence": 0,
           "thread.evidence.current_node": "reviewer",
           "internal.retry_count.closeout": 0,
@@ -3378,11 +3700,11 @@
             ]
           },
           "internal.retry_count.planner": 0,
-          "internal.thread_id": "evidence",
+          "internal.thread_id": "reviewer",
           "thread.closeout.current_node": "planner",
           "graph.rankdir": "LR",
           "failure_class": "",
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "thread.planner.current_node": "implementer",
           "internal.retry_count.start": 0,
           "last_response": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,",
@@ -3541,15 +3863,15 @@
             "status": "succeeded",
             "preferred_label": "More seeds",
             "context_updates": {
-              "command.output": "blob://sha256/a390abca8e2b1d7aa68448c920e91fbcd0362f3daf2784e39d599b9dfc528fca"
+              "command.output": "blob://sha256/b99b2936f2316dcb8f0ecea8555fde7b8b7d18e551b11204dce9f70081bd4626"
             },
             "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 368,
-              "active_time_ms": 368
+              "tool_time_ms": 475,
+              "active_time_ms": 475
             }
           },
           "implementer": {
@@ -3607,7 +3929,7 @@
             }
           }
         },
-        "next_node_id": "closeout",
+        "next_node_id": "planner",
         "node_visits": {
           "start": 1,
           "tester": 2,
@@ -3615,7 +3937,7 @@
           "reviewer": 2,
           "evidence": 2,
           "implementer": 2,
-          "closeout": 1
+          "closeout": 2
         }
       },
       "diff": {}
@@ -5296,6 +5618,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 1181,
         "active_time_ms": 1181
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@2": {
+      "first_event_seq": 592,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-08-27T13:36:00.803406221Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/b99b2936f2316dcb8f0ecea8555fde7b8b7d18e551b11204dce9f70081bd4626",
+        "exit_code": 0,
+        "duration_ms": 475,
+        "termination": "exited",
+        "output_bytes": 66,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 66,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-08-27T13:36:00.309255224Z",
+      "handler": "command",
+      "graph_visit": 2,
+      "timing": {
+        "wall_time_ms": 483,
+        "inference_time_ms": 0,
+        "tool_time_ms": 475,
+        "active_time_ms": 475
       },
       "usage": {
         "input_tokens": 0,
