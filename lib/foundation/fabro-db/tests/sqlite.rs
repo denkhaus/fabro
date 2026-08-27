@@ -554,58 +554,13 @@ async fn run_events_schema_has_final_shape_constraints_and_indexes() -> anyhow::
 
     insert_run_with_id(database.pool(), "parent", None).await?;
     insert_run_with_id(database.pool(), "child", Some("parent")).await?;
-    insert_run_event(
-        database.pool(),
-        "parent",
-        1,
-        "run.created",
-        None,
-        None,
-        None,
-    )
-    .await?;
+    insert_run_event(database.pool(), "parent", 1, "run.created").await?;
 
     for invalid in [
-        insert_run_event(
-            database.pool(),
-            "parent",
-            1,
-            "run.created",
-            None,
-            None,
-            None,
-        )
-        .await,
-        insert_run_event(
-            database.pool(),
-            "missing",
-            1,
-            "run.created",
-            None,
-            None,
-            None,
-        )
-        .await,
-        insert_run_event(
-            database.pool(),
-            "parent",
-            0,
-            "run.created",
-            None,
-            None,
-            None,
-        )
-        .await,
-        insert_run_event(
-            database.pool(),
-            "parent",
-            1_000_000,
-            "run.created",
-            None,
-            None,
-            None,
-        )
-        .await,
+        insert_run_event(database.pool(), "parent", 1, "run.created").await,
+        insert_run_event(database.pool(), "missing", 1, "run.created").await,
+        insert_run_event(database.pool(), "parent", 0, "run.created").await,
+        insert_run_event(database.pool(), "parent", 1_000_000, "run.created").await,
     ] {
         assert!(invalid.is_err());
     }
@@ -695,27 +650,33 @@ async fn run_events_schema_query_plans_use_candidate_indexes() -> anyhow::Result
         );
     }
 
-    Ok(())
-}
-
-async fn insert_run_with_id(
-    pool: &fabro_db::DbPool,
-    id: &str,
-    parent_id: Option<&str>,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        r"
-INSERT INTO runs (
-    id, source_last_seq, created_at_ms, last_event_at_ms, status, parent_id, title,
-    input_tokens, summary_json
-) VALUES (?, 1, 0, 0, 'submitted', ?, 'title', 0, ?)
-",
+    // The first-visit stage listing unions both shapes so each arm keeps its
+    // own partial index instead of scanning the run's primary key range.
+    let details = sqlx::query(
+        "EXPLAIN QUERY PLAN SELECT * FROM run_events WHERE run_id = ? AND seq >= ? AND stage_id = ? \
+         UNION ALL SELECT * FROM run_events WHERE run_id = ? AND seq >= ? AND stage_id IS NULL AND node_id = ? \
+         ORDER BY seq ASC LIMIT ?",
     )
-    .bind(id)
-    .bind(parent_id)
-    .bind(format!(r#"{{"id":"{id}"}}"#))
-    .execute(pool)
-    .await?;
+    .bind("run")
+    .bind(1_i64)
+    .bind("stage")
+    .bind("run")
+    .bind(1_i64)
+    .bind("node")
+    .bind(10_i64)
+    .fetch_all(database.pool())
+    .await?
+    .into_iter()
+    .map(|row| row.get::<String, _>("detail"))
+    .collect::<Vec<_>>()
+    .join("; ");
+    for expected_index in ["run_events_by_stage", "run_events_by_legacy_node"] {
+        assert!(
+            details.contains(expected_index),
+            "expected {expected_index} in query plan: {details}"
+        );
+    }
+
     Ok(())
 }
 
@@ -724,22 +685,16 @@ async fn insert_run_event(
     run_id: &str,
     seq: i64,
     event_name: &str,
-    node_id: Option<&str>,
-    stage_id: Option<&str>,
-    session_id: Option<&str>,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         r"
-INSERT INTO run_events (run_id, seq, event_name, node_id, stage_id, session_id, event_json)
-VALUES (?, ?, ?, ?, ?, ?, '{}')
+INSERT INTO run_events (run_id, seq, event_name, event_json)
+VALUES (?, ?, ?, '{}')
 ",
     )
     .bind(run_id)
     .bind(seq)
     .bind(event_name)
-    .bind(node_id)
-    .bind(stage_id)
-    .bind(session_id)
     .execute(pool)
     .await?;
     Ok(())
@@ -751,16 +706,52 @@ async fn insert_minimal_run(
     input_tokens: i64,
     summary_json: &str,
 ) -> Result<(), sqlx::Error> {
+    insert_run_row(
+        pool,
+        &format!("run-{status}-{input_tokens}"),
+        None,
+        status,
+        input_tokens,
+        summary_json,
+    )
+    .await
+}
+
+async fn insert_run_with_id(
+    pool: &fabro_db::DbPool,
+    id: &str,
+    parent_id: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    insert_run_row(
+        pool,
+        id,
+        parent_id,
+        "submitted",
+        0,
+        &format!(r#"{{"id":"{id}"}}"#),
+    )
+    .await
+}
+
+async fn insert_run_row(
+    pool: &fabro_db::DbPool,
+    id: &str,
+    parent_id: Option<&str>,
+    status: &str,
+    input_tokens: i64,
+    summary_json: &str,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         r"
 INSERT INTO runs (
-    id, source_last_seq, created_at_ms, last_event_at_ms, status, title,
+    id, source_last_seq, created_at_ms, last_event_at_ms, status, parent_id, title,
     input_tokens, summary_json
-) VALUES (?, 1, 0, 0, ?, 'title', ?, ?)
+) VALUES (?, 1, 0, 0, ?, ?, 'title', ?, ?)
 ",
     )
-    .bind(format!("run-{status}-{input_tokens}"))
+    .bind(id)
     .bind(status)
+    .bind(parent_id)
     .bind(input_tokens)
     .bind(summary_json)
     .execute(pool)

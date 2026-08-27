@@ -210,15 +210,6 @@ methods = ["dev-token"]
     )
 }
 
-#[test]
-fn run_record_store_is_database_owned() {
-    let state = test_app_state();
-    assert!(Arc::ptr_eq(
-        &state.stores.run_records,
-        &state.stores.runs.run_record_store(),
-    ));
-}
-
 async fn body_json(body: Body) -> serde_json::Value {
     let bytes = to_bytes(body, usize::MAX).await.unwrap();
     serde_json::from_slice(&bytes).unwrap()

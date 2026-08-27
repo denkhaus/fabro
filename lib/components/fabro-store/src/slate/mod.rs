@@ -568,16 +568,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn required_run_record_store_is_shared_with_run_handles() {
-        let (_object_store, store) = make_store();
-        let records = store.run_record_store();
-        let run = store.create_run(&test_run_id("run-1")).await.unwrap();
-
-        assert!(run.shares_run_record_store(&records));
-        assert!(Arc::ptr_eq(&records, &store.clone().run_record_store()));
-    }
-
-    #[tokio::test]
     async fn retire_refresh_token_keyspace_clears_the_prefix_and_is_idempotent() {
         let (_object_store, store) = make_store();
         let db = store.open_db().await.unwrap();

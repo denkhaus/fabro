@@ -18,58 +18,48 @@ use crate::{BlobStore, Database, Result, RunRecordStore};
 /// by other tests in the same process. Reopen-style tests that model one
 /// process-wide blob authority across several store handles should call this
 /// once and share the result through [`test_database_with_blobs`].
-///
-/// The pool connects lazily so synchronous fixture builders can remain
-/// synchronous. Its single connection installs the production blob schema on
-/// first use.
 #[must_use]
 pub fn test_blob_store() -> Arc<BlobStore> {
-    let options = SqliteConnectOptions::new()
-        .filename(":memory:")
-        .foreign_keys(true);
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        // A single in-memory test connection never needs reaping. Disabling
-        // both timers also keeps this lazy fixture constructible from sync
-        // tests, where SQLx has no Tokio runtime for maintenance tasks.
-        .max_lifetime(None)
-        .idle_timeout(None)
-        .after_connect(|connection, _metadata| {
-            Box::pin(async move {
-                sqlx::query(fabro_db::BLOBS_MIGRATION_SQL)
-                    .execute(&mut *connection)
-                    .await?;
-                Ok(())
-            })
-        })
-        .connect_lazy_with(options);
-    Arc::new(BlobStore::new(pool))
+    Arc::new(BlobStore::new(lazy_in_memory_pool(&[
+        fabro_db::BLOBS_MIGRATION_SQL,
+    ])))
 }
 
 /// Returns an isolated SQLite run-record store backed by its own in-memory
 /// database and the production `runs` and `run_events` schemas.
 #[must_use]
 pub fn test_run_record_store() -> Arc<RunRecordStore> {
+    Arc::new(RunRecordStore::new(lazy_in_memory_pool(&[
+        fabro_db::RUNS_MIGRATION_SQL,
+        fabro_db::RUN_EVENTS_MIGRATION_SQL,
+    ])))
+}
+
+/// Builds a single-connection in-memory SQLite pool that installs
+/// `migrations` on first use.
+///
+/// The pool connects lazily so synchronous fixture builders can remain
+/// synchronous.
+fn lazy_in_memory_pool(migrations: &'static [&'static str]) -> sqlx::SqlitePool {
     let options = SqliteConnectOptions::new()
         .filename(":memory:")
         .foreign_keys(true);
-    let pool = SqlitePoolOptions::new()
+    SqlitePoolOptions::new()
         .max_connections(1)
+        // A single in-memory test connection never needs reaping. Disabling
+        // both timers also keeps this lazy fixture constructible from sync
+        // tests, where SQLx has no Tokio runtime for maintenance tasks.
         .max_lifetime(None)
         .idle_timeout(None)
-        .after_connect(|connection, _metadata| {
+        .after_connect(move |connection, _metadata| {
             Box::pin(async move {
-                sqlx::raw_sql(fabro_db::RUNS_MIGRATION_SQL)
-                    .execute(&mut *connection)
-                    .await?;
-                sqlx::raw_sql(fabro_db::RUN_EVENTS_MIGRATION_SQL)
-                    .execute(&mut *connection)
-                    .await?;
+                for migration in migrations {
+                    sqlx::raw_sql(*migration).execute(&mut *connection).await?;
+                }
                 Ok(())
             })
         })
-        .connect_lazy_with(options);
-    Arc::new(RunRecordStore::new(pool))
+        .connect_lazy_with(options)
 }
 
 /// Returns the SQLite file backing [`test_blob_store_at`] for `store_dir`.

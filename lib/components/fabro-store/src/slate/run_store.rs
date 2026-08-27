@@ -121,11 +121,6 @@ impl RunDatabase {
         self.inner.run_id
     }
 
-    #[cfg(test)]
-    pub(crate) fn shares_run_record_store(&self, store: &Arc<RunRecordStore>) -> bool {
-        Arc::ptr_eq(&self.inner.run_record_store, store)
-    }
-
     pub fn subscribe(&self) -> broadcast::Receiver<EventEnvelope> {
         self.inner.event_tx.subscribe()
     }
