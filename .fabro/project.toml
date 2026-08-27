@@ -74,10 +74,13 @@ pull_requests = "write"
 # Terminal-failure visibility (run 01M0T9B7T6 review, rec 5): the 403
 # publish failure was silent (notifications: {}). One Slack route for
 # terminal lifecycle events is enough to notice credential rot.
+# Channel fix (fabro-1ddb phase 1, 2026-08-27): #fabro-reviews never
+# existed in the workspace — every notification failed with
+# channel_not_found. #dev-fabro exists (user).
 [run.notifications.terminal]
 enabled = true
 provider = "slack"
 events = ["run.completed", "run.failed"]
 
 [run.notifications.terminal.slack]
-channel = "#fabro-reviews"
+channel = "#dev-fabro"
