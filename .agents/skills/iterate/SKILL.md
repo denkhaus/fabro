@@ -97,11 +97,15 @@ decision, not an accident - it needs the user plus an ADR.
 ## Phase 6 - Reflect (MANDATORY - never skip, every cycle)
 
 1. **Cost review**: what took longer than it should, what needed
-   retries, what was missing at decision time? Adjust THIS skill file
-   directly - self-edit is intended and expected. Deployment on this
-   repo is ALWAYS `just up` (cached loop: SPA, binary, image, CLI,
-   compose) - `docker compose up --build` builds nothing here and
-   `cargo build -p <name>` drifts with upstream package renames.
+   retries, what was missing at decision time? EVERY finding that
+   implies a behavior change MUST become an edit to THIS skill file
+   (user directive 2026-08-27: a reflection that does not refine the
+   workflow is ineffective). Domain knowledge goes to mulch; durable
+   preferences to memory; process lessons HERE. No finding may stay
+   unrecorded. Deployment on this repo is ALWAYS `just up` (cached
+   loop: SPA, binary, image, CLI, compose) - `docker compose up
+   --build` builds nothing here and `cargo build -p <name>` drifts with
+   upstream package renames.
 2. **Learnings -> mulch**: `ml record <domain> --type
    <convention|pattern|failure|decision> --description ...` (+ evidence
    flags), then `ml sync`. Real insights only - no ritual filler.
