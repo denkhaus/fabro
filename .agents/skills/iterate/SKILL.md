@@ -48,6 +48,11 @@ decision, not an accident - it needs the user plus an ADR.
 
 ## Phase 2 - Build
 
+- Seeds BEFORE implementation (user directive 2026-08-27): file the seed
+  or update the existing one with the agreed design BEFORE writing code.
+  If implementation goes wrong, the plan must already be durable in the
+  tracker — design decisions never live only in chat or in the diff.
+  Close/update the seed with evidence after the work lands.
 - Rust changes (platform AND local features): load the rust-style-guide
   skill FIRST - `guidelines.md` plus only the pages the task needs, and
   `workflows/new-rust-project.md` when creating or configuring a crate.
