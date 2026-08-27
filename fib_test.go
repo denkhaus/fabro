@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -1111,6 +1113,85 @@ func TestParseOptionsVersionShortCircuit(t *testing.T) {
 			}
 			if !opts.version {
 				t.Errorf("parseOptions(%v) version = false, want true", tt.args)
+			}
+		})
+	}
+}
+
+// TestResolveOutputEmptyStdout pins the default: an empty -o path means
+// stdout, signalled by a nil writer and no error.
+func TestResolveOutputEmptyStdout(t *testing.T) {
+	w, err := resolveOutput("")
+	if w != nil || err != nil {
+		t.Errorf(`resolveOutput("") = (%v, %v), want (nil, nil)`, w, err)
+	}
+}
+
+// TestResolveOutputError pins the open-failure path: a non-creatable
+// path returns the gofib-prefixed error, never a writer.
+func TestResolveOutputError(t *testing.T) {
+	// A path whose parent directory does not exist cannot be created.
+	bad := filepath.Join(t.TempDir(), "no-such-dir", "out.txt")
+	w, err := resolveOutput(bad)
+	if err == nil {
+		t.Fatalf("resolveOutput(%q) succeeded, want error", bad)
+	}
+	if w != nil {
+		t.Errorf("resolveOutput(%q) returned a writer alongside an error", bad)
+	}
+	if prefix := "gofib: cannot open " + bad + ": "; !strings.HasPrefix(err.Error(), prefix) {
+		t.Errorf("resolveOutput(%q) error = %q, want prefix %q", bad, err.Error(), prefix)
+	}
+}
+
+// TestOutputToFile covers -o end to end for text, json, and csv: the
+// file content is byte-identical to the equivalent stdout invocation,
+// and -version -o writes the version line into the file.
+func TestOutputToFile(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		args []string
+	}{
+		{"text mode", []string{"-n", "3"}},
+		{"json mode", []string{"-n", "3", "-format", "json"}},
+		{"csv mode", []string{"-n", "3", "-format", "csv"}},
+		{"version", []string{"-version"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "out.txt")
+			fileOpts, err := parseOptions(append(append([]string{}, tt.args...), "-o", path))
+			if err != nil {
+				t.Fatalf("parseOptions(%v -o %s) returned error: %v", tt.args, path, err)
+			}
+			out, err := resolveOutput(fileOpts.output)
+			if err != nil {
+				t.Fatalf("resolveOutput(%q) returned error: %v", path, err)
+			}
+			if out == nil {
+				t.Fatalf("resolveOutput(%q) returned nil writer", path)
+			}
+			if err := run(out, fileOpts); err != nil {
+				out.Close()
+				t.Fatalf("run with -o returned error: %v", err)
+			}
+			if err := out.Close(); err != nil {
+				t.Fatalf("closing output file: %v", err)
+			}
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("reading output file: %v", err)
+			}
+			// The equivalent stdout invocation: same flags, no -o.
+			stdOpts, err := parseOptions(tt.args)
+			if err != nil {
+				t.Fatalf("parseOptions(%v) returned error: %v", tt.args, err)
+			}
+			var want bytes.Buffer
+			if err := run(&want, stdOpts); err != nil {
+				t.Fatalf("run without -o returned error: %v", err)
+			}
+			if string(got) != want.String() {
+				t.Errorf("-o file content = %q, want byte-identical stdout output %q", got, want.String())
 			}
 		})
 	}

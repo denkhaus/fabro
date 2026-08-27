@@ -265,6 +265,27 @@ $ gofib -n 10 -sum -format csv
 sum,1,10,143
 ```
 
+`-o <path>` redirects all output — any format mode, `-sum`, even
+`-version` — into a file instead of stdout (empty/unset means stdout,
+unchanged). On success nothing prints to stdout:
+
+```
+$ gofib -o out.txt -n 3
+$ cat out.txt
+1: 1
+2: 1
+3: 2
+
+$ gofib -o version.txt -version
+$ cat version.txt
+gofib 1.3.0
+
+$ gofib -o /root/no/out.txt -n 3
+gofib: cannot open /root/no/out.txt: open /root/no/out.txt: no such file or directory
+$ echo $?
+1
+```
+
 An invalid count fails with a non-zero exit and an error on stderr:
 
 ```
@@ -287,6 +308,7 @@ $ echo $?
 | `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. Shortcut for `-format pretty`; conflicts with an explicit `-format` selecting another mode. |
 | `-sum` | Sum flag: print exactly one line with the `math/big` sum of the Fibonacci numbers in the same `-start`/`-limit`/`-n` intersection line mode would print — text mode prints `sum: <value>`, json mode one object `{"index_range":[first,last],"sum":"<string>"}` (sum as string since it can exceed int64; `index_range` reports the computed effective bounds even when the range is empty/inverted), csv mode one record `sum,<start>,<last>,<total>` (mirroring json's bounds+sum), pretty/table print the bare value + newline. An empty selected range (`-limit < -start`) sums to `0`, not an error. A positive `-seed` with `-sum` exits non-zero with an error naming both flags; `-seed 0` (unset sentinel) is legal. `-version` still wins. |
 | `-version` | Prints exactly `gofib 1.3.0` (from the `Version` const in `main.go`) and takes precedence over every other flag — even an otherwise-invalid combination like `-version -n 0 -json` prints the version and exits `0`. |
+| `-o <path>` | Output flag: write **all** output to `<path>` instead of stdout — every format mode (`text`/`json`/`pretty`/`table`/`csv`), `-sum` output, and `-version` output alike; there are no mode exceptions. Default empty means **stdout**, and unset behavior is byte-identical. The file is created or truncated (`os.Create`); on success gofib prints nothing to stdout and exits `0`. If the file cannot be opened (unwritable directory, missing permission), gofib exits `1` with `gofib: cannot open <path>: <os error>` on stderr and no stdout output. |
 
 With no `-format`, plain `-pretty` and `-json` together is not an
 error; JSON mode simply wins and the output is identical to `-json`

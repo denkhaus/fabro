@@ -14,7 +14,9 @@
 // sums to 0); it cannot be combined with a positive -seed. -json and -pretty are shortcuts for -format json
 // and -format pretty: with -format unset they keep their legacy
 // meaning (and plain -json -pretty lets JSON win), but an explicit
-// -format must agree with any also-given shortcut. The -version flag
+// -format must agree with any also-given shortcut. The -o flag
+// redirects all output (any mode, -sum, -version) to a file instead of
+// stdout; the default empty value means stdout. The -version flag
 // prints "gofib <Version>" and takes precedence over every other flag.
 package main
 
@@ -155,6 +157,7 @@ type options struct {
 	pretty  bool
 	version bool
 	sum     bool
+	output  string
 }
 
 // parseOptions registers gofib's flags, parses args, and applies every
@@ -189,6 +192,7 @@ func parseOptions(args []string) (options, error) {
 	fs.BoolVar(&opts.pretty, "pretty", false, "shortcut for -format pretty: align text output into two right-aligned columns sized to the largest index and value")
 	fs.BoolVar(&opts.version, "version", false, "print \"gofib <version>\" and exit; takes precedence over all other flags")
 	fs.BoolVar(&opts.sum, "sum", false, "print the sum of the Fibonacci numbers in the selected range instead of the numbers themselves (cannot be combined with a positive -seed)")
+	fs.StringVar(&opts.output, "o", "", "write output to this file instead of stdout (default empty = stdout)")
 	fs.Parse(args)
 	if opts.version {
 		return opts, nil
@@ -305,13 +309,39 @@ func run(w io.Writer, opts options) error {
 	return nil
 }
 
+// resolveOutput maps the -o value to a writer. An empty path means
+// stdout, returned unclosable (closing stdout is main's job only if it
+// opened the file itself). Any other path is created or truncated; a
+// failure to open is reported with the gofib-prefixed message callers
+// print on stderr.
+func resolveOutput(path string) (io.WriteCloser, error) {
+	if path == "" {
+		return nil, nil
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, fmt.Errorf("gofib: cannot open %s: %v", path, err)
+	}
+	return f, nil
+}
+
 func main() {
 	opts, err := parseOptions(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if err := run(os.Stdout, opts); err != nil {
+	w := io.Writer(os.Stdout)
+	out, err := resolveOutput(opts.output)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if out != nil {
+		defer out.Close()
+		w = out
+	}
+	if err := run(w, opts); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
