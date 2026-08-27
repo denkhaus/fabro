@@ -122,5 +122,6 @@ pub struct DaytonaSnapshotSettings {
     pub cpu:        Option<i32>,
     pub memory:     Option<i32>,
     pub disk:       Option<i32>,
+    pub image:      Option<String>,
     pub dockerfile: Option<DockerfileSource>,
 }

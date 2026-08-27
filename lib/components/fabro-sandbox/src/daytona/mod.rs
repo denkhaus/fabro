@@ -44,7 +44,7 @@ use crate::{
 
 /// Remediation shown when a Daytona sandbox has no usable Bash.
 const DAYTONA_BASH_REMEDIATION: &str = "Daytona sandboxes require /bin/bash for every command, with no `sh` fallback. Use the \
-     built-in Daytona snapshot, or a custom snapshot whose Dockerfile installs bash.";
+     built-in Daytona snapshot, or a custom snapshot whose image provides bash.";
 
 /// Remediation shown when the session transport reaches Bash but never
 /// completes.
@@ -162,6 +162,18 @@ pub mod snapshot_identity {
         entrypoint:        Option<&'static str>,
     }
 
+    #[derive(Serialize)]
+    struct ImageSnapshotManifest<'a> {
+        identity_version: u8,
+        provider:         &'static str,
+        tenant:           &'static str,
+        image:            &'a str,
+        cpu:              Option<i32>,
+        memory_gb:        Option<i32>,
+        disk_gb:          Option<i32>,
+        entrypoint:       Option<&'static str>,
+    }
+
     pub fn snapshot_name(api_key: &str, config: &DaytonaSnapshotConfig) -> crate::Result<String> {
         let manifest = canonical_manifest(config)?;
         let mut mac = HmacSha256::new_from_slice(api_key.as_bytes())
@@ -174,16 +186,36 @@ pub mod snapshot_identity {
     }
 
     fn canonical_manifest(config: &DaytonaSnapshotConfig) -> crate::Result<Vec<u8>> {
-        let dockerfile = match &config.dockerfile {
-            Some(DockerfileSource::Inline(text)) => text.as_str(),
-            Some(DockerfileSource::Path { .. }) => {
+        let dockerfile = match (&config.image, &config.dockerfile) {
+            (Some(image), None) => {
+                return serde_json::to_vec(&ImageSnapshotManifest {
+                    identity_version: IDENTITY_VERSION,
+                    provider: PROVIDER,
+                    tenant: TENANT,
+                    image,
+                    cpu: config.cpu,
+                    memory_gb: config.memory,
+                    disk_gb: config.disk,
+                    entrypoint: None,
+                })
+                .map_err(|err| {
+                    crate::Error::context("Failed to serialize Daytona snapshot identity", err)
+                });
+            }
+            (Some(_), Some(_)) => {
                 return Err(crate::Error::message(
-                    "Daytona snapshot dockerfile path should have been resolved to inline content before sandbox creation",
+                    "Daytona custom snapshots accept either image.docker or image.dockerfile, not both",
                 ));
             }
-            None => {
+            (None, None) => {
                 return Err(crate::Error::message(
-                    "Daytona custom snapshots require image.dockerfile",
+                    "Daytona custom snapshots require image.docker or image.dockerfile",
+                ));
+            }
+            (None, Some(DockerfileSource::Inline(text))) => text.as_str(),
+            (None, Some(DockerfileSource::Path { .. })) => {
+                return Err(crate::Error::message(
+                    "Daytona snapshot dockerfile path should have been resolved to inline content before sandbox creation",
                 ));
             }
         };
@@ -202,6 +234,45 @@ pub mod snapshot_identity {
             crate::Error::context("Failed to serialize Daytona snapshot identity", err)
         })
     }
+}
+
+fn create_snapshot_params(
+    name: &str,
+    config: &DaytonaSnapshotConfig,
+) -> crate::Result<daytona_sdk::CreateSnapshotParams> {
+    let image = match (&config.image, &config.dockerfile) {
+        (Some(image), None) => daytona_sdk::ImageSource::Name(image.clone()),
+        (None, Some(DockerfileSource::Inline(dockerfile))) => {
+            daytona_sdk::ImageSource::Custom(daytona_sdk::DockerImage::from_dockerfile(dockerfile))
+        }
+        (None, Some(DockerfileSource::Path { .. })) => {
+            return Err(crate::Error::message(format!(
+                "Snapshot '{name}': dockerfile path should have been resolved to inline content before sandbox creation"
+            )));
+        }
+        (Some(_), Some(_)) => {
+            return Err(crate::Error::message(format!(
+                "Snapshot '{name}': image.docker and image.dockerfile cannot both be configured"
+            )));
+        }
+        (None, None) => {
+            return Err(crate::Error::message(format!(
+                "Snapshot '{name}' does not exist and no image or dockerfile was provided to create it"
+            )));
+        }
+    };
+
+    Ok(daytona_sdk::CreateSnapshotParams {
+        name: name.to_string(),
+        image,
+        resources: Some(daytona_sdk::Resources {
+            cpu: config.cpu,
+            memory: config.memory,
+            disk: config.disk,
+            ..Default::default()
+        }),
+        entrypoint: None,
+    })
 }
 
 #[derive(Debug)]
@@ -1101,9 +1172,9 @@ impl DaytonaSandbox {
 
     /// Ensure the named snapshot exists and is active.
     ///
-    /// If the snapshot doesn't exist and a dockerfile is provided, creates it
-    /// and polls until it reaches `Active` state. Returns an error if the
-    /// snapshot is in a terminal failure state.
+    /// If the snapshot doesn't exist and an image source is provided, creates
+    /// it and polls until it reaches `Active` state. Returns an error if
+    /// the snapshot is in a terminal failure state.
     async fn ensure_snapshot(
         &self,
         name: &str,
@@ -1131,37 +1202,11 @@ impl DaytonaSandbox {
                 }
             }
             Err(daytona_sdk::DaytonaError::NotFound { .. }) => {
-                let dockerfile = match &snap_cfg.dockerfile {
-                    Some(DockerfileSource::Inline(s)) => s.as_str(),
-                    Some(DockerfileSource::Path { .. }) => {
-                        return Err(crate::Error::message(format!(
-                            "Snapshot '{name}': dockerfile path should have been resolved to inline content before sandbox creation"
-                        )));
-                    }
-                    None => {
-                        return Err(crate::Error::message(format!(
-                            "Snapshot '{name}' does not exist and no dockerfile provided to create it"
-                        )));
-                    }
-                };
-
                 self.emit(SandboxEvent::SnapshotCreating {
                     name: name.to_string(),
                 });
 
-                let params = daytona_sdk::CreateSnapshotParams {
-                    name:       name.to_string(),
-                    image:      daytona_sdk::ImageSource::Custom(
-                        daytona_sdk::DockerImage::from_dockerfile(dockerfile),
-                    ),
-                    resources:  Some(daytona_sdk::Resources {
-                        cpu: snap_cfg.cpu,
-                        memory: snap_cfg.memory,
-                        disk: snap_cfg.disk,
-                        ..Default::default()
-                    }),
-                    entrypoint: None,
-                };
+                let params = create_snapshot_params(name, snap_cfg)?;
                 self.client.snapshot.create(&params).await.map_err(|e| {
                     crate::Error::context(format!("Failed to create snapshot '{name}'"), e)
                 })?;
@@ -1470,7 +1515,7 @@ impl Sandbox for DaytonaSandbox {
             .config
             .snapshot
             .as_ref()
-            .filter(|snapshot| snapshot.dockerfile.is_some())
+            .filter(|snapshot| snapshot.image.is_some() || snapshot.dockerfile.is_some())
         {
             let api_key = self.api_key.as_deref().ok_or_else(|| {
                 self.fail_init(
@@ -3653,6 +3698,7 @@ mod tests {
             cpu:        Some(2),
             memory:     Some(4),
             disk:       Some(10),
+            image:      None,
             dockerfile: Some(DockerfileSource::Inline(
                 "FROM ubuntu:24.04\nRUN apt-get update".to_string(),
             )),
@@ -3663,6 +3709,7 @@ mod tests {
         let rotated_key = snapshot_identity::snapshot_name("dtn_rotated", &config).unwrap();
 
         assert_eq!(first, second);
+        assert_eq!(first, "fabro-e607185f-c7ab-88c9-bf9d-d70addba9298");
         assert_ne!(first, rotated_key);
         let uuid = first
             .strip_prefix("fabro-")
@@ -3678,6 +3725,7 @@ mod tests {
             cpu:        Some(2),
             memory:     Some(4),
             disk:       Some(10),
+            image:      None,
             dockerfile: Some(DockerfileSource::Inline("FROM ubuntu:24.04".to_string())),
         };
         let base_name = snapshot_identity::snapshot_name("dtn_secret", &base).unwrap();
@@ -3715,6 +3763,7 @@ mod tests {
             cpu:        None,
             memory:     None,
             disk:       None,
+            image:      None,
             dockerfile: Some(DockerfileSource::Inline(
                 "FROM private.example.com/secret-image\nRUN echo raw-secret".to_string(),
             )),
@@ -3728,6 +3777,49 @@ mod tests {
         assert!(!name.contains("dtn_super_secret_key"));
     }
 
+    #[test]
+    fn computed_snapshot_identity_changes_for_image_reference() {
+        let config = DaytonaSnapshotConfig {
+            cpu:        Some(2),
+            memory:     Some(4),
+            disk:       Some(10),
+            image:      Some("ubuntu:24.04".to_string()),
+            dockerfile: None,
+        };
+        let first = snapshot_identity::snapshot_name("dtn_secret", &config).unwrap();
+        let changed = snapshot_identity::snapshot_name("dtn_secret", &DaytonaSnapshotConfig {
+            image: Some("ubuntu:24.10".to_string()),
+            ..config
+        })
+        .unwrap();
+
+        assert_ne!(first, changed);
+        assert!(!first.contains("ubuntu"));
+    }
+
+    #[test]
+    fn snapshot_creation_uses_named_image_source() {
+        let config = DaytonaSnapshotConfig {
+            cpu:        Some(2),
+            memory:     Some(4),
+            disk:       Some(10),
+            image:      Some("ubuntu:24.04".to_string()),
+            dockerfile: None,
+        };
+
+        let params = create_snapshot_params("fabro-test", &config).unwrap();
+
+        assert_eq!(params.name, "fabro-test");
+        assert!(matches!(
+            params.image,
+            daytona_sdk::ImageSource::Name(ref image) if image == "ubuntu:24.04"
+        ));
+        let resources = params.resources.expect("resources should be configured");
+        assert_eq!(resources.cpu, Some(2));
+        assert_eq!(resources.memory, Some(4));
+        assert_eq!(resources.disk, Some(10));
+    }
+
     #[tokio::test]
     async fn ensure_snapshot_uses_computed_snapshot_name_for_daytona_api_calls() {
         let api_key = "dtn_secret";
@@ -3735,6 +3827,7 @@ mod tests {
             cpu:        Some(2),
             memory:     Some(4),
             disk:       Some(10),
+            image:      None,
             dockerfile: Some(DockerfileSource::Inline("FROM ubuntu:24.04".to_string())),
         };
         let computed_name = snapshot_identity::snapshot_name(api_key, &snapshot).unwrap();

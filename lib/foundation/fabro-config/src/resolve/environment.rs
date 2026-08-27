@@ -206,10 +206,14 @@ fn validate_daytona_image_settings(
     path: &str,
     errors: &mut Vec<ResolveError>,
 ) {
-    if environment.provider == EnvironmentProvider::Daytona && environment.image.docker.is_some() {
+    if environment.provider == EnvironmentProvider::Daytona
+        && environment.image.docker.is_some()
+        && environment.image.dockerfile.is_some()
+    {
         errors.push(ResolveError::Invalid {
             path:   format!("{path}.image"),
-            reason: "daytona environments do not support image.docker; use image.dockerfile for custom snapshots".to_string(),
+            reason: "daytona environments accept either image.docker or image.dockerfile, not both"
+                .to_string(),
         });
     }
 }

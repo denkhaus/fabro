@@ -212,7 +212,7 @@ Install seeds a `default` environment into SQLite. It is a normal persisted envi
 
 | Environment field | Local | Docker | Daytona |
 |---|---|---|---|
-| `image.docker` | Ignored | Docker image | Error |
+| `image.docker` | Ignored | Docker image | Snapshot base image; Fabro computes the snapshot name |
 | `image.dockerfile` | Ignored | Warning; ignored | Snapshot Dockerfile; Fabro computes the snapshot name |
 | `resources.cpu` | Warning; ignored | `cpu_quota = cpu * 100000` | Snapshot CPU |
 | `resources.memory` | Warning; ignored | Container memory limit | Snapshot memory |
@@ -276,14 +276,14 @@ The image must provide `/bin/bash`; Fabro evaluates every sandbox command with i
 
 ## Daytona
 
-Daytona runs tools in a cloud sandbox. Without `image.dockerfile`, Fabro uses Daytona's built-in `daytona-medium` snapshot. With `image.dockerfile`, Fabro computes a deterministic internal snapshot name from the Dockerfile, resource hints, a single-tenant scope, and the Daytona API key.
+Daytona runs tools in a cloud sandbox. Set either `image.docker` to use an existing Docker image or `image.dockerfile` to build a custom image. Fabro computes a deterministic internal snapshot name from the selected image source, resource hints, a single-tenant scope, and the Daytona API key. If neither field is set, Fabro uses Daytona's built-in `daytona-medium` snapshot.
 
 ```toml title="workflow.toml"
 [environments.cloud]
 provider = "daytona"
 
 [environments.cloud.image]
-dockerfile = { path = "Dockerfile" }
+docker = "python:3.11-slim"
 
 [environments.cloud.resources]
 cpu = 4

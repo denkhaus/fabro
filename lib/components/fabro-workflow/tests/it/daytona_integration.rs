@@ -406,6 +406,7 @@ async fn daytona_snapshot_sandbox() {
             cpu:        Some(2),
             memory:     Some(4),
             disk:       Some(10),
+            image:      None,
             dockerfile: Some(fabro_sandbox::daytona::DockerfileSource::Inline(
                 "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y ripgrep".to_string(),
             )),

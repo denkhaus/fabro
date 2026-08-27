@@ -28,42 +28,48 @@ pub fn daytona_config_from_environment(
     settings: &RunEnvironmentSettings,
     clone: &RunCloneSettings,
 ) -> DaytonaConfig {
+    let dockerfile = settings
+        .image
+        .dockerfile
+        .as_ref()
+        .map(|dockerfile| match dockerfile {
+            ResolvedDockerfileSource::Inline(text) => SandboxDockerfileSource::Inline(text.clone()),
+            ResolvedDockerfileSource::Path { path } => {
+                SandboxDockerfileSource::Path { path: path.clone() }
+            }
+        });
+    let snapshot = (settings.image.docker.is_some() || dockerfile.is_some()).then(|| {
+        DaytonaSnapshotSettings {
+            cpu: settings.resources.cpu,
+            memory: settings
+                .resources
+                .memory
+                .map(|size| size_to_gb_i32(size.as_bytes())),
+            disk: settings
+                .resources
+                .disk
+                .map(|size| size_to_gb_i32(size.as_bytes())),
+            image: settings.image.docker.clone(),
+            dockerfile,
+        }
+    });
+
     DaytonaConfig {
         auto_stop_interval: settings
             .lifecycle
             .auto_stop
             .map(|duration| duration_to_minutes_i32(duration.as_std())),
-        labels:             (!settings.labels.is_empty()).then(|| settings.labels.clone()),
-        snapshot:           settings.image.dockerfile.as_ref().map(|dockerfile| {
-            DaytonaSnapshotSettings {
-                cpu:        settings.resources.cpu,
-                memory:     settings
-                    .resources
-                    .memory
-                    .map(|size| size_to_gb_i32(size.as_bytes())),
-                disk:       settings
-                    .resources
-                    .disk
-                    .map(|size| size_to_gb_i32(size.as_bytes())),
-                dockerfile: Some(match dockerfile {
-                    ResolvedDockerfileSource::Inline(text) => {
-                        SandboxDockerfileSource::Inline(text.clone())
-                    }
-                    ResolvedDockerfileSource::Path { path } => {
-                        SandboxDockerfileSource::Path { path: path.clone() }
-                    }
-                }),
-            }
-        }),
-        network:            Some(match settings.network.mode {
+        labels: (!settings.labels.is_empty()).then(|| settings.labels.clone()),
+        snapshot,
+        network: Some(match settings.network.mode {
             EnvironmentNetworkMode::Block => DaytonaNetwork::Block,
             EnvironmentNetworkMode::AllowAll => DaytonaNetwork::AllowAll,
             EnvironmentNetworkMode::CidrAllowList => {
                 DaytonaNetwork::AllowList(settings.network.allow.clone())
             }
         }),
-        clone_depth:        clone.depth_limit(),
-        skip_clone:         !clone.enabled,
+        clone_depth: clone.depth_limit(),
+        skip_clone: !clone.enabled,
     }
 }
 
@@ -242,5 +248,20 @@ mod tests {
             "unexpected error: {message}"
         );
         assert!(!missing.exists());
+    }
+
+    #[cfg(feature = "daytona")]
+    #[test]
+    fn daytona_config_maps_docker_image_to_snapshot() {
+        let mut settings = run_environment(EnvironmentProvider::Daytona);
+        settings.image.docker = Some("ubuntu:24.04".to_string());
+        settings.resources.cpu = Some(2);
+
+        let config = daytona_config_from_environment(&settings, &RunCloneSettings::default());
+        let snapshot = config.snapshot.expect("image should configure a snapshot");
+
+        assert_eq!(snapshot.image.as_deref(), Some("ubuntu:24.04"));
+        assert!(snapshot.dockerfile.is_none());
+        assert_eq!(snapshot.cpu, Some(2));
     }
 }

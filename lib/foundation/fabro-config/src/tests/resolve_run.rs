@@ -658,8 +658,8 @@ dockerfile = { path = "Dockerfile" }
 }
 
 #[test]
-fn daytona_image_docker_errors() {
-    let err = workflow_settings_from_toml_with_catalog(
+fn daytona_image_docker_resolves() {
+    let settings = workflow_settings_from_toml_with_catalog(
         r#"
 _version = 1
 
@@ -674,12 +674,41 @@ provider = "daytona"
 docker = "ubuntu:24.04"
 "#,
     )
-    .expect_err("daytona should reject docker image selection");
+    .expect("daytona should accept docker image selection")
+    .run;
+
+    assert_eq!(settings.environment.provider, EnvironmentProvider::Daytona);
+    assert_eq!(
+        settings.environment.image.docker.as_deref(),
+        Some("ubuntu:24.04")
+    );
+    assert!(settings.environment.image.dockerfile.is_none());
+}
+
+#[test]
+fn daytona_rejects_docker_image_and_dockerfile_together() {
+    let err = workflow_settings_from_toml_with_catalog(
+        r#"
+_version = 1
+
+[run.environment]
+id = "cloud"
+"#,
+        r#"
+[environments.cloud]
+provider = "daytona"
+
+[environments.cloud.image]
+docker = "ubuntu:24.04"
+dockerfile = "FROM ubuntu:24.04"
+"#,
+    )
+    .expect_err("daytona should reject two snapshot sources");
 
     let message = err.to_string();
     assert!(
-        message.contains("image.docker") && message.contains("daytona"),
-        "expected daytona image.docker diagnostic, got: {message}"
+        message.contains("image.docker") && message.contains("image.dockerfile"),
+        "expected mutually exclusive image diagnostic, got: {message}"
     );
 }
 
