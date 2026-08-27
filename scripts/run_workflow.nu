@@ -174,12 +174,19 @@ def main [
 
     # Auto-merge engages within seconds of the status; poll briefly so
     # the ff-pull path wins over the local squash fallback.
+    #
+    # Detection is TREE EQUALITY, not commit ancestry: GitHub auto-merge
+    # SQUASHES the run branch into the base (run 01M11P68SHFS: merge
+    # commit 5f953db8, one parent), so the run-branch tip is never an
+    # ancestor of origin/<branch> after integration — an is-ancestor
+    # check can never see the landed merge and always falls into the
+    # squash fallback (push race, ALARM exit before the review step).
     mut auto_merged = false
     for _ in 1..9 {
         sleep 10sec
         let _ = (do { git fetch origin $branch } | complete)
         $auto_merged = ((do {
-            git merge-base --is-ancestor $run_branch $"origin/($branch)"
+            git diff --quiet $run_branch $"origin/($branch)"
         } | complete).exit_code == 0)
         if $auto_merged { break }
     }
@@ -195,7 +202,27 @@ def main [
             print 'run_workflow: run branch carries no tree changes — nothing to commit'
         } else {
             ok (do { git commit -m $"($workflow): run ($run_id)" } | complete) 'git commit'
-            ok (do { git push origin $branch } | complete) 'git push'
+            let pushed = (do { git push origin $branch } | complete)
+            if $pushed.exit_code != 0 {
+                # A late auto-merge can land between the poll above and
+                # this push: origin moved ahead, the push rejects
+                # non-fast-forward. If the remote tree now equals the run
+                # branch's tree, GitHub integrated the same work — the
+                # local squash is redundant. Drop it, sync to origin, and
+                # CONTINUE (the improve review must still run); only a
+                # push failure without a landed merge stays fatal.
+                let _ = (do { git fetch origin $branch } | complete)
+                let landed = ((do {
+                    git diff --quiet $run_branch $"origin/($branch)"
+                } | complete).exit_code == 0)
+                if $landed {
+                    print 'run_workflow: auto-merge landed during squash fallback — syncing to origin, continuing'
+                    ok (do { git reset --hard $"origin/($branch)" } | complete) 'git reset'
+                } else {
+                    let detail = ($pushed.stderr | str trim | default $pushed.stdout | str trim)
+                    fail $"git push failed: ($detail)"
+                }
+            }
         }
     }
 

@@ -7,6 +7,12 @@ digraph Develop {
         // the 1M window while a 14 KB evidence capture got blob-ref'd,
         // forcing a tool round-trip per review. The window is not the
         // constraint; the blob detour is (first auto-merge run review).
+        // Gate measurement (run 01M11P68SHF, fabro-29f7 step 3): with
+        // scoping + budget, stage.prompt sizes stayed CONSTANT across 3
+        // review cycles (planner 12.7-13.0k, implementer 13.2-13.5k,
+        // reviewer 12.8-13.7k chars) — the old linear growth (25.6k by
+        // cycle 3) is gone. Residual duplication (per-visit stage
+        // sections) is engine-side dedup work, not a budget problem.
         preamble_budget_kb=24,
         // Deterministic cycle guards (fabro-45d0): engine injects
         // seed_cycles = { node -> completed visits since current_seed_id
@@ -127,8 +133,9 @@ digraph Develop {
     // costliest stage (first auto-merge run). The inline PASS/FAIL report
     // and the evidence capture do the heavy lifting; low keeps live
     // verification (blob reads, byte-compares) which is tool work, not
-    // reasoning. Re-measure next run; revert to high if verification
-    // quality degrades (false approvals, more Verification-blocked).
+    // reasoning. Re-measured run 01M11P68SHF (3 seeds, 3/3 first-pass
+    // approvals): 346-595 reasoning tokens, $0.043-$0.078 per review —
+    // locked in as the steady state.
     reviewer [
         label="Reviewer",
         prompt="@prompts/reviewer.md",
