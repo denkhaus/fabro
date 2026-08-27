@@ -42,6 +42,7 @@ DISPOSITIONS = (
     "refuted",
     "verification-incomplete",
     "deferred-by-cap",
+    "duplicate",
 )
 VERIFICATION_STATUSES = ("complete", "partial", "skipped-low-effort")
 COMPLETION_STATUSES = ("complete", "partial")
@@ -161,6 +162,8 @@ def validate_manifest(value: object) -> Dict[str, Any]:
     counts = as_map(manifest.get("counts"))
     for field in ("raw", "deduplicated", "sweep", "kept", "reported"):
         non_negative_int(counts.get(field), f"manifest counts.{field}")
+    if "duplicates" in counts:
+        non_negative_int(counts.get("duplicates"), "manifest counts.duplicates")
     completion = as_map(manifest.get("completion"))
     if completion.get("status") not in COMPLETION_STATUSES:
         die("manifest completion.status is invalid")
@@ -249,6 +252,23 @@ def validate_finding(value: object, index: int) -> Dict[str, Any]:
             die(f"{field}.rule_ids contains an invalid compiled check ID")
     if len(set(rule_ids)) != len(rule_ids):
         die(f"{field}.rule_ids repeats a check ID")
+    anchors = finding.get("anchors", [])
+    if not isinstance(anchors, list) or len(anchors) > MAX_RULE_IDS_PER_FINDING:
+        die(f"{field}.anchors must be a bounded array")
+    normalized_anchors: List[Dict[str, Any]] = []
+    for index, anchor in enumerate(anchors):
+        record = as_map(anchor)
+        anchor_field = f"{field}.anchors[{index}]"
+        if record.get("category") not in CATEGORIES:
+            die(f"{anchor_field}.category is not in the closed list")
+        normalized_anchors.append(
+            {
+                "id": safe_text(record.get("id"), f"{anchor_field}.id", allow_empty=False),
+                "file": safe_repo_path(record.get("file"), f"{anchor_field}.file"),
+                "line": positive_int(record.get("line"), f"{anchor_field}.line"),
+                "category": record["category"],
+            }
+        )
     return {
         "id": display_id,
         "file": path,
@@ -272,6 +292,7 @@ def validate_finding(value: object, index: int) -> Dict[str, Any]:
         "reports": positive_int(finding.get("reports"), f"{field}.reports"),
         "reporters": [safe_text(item, f"{field}.reporters") for item in reporters],
         "rule_ids": list(rule_ids),
+        "anchors": normalized_anchors,
         "source": safe_text(finding.get("source"), f"{field}.source"),
         "verdict": finding["verdict"],
         "verdict_reasoning": safe_text(
@@ -354,6 +375,11 @@ def validate_coverage(value: object) -> Dict[str, Any]:
         isinstance(item, str) for item in rejected
     ):
         die("coverage.rejectedFindingReports must be an array of strings")
+    filtered = coverage.get("filteredFindingReports", [])
+    if not isinstance(filtered, list) or not all(
+        isinstance(item, str) for item in filtered
+    ):
+        die("coverage.filteredFindingReports must be an array of strings")
     rules = coverage.get("rules")
     if rules is not None:
         rules = as_map(rules)
@@ -561,6 +587,17 @@ def finding_markdown(finding: Mapping[str, Any]) -> List[str]:
             else ""
         ),
     ]
+    anchors = finding.get("anchors") or []
+    if anchors:
+        lines.append(
+            "Also reported at "
+            + ", ".join(
+                f"{code_span(anchor['file'] + ':' + str(anchor['line']))} "
+                f"({anchor['category']}, {escape_markdown(anchor['id'])})"
+                for anchor in anchors
+            )
+            + " -- judged the same defect and folded in."
+        )
     if finding["summary"].strip() != finding["short_summary"].strip():
         lines.extend(["", escape_markdown(finding["summary"])])
     lines.extend(
@@ -675,6 +712,14 @@ def render_markdown(
         lines.extend(
             f"  - {escape_markdown(entry)}" for entry in rejected
         )
+    filtered = coverage.get("filteredFindingReports") or []
+    if filtered:
+        lines.append(
+            f"- Filtered by review policy ({len(filtered)}):"
+        )
+        lines.extend(
+            f"  - {escape_markdown(entry)}" for entry in filtered
+        )
     lines.append("")
     return "\n".join(lines)
 
@@ -743,6 +788,8 @@ def jsonl_line(finding: Mapping[str, Any]) -> str:
             "summary",
             "failure_scenario",
             "reports",
+            "rule_ids",
+            "anchors",
             "source",
         )
     }

@@ -87,6 +87,13 @@ CATEGORIES = (
 )
 # Correctness bugs always outrank cleanup findings when a cap forces a cut.
 CLEANUP_CATEGORIES = frozenset(CATEGORIES) - {"correctness"}
+# Policy filters drop well-formed findings the review does not want; unlike a
+# contract rejection they are recorded in coverage without making the run
+# partial. Conventions findings must cite a rule check: calibration showed
+# generic angles' unbacked style observations were the noisiest class, while
+# every rule-cited conventions finding survived verification.
+CONVENTIONS_FILTER_REASON = "conventions finding names no applicable rule check"
+POLICY_FILTER_REASONS = frozenset({CONVENTIONS_FILTER_REASON})
 VERDICTS = ("CONFIRMED", "PLAUSIBLE", "REFUTED")
 KEPT_VERDICTS = frozenset({"CONFIRMED", "PLAUSIBLE"})
 SEVERITY_RANK = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
@@ -94,6 +101,10 @@ CONFIDENCE_RANK = SEVERITY_RANK
 
 SAFE_REV_RE = re.compile(r"^[A-Za-z0-9@][A-Za-z0-9._/@{}^~:+-]{0,399}$")
 REVIEW_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+CANDIDATE_ID_RE = re.compile(r"^[FS][1-9][0-9]*$")
+# Other candidates in the same file a verifier is shown, nearest first, so it
+# can mark its claim a duplicate of one that describes the same defect.
+SIBLING_CAP = 6
 
 # Lines of context kept on each side of a finding's anchor line.
 CODE_FRAME_CONTEXT = 4
@@ -1896,6 +1907,8 @@ def finding_or_rejection(
             if raw_rule_id not in (effective.get(path) or ()):
                 return None, "the named rule check does not apply to the file"
         rule_ids = sorted(set(raw_rule_ids))
+    if category == "conventions" and not rule_ids:
+        return None, CONVENTIONS_FILTER_REASON
 
     return {
         "file": path,
@@ -1913,26 +1926,29 @@ def finding_or_rejection(
 def findings_and_rejections(
     value: Any,
     rule_context: Optional[Mapping[str, Any]] = None,
-) -> Tuple[Optional[Dict[str, Any]], List[str]]:
-    """Split a finder result into usable findings and rejection reasons."""
+) -> Tuple[Optional[Dict[str, Any]], List[str], List[str]]:
+    """Split a finder result into findings, contract rejections, and filters."""
     if not isinstance(value, dict) or not isinstance(value.get("findings"), list):
-        return None, []
+        return None, [], []
     findings: List[Dict[str, Any]] = []
     rejections: List[str] = []
+    filtered: List[str] = []
     for position, raw in enumerate(value["findings"], 1):
         finding, reason = finding_or_rejection(raw, rule_context)
         if finding is not None:
             findings.append(finding)
+        elif reason in POLICY_FILTER_REASONS:
+            filtered.append(f"finding {position}: {reason}")
         else:
             rejections.append(f"finding {position}: {reason}")
-    return {"findings": findings}, rejections
+    return {"findings": findings}, rejections, filtered
 
 
 def normalize_findings_result(
     value: Any,
     rule_context: Optional[Mapping[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
-    result, _rejections = findings_and_rejections(value, rule_context)
+    result, _rejections, _filtered = findings_and_rejections(value, rule_context)
     return result
 
 
@@ -1957,10 +1973,16 @@ def normalize_verdict(value: Any) -> Optional[Dict[str, str]]:
         return None
     if not isinstance(value.get("reasoning"), str):
         return None
-    return {
+    result = {
         "verdict": verdict,
         "reasoning": clean_text(value.get("reasoning"), 4000),
     }
+    duplicate_of = value.get("duplicate_of")
+    if isinstance(duplicate_of, str) and CANDIDATE_ID_RE.fullmatch(
+        duplicate_of.strip()
+    ):
+        result["duplicate_of"] = duplicate_of.strip()
+    return result
 
 
 # --- Parallel merges ---------------------------------------------------------
@@ -2020,11 +2042,12 @@ def merge_phase(
         if not isinstance(job, dict):
             continue
         rejections: List[str] = []
+        filtered: List[str] = []
         if phase == "finders":
             # Rejections are recorded here, where the agent's raw output is
             # first seen. Later steps re-normalize an already-clean result and
             # would find nothing to report.
-            normalized, rejections = findings_and_rejections(
+            normalized, rejections, filtered = findings_and_rejections(
                 value,
                 state_rule_context(
                     state, require=job.get("kind") == "rule-audit"
@@ -2038,11 +2061,15 @@ def merge_phase(
         if isinstance(job_id, str) and job_id:
             if job_id not in result_map:
                 result_map[job_id] = normalized
-                if rejections:
-                    state.setdefault("rejected_findings", {})[job_id] = [
-                        f"{one_line(job.get('name'), 200)}: {reason}"
-                        for reason in rejections
-                    ]
+                for key, reasons in (
+                    ("rejected_findings", rejections),
+                    ("filtered_findings", filtered),
+                ):
+                    if reasons:
+                        state.setdefault(key, {})[job_id] = [
+                            f"{one_line(job.get('name'), 200)}: {reason}"
+                            for reason in reasons
+                        ]
     return {f"{phase}_results_merged": len(result_map)}
 
 
@@ -2136,7 +2163,7 @@ def merge_sweep(state: Dict[str, Any], raw: Any) -> Dict[str, Any]:
     kept or not -- so a candidate the panel already refuted cannot reappear
     through the sweep.
     """
-    normalized, rejections = findings_and_rejections(
+    normalized, rejections, filtered = findings_and_rejections(
         raw, state_rule_context(state, require=False)
     )
     if normalized is None:
@@ -2146,10 +2173,14 @@ def merge_sweep(state: Dict[str, Any], raw: Any) -> Dict[str, Any]:
         state["run_sweep_verify"] = False
         set_phase_jobs(state, "sweep_verify", [])
         return {"run_sweep_verify": False}
-    if rejections:
-        state.setdefault("rejected_findings", {})["sweep"] = [
-            f"sweep: {reason}" for reason in rejections
-        ]
+    for key, reasons in (
+        ("rejected_findings", rejections),
+        ("filtered_findings", filtered),
+    ):
+        if reasons:
+            state.setdefault(key, {})["sweep"] = [
+                f"sweep: {reason}" for reason in reasons
+            ]
     seen = {
         candidate_key(candidate)
         for candidate in state.get("candidates") or []
@@ -2170,8 +2201,15 @@ def merge_sweep(state: Dict[str, Any], raw: Any) -> Dict[str, Any]:
         candidate["id"] = f"S{index}"
 
     use_verify = bool(state.get("use_verify"))
+    # A sweep candidate's siblings include the kept finder findings, so a
+    # re-found defect can be folded into the finding already on the list.
+    kept_finder = [
+        record["candidate"]
+        for record in state.get("reviewed") or []
+        if isinstance(record, dict) and record.get("kept")
+    ]
     jobs = (
-        build_verify_jobs(state, fresh, "sweep_verify")
+        build_verify_jobs(state, fresh, "sweep_verify", pool=fresh + kept_finder)
         if use_verify
         else []
     )
@@ -2247,9 +2285,39 @@ def rank_key(finding: Mapping[str, Any]) -> Tuple[Any, ...]:
     )
 
 
+def sibling_claims(
+    candidate: Mapping[str, Any],
+    pool: Sequence[Mapping[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Other candidates in the same file, nearest by line first."""
+    line = int(candidate.get("line") or 0)
+    same_file = [
+        other
+        for other in pool
+        if other.get("file") == candidate.get("file")
+        and other.get("id") != candidate.get("id")
+    ]
+    same_file.sort(
+        key=lambda other: (
+            abs(int(other.get("line") or 0) - line),
+            str(other.get("id")),
+        )
+    )
+    return [
+        {
+            "id": other.get("id"),
+            "line": other.get("line"),
+            "category": other.get("category"),
+            "short_summary": other.get("short_summary"),
+        }
+        for other in same_file[:SIBLING_CAP]
+    ]
+
+
 def verification_claim(
     candidate: Mapping[str, Any],
     state: Optional[Mapping[str, Any]] = None,
+    pool: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """The subset of a candidate a verifier is shown.
 
@@ -2257,7 +2325,8 @@ def verification_claim(
     could anchor a verifier that must judge the claim on the code. At the
     rule-mapped tiers the claim also carries the claimed rule IDs and every
     effective check for the candidate's file; the engine stays authoritative
-    about applicability, and the verifier judges only violation.
+    about applicability, and the verifier judges only violation. ``pool``
+    supplies the same-file siblings the verifier may name as duplicates.
     """
     claim: Dict[str, Any] = {
         "file": candidate.get("file"),
@@ -2267,6 +2336,7 @@ def verification_claim(
         "summary": candidate.get("summary"),
         "failure_scenario": candidate.get("failure_scenario"),
         "reports": int(candidate.get("reports") or 1),
+        "siblings": sibling_claims(candidate, pool or []),
     }
     rules_state = (state or {}).get("rules")
     if isinstance(rules_state, dict) and rules_state.get("enabled"):
@@ -2296,10 +2366,12 @@ def build_verify_jobs(
     state: Mapping[str, Any],
     candidates: Sequence[Mapping[str, Any]],
     phase: str,
+    pool: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     bias = str(state.get("verify_bias") or "standard")
     target = common_target(state)
     prefix = "verify" if phase == "verify" else "sweep-verify"
+    siblings_pool = list(pool if pool is not None else candidates)
     jobs: List[Dict[str, Any]] = []
     for candidate in candidates:
         jobs.append(
@@ -2307,12 +2379,26 @@ def build_verify_jobs(
                 "name": f"{prefix}:{candidate['id']}",
                 "job_id": f"{prefix}:{candidate['id']}",
                 "candidate_id": candidate["id"],
-                "claim": verification_claim(candidate, state),
+                "claim": verification_claim(candidate, state, siblings_pool),
                 "bias": bias,
                 "target": target,
             }
         )
     return jobs
+
+
+def stored_claim(
+    state: Mapping[str, Any],
+    phase: str,
+    candidate: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """The exact claim a verifier was shown, from the dispatched job."""
+    for job in (state.get("phase_jobs") or {}).get(phase) or []:
+        if isinstance(job, dict) and job.get("candidate_id") == candidate.get(
+            "id"
+        ) and isinstance(job.get("claim"), dict):
+            return dict(job["claim"])
+    return verification_claim(candidate, state)
 
 
 def plan_verify() -> None:
@@ -2685,6 +2771,7 @@ def reportable_finding(
         "reporters": list(candidate.get("reporters") or [])
         or [str(candidate.get("angle") or candidate.get("source") or "")],
         "rule_ids": list(candidate.get("rule_ids") or []),
+        "anchors": list(candidate.get("anchors") or []),
         "source": candidate.get("source", "finder"),
         "verdict": verdict["verdict"] if verdict else "UNVERIFIED",
         "verdict_reasoning": verdict["reasoning"] if verdict else "",
@@ -2692,13 +2779,14 @@ def reportable_finding(
     }
 
 
-def rejected_finding_reports(state: Mapping[str, Any]) -> List[str]:
-    rejected = state.get("rejected_findings")
-    if not isinstance(rejected, dict):
+def finding_reports(state: Mapping[str, Any], key: str) -> List[str]:
+    """Flatten per-job rejection or filter reports in job-ID order."""
+    by_job = state.get(key)
+    if not isinstance(by_job, dict):
         return []
     reports: List[str] = []
-    for job_id in sorted(rejected):
-        entries = rejected[job_id]
+    for job_id in sorted(by_job):
+        entries = by_job[job_id]
         if isinstance(entries, list):
             reports.extend(str(entry) for entry in entries)
     return reports
@@ -2716,13 +2804,17 @@ def vote_records(
         entry: Dict[str, Any] = {
             "phase": phase,
             "candidate_id": candidate.get("id"),
-            "claim": verification_claim(candidate, state),
+            "claim": stored_claim(
+                state, "verify" if phase == "verify" else "sweep_verify", candidate
+            ),
             "bias": str(state.get("verify_bias") or "standard"),
             "completed": verdict is not None,
         }
         if verdict is not None:
             entry["verdict"] = verdict["verdict"]
             entry["reasoning"] = verdict["reasoning"]
+            if verdict.get("duplicate_of"):
+                entry["duplicate_of"] = verdict["duplicate_of"]
         records.append(entry)
     return records
 
@@ -2759,7 +2851,7 @@ def calibration_summary(
 
     def tally(bucket: Dict[str, int], disposition: str) -> None:
         bucket["candidates"] += 1
-        if disposition in {"reportable", "deferred-by-cap"}:
+        if disposition in {"reportable", "deferred-by-cap", "duplicate"}:
             bucket["kept"] += 1
         elif disposition == "refuted":
             bucket["refuted"] += 1
@@ -2806,6 +2898,10 @@ def calibration_summary(
     for report in coverage.get("rejectedFindingReports") or []:
         reason = str(report).rsplit(": ", 1)[-1]
         rejections[reason] = rejections.get(reason, 0) + 1
+    filtered: Dict[str, int] = {}
+    for report in coverage.get("filteredFindingReports") or []:
+        reason = str(report).rsplit(": ", 1)[-1]
+        filtered[reason] = filtered.get(reason, 0) + 1
 
     grouping = coverage.get("grouping") or {}
     rules = coverage.get("rules") or {}
@@ -2847,6 +2943,7 @@ def calibration_summary(
         "byRule": by_rule,
         "byCategory": by_category,
         "rejections": rejections,
+        "filtered": filtered,
         "caps": {
             "jobDrops": sum(
                 int(value) for value in (caps.get("perJobDrops") or {}).values()
@@ -2855,6 +2952,98 @@ def calibration_summary(
             "reportDeferred": caps.get("reportDeferred", 0),
         },
     }
+
+
+def fold_duplicates(
+    state: Mapping[str, Any],
+    kept_records: Sequence[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+    """Fold verified duplicates into the finding they duplicate.
+
+    A verifier may name a sibling as ``duplicate_of``. The fold is
+    deterministic: the named sibling must have been shown to that verifier
+    and must itself have survived; the lower-ranked finding folds into the
+    higher-ranked one (a mutual claim resolves the same way), chains follow
+    to their surviving root, and the primary gains the secondary's anchor,
+    reporters, rule IDs, and report count. Returns the surviving primaries,
+    re-ranked, and the secondary-to-primary map.
+    """
+    allowed: Dict[str, set] = {}
+    for phase in ("verify", "sweep_verify"):
+        for job in (state.get("phase_jobs") or {}).get(phase) or []:
+            if not isinstance(job, dict):
+                continue
+            siblings = (job.get("claim") or {}).get("siblings") or []
+            allowed[str(job.get("candidate_id"))] = {
+                str(sibling.get("id"))
+                for sibling in siblings
+                if isinstance(sibling, dict)
+            }
+    ordered = sorted(kept_records, key=lambda record: rank_key(record["candidate"]))
+    by_id = {str(record["candidate"].get("id")): record for record in ordered}
+    rank_index = {
+        str(record["candidate"].get("id")): index
+        for index, record in enumerate(ordered)
+    }
+    folded: Dict[str, str] = {}
+
+    def root(candidate_id: str) -> str:
+        seen = set()
+        while candidate_id in folded and candidate_id not in seen:
+            seen.add(candidate_id)
+            candidate_id = folded[candidate_id]
+        return candidate_id
+
+    for record in ordered:
+        candidate_id = str(record["candidate"].get("id"))
+        target = (record.get("verdict") or {}).get("duplicate_of")
+        if (
+            not target
+            or target == candidate_id
+            or target not in allowed.get(candidate_id, set())
+            or target not in by_id
+            or rank_index[target] > rank_index[candidate_id]
+        ):
+            continue
+        primary_id = root(target)
+        if primary_id != candidate_id:
+            folded[candidate_id] = primary_id
+
+    for secondary_id, primary_id in folded.items():
+        primary = by_id[primary_id]["candidate"]
+        secondary = by_id[secondary_id]["candidate"]
+        primary["reports"] = int(primary.get("reports") or 1) + int(
+            secondary.get("reports") or 1
+        )
+        reporters = list(primary.get("reporters") or [])
+        for reporter in secondary.get("reporters") or [
+            str(secondary.get("source") or "")
+        ]:
+            if reporter and reporter not in reporters:
+                reporters.append(reporter)
+        primary["reporters"] = reporters
+        primary["rule_ids"] = sorted(
+            set(primary.get("rule_ids") or []) | set(secondary.get("rule_ids") or [])
+        )
+        primary.setdefault("anchors", []).append(
+            {
+                "id": secondary_id,
+                "file": secondary.get("file"),
+                "line": secondary.get("line"),
+                "category": secondary.get("category"),
+            }
+        )
+    primaries = [
+        record
+        for record in ordered
+        if str(record["candidate"].get("id")) not in folded
+    ]
+    for record in primaries:
+        anchors = record["candidate"].get("anchors")
+        if anchors:
+            anchors.sort(key=lambda anchor: (str(anchor["file"]), int(anchor["line"])))
+    primaries.sort(key=lambda record: rank_key(record["candidate"]))
+    return primaries, folded
 
 
 def final_tally() -> None:
@@ -2878,6 +3067,7 @@ def final_tally() -> None:
         record for record in sweep_reviewed if record["kept"]
     )
     kept_records.sort(key=lambda record: rank_key(record["candidate"]))
+    kept_records, folded = fold_duplicates(state, kept_records)
     report_cap = int(state.get("report_cap") or 8)
     reported_records = kept_records[:report_cap]
     deferred_by_report_cap = max(0, len(kept_records) - len(reported_records))
@@ -2916,6 +3106,10 @@ def final_tally() -> None:
         }
         if verdict is not None:
             entry["verdict"] = verdict["verdict"]
+        if disposition == "duplicate":
+            entry["duplicate_of"] = folded.get(str(candidate.get("id")))
+        if candidate.get("anchors"):
+            entry["anchors"] = list(candidate["anchors"])
         return entry
 
     verified_ids = {
@@ -2939,7 +3133,9 @@ def final_tally() -> None:
                     )
                 )
             continue
-        if candidate_key(record["candidate"]) in reported_keys and record["kept"]:
+        if str(record["candidate"].get("id")) in folded:
+            disposition = "duplicate"
+        elif candidate_key(record["candidate"]) in reported_keys and record["kept"]:
             disposition = "reportable"
         elif record["kept"]:
             disposition = "deferred-by-cap"
@@ -2950,7 +3146,9 @@ def final_tally() -> None:
             disposition = "refuted"
         ledger.append(ledger_entry(record, disposition))
     for record in sweep_reviewed:
-        if candidate_key(record["candidate"]) in reported_keys and record["kept"]:
+        if str(record["candidate"].get("id")) in folded:
+            disposition = "duplicate"
+        elif candidate_key(record["candidate"]) in reported_keys and record["kept"]:
             disposition = "reportable"
         elif record["kept"]:
             disposition = "deferred-by-cap"
@@ -3003,7 +3201,8 @@ def final_tally() -> None:
             ),
             "reportDeferred": deferred_by_report_cap,
         },
-        "rejectedFindingReports": rejected_finding_reports(state),
+        "rejectedFindingReports": finding_reports(state, "rejected_findings"),
+        "filteredFindingReports": finding_reports(state, "filtered_findings"),
     }
     if rule_mapped:
         coverage["finders"]["byKind"] = dict(
@@ -3074,6 +3273,7 @@ def final_tally() -> None:
             "deduplicated": len(state.get("candidates") or []),
             "sweep": len(sweep_candidates),
             "kept": len(kept_records),
+            "duplicates": len(folded),
             "reported": len(findings),
         },
         "completion": {

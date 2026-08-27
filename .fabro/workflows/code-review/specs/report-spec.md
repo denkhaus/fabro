@@ -17,8 +17,9 @@ The canonical bundle is schema version 3.
   both layers.
 - `candidate-ledger.jsonl` contains every unique candidate after
   deduplication, plus every sweep candidate. Each record has one disposition:
-  `reportable`, `refuted`, `verification-incomplete`, or `deferred-by-cap`,
-  and carries the candidate's applicable `rule_ids` (empty outside the
+  `reportable`, `refuted`, `verification-incomplete`, `deferred-by-cap`, or
+  `duplicate` (folded into the finding named by `duplicate_of`), and
+  carries the candidate's applicable `rule_ids` (empty outside the
   rule-mapped tiers).
 - `findings.json` contains only the reportable subset. It is the authoritative
   finding list. Each reported finding also carries a `code` excerpt, which the
@@ -113,6 +114,20 @@ and confidence and counting the reports. Sweep candidates are deduplicated
 against every candidate already seen -- kept or not -- so a refuted candidate
 cannot reappear through the sweep.
 
+The same defect can also be reported at different lines or under different
+categories. Each verification claim therefore carries `siblings` -- the
+other candidates in the same file, nearest first -- and a verifier that
+judges its claim to describe the same defect as a sibling returns
+`duplicate_of` with that sibling's id. After verification the engine folds
+deterministically: the named sibling must have been shown to that verifier
+and must itself have survived; the lower-ranked finding folds into the
+higher-ranked one (a mutual claim resolves the same way); the primary gains
+the secondary's anchor, reporters, rule IDs, and report count. Folded
+candidates take the ledger disposition `duplicate` with `duplicate_of`, the
+primary's `anchors` list them, and `manifest.counts.duplicates` counts them.
+A duplicate claim naming a refuted, unshown, or lower-ranked sibling is
+ignored and the finding stands on its own verdict.
+
 Ranking is deterministic: `correctness` findings always outrank the cleanup
 categories (`reuse`, `simplification`, `efficiency`, `altitude`,
 `conventions`, `test-coverage`); within a class the order is severity, then
@@ -164,6 +179,12 @@ finding never becomes a candidate, so without this record a review that
 discarded everything it was given would be indistinguishable from one that
 found nothing. The reasons are fixed strings naming the field at fault; they
 never quote the model's own text.
+
+`coverage.filteredFindingReports` names well-formed findings dropped by
+review policy rather than by the contract -- today, a `conventions` finding
+that names no applicable rule check, since that category belongs to rule
+audits. Filters are recorded the same way as rejections but do not make the
+review partial.
 
 ## Rendering safety
 

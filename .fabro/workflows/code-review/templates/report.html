@@ -223,6 +223,12 @@ function renderFinding(finding) {
     finding.reports + " report(s): " + (finding.reporters || []).join(", ")));
   card.appendChild(chips);
   card.appendChild(el("p", "location", finding.file + ":" + finding.line));
+  if ((finding.anchors || []).length) {
+    card.appendChild(el("p", "location", "Also reported at " +
+      finding.anchors.map(a => a.file + ":" + a.line + " (" + a.category +
+        ", " + a.id + ")").join(", ") +
+      " — judged the same defect and folded in."));
+  }
   if (finding.summary.trim() !== finding.short_summary.trim()) {
     card.appendChild(el("p", null, finding.summary));
   }
@@ -270,6 +276,15 @@ function renderCoverage() {
       "Rejected finding reports (" + rejected.length + "):");
     const sub = el("ul");
     for (const entry of rejected) sub.appendChild(el("li", null, entry));
+    item.appendChild(sub);
+    list.appendChild(item);
+  }
+  const filtered = coverage.filteredFindingReports || [];
+  if (filtered.length) {
+    const item = el("li", null,
+      "Filtered by review policy (" + filtered.length + "):");
+    const sub = el("ul");
+    for (const entry of filtered) sub.appendChild(el("li", null, entry));
     item.appendChild(sub);
     list.appendChild(item);
   }
