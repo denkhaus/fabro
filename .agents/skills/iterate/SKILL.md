@@ -1,6 +1,6 @@
 ---
 name: iterate
-description: Fabro dev lifecycle in one flow. Use when the user invokes /iterate or asks to start or continue a development cycle - select seed work, build, run code-review, deepen with improve-codebase-architecture when warranted, grill with docs at pivotal forks, and close EVERY cycle with the mandatory self-reflection step that optimizes this skill, records learnings to mulch, and files seeds for new demands.
+description: Fabro dev lifecycle in one flow. Use when the user invokes /iterate or asks to start or continue a development cycle - select seed work, build, run code-review, deepen with improve-codebase-architecture when warranted, grill with docs at pivotal forks, and close EVERY cycle with the mandatory self-reflection step that optimizes this skill, records learnings to mulch, and files seeds for new demands. The rust-style-guide skill is the binding Rust coding policy in every phase.
 ---
 
 # /iterate (fabro only)
@@ -8,6 +8,16 @@ description: Fabro dev lifecycle in one flow. Use when the user invokes /iterate
 One development cycle, end to end. The user starts a cycle by invoking
 /iterate; the agent drives everything else. Chat replies in German,
 all written artifacts in English.
+
+## Coding policy (Rust)
+
+The `rust-style-guide` skill is THE binding Rust coding policy for all
+Rust work in this repo - upstream code, our platform changes, and local
+features share ONE style. It is the same guide the upstream workflow
+agents use (supporting files in `.fabro/skills/rust-style-guide/`). It is
+central in every phase below: grill against it, plan against it, build
+with it, review by it, deepen with it. A deviation from the guide is a
+decision, not an accident - it needs the user plus an ADR.
 
 ## Phase 0 - Orient (always, cheap)
 
@@ -28,12 +38,21 @@ all written artifacts in English.
   blockers (`!`), and the user's current focus.
 - If the choice or the design is pivotal or unclear: run a
   grill-with-docs session FIRST (grilling + domain-modeling; evidence =
-  CONTEXT.md, ADRs, seeds, code). Never guess at weichenstellende
-  decisions - they belong to the user.
+  CONTEXT.md, ADRs, seeds, code, rust-style-guide). Never guess at
+  weichenstellende decisions - they belong to the user.
+- Plan against the guide: the plan names the guideline pages the design
+  must satisfy (newtypes, enums-vs-traits, error taxonomy, async task
+  lifecycle, ...). A design that must deviate is itself a pivotal fork -
+  put it to the user in the grill session, never drift silently.
 - Claim the seed: `sd update <id> --status in_progress`.
 
 ## Phase 2 - Build
 
+- Rust changes (platform AND local features): load the rust-style-guide
+  skill FIRST - `guidelines.md` plus only the pages the task needs, and
+  `workflows/new-rust-project.md` when creating or configuring a crate.
+  Write code that conforms from the start; do not retrofit style after
+  review.
 - Platform change: implement directly on the current branch per
   AGENTS.md (build/test commands, API workflow, strategy docs - read
   the relevant doc before changing covered areas).
@@ -48,12 +67,20 @@ all written artifacts in English.
 
 - Run a code-review skill session on the diff since the base point
   (standards axis + spec axis). Fix findings before continuing.
+- The standards axis IS rust-style-guide (plus the AGENTS.md strategy
+  docs): reviewers load `workflows/code-review-refactor.md` and the
+  guideline pages covering the diff. Guide findings are findings, not
+  opinions.
 
 ## Phase 4 - Deepen (conditional)
 
 - When review surfaced structural smells or the touched area needs
   design sharpening: run improve-codebase-architecture. Skip when the
   cycle was mechanical - not every cycle needs this.
+- Judge deepening proposals against the guide as well: enums-vs-traits,
+  newtype vs primitives, error taxonomy and layer boundaries, public
+  API evolution, module visibility. codebase-design supplies the
+  vocabulary (depth, seam); rust-style-guide names the target shape.
 
 ## Phase 5 - Integrate
 
@@ -91,4 +118,5 @@ all written artifacts in English.
   decisions, this skill = process. Nothing stays in chat that belongs
   in one of them.
 - Test-only helpers behind the test-support feature; strum for enum
-  string/int conversions; follow AGENTS.md Rust import style.
+  string/int conversions; AGENTS.md Rust import style - these
+  fabro-specific rules sit ON TOP of rust-style-guide, never against it.

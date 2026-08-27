@@ -62,6 +62,11 @@ test initializers with E0063/E0061 (2026-08-27 lesson).
 While resolving, watch for upstream code that SUPERSEDES our features
 (see "Smart adaptation" below).
 
+Style-guide sync: when upstream changes `.fabro/skills/rust-style-guide/`,
+copy `.fabro/skills/rust-style-guide/SKILL.md` byte-identical over
+`.agents/skills/rust-style-guide/SKILL.md` so the agent-facing coding
+policy (see /iterate) never drifts from upstream's; note it in the report.
+
 ## Verification phase
 
 Order matters; a red earlier step means fix before continuing.
