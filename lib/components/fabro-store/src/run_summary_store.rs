@@ -384,6 +384,19 @@ impl RunSummaryStore {
         connection: &mut SqliteConnection,
         run_id: &RunId,
     ) -> Result<Vec<EventEnvelope>> {
+        Ok(
+            Self::list_events_with_json_on_connection(connection, run_id)
+                .await?
+                .into_iter()
+                .map(|(envelope, _event_json)| envelope)
+                .collect(),
+        )
+    }
+
+    pub(crate) async fn list_events_with_json_on_connection(
+        connection: &mut SqliteConnection,
+        run_id: &RunId,
+    ) -> Result<Vec<(EventEnvelope, String)>> {
         let mut query = QueryBuilder::<Sqlite>::new(SELECT_EVENT_COLUMNS);
         query
             .push(" WHERE run_id = ")
@@ -405,7 +418,143 @@ impl RunSummaryStore {
                 actual_last_seq,
             });
         }
-        decode_event_rows(&rows, run_id)
+        decode_event_rows_with_json(&rows, run_id)
+    }
+
+    pub(crate) async fn insert_imported_run_on_connection(
+        connection: &mut SqliteConnection,
+        entry: &CachedRunProjection,
+    ) -> Result<()> {
+        let record = PreparedRunSummary::from_entry(entry);
+        ensure_entry_identity(entry, &record, entry.last_seq)?;
+        if !(1..=keys::MAX_EVENT_SEQ).contains(&entry.last_seq) {
+            return Err(Error::RunHeadMismatch {
+                run_id:            entry.run_id.to_string(),
+                expected_last_seq: entry.last_seq,
+                actual_last_seq:   None,
+            });
+        }
+        insert_run_on_connection(connection, &record).await
+    }
+
+    pub(crate) async fn insert_imported_event_on_connection(
+        connection: &mut SqliteConnection,
+        run_id: &RunId,
+        payload: &EventPayload,
+        envelope: &EventEnvelope,
+        event_json: &str,
+    ) -> Result<()> {
+        payload.validate(run_id)?;
+        let decoded = RunEvent::try_from(payload)?;
+        if envelope.event != decoded || envelope.event.run_id != *run_id {
+            return Err(run_event_mismatch(run_id, envelope.seq, "event_json"));
+        }
+        if !(1..=keys::MAX_EVENT_SEQ).contains(&envelope.seq) {
+            return Err(run_event_mismatch(run_id, envelope.seq, "seq"));
+        }
+        insert_event_json_on_connection(connection, run_id, envelope, event_json).await
+    }
+
+    pub(crate) async fn verify_current_run_on_connection(
+        connection: &mut SqliteConnection,
+        entry: &CachedRunProjection,
+    ) -> Result<()> {
+        let record = PreparedRunSummary::from_entry(entry);
+        ensure_entry_identity(entry, &record, entry.last_seq)?;
+        let row = sqlx::query(
+            r"
+SELECT id, source_last_seq, created_at_ms, started_at_ms, last_event_at_ms, completed_at_ms,
+       status, archived_at_ms, parent_id, title, workflow_slug, workflow_name,
+       repository_name, automation_id, diff_files_changed, diff_additions, diff_deletions,
+       input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens,
+       total_usd_micros, summary_json
+FROM runs
+WHERE id = ?
+",
+        )
+        .bind(entry.run_id.to_string())
+        .fetch_optional(connection)
+        .await?
+        .ok_or_else(|| Error::RunNotFound(entry.run_id.to_string()))?;
+
+        let run = &record.run;
+        let diff = run.diff.unwrap_or_default();
+        verify_run_field(&row, run, "id", &run.id.to_string())?;
+        verify_run_field(&row, run, "source_last_seq", &i64::from(record.last_seq))?;
+        verify_run_field(
+            &row,
+            run,
+            "created_at_ms",
+            &run.timestamps.created_at.timestamp_millis(),
+        )?;
+        verify_run_field(
+            &row,
+            run,
+            "started_at_ms",
+            &run.timestamps
+                .started_at
+                .map(|value| value.timestamp_millis()),
+        )?;
+        verify_run_field(
+            &row,
+            run,
+            "last_event_at_ms",
+            &run.timestamps
+                .last_event_at
+                .unwrap_or(run.timestamps.created_at)
+                .timestamp_millis(),
+        )?;
+        verify_run_field(
+            &row,
+            run,
+            "completed_at_ms",
+            &run.timestamps
+                .completed_at
+                .map(|value| value.timestamp_millis()),
+        )?;
+        verify_run_field(
+            &row,
+            run,
+            "status",
+            &run.lifecycle.status.kind().to_string(),
+        )?;
+        verify_run_field(
+            &row,
+            run,
+            "archived_at_ms",
+            &run.lifecycle
+                .archived_at
+                .map(|value| value.timestamp_millis()),
+        )?;
+        verify_run_field(
+            &row,
+            run,
+            "parent_id",
+            &run.parent_id.map(|value| value.to_string()),
+        )?;
+        verify_run_field(&row, run, "title", &run.title)?;
+        verify_run_field(&row, run, "workflow_slug", &run.workflow.slug)?;
+        verify_run_field(&row, run, "workflow_name", &record.workflow_name)?;
+        verify_run_field(&row, run, "repository_name", &record.repository_name)?;
+        verify_run_field(
+            &row,
+            run,
+            "automation_id",
+            &run.automation
+                .as_ref()
+                .map(|automation| automation.id.clone()),
+        )?;
+        verify_run_field(&row, run, "diff_files_changed", &diff.files_changed)?;
+        verify_run_field(&row, run, "diff_additions", &diff.additions)?;
+        verify_run_field(&row, run, "diff_deletions", &diff.deletions)?;
+        verify_run_field(&row, run, "input_tokens", &record.input_tokens)?;
+        verify_run_field(&row, run, "output_tokens", &record.output_tokens)?;
+        verify_run_field(&row, run, "reasoning_tokens", &record.reasoning_tokens)?;
+        verify_run_field(&row, run, "cache_read_tokens", &record.cache_read_tokens)?;
+        verify_run_field(&row, run, "cache_write_tokens", &record.cache_write_tokens)?;
+        verify_run_field(&row, run, "total_usd_micros", &record.total_usd_micros)?;
+        verify_run_field(&row, run, "summary_json", &serde_json::to_string(run)?)?;
+        Ok(())
     }
 
     pub(crate) async fn list_events_from_with_limit_on_connection(
@@ -625,8 +774,17 @@ async fn insert_event_on_connection(
     envelope: &EventEnvelope,
 ) -> Result<()> {
     let event_json = serde_json::to_string(payload)?;
+    insert_event_json_on_connection(connection, &record.run.id, envelope, &event_json).await
+}
+
+async fn insert_event_json_on_connection(
+    connection: &mut SqliteConnection,
+    run_id: &RunId,
+    envelope: &EventEnvelope,
+    event_json: &str,
+) -> Result<()> {
     sqlx::query(INSERT_EVENT_SQL)
-        .bind(record.run.id.to_string())
+        .bind(run_id.to_string())
         .bind(i64::from(envelope.seq))
         .bind(envelope.event.event_name())
         .bind(envelope.event.node_id.as_deref())
@@ -664,6 +822,34 @@ fn decode_event_rows(rows: &[SqliteRow], run_id: &RunId) -> Result<Vec<EventEnve
     rows.iter()
         .map(|row| decode_event_row(row, run_id, &run_id_text))
         .collect()
+}
+
+fn decode_event_rows_with_json(
+    rows: &[SqliteRow],
+    run_id: &RunId,
+) -> Result<Vec<(EventEnvelope, String)>> {
+    let run_id_text = run_id.to_string();
+    rows.iter()
+        .map(|row| {
+            let event_json: String = row.try_get("event_json")?;
+            let envelope = decode_event_row(row, run_id, &run_id_text)?;
+            Ok((envelope, event_json))
+        })
+        .collect()
+}
+
+fn verify_run_field<T>(row: &SqliteRow, run: &Run, field: &'static str, expected: &T) -> Result<()>
+where
+    T: for<'row> sqlx::Decode<'row, Sqlite> + sqlx::Type<Sqlite> + PartialEq,
+{
+    let stored: T = row.try_get(field)?;
+    if &stored != expected {
+        return Err(Error::RunSummaryMismatch {
+            run_id: run.id.to_string(),
+            field,
+        });
+    }
+    Ok(())
 }
 
 fn decode_event_row(

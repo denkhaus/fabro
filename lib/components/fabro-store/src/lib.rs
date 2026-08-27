@@ -8,6 +8,7 @@ mod error;
 mod keyed_mutex;
 mod keys;
 mod legacy_blob_import;
+mod legacy_run_history_import;
 mod record;
 mod run_sessions;
 mod run_state;
@@ -36,6 +37,10 @@ pub use keyed_mutex::{KeyedMutex, KeyedMutexGuard};
 pub use legacy_blob_import::{
     LegacyBlobImportError, LegacyBlobImportReport, LegacyBlobInventory, LegacyBlobInventoryError,
     LegacyBlobVerificationError, LegacyBlobVerificationReport,
+};
+pub use legacy_run_history_import::{
+    LegacyRunHistoryDiagnostics, LegacyRunHistoryImportError, LegacyRunHistoryImportReport,
+    LegacyRunHistoryVerificationError, LegacyRunHistoryVerificationReport,
 };
 pub use run_sessions::{
     ProjectedRunSession, project_run_session, project_run_session_with_context,
