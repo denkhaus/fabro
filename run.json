@@ -647,7 +647,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-27T13:22:50.898009719Z",
-  "last_event_at": "2026-08-27T13:36:00.803406221Z",
+  "last_event_at": "2026-08-27T13:36:52.217433364Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -3629,9 +3629,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 599,
       "checkpoint": {
-        "timestamp": "2026-08-27T13:36:01.003056673Z",
+        "timestamp": "2026-08-27T13:36:05.576194355Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -3650,33 +3650,39 @@
         ],
         "node_retries": {},
         "context_values": {
-          "preferred_label": "More seeds",
-          "failure_signature": "",
-          "current_seed_title": "gofib: consolidate flag parsing and validation into an options struct",
-          "internal.seed_cycle_anchor": "fabro-28e8",
-          "current_seed_id": "fabro-28e8",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
             "chars": 5869,
             "preview": "Implemented fabro-28e8: the options-struct refactor of `/workspace/fabro/main.go` plus call-site adaptation in `/workspace/fabro/fib_test.go`.\n\n**What changed in `main.go`:** added `type options struc"
           },
-          "thread.implementer.current_node": "tester",
-          "current_node": "closeout",
-          "internal.run_id": "01M11P68SHFS165HP9ATK6094V",
-          "last_stage": "reviewer",
-          "implementation_summary": "Refactored `/workspace/fabro/main.go`: new `options` struct (n, start, limit, seed, format, json, pretty, version, sum) and `parseOptions(args)` using a fresh ExitOnError FlagSet, owning all validation in the pinned order (version short-circuit → mode → seed<0 → seed+sum → range checks skipped when seed>0); `run(w, opts)` now has zero validation branches (only the version print, seed lookup override, and rendering, with a defensive unreachable resolveMode); `main` shrank to parseOptions → stderr/exit 1 → run. `/workspace/fabro/fib_test.go`: added `opts(...)` helper adapting every run call site (assertions untouched), rerouted the five rejection tests through parseOptions, and added TestParseOptionsDefaults, TestParseOptionsInvalid (all nine rejections, exact messages), TestParseOptionsVersionShortCircuit. gofmt/vet/test green; smoke test confirmed exit 2 on `-n=abc`, version short-circuit, seed-skip, csv output. Verification report: PASS options struct fields (main.go); PASS parseOptions single rejection point with byte-identical errors (main.go + TestParseOptionsInvalid); PASS validation order incl. version-before-validation and seed-skips-range (parseOptions + TestParseOptionsVersionShortCircuit + TestRunSeed); PASS run(w, opts) no validation, version print stays, doc comment output-only (main.go run); PASS main shrunk (main.go main); PASS flag-syntax errors exit 2 with usage (ExitOnError FlagSet + smoke test); PASS TestParseOptionsInvalid covers all nine cases (fib_test.go); PASS TestParseOptionsDefaults (fib_test.go); PASS version short-circuit pinned (TestParseOptionsVersionShortCircuit); PASS no behavior change, no deps, README untouched (full suite green, only main.go/fib_test.go modified).",
-          "graph.max_node_visits": "40",
-          "internal.retry_count.implementer": 0,
-          "internal.retry_count.tester": 0,
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 4364,
-            "preview": "Claimed fabro-28e8. Two spec readings I resolved in the brief: the `-version` print branch is output behavior (stays in `run`; only rejection logic moves to `parseOptions`), and the positive-`-seed` r"
-          },
-          "thread.start.current_node": "planner",
           "review_verdict": "approved",
+          "internal.retry_count.evidence": 0,
+          "last_stage": "reviewer",
+          "thread.start.current_node": "planner",
+          "internal.retry_count.closeout": 0,
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2911,
+            "preview": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,"
+          },
+          "internal.retry_count.start": 0,
+          "failure_class": "",
+          "internal.retry_count.implementer": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "preferred_label": "More seeds",
+          "thread.evidence.current_node": "reviewer",
+          "internal.fidelity": "compact",
+          "internal.thread_id": "reviewer",
+          "graph.preamble_budget_kb": "24",
+          "current_node": "closeout",
+          "current_seed_id": "fabro-28e8",
+          "current_seed_brief": "Behavior-preserving refactor of `/workspace/fabro/main.go` (plus tests in `/workspace/fabro/fib_test.go`): move flag parsing and ALL validation out of `run` into an options struct + `parseOptions`, keeping every error string and all behavior byte-identical. No `-o` flag, no `resolveOutput` helper — that is the follow-up seed fabro-c295; only leave room so adding `-o` is a one-field change. Acceptance criteria: - `type options struct` in `main.go` holding every flag value with those names: n, start, limit, seed, format, json, pretty, version, sum. - `parseOptions(args []string) (options, error)` owns flag registration + Parse and every rejection currently inside `run`: invalid n/start/limit/seed, seed+sum conflict, format validity (parseMode), format-vs-shortcut disagreement (resolveMode). Error strings byte-identical — existing tests pin them. - Validation ORDER preserved exactly as today: `-version` short-circuits BEFORE any validation (parseOptions returns the version flag with no error even alongside invalid flags); then mode resolution (bad format, then shortcut conflicts); then seed<0; then seed+sum; then n/start/limit checks — and the range checks are SKIPPED when seed>0 (today `-seed 5 -n 0` prints one line; a naive validate-everything parseOptions would break it). - `run` becomes `run(w io.Writer, opts options) error` containing NO rejection logic; the `-version` print branch STAYS in run (it is output, not validation — that is the chosen reading of the spec, since main must shrink to parse→run); mode derivation from opts introduces no new error paths; run's doc comment updated to describe output only (validation comments move with the code). - `main` shrinks to: `opts, err := parseOptions(os.Args[1:])`; on error print to stderr and exit 1; else call `run(os.Stdout, opts)`. - Flag-SYNTAX errors (e.g. `-n=abc`) keep today's flag-package behavior: usage on stderr, exit 2, never a returned error — e.g. parse via `flag.CommandLine.Parse(args)` rather than a ContinueOnError FlagSet. - New table-driven `TestParseOptionsInvalid` covering EVERY rejection case with its exact error message: n=0, n=-1, start<0, limit<0, seed<0, seed+sum, bad format value, `-format json` with `-pretty`, `-format pretty` with `-json`. - New `TestParseOptionsDefaults` pinning defaults: n=100, start=0, limit=0, seed=0, format=\"\", all bools false. - A test pins the `-version` short-circuit: parseOptions with `-version` plus invalid flags (e.g. `-n 0` or a bad format) returns no error. - No behavior change: all existing tests pass with ONLY call-site adaptation to the new run signature (table constructors updated, assertions untouched); no external dependencies; README untouched (nothing user-visible changes); `just qualitygate` green. Done when run() contains zero validation branches, parseOptions is the single rejection point, the new tables cover every rejection above, and the full suite plus gate are green.",
+          "internal.node_visit_count": 2,
+          "command.output": "blob://sha256/b99b2936f2316dcb8f0ecea8555fde7b8b7d18e551b11204dce9f70081bd4626",
+          "internal.retry_count.reviewer": 0,
+          "internal.run_id": "01M11P68SHFS165HP9ATK6094V",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -3685,12 +3691,22 @@
             "reviewer": 1,
             "closeout": 1
           },
-          "command.output": "blob://sha256/b99b2936f2316dcb8f0ecea8555fde7b8b7d18e551b11204dce9f70081bd4626",
-          "internal.retry_count.evidence": 0,
-          "thread.evidence.current_node": "reviewer",
-          "internal.retry_count.closeout": 0,
-          "internal.work_dir": "/workspace/fabro",
-          "current_seed_brief": "Behavior-preserving refactor of `/workspace/fabro/main.go` (plus tests in `/workspace/fabro/fib_test.go`): move flag parsing and ALL validation out of `run` into an options struct + `parseOptions`, keeping every error string and all behavior byte-identical. No `-o` flag, no `resolveOutput` helper — that is the follow-up seed fabro-c295; only leave room so adding `-o` is a one-field change. Acceptance criteria: - `type options struct` in `main.go` holding every flag value with those names: n, start, limit, seed, format, json, pretty, version, sum. - `parseOptions(args []string) (options, error)` owns flag registration + Parse and every rejection currently inside `run`: invalid n/start/limit/seed, seed+sum conflict, format validity (parseMode), format-vs-shortcut disagreement (resolveMode). Error strings byte-identical — existing tests pin them. - Validation ORDER preserved exactly as today: `-version` short-circuits BEFORE any validation (parseOptions returns the version flag with no error even alongside invalid flags); then mode resolution (bad format, then shortcut conflicts); then seed<0; then seed+sum; then n/start/limit checks — and the range checks are SKIPPED when seed>0 (today `-seed 5 -n 0` prints one line; a naive validate-everything parseOptions would break it). - `run` becomes `run(w io.Writer, opts options) error` containing NO rejection logic; the `-version` print branch STAYS in run (it is output, not validation — that is the chosen reading of the spec, since main must shrink to parse→run); mode derivation from opts introduces no new error paths; run's doc comment updated to describe output only (validation comments move with the code). - `main` shrinks to: `opts, err := parseOptions(os.Args[1:])`; on error print to stderr and exit 1; else call `run(os.Stdout, opts)`. - Flag-SYNTAX errors (e.g. `-n=abc`) keep today's flag-package behavior: usage on stderr, exit 2, never a returned error — e.g. parse via `flag.CommandLine.Parse(args)` rather than a ContinueOnError FlagSet. - New table-driven `TestParseOptionsInvalid` covering EVERY rejection case with its exact error message: n=0, n=-1, start<0, limit<0, seed<0, seed+sum, bad format value, `-format json` with `-pretty`, `-format pretty` with `-json`. - New `TestParseOptionsDefaults` pinning defaults: n=100, start=0, limit=0, seed=0, format=\"\", all bools false. - A test pins the `-version` short-circuit: parseOptions with `-version` plus invalid flags (e.g. `-n 0` or a bad format) returns no error. - No behavior change: all existing tests pass with ONLY call-site adaptation to the new run signature (table constructors updated, assertions untouched); no external dependencies; README untouched (nothing user-visible changes); `just qualitygate` green. Done when run() contains zero validation branches, parseOptions is the single rejection point, the new tables cover every rejection above, and the full suite plus gate are green.",
+          "thread.closeout.current_node": "planner",
+          "thread.implementer.current_node": "tester",
+          "implementation_summary": "Refactored `/workspace/fabro/main.go`: new `options` struct (n, start, limit, seed, format, json, pretty, version, sum) and `parseOptions(args)` using a fresh ExitOnError FlagSet, owning all validation in the pinned order (version short-circuit → mode → seed<0 → seed+sum → range checks skipped when seed>0); `run(w, opts)` now has zero validation branches (only the version print, seed lookup override, and rendering, with a defensive unreachable resolveMode); `main` shrank to parseOptions → stderr/exit 1 → run. `/workspace/fabro/fib_test.go`: added `opts(...)` helper adapting every run call site (assertions untouched), rerouted the five rejection tests through parseOptions, and added TestParseOptionsDefaults, TestParseOptionsInvalid (all nine rejections, exact messages), TestParseOptionsVersionShortCircuit. gofmt/vet/test green; smoke test confirmed exit 2 on `-n=abc`, version short-circuit, seed-skip, csv output. Verification report: PASS options struct fields (main.go); PASS parseOptions single rejection point with byte-identical errors (main.go + TestParseOptionsInvalid); PASS validation order incl. version-before-validation and seed-skips-range (parseOptions + TestParseOptionsVersionShortCircuit + TestRunSeed); PASS run(w, opts) no validation, version print stays, doc comment output-only (main.go run); PASS main shrunk (main.go main); PASS flag-syntax errors exit 2 with usage (ExitOnError FlagSet + smoke test); PASS TestParseOptionsInvalid covers all nine cases (fib_test.go); PASS TestParseOptionsDefaults (fib_test.go); PASS version short-circuit pinned (TestParseOptionsVersionShortCircuit); PASS no behavior change, no deps, README untouched (full suite green, only main.go/fib_test.go modified).",
+          "outcome": "succeeded",
+          "thread.reviewer.current_node": "closeout",
+          "internal.retry_count.planner": 0,
+          "failure_signature": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "thread.tester.current_node": "evidence",
+          "internal.seed_cycle_anchor": "fabro-28e8",
+          "last_response": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,",
+          "current_seed_title": "gofib: consolidate flag parsing and validation into an options struct",
+          "internal.retry_count.tester": 0,
+          "graph.goal": "Implement product seed fabro-44b6 -format csv output mode first, then continue seed-by-seed through fabro-28e8 options refactor and fabro-c295 -o flag until no open seed remains.",
+          "graph.max_node_visits": "40",
+          "graph.rankdir": "LR",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -3699,61 +3715,118 @@
               "run() retains a defensive unreachable resolveMode error since options stores only flag values; noted as a possible simplification (store resolved mode) for fabro-c295, not a blocker."
             ]
           },
-          "internal.retry_count.planner": 0,
-          "internal.thread_id": "reviewer",
-          "thread.closeout.current_node": "planner",
-          "graph.rankdir": "LR",
-          "failure_class": "",
-          "internal.fidelity": "compact",
-          "thread.planner.current_node": "implementer",
-          "internal.retry_count.start": 0,
-          "last_response": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,",
-          "internal.retry_count.reviewer": 0,
-          "outcome": "succeeded",
-          "thread.tester.current_node": "evidence",
-          "graph.preamble_budget_kb": "24",
-          "internal.node_visit_count": 2,
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "thread.reviewer.current_node": "closeout",
-          "graph.goal": "Implement product seed fabro-44b6 -format csv output mode first, then continue seed-by-seed through fabro-28e8 options refactor and fabro-c295 -o flag until no open seed remains.",
-          "response.reviewer": {
+          "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.reviewer",
-            "chars": 2911,
-            "preview": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,"
-          }
+            "output_key": "output.planner",
+            "chars": 4364,
+            "preview": "Claimed fabro-28e8. Two spec readings I resolved in the brief: the `-version` print branch is output behavior (stays in `run`; only rejection logic moves to `parseOptions`), and the positive-`-seed` r"
+          },
+          "thread.planner.current_node": "implementer"
         },
         "node_outcomes": {
-          "start": {
+          "reviewer": {
             "status": "succeeded",
-            "usage": null
-          },
-          "tester": {
-            "status": "succeeded",
+            "preferred_label": "Approved",
             "context_updates": {
-              "command.output": "blob://sha256/34c320538832aa5fedb71e444d7413a3b0a24a4d749d86edd299efd54ac1a2ba"
+              "last_stage": "reviewer",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2911,
+                "preview": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,"
+              },
+              "last_response": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,",
+              "review_verdict": "approved",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Evidence diff is taken against the run base, so fabro-28e8's capture still contains fabro-44b6's closed csv hunks (main.go/fib_test.go/README); distinguishing per-seed scope required cross-checking the closed 44b6 spec — a per-seed base (previous seed's commit) would make scope attribution mechanical (run 01M11P68SHFS165HP9ATK6094V).",
+                  "Verified via direct repo reads because the blob ref truncated mid-diff (~8KB omitted covering TestParseOptionsDefaults/TestParseOptionsInvalid/TestRunSumSeedConflict); everything the spec names was confirmed present and exact.",
+                  "run() retains a defensive unreachable resolveMode error since options stores only flag values; noted as a possible simplification (store resolved mode) for fabro-c295, not a blocker."
+                ]
+              }
             },
-            "notes": "Script completed: just qualitygate",
-            "usage": null,
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 28211,
+                    "output_tokens": 962,
+                    "reasoning_tokens": 492,
+                    "cache_read_tokens": 61184,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 61795
+            },
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 1181,
-              "active_time_ms": 1181
+              "inference_time_ms": 36896,
+              "tool_time_ms": 413,
+              "active_time_ms": 37309
             }
           },
-          "evidence": {
+          "implementer": {
             "status": "succeeded",
+            "preferred_label": "Implemented",
             "context_updates": {
-              "command.output": "blob://sha256/57c40598fd8358e1f3b3d5e9b110fba065bfffce50929e1ab4e84b3c38d8c238"
+              "implementation_summary": "Refactored `/workspace/fabro/main.go`: new `options` struct (n, start, limit, seed, format, json, pretty, version, sum) and `parseOptions(args)` using a fresh ExitOnError FlagSet, owning all validation in the pinned order (version short-circuit → mode → seed<0 → seed+sum → range checks skipped when seed>0); `run(w, opts)` now has zero validation branches (only the version print, seed lookup override, and rendering, with a defensive unreachable resolveMode); `main` shrank to parseOptions → stderr/exit 1 → run. `/workspace/fabro/fib_test.go`: added `opts(...)` helper adapting every run call site (assertions untouched), rerouted the five rejection tests through parseOptions, and added TestParseOptionsDefaults, TestParseOptionsInvalid (all nine rejections, exact messages), TestParseOptionsVersionShortCircuit. gofmt/vet/test green; smoke test confirmed exit 2 on `-n=abc`, version short-circuit, seed-skip, csv output. Verification report: PASS options struct fields (main.go); PASS parseOptions single rejection point with byte-identical errors (main.go + TestParseOptionsInvalid); PASS validation order incl. version-before-validation and seed-skips-range (parseOptions + TestParseOptionsVersionShortCircuit + TestRunSeed); PASS run(w, opts) no validation, version print stays, doc comment output-only (main.go run); PASS main shrunk (main.go main); PASS flag-syntax errors exit 2 with usage (ExitOnError FlagSet + smoke test); PASS TestParseOptionsInvalid covers all nine cases (fib_test.go); PASS TestParseOptionsDefaults (fib_test.go); PASS version short-circuit pinned (TestParseOptionsVersionShortCircuit); PASS no behavior change, no deps, README untouched (full suite green, only main.go/fib_test.go modified).",
+              "last_response": "Implemented fabro-28e8: the options-struct refactor of `/workspace/fabro/main.go` plus call-site adaptation in `/workspace/fabro/fib_test.go`.\n\n**What changed in `main.go`:** added `type options struc",
+              "last_stage": "implementer",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The brief's 'all existing tests pass with ONLY call-site adaptation, assertions untouched' is unsatisfiable as literally written: five rejection tests (TestRunRejectsInvalidCount/Start/Limit/Seed, TestRunSumSeedConflict) asserted that run() itself errors, and run() now has zero validation. I kept the assertions (exact error strings) but rerouted those tests through parseOptions with CLI-style args — the minimal faithful adaptation; the reviewer should expect this deviation in wording, not substance.",
+                  "run() keeps a defensive `mode, err := resolveMode(...)` with an unreachable error return, because options deliberately stores only flag values (per the field list in the brief). fabro-c295 or a later seed may prefer storing the resolved mode in options to delete even this defensive branch."
+                ]
+              },
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5869,
+                "preview": "Implemented fabro-28e8: the options-struct refactor of `/workspace/fabro/main.go` plus call-site adaptation in `/workspace/fabro/fib_test.go`.\n\n**What changed in `main.go`:** added `type options struc"
+              }
             },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 57734,
+                    "output_tokens": 13277,
+                    "reasoning_tokens": 3334,
+                    "cache_read_tokens": 1276608,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 485797
+            },
+            "files_touched": [
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/main.go"
+            ],
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 267,
-              "active_time_ms": 267
+              "inference_time_ms": 277610,
+              "tool_time_ms": 6095,
+              "active_time_ms": 283705
             }
           },
           "planner": {
@@ -3806,6 +3879,252 @@
               "inference_time_ms": 77487,
               "tool_time_ms": 689,
               "active_time_ms": 78176
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/34c320538832aa5fedb71e444d7413a3b0a24a4d749d86edd299efd54ac1a2ba"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1181,
+              "active_time_ms": 1181
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/57c40598fd8358e1f3b3d5e9b110fba065bfffce50929e1ab4e84b3c38d8c238"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 267,
+              "active_time_ms": 267
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "preferred_label": "More seeds",
+            "context_updates": {
+              "command.output": "blob://sha256/b99b2936f2316dcb8f0ecea8555fde7b8b7d18e551b11204dce9f70081bd4626"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 475,
+              "active_time_ms": 475
+            }
+          }
+        },
+        "next_node_id": "planner",
+        "git_commit_sha": "4f899f21b0cb298203799aeb6ec46234bce2515d",
+        "node_visits": {
+          "reviewer": 2,
+          "start": 1,
+          "tester": 2,
+          "evidence": 2,
+          "planner": 2,
+          "closeout": 2,
+          "implementer": 2
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl b/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl\nindex 93bb9a4..e0ea643 100644\n--- a/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl\n+++ b/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl\n@@ -10,3 +10,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"tester\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:35:00Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"evidence\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:35:05Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"reviewer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:35:55Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Evidence diff is taken against the run base, so fabro-28e8's capture still contains fabro-44b6's closed csv hunks (main.go/fib_test.go/README); distinguishing per-seed scope required cross-checking the closed 44b6 spec — a per-seed base (previous seed's commit) would make scope attribution mechanical (run 01M11P68SHFS165HP9ATK6094V).\",\"Verified via direct repo reads because the blob ref truncated mid-diff (~8KB omitted covering TestParseOptionsDefaults/TestParseOptionsInvalid/TestRunSumSeedConflict); everything the spec names was confirmed present and exact.\",\"run() retains a defensive unreachable resolveMode error since options stores only flag values; noted as a possible simplification (store resolved mode) for fabro-c295, not a blocker.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M11P68SHFS165HP9ATK6094V\",\"node\":\"closeout\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-08-27T13:36:00Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 75527c3..7da9674 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -11,5 +11,5 @@\n {\"id\":\"fabro-d920\",\"title\":\"gofib: add -format flag for compact table output\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-24T22:19:17.606Z\",\"updatedAt\":\"2026-08-24T22:30:02.942Z\",\"description\":\"## Goal\\n\\nA `-format <mode>` flag selecting the OUTPUT STYLE globally, unifying\\nthe text/json/pretty matrix: `text` (default), `json`, `pretty`, and a\\nnew compact `table` mode (no leading index column, values only, one\\nper line).\\n\\n## Semantics\\n\\n- `-format text|json|pretty|table` — invalid values exit non-zero with\\n  a stderr error listing valid modes.\\n- `-json` and `-pretty` remain as SHORTCUTS: `-json` == `-format json`,\\n  `-pretty` == `-format pretty`. If BOTH a shortcut and `-format` are\\n  given and they conflict (e.g. `-pretty -format json`), exit non-zero\\n  with a clear error — no silent precedence.\\n- `table` mode: values only, one per line (aligned, right-justified to\\n  the widest value). Composes with `-start`/`-n`/`-limit` as usual.\\n- `-version` still wins over everything.\\n\\n## Acceptance\\n\\n- Flag via the flag package; existing behavior for `-json`/`-pretty`\\n  UNCHANGED (regression tests pin them).\\n- Table-driven tests: each mode, shortcut==format equivalence, conflict\\n  rejection, invalid mode rejection, table+start/n/limit combos.\\n- README flag table gains the `-format` row with a REAL example per\\n  mode (capture from the built binary; do not invent output).\\n- `just qualitygate` green\",\"closedAt\":\"2026-08-24T22:30:02.942Z\"}\n {\"id\":\"fabro-f74b\",\"title\":\"gofib: -sum flag printing the checksum of the selected range\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-25T13:23:37.817Z\",\"updatedAt\":\"2026-08-25T16:43:40.343Z\",\"description\":\"## Goal\\n\\nA `-sum` flag: instead of printing one number per line, print exactly one\\nline containing the sum of all Fibonacci numbers in the selected range.\\nNatural next flag after -limit: it exercises range selection (-start,\\n-limit, -n) with a different aggregation and keeps the loop testing the\\nsame surface (flag parsing, validation, format modes, README, tests).\\n\\n## Semantics\\n\\n- `-sum` (bool, default false): when set, gofib prints one line with the\\n  sum of the numbers it WOULD have printed (the same intersection of\\n  -start/-limit/-n that line mode uses).\\n- Output format follows the selected mode: text prints `sum: <value>`;\\n  json prints one JSON object {\\\"index_range\\\":[first,last],\\\"sum\\\":\\\"<value>\\\"}\\n  (sum as string, it can exceed int64); pretty/table print the bare value.\\n- `-seed` with `-sum` is an error: -seed already collapses the range to one\\n  index; exit non-zero with a stderr message naming both flags.\\n- Zero selected numbers (e.g. -limit < -start): sum prints 0, no error —\\n  mirrors -limit semantics.\\n- `-version` precedence is unchanged.\\n- Values stay big.Int end to end (CONTEXT.md: Fib(n) stays the only\\n  Fibonacci computation; the sum accumulates big.Ints, no float/string math).\\n\\n## Acceptance\\n\\n- Flag parsed via the flag package; validation mirrors existing flags.\\n- Table-driven tests: default range sum, sum with -start/-limit narrowing,\\n  empty range -> 0, -seed + -sum rejected, each format mode renders the sum,\\n  -version precedence.\\n- README: -sum documented in the flag reference with one example line.\\n- Gate green (format, vet, build, test).\",\"labels\":[\"product\"],\"closedAt\":\"2026-08-25T16:43:40.343Z\"}\n {\"id\":\"fabro-44b6\",\"title\":\"gofib: add -format csv output mode\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-27T13:21:49.662Z\",\"updatedAt\":\"2026-08-27T13:27:57.332Z\",\"description\":\"Extend the -format family with a fifth mode csv.\\n\\nRequirements:\\n- 'gofib -format csv' emits one CSV record per line: '<index>,<fib>' (index decimal int, fib value unquoted string; values contain no commas/quotes so no quoting rules are needed). No header line — one-record-per-line symmetry with JSON mode.\\n- Combines with -n, -start, -limit exactly like every other mode (e.g. 'gofib -format csv -n 5' prints 5 records; '-start 10 -limit 12' prints indices 10..12).\\n- -seed lookup mode in csv prints the single record '<index>,<fib>' for the requested index.\\n- -sum in csv mode prints exactly one record 'sum,<start>,<last>,<total>' (mirrors JSON mode's index_range+sum structure in CSV grammar).\\n- parseMode accepts 'csv'; the invalid-format error message names all five modes: text, json, pretty, table, csv. modeName returns 'csv'.\\n- There is NO -csv shortcut flag; only -format selects it. Shortcut agreement rules (-json/-pretty with explicit -format) are unchanged.\\n- Extend fib_test.go following the existing patterns: table-driven tests for csv default, csv+-n, csv+-start+-limit, csv+-seed, csv+-sum, and csv in TestRunFormatModes/ShortcutEquivalence/RejectsInvalidFormat where the mode lists appear.\\n- No external dependencies (stdlib only; encoding/csv allowed but fmt is sufficient).\\n- Update README.md flag reference: csv under -format with examples.\\n\\nDone when 'gofib -format csv -n 3' prints '1,1', '2,1', '3,2', the invalid-format error lists csv, all new tests pass, and 'just qualitygate' is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-27T13:27:57.332Z\"}\n-{\"id\":\"fabro-28e8\",\"title\":\"gofib: consolidate flag parsing and validation into an options struct\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-27T13:21:49.757Z\",\"updatedAt\":\"2026-08-27T13:29:14.672Z\",\"description\":\"Refactor: behavior-preserving. run() currently takes 10 positional parameters and validates flags inline in scattered branches; main() owns flag parsing.\\n\\nRequirements:\\n- Introduce 'type options struct' holding every flag value (n, start, limit, seed, format, json, pretty, version, sum) and 'parseOptions(args []string) (options, error)' that owns flag.Parse AND all validation currently inside run() (invalid n/start/limit/seed, seed+sum conflict, format validity, format-vs-shortcut disagreement) plus -o output path when it exists (see follow-up seed; design parseOptions so adding a field is the only change needed).\\n- run becomes 'run(w io.Writer, opts options) error' with no inline flag validation — parseOptions is the single rejection point; error strings stay byte-identical (existing tests pin them).\\n- main shrinks to: opts, err := parseOptions(os.Args[1:]); on error print to stderr and exit 1; else resolve writer, run.\\n- New table-driven TestParseOptionsInvalid covering EVERY rejection case with its exact error message (n=0, n=-1, start<0, limit<0, seed<0, seed+sum, bad format value, format=json + pretty=true disagreement, format=pretty + json=true disagreement) and TestParseOptionsDefaults pinning defaults (n=100, start=0, limit=0, seed=0, format=\\\"\\\", all bools false).\\n- The -version ignore-invalid semantics (version short-circuits before validation) must be preserved: parseOptions returns the version flag without validating the rest; pin it with a test.\\n- No behavior change: all existing tests pass unmodified except call-site adaptation to the new run signature (table constructors updated, assertions untouched).\\n- No external dependencies. 'just qualitygate' green.\\n\\nDone when run() has no flag validation, parseOptions is the only validator, the new tables cover every rejection, and the full suite is green.\",\"labels\":[\"ready-for-agent\"]}\n+{\"id\":\"fabro-28e8\",\"title\":\"gofib: consolidate flag parsing and validation into an options struct\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-27T13:21:49.757Z\",\"updatedAt\":\"2026-08-27T13:36:00.606Z\",\"description\":\"Refactor: behavior-preserving. run() currently takes 10 positional parameters and validates flags inline in scattered branches; main() owns flag parsing.\\n\\nRequirements:\\n- Introduce 'type options struct' holding every flag value (n, start, limit, seed, format, json, pretty, version, sum) and 'parseOptions(args []string) (options, error)' that owns flag.Parse AND all validation currently inside run() (invalid n/start/limit/seed, seed+sum conflict, format validity, format-vs-shortcut disagreement) plus -o output path when it exists (see follow-up seed; design parseOptions so adding a field is the only change needed).\\n- run becomes 'run(w io.Writer, opts options) error' with no inline flag validation — parseOptions is the single rejection point; error strings stay byte-identical (existing tests pin them).\\n- main shrinks to: opts, err := parseOptions(os.Args[1:]); on error print to stderr and exit 1; else resolve writer, run.\\n- New table-driven TestParseOptionsInvalid covering EVERY rejection case with its exact error message (n=0, n=-1, start<0, limit<0, seed<0, seed+sum, bad format value, format=json + pretty=true disagreement, format=pretty + json=true disagreement) and TestParseOptionsDefaults pinning defaults (n=100, start=0, limit=0, seed=0, format=\\\"\\\", all bools false).\\n- The -version ignore-invalid semantics (version short-circuits before validation) must be preserved: parseOptions returns the version flag without validating the rest; pin it with a test.\\n- No behavior change: all existing tests pass unmodified except call-site adaptation to the new run signature (table constructors updated, assertions untouched).\\n- No external dependencies. 'just qualitygate' green.\\n\\nDone when run() has no flag validation, parseOptions is the only validator, the new tables cover every rejection, and the full suite is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-27T13:36:00.606Z\"}\n {\"id\":\"fabro-c295\",\"title\":\"gofib: add -o flag to write output to a file\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-27T13:21:49.847Z\",\"updatedAt\":\"2026-08-27T13:21:49.847Z\",\"description\":\"Add '-o <path>' (default empty = stdout, behavior unchanged).\\n\\nRequirements:\\n- When -o is set, ALL output goes to the file: every format mode (text/json/pretty/table/csv), -sum output, and -version output. Uniform rule, no mode exceptions.\\n- File semantics: create or truncate (os.Create). On success print NOTHING to stdout, exit 0.\\n- Failure to open (unwritable directory, permission) exits 1 with 'gofib: cannot open <path>: <os error>' on stderr and no stdout output.\\n- Usage text explains the default (empty = stdout).\\n- Structure: keep run(w io.Writer, opts) unchanged; resolve the writer in main (or a small resolveOutput(path) (io.WriteCloser, error) helper added next to parseOptions). Tests: -o with a temp dir file produces byte-identical content to the equivalent stdout invocation (table across text, json, csv modes); -o to a non-creatable path returns the error; -version -o writes the version line into the file.\\n- No external dependencies. 'just qualitygate' green.\\n- Update README.md flag reference: -o with examples.\\n\\nDone when 'gofib -o out.txt -n 3' writes 3 lines to out.txt, stdout stays empty, exit code 0, tests cover the modes and error path, and the gate is green.\",\"labels\":[\"ready-for-agent\"]}\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 387,
+          "deletions": 161
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-27T13:36:52.452476125Z",
+        "current_node": "planner",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout",
+          "planner"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "preferred_label": "Seed claimed",
+          "failure_signature": "",
+          "current_seed_title": "gofib: add -o flag to write output to a file",
+          "internal.seed_cycle_anchor": "fabro-c295",
+          "current_seed_id": "fabro-c295",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5869,
+            "preview": "Implemented fabro-28e8: the options-struct refactor of `/workspace/fabro/main.go` plus call-site adaptation in `/workspace/fabro/fib_test.go`.\n\n**What changed in `main.go`:** added `type options struc"
+          },
+          "thread.implementer.current_node": "tester",
+          "current_node": "planner",
+          "internal.run_id": "01M11P68SHFS165HP9ATK6094V",
+          "last_stage": "planner",
+          "implementation_summary": "Refactored `/workspace/fabro/main.go`: new `options` struct (n, start, limit, seed, format, json, pretty, version, sum) and `parseOptions(args)` using a fresh ExitOnError FlagSet, owning all validation in the pinned order (version short-circuit → mode → seed<0 → seed+sum → range checks skipped when seed>0); `run(w, opts)` now has zero validation branches (only the version print, seed lookup override, and rendering, with a defensive unreachable resolveMode); `main` shrank to parseOptions → stderr/exit 1 → run. `/workspace/fabro/fib_test.go`: added `opts(...)` helper adapting every run call site (assertions untouched), rerouted the five rejection tests through parseOptions, and added TestParseOptionsDefaults, TestParseOptionsInvalid (all nine rejections, exact messages), TestParseOptionsVersionShortCircuit. gofmt/vet/test green; smoke test confirmed exit 2 on `-n=abc`, version short-circuit, seed-skip, csv output. Verification report: PASS options struct fields (main.go); PASS parseOptions single rejection point with byte-identical errors (main.go + TestParseOptionsInvalid); PASS validation order incl. version-before-validation and seed-skips-range (parseOptions + TestParseOptionsVersionShortCircuit + TestRunSeed); PASS run(w, opts) no validation, version print stays, doc comment output-only (main.go run); PASS main shrunk (main.go main); PASS flag-syntax errors exit 2 with usage (ExitOnError FlagSet + smoke test); PASS TestParseOptionsInvalid covers all nine cases (fib_test.go); PASS TestParseOptionsDefaults (fib_test.go); PASS version short-circuit pinned (TestParseOptionsVersionShortCircuit); PASS no behavior change, no deps, README untouched (full suite green, only main.go/fib_test.go modified).",
+          "graph.max_node_visits": "40",
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.tester": 0,
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2683,
+            "preview": "Confirmed: `run(w io.Writer, opts)` already writes everything (including version) through `w`, so resolving the writer in `main` composes cleanly. Note: the previous journal's \"simplify resolveMode\" i"
+          },
+          "thread.start.current_node": "planner",
+          "review_verdict": "approved",
+          "seed_cycles": {
+            "planner": 1
+          },
+          "command.output": "blob://sha256/b99b2936f2316dcb8f0ecea8555fde7b8b7d18e551b11204dce9f70081bd4626",
+          "internal.retry_count.evidence": 0,
+          "thread.evidence.current_node": "reviewer",
+          "internal.retry_count.closeout": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "current_seed_brief": "Add a `-o <path>` flag to `/workspace/fabro/main.go` (default empty = stdout, behavior unchanged when unset). Acceptance criteria: - `-o <path>` flag: default empty means stdout; unset behavior byte-identical to today - `-o` set: ALL output goes to the file — every format mode (text/json/pretty/table/csv), `-sum` output, and `-version` output (uniform rule, no mode exceptions) - File semantics: create or truncate via os.Create; on success print NOTHING to stdout, exit 0 - Open failure (unwritable dir, permission): exit 1 with `gofib: cannot open <path>: <os error>` on stderr, no stdout output - Usage text explains the default (empty = stdout) - Structure: keep `run(w io.Writer, opts)` unchanged; resolve the writer in `main` or via a small `resolveOutput(path) (io.WriteCloser, error)` helper next to `parseOptions` in `/workspace/fabro/main.go`. Scope note: the previous seed's journal suggested simplifying run's mode resolution — this spec pins run's shape, so that refactor is OUT of scope; resolve only the writer. Version output already flows through run's `w`, so it is captured by `-o` for free. - Tests in `/workspace/fabro/fib_test.go`: `-o` to a temp-dir file produces byte-identical content to the equivalent stdout invocation (table-driven across text, json, csv modes); `-o` to a non-creatable path returns the error; `-version -o` writes the version line into the file - No external dependencies; update README.md flag reference with `-o` and examples; `just qualitygate` green - Done when `gofib -o out.txt -n 3` writes 3 lines to out.txt, stdout stays empty, exit code 0",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fabro-c295 is the last open seed — sd ready returned exactly one issue; if it closes clean, the tracker is empty next pass",
+              "Spec contradiction resolved: fabro-28e8's journal floated simplifying run's resolveMode for c295, but c295's spec pins run(w, opts) unchanged — brief marks the mode-resolution refactor out of scope to avoid reviewer ping-pong",
+              "run() already writes the version line through its io.Writer, so `-version -o` needs no special-casing once the writer is resolved in main"
+            ]
+          },
+          "internal.retry_count.planner": 0,
+          "internal.thread_id": "closeout",
+          "thread.closeout.current_node": "planner",
+          "graph.rankdir": "LR",
+          "failure_class": "",
+          "internal.fidelity": "compact",
+          "thread.planner.current_node": "implementer",
+          "internal.retry_count.start": 0,
+          "last_response": "Confirmed: `run(w io.Writer, opts)` already writes everything (including version) through `w`, so resolving the writer in `main` composes cleanly. Note: the previous journal's \"simplify resolveMode\" i",
+          "internal.retry_count.reviewer": 0,
+          "outcome": "succeeded",
+          "thread.tester.current_node": "evidence",
+          "graph.preamble_budget_kb": "24",
+          "internal.node_visit_count": 3,
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "thread.reviewer.current_node": "closeout",
+          "graph.goal": "Implement product seed fabro-44b6 -format csv output mode first, then continue seed-by-seed through fabro-28e8 options refactor and fabro-c295 -o flag until no open seed remains.",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2911,
+            "preview": "Both blob and direct repo inspection confirm the seed spec. Verification summary:\n\n**fabro-28e8 spec vs diff:**\n- ✅ `options` struct with exactly the nine named fields; `parseOptions(args) (options,"
+          }
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/34c320538832aa5fedb71e444d7413a3b0a24a4d749d86edd299efd54ac1a2ba"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1181,
+              "active_time_ms": 1181
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/57c40598fd8358e1f3b3d5e9b110fba065bfffce50929e1ab4e84b3c38d8c238"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 267,
+              "active_time_ms": 267
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "last_stage": "planner",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2683,
+                "preview": "Confirmed: `run(w io.Writer, opts)` already writes everything (including version) through `w`, so resolving the writer in `main` composes cleanly. Note: the previous journal's \"simplify resolveMode\" i"
+              },
+              "current_seed_id": "fabro-c295",
+              "last_response": "Confirmed: `run(w io.Writer, opts)` already writes everything (including version) through `w`, so resolving the writer in `main` composes cleanly. Note: the previous journal's \"simplify resolveMode\" i",
+              "current_seed_title": "gofib: add -o flag to write output to a file",
+              "current_seed_brief": "Add a `-o <path>` flag to `/workspace/fabro/main.go` (default empty = stdout, behavior unchanged when unset). Acceptance criteria: - `-o <path>` flag: default empty means stdout; unset behavior byte-identical to today - `-o` set: ALL output goes to the file — every format mode (text/json/pretty/table/csv), `-sum` output, and `-version` output (uniform rule, no mode exceptions) - File semantics: create or truncate via os.Create; on success print NOTHING to stdout, exit 0 - Open failure (unwritable dir, permission): exit 1 with `gofib: cannot open <path>: <os error>` on stderr, no stdout output - Usage text explains the default (empty = stdout) - Structure: keep `run(w io.Writer, opts)` unchanged; resolve the writer in `main` or via a small `resolveOutput(path) (io.WriteCloser, error)` helper next to `parseOptions` in `/workspace/fabro/main.go`. Scope note: the previous seed's journal suggested simplifying run's mode resolution — this spec pins run's shape, so that refactor is OUT of scope; resolve only the writer. Version output already flows through run's `w`, so it is captured by `-o` for free. - Tests in `/workspace/fabro/fib_test.go`: `-o` to a temp-dir file produces byte-identical content to the equivalent stdout invocation (table-driven across text, json, csv modes); `-o` to a non-creatable path returns the error; `-version -o` writes the version line into the file - No external dependencies; update README.md flag reference with `-o` and examples; `just qualitygate` green - Done when `gofib -o out.txt -n 3` writes 3 lines to out.txt, stdout stays empty, exit code 0",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-c295 is the last open seed — sd ready returned exactly one issue; if it closes clean, the tracker is empty next pass",
+                  "Spec contradiction resolved: fabro-28e8's journal floated simplifying run's resolveMode for c295, but c295's spec pins run(w, opts) unchanged — brief marks the mode-resolution refactor out of scope to avoid reviewer ping-pong",
+                  "run() already writes the version line through its io.Writer, so `-version -o` needs no special-casing once the writer is resolved in main"
+                ]
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 10600,
+                    "output_tokens": 927,
+                    "reasoning_tokens": 1111,
+                    "cache_read_tokens": 37248,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 33486
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 41127,
+              "tool_time_ms": 819,
+              "active_time_ms": 41946
             }
           },
           "reviewer": {
@@ -3929,11 +4248,11 @@
             }
           }
         },
-        "next_node_id": "planner",
+        "next_node_id": "implementer",
         "node_visits": {
           "start": 1,
           "tester": 2,
-          "planner": 2,
+          "planner": 3,
           "reviewer": 2,
           "evidence": 2,
           "implementer": 2,
@@ -6042,6 +6361,374 @@
             "category": "other",
             "tokens": 7,
             "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "planner@3": {
+      "first_event_seq": 602,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: planner",
+        "failure_reason": null,
+        "timestamp": "2026-08-27T13:36:52.217433364Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "high"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-27T13:36:05.803208530Z",
+      "handler": "agent",
+      "graph_visit": 3,
+      "timing": {
+        "wall_time_ms": 43063,
+        "inference_time_ms": 41127,
+        "tool_time_ms": 819,
+        "active_time_ms": 41946
+      },
+      "usage": {
+        "input_tokens": 10600,
+        "output_tokens": 927,
+        "total_tokens": 49886,
+        "reasoning_tokens": 1111,
+        "cache_read_tokens": 37248,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 33486
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "ask-matt",
+            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
+          },
+          {
+            "name": "claude-handoff",
+            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
+          },
+          {
+            "name": "code-review",
+            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
+          },
+          {
+            "name": "codebase-design",
+            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
+          },
+          {
+            "name": "diagnosing-bugs",
+            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
+          },
+          {
+            "name": "domain-modeling",
+            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
+          },
+          {
+            "name": "git-guardrails-claude-code",
+            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
+          },
+          {
+            "name": "grill-me",
+            "description": "A relentless interview to sharpen a plan or design."
+          },
+          {
+            "name": "grill-with-docs",
+            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
+          },
+          {
+            "name": "grilling",
+            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
+          },
+          {
+            "name": "handoff",
+            "description": "Compact the current conversation into a handoff document for another agent to pick up."
+          },
+          {
+            "name": "implement",
+            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
+          },
+          {
+            "name": "implement-spec",
+            "description": "\"Implement a specification in code.\""
+          },
+          {
+            "name": "improve-codebase-architecture",
+            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
+          },
+          {
+            "name": "loop-me",
+            "description": "Grill me about specs for the workflows I want to build, within this workspace."
+          },
+          {
+            "name": "migrate-to-shoehorn",
+            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
+          },
+          {
+            "name": "prototype",
+            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
+          },
+          {
+            "name": "research",
+            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
+          },
+          {
+            "name": "resolving-merge-conflicts",
+            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
+          },
+          {
+            "name": "scaffold-exercises",
+            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
+          },
+          {
+            "name": "setup-matt-pocock-skills",
+            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
+          },
+          {
+            "name": "setup-pre-commit",
+            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
+          },
+          {
+            "name": "setup-ts-deep-modules",
+            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
+          },
+          {
+            "name": "tdd",
+            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
+          },
+          {
+            "name": "teach",
+            "description": "Teach the user a new skill or concept, within this workspace."
+          },
+          {
+            "name": "to-questionnaire",
+            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
+          },
+          {
+            "name": "to-spec",
+            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
+          },
+          {
+            "name": "to-tickets",
+            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
+          },
+          {
+            "name": "triage",
+            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
+          },
+          {
+            "name": "wait-what",
+            "description": "\"Stop. That last message did not land: re-pitch it.\""
+          },
+          {
+            "name": "wayfinder",
+            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
+          },
+          {
+            "name": "wizard",
+            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
+          },
+          {
+            "name": "writing-beats",
+            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
+          },
+          {
+            "name": "writing-for-agents",
+            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
+          },
+          {
+            "name": "writing-fragments",
+            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
+          },
+          {
+            "name": "writing-shape",
+            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 10463,
+        "usage_percent": 0.9978294372558594,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-08-27T13:36:52.199066872Z",
+        "event_seq": 639,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1119,
+            "usage_percent": 0.10671615600585938
+          },
+          {
+            "category": "tools",
+            "tokens": 1528,
+            "usage_percent": 0.145721435546875
+          },
+          {
+            "category": "skills",
+            "tokens": 1545,
+            "usage_percent": 0.14734268188476562
+          },
+          {
+            "category": "memory",
+            "tokens": 1257,
+            "usage_percent": 0.11987686157226562
+          },
+          {
+            "category": "conversation",
+            "tokens": 5005,
+            "usage_percent": 0.4773139953613281
+          },
+          {
+            "category": "other",
+            "tokens": 9,
+            "usage_percent": 0.000858306884765625
           }
         ],
         "warnings": []
