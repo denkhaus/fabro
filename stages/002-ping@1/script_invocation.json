@@ -1,0 +1,5 @@
+{
+  "script": "echo slack smoke",
+  "command": "exec 2>&1\necho slack smoke",
+  "language": "shell"
+}
