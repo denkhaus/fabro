@@ -62,3 +62,16 @@ Upstream directions that may supersede our work — re-evaluate per merge:
   Seed fabro-d0d6 updated with this note (2026-08-26).
 - Folder run target (PR #790) gated behind "Local admission": RunIntent admission
   is the validated gate layer — dock future fork admission work (branch/SHA) there.
+
+## 2026-08-27 (post v0.337.0-nightly.1)
+
+- Git run targets gained tag support + PinnedRevision unification (PR #812):
+  `RunTarget::Git(GitRunTarget{repo,branch,tag,sha})`; authority sha > tag >
+  branch HEAD; no fallback on unavailable tag/commit. Run-target watchlist
+  updated: admission matrix is now branch/tag/sha; server preflight still
+  passes `clone_tag: None`. Any fork run-target work builds on
+  clone_source::PinnedRevision, not a parallel pin enum.
+- Title-generation failures now `warn!` with run_id (PR #813) — ops only.
+- Stale entries: fabro-890b CLOSED (PR model plumbing landed a1e27c9bf);
+  run_workflow.nu no longer exists on meta/denkhaus-lab (lab restructure,
+  fabro-a9bb) — verify lab script paths before citing them here.

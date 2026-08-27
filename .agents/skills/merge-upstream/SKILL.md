@@ -34,7 +34,11 @@ or rebase it.
 If a previous merge session died (disk space, crash): the merge commit may
 already exist and be committed while verification/push/deploy never ran.
 Reconstruct state first — `git log`, `git status`, `ls .git/MERGE_HEAD`,
-`git log origin/denkhaus..denkhaus` — instead of re-merging. A wiped
+`git log origin/denkhaus..denkhaus` — instead of re-merging. Variant seen 2026-08-27: branch BEHIND
+   origin/denkhaus with dirty files — compare worktree blobs against the
+   pushed feature commit (`git hash-object <f>` vs `git rev-parse
+   <rev>:<f>`) before stashing; if origin supersedes the drafts, stash as
+   backup, `git pull --ff-only`, verify, drop. A wiped
 `target/` means full rebuild (~10 min build + ~10 min test compile).
 
 Disk guards before/during `just up`: check `df -h /`. Safe reclaim:
@@ -50,6 +54,10 @@ from `references/conflict-policy.md` (core rule: our features AND upstream
 changes both survive; adapt our call sites to upstream's new signatures
 instead of reverting either side). Conflict classes seen so far and their
 resolutions are listed there — check for a match before improvising.
+After resolving, run `cargo nextest run -p <touched-packages> --no-run`
+BEFORE the full pipeline: upstream struct-variant refactors (e.g.
+RunTarget::Git -> Git(GitRunTarget)) pass `cargo build` but break OUR
+test initializers with E0063/E0061 (2026-08-27 lesson).
 
 While resolving, watch for upstream code that SUPERSEDES our features
 (see "Smart adaptation" below).

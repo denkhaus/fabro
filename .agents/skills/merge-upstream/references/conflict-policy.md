@@ -41,3 +41,20 @@ upstream's new signatures; never revert upstream, never drop our features.
 - 2026-08-26 v0.337.0-nightly.1 (call-site, no conflict marker): `sel.reason` in
   graph/routing.rs is now `fabro_core::graph::EdgeSelectionReason` instead of `&str`;
   string assertions in our local tests fail to COMPILE — adapt to the enum variant.
+
+- 2026-08-27 (post v0.337.0-nightly.1): formatting-identical conflict — both
+  sides shipped the same fix (Box::pin(persist_agent_event)); take upstream's
+  rustfmt form. Confirm semantic identity first (git hash-object worktree vs
+  `git show upstream/main:<file>`), then `git checkout --theirs` is safe ONLY
+  when our whole local delta on that file is contained upstream.
+- 2026-08-27: upstream struct-variant extraction (RunTarget::Git {..} ->
+  Git(GitRunTarget{..})) auto-merges in production code but breaks OUR TEST
+  initializers later: E0063 missing field (`clone_tag`) in sandbox_spec.rs
+  unit test, E0061 arg count in tests/docker_runner_image.rs — `cargo build`
+  stays green; only `cargo test --no-run` catches it. Run a test compile of
+  touched packages before declaring conflicts resolved.
+- 2026-08-27 (false alarm class): `-p fabro-sandbox` standalone builds warn
+  dead_code on push_credentials (docker feature off) and the docker.rs test
+  `AsyncWriteExt as _` import looks unused under some feature unions — both
+  pre-existing upstream artifacts, NOT merge regressions; clippy --workspace
+  is the gate, don't chase them.
