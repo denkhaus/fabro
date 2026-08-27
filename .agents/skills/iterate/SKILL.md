@@ -98,7 +98,10 @@ decision, not an accident - it needs the user plus an ADR.
 
 1. **Cost review**: what took longer than it should, what needed
    retries, what was missing at decision time? Adjust THIS skill file
-   directly - self-edit is intended and expected.
+   directly - self-edit is intended and expected. Deployment on this
+   repo is ALWAYS `just up` (cached loop: SPA, binary, image, CLI,
+   compose) - `docker compose up --build` builds nothing here and
+   `cargo build -p <name>` drifts with upstream package renames.
 2. **Learnings -> mulch**: `ml record <domain> --type
    <convention|pattern|failure|decision> --description ...` (+ evidence
    flags), then `ml sync`. Real insights only - no ritual filler.
@@ -109,8 +112,9 @@ decision, not an accident - it needs the user plus an ADR.
    decisions for the next grill-with-docs; the user makes weichenstellende
    calls.
 5. **Cycle report**: compact summary - outcome, verification evidence,
-   seeds filed/closed, skill changes made. Then end the turn; the user
-   starts the next cycle with /iterate.
+   seeds filed/closed, skill changes made. Every seed listed with a
+   ONE-LINE DESCRIPTION, never a bare id (user directive 2026-08-27).
+   Then end the turn; the user starts the next cycle with /iterate.
 
 ## Standing rules
 
