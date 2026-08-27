@@ -32,6 +32,7 @@ pub enum SandboxSpec {
         run_id:           Option<RunId>,
         clone_origin_url: Option<String>,
         clone_branch:     Option<String>,
+        clone_tag:        Option<String>,
         clone_commit_sha: Option<String>,
     },
     #[cfg(feature = "daytona")]
@@ -41,6 +42,7 @@ pub enum SandboxSpec {
         run_id:           Option<RunId>,
         clone_origin_url: Option<String>,
         clone_branch:     Option<String>,
+        clone_tag:        Option<String>,
         clone_commit_sha: Option<String>,
         api_key:          Option<String>,
     },
@@ -214,6 +216,7 @@ impl SandboxSpec {
                 run_id,
                 clone_origin_url,
                 clone_branch,
+                clone_tag,
                 clone_commit_sha,
             } => {
                 let mut sandbox = DockerSandbox::new(
@@ -222,6 +225,7 @@ impl SandboxSpec {
                     *run_id,
                     clone_origin_url.clone(),
                     clone_branch.clone(),
+                    clone_tag.clone(),
                     clone_commit_sha.clone(),
                 )
                 .context("Failed to create Docker sandbox")?;
@@ -237,6 +241,7 @@ impl SandboxSpec {
                 run_id,
                 clone_origin_url,
                 clone_branch,
+                clone_tag,
                 clone_commit_sha,
                 api_key,
             } => {
@@ -246,6 +251,7 @@ impl SandboxSpec {
                     *run_id,
                     clone_origin_url.clone(),
                     clone_branch.clone(),
+                    clone_tag.clone(),
                     clone_commit_sha.clone(),
                     api_key.clone(),
                 )
@@ -294,6 +300,7 @@ mod tests {
             run_id:           None,
             clone_origin_url: Some("git@github.com:brynary/rack-test.git".to_string()),
             clone_branch:     Some("main".to_string()),
+            clone_tag:        None,
             clone_commit_sha: None,
         };
         let mut sandbox = MockSandbox::linux();
@@ -332,6 +339,7 @@ mod tests {
             run_id:           None,
             clone_origin_url: Some("https://github.com/acme/widgets".to_string()),
             clone_branch:     Some("main".to_string()),
+            clone_tag:        None,
             clone_commit_sha: Some("not-a-sha".to_string()),
         };
 
@@ -368,6 +376,7 @@ mod tests {
             run_id:           None,
             clone_origin_url: None,
             clone_branch:     None,
+            clone_tag:        None,
             clone_commit_sha: None,
         };
         let sandbox = MockSandbox::linux();
@@ -395,6 +404,7 @@ mod tests {
             run_id:           None,
             clone_origin_url: Some("https://gitlab.com/acme/widgets".to_string()),
             clone_branch:     None,
+            clone_tag:        None,
             clone_commit_sha: None,
         };
         let mut sandbox = MockSandbox::linux();

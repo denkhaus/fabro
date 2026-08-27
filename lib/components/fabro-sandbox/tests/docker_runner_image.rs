@@ -75,6 +75,7 @@ async fn initialize_and_collect(dockerfile: &str) -> Vec<String> {
         None,
         None,
         None,
+        None,
     )
     .expect("sandbox construction should succeed");
     let (seen, callback) = event_names();

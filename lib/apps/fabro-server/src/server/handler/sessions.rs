@@ -1169,7 +1169,10 @@ async fn drive_agent_session(
             result = &mut process => {
                 while let Ok(event) = receiver.try_recv() {
                     record_turn_output(output, &event);
-                    Box::pin(persist_agent_event(run_store, run_id, session_id, turn_id, event, sender)).await?;
+                    Box::pin(persist_agent_event(
+                        run_store, run_id, session_id, turn_id, event, sender,
+                    ))
+                    .await?;
                 }
                 return Ok(result);
             }
@@ -1177,7 +1180,10 @@ async fn drive_agent_session(
                 match event {
                     Ok(event) => {
                         record_turn_output(output, &event);
-                        Box::pin(persist_agent_event(run_store, run_id, session_id, turn_id, event, sender)).await?;
+                        Box::pin(persist_agent_event(
+                            run_store, run_id, session_id, turn_id, event, sender,
+                        ))
+                        .await?;
                     }
                     Err(RecvError::Lagged(_) | RecvError::Closed) => {}
                 }

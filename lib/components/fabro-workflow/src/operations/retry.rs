@@ -170,11 +170,12 @@ mod tests {
     }
 
     fn run_target() -> RunTarget {
-        RunTarget::Git {
+        RunTarget::Git(fabro_types::GitRunTarget {
             repo:   "fabro-sh/fabro".to_string(),
             branch: "main".to_string(),
+            tag:    None,
             sha:    Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
-        }
+        })
     }
 
     async fn append_created(

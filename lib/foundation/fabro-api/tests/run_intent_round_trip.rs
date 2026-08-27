@@ -2,7 +2,7 @@ use std::any::{TypeId, type_name};
 use std::collections::HashMap;
 
 use fabro_api::types::{RunIntent as ApiRunIntent, RunIntentArgs as ApiRunIntentArgs};
-use fabro_types::{RunIntent, RunIntentArgs, RunTarget, test_support};
+use fabro_types::{GitRunTarget, RunIntent, RunIntentArgs, RunTarget, test_support};
 use serde_json::json;
 
 #[test]
@@ -10,17 +10,19 @@ fn run_intent_schemas_reuse_canonical_types() {
     assert_same_type::<ApiRunIntent, RunIntent>();
     assert_same_type::<ApiRunIntentArgs, RunIntentArgs>();
     assert_same_type::<fabro_api::types::RunTarget, RunTarget>();
+    assert_same_type::<fabro_api::types::GitRunTarget, GitRunTarget>();
 }
 
 #[test]
 fn run_intent_round_trips_the_openapi_shape() {
     let intent = RunIntent {
         workflow_version_id: test_support::test_workflow_version_id(),
-        target:              RunTarget::Git {
+        target:              RunTarget::Git(GitRunTarget {
             repo:   "fabro-sh/fabro".to_string(),
             branch: "feature/run-intent".to_string(),
+            tag:    Some("v1.2.3".to_string()),
             sha:    Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
-        },
+        }),
         args:                RunIntentArgs {
             model:    Some("gpt-5.6-sol".to_string()),
             provider: Some("openai".to_string()),

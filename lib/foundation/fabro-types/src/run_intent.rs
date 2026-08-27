@@ -45,16 +45,39 @@ pub struct RunIntentArgs {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[strum(serialize_all = "snake_case")]
 pub enum RunTarget {
-    Git {
-        repo:   String,
-        branch: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        sha:    Option<String>,
-    },
+    Git(GitRunTarget),
     None {},
-    Folder {
-        path: String,
-    },
+    Folder { path: String },
+}
+
+/// A Git-backed run target.
+///
+/// `branch` is always the attached working branch. When present, `tag` names
+/// the requested release identity. An exact `sha` is authoritative over both
+/// selectors while preserving the tag in durable state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GitRunTarget {
+    pub repo:   String,
+    pub branch: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag:    Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha:    Option<String>,
+}
+
+/// A bare branch or tag name: not `HEAD`, not a `refs/` or `tags/` selector,
+/// not a commit SHA, and otherwise a valid GitHub ref selector.
+///
+/// The selector grammar is checked on the bare name so its leading-character
+/// rules apply to the name itself, not to a prefixed selector that would mask
+/// them.
+fn is_bare_ref_name(name: &str) -> bool {
+    name != "HEAD"
+        && !name.starts_with("tags/")
+        && !name.starts_with("refs/")
+        && repository::normalize_git_commit_sha(name).is_none()
+        && repository::is_valid_github_ref_selector(name)
 }
 
 impl RunTarget {
@@ -71,20 +94,19 @@ impl RunTarget {
     /// filesystem validation and canonicalization during provider admission.
     pub fn validate(self) -> Result<ValidatedRunTarget, TargetValidationError> {
         match self {
-            Self::Git { repo, branch, sha } => {
+            Self::Git(GitRunTarget {
+                repo,
+                branch,
+                tag,
+                sha,
+            }) => {
                 let slug = GitHubRepositorySlug::try_new(&repo)
                     .ok_or(TargetValidationError::Repository)?;
-                // The selector grammar is checked on the bare branch name so
-                // its leading-character rules apply to the branch itself, not
-                // to a `heads/`-prefixed selector that would mask them.
-                if branch == "HEAD"
-                    || branch.starts_with("heads/")
-                    || branch.starts_with("tags/")
-                    || branch.starts_with("refs/")
-                    || repository::normalize_git_commit_sha(&branch).is_some()
-                    || !repository::is_valid_github_ref_selector(&branch)
-                {
+                if !is_bare_ref_name(&branch) || branch.starts_with("heads/") {
                     return Err(TargetValidationError::Branch);
+                }
+                if tag.as_deref().is_some_and(|tag| !is_bare_ref_name(tag)) {
+                    return Err(TargetValidationError::Tag);
                 }
                 let sha = sha
                     .map(|sha| {
@@ -98,7 +120,12 @@ impl RunTarget {
                     dirty:      DirtyStatus::Clean,
                 };
                 Ok(ValidatedRunTarget {
-                    target: Self::Git { repo, branch, sha },
+                    target: Self::Git(GitRunTarget {
+                        repo,
+                        branch,
+                        tag,
+                        sha,
+                    }),
                     git:    Some(git),
                 })
             }
@@ -129,6 +156,8 @@ pub enum TargetValidationError {
     Repository,
     #[error("target branch must be a non-empty branch name, not a ref or commit selector")]
     Branch,
+    #[error("target tag must be a non-empty bare tag name, not a ref or commit selector")]
+    Tag,
     #[error("target SHA must be exactly 40 ASCII hexadecimal characters")]
     Sha,
 }

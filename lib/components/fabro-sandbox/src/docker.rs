@@ -214,6 +214,7 @@ pub struct DockerSandbox {
     run_id:            Option<RunId>,
     clone_origin_url:  Option<String>,
     clone_branch:      Option<String>,
+    clone_tag:         Option<String>,
     clone_commit_sha:  Option<String>,
     container_id:      OnceCell<String>,
     repo_cloned:       OnceCell<bool>,
@@ -246,13 +247,15 @@ impl DockerSandbox {
         run_id: Option<RunId>,
         clone_origin_url: Option<String>,
         clone_branch: Option<String>,
+        clone_tag: Option<String>,
         clone_commit_sha: Option<String>,
     ) -> crate::Result<Self> {
-        if clone_commit_sha.is_some() {
+        if clone_tag.is_some() || clone_commit_sha.is_some() {
             clone_source::decide_clone(
                 config.skip_clone,
                 clone_origin_url.as_deref(),
                 clone_branch.as_deref(),
+                clone_tag.as_deref(),
                 clone_commit_sha.as_deref(),
             )?;
         }
@@ -264,6 +267,7 @@ impl DockerSandbox {
             run_id,
             clone_origin_url,
             clone_branch,
+            clone_tag,
             clone_commit_sha,
         )
     }
@@ -275,6 +279,7 @@ impl DockerSandbox {
         run_id: Option<RunId>,
         clone_origin_url: Option<String>,
         clone_branch: Option<String>,
+        clone_tag: Option<String>,
         clone_commit_sha: Option<String>,
     ) -> crate::Result<Self> {
         let mut config = config;
@@ -290,6 +295,7 @@ impl DockerSandbox {
             run_id,
             clone_origin_url,
             clone_branch,
+            clone_tag,
             clone_commit_sha,
             container_id: OnceCell::new(),
             repo_cloned: OnceCell::new(),
@@ -316,6 +322,7 @@ impl DockerSandbox {
             run_id,
             clone_origin_url.clone(),
             clone_branch,
+            None,
             None,
         )?;
         sandbox.validate_managed_container(container_id).await?;
@@ -1023,6 +1030,7 @@ impl DockerSandbox {
         &self,
         origin_url: String,
         branch: Option<String>,
+        tag: Option<String>,
         commit_sha: Option<String>,
     ) -> crate::Result<()> {
         self.verify_git_available().await?;
@@ -1085,13 +1093,15 @@ impl DockerSandbox {
         }
 
         let clone_deadline = time::Instant::now() + GIT_CLONE_TIMEOUT;
-        if let Some(expected_sha) = commit_sha.as_deref() {
-            // `decide_clone` already rejects an exact commit without a branch;
-            // re-check here so the checkout can never silently drop the branch
-            // name callers read back out of the workspace.
+        if let Some(pin) =
+            clone_source::PinnedRevision::from_selectors(tag.as_deref(), commit_sha.as_deref())
+        {
+            // `decide_clone` already rejects a pinned revision without a
+            // branch; re-check here so the checkout can never silently drop the
+            // branch name callers read back out of the workspace.
             let Some(branch) = branch.as_deref().filter(|branch| !branch.trim().is_empty()) else {
                 let error =
-                    crate::Error::message("Exact commit checkout requires a repository branch");
+                    crate::Error::message(format!("{} requires a repository branch", pin.label()));
                 return Err(self.report_clone_failure(&origin_url, error));
             };
 
@@ -1100,7 +1110,7 @@ impl DockerSandbox {
             if let Err(error) = self
                 .run_exact_local_git_command(
                     &init_command,
-                    "initialize Docker exact repository checkout",
+                    "initialize Docker pinned repository checkout",
                     clone_deadline,
                     auth_url.as_ref(),
                 )
@@ -1109,18 +1119,18 @@ impl DockerSandbox {
                 return Err(self.report_clone_failure(&origin_url, error));
             }
 
-            let fetch_command = clone_source::exact_fetch_command(
+            let fetch_command = clone_source::pinned_fetch_command(
                 &layout.primary_repo_path,
                 "origin",
-                expected_sha,
+                &pin.fetch_refspec(),
                 self.config.clone_depth,
             );
             if let Err(failure) = self
                 .retry_git_transfer(
                     &fetch_command,
                     "fetch",
-                    "Docker exact fetch",
-                    "git fetch exact commit",
+                    "Docker pinned fetch",
+                    "git fetch pinned revision",
                     clone_deadline,
                     clone_credential_context,
                     auth_url.as_ref(),
@@ -1133,12 +1143,12 @@ impl DockerSandbox {
             let checkout_command = clone_source::exact_checkout_verify_command(
                 &layout.primary_repo_path,
                 branch,
-                "FETCH_HEAD",
+                clone_source::FETCH_HEAD_COMMIT,
             );
             let head = match self
                 .run_exact_local_git_command(
                     &checkout_command,
-                    "git checkout exact commit",
+                    "git checkout pinned revision",
                     clone_deadline,
                     auth_url.as_ref(),
                 )
@@ -1147,7 +1157,7 @@ impl DockerSandbox {
                 Ok(result) => result,
                 Err(error) => return Err(self.report_clone_failure(&origin_url, error)),
             };
-            if let Err(error) = clone_source::verify_exact_head(&head.stdout, expected_sha) {
+            if let Err(error) = pin.verify_head(&head.stdout) {
                 return Err(self.report_clone_failure(&origin_url, error));
             }
         } else {
@@ -1960,6 +1970,7 @@ impl Sandbox for DockerSandbox {
             self.config.skip_clone,
             self.clone_origin_url.as_deref(),
             self.clone_branch.as_deref(),
+            self.clone_tag.as_deref(),
             self.clone_commit_sha.as_deref(),
         )
         .map_err(|e| self.fail_init(init_start, e))?;
@@ -1981,9 +1992,13 @@ impl Sandbox for DockerSandbox {
             CloneDecision::GitHub {
                 origin_url,
                 branch,
+                tag,
                 commit_sha,
             } => {
-                if let Err(e) = self.clone_github_repo(origin_url, branch, commit_sha).await {
+                if let Err(e) = self
+                    .clone_github_repo(origin_url, branch, tag, commit_sha)
+                    .await
+                {
                     return Err(self.fail_init(init_start, e));
                 }
             }
@@ -2856,6 +2871,7 @@ mod tests {
             None,
             Some("https://github.com/acme/widgets".to_string()),
             Some("main".to_string()),
+            None,
             Some("not-a-sha".to_string()),
         )
         .err()
@@ -2872,6 +2888,7 @@ mod tests {
             None,
             None,
             Some("https://github.com/acme/widgets".to_string()),
+            None,
             None,
             Some("0123456789abcdef0123456789abcdef01234567".to_string()),
         )
@@ -3358,6 +3375,7 @@ mod tests {
         let sandbox = DockerSandbox::with_docker_client(
             docker,
             DockerSandboxOptions::default(),
+            None,
             None,
             None,
             None,

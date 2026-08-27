@@ -9327,7 +9327,10 @@ components:
           folder: "#/components/schemas/FolderRunTarget"
 
     GitRunTarget:
-      description: Public github.com repository target.
+      description: >-
+        Public github.com repository target. The branch names the attached
+        working branch. An optional tag selects a release at worker start, and
+        an optional exact SHA is authoritative when both are present.
       type: object
       additionalProperties: false
       required:
@@ -9344,14 +9347,23 @@ components:
           example: acme/my-app
         branch:
           type: string
-          description: Required branch name, preserved exactly.
+          description: Required attached working branch name, preserved exactly.
           example: feature/foo
+        tag:
+          type: string
+          minLength: 1
+          description: >-
+            Optional bare tag name. Prefixes such as `refs/tags/` and `tags/`
+            are rejected. Without `sha`, the worker resolves this tag when the
+            sandbox starts and fails if it is unavailable.
+          example: v1.2.3
         sha:
           type: string
           pattern: "^[0-9A-Fa-f]{40}$"
           description: >-
             Optional exact commit. The server lowercase-normalizes its syntax
-            but does not resolve it or prove branch ancestry.
+            but does not resolve it, prove branch ancestry, or prove that it
+            matches an accompanying tag. When present, this exact commit wins.
 
     NoneRunTarget:
       description: >-

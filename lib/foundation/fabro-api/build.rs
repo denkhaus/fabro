@@ -739,6 +739,7 @@ fn main() {
         ("RunIntent", "fabro_types::RunIntent", &[]),
         ("RunIntentArgs", "fabro_types::RunIntentArgs", &[]),
         ("RunTarget", "fabro_types::RunTarget", &[]),
+        ("GitRunTarget", "fabro_types::GitRunTarget", &[]),
         ("WorkflowPath", "fabro_types::WorkflowPath", &[]),
         ("WorkflowVersionId", "fabro_types::WorkflowVersionId", &[]),
         ("BlobHash", "fabro_types::BlobHash", &[]),

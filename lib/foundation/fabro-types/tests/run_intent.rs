@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use fabro_types::{
-    RunIntent, RunIntentArgs, RunTarget, WorkflowVersionId, normalize_git_commit_sha,
+    GitRunTarget, RunIntent, RunIntentArgs, RunTarget, WorkflowVersionId, normalize_git_commit_sha,
 };
 use serde_json::json;
 
@@ -14,11 +14,12 @@ fn version_id() -> WorkflowVersionId {
 fn intent() -> RunIntent {
     RunIntent {
         workflow_version_id: version_id(),
-        target:              RunTarget::Git {
+        target:              RunTarget::Git(GitRunTarget {
             repo:   "fabro-sh/fabro".to_string(),
             branch: "feature/run-intent".to_string(),
+            tag:    Some("v1.2.3".to_string()),
             sha:    Some("ABCDEF0123456789ABCDEF0123456789ABCDEF01".to_string()),
-        },
+        }),
         args:                RunIntentArgs {
             model:    Some("gpt-5.6".to_string()),
             provider: Some("openai".to_string()),
@@ -43,6 +44,7 @@ fn run_intent_round_trips_the_strict_git_shape() {
     assert_eq!(value["target"]["kind"], "git");
     assert_eq!(value["target"]["repo"], "fabro-sh/fabro");
     assert_eq!(value["target"]["branch"], "feature/run-intent");
+    assert_eq!(value["target"]["tag"], "v1.2.3");
     assert_eq!(
         serde_json::from_value::<RunIntent>(value).expect("intent should deserialize"),
         intent
@@ -158,11 +160,12 @@ fn git_commit_sha_normalization_is_exact_and_pure() {
 
 #[test]
 fn target_validation_normalizes_sha_without_network_resolution() {
-    let validated = RunTarget::Git {
+    let validated = RunTarget::Git(GitRunTarget {
         repo:   "fabro-sh/fabro".to_string(),
         branch: "feature/run-intent".to_string(),
+        tag:    Some("release/v1".to_string()),
         sha:    Some("ABCDEF0123456789ABCDEF0123456789ABCDEF01".to_string()),
-    }
+    })
     .validate()
     .unwrap();
     let git = validated
@@ -174,11 +177,15 @@ fn target_validation_normalizes_sha_without_network_resolution() {
         Some("abcdef0123456789abcdef0123456789abcdef01")
     );
     assert_eq!(git.origin_url, "https://github.com/fabro-sh/fabro");
-    assert_eq!(validated.target, RunTarget::Git {
-        repo:   "fabro-sh/fabro".to_string(),
-        branch: "feature/run-intent".to_string(),
-        sha:    Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
-    });
+    assert_eq!(
+        validated.target,
+        RunTarget::Git(GitRunTarget {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "feature/run-intent".to_string(),
+            tag:    Some("release/v1".to_string()),
+            sha:    Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
+        })
+    );
 }
 
 #[test]
@@ -204,17 +211,18 @@ fn run_intent_folder_target_is_preserved_for_provider_admission() {
 fn target_validation_rejects_invalid_grammar() {
     use fabro_types::TargetValidationError;
 
-    let validate = |repo: &str, branch: &str, sha: Option<&str>| {
-        RunTarget::Git {
+    let validate = |repo: &str, branch: &str, tag: Option<&str>, sha: Option<&str>| {
+        RunTarget::Git(GitRunTarget {
             repo:   repo.to_string(),
             branch: branch.to_string(),
+            tag:    tag.map(str::to_string),
             sha:    sha.map(str::to_string),
-        }
+        })
         .validate()
     };
 
     assert_eq!(
-        validate("not-a-slug", "main", None).unwrap_err(),
+        validate("not-a-slug", "main", None, None).unwrap_err(),
         TargetValidationError::Repository
     );
     for branch in [
@@ -229,13 +237,66 @@ fn target_validation_rejects_invalid_grammar() {
         "bad..branch",
     ] {
         assert_eq!(
-            validate("fabro-sh/fabro", branch, None).unwrap_err(),
+            validate("fabro-sh/fabro", branch, None, None).unwrap_err(),
             TargetValidationError::Branch,
             "{branch:?}"
         );
     }
+    for tag in [
+        "",
+        "HEAD",
+        "-v1",
+        ".v1",
+        "tags/v1",
+        "refs/tags/v1",
+        "abcdef0123456789abcdef0123456789abcdef01",
+        "bad..tag",
+    ] {
+        assert_eq!(
+            validate("fabro-sh/fabro", "main", Some(tag), None).unwrap_err(),
+            TargetValidationError::Tag,
+            "{tag:?}"
+        );
+    }
     assert_eq!(
-        validate("fabro-sh/fabro", "main", Some("short")).unwrap_err(),
+        validate("fabro-sh/fabro", "main", None, Some("short")).unwrap_err(),
         TargetValidationError::Sha
     );
+}
+
+#[test]
+fn git_target_round_trips_all_branch_tag_sha_states() {
+    for target in [
+        GitRunTarget {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "main".to_string(),
+            tag:    None,
+            sha:    None,
+        },
+        GitRunTarget {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "main".to_string(),
+            tag:    None,
+            sha:    Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
+        },
+        GitRunTarget {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "release".to_string(),
+            tag:    Some("v1.2.3".to_string()),
+            sha:    None,
+        },
+        GitRunTarget {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "release".to_string(),
+            tag:    Some("v1.2.3".to_string()),
+            sha:    Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
+        },
+    ] {
+        let run_target = RunTarget::Git(target);
+        let value = serde_json::to_value(&run_target).expect("target should serialize");
+        assert_eq!(
+            serde_json::from_value::<RunTarget>(value).expect("target should deserialize"),
+            run_target
+        );
+    }
 }
