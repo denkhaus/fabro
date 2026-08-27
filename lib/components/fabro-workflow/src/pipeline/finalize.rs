@@ -1882,8 +1882,11 @@ mod tests {
             }),
             github_app:          None,
             origin_url:          Some("https://github.com/owner/repo.git".to_string()),
-            pr_model:            "test-model".to_string(),
-            pr_resolved_model:   "test-model".to_string(),
+            // Distinct sentinels (regression a1e27c9bf): if this path ever
+            // reaches PR creation, the content call must use the resolved
+            // PR model, never the run-model fallback field.
+            pr_model:            "run-model-sentinel".to_string(),
+            pr_resolved_model:   "pr-model-sentinel".to_string(),
             pr_reasoning_effort: None,
         })
         .await;

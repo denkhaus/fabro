@@ -2,6 +2,7 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 
 use fabro_types::ExecOutputTail;
+use fabro_types::settings::run::PullRequestSettings;
 
 use super::pull_request::{AutoMergeOptions, OpenPullRequestRequest, open_pull_request};
 use super::types::{Concluded, PublishOptions, PublishOutcome, Published};
@@ -157,34 +158,17 @@ impl Concluded {
                 self.pull_request_error("pull request creation requires the run's final commit SHA")
             })?;
 
-        let base_branch = self.run_options.base_branch.as_deref().ok_or_else(|| {
-            self.pull_request_error("pull request creation requires a base branch")
-        })?;
-        let credentials = options.github_app.as_ref().ok_or_else(|| {
-            self.pull_request_error("pull request creation requires GitHub credentials")
-        })?;
         let github_base_url = fabro_github::github_api_base_url();
-
-        let created = open_pull_request(OpenPullRequestRequest {
-            github: fabro_github::GitHubContext::new(credentials, &github_base_url),
+        let request = self.pull_request_request(
+            options,
+            pr_config,
             origin_url,
-            base_branch,
-            head_branch: run_branch,
-            expected_head_sha: final_sha,
-            goal: self.graph.goal(),
-            diff,
-            model: &options.pr_model,
-            reasoning_effort: options.pr_reasoning_effort,
-            draft: pr_config.draft,
-            auto_merge: pr_config.auto_merge.then_some(AutoMergeOptions {
-                merge_strategy: pr_config.merge_strategy,
-            }),
-            run_store: &self.services.run_store,
-            llm_source: self.services.llm_source.as_ref(),
-            catalog: Arc::clone(&self.services.catalog),
-            conclusion: Some(&self.conclusion),
-            run_state: None,
-        })
+            run_branch,
+            final_sha,
+            &github_base_url,
+        )?;
+
+        let created = open_pull_request(request)
         .await
         .map_err(|error| {
             self.services.emitter.emit(&Event::PullRequestFailed {
@@ -205,6 +189,50 @@ impl Concluded {
         outcome.pr_url = Some(created.link.html_url());
 
         Ok(())
+    }
+
+    /// The pull-request open request for this run, every field wired from
+    /// its declared source.
+    ///
+    /// The PR content model is `options.pr_resolved_model` — the dedicated
+    /// `[run.pull_request]` model when it resolved against the catalog, else
+    /// the run model. `options.pr_model` is only the run-model fallback
+    /// input to that resolution, never the content model itself.
+    fn pull_request_request<'a>(
+        &'a self,
+        options: &'a PublishOptions,
+        pr_config: &'a PullRequestSettings,
+        origin_url: &'a str,
+        run_branch: &'a str,
+        final_sha: &'a str,
+        github_base_url: &'a str,
+    ) -> Result<OpenPullRequestRequest<'a>, Error> {
+        let base_branch = self.run_options.base_branch.as_deref().ok_or_else(|| {
+            self.pull_request_error("pull request creation requires a base branch")
+        })?;
+        let credentials = options.github_app.as_ref().ok_or_else(|| {
+            self.pull_request_error("pull request creation requires GitHub credentials")
+        })?;
+        Ok(OpenPullRequestRequest {
+            github: fabro_github::GitHubContext::new(credentials, github_base_url),
+            origin_url,
+            base_branch,
+            head_branch: run_branch,
+            expected_head_sha: final_sha,
+            goal: self.graph.goal(),
+            diff: self.conclusion.diff.patch.as_deref().unwrap_or_default(),
+            model: &options.pr_resolved_model,
+            reasoning_effort: options.pr_reasoning_effort,
+            draft: pr_config.draft,
+            auto_merge: pr_config.auto_merge.then_some(AutoMergeOptions {
+                merge_strategy: pr_config.merge_strategy,
+            }),
+            run_store: &self.services.run_store,
+            llm_source: self.services.llm_source.as_ref(),
+            catalog: Arc::clone(&self.services.catalog),
+            conclusion: Some(&self.conclusion),
+            run_state: None,
+        })
     }
 
     /// The origin and run branch to publish to.
@@ -281,6 +309,101 @@ mod tests {
 
     use super::*;
     use crate::error::FailureCategory;
+
+
+    /// The PR content model must be `pr_resolved_model`, never the run-model
+    /// fallback `pr_model` (regression a1e27c9bf: the dedicated model was
+    /// resolved, stored, and dropped — every PR used the run model, and no
+    /// test noticed because both options fields carried the same fixture
+    /// value).
+    #[test]
+    fn pull_request_request_wires_the_resolved_pr_model() {
+        use std::collections::HashMap;
+
+        use fabro_graphviz::graph::Graph;
+        use fabro_types::settings::run::MergeStrategy;
+        use fabro_types::{Conclusion, RunDiff, RunId, RunTiming, StageOutcome, WorkflowSettings};
+        use tokio_util::sync::CancellationToken;
+
+        use crate::outcome::Outcome;
+        use crate::run_options::RunOptions;
+
+        let services = Arc::new(crate::services::EngineServices::test_default().run);
+        let concluded = Concluded {
+            outcome:        Ok(Outcome::success()),
+            conclusion:     Conclusion {
+                timestamp:            Utc::now(),
+                status:               StageOutcome::Succeeded,
+                timing:               RunTiming::default(),
+                failure:              None,
+                final_git_commit_sha: Some("final-sha".to_string()),
+                stages:               Vec::new(),
+                billing:              None,
+                total_retries:        0,
+                diff:                 RunDiff {
+                    patch:   Some("diff --git a/src/lib.rs b/src/lib.rs".to_string()),
+                    summary: None,
+                },
+                exit_kind:            "natural".to_string(),
+            },
+            artifact_count: 0,
+            graph:          Graph::new("test"),
+            run_options:    RunOptions {
+                settings:         WorkflowSettings::default(),
+                run_dir:          std::path::PathBuf::new(),
+                cancel_token:     CancellationToken::new(),
+                run_id:           RunId::new(),
+                labels:           HashMap::new(),
+                workflow_slug:    Some("test".to_string()),
+                github_app:       None,
+                pre_run_git:      None,
+                fork_source_ref:  None,
+                base_branch:      Some("main".to_string()),
+                display_base_sha: None,
+                git:              None,
+            },
+            services:       Arc::clone(&services),
+        };
+        let options = PublishOptions {
+            pr_config:           Some(PullRequestSettings {
+                enabled:          true,
+                draft:            true,
+                auto_merge:       true,
+                merge_strategy:   MergeStrategy::Squash,
+                model:            None,
+                reasoning_effort: None,
+            }),
+            github_app:          Some(fabro_github::GitHubCredentials::Pat(
+                "test-token".to_string(),
+            )),
+            origin_url:          Some("https://github.com/owner/repo.git".to_string()),
+            pr_model:            "run-model-sentinel".to_string(),
+            pr_resolved_model:   "pr-model-sentinel".to_string(),
+            pr_reasoning_effort: None,
+        };
+        let pr_config = options.pr_config.as_ref().unwrap();
+
+        let request = concluded
+            .pull_request_request(
+                &options,
+                pr_config,
+                "https://github.com/owner/repo.git",
+                "fabro/run/123",
+                "final-sha",
+                "https://api.github.example.test",
+            )
+            .expect("wiring should not fail with base branch and credentials set");
+
+        assert_eq!(request.model, "pr-model-sentinel");
+        assert_eq!(request.base_branch, "main");
+        assert_eq!(request.head_branch, "fabro/run/123");
+        assert_eq!(request.expected_head_sha, "final-sha");
+        assert!(request.draft);
+        assert_eq!(
+            request.auto_merge.map(|merge| merge.merge_strategy),
+            Some(MergeStrategy::Squash)
+        );
+    }
 
     fn push_attempt(
         attempt: u32,
