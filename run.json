@@ -437,8 +437,8 @@
   "status": {
     "kind": "running"
   },
-  "status_updated_at": "2026-08-27T20:08:29.262198848Z",
-  "last_event_at": "2026-08-27T20:08:29.262198848Z",
+  "status_updated_at": "2026-08-27T20:08:39.811612602Z",
+  "last_event_at": "2026-08-27T20:08:39.811612602Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -478,9 +478,9 @@
       "diff": {}
     },
     {
-      "seq": 0,
+      "seq": 36,
       "checkpoint": {
-        "timestamp": "2026-08-27T20:08:29.275273770Z",
+        "timestamp": "2026-08-27T20:08:34.291307745Z",
         "current_node": "yes_no",
         "completed_nodes": [
           "start",
@@ -488,26 +488,26 @@
         ],
         "node_retries": {},
         "context_values": {
-          "thread.start.current_node": "yes_no",
-          "internal.work_dir": "/workspace/fabro",
-          "outcome": "succeeded",
-          "human.gate.label": "[Y] Yes",
-          "graph.rankdir": "LR",
-          "internal.retry_count.yes_no": 0,
-          "human.gate.yes_no.question": "Is this interview workflow easy to follow so far?",
-          "internal.node_visit_count": 1,
-          "graph.goal": "Run a progressive human interview and summarize the answers",
-          "current_node": "yes_no",
-          "internal.fidelity": "compact",
-          "internal.thread_id": "start",
-          "internal.retry_count.start": 0,
-          "human.gate.yes_no.answer": "yes",
-          "preferred_label": "[Y] Yes",
-          "failure_class": "",
-          "internal.run_id": "01M12DCDACAM5DE5MVHPZ50M21",
-          "human.gate.selected": "Y",
           "failure_signature": "",
-          "human.gate.yes_no.label": "[Y] Yes"
+          "human.gate.yes_no.question": "Is this interview workflow easy to follow so far?",
+          "internal.thread_id": "start",
+          "preferred_label": "[Y] Yes",
+          "human.gate.label": "[Y] Yes",
+          "internal.retry_count.yes_no": 0,
+          "thread.start.current_node": "yes_no",
+          "internal.fidelity": "compact",
+          "outcome": "succeeded",
+          "internal.work_dir": "/workspace/fabro",
+          "graph.rankdir": "LR",
+          "internal.node_visit_count": 1,
+          "human.gate.selected": "Y",
+          "graph.goal": "Run a progressive human interview and summarize the answers",
+          "internal.run_id": "01M12DCDACAM5DE5MVHPZ50M21",
+          "human.gate.yes_no.answer": "yes",
+          "current_node": "yes_no",
+          "human.gate.yes_no.label": "[Y] Yes",
+          "internal.retry_count.start": 0,
+          "failure_class": ""
         },
         "node_outcomes": {
           "start": {
@@ -531,7 +531,97 @@
           }
         },
         "next_node_id": "confirmation",
+        "git_commit_sha": "e858de4b2731d23cb1128a39c88c3a8f93c7e2e6",
         "node_visits": {
+          "start": 1,
+          "yes_no": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-27T20:08:39.824738934Z",
+        "current_node": "confirmation",
+        "completed_nodes": [
+          "start",
+          "yes_no",
+          "confirmation"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.work_dir": "/workspace/fabro",
+          "outcome": "succeeded",
+          "internal.retry_count.yes_no": 0,
+          "graph.rankdir": "LR",
+          "human.gate.confirmation.question": "Confirm that you want to continue into more structured questions.",
+          "human.gate.yes_no.question": "Is this interview workflow easy to follow so far?",
+          "thread.yes_no.current_node": "confirmation",
+          "human.gate.confirmation.answer": "yes",
+          "current_node": "confirmation",
+          "internal.fidelity": "compact",
+          "internal.thread_id": "yes_no",
+          "internal.retry_count.start": 0,
+          "human.gate.yes_no.answer": "yes",
+          "preferred_label": "[Y] Continue",
+          "human.gate.yes_no.label": "[Y] Yes",
+          "failure_signature": "",
+          "thread.start.current_node": "yes_no",
+          "human.gate.label": "[Y] Continue",
+          "human.gate.confirmation.label": "[Y] Continue",
+          "internal.node_visit_count": 1,
+          "graph.goal": "Run a progressive human interview and summarize the answers",
+          "internal.retry_count.confirmation": 0,
+          "failure_class": "",
+          "internal.run_id": "01M12DCDACAM5DE5MVHPZ50M21",
+          "human.gate.selected": "Y"
+        },
+        "node_outcomes": {
+          "confirmation": {
+            "status": "succeeded",
+            "preferred_label": "[Y] Continue",
+            "suggested_next_ids": [
+              "multiple_choice"
+            ],
+            "context_updates": {
+              "human.gate.label": "[Y] Continue",
+              "human.gate.confirmation.question": "Confirm that you want to continue into more structured questions.",
+              "human.gate.selected": "Y",
+              "human.gate.confirmation.answer": "yes",
+              "human.gate.confirmation.label": "[Y] Continue"
+            },
+            "usage": null
+          },
+          "yes_no": {
+            "status": "succeeded",
+            "preferred_label": "[Y] Yes",
+            "suggested_next_ids": [
+              "confirmation"
+            ],
+            "context_updates": {
+              "human.gate.selected": "Y",
+              "human.gate.yes_no.answer": "yes",
+              "human.gate.yes_no.question": "Is this interview workflow easy to follow so far?",
+              "human.gate.label": "[Y] Yes",
+              "human.gate.yes_no.label": "[Y] Yes"
+            },
+            "usage": null
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "multiple_choice",
+        "node_visits": {
+          "confirmation": 1,
           "yes_no": 1,
           "start": 1
         }
@@ -605,7 +695,12 @@
       "first_event_seq": 27,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-27T20:08:29.274524737Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": null,
@@ -613,6 +708,37 @@
       "parallel_results": null,
       "output": null,
       "started_at": "2026-08-27T20:08:11.716379266Z",
+      "handler": "human",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 14536,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "confirmation@1": {
+      "first_event_seq": 39,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-27T20:08:34.310438649Z",
       "handler": "human",
       "graph_visit": 1,
       "usage": {
