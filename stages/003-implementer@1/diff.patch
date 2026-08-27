@@ -1,0 +1,310 @@
+diff --git a/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl b/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl
+index d25b5aa..e5d1ce0 100644
+--- a/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl
++++ b/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M11P68SHFS165HP9ATK6094V","node":"start","visit":1,"status":"succeeded","ts":"2026-08-27T13:22:53Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M11P68SHFS165HP9ATK6094V","node":"planner","visit":1,"status":"succeeded","ts":"2026-08-27T13:23:59Z","data":{"painpoints":[],"observations":["Goal ordering (fabro-44b6 → fabro-28e8 → fabro-c295) matches tracker state: all three ready, none in_progress, no blockers between them; planner picked fabro-44b6 first per explicit goal ordering.","Spec abbreviates test names (ShortcutEquivalence/RejectsInvalidFormat); actual names are TestRunFormatShortcutEquivalence/TestRunRejectsInvalidFormat — brief uses exact names to avoid implementer confusion.","Empty-range -sum in csv was unspecified verbatim; resolved as `sum,<start>,<last>,0` mirroring JSON's index_range semantics, annotated in the brief."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M11P68SHFS165HP9ATK6094V","node":"implementer","visit":1,"status":"succeeded","ts":"2026-08-27T13:26:50Z","data":{"painpoints":[],"observations":["Near-miss while editing `/workspace/fabro/fib_test.go`: an edit_file replacement that swapped a table-literal tail accidentally deleted TestRunFormatShortcutEquivalence's entire loop body (the old_string spanned it). Caught by re-reading the region immediately after; `go vet` would have flagged the syntax break anyway. Lesson: when editing struct-literal tails inside test tables, keep old_string scoped to the literal lines only, never let it swallow the following loop."]}}
+diff --git a/README.md b/README.md
+index 519b659..6b45bb5 100644
+--- a/README.md
++++ b/README.md
+@@ -108,9 +108,10 @@ $ gofib -seed 10 -json
+ ```
+ 
+ `-format <mode>` selects the output style globally: `text` (the
+-default), `json`, `pretty`, or the compact `table` mode (values only,
++default), `json`, `pretty`, the compact `table` mode (values only,
+ one per line, right-justified to the width of the widest value
+-printed, no index column). It composes with `-start`, `-n`, `-limit`,
++printed, no index column), or `csv` (one plain `<index>,<fib>` record
++per line, no header). It composes with `-start`, `-n`, `-limit`,
+ and `-seed` as usual:
+ 
+ ```
+@@ -163,6 +164,19 @@ $ gofib -start 8 -n 5 -format table
+ 
+ $ gofib -seed 10 -format table
+ 55
++
++$ gofib -n 3 -format csv
++1,1
++2,1
++3,2
++
++$ gofib -start 10 -n 5 -limit 12 -format csv
++10,55
++11,89
++12,144
++
++$ gofib -seed 10 -format csv
++10,55
+ ```
+ 
+ `-json` and `-pretty` are **shortcuts**: `-json` behaves exactly like
+@@ -180,7 +194,7 @@ $ echo $?
+ 1
+ 
+ $ gofib -format xml
+-invalid value "xml" for flag -format: must be one of text, json, pretty, table
++invalid value "xml" for flag -format: must be one of text, json, pretty, table, csv
+ $ echo $?
+ 1
+ ```
+@@ -240,11 +254,15 @@ gofib 1.3.0
+ `math/big` sum of the Fibonacci numbers in the same `-start`/`-limit`/
+ `-n` intersection line mode would print (an empty range sums to `0`),
+ rendered per output mode — `sum: <value>` in text, one JSON object in
+-json, the bare value in pretty/table:
++json, the bare value in pretty/table, and exactly one
++`sum,<start>,<last>,<total>` CSV record in csv:
+ 
+ ```
+ $ gofib -n 10 -sum
+ sum: 143
++
++$ gofib -n 10 -sum -format csv
++sum,1,10,143
+ ```
+ 
+ An invalid count fails with a non-zero exit and an error on stderr:
+@@ -264,10 +282,10 @@ $ echo $?
+ | `-start <int>` | Start flag: index of the first number printed. Default `0`, which behaves like `1` (gofib's indices are 1-based), so unset output is unchanged — plain `gofib` still starts `1: 1` and ends `100: 354224848179261915075`. `-start s -n k` prints exactly `k` lines with indices `s..s+k-1`: `-start` never changes what `-n` counts. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr. Combines with `-json` (the `index` field carries the actual index) and `-pretty` (columns sized to the largest index and value actually printed). |
+ | `-limit <int>` | Cap flag: the largest index gofib will print, independent of `-start` and `-n`. Default `0`, which means **no limit** (the sentinel mirrors `-start`'s `0`-default). The output is the intersection of the three range flags — `start <= index <= min(start+n-1, limit)`, at most `-n` lines — so e.g. `gofib -n 100000 -limit 5` prints exactly 5 lines, instantly. `-limit < start` (both positive) is **not an error**: gofib prints nothing and exits `0`. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr (`invalid value -1 for flag -limit: must be >= 0`). Combines with `-json` (one object per surviving index) and `-pretty` (columns sized to the capped range, not `start+n-1`). |
+ | `-seed <int>` | Lookup flag: print **only** the Fibonacci number at this index — exactly one line in the active output mode (`i: <value>`, or one JSON object, or a single `-pretty` row sized from that sole index). Default `0` is the unset **sentinel** (mirroring `-start`): plain `gofib` output is unchanged. **Precedence**: a positive `-seed` overrides `-n`, `-start`, and `-limit` so only index `i` prints — e.g. `gofib -seed 10 -n 5 -start 2` prints exactly `10: 55` — and, like `-version`, it skips the range-flag validation, so an otherwise-invalid combination such as `-seed 10 -n 0` still prints the single entry. `-version` still wins over everything. Must be `>= 0`, otherwise gofib exits non-zero with an error on stderr (`invalid value -1 for flag -seed: must be >= 0`). |
+-| `-format <mode>` | Output-mode flag: selects the output style globally — `text` (the default), `json` (JSON Lines), `pretty` (right-aligned text columns), or `table` (compact: values only, one per line, right-justified to the width of the widest value printed, no index column). Composes with `-start`, `-n`, `-limit`, and `-seed` as usual. An invalid value exits non-zero with `invalid value "xml" for flag -format: must be one of text, json, pretty, table` on stderr. `-json` and `-pretty` are **shortcuts** for `-format json` / `-format pretty`: with `-format` unset they keep their legacy meaning (plain `-json -pretty` is still not an error — JSON wins), but an explicitly set `-format` must **agree** with any also-given shortcut, so e.g. `-pretty -format json` exits non-zero with an error naming both flags (agreeing combos like `-json -format json` are fine). `-version` still wins over everything, including an invalid or conflicting `-format`. |
++| `-format <mode>` | Output-mode flag: selects the output style globally — `text` (the default), `json` (JSON Lines), `pretty` (right-aligned text columns), `table` (compact: values only, one per line, right-justified to the width of the widest value printed, no index column), or `csv` (one plain `<index>,<fib>` CSV record per line, no header; with `-seed` a single record; with `-sum` exactly one `sum,<start>,<last>,<total>` record). There is **no** `-csv` shortcut flag — `-format csv` is its only spelling. Composes with `-start`, `-n`, `-limit`, and `-seed` as usual. An invalid value exits non-zero with `invalid value "xml" for flag -format: must be one of text, json, pretty, table, csv` on stderr. `-json` and `-pretty` are **shortcuts** for `-format json` / `-format pretty`: with `-format` unset they keep their legacy meaning (plain `-json -pretty` is still not an error — JSON wins), but an explicitly set `-format` must **agree** with any also-given shortcut, so e.g. `-pretty -format json` (or `-json -format csv`) exits non-zero with an error naming both flags (agreeing combos like `-json -format json` are fine). `-version` still wins over everything, including an invalid or conflicting `-format`. |
+ | `-json` | JSON mode: emit JSON Lines instead of text — one `{"index":<int>,"fib":"<string>"}` object per number. `fib` is a string by decision (ADR-0001), since F(100) overflows int64. Never a JSON array. Shortcut for `-format json`; conflicts with an explicit `-format` selecting another mode. |
+ | `-pretty` | Aligned column output in text mode: both columns right-aligned, sized to the largest index and value printed. Shortcut for `-format pretty`; conflicts with an explicit `-format` selecting another mode. |
+-| `-sum` | Sum flag: print exactly one line with the `math/big` sum of the Fibonacci numbers in the same `-start`/`-limit`/`-n` intersection line mode would print — text mode prints `sum: <value>`, json mode one object `{"index_range":[first,last],"sum":"<string>"}` (sum as string since it can exceed int64; `index_range` reports the computed effective bounds even when the range is empty/inverted), pretty/table print the bare value + newline. An empty selected range (`-limit < -start`) sums to `0`, not an error. A positive `-seed` with `-sum` exits non-zero with an error naming both flags; `-seed 0` (unset sentinel) is legal. `-version` still wins. |
++| `-sum` | Sum flag: print exactly one line with the `math/big` sum of the Fibonacci numbers in the same `-start`/`-limit`/`-n` intersection line mode would print — text mode prints `sum: <value>`, json mode one object `{"index_range":[first,last],"sum":"<string>"}` (sum as string since it can exceed int64; `index_range` reports the computed effective bounds even when the range is empty/inverted), csv mode one record `sum,<start>,<last>,<total>` (mirroring json's bounds+sum), pretty/table print the bare value + newline. An empty selected range (`-limit < -start`) sums to `0`, not an error. A positive `-seed` with `-sum` exits non-zero with an error naming both flags; `-seed 0` (unset sentinel) is legal. `-version` still wins. |
+ | `-version` | Prints exactly `gofib 1.3.0` (from the `Version` const in `main.go`) and takes precedence over every other flag — even an otherwise-invalid combination like `-version -n 0 -json` prints the version and exits `0`. |
+ 
+ With no `-format`, plain `-pretty` and `-json` together is not an
+diff --git a/fib_test.go b/fib_test.go
+index 1ca5d65..a49e908 100644
+--- a/fib_test.go
++++ b/fib_test.go
+@@ -595,6 +595,7 @@ func TestRunFormatModes(t *testing.T) {
+ 			wantJSONLine(8) + "\n" + wantJSONLine(9) + "\n" + wantJSONLine(10) + "\n" + wantJSONLine(11) + "\n" + wantJSONLine(12) + "\n"},
+ 		{"pretty", "pretty", " 8:  21\n 9:  34\n10:  55\n11:  89\n12: 144\n"},
+ 		{"table", "table", " 21\n 34\n 55\n 89\n144\n"},
++		{"csv", "csv", "8,21\n9,34\n10,55\n11,89\n12,144\n"},
+ 		{"empty format is text (unset sentinel)", "", "8: 21\n9: 34\n10: 55\n11: 89\n12: 144\n"},
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+@@ -641,6 +642,18 @@ func TestRunFormatShortcutEquivalence(t *testing.T) {
+ 			}
+ 		})
+ 	}
++	// csv has no shortcut flag: -format csv is its only spelling, and
++	// neither -json nor -pretty may stand in for it (conflicts are
++	// pinned in TestRunFormatConflicts).
++	t.Run("csv has no shortcut: -format csv alone is its only spelling", func(t *testing.T) {
++		var buf bytes.Buffer
++		if err := run(&buf, 0, 3, 0, 0, "csv", false, false, false, false); err != nil {
++			t.Fatalf("run(format=csv) returned error: %v", err)
++		}
++		if want := "1,1\n2,1\n3,2\n"; buf.String() != want {
++			t.Errorf("run(format=csv) = %q, want %q", buf.String(), want)
++		}
++	})
+ }
+ 
+ // TestRunFormatConflicts pins the conflict rule: when -format is
+@@ -669,6 +682,10 @@ func TestRunFormatConflicts(t *testing.T) {
+ 			`flags -json and -format conflict: -json selects json but -format selects table`},
+ 		{"-pretty with -format table", "table", false, true,
+ 			`flags -pretty and -format conflict: -pretty selects pretty but -format selects table`},
++		{"-json with -format csv", "csv", true, false,
++			`flags -json and -format conflict: -json selects json but -format selects csv`},
++		{"-pretty with -format csv", "csv", false, true,
++			`flags -pretty and -format conflict: -pretty selects pretty but -format selects csv`},
+ 	}
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+@@ -707,7 +724,7 @@ func TestRunRejectsInvalidFormat(t *testing.T) {
+ 		if err == nil {
+ 			t.Fatalf("run(format=%q) succeeded, want error", format)
+ 		}
+-		want := fmt.Sprintf("invalid value %q for flag -format: must be one of text, json, pretty, table", format)
++		want := fmt.Sprintf("invalid value %q for flag -format: must be one of text, json, pretty, table, csv", format)
+ 		if err.Error() != want {
+ 			t.Errorf("error = %q, want exactly %q", err.Error(), want)
+ 		}
+@@ -717,6 +734,62 @@ func TestRunRejectsInvalidFormat(t *testing.T) {
+ 	}
+ }
+ 
++// csvRecord returns the expected -format csv line for index i.
++func csvRecord(i int) string {
++	return fmt.Sprintf("%d,%s", i, Fib(i).String())
++}
++
++// TestRunCSV pins csv mode across the flag combinations: one plain
++// "<index>,<fib>" record per line with no header, composing with -n,
++// -start/-limit, -seed lookup (a single record), and -sum (exactly one
++// "sum,<start>,<last>,<total>" record mirroring JSON's index_range+sum
++// structure; an empty range sums to 0 with last < start).
++func TestRunCSV(t *testing.T) {
++	for _, tt := range []struct {
++		name   string
++		start  int
++		n      int
++		limit  int
++		seed   int
++		sum    bool
++		wantEl int // expected line count (0 means empty output)
++		first  string
++		last   string
++	}{
++		{"csv default (n=3) prints three records", 0, 3, 0, 0, false, 3, csvRecord(1), csvRecord(3)},
++		{"csv with -n 5 prints five records", 0, 5, 0, 0, false, 5, csvRecord(1), csvRecord(5)},
++		{"csv with -start 10 -limit 12 prints indices 10..12", 10, 100, 12, 0, false, 3, csvRecord(10), csvRecord(12)},
++		{"csv with -seed prints one record", 0, defaultCount, 0, 10, false, 1, csvRecord(10), csvRecord(10)},
++		{"csv with -sum prints one sum record", 0, 10, 0, 0, true, 1, "sum,1,10,143", "sum,1,10,143"},
++		{"csv with -sum and narrowing", 8, 5, 10, 0, true, 1, "sum,8,10,110", "sum,8,10,110"},
++		{"csv with -sum over an empty range sums to 0", 5, 10, 3, 0, true, 1, "sum,5,3,0", "sum,5,3,0"},
++	} {
++		t.Run(tt.name, func(t *testing.T) {
++			var buf bytes.Buffer
++			if err := run(&buf, tt.start, tt.n, tt.limit, tt.seed, "csv", false, false, false, tt.sum); err != nil {
++				t.Fatalf("run(csv) returned error: %v", err)
++			}
++			out := buf.String()
++			if tt.wantEl == 0 {
++				if out != "" {
++					t.Fatalf("wrote %q, want empty output", out)
++				}
++				return
++			}
++			lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
++			if len(lines) != tt.wantEl {
++				t.Fatalf("printed %d lines, want %d: %q", len(lines), tt.wantEl, out)
++			}
++			if lines[0] != tt.first {
++				t.Errorf("first line = %q, want %q", lines[0], tt.first)
++			}
++			if lines[len(lines)-1] != tt.last {
++				t.Errorf("last line = %q, want %q", lines[len(lines)-1], tt.last)
++			}
++		})
++	}
++}
++
+ // tableLine returns the expected -format table line for value v:
+ // right-justified to the width of the widest value printed, which is
+ // Fib(n) for the range ending at index n.
+@@ -880,6 +953,8 @@ func TestRunSum(t *testing.T) {
+ 		{"json shortcut via -json", 0, 3, 0, "", true, false, wantSumJSON(1, 3) + "\n"},
+ 		{"pretty mode prints the bare value", 0, 10, 0, "pretty", false, false, fibSum(1, 10) + "\n"},
+ 		{"table mode prints the bare value", 0, 10, 0, "table", false, false, fibSum(1, 10) + "\n"},
++		{"csv mode prints one sum record", 0, 10, 0, "csv", false, false, "sum,1,10," + fibSum(1, 10) + "\n"},
++		{"csv mode with empty range", 5, 10, 3, "csv", false, false, "sum,5,3,0\n"},
+ 		{"big default range sum exceeds int64 as text", 0, defaultCount, 0, "", false, false, "sum: " + fibSum(1, defaultCount) + "\n"},
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+diff --git a/main.go b/main.go
+index ebb5d82..b9609a0 100644
+--- a/main.go
++++ b/main.go
+@@ -6,8 +6,9 @@
+ // 0, the default, means no limit), -seed prints only the Fibonacci
+ // number at a single index (0, the default, means unset), and -format
+ // selects the output mode globally: text (the default), json (JSON
+-// Lines), pretty (right-aligned text columns), or table (values only,
+-// right-justified). -sum replaces the per-number output with a single
++// Lines), pretty (right-aligned text columns), table (values only,
++// right-justified), or csv (one plain <index>,<fib> CSV record per
++// line, no header). -sum replaces the per-number output with a single
+ // line carrying the big.Int sum of the Fibonacci numbers in the same
+ // -start/-limit/-n intersection line mode would print (an empty range
+ // sums to 0); it cannot be combined with a positive -seed. -json and -pretty are shortcuts for -format json
+@@ -71,6 +72,7 @@ const (
+ 	modeJSON
+ 	modePretty
+ 	modeTable
++	modeCSV
+ )
+ 
+ // modeName returns the -format spelling of an output mode.
+@@ -82,13 +84,15 @@ func modeName(m outputMode) string {
+ 		return "pretty"
+ 	case modeTable:
+ 		return "table"
++	case modeCSV:
++		return "csv"
+ 	default:
+ 		return "text"
+ 	}
+ }
+ 
+ // parseMode validates a -format value: the empty string (unset) and
+-// "text" both select the default text mode; anything outside the four
++// "text" both select the default text mode; anything outside the five
+ // modes is rejected with the flag-package-style error naming the valid
+ // values.
+ func parseMode(format string) (outputMode, error) {
+@@ -101,8 +105,10 @@ func parseMode(format string) (outputMode, error) {
+ 		return modePretty, nil
+ 	case "table":
+ 		return modeTable, nil
++	case "csv":
++		return modeCSV, nil
+ 	default:
+-		return modeText, fmt.Errorf("invalid value %q for flag -format: must be one of text, json, pretty, table", format)
++		return modeText, fmt.Errorf("invalid value %q for flag -format: must be one of text, json, pretty, table, csv", format)
+ 	}
+ }
+ 
+@@ -149,7 +155,11 @@ func resolveMode(format string, asJSON, pretty bool) (outputMode, error) {
+ // index), separated by ": ". In JSON mode each line is
+ // one JSON object {"index": <int>, "fib": "<value>"} (JSON Lines).
+ // In table mode each line is the value alone, right-justified to the
+-// width of the largest value printed (no index column). The mode comes
++// width of the largest value printed (no index column). In CSV mode
++// each line is one plain CSV record "<index>,<value>" (no header,
++// unquoted values), and with sum set exactly one record
++// "sum,<start>,<last>,<total>" carries the effective bounds and the
++// total. The mode comes
+ // from format plus the -json/-pretty shortcuts via resolveMode: with
+ // format unset the shortcuts keep their legacy JSON-wins meaning; with
+ // format set (including text and table) a conflicting shortcut is an
+@@ -170,7 +180,8 @@ func resolveMode(format string, asJSON, pretty bool) (outputMode, error) {
+ // in the same selected range instead of the per-number output: text
+ // mode prints "sum: <value>", json mode one object
+ // {"index_range":[first,last],"sum":"<value>"} with the sum as a
+-// string, and pretty/table print the bare value followed by a newline.
++// string, csv mode the single record "sum,<start>,<last>,<total>",
++// and pretty/table print the bare value followed by a newline.
+ // An empty selected range (e.g. limit below start) sums to 0 and is
+ // not an error; index_range still reports the computed effective
+ // bounds. Otherwise run returns an error when count < 1, start < 0, or
+@@ -229,6 +240,8 @@ func run(w io.Writer, start, count, limit, seed int, format string, asJSON, pret
+ 		switch mode {
+ 		case modeJSON:
+ 			return enc.Encode(sumLine{IndexRange: []int{start, last}, Sum: total.String()})
++		case modeCSV:
++			fmt.Fprintf(w, "sum,%d,%d,%s\n", start, last, total)
+ 		case modePretty, modeTable:
+ 			fmt.Fprintf(w, "%s\n", total)
+ 		default:
+@@ -256,6 +269,8 @@ func run(w io.Writer, start, count, limit, seed int, format string, asJSON, pret
+ 			fmt.Fprintf(w, "%*d: %*s\n", idxW, i, valW, Fib(i).String())
+ 		case modeTable:
+ 			fmt.Fprintf(w, "%*s\n", valW, Fib(i).String())
++		case modeCSV:
++			fmt.Fprintf(w, "%d,%s\n", i, Fib(i).String())
+ 		default:
+ 			fmt.Fprintf(w, "%d: %v\n", i, Fib(i))
+ 		}
+@@ -268,7 +283,7 @@ func main() {
+ 	start := flag.Int("start", 0, "index of the first Fibonacci number to print (must be >= 0; 0 starts at 1 like the default)")
+ 	limit := flag.Int("limit", 0, "largest index to print (must be >= 0; 0 means no limit)")
+ 	seed := flag.Int("seed", 0, "print only the Fibonacci number at this index, overriding -n, -start, and -limit (must be >= 0; 0 means unset)")
+-	format := flag.String("format", "", "output mode: text, json, pretty, or table (default text); must agree with -json/-pretty when those are also set")
++	format := flag.String("format", "", "output mode: text, json, pretty, table, or csv (default text); must agree with -json/-pretty when those are also set")
+ 	asJSON := flag.Bool("json", false, "shortcut for -format json: emit JSON Lines instead of text (one {\"index\": i, \"fib\": \"value\"} object per number)")
+ 	pretty := flag.Bool("pretty", false, "shortcut for -format pretty: align text output into two right-aligned columns sized to the largest index and value")
+ 	version := flag.Bool("version", false, "print \"gofib <version>\" and exit; takes precedence over all other flags")
