@@ -72,6 +72,14 @@ decision, not an accident - it needs the user plus an ADR.
 
 - Run a code-review skill session on the diff since the base point
   (standards axis + spec axis). Fix findings before continuing.
+- PROOF OF WORK (user directive 2026-08-27, after the fabro_run_logs
+  cycle skipped the guide): the cycle report NAMES the guideline pages
+  loaded for the diff and the verification commands actually run
+  (tests/clippy/rustfmt per package). A report without both means the
+  review did not happen - a skipped guide load is a process failure,
+  even when tests pass (the fabro_run_logs cycle shipped two logic bugs
+  - inverted severity ordering, ISO-dash timestamp check - that a
+  guide-first pass would have caught at design time).
 - The standards axis IS rust-style-guide (plus the AGENTS.md strategy
   docs): reviewers load `workflows/code-review-refactor.md` and the
   guideline pages covering the diff. Guide findings are findings, not
