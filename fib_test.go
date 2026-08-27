@@ -595,6 +595,7 @@ func TestRunFormatModes(t *testing.T) {
 			wantJSONLine(8) + "\n" + wantJSONLine(9) + "\n" + wantJSONLine(10) + "\n" + wantJSONLine(11) + "\n" + wantJSONLine(12) + "\n"},
 		{"pretty", "pretty", " 8:  21\n 9:  34\n10:  55\n11:  89\n12: 144\n"},
 		{"table", "table", " 21\n 34\n 55\n 89\n144\n"},
+		{"csv", "csv", "8,21\n9,34\n10,55\n11,89\n12,144\n"},
 		{"empty format is text (unset sentinel)", "", "8: 21\n9: 34\n10: 55\n11: 89\n12: 144\n"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -641,6 +642,18 @@ func TestRunFormatShortcutEquivalence(t *testing.T) {
 			}
 		})
 	}
+	// csv has no shortcut flag: -format csv is its only spelling, and
+	// neither -json nor -pretty may stand in for it (conflicts are
+	// pinned in TestRunFormatConflicts).
+	t.Run("csv has no shortcut: -format csv alone is its only spelling", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := run(&buf, 0, 3, 0, 0, "csv", false, false, false, false); err != nil {
+			t.Fatalf("run(format=csv) returned error: %v", err)
+		}
+		if want := "1,1\n2,1\n3,2\n"; buf.String() != want {
+			t.Errorf("run(format=csv) = %q, want %q", buf.String(), want)
+		}
+	})
 }
 
 // TestRunFormatConflicts pins the conflict rule: when -format is
@@ -669,6 +682,10 @@ func TestRunFormatConflicts(t *testing.T) {
 			`flags -json and -format conflict: -json selects json but -format selects table`},
 		{"-pretty with -format table", "table", false, true,
 			`flags -pretty and -format conflict: -pretty selects pretty but -format selects table`},
+		{"-json with -format csv", "csv", true, false,
+			`flags -json and -format conflict: -json selects json but -format selects csv`},
+		{"-pretty with -format csv", "csv", false, true,
+			`flags -pretty and -format conflict: -pretty selects pretty but -format selects csv`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -707,13 +724,69 @@ func TestRunRejectsInvalidFormat(t *testing.T) {
 		if err == nil {
 			t.Fatalf("run(format=%q) succeeded, want error", format)
 		}
-		want := fmt.Sprintf("invalid value %q for flag -format: must be one of text, json, pretty, table", format)
+		want := fmt.Sprintf("invalid value %q for flag -format: must be one of text, json, pretty, table, csv", format)
 		if err.Error() != want {
 			t.Errorf("error = %q, want exactly %q", err.Error(), want)
 		}
 		if buf.Len() != 0 {
 			t.Errorf("wrote %q before failing, want no output", buf.String())
 		}
+	}
+}
+
+// csvRecord returns the expected -format csv line for index i.
+func csvRecord(i int) string {
+	return fmt.Sprintf("%d,%s", i, Fib(i).String())
+}
+
+// TestRunCSV pins csv mode across the flag combinations: one plain
+// "<index>,<fib>" record per line with no header, composing with -n,
+// -start/-limit, -seed lookup (a single record), and -sum (exactly one
+// "sum,<start>,<last>,<total>" record mirroring JSON's index_range+sum
+// structure; an empty range sums to 0 with last < start).
+func TestRunCSV(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		start  int
+		n      int
+		limit  int
+		seed   int
+		sum    bool
+		wantEl int // expected line count (0 means empty output)
+		first  string
+		last   string
+	}{
+		{"csv default (n=3) prints three records", 0, 3, 0, 0, false, 3, csvRecord(1), csvRecord(3)},
+		{"csv with -n 5 prints five records", 0, 5, 0, 0, false, 5, csvRecord(1), csvRecord(5)},
+		{"csv with -start 10 -limit 12 prints indices 10..12", 10, 100, 12, 0, false, 3, csvRecord(10), csvRecord(12)},
+		{"csv with -seed prints one record", 0, defaultCount, 0, 10, false, 1, csvRecord(10), csvRecord(10)},
+		{"csv with -sum prints one sum record", 0, 10, 0, 0, true, 1, "sum,1,10,143", "sum,1,10,143"},
+		{"csv with -sum and narrowing", 8, 5, 10, 0, true, 1, "sum,8,10,110", "sum,8,10,110"},
+		{"csv with -sum over an empty range sums to 0", 5, 10, 3, 0, true, 1, "sum,5,3,0", "sum,5,3,0"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, tt.start, tt.n, tt.limit, tt.seed, "csv", false, false, false, tt.sum); err != nil {
+				t.Fatalf("run(csv) returned error: %v", err)
+			}
+			out := buf.String()
+			if tt.wantEl == 0 {
+				if out != "" {
+					t.Fatalf("wrote %q, want empty output", out)
+				}
+				return
+			}
+			lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+			if len(lines) != tt.wantEl {
+				t.Fatalf("printed %d lines, want %d: %q", len(lines), tt.wantEl, out)
+			}
+			if lines[0] != tt.first {
+				t.Errorf("first line = %q, want %q", lines[0], tt.first)
+			}
+			if lines[len(lines)-1] != tt.last {
+				t.Errorf("last line = %q, want %q", lines[len(lines)-1], tt.last)
+			}
+		})
 	}
 }
 
@@ -880,6 +953,8 @@ func TestRunSum(t *testing.T) {
 		{"json shortcut via -json", 0, 3, 0, "", true, false, wantSumJSON(1, 3) + "\n"},
 		{"pretty mode prints the bare value", 0, 10, 0, "pretty", false, false, fibSum(1, 10) + "\n"},
 		{"table mode prints the bare value", 0, 10, 0, "table", false, false, fibSum(1, 10) + "\n"},
+		{"csv mode prints one sum record", 0, 10, 0, "csv", false, false, "sum,1,10," + fibSum(1, 10) + "\n"},
+		{"csv mode with empty range", 5, 10, 3, "csv", false, false, "sum,5,3,0\n"},
 		{"big default range sum exceeds int64 as text", 0, defaultCount, 0, "", false, false, "sum: " + fibSum(1, defaultCount) + "\n"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

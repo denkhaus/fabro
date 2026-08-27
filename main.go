@@ -6,8 +6,9 @@
 // 0, the default, means no limit), -seed prints only the Fibonacci
 // number at a single index (0, the default, means unset), and -format
 // selects the output mode globally: text (the default), json (JSON
-// Lines), pretty (right-aligned text columns), or table (values only,
-// right-justified). -sum replaces the per-number output with a single
+// Lines), pretty (right-aligned text columns), table (values only,
+// right-justified), or csv (one plain <index>,<fib> CSV record per
+// line, no header). -sum replaces the per-number output with a single
 // line carrying the big.Int sum of the Fibonacci numbers in the same
 // -start/-limit/-n intersection line mode would print (an empty range
 // sums to 0); it cannot be combined with a positive -seed. -json and -pretty are shortcuts for -format json
@@ -71,6 +72,7 @@ const (
 	modeJSON
 	modePretty
 	modeTable
+	modeCSV
 )
 
 // modeName returns the -format spelling of an output mode.
@@ -82,13 +84,15 @@ func modeName(m outputMode) string {
 		return "pretty"
 	case modeTable:
 		return "table"
+	case modeCSV:
+		return "csv"
 	default:
 		return "text"
 	}
 }
 
 // parseMode validates a -format value: the empty string (unset) and
-// "text" both select the default text mode; anything outside the four
+// "text" both select the default text mode; anything outside the five
 // modes is rejected with the flag-package-style error naming the valid
 // values.
 func parseMode(format string) (outputMode, error) {
@@ -101,8 +105,10 @@ func parseMode(format string) (outputMode, error) {
 		return modePretty, nil
 	case "table":
 		return modeTable, nil
+	case "csv":
+		return modeCSV, nil
 	default:
-		return modeText, fmt.Errorf("invalid value %q for flag -format: must be one of text, json, pretty, table", format)
+		return modeText, fmt.Errorf("invalid value %q for flag -format: must be one of text, json, pretty, table, csv", format)
 	}
 }
 
@@ -149,7 +155,11 @@ func resolveMode(format string, asJSON, pretty bool) (outputMode, error) {
 // index), separated by ": ". In JSON mode each line is
 // one JSON object {"index": <int>, "fib": "<value>"} (JSON Lines).
 // In table mode each line is the value alone, right-justified to the
-// width of the largest value printed (no index column). The mode comes
+// width of the largest value printed (no index column). In CSV mode
+// each line is one plain CSV record "<index>,<value>" (no header,
+// unquoted values), and with sum set exactly one record
+// "sum,<start>,<last>,<total>" carries the effective bounds and the
+// total. The mode comes
 // from format plus the -json/-pretty shortcuts via resolveMode: with
 // format unset the shortcuts keep their legacy JSON-wins meaning; with
 // format set (including text and table) a conflicting shortcut is an
@@ -170,7 +180,8 @@ func resolveMode(format string, asJSON, pretty bool) (outputMode, error) {
 // in the same selected range instead of the per-number output: text
 // mode prints "sum: <value>", json mode one object
 // {"index_range":[first,last],"sum":"<value>"} with the sum as a
-// string, and pretty/table print the bare value followed by a newline.
+// string, csv mode the single record "sum,<start>,<last>,<total>",
+// and pretty/table print the bare value followed by a newline.
 // An empty selected range (e.g. limit below start) sums to 0 and is
 // not an error; index_range still reports the computed effective
 // bounds. Otherwise run returns an error when count < 1, start < 0, or
@@ -229,6 +240,8 @@ func run(w io.Writer, start, count, limit, seed int, format string, asJSON, pret
 		switch mode {
 		case modeJSON:
 			return enc.Encode(sumLine{IndexRange: []int{start, last}, Sum: total.String()})
+		case modeCSV:
+			fmt.Fprintf(w, "sum,%d,%d,%s\n", start, last, total)
 		case modePretty, modeTable:
 			fmt.Fprintf(w, "%s\n", total)
 		default:
@@ -256,6 +269,8 @@ func run(w io.Writer, start, count, limit, seed int, format string, asJSON, pret
 			fmt.Fprintf(w, "%*d: %*s\n", idxW, i, valW, Fib(i).String())
 		case modeTable:
 			fmt.Fprintf(w, "%*s\n", valW, Fib(i).String())
+		case modeCSV:
+			fmt.Fprintf(w, "%d,%s\n", i, Fib(i).String())
 		default:
 			fmt.Fprintf(w, "%d: %v\n", i, Fib(i))
 		}
@@ -268,7 +283,7 @@ func main() {
 	start := flag.Int("start", 0, "index of the first Fibonacci number to print (must be >= 0; 0 starts at 1 like the default)")
 	limit := flag.Int("limit", 0, "largest index to print (must be >= 0; 0 means no limit)")
 	seed := flag.Int("seed", 0, "print only the Fibonacci number at this index, overriding -n, -start, and -limit (must be >= 0; 0 means unset)")
-	format := flag.String("format", "", "output mode: text, json, pretty, or table (default text); must agree with -json/-pretty when those are also set")
+	format := flag.String("format", "", "output mode: text, json, pretty, table, or csv (default text); must agree with -json/-pretty when those are also set")
 	asJSON := flag.Bool("json", false, "shortcut for -format json: emit JSON Lines instead of text (one {\"index\": i, \"fib\": \"value\"} object per number)")
 	pretty := flag.Bool("pretty", false, "shortcut for -format pretty: align text output into two right-aligned columns sized to the largest index and value")
 	version := flag.Bool("version", false, "print \"gofib <version>\" and exit; takes precedence over all other flags")
