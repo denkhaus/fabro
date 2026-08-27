@@ -438,7 +438,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-08-27T20:12:15.492647794Z",
-  "last_event_at": "2026-08-27T20:12:15.492647794Z",
+  "last_event_at": "2026-08-27T20:12:50.647791798Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -882,9 +882,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 84,
       "checkpoint": {
-        "timestamp": "2026-08-27T20:12:15.535160256Z",
+        "timestamp": "2026-08-27T20:12:20.802525821Z",
         "current_node": "freeform",
         "completed_nodes": [
           "start",
@@ -896,26 +896,187 @@
         ],
         "node_retries": {},
         "context_values": {
+          "thread.start.current_node": "yes_no",
+          "human.gate.yes_no.answer": "yes",
+          "thread.multiple_choice.current_node": "multi_select",
+          "internal.retry_count.multiple_choice": 0,
+          "thread.yes_no.current_node": "confirmation",
+          "internal.work_dir": "/workspace/fabro",
+          "human.gate.yes_no.question": "Is this interview workflow easy to follow so far?",
+          "internal.retry_count.yes_no": 0,
+          "human.gate.multiple_choice.question": "Which theme should be the center of the final summary?",
+          "human.gate.yes_no.label": "[Y] Yes",
+          "current_node": "freeform",
+          "human.gate.multiple_choice.answer": "Q",
+          "internal.thread_id": "multi_select",
+          "preferred_label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
+          "failure_signature": "",
+          "internal.retry_count.freeform": 0,
+          "human.gate.confirmation.label": "[Y] Continue",
+          "human.gate.selected": "freeform",
+          "human.gate.multi_select.label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
+          "internal.fidelity": "compact",
+          "internal.retry_count.multi_select": 0,
+          "outcome": "succeeded",
+          "failure_class": "",
+          "human.gate.confirmation.question": "Confirm that you want to continue into more structured questions.",
+          "graph.rankdir": "LR",
+          "human.gate.confirmation.answer": "yes",
+          "human.gate.label": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?",
+          "graph.goal": "Run a progressive human interview and summarize the answers",
+          "human.gate.multi_select.answer": "D, B, S, N",
+          "internal.run_id": "01M12DCDACAM5DE5MVHPZ50M21",
+          "human.gate.freeform.question": "Add any final context, constraints, or nuance for the summary.",
+          "human.gate.multi_select.question": "Which supporting areas should the final summary emphasize?",
+          "thread.confirmation.current_node": "multiple_choice",
+          "internal.retry_count.start": 0,
+          "human.gate.freeform.answer": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?",
+          "human.gate.multiple_choice.label": "[Q] Open questions",
+          "internal.node_visit_count": 1,
+          "human.gate.text": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?",
+          "internal.retry_count.confirmation": 0,
+          "thread.multi_select.current_node": "freeform"
+        },
+        "node_outcomes": {
+          "confirmation": {
+            "status": "succeeded",
+            "preferred_label": "[Y] Continue",
+            "suggested_next_ids": [
+              "multiple_choice"
+            ],
+            "context_updates": {
+              "human.gate.label": "[Y] Continue",
+              "human.gate.confirmation.question": "Confirm that you want to continue into more structured questions.",
+              "human.gate.selected": "Y",
+              "human.gate.confirmation.answer": "yes",
+              "human.gate.confirmation.label": "[Y] Continue"
+            },
+            "usage": null
+          },
+          "freeform": {
+            "status": "succeeded",
+            "suggested_next_ids": [
+              "summarize"
+            ],
+            "context_updates": {
+              "human.gate.selected": "freeform",
+              "human.gate.label": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?",
+              "human.gate.freeform.question": "Add any final context, constraints, or nuance for the summary.",
+              "human.gate.freeform.answer": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?",
+              "human.gate.text": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?"
+            },
+            "usage": null
+          },
+          "yes_no": {
+            "status": "succeeded",
+            "preferred_label": "[Y] Yes",
+            "suggested_next_ids": [
+              "confirmation"
+            ],
+            "context_updates": {
+              "human.gate.selected": "Y",
+              "human.gate.yes_no.answer": "yes",
+              "human.gate.yes_no.question": "Is this interview workflow easy to follow so far?",
+              "human.gate.label": "[Y] Yes",
+              "human.gate.yes_no.label": "[Y] Yes"
+            },
+            "usage": null
+          },
+          "multi_select": {
+            "status": "succeeded",
+            "preferred_label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
+            "suggested_next_ids": [
+              "freeform"
+            ],
+            "context_updates": {
+              "human.gate.multi_select.answer": "D, B, S, N",
+              "human.gate.multi_select.question": "Which supporting areas should the final summary emphasize?",
+              "human.gate.label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
+              "human.gate.multi_select.label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
+              "human.gate.selected": "D,B,S,N"
+            },
+            "usage": null
+          },
+          "multiple_choice": {
+            "status": "succeeded",
+            "preferred_label": "[Q] Open questions",
+            "suggested_next_ids": [
+              "multi_select"
+            ],
+            "context_updates": {
+              "human.gate.selected": "Q",
+              "human.gate.multiple_choice.question": "Which theme should be the center of the final summary?",
+              "human.gate.multiple_choice.answer": "Q",
+              "human.gate.label": "[Q] Open questions",
+              "human.gate.multiple_choice.label": "[Q] Open questions"
+            },
+            "usage": null
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "summarize",
+        "git_commit_sha": "a164c9cb6958aba0eb39bb58268788e42df2376a",
+        "node_visits": {
+          "multiple_choice": 1,
+          "freeform": 1,
+          "yes_no": 1,
+          "confirmation": 1,
+          "start": 1,
+          "multi_select": 1
+        }
+      },
+      "diff": {
+        "summary": {
+          "files_changed": 0,
+          "additions": 0,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-27T20:12:50.660229897Z",
+        "current_node": "summarize",
+        "completed_nodes": [
+          "start",
+          "yes_no",
+          "confirmation",
+          "multiple_choice",
+          "multi_select",
+          "freeform",
+          "summarize"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "last_stage": "summarize",
           "internal.work_dir": "/workspace/fabro",
           "outcome": "succeeded",
           "internal.retry_count.yes_no": 0,
           "graph.rankdir": "LR",
           "human.gate.confirmation.question": "Confirm that you want to continue into more structured questions.",
           "human.gate.yes_no.question": "Is this interview workflow easy to follow so far?",
+          "response.summarize": "# Interview Summary — Run `01M12DCDACAM5DE5MVHPZ50M21`\n\n## Transcript (in order)\n\n| # | Stage | Question | Answer |\n|---|-------|----------|--------|\n| 1 | yes_no | Is this interview workflow easy to follow so far? | **Yes** |\n| 2 | confirmation | Confirm that you want to continue into more structured questions. | **Yes** — Continue |\n| 3 | multiple_choice | Which theme should be the center of the final summary? | **[Q] Open questions** |\n| 4 | multi_select | Which supporting areas should the final summary emphasize? | **[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps** (all four options selected) |\n| 5 | freeform | Add any final context, constraints, or nuance for the summary. | *\"gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?\"* — (EN: \"Is it possible to combine multiple-choice questions with a free-text answer?\") |\n\nNote: the freeform answer is itself a question about the interview tool, not supplied context or constraints.\n\n## Synthesis\n\n**Priorities**\n- The summary should be **centered on open questions** rather than a status or feature narrative.\n- All four supporting areas were selected (decisions, blockers, success criteria, next steps) — the user wants **comprehensive coverage**, not a narrow slice.\n- Usability is confirmed positive: the workflow was easy to follow and the user opted to continue into structured questions.\n\n**Constraints**\n- None were explicitly stated. The freeform stage, which was offered for constraints/nuance, was instead used to raise a capability question.\n\n**Open questions**\n1. **Hybrid question type (primary):** Can a multiple-choice question be combined with a free-text answer in a single question? In this run, question types only appeared as discrete stages (`yes_no`, `confirmation`, `multiple_choice`, `multi_select`, `freeform`) — no combined stage occurred, so this remains unanswered here. It should be routed to the pipeline/workflow owner. A natural follow-up if the answer is yes: how the choice and the free-text portion are represented in the context keys.\n2. **Thin content under the chosen frame:** the user asked for the summary to center on open questions, but only one substantive open question was raised; no decisions, blockers, or success criteria were supplied during the interview.\n\n**Derived next steps** (from the open question only)\n- Get an authoritative answer on combining multiple choice with free text from the pipeline maintainer.\n- If supported, document the node/handler configuration for a hybrid question; if not, treat it as a feature request candidate.\n\n*Kurz auf Deutsch: Das Interview bestätigte, dass der Workflow gut verständlich ist. Der Schwerpunkt der Zusammenfassung sollen offene Fragen sein. Die einzige offene Frage ist, ob Multiple-Choice-Fragen mit Freitext-Antworten kombiniert werden können — das wurde in diesem Lauf nicht beantwortet und muss geklärt werden.*",
           "thread.yes_no.current_node": "confirmation",
           "human.gate.multiple_choice.answer": "Q",
           "human.gate.multi_select.answer": "D, B, S, N",
           "human.gate.confirmation.answer": "yes",
-          "current_node": "freeform",
+          "current_node": "summarize",
           "human.gate.multi_select.question": "Which supporting areas should the final summary emphasize?",
-          "internal.fidelity": "compact",
-          "internal.thread_id": "multi_select",
+          "internal.fidelity": "summary:high",
+          "internal.thread_id": "freeform",
           "internal.retry_count.start": 0,
+          "last_response": "# Interview Summary — Run `01M12DCDACAM5DE5MVHPZ50M21`\n\n## Transcript (in order)\n\n| # | Stage | Question | Answer |\n|---|-------|----------|--------|\n| 1 | yes_no | Is this interview workflow easy t",
           "human.gate.yes_no.answer": "yes",
           "preferred_label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
           "internal.retry_count.multi_select": 0,
+          "internal.exit_kind": "natural",
           "human.gate.yes_no.label": "[Y] Yes",
           "failure_signature": "",
+          "thread.freeform.current_node": "summarize",
           "human.gate.multiple_choice.question": "Which theme should be the center of the final summary?",
           "thread.start.current_node": "yes_no",
           "human.gate.label": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?",
@@ -923,6 +1084,7 @@
           "human.gate.freeform.question": "Add any final context, constraints, or nuance for the summary.",
           "human.gate.freeform.answer": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?",
           "thread.multi_select.current_node": "freeform",
+          "internal.retry_count.summarize": 0,
           "human.gate.confirmation.label": "[Y] Continue",
           "human.gate.text": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?",
           "internal.node_visit_count": 1,
@@ -968,10 +1130,6 @@
             },
             "usage": null
           },
-          "start": {
-            "status": "succeeded",
-            "usage": null
-          },
           "multi_select": {
             "status": "succeeded",
             "preferred_label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
@@ -984,20 +1142,6 @@
               "human.gate.label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
               "human.gate.multi_select.label": "[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps",
               "human.gate.selected": "D,B,S,N"
-            },
-            "usage": null
-          },
-          "freeform": {
-            "status": "succeeded",
-            "suggested_next_ids": [
-              "summarize"
-            ],
-            "context_updates": {
-              "human.gate.selected": "freeform",
-              "human.gate.label": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?",
-              "human.gate.freeform.question": "Add any final context, constraints, or nuance for the summary.",
-              "human.gate.freeform.answer": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?",
-              "human.gate.text": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?"
             },
             "usage": null
           },
@@ -1015,16 +1159,71 @@
               "human.gate.multiple_choice.label": "[Q] Open questions"
             },
             "usage": null
+          },
+          "summarize": {
+            "status": "succeeded",
+            "context_updates": {
+              "last_stage": "summarize",
+              "last_response": "# Interview Summary — Run `01M12DCDACAM5DE5MVHPZ50M21`\n\n## Transcript (in order)\n\n| # | Stage | Question | Answer |\n|---|-------|----------|--------|\n| 1 | yes_no | Is this interview workflow easy t",
+              "response.summarize": "# Interview Summary — Run `01M12DCDACAM5DE5MVHPZ50M21`\n\n## Transcript (in order)\n\n| # | Stage | Question | Answer |\n|---|-------|----------|--------|\n| 1 | yes_no | Is this interview workflow easy to follow so far? | **Yes** |\n| 2 | confirmation | Confirm that you want to continue into more structured questions. | **Yes** — Continue |\n| 3 | multiple_choice | Which theme should be the center of the final summary? | **[Q] Open questions** |\n| 4 | multi_select | Which supporting areas should the final summary emphasize? | **[D] Decisions needed, [B] Blockers, [S] Success criteria, [N] Next steps** (all four options selected) |\n| 5 | freeform | Add any final context, constraints, or nuance for the summary. | *\"gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?\"* — (EN: \"Is it possible to combine multiple-choice questions with a free-text answer?\") |\n\nNote: the freeform answer is itself a question about the interview tool, not supplied context or constraints.\n\n## Synthesis\n\n**Priorities**\n- The summary should be **centered on open questions** rather than a status or feature narrative.\n- All four supporting areas were selected (decisions, blockers, success criteria, next steps) — the user wants **comprehensive coverage**, not a narrow slice.\n- Usability is confirmed positive: the workflow was easy to follow and the user opted to continue into structured questions.\n\n**Constraints**\n- None were explicitly stated. The freeform stage, which was offered for constraints/nuance, was instead used to raise a capability question.\n\n**Open questions**\n1. **Hybrid question type (primary):** Can a multiple-choice question be combined with a free-text answer in a single question? In this run, question types only appeared as discrete stages (`yes_no`, `confirmation`, `multiple_choice`, `multi_select`, `freeform`) — no combined stage occurred, so this remains unanswered here. It should be routed to the pipeline/workflow owner. A natural follow-up if the answer is yes: how the choice and the free-text portion are represented in the context keys.\n2. **Thin content under the chosen frame:** the user asked for the summary to center on open questions, but only one substantive open question was raised; no decisions, blockers, or success criteria were supplied during the interview.\n\n**Derived next steps** (from the open question only)\n- Get an authoritative answer on combining multiple choice with free text from the pipeline maintainer.\n- If supported, document the node/handler configuration for a hybrid question; if not, treat it as a feature request candidate.\n\n*Kurz auf Deutsch: Das Interview bestätigte, dass der Workflow gut verständlich ist. Der Schwerpunkt der Zusammenfassung sollen offene Fragen sein. Die einzige offene Frage ist, ob Multiple-Choice-Fragen mit Freitext-Antworten kombiniert werden können — das wurde in diesem Lauf nicht beantwortet und muss geklärt werden.*"
+            },
+            "notes": "Stage completed: summarize",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 1806,
+                    "output_tokens": 660,
+                    "reasoning_tokens": 1891,
+                    "cache_read_tokens": 0,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 13752
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 26623,
+              "tool_time_ms": 0,
+              "active_time_ms": 26623
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "freeform": {
+            "status": "succeeded",
+            "suggested_next_ids": [
+              "summarize"
+            ],
+            "context_updates": {
+              "human.gate.selected": "freeform",
+              "human.gate.label": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?",
+              "human.gate.freeform.question": "Add any final context, constraints, or nuance for the summary.",
+              "human.gate.freeform.answer": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?",
+              "human.gate.text": "gibt es die Möglichkeit auch multiple choice fragen mit einer freitext antwort zu kombinieren?"
+            },
+            "usage": null
           }
         },
-        "next_node_id": "summarize",
+        "next_node_id": "exit",
         "node_visits": {
           "multiple_choice": 1,
           "yes_no": 1,
           "multi_select": 1,
           "confirmation": 1,
           "start": 1,
-          "freeform": 1
+          "freeform": 1,
+          "summarize": 1
         }
       },
       "diff": {}
@@ -1132,7 +1331,12 @@
       "first_event_seq": 75,
       "prompt": null,
       "response": null,
-      "completion": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-27T20:12:15.533627409Z"
+      },
       "provider_used": null,
       "diff": null,
       "script_invocation": null,
@@ -1142,6 +1346,12 @@
       "started_at": "2026-08-27T20:10:04.072899120Z",
       "handler": "human",
       "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 119283,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
       "usage": {
         "input_tokens": 0,
         "output_tokens": 0,
@@ -1151,7 +1361,7 @@
         "cache_write_tokens": 0
       },
       "agent_control": "running",
-      "state": "running"
+      "state": "succeeded"
     },
     "multiple_choice@1": {
       "first_event_seq": 51,
@@ -1188,6 +1398,40 @@
       },
       "agent_control": "running",
       "state": "succeeded"
+    },
+    "summarize@1": {
+      "first_event_seq": 87,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": {
+        "mode": "prompt",
+        "provider": "zai",
+        "model": "glm-5.3"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-27T20:12:20.829571845Z",
+      "handler": "prompt",
+      "graph_visit": 1,
+      "usage": {
+        "input_tokens": 1806,
+        "output_tokens": 660,
+        "total_tokens": 4357,
+        "reasoning_tokens": 1891,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 13752
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "agent_control": "running",
+      "state": "running"
     },
     "yes_no@1": {
       "first_event_seq": 27,
