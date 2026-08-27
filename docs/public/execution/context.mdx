@@ -303,6 +303,34 @@ Referencing a node id that does not exist produces a validation warning (the run
 
 **Limitation — parallel branch targets:** branch preambles are pre-rendered from the parent `parallel` node, so `preamble_stages_ignore` set on a *branch target* node is silently ignored. Set it on the **parent parallel node** to scope all branch preambles; prompt-carrying fan-in nodes and all sequential nodes honor their own attribute as usual.
 
+### Ownership and accumulation
+
+`context_updates` is a flat last-writer-wins store: by default every stage may write every key. Two node attributes turn that store into an owned, accumulable contract without changing the default:
+
+```dot
+planner [
+    prompt="@prompts/plan.md",
+    context_allow_keys="current_seed_id, current_seed_title, current_seed_brief",
+    context_append_keys="workflow_painpoints"
+]
+```
+
+- **`context_allow_keys`** — comma-separated allowlist of context keys this node may write. Unset (the default) admits every key; an explicitly empty list admits none. Updates for keys outside the list are **dropped by the engine with a `context_update_dropped` warning notice** that names the node and the dropped keys — never silently, and never as a stage failure. This is drift protection: a reviewer that tries to overwrite `current_seed_id` cannot, but the run continues.
+- **`context_append_keys`** — comma-separated keys the engine merges as append-only arrays instead of replacing. A stage emits only its **new entries** (the delta); the engine merges them with the key's current value and records the merged absolute array, so checkpoint replay and edge conditions keep last-writer-wins semantics on the accumulated list. Miss the restatement problem entirely: no stage ever re-states earlier entries.
+
+Append semantics in detail:
+
+- a delta that is itself an array appends its entries; any other JSON value appends as a single entry;
+- if the key has no value yet, the delta becomes the array;
+- if the key holds a legacy scalar or object, it is wrapped as the first array entry rather than discarded;
+- an append key outside a set `context_allow_keys` is dropped like any other unlisted key (`fabro validate` warns about this configuration).
+
+Engine-stamped keys are never affected by either attribute: `internal.*`, `graph.*`, `thread.*`, `current_node`, `current.*`, the node's **own** `response.{node_id}` (a write to *another* node's response key is cross-stage spoofing and stays droppable), `last_stage`, `last_response`, `outcome`, `failure_class`, `failure_signature`, `preferred_label`, `command.output`, `parallel.results`, `parallel.branch_count`, `human.gate.*`, and `seed_cycles` are written by the engine and always survive.
+
+**Limitation — parallel branches:** branch nodes execute inside the fan-out, and their updates are collected into the engine-stamped `parallel.results` array rather than the flat parent context. The envelope therefore applies to the parallel node's own outcome; set `context_allow_keys` on sequential nodes and the parallel node, not on branch targets.
+
+Typical ownership split: the planner owns the `current_seed_*` keys (allowlist them there, keep them off every other node), while every stage appends to `workflow_painpoints` without restating the list.
+
 ### Preamble aggregate budget
 
 Per-value demotion (see [Artifact offloading](#artifact-offloading)) bounds each context value alone. The **aggregate budget** bounds what all of them contribute together: once the serialized sizes of preamble-visible values exceed the budget, Fabro demotes the fattest values largest-first (values of 1KB or less are never demoted by this pass, so ids, enums, and short contract values stay inline) until the total fits. This keeps prompts constant-size in review loops where every cycle adds another mid-sized response — no single value ever crosses the per-value threshold, but the sum grows without bound.

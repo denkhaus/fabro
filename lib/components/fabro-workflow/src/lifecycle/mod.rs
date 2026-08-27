@@ -1,5 +1,6 @@
 pub(crate) mod artifact;
 pub(crate) mod circuit_breaker;
+pub(crate) mod envelope;
 pub(crate) mod event;
 pub(crate) mod fidelity;
 pub(crate) mod git;
@@ -26,6 +27,7 @@ use fabro_types::RunId;
 
 use self::artifact::ArtifactLifecycle;
 use self::circuit_breaker::CircuitBreakerLifecycle;
+use self::envelope::EnvelopeLifecycle;
 use self::event::EventLifecycle;
 use self::fidelity::FidelityLifecycle;
 use self::git::{GitCheckpointResult, GitLifecycle};
@@ -55,6 +57,7 @@ pub(crate) struct WorkflowLifecycle {
     hook:                  HookLifecycle,
     fidelity:              FidelityLifecycle,
     circuit_breaker:       Arc<CircuitBreakerLifecycle>,
+    envelope:              EnvelopeLifecycle,
     git:                   GitLifecycle,
     artifact:              ArtifactLifecycle,
     /// Graph attribute `cycle_counter_reset_key` (see fabro-45d0): the
@@ -112,6 +115,7 @@ impl WorkflowLifecycle {
         let last_git_sha: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
         let circuit_breaker = Arc::new(CircuitBreakerLifecycle::new(loop_restart_signature_limit));
+        let envelope = EnvelopeLifecycle::new(emitter, stage_executions.clone());
 
         let has_run_branch = run_options
             .git
@@ -190,6 +194,7 @@ impl WorkflowLifecycle {
             hook,
             fidelity,
             circuit_breaker,
+            envelope,
             git,
             artifact,
             cycle_reset_key,
@@ -363,6 +368,9 @@ impl RunLifecycle<WorkflowGraph> for WorkflowLifecycle {
         result: &mut WfNodeResult,
         state: &WfRunState,
     ) -> CoreResult<()> {
+        // Envelope first (fabro-900e): every later observer — events,
+        // hooks, checkpoint, `state.record` — sees admitted updates only.
+        self.envelope.after_node(node, result, state).await?;
         self.circuit_breaker.after_node(node, result, state).await?;
         self.artifact.after_node(node, result, state).await?;
         self.event.after_node(node, result, state).await?;

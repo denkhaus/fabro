@@ -2317,6 +2317,55 @@ impl Handler for ContextSetterHandler {
     }
 }
 
+/// Seeds `log_lines = ["a"]` with no envelope attributes (default-open).
+struct EnvelopeSeederHandler;
+
+#[async_trait::async_trait]
+impl Handler for EnvelopeSeederHandler {
+    async fn execute(
+        &self,
+        _node: &Node,
+        _context: &Context,
+        _graph: &Graph,
+        _run_dir: &Path,
+        _services: &fabro_workflow::handler::EngineServices,
+    ) -> Result<Outcome, Error> {
+        let mut outcome = Outcome::success();
+        outcome
+            .context_updates
+            .insert("log_lines".to_string(), serde_json::json!(["a"]));
+        Ok(outcome)
+    }
+}
+
+/// Writes one allowed key, one append delta, and one key outside the
+/// node's `context_allow_keys` (must be dropped with a notice).
+struct EnvelopeWriterHandler;
+
+#[async_trait::async_trait]
+impl Handler for EnvelopeWriterHandler {
+    async fn execute(
+        &self,
+        _node: &Node,
+        _context: &Context,
+        _graph: &Graph,
+        _run_dir: &Path,
+        _services: &fabro_workflow::handler::EngineServices,
+    ) -> Result<Outcome, Error> {
+        let mut outcome = Outcome::success();
+        outcome
+            .context_updates
+            .insert("my_flag".to_string(), serde_json::json!("set"));
+        outcome
+            .context_updates
+            .insert("log_lines".to_string(), serde_json::json!(["b"]));
+        outcome
+            .context_updates
+            .insert("intruder_key".to_string(), serde_json::json!("spoof"));
+        Ok(outcome)
+    }
+}
+
 fn make_full_registry(interviewer: Arc<dyn Interviewer>) -> HandlerRegistry {
     let mut registry = HandlerRegistry::new(Box::new(AgentHandler::new(None)));
     registry.register("start", Box::new(StartHandler));
@@ -4775,6 +4824,102 @@ async fn context_updates_visible_across_nodes() {
         .expect("checkpoint should exist");
     assert!(cp.completed_nodes.contains(&"yes".to_string()));
     assert!(!cp.completed_nodes.contains(&"no".to_string()));
+}
+
+/// E2E (fabro-900e): the stage envelope drops non-allowlisted agent keys
+/// with a `run.notice`, merges append-only deltas onto the accumulated
+/// array, and never fails the stage for a dropped write.
+#[tokio::test]
+async fn stage_envelope_drops_and_accumulates_end_to_end() {
+    let mut graph = make_graph_with_start_exit("StageEnvelopeTest");
+    let mut seeder = Node::new("seeder");
+    seeder.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("envelope_seeder".to_string()),
+    );
+    graph.nodes.insert("seeder".to_string(), seeder);
+    let mut writer = Node::new("writer");
+    writer.attrs.insert(
+        "type".to_string(),
+        AttrValue::String("envelope_writer".to_string()),
+    );
+    writer.attrs.insert(
+        "context_allow_keys".to_string(),
+        AttrValue::String("my_flag, log_lines".to_string()),
+    );
+    writer.attrs.insert(
+        "context_append_keys".to_string(),
+        AttrValue::String("log_lines".to_string()),
+    );
+    graph.nodes.insert("writer".to_string(), writer);
+    graph.edges.push(Edge::new("start", "seeder"));
+    graph.edges.push(Edge::new("seeder", "writer"));
+    graph.edges.push(Edge::new("writer", "exit"));
+
+    let dir = tempfile::tempdir().unwrap();
+    let emitter = Emitter::default();
+    let events = collect_events(&emitter);
+    let mut registry = HandlerRegistry::new(Box::new(StartHandler));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+    registry.register("envelope_seeder", Box::new(EnvelopeSeederHandler));
+    registry.register("envelope_writer", Box::new(EnvelopeWriterHandler));
+    let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env());
+    let run_options = RunOptions {
+        settings:         WorkflowSettings::default(),
+        run_dir:          dir.path().to_path_buf(),
+        cancel_token:     CancellationToken::new(),
+        run_id:           test_run_id("test-run"),
+        labels:           std::collections::HashMap::new(),
+        workflow_slug:    None,
+        github_app:       None,
+        base_branch:      None,
+        display_base_sha: None,
+        pre_run_git:      None,
+        fork_source_ref:  None,
+        git:              None,
+    };
+    let (outcome, state) = engine
+        .run_with_state(&graph, &run_options)
+        .await
+        .expect("run");
+    assert_eq!(outcome.status, StageOutcome::Succeeded);
+
+    let cp = state
+        .current_checkpoint()
+        .cloned()
+        .expect("checkpoint should exist");
+    assert!(cp.completed_nodes.contains(&"seeder".to_string()));
+    assert!(cp.completed_nodes.contains(&"writer".to_string()));
+    // Allowed key recorded, intruder dropped, append delta merged onto the
+    // seeder's array.
+    assert_eq!(
+        cp.context_values.get("my_flag"),
+        Some(&serde_json::json!("set"))
+    );
+    assert!(!cp.context_values.contains_key("intruder_key"));
+    assert_eq!(
+        cp.context_values.get("log_lines"),
+        Some(&serde_json::json!(["a", "b"]))
+    );
+
+    let collected = events.lock().unwrap();
+    let notice = collected
+        .iter()
+        .find(|event| event.event_name() == "run.notice")
+        .expect("drop notice emitted");
+    match &notice.body {
+        EventBody::RunNotice(props) => {
+            assert_eq!(props.code, "context_update_dropped");
+            assert_eq!(notice.node_id.as_deref(), Some("writer"));
+            assert!(
+                props.message.contains("intruder_key"),
+                "notice names the dropped key: {}",
+                props.message
+            );
+        }
+        other => panic!("expected RunNotice, got {other:?}"),
+    }
 }
 
 #[tokio::test]

@@ -25,6 +25,9 @@ pub enum RunNoticeCode {
     CheckpointMetadataDegraded,
     CheckpointMetadataPushFailed,
     CheckpointMetadataWriteFailed,
+    /// A node's `context_allow_keys` dropped agent-authored context
+    /// updates (seed fabro-900e). The message names the node and keys.
+    ContextUpdateDropped,
     DirtyWorktree,
     GitDiffFailed,
     GitPushFailed,

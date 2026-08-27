@@ -3,6 +3,7 @@ mod auto_status_deprecated;
 mod backend_valid;
 mod command_requires_script;
 mod condition_syntax;
+mod context_append_keys_within_allow;
 mod direction_valid;
 mod edge_target_exists;
 mod exit_no_outgoing;
@@ -59,6 +60,7 @@ pub fn built_in_rules() -> Vec<Box<dyn LintRule>> {
         fidelity_valid::rule(),
         preamble_stages_ignore_targets_exist::rule(),
         preamble_inline_max_within_budget::rule(),
+        context_append_keys_within_allow::rule(),
         retry_target_exists::rule(),
         goal_gate_has_retry::rule(),
         prompt_on_llm_nodes::rule(),

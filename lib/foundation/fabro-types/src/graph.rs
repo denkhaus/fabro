@@ -403,12 +403,31 @@ impl Node {
     #[must_use]
     pub fn preamble_stages_ignore(&self) -> Vec<&str> {
         self.str_attr("preamble_stages_ignore")
-            .map(|list| {
-                list.split(',')
-                    .map(str::trim)
-                    .filter(|entry| !entry.is_empty())
-                    .collect()
-            })
+            .map(split_key_list)
+            .unwrap_or_default()
+    }
+
+    /// Node-level `context_allow_keys`: the comma-separated allowlist of
+    /// agent-authored context keys this node may write (seed fabro-900e,
+    /// ADR-0009 stage envelope). `None` (attribute unset) means every key
+    /// is admitted — the default-open posture. `Some(list)` restricts
+    /// writes: keys outside the list are dropped by the engine with a
+    /// stage notice. Engine-managed keys are never affected.
+    #[must_use]
+    pub fn context_allow_keys(&self) -> Option<Vec<&str>> {
+        self.str_attr("context_allow_keys").map(split_key_list)
+    }
+
+    /// Node-level `context_append_keys`: context keys the engine merges as
+    /// append-only arrays instead of replacing (comma-separated). Stages
+    /// emit only their new entries (the delta); the engine merges them
+    /// with the current value and records the merged absolute array, so
+    /// checkpoint replay and edge conditions stay last-writer-wins. An
+    /// append key outside a set `context_allow_keys` is still dropped.
+    #[must_use]
+    pub fn context_append_keys(&self) -> Vec<&str> {
+        self.str_attr("context_append_keys")
+            .map(split_key_list)
             .unwrap_or_default()
     }
 
@@ -518,6 +537,17 @@ impl Node {
         }
         shape_to_handler_type(self.shape())
     }
+}
+
+/// Split a comma-separated node-attribute list into trimmed, non-empty
+/// entries. Shared by the stage-envelope key attributes
+/// (`preamble_stages_ignore`, `context_allow_keys`, `context_append_keys`)
+/// so all three parse identically: trimmed entries, empty entries dropped.
+fn split_key_list(list: &str) -> Vec<&str> {
+    list.split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .collect()
 }
 
 /// An edge connecting two nodes in the workflow graph.
@@ -896,6 +926,41 @@ pub fn reference_kind_for_attribute(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn context_key_attributes_parse_comma_lists() {
+        let mut node = Node::new("planner");
+        // Unset: allowlist is None (default-open), append list is empty.
+        assert_eq!(node.context_allow_keys(), None);
+        assert!(node.context_append_keys().is_empty());
+
+        node.attrs.insert(
+            "context_allow_keys".to_string(),
+            AttrValue::String(
+                "current_seed_id, current_seed_title ,current_seed_brief,".to_string(),
+            ),
+        );
+        node.attrs.insert(
+            "context_append_keys".to_string(),
+            AttrValue::String("workflow_painpoints,,".to_string()),
+        );
+        assert_eq!(
+            node.context_allow_keys(),
+            Some(vec![
+                "current_seed_id",
+                "current_seed_title",
+                "current_seed_brief"
+            ])
+        );
+        assert_eq!(node.context_append_keys(), vec!["workflow_painpoints"]);
+
+        // An explicitly empty allowlist admits no agent-authored key.
+        node.attrs.insert(
+            "context_allow_keys".to_string(),
+            AttrValue::String(String::new()),
+        );
+        assert_eq!(node.context_allow_keys(), Some(Vec::new()));
+    }
 
     #[test]
     fn preamble_inline_max_kb_parses_graph_and_node() {

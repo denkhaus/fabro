@@ -72,6 +72,7 @@ pub mod keys {
     pub const COMMAND_OUTPUT: &str = "command.output";
 
     // --- human.gate.* keys ---
+    pub const HUMAN_GATE_PREFIX: &str = "human.gate.";
     pub const HUMAN_GATE_SELECTED: &str = "human.gate.selected";
     pub const HUMAN_GATE_LABEL: &str = "human.gate.label";
     pub const HUMAN_GATE_TEXT: &str = "human.gate.text";
@@ -149,6 +150,40 @@ pub mod keys {
             || key.starts_with(CURRENT_PREFIX)
     }
 
+    /// Returns `true` for keys the engine or its handlers stamp into
+    /// `context_updates` (or straight into context) regardless of model
+    /// output. The stage envelope (fabro-900e) never drops these:
+    /// workflow authors constrain agent-authored keys only, and dropping
+    /// an engine stamp would break templating, fan-in, and completion
+    /// payloads the engine itself depends on.
+    ///
+    /// `node_id` scopes the `response.*` exemption to the completing
+    /// node's own response key: handlers stamp `response.{node_id}` for
+    /// the node they execute, so an agent-authored write to another
+    /// node's response key is cross-stage spoofing and stays droppable.
+    /// This is drift protection (ADR-0009), not adversarial containment:
+    /// engine-stamped keys an agent re-declares in its own updates are
+    /// still overwritten by the engine's own stamp on the same map.
+    #[must_use]
+    pub(crate) fn is_engine_stamped_key(key: &str, node_id: &str) -> bool {
+        is_engine_internal_key(key)
+            || key == response_key(node_id)
+            || key.starts_with(HUMAN_GATE_PREFIX)
+            || matches!(
+                key,
+                LAST_STAGE
+                    | LAST_RESPONSE
+                    | OUTCOME
+                    | FAILURE_CLASS
+                    | FAILURE_SIGNATURE
+                    | PREFERRED_LABEL
+                    | COMMAND_OUTPUT
+                    | PARALLEL_RESULTS
+                    | PARALLEL_BRANCH_COUNT
+                    | SEED_CYCLES
+            )
+    }
+
     pub use fabro_graphviz::Fidelity;
 
     #[cfg(test)]
@@ -206,6 +241,7 @@ use std::collections::HashMap;
 
 pub use fabro_core::Context;
 use fabro_graphviz::Fidelity;
+use fabro_graphviz::graph::Node;
 use fabro_types::{ParallelBranchId, RunId, StageId};
 use serde::{Deserialize, Serialize};
 
@@ -276,6 +312,69 @@ pub(crate) fn context_diff_public(
         .into_iter()
         .filter(|(key, _)| !keys::is_engine_internal_key(key))
         .collect()
+}
+
+/// Apply the per-node stage envelope (fabro-900e, ADR-0009 family):
+/// context key ownership and append-only accumulation.
+///
+/// * `context_allow_keys` (unset = every agent-authored key admitted,
+///   default-open) drops updates for keys outside the list. Keys the engine
+///   stamps itself are never dropped — the envelope constrains agent-authored
+///   writes only.
+/// * `context_append_keys` merges the emitted delta with the key's current
+///   value into one absolute array. Stages emit only their new entries; the
+///   merged absolute value is written back into `updates`, so `state.record`,
+///   checkpoint replay, and edge conditions all keep last-writer-wins semantics
+///   on the accumulated array. An append key outside a set allowlist is dropped
+///   like any other key.
+///
+/// Returns the sorted list of dropped keys so the caller can emit a
+/// `ContextUpdateDropped` notice; drops are never silent.
+pub(crate) fn enforce_stage_envelope(
+    node: &Node,
+    context: &Context,
+    updates: &mut HashMap<String, serde_json::Value>,
+) -> Vec<String> {
+    let allow = node.context_allow_keys();
+    let append = node.context_append_keys();
+    if allow.is_none() && append.is_empty() {
+        return Vec::new();
+    }
+
+    let mut dropped = Vec::new();
+    if let Some(allow) = allow {
+        updates.retain(|key, _| {
+            keys::is_engine_stamped_key(key, &node.id) || allow.contains(&key.as_str()) || {
+                dropped.push(key.clone());
+                false
+            }
+        });
+        dropped.sort();
+    }
+
+    for key in append {
+        // Engine-stamped keys keep replace semantics: the engine owns
+        // their shape and overwrites them on the next record anyway.
+        if keys::is_engine_stamped_key(key, &node.id) {
+            continue;
+        }
+        let Some(delta) = updates.get(key).cloned() else {
+            continue;
+        };
+        let mut merged = match context.get(key) {
+            Some(serde_json::Value::Array(items)) => items,
+            Some(serde_json::Value::Null) | None => Vec::new(),
+            // A pre-envelope scalar (or object) becomes the first array
+            // entry instead of being silently discarded.
+            Some(other) => vec![other],
+        };
+        match delta {
+            serde_json::Value::Array(items) => merged.extend(items),
+            other => merged.push(other),
+        }
+        updates.insert(key.to_string(), serde_json::Value::Array(merged));
+    }
+    dropped
 }
 
 /// Read a context key the way workflow authors write one: the declared key
@@ -584,6 +683,194 @@ mod tests {
 
         assert_eq!(ctx.get("existing"), Some(serde_json::json!("new")));
         assert_eq!(ctx.get("added"), Some(serde_json::json!(true)));
+    }
+
+    fn envelope_node(attrs: &[(&str, &str)]) -> Node {
+        let mut node = Node::new("planner");
+        for (key, value) in attrs {
+            node.attrs.insert(
+                key.to_string(),
+                fabro_graphviz::graph::AttrValue::String(value.to_string()),
+            );
+        }
+        node
+    }
+
+    #[test]
+    fn envelope_unset_admits_everything_and_merges_nothing() {
+        let ctx = Context::new();
+        let mut updates = HashMap::from([
+            (
+                "current_seed_id".to_string(),
+                serde_json::json!("fabro-900e"),
+            ),
+            ("last_stage".to_string(), serde_json::json!("plan")),
+        ]);
+        let dropped = enforce_stage_envelope(&envelope_node(&[]), &ctx, &mut updates);
+        assert!(dropped.is_empty());
+        assert_eq!(updates.len(), 2);
+    }
+
+    #[test]
+    fn envelope_allowlist_drops_unlisted_agent_keys_sorted() {
+        let ctx = Context::new();
+        let node = envelope_node(&[("context_allow_keys", "current_seed_id, workflow_painpoints")]);
+        let mut updates = HashMap::from([
+            (
+                "current_seed_id".to_string(),
+                serde_json::json!("fabro-900e"),
+            ),
+            ("review_verdict".to_string(), serde_json::json!("approve")),
+            (
+                "implementation_summary".to_string(),
+                serde_json::json!("done"),
+            ),
+        ]);
+        let dropped = enforce_stage_envelope(&node, &ctx, &mut updates);
+        assert_eq!(dropped, vec!["implementation_summary", "review_verdict"]);
+        assert_eq!(
+            updates,
+            HashMap::from([(
+                "current_seed_id".to_string(),
+                serde_json::json!("fabro-900e")
+            )])
+        );
+    }
+
+    #[test]
+    fn envelope_empty_allowlist_blocks_all_agent_keys() {
+        let ctx = Context::new();
+        let node = envelope_node(&[("context_allow_keys", "")]);
+        let mut updates = HashMap::from([(
+            "current_seed_id".to_string(),
+            serde_json::json!("fabro-900e"),
+        )]);
+        let dropped = enforce_stage_envelope(&node, &ctx, &mut updates);
+        assert_eq!(dropped, vec!["current_seed_id"]);
+        assert!(updates.is_empty());
+    }
+
+    #[test]
+    fn envelope_never_drops_engine_stamped_keys() {
+        let ctx = Context::new();
+        // envelope_node builds a node with id "planner".
+        let node = envelope_node(&[("context_allow_keys", "current_seed_id")]);
+        let mut updates = HashMap::from([
+            (keys::LAST_STAGE.to_string(), serde_json::json!("plan")),
+            (keys::LAST_RESPONSE.to_string(), serde_json::json!("resp")),
+            (
+                keys::response_key("planner"),
+                serde_json::json!("planner output"),
+            ),
+            (keys::COMMAND_OUTPUT.to_string(), serde_json::json!("hi")),
+            (keys::PARALLEL_RESULTS.to_string(), serde_json::json!([])),
+            (
+                keys::INTERNAL_RUN_ID.to_string(),
+                serde_json::json!("run-1"),
+            ),
+            (
+                keys::HUMAN_GATE_SELECTED.to_string(),
+                serde_json::json!("approve"),
+            ),
+        ]);
+        let dropped = enforce_stage_envelope(&node, &ctx, &mut updates);
+        assert!(dropped.is_empty());
+        assert_eq!(updates.len(), 7);
+    }
+
+    #[test]
+    fn envelope_drops_foreign_response_keys() {
+        // response.{other_node} is agent-authored cross-stage spoofing:
+        // only the completing node's own response key is engine-stamped.
+        let ctx = Context::new();
+        let node = envelope_node(&[("context_allow_keys", "current_seed_id")]);
+        let mut updates = HashMap::from([(
+            keys::response_key("reviewer"),
+            serde_json::json!("forged reviewer response"),
+        )]);
+        let dropped = enforce_stage_envelope(&node, &ctx, &mut updates);
+        assert_eq!(dropped, vec![keys::response_key("reviewer")]);
+        assert!(updates.is_empty());
+    }
+
+    #[test]
+    fn envelope_append_merges_delta_onto_existing_array() {
+        let ctx = Context::new();
+        ctx.set(
+            "workflow_painpoints",
+            serde_json::json!(["first", "second"]),
+        );
+        let node = envelope_node(&[("context_append_keys", "workflow_painpoints")]);
+        let mut updates = HashMap::from([(
+            "workflow_painpoints".to_string(),
+            serde_json::json!(["third"]),
+        )]);
+        let dropped = enforce_stage_envelope(&node, &ctx, &mut updates);
+        assert!(dropped.is_empty());
+        assert_eq!(
+            updates["workflow_painpoints"],
+            serde_json::json!(["first", "second", "third"])
+        );
+    }
+
+    #[test]
+    fn envelope_append_wraps_legacy_scalar_and_scalar_delta() {
+        let ctx = Context::new();
+        ctx.set("notes", serde_json::json!("legacy scalar"));
+        let node = envelope_node(&[("context_append_keys", "notes, events")]);
+        let mut updates = HashMap::from([("events".to_string(), serde_json::json!("first event"))]);
+        assert!(enforce_stage_envelope(&node, &ctx, &mut updates).is_empty());
+        assert_eq!(updates["events"], serde_json::json!(["first event"]));
+
+        // A second append onto the merged key wraps nothing: the value is
+        // already an array.
+        ctx.apply_updates(&updates);
+        updates.insert("events".to_string(), serde_json::json!(["second"]));
+        assert!(enforce_stage_envelope(&node, &ctx, &mut updates).is_empty());
+        assert_eq!(
+            updates["events"],
+            serde_json::json!(["first event", "second"])
+        );
+    }
+
+    #[test]
+    fn envelope_append_key_outside_allowlist_is_dropped() {
+        let ctx = Context::new();
+        ctx.set("workflow_painpoints", serde_json::json!(["kept"]));
+        // `notes` is an append key but sits outside the allowlist: the
+        // allowlist wins and the delta is dropped, not merged.
+        let node = envelope_node(&[
+            ("context_allow_keys", "current_seed_id"),
+            ("context_append_keys", "notes"),
+        ]);
+        let mut updates = HashMap::from([
+            (
+                "current_seed_id".to_string(),
+                serde_json::json!("fabro-900e"),
+            ),
+            ("notes".to_string(), serde_json::json!(["dropped"])),
+        ]);
+        let dropped = enforce_stage_envelope(&node, &ctx, &mut updates);
+        assert_eq!(dropped, vec!["notes"]);
+        assert_eq!(
+            updates,
+            HashMap::from([(
+                "current_seed_id".to_string(),
+                serde_json::json!("fabro-900e")
+            )])
+        );
+    }
+
+    #[test]
+    fn envelope_append_skips_engine_stamped_keys() {
+        let ctx = Context::new();
+        ctx.set(keys::LAST_STAGE, serde_json::json!("plan"));
+        let node = envelope_node(&[("context_append_keys", "last_stage")]);
+        let mut updates =
+            HashMap::from([(keys::LAST_STAGE.to_string(), serde_json::json!("review"))]);
+        assert!(enforce_stage_envelope(&node, &ctx, &mut updates).is_empty());
+        // Replace semantics preserved: no array wrap on engine keys.
+        assert_eq!(updates[keys::LAST_STAGE], serde_json::json!("review"));
     }
 
     #[test]
