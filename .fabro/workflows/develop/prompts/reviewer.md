@@ -41,7 +41,7 @@ relay); nobody re-reads your prose, only the JSON survives.
 
 ## Decision
 
-- Approved: every seed requirement is met in the diff and nothing harmful rode along. Route Approved. The Planner will close the seed and pick the next one.
+- Approved: every seed requirement is met in the diff and nothing harmful rode along. Route Approved. The deterministic Closeout step will close the seed; the planner picks the next one.
 - Changes requested: the CODE deviates — name the concrete deviations from the seed or hygiene problems. Route Changes requested. The Planner will re-plan the same seed with your feedback.
 - Verification blocked: the EVIDENCE is missing or unreadable (a blob ref you could not read even with tools, a capture cut mid-diff, counts that contradict what is visible) and you cannot verify the code either way. This is about delivery, not the code. Route Verification blocked naming exactly what is missing. It re-runs ONLY the evidence capture — no implementer or gate cycle. Use it AT MOST ONCE per seed: if the re-captured evidence is still insufficient, decide anyway — route Changes requested naming what stayed missing, or Approved if the code you verified with tools satisfies the spec. Never use Verification blocked for code problems you CAN see.
 

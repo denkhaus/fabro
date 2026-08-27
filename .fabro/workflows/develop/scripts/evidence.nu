@@ -199,7 +199,7 @@ def seed-work-files-section [seed_rows: list]: nothing -> string {
 # disclosure names the omitted files — with docs sorted last, a cap hit
 # eats documentation before source.
 def diff-section [base: string, seed_rows: list]: nothing -> string {
-    let head = "\n== seed work: complete diff (git diff -U1 against run base, files above; source before docs) ==\n"
+    let head = "\n== seed work: complete diff (git diff -U3 against run base, files above; source before docs) ==\n"
     let seed_files = ($seed_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })
     if ($seed_files | is-empty) {
         return ($head + "(no seed-work files to diff)\n")
@@ -208,7 +208,7 @@ def diff-section [base: string, seed_rows: list]: nothing -> string {
     mut parts = []
     mut included = []
     for f in $seed_files {
-        let res = (do { git diff -U1 $base -- $f } | complete)
+        let res = (do { git diff -U3 $base -- $f } | complete)
         if $res.exit_code != 0 {
             continue
         }
