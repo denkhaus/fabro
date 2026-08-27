@@ -6,7 +6,8 @@ use fabro_automation::{
     Automation, AutomationDraft, AutomationId, AutomationReplace, AutomationStoreError,
 };
 use fabro_store::{RunSummaryListQuery, RunSummaryVisibility};
-use fabro_types::{AutomationRef, RunId};
+use fabro_types::{AutomationRef, RunId, RunTarget};
+use fabro_util::error as error_util;
 use serde::Serialize;
 
 use super::super::{
@@ -116,12 +117,20 @@ async fn create_automation_run(
         .into_response();
     };
     let api_trigger_id = api_trigger.id.to_string();
+    let Some(target) = automation.git_target().cloned() else {
+        return ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Stored automation target is not Git-backed",
+        )
+        .into_response();
+    };
 
     let run_id = RunId::new();
     let materialized = match state
         .materialize_automation_run(AutomationRunMaterializeInput {
             automation_id: automation.id.clone(),
-            target: automation.target.clone(),
+            target,
+            workflow: automation.workflow.clone(),
             run_id,
             user_settings_path: state.active_config_path().to_path_buf(),
             temp_root: state.automation_temp_root(),
@@ -130,8 +139,8 @@ async fn create_automation_run(
     {
         Ok(materialized) => materialized,
         Err(err) => {
-            return ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, err.to_string())
-                .into_response();
+            let message = error_util::collect_chain(&err).join(": ");
+            return ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, message).into_response();
         }
     };
     let explicit_title_supplied = materialized.manifest.title.is_some();
@@ -151,6 +160,7 @@ async fn create_automation_run(
             actor: actor.clone(),
             headers,
             automation: Some(automation_ref),
+            target: Some(RunTarget::Git(materialized.target)),
         },
     ))
     .await;

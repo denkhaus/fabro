@@ -1,14 +1,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::Context as _;
 use async_trait::async_trait;
 use fabro_api::types::RunManifest;
-use fabro_automation::{AutomationId, AutomationTarget};
+use fabro_automation::AutomationId;
 use fabro_config::{EnvironmentLayer, MergeMap};
 use fabro_manifest::ManifestBuildInput;
-use fabro_types::{DirtyStatus, GitContext, GitHubRepositorySlug, RunId};
-use fabro_util::error::collect_chain;
+use fabro_types::{GitHubRepositorySlug, GitRunTarget, RunId, RunTarget, TargetValidationError};
 use tokio::{fs, task};
 
 use crate::git_checkout::{
@@ -18,7 +16,8 @@ use crate::git_checkout::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AutomationRunMaterializeInput {
     pub automation_id:      AutomationId,
-    pub target:             AutomationTarget,
+    pub target:             GitRunTarget,
+    pub workflow:           String,
     pub run_id:             RunId,
     pub user_settings_path: PathBuf,
     pub temp_root:          PathBuf,
@@ -28,28 +27,52 @@ pub(crate) struct AutomationRunMaterializeInput {
 pub(crate) struct AutomationRunMaterialized {
     pub manifest:                 RunManifest,
     pub submitted_manifest_bytes: Vec<u8>,
+    pub target:                   GitRunTarget,
 }
 
-#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
+#[derive(thiserror::Error, Debug)]
 pub(crate) enum RunMaterializeError {
-    #[error("invalid repository target: {0}")]
-    InvalidTarget(String),
-    #[error("failed to clone repository: {0}")]
-    CloneFailed(String),
-    #[error("failed to resolve workflow: {0}")]
-    WorkflowNotFound(String),
-    #[error("failed to build run manifest: {0}")]
-    Manifest(String),
-    #[error("failed to load GitHub credentials: {0}")]
-    Credentials(String),
-}
-
-impl From<GitCheckoutError> for RunMaterializeError {
-    fn from(value: GitCheckoutError) -> Self {
-        match value {
-            GitCheckoutError::CloneFailed(message) => Self::CloneFailed(message),
-        }
-    }
+    #[error("invalid automation Git target")]
+    InvalidTarget {
+        #[source]
+        source: TargetValidationError,
+    },
+    #[error("failed to prepare automation checkout")]
+    Checkout {
+        #[from]
+        source: GitCheckoutError,
+    },
+    #[error("failed to prepare automation temporary directory {path}")]
+    TempDirectory {
+        path:   PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("failed to resolve automation workflow")]
+    WorkflowNotFound {
+        #[source]
+        source: anyhow::Error,
+    },
+    #[error("failed to build run manifest")]
+    Manifest {
+        #[source]
+        source: anyhow::Error,
+    },
+    #[error("manifest build task failed")]
+    ManifestTask {
+        #[source]
+        source: task::JoinError,
+    },
+    #[error("failed to serialize materialized run manifest")]
+    SerializeManifest {
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("failed to load GitHub credentials")]
+    Credentials {
+        #[source]
+        source: anyhow::Error,
+    },
 }
 
 #[async_trait]
@@ -93,13 +116,17 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
         &self,
         input: AutomationRunMaterializeInput,
     ) -> Result<AutomationRunMaterialized, RunMaterializeError> {
-        let repo = parse_target_repository(&input.target.repository)?;
-        fs::create_dir_all(&input.temp_root).await.map_err(|err| {
-            RunMaterializeError::CloneFailed(format!(
-                "failed to create temp root {}: {err}",
-                input.temp_root.display()
-            ))
-        })?;
+        let repo = GitHubRepositorySlug::try_new(&input.target.repo).ok_or(
+            RunMaterializeError::InvalidTarget {
+                source: TargetValidationError::Repository,
+            },
+        )?;
+        fs::create_dir_all(&input.temp_root)
+            .await
+            .map_err(|source| RunMaterializeError::TempDirectory {
+                path: input.temp_root.clone(),
+                source,
+            })?;
         let temp_dir = tempfile::Builder::new()
             .prefix(&format!(
                 "automation-{}-{}-",
@@ -107,11 +134,9 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
                 input.run_id
             ))
             .tempdir_in(&input.temp_root)
-            .map_err(|err| {
-                RunMaterializeError::CloneFailed(format!(
-                    "failed to create per-run temp directory under {}: {err}",
-                    input.temp_root.display()
-                ))
+            .map_err(|source| RunMaterializeError::TempDirectory {
+                path: input.temp_root.clone(),
+                source,
             })?;
         let checkout_dir = temp_dir.path().join("repo");
         let auth = resolve_git_auth_config(
@@ -121,44 +146,32 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
             self.http_client.clone(),
         )
         .await
-        .map_err(|err| RunMaterializeError::CloneFailed(render_error_chain(err.as_ref())))?;
+        .map_err(|source| RunMaterializeError::Credentials { source })?;
 
         let checked_out_sha = self
             .repo_cache
             .prepare_worktree(WorktreePrepareInput {
                 repo:         &repo,
-                ref_selector: &input.target.ref_selector,
+                target:       &input.target,
                 auth:         auth.as_ref(),
                 worktree_dir: &checkout_dir,
             })
             .await?;
 
+        let mut exact_target = input.target;
+        exact_target.sha = Some(checked_out_sha);
+
         let manifest_input = ManifestFromCheckoutInput {
-            workflow: input.target.workflow,
+            workflow: input.workflow,
             user_settings_path: input.user_settings_path,
             checkout_dir,
-            git_context: ManifestGitContextInput {
-                repo,
-                ref_selector: input.target.ref_selector,
-                checked_out_sha,
-            },
+            target: exact_target,
             environment_defaults: self.environment_defaults.clone(),
         };
         task::spawn_blocking(move || build_manifest_from_checkout(manifest_input))
             .await
-            .map_err(|err| {
-                RunMaterializeError::Manifest(format!("manifest build task failed: {err}"))
-            })?
+            .map_err(|source| RunMaterializeError::ManifestTask { source })?
     }
-}
-
-fn render_error_chain(error: &(dyn std::error::Error + 'static)) -> String {
-    collect_chain(error).join(": ")
-}
-
-fn parse_target_repository(value: &str) -> Result<GitHubRepositorySlug, RunMaterializeError> {
-    fabro_automation::parse_github_repository_slug(value)
-        .map_err(|err| RunMaterializeError::InvalidTarget(err.to_string()))
 }
 
 #[derive(Debug)]
@@ -166,15 +179,8 @@ pub(crate) struct ManifestFromCheckoutInput {
     workflow:             String,
     user_settings_path:   PathBuf,
     checkout_dir:         PathBuf,
-    git_context:          ManifestGitContextInput,
+    target:               GitRunTarget,
     environment_defaults: MergeMap<EnvironmentLayer>,
-}
-
-#[derive(Debug)]
-pub(crate) struct ManifestGitContextInput {
-    repo:            GitHubRepositorySlug,
-    ref_selector:    String,
-    checked_out_sha: String,
 }
 
 fn build_manifest_from_checkout(
@@ -184,9 +190,17 @@ fn build_manifest_from_checkout(
         workflow,
         user_settings_path,
         checkout_dir,
-        git_context,
+        target,
         environment_defaults,
     } = args;
+    // Re-validating the exact target (now carrying the checked-out SHA) yields
+    // the same `GitContext` projection the run-intent path uses.
+    let validated = RunTarget::Git(target)
+        .validate()
+        .map_err(|source| RunMaterializeError::InvalidTarget { source })?;
+    let RunTarget::Git(target) = validated.target else {
+        unreachable!("validating a Git target yields a Git target");
+    };
     let built = fabro_manifest::build_run_manifest(ManifestBuildInput {
         workflow: workflow.into(),
         cwd: checkout_dir,
@@ -194,33 +208,28 @@ fn build_manifest_from_checkout(
         environment_defaults,
         ..ManifestBuildInput::default()
     })
-    .map_err(|err| manifest_build_error(&err))?;
+    .map_err(manifest_build_error)?;
 
     let mut manifest = built.manifest;
-    manifest.git = Some(GitContext {
-        origin_url: git_context.repo.https_url(),
-        branch:     git_context.ref_selector,
-        sha:        Some(git_context.checked_out_sha),
-        dirty:      DirtyStatus::Clean,
-    });
+    manifest.git = validated.git;
     let submitted_manifest_bytes = serde_json::to_vec(&manifest)
-        .context("failed to serialize materialized run manifest")
-        .map_err(|err| RunMaterializeError::Manifest(err.to_string()))?;
+        .map_err(|source| RunMaterializeError::SerializeManifest { source })?;
     Ok(AutomationRunMaterialized {
         manifest,
         submitted_manifest_bytes,
+        target,
     })
 }
 
-fn manifest_build_error(error: &anyhow::Error) -> RunMaterializeError {
+fn manifest_build_error(error: anyhow::Error) -> RunMaterializeError {
     if error.chain().any(|source| {
         source
             .downcast_ref::<fabro_config::Error>()
             .is_some_and(|err| matches!(err, fabro_config::Error::WorkflowNotFound(_)))
     }) {
-        RunMaterializeError::WorkflowNotFound(render_error_chain(error.as_ref()))
+        RunMaterializeError::WorkflowNotFound { source: error }
     } else {
-        RunMaterializeError::Manifest(render_error_chain(error.as_ref()))
+        RunMaterializeError::Manifest { source: error }
     }
 }
 
@@ -233,23 +242,28 @@ pub struct TestAutomationRunMaterializer {
 #[cfg(any(test, feature = "test-support"))]
 struct TestAutomationRunMaterializerState {
     captured_inputs: Vec<AutomationRunMaterializeInput>,
-    response:        Result<AutomationRunMaterialized, RunMaterializeError>,
+    response:        Result<Box<AutomationRunMaterialized>, TargetValidationError>,
 }
 
 #[cfg(any(test, feature = "test-support"))]
 impl TestAutomationRunMaterializer {
-    pub fn succeed(manifest: RunManifest, submitted_manifest_bytes: Vec<u8>) -> Self {
-        Self::new(Ok(AutomationRunMaterialized {
+    pub fn succeed(
+        manifest: RunManifest,
+        submitted_manifest_bytes: Vec<u8>,
+        target: GitRunTarget,
+    ) -> Self {
+        Self::new(Ok(Box::new(AutomationRunMaterialized {
             manifest,
             submitted_manifest_bytes,
-        }))
+            target,
+        })))
     }
 
-    pub fn fail_invalid_target(message: impl Into<String>) -> Self {
-        Self::new(Err(RunMaterializeError::InvalidTarget(message.into())))
+    pub fn fail_invalid_target() -> Self {
+        Self::new(Err(TargetValidationError::Repository))
     }
 
-    fn new(response: Result<AutomationRunMaterialized, RunMaterializeError>) -> Self {
+    fn new(response: Result<Box<AutomationRunMaterialized>, TargetValidationError>) -> Self {
         Self {
             inner: std::sync::Arc::new(std::sync::Mutex::new(TestAutomationRunMaterializerState {
                 captured_inputs: Vec::new(),
@@ -283,7 +297,11 @@ impl AutomationRunMaterializer for TestAutomationRunMaterializer {
             .lock()
             .expect("test automation materializer lock poisoned");
         guard.captured_inputs.push(input);
-        guard.response.clone()
+        guard
+            .response
+            .clone()
+            .map(|materialized| *materialized)
+            .map_err(|source| RunMaterializeError::InvalidTarget { source })
     }
 }
 
@@ -328,17 +346,17 @@ mod tests {
         .unwrap();
         let user_settings_path = temp.path().join("settings.toml");
         fs::write(&user_settings_path, "_version = 1\n").unwrap();
-        let repo = parse_target_repository("workspace-org/app").unwrap();
         let sha = "0123456789abcdef0123456789abcdef01234567".to_string();
 
         let materialized = build_manifest_from_checkout(ManifestFromCheckoutInput {
             workflow:             "demo".to_string(),
             user_settings_path:   user_settings_path.clone(),
             checkout_dir:         checkout.clone(),
-            git_context:          ManifestGitContextInput {
-                repo,
-                ref_selector: "release".to_string(),
-                checked_out_sha: sha.clone(),
+            target:               GitRunTarget {
+                repo:   "workspace-org/app".to_string(),
+                branch: "release".to_string(),
+                tag:    Some("v1".to_string()),
+                sha:    Some(sha.clone()),
             },
             environment_defaults: test_environment_defaults(),
         })
@@ -365,6 +383,8 @@ mod tests {
         assert_eq!(git.branch, "release");
         assert_eq!(git.sha.as_deref(), Some(sha.as_str()));
         assert_eq!(git.dirty, DirtyStatus::Clean);
+        assert_eq!(materialized.target.tag.as_deref(), Some("v1"));
+        assert_eq!(materialized.target.sha.as_deref(), Some(sha.as_str()));
         let submitted_manifest: serde_json::Value =
             serde_json::from_slice(&materialized.submitted_manifest_bytes)
                 .expect("submitted bytes should be a manifest");

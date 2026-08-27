@@ -429,9 +429,11 @@ async fn insert_minimal_automation(
             name,
             api_enabled,
             target_repository,
-            target_ref,
+            target_branch,
+            target_tag,
+            target_sha,
             target_workflow
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?)
         ",
     )
     .bind(id)
@@ -441,6 +443,168 @@ async fn insert_minimal_automation(
     .bind("fabro-sh/fabro")
     .bind("main")
     .bind("release")
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn automation_targets_migrate_offline_and_preserve_related_rows() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let db_path = dir.path().join("fabro.sqlite3");
+    let database = fabro_db::Database::connect(&db_path).await?;
+    database.migrate().await?;
+    rewind_automation_target_migration(&database).await?;
+
+    let values = [
+        ("sha", "ABCDEF0123456789ABCDEF0123456789ABCDEF01"),
+        ("tag-ref", "refs/tags/v1.2.3"),
+        ("tag", "tags/v2"),
+        ("head-ref", "refs/heads/release"),
+        ("head", "heads/feature/test"),
+        ("head-literal", "HEAD"),
+        ("branch", "feature/bare"),
+    ];
+    for (id, selector) in values {
+        insert_legacy_automation(database.pool(), id, selector).await?;
+    }
+    sqlx::query(
+        "INSERT INTO automation_triggers (automation_id, id, enabled, expression) \
+         VALUES ('tag-ref', 'nightly', 1, '0 3 * * *')",
+    )
+    .execute(database.pool())
+    .await?;
+
+    database.migrate().await?;
+
+    let rows = sqlx::query(
+        "SELECT id, revision, target_branch, target_tag, target_sha, target_workflow \
+         FROM automations ORDER BY id",
+    )
+    .fetch_all(database.pool())
+    .await?;
+    let projected = rows
+        .iter()
+        .map(|row| {
+            (
+                row.get::<String, _>("id"),
+                row.get::<String, _>("target_branch"),
+                row.get::<Option<String>, _>("target_tag"),
+                row.get::<Option<String>, _>("target_sha"),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(projected, vec![
+        ("branch".to_string(), "feature/bare".to_string(), None, None),
+        ("head".to_string(), "feature/test".to_string(), None, None),
+        ("head-literal".to_string(), "main".to_string(), None, None),
+        ("head-ref".to_string(), "release".to_string(), None, None),
+        (
+            "sha".to_string(),
+            "main".to_string(),
+            None,
+            Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
+        ),
+        (
+            "tag".to_string(),
+            "main".to_string(),
+            Some("v2".to_string()),
+            None
+        ),
+        (
+            "tag-ref".to_string(),
+            "main".to_string(),
+            Some("v1.2.3".to_string()),
+            None,
+        ),
+    ]);
+    assert!(
+        rows.iter()
+            .all(|row| row.get::<String, _>("revision") == "a".repeat(64))
+    );
+    assert!(
+        rows.iter()
+            .all(|row| row.get::<String, _>("target_workflow") == "release")
+    );
+    let trigger_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM automation_triggers WHERE automation_id = 'tag-ref'",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(trigger_count, 1);
+    assert!(fabro_db::pre_migration_snapshot_path(&db_path).exists());
+
+    database.migrate().await?;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM automations")
+            .fetch_one(database.pool())
+            .await?,
+        7
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn unsupported_automation_targets_abort_before_schema_changes() -> anyhow::Result<()> {
+    for selector in ["refs/pull/123/head", "refs/heads/-bad", "tags/HEAD"] {
+        let dir = tempfile::tempdir()?;
+        let db_path = dir.path().join("fabro.sqlite3");
+        let database = fabro_db::Database::connect(&db_path).await?;
+        database.migrate().await?;
+        rewind_automation_target_migration(&database).await?;
+        insert_legacy_automation(database.pool(), "blocked", selector).await?;
+
+        let error = database.migrate().await.expect_err("migration must abort");
+        let rendered = format!("{error:#}");
+        assert!(rendered.contains("edit it to a branch"), "{rendered}");
+        let columns = sqlx::query("PRAGMA table_info(automations)")
+            .fetch_all(database.pool())
+            .await?;
+        let names = columns
+            .iter()
+            .map(|row| row.get::<String, _>("name"))
+            .collect::<Vec<_>>();
+        assert!(names.iter().any(|name| name == "target_ref"));
+        assert!(!names.iter().any(|name| name == "target_branch"));
+        let stored: String =
+            sqlx::query_scalar("SELECT target_ref FROM automations WHERE id = 'blocked'")
+                .fetch_one(database.pool())
+                .await?;
+        assert_eq!(stored, selector);
+        assert!(fabro_db::pre_migration_snapshot_path(&db_path).exists());
+    }
+    Ok(())
+}
+
+async fn rewind_automation_target_migration(database: &fabro_db::Database) -> anyhow::Result<()> {
+    sqlx::query("ALTER TABLE automations DROP COLUMN target_sha")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations DROP COLUMN target_tag")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations RENAME COLUMN target_branch TO target_ref")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 2026082601")
+        .execute(database.pool())
+        .await?;
+    Ok(())
+}
+
+async fn insert_legacy_automation(
+    pool: &fabro_db::DbPool,
+    id: &str,
+    selector: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO automations (\
+            id, revision, name, api_enabled, target_repository, target_ref, target_workflow\
+         ) VALUES (?, ?, 'Automation', 1, 'fabro-sh/fabro', ?, 'release')",
+    )
+    .bind(id)
+    .bind("a".repeat(64))
+    .bind(selector)
     .execute(pool)
     .await?;
     Ok(())

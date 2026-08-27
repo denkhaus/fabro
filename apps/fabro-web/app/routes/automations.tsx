@@ -18,7 +18,12 @@ import { FilterButton } from "../components/runs-list/filter-button";
 import type { Automation, AutomationListResponse } from "@qltysh/fabro-api-client";
 import { Link, useNavigate } from "react-router";
 import { ApiError, apiData, automationsApi } from "../lib/api-client";
-import { findScheduleTrigger, hasEnabledApiTrigger } from "../lib/automation";
+import {
+  UNSUPPORTED_TARGET_LABEL,
+  findScheduleTrigger,
+  gitTarget,
+  hasEnabledApiTrigger,
+} from "../lib/automation";
 import { useAutomations } from "../lib/queries";
 import { queryKeys } from "../lib/query-keys";
 import { ConfirmDialog, PRIMARY_BUTTON_CLASS } from "../components/ui";
@@ -81,17 +86,20 @@ const MENU_ITEM_DANGER_CLASS =
 
 function mapAutomations(result: AutomationListResponse | undefined): AutomationRow[] {
   const automations = result?.data ?? [];
-  return automations.map((a) => ({
-    id:         a.id,
-    revision:   a.revision,
-    name:       a.name,
-    workflow:   a.target.workflow,
-    repository: a.target.repository,
-    schedule:   findScheduleTrigger(a)?.expression,
-    apiEnabled: hasEnabledApiTrigger(a),
-    icon:       slugIconMap[a.target.workflow] ?? CodeBracketIcon,
-    color:      slugColorMap[a.target.workflow] ?? "var(--color-teal-500)",
-  }));
+  return automations.map((a) => {
+    const target = gitTarget(a.target);
+    return {
+      id:         a.id,
+      revision:   a.revision,
+      name:       a.name,
+      workflow:   a.workflow,
+      repository: target?.repo ?? UNSUPPORTED_TARGET_LABEL,
+      schedule:   findScheduleTrigger(a)?.expression,
+      apiEnabled: hasEnabledApiTrigger(a),
+      icon:       slugIconMap[a.workflow] ?? CodeBracketIcon,
+      color:      slugColorMap[a.workflow] ?? "var(--color-teal-500)",
+    };
+  });
 }
 
 function PlayIcon({ className }: { className?: string }) {

@@ -6,11 +6,11 @@
 use std::path::Path;
 
 use fabro_automation::{
-    ApiTrigger, AutomationDraft, AutomationId, AutomationReplace, AutomationStore,
-    AutomationStoreError, AutomationTarget, AutomationTrigger, AutomationTriggerId,
-    ScheduleTrigger,
+    ApiTrigger, AutomationDraft, AutomationId, AutomationReplace, AutomationRevision,
+    AutomationStore, AutomationStoreError, AutomationTrigger, AutomationTriggerId, ScheduleTrigger,
 };
 use fabro_db::Database;
+use fabro_types::{GitRunTarget, RunTarget};
 use tokio::fs;
 
 async fn test_database() -> (tempfile::TempDir, Database) {
@@ -22,12 +22,13 @@ async fn test_database() -> (tempfile::TempDir, Database) {
     (dir, database)
 }
 
-fn target() -> AutomationTarget {
-    AutomationTarget {
-        repository:   "fabro-sh/fabro".to_string(),
-        ref_selector: "main".to_string(),
-        workflow:     "release".to_string(),
-    }
+fn target() -> RunTarget {
+    RunTarget::Git(GitRunTarget {
+        repo:   "fabro-sh/fabro".to_string(),
+        branch: "main".to_string(),
+        tag:    None,
+        sha:    None,
+    })
 }
 
 fn schedule(id: &str, expression: &str, enabled: bool) -> AutomationTrigger {
@@ -44,6 +45,7 @@ fn draft(id: &str, api_enabled: bool) -> AutomationDraft {
         name:        "Nightly".to_string(),
         description: Some("Runs every night".to_string()),
         target:      target(),
+        workflow:    "release".to_string(),
         triggers:    vec![
             schedule("z-last", "0 2 * * *", false),
             AutomationTrigger::Api(ApiTrigger {
@@ -60,6 +62,7 @@ fn replacement(name: &str, expression: &str) -> AutomationReplace {
         name:        name.to_string(),
         description: None,
         target:      target(),
+        workflow:    "release".to_string(),
         triggers:    vec![
             schedule("nightly", expression, true),
             AutomationTrigger::Api(ApiTrigger {
@@ -218,6 +221,7 @@ async fn failed_schedule_insert_rolls_back_parent_replace() {
         name:        "Should roll back".to_string(),
         description: None,
         target:      target(),
+        workflow:    "release".to_string(),
         triggers:    vec![schedule("blocked", "0 7 * * *", true)],
     };
 
@@ -254,7 +258,8 @@ async fn legacy_import_is_transactional_and_sql_wins() {
     let source_dir = dir.path().join("automations");
     fs::create_dir_all(&source_dir).await.unwrap();
     write_legacy_automation(&source_dir, "existing", "Legacy existing").await;
-    write_legacy_automation(&source_dir, "imported", "Imported").await;
+    let imported_bytes = write_legacy_automation(&source_dir, "imported", "Imported").await;
+    let expected_revision = AutomationRevision::from_bytes(&imported_bytes);
     fs::write(source_dir.join("notes.txt"), "ignored")
         .await
         .unwrap();
@@ -278,15 +283,23 @@ async fn legacy_import_is_transactional_and_sql_wins() {
             .name,
         "Nightly"
     );
-    assert_eq!(
-        store
-            .get(&AutomationId::new("imported").unwrap())
-            .await
-            .unwrap()
-            .unwrap()
-            .name,
-        "Imported"
-    );
+    let imported = store
+        .get(&AutomationId::new("imported").unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(imported.name, "Imported");
+    assert_eq!(imported.revision, expected_revision);
+    assert_eq!(imported.workflow, "release");
+    assert!(matches!(
+        imported.target,
+        RunTarget::Git(GitRunTarget {
+            branch,
+            tag: None,
+            sha: None,
+            ..
+        }) if branch == "main"
+    ));
 
     fs::create_dir_all(&source_dir).await.unwrap();
     write_legacy_automation(&source_dir, "existing", "Legacy existing").await;
@@ -340,15 +353,47 @@ async fn invalid_legacy_file_leaves_directory_and_database_unchanged() {
     );
 }
 
-async fn write_legacy_automation(dir: &Path, id: &str, name: &str) {
-    fs::write(
-        dir.join(format!("{id}.toml")),
-        format!(
-            r#"name = "{name}"
+#[tokio::test]
+async fn unsupported_legacy_target_leaves_directory_and_database_unchanged() {
+    let (dir, database) = test_database().await;
+    let source_dir = dir.path().join("automations");
+    fs::create_dir_all(&source_dir).await.unwrap();
+    let bytes = legacy_automation_bytes("Unsupported", "refs/pull/123/head");
+    fs::write(source_dir.join("unsupported.toml"), bytes)
+        .await
+        .unwrap();
+
+    let err = fabro_automation::import_legacy_directory_once(database.pool(), &source_dir)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, AutomationStoreError::LegacyTarget { .. }));
+    assert!(err.to_string().contains("edit target.ref"));
+    assert!(source_dir.exists());
+    assert!(
+        AutomationStore::new(database.clone_pool())
+            .list()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+async fn write_legacy_automation(dir: &Path, id: &str, name: &str) -> Vec<u8> {
+    let bytes = legacy_automation_bytes(name, "main");
+    fs::write(dir.join(format!("{id}.toml")), &bytes)
+        .await
+        .unwrap();
+    bytes
+}
+
+fn legacy_automation_bytes(name: &str, ref_selector: &str) -> Vec<u8> {
+    format!(
+        r#"name = "{name}"
 
 [target]
 repository = "fabro-sh/fabro"
-ref = "main"
+ref = "{ref_selector}"
 workflow = "release"
 
 [[triggers]]
@@ -362,8 +407,6 @@ type = "schedule"
 enabled = true
 expression = "0 3 * * *"
 "#
-        ),
     )
-    .await
-    .unwrap();
+    .into_bytes()
 }

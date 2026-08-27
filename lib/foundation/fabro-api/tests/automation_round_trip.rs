@@ -1,12 +1,9 @@
 use fabro_api::types::{
-    Automation as ApiAutomation, AutomationTarget as ApiAutomationTarget,
-    AutomationTrigger as ApiAutomationTrigger,
+    Automation as ApiAutomation, AutomationTrigger as ApiAutomationTrigger,
     CreateAutomationRequest as ApiCreateAutomationRequest,
     ReplaceAutomationRequest as ApiReplaceAutomationRequest,
 };
-use fabro_automation::{
-    Automation, AutomationDraft, AutomationReplace, AutomationTarget, AutomationTrigger,
-};
+use fabro_automation::{Automation, AutomationDraft, AutomationReplace, AutomationTrigger};
 use serde_json::json;
 
 // Compile-time witnesses that the generated API types resolve to the same
@@ -14,7 +11,6 @@ use serde_json::json;
 // If progenitor stops reusing the domain type, these functions stop type-
 // checking and the build fails.
 const _: fn(ApiAutomation) -> Automation = |value| value;
-const _: fn(ApiAutomationTarget) -> AutomationTarget = |value| value;
 const _: fn(ApiAutomationTrigger) -> AutomationTrigger = |value| value;
 const _: fn(ApiCreateAutomationRequest) -> AutomationDraft = |value| value;
 const _: fn(ApiReplaceAutomationRequest) -> AutomationReplace = |value| value;
@@ -27,10 +23,13 @@ fn automation_response_round_trips_public_json_shape() {
         "name": "Nightly dependency update",
         "description": null,
         "target": {
-            "repository": "fabro-sh/fabro",
-            "ref": "main",
-            "workflow": "dependency-update"
+            "kind": "git",
+            "repo": "fabro-sh/fabro",
+            "branch": "main",
+            "tag": "v1.2.3",
+            "sha": "0123456789abcdef0123456789abcdef01234567"
         },
+        "workflow": "dependency-update",
         "triggers": [
             {
                 "id": "manual",
@@ -57,10 +56,11 @@ fn create_automation_request_round_trips_public_json_shape() {
         "name": "Nightly dependency update",
         "description": "Keep dependencies fresh",
         "target": {
-            "repository": "fabro-sh/fabro",
-            "ref": "main",
-            "workflow": "dependency-update"
+            "kind": "git",
+            "repo": "fabro-sh/fabro",
+            "branch": "main"
         },
+        "workflow": "dependency-update",
         "triggers": [
             {
                 "id": "manual",
@@ -80,10 +80,12 @@ fn replace_automation_request_round_trips_public_json_shape() {
         "name": "Nightly dependency update",
         "description": "Keep dependencies fresh",
         "target": {
-            "repository": "fabro-sh/fabro",
-            "ref": "main",
-            "workflow": "dependency-update"
+            "kind": "git",
+            "repo": "fabro-sh/fabro",
+            "branch": "release",
+            "tag": "v2"
         },
+        "workflow": "dependency-update",
         "triggers": [
             {
                 "id": "nightly",

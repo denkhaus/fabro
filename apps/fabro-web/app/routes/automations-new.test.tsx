@@ -10,6 +10,8 @@ import { setupReactTestEnv } from "../lib/test-utils";
 let currentRun: any = null;
 let currentRunError: unknown = null;
 let currentRunLoading = false;
+let currentRunState: any = null;
+let currentRunStateLoading = false;
 let currentRunSettings: any = null;
 const queryCalls: Array<{ hook: string; id: string | undefined }> = [];
 const mountedRenderers: TestRenderer.ReactTestRenderer[] = [];
@@ -56,6 +58,14 @@ mock.module("../lib/queries", () => ({
       data:      currentRunSettings,
       error:     null,
       isLoading: false,
+    };
+  },
+  useRunState: (id: string | undefined) => {
+    queryCalls.push({ hook: "useRunState", id });
+    return {
+      data:      currentRunState,
+      error:     null,
+      isLoading: currentRunStateLoading,
     };
   },
 }));
@@ -253,6 +263,8 @@ beforeEach(() => {
   currentRun = null;
   currentRunError = null;
   currentRunLoading = false;
+  currentRunState = null;
+  currentRunStateLoading = false;
   currentRunSettings = null;
   queryCalls.length = 0;
   createAutomationMock.mockClear();
@@ -274,7 +286,9 @@ describe("AutomationsNew", () => {
     expect(fieldValue(renderer, "Automation name")).toBe("");
     expect(fieldValue(renderer, "Automation slug")).toBe("");
     expect(fieldValue(renderer, "Repository")).toBe("");
-    expect(fieldValue(renderer, "Default branch")).toBe("main");
+    expect(fieldValue(renderer, "Working branch")).toBe("main");
+    expect(fieldValue(renderer, "Tag")).toBe("");
+    expect(fieldValue(renderer, "Exact commit SHA")).toBe("");
     expect(fieldValue(renderer, "Workflow slug")).toBe("");
     expect(switchChecked(renderer, "Enable manual and API triggers")).toBe(true);
     expect(switchChecked(renderer, "Enable scheduled triggers")).toBe(false);
@@ -299,7 +313,9 @@ describe("AutomationsNew", () => {
     expect(fieldValue(renderer, "Automation name")).toBe("Fix failing tests");
     expect(fieldValue(renderer, "Automation slug")).toBe("fix-failing-tests");
     expect(fieldValue(renderer, "Repository")).toBe("qltysh/fabro");
-    expect(fieldValue(renderer, "Default branch")).toBe("feature/from-run");
+    expect(fieldValue(renderer, "Working branch")).toBe("feature/from-run");
+    expect(fieldValue(renderer, "Tag")).toBe("");
+    expect(fieldValue(renderer, "Exact commit SHA")).toBe("");
     expect(fieldValue(renderer, "Workflow slug")).toBe("fix-ci");
     expect(switchChecked(renderer, "Enable manual and API triggers")).toBe(true);
     expect(switchChecked(renderer, "Enable scheduled triggers")).toBe(false);
@@ -307,7 +323,33 @@ describe("AutomationsNew", () => {
       renderer.root.findAllByProps({ "aria-label": "Cron expression" }),
     ).toHaveLength(0);
     expect(queryCalls).toContainEqual({ hook: "useRun", id: "run_1" });
+    expect(queryCalls).toContainEqual({ hook: "useRunState", id: "run_1" });
     expect(queryCalls).toContainEqual({ hook: "useRunSettings", id: "run_1" });
+  });
+
+  test("canonical run target wins over legacy run, settings, and sandbox projections", async () => {
+    currentRun = makeRun();
+    currentRunSettings = makeRunSettings();
+    currentRunState = {
+      spec: {
+        target: {
+          kind:   "git",
+          repo:   "canonical/repo",
+          branch: "release",
+          tag:    "v2.0.0",
+          sha:    "0123456789abcdef0123456789abcdef01234567",
+        },
+      },
+    };
+
+    const { renderer } = await renderAutomationsNew("/automations/new?from_run=run_1");
+
+    expect(fieldValue(renderer, "Repository")).toBe("canonical/repo");
+    expect(fieldValue(renderer, "Working branch")).toBe("release");
+    expect(fieldValue(renderer, "Tag")).toBe("v2.0.0");
+    expect(fieldValue(renderer, "Exact commit SHA")).toBe(
+      "0123456789abcdef0123456789abcdef01234567",
+    );
   });
 
   test("automationFormValuesFromRun kebab-cases the workflow name fallback", () => {
@@ -334,7 +376,7 @@ describe("AutomationsNew", () => {
     expect(textFromNode(renderer.toJSON())).toContain("fill it out manually");
     expect(fieldValue(renderer, "Automation name")).toBe("");
     expect(fieldValue(renderer, "Repository")).toBe("");
-    expect(fieldValue(renderer, "Default branch")).toBe("main");
+    expect(fieldValue(renderer, "Working branch")).toBe("main");
     expect(fieldValue(renderer, "Workflow slug")).toBe("");
   });
 });

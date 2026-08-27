@@ -562,6 +562,7 @@ async fn create_run(
             actor,
             headers,
             automation: None,
+            target: None,
         },
     ))
     .await
@@ -1142,6 +1143,9 @@ pub(crate) struct CreateRunFromManifestRequest {
     pub(crate) actor:                    Principal,
     pub(crate) headers:                  HeaderMap,
     pub(crate) automation:               Option<AutomationRef>,
+    /// Trusted canonical target supplied by an internal manifest producer.
+    /// Public legacy manifest requests always leave this absent.
+    pub(crate) target:                   Option<RunTarget>,
 }
 
 struct ManifestRunCompilerAdapter {
@@ -1287,6 +1291,7 @@ pub(crate) async fn create_run_from_manifest(
         actor,
         headers,
         automation,
+        target,
     } = request;
     let manifest_run_defaults = state.manifest_run_defaults();
     let manifest_environment_defaults = state.environment_store().catalog_layer();
@@ -1318,7 +1323,7 @@ pub(crate) async fn create_run_from_manifest(
         storage_root: state.server_storage_dir(),
         workflow_slug: None,
         workflow_version_id: None,
-        target: None,
+        target,
         provenance: run_provenance(&headers, &actor),
         web_url: None,
         submitted_manifest_bytes: Some(submitted_manifest_bytes),

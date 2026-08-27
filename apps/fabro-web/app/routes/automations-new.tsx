@@ -5,12 +5,13 @@ import { ChevronRightIcon } from "@heroicons/react/20/solid";
 
 import { ApiError, apiData, automationsApi } from "../lib/api-client";
 import { queryKeys } from "../lib/query-keys";
-import { useRun, useRunSettings } from "../lib/queries";
+import { useRun, useRunSettings, useRunState } from "../lib/queries";
 import {
   AutomationFormFields,
   EMPTY_AUTOMATION_FORM,
   automationFormValuesFromRun,
   isFormValid,
+  targetFromFormValues,
   triggersFromFormValues,
   type AutomationFormValues,
 } from "../components/automation-form";
@@ -31,6 +32,7 @@ export default function AutomationsNew() {
   const [searchParams] = useSearchParams();
   const fromRunId = searchParams.get("from_run")?.trim() || undefined;
   const runQuery = useRun(fromRunId);
+  const runStateQuery = useRunState(fromRunId);
   const settingsQuery = useRunSettings(fromRunId);
 
   if (!fromRunId) {
@@ -45,8 +47,9 @@ export default function AutomationsNew() {
   // Wait for both queries to settle before mounting the form, so the user's
   // edits aren't blown away when settings arrive after the run.
   const runPending = runQuery.isLoading && !runQuery.data;
+  const runStatePending = runStateQuery.isLoading && !runStateQuery.data;
   const settingsPending = settingsQuery.isLoading && !settingsQuery.data;
-  if (runPending || settingsPending) {
+  if (runPending || runStatePending || settingsPending) {
     return (
       <div className="space-y-6">
         <PageHeader />
@@ -69,6 +72,7 @@ export default function AutomationsNew() {
 
   const initialValues = automationFormValuesFromRun(
     runQuery.data,
+    runStateQuery.data ?? null,
     settingsQuery.data ?? null,
   );
 
@@ -108,11 +112,8 @@ function AutomationCreateForm({
           id:          values.id.trim(),
           name:        trimmedName,
           description: values.description.trim() || null,
-          target:      {
-            repository: values.repository.trim(),
-            ref:        values.ref.trim(),
-            workflow:   values.workflow.trim(),
-          },
+          target:      targetFromFormValues(values),
+          workflow:    values.workflow.trim(),
           triggers: triggersFromFormValues(values),
         }),
       );

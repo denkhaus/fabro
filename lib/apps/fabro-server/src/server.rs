@@ -1205,7 +1205,7 @@ impl AppState {
         let credentials = self
             .github_credentials(&settings.server.integrations.github)
             .await
-            .map_err(|err| RunMaterializeError::Credentials(err.to_string()))?;
+            .map_err(|source| RunMaterializeError::Credentials { source })?;
         ProductionAutomationRunMaterializer::new(
             credentials,
             self.github_api_base_url.clone(),

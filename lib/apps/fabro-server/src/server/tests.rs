@@ -11,7 +11,7 @@ use async_zip::base::read::mem::ZipFileReader;
 use axum::body::Body;
 use axum::http::{Method, Request, header};
 use chrono::{Duration as ChronoDuration, SubsecRound as _, Utc};
-use fabro_automation::{AutomationId, AutomationTarget};
+use fabro_automation::AutomationId;
 use fabro_config::bind::Bind;
 use fabro_config::{
     EnvironmentLayer, MergeMap, RunLayer, ServerSettingsBuilder, WorkflowSettingsBuilder,
@@ -27,8 +27,8 @@ use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::EnvironmentProvider;
 use fabro_types::{
     AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, FailureCategory,
-    FailureDetail, Graph, InterviewQuestionRecord, Node, Outcome, ParallelBranchId, QuestionType,
-    RunId, RunSpec, SandboxProviderKind, StageContextWindowBreakdownItem,
+    FailureDetail, GitRunTarget, Graph, InterviewQuestionRecord, Node, Outcome, ParallelBranchId,
+    QuestionType, RunId, RunSpec, RunTarget, SandboxProviderKind, StageContextWindowBreakdownItem,
     StageContextWindowCategory, StageContextWindowCountMethod, StageContextWindowProjection,
     StageContextWindowStaleness, StageContextWindowWarning, StageModelUsage, StageTiming,
     SuccessReason, SystemActorKind, WorkflowSettings, fixtures, test_support,
@@ -4422,6 +4422,7 @@ async fn create_run_from_manifest_helper_persists_without_automation_metadata() 
             },
             headers: HeaderMap::new(),
             automation: None,
+            target: None,
         },
     ))
     .await;
@@ -4437,10 +4438,12 @@ async fn create_run_from_manifest_helper_persists_without_automation_metadata() 
         .unwrap()
         .unwrap();
     assert!(summary.automation.is_none());
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    assert!(run_store.state().await.unwrap().spec.target.is_none());
 }
 
 #[tokio::test]
-async fn create_run_from_manifest_helper_persists_automation_metadata() {
+async fn create_run_from_manifest_helper_persists_automation_metadata_and_exact_target() {
     let state = TestAppStateBuilder::new()
         .env_lookup(|_| None)
         .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
@@ -4453,6 +4456,12 @@ async fn create_run_from_manifest_helper_persists_automation_metadata() {
         name:       Some("Nightly".to_string()),
         trigger_id: Some("schedule".to_string()),
     };
+    let target = RunTarget::Git(GitRunTarget {
+        repo:   "fabro-sh/fabro".to_string(),
+        branch: "main".to_string(),
+        tag:    Some("v1.2.3".to_string()),
+        sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+    });
 
     let response = Box::pin(handler::runs::create_run_from_manifest(
         Arc::clone(&state),
@@ -4466,6 +4475,7 @@ async fn create_run_from_manifest_helper_persists_automation_metadata() {
             },
             headers: HeaderMap::new(),
             automation: Some(automation.clone()),
+            target: Some(target.clone()),
         },
     ))
     .await;
@@ -4488,6 +4498,8 @@ async fn create_run_from_manifest_helper_persists_automation_metadata() {
         .unwrap()
         .unwrap();
     assert_eq!(summary.automation, Some(automation));
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    assert_eq!(run_store.state().await.unwrap().spec.target, Some(target));
 }
 
 #[tokio::test]
@@ -4565,6 +4577,7 @@ layer = "project"
             },
             headers,
             automation: None,
+            target: None,
         },
     ))
     .await;
@@ -4585,6 +4598,10 @@ layer = "project"
     );
     let run_state = run_store.state().await.unwrap();
     let spec = &run_state.spec;
+    assert!(
+        spec.target.is_none(),
+        "legacy manifest GitContext must not become canonical target authority"
+    );
     assert_eq!(spec.run_id, run_id);
     assert_eq!(spec.graph.goal(), "Inline release goal");
     assert_eq!(
@@ -4723,6 +4740,7 @@ async fn create_run_from_manifest_pins_compiler_http_error_mappings() {
                 },
                 headers: HeaderMap::new(),
                 automation: None,
+                target: None,
             },
         ))
         .await;
@@ -4777,6 +4795,7 @@ async fn create_run_from_manifest_preserves_competing_preparation_error_preceden
                 },
                 headers: HeaderMap::new(),
                 automation: None,
+                target: None,
             },
         ))
         .await;
@@ -4822,6 +4841,7 @@ async fn create_run_from_manifest_resolves_generated_id_after_variable_snapshot(
             },
             headers: HeaderMap::new(),
             automation: None,
+            target: None,
         },
     ))
     .await;
@@ -4840,6 +4860,12 @@ async fn fake_automation_materializer_injection_captures_input_and_returns_manif
     let fake = TestAutomationRunMaterializer::succeed(
         materialized_manifest.clone(),
         b"{\"fake\":true}".to_vec(),
+        GitRunTarget {
+            repo:   "fabro-sh/fabro".to_string(),
+            branch: "main".to_string(),
+            tag:    None,
+            sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+        },
     );
     let state = TestAppStateBuilder::new()
         .automation_materializer(fake.clone())
@@ -4847,16 +4873,18 @@ async fn fake_automation_materializer_injection_captures_input_and_returns_manif
     let run_id = RunId::new();
     let user_settings_path = PathBuf::from("/tmp/fabro/settings.toml");
     let temp_root = PathBuf::from("/tmp/fabro/automation");
-    let target = AutomationTarget {
-        repository:   "fabro-sh/fabro".to_string(),
-        ref_selector: "main".to_string(),
-        workflow:     "demo".to_string(),
+    let target = GitRunTarget {
+        repo:   "fabro-sh/fabro".to_string(),
+        branch: "main".to_string(),
+        tag:    None,
+        sha:    None,
     };
 
     let output = state
         .materialize_automation_run(AutomationRunMaterializeInput {
             automation_id: AutomationId::new("nightly").unwrap(),
             target: target.clone(),
+            workflow: "demo".to_string(),
             run_id,
             user_settings_path: user_settings_path.clone(),
             temp_root: temp_root.clone(),
@@ -4873,6 +4901,7 @@ async fn fake_automation_materializer_injection_captures_input_and_returns_manif
     assert_eq!(captured.len(), 1);
     assert_eq!(captured[0].automation_id.as_str(), "nightly");
     assert_eq!(captured[0].target, target);
+    assert_eq!(captured[0].workflow, "demo");
     assert_eq!(captured[0].run_id, run_id);
     assert_eq!(captured[0].user_settings_path, user_settings_path);
     assert_eq!(captured[0].temp_root, temp_root);
