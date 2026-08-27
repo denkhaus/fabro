@@ -6,7 +6,7 @@ use fabro_automation::{
     Automation, AutomationDraft, AutomationId, AutomationReplace, AutomationStoreError,
 };
 use fabro_store::{RunSummaryListQuery, RunSummaryVisibility};
-use fabro_types::{AutomationRef, RunId, RunIntent, RunIntentArgs, RunTarget};
+use fabro_types::{AutomationRef, RunId};
 use fabro_util::error as error_util;
 use serde::Serialize;
 
@@ -151,15 +151,7 @@ async fn create_automation_run(
     let response = Box::pin(runs::create_run_from_intent(
         Arc::clone(&state),
         runs::CreateRunFromIntentRequest {
-            intent: RunIntent {
-                workflow_version_id: materialized.workflow_version_id,
-                target:              RunTarget::Git(materialized.target),
-                args:                RunIntentArgs::default(),
-                environment_id:      None,
-                parent_id:           None,
-                title:               None,
-                goal:                None,
-            },
+            intent: materialized.into_run_intent(),
             explicit_run_id: Some(run_id),
             actor: actor.clone(),
             headers,

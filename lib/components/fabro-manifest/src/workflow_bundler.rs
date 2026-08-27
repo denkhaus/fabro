@@ -75,9 +75,12 @@ impl<'a> WorkflowBundler<'a> {
             .collect())
     }
 
-    pub(super) fn collect_versions(mut self, workflow: &Path) -> Result<CollectedWorkflowSources> {
+    pub(super) fn collect_versions(
+        mut self,
+        root: &WorkflowLocation,
+    ) -> Result<CollectedWorkflowSources> {
         self.workflow_version_projection = true;
-        let root_key = self.collect_workflow_entry(workflow, self.cwd)?;
+        let root_key = self.collect_workflow_location(root)?;
         Ok(CollectedWorkflowSources {
             root_key,
             workflows: self.workflows,
@@ -409,9 +412,11 @@ impl<'a> WorkflowBundler<'a> {
                     ReferenceKind::RunGoalFile,
                     Some(config_path.clone()),
                 )?;
-                std::fs::read_to_string(&bundled.absolute_path).with_context(|| {
-                    format!("Failed to read {}", bundled.absolute_path.display())
-                })?
+                files
+                    .get(&bundled.path.to_string())
+                    .expect("collect_bundled_file inserts the goal file it returns")
+                    .content
+                    .clone()
             }
         };
         self.collect_template_include_files(

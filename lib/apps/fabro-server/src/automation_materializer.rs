@@ -3,9 +3,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use fabro_automation::AutomationId;
-use fabro_manifest::{CollectedWorkflowClosure, WorkflowVersionCollectError};
+use fabro_manifest::WorkflowVersionCollectError;
 use fabro_types::{
-    GitHubRepositorySlug, GitRunTarget, RunId, TargetValidationError, WorkflowVersionId,
+    GitHubRepositorySlug, GitRunTarget, RunId, RunIntent, RunIntentArgs, RunTarget,
+    TargetValidationError, WorkflowVersionId,
 };
 use fabro_workflow_version::{WorkflowVersionStore, WorkflowVersionStoreError};
 use tokio::{fs, task};
@@ -27,6 +28,22 @@ pub(crate) struct AutomationRunMaterializeInput {
 pub(crate) struct AutomationRunMaterialized {
     pub workflow_version_id: WorkflowVersionId,
     pub target:              GitRunTarget,
+}
+
+impl AutomationRunMaterialized {
+    /// The admission request for an automation run: the packaged workflow
+    /// version at the exact checked-out target, with no caller overrides.
+    pub(crate) fn into_run_intent(self) -> RunIntent {
+        RunIntent {
+            workflow_version_id: self.workflow_version_id,
+            target:              RunTarget::Git(self.target),
+            args:                RunIntentArgs::default(),
+            environment_id:      None,
+            parent_id:           None,
+            title:               None,
+            goal:                None,
+        }
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -66,11 +83,6 @@ pub(crate) enum RunMaterializeError {
     VersionStore {
         #[source]
         source: WorkflowVersionStoreError,
-    },
-    #[error("stored workflow version ID `{actual}` did not match local ID `{expected}`")]
-    VersionIdMismatch {
-        expected: WorkflowVersionId,
-        actual:   WorkflowVersionId,
     },
     #[error("failed to load GitHub credentials")]
     Credentials {
@@ -165,57 +177,32 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
         let mut exact_target = input.target;
         exact_target.sha = Some(checked_out_sha);
 
-        let package_input = PackageFromCheckoutInput {
-            workflow: input.workflow,
-            checkout_dir,
-            target: exact_target,
-        };
-        let packaged = task::spawn_blocking(move || package_from_checkout(package_input))
-            .await
-            .map_err(|source| RunMaterializeError::PackageTask { source })??;
+        let workflow = PathBuf::from(input.workflow);
+        let closure = task::spawn_blocking(move || {
+            fabro_manifest::collect_workflow_versions(&workflow, &checkout_dir)
+                .map_err(package_error)
+        })
+        .await
+        .map_err(|source| RunMaterializeError::PackageTask { source })??;
 
-        let root_id = packaged.closure.root_id();
-        for (expected, version) in packaged.closure.versions() {
-            let actual = self
+        // Versions arrive dependency-first, and the store derives the same
+        // content hash the collector did, so the root ID is known up front.
+        for (expected, version) in closure.versions() {
+            let stored = self
                 .version_store
                 .put(version)
                 .await
                 .map_err(|source| RunMaterializeError::VersionStore { source })?;
-            if actual != expected {
-                return Err(RunMaterializeError::VersionIdMismatch { expected, actual });
-            }
+            debug_assert_eq!(
+                stored, expected,
+                "store and collector disagree on version ID"
+            );
         }
         Ok(AutomationRunMaterialized {
-            workflow_version_id: root_id,
-            target:              packaged.target,
+            workflow_version_id: closure.root_id(),
+            target:              exact_target,
         })
     }
-}
-
-#[derive(Debug)]
-struct PackageFromCheckoutInput {
-    workflow:     String,
-    checkout_dir: PathBuf,
-    target:       GitRunTarget,
-}
-
-struct PackagedAutomationWorkflow {
-    closure: CollectedWorkflowClosure,
-    target:  GitRunTarget,
-}
-
-fn package_from_checkout(
-    args: PackageFromCheckoutInput,
-) -> Result<PackagedAutomationWorkflow, RunMaterializeError> {
-    let PackageFromCheckoutInput {
-        workflow,
-        checkout_dir,
-        target,
-    } = args;
-    let workflow = PathBuf::from(workflow);
-    let closure = fabro_manifest::collect_workflow_versions(&workflow, &checkout_dir)
-        .map_err(package_error)?;
-    Ok(PackagedAutomationWorkflow { closure, target })
 }
 
 fn package_error(error: WorkflowVersionCollectError) -> RunMaterializeError {
@@ -345,12 +332,11 @@ impl AutomationRunMaterializer for TestAutomationRunMaterializer {
                 .await
                 .map_err(|source| RunMaterializeError::VersionStore { source })?
         } else {
-            let canonical = materialized
+            materialized
                 .version
                 .version()
-                .canonical_bytes()
-                .expect("validated test workflow version should serialize canonically");
-            WorkflowVersionId::from(fabro_types::BlobHash::new(&canonical))
+                .id()
+                .expect("validated test workflow version should serialize canonically")
         };
         Ok(AutomationRunMaterialized {
             workflow_version_id,
@@ -367,59 +353,13 @@ mod tests {
     )]
 
     use std::fs;
+    use std::path::Path;
     use std::time::Duration;
 
     use object_store::memory::InMemory;
     use tempfile::TempDir;
 
     use super::*;
-
-    #[test]
-    fn package_builder_uses_checkout_relative_versions_and_exact_target() {
-        let temp = TempDir::new().unwrap();
-        let checkout = temp.path().join("checkout");
-        let workflow_dir = checkout.join(".fabro/workflows/demo");
-        fs::create_dir_all(&workflow_dir).unwrap();
-        fs::write(checkout.join(".fabro/project.toml"), "_version = 1\n").unwrap();
-        fs::write(
-            workflow_dir.join("workflow.fabro"),
-            r#"digraph Demo { graph [goal="Ship automation"] start [shape=Mdiamond] exit [shape=Msquare] start -> exit }"#,
-        )
-        .unwrap();
-        fs::write(
-            workflow_dir.join("workflow.toml"),
-            "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"\n",
-        )
-        .unwrap();
-        let sha = "0123456789abcdef0123456789abcdef01234567".to_string();
-
-        let packaged = package_from_checkout(PackageFromCheckoutInput {
-            workflow:     "demo".to_string(),
-            checkout_dir: checkout,
-            target:       GitRunTarget {
-                repo:   "workspace-org/app".to_string(),
-                branch: "release".to_string(),
-                tag:    Some("v1".to_string()),
-                sha:    Some(sha.clone()),
-            },
-        })
-        .expect("workflow versions should package from checkout");
-
-        assert_eq!(
-            packaged
-                .closure
-                .versions()
-                .last()
-                .unwrap()
-                .1
-                .version()
-                .entrypoint()
-                .as_str(),
-            ".fabro/workflows/demo/workflow.fabro"
-        );
-        assert_eq!(packaged.target.tag.as_deref(), Some("v1"));
-        assert_eq!(packaged.target.sha.as_deref(), Some(sha.as_str()));
-    }
 
     #[tokio::test]
     async fn collected_closure_stores_dependency_first_and_idempotently() {
@@ -442,17 +382,8 @@ mod tests {
         fs::create_dir_all(&child_dir).unwrap();
         fs::write(child_dir.join("workflow.fabro"), "digraph Child {}").unwrap();
 
-        let packaged = package_from_checkout(PackageFromCheckoutInput {
-            workflow:     "root".to_string(),
-            checkout_dir: checkout,
-            target:       GitRunTarget {
-                repo:   "workspace-org/app".to_string(),
-                branch: "main".to_string(),
-                tag:    None,
-                sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
-            },
-        })
-        .unwrap();
+        let closure =
+            fabro_manifest::collect_workflow_versions(Path::new("root"), &checkout).unwrap();
         let database = fabro_store::test_support::test_database(
             Arc::new(InMemory::new()),
             "",
@@ -462,16 +393,16 @@ mod tests {
         let store = WorkflowVersionStore::new(database.blobs());
 
         for _ in 0..2 {
-            for (expected, version) in packaged.closure.versions() {
+            for (expected, version) in closure.versions() {
                 assert_eq!(store.put(version).await.unwrap(), expected);
             }
         }
         let loaded = store
-            .get_closure(&packaged.closure.root_id())
+            .get_closure(&closure.root_id())
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(loaded.root_id(), packaged.closure.root_id());
+        assert_eq!(loaded.root_id(), closure.root_id());
         assert_eq!(loaded.versions().count(), 2);
     }
 }

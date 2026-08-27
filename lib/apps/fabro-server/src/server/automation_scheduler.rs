@@ -8,9 +8,7 @@ use croner::errors::CronError;
 use fabro_automation::{
     Automation, AutomationId, AutomationRevision, AutomationTriggerId, parse_schedule_expression,
 };
-use fabro_types::{
-    AutomationRef, Principal, RunId, RunIntent, RunIntentArgs, RunTarget, SystemActorKind,
-};
+use fabro_types::{AutomationRef, Principal, RunId, SystemActorKind};
 use tokio::time::sleep;
 use tracing::{Instrument, error, info, info_span, warn};
 
@@ -272,15 +270,7 @@ async fn fire_scheduled_automation_run(
     let response = Box::pin(handler::runs::create_run_from_intent(
         Arc::clone(&state),
         handler::runs::CreateRunFromIntentRequest {
-            intent:          RunIntent {
-                workflow_version_id: materialized.workflow_version_id,
-                target:              RunTarget::Git(materialized.target),
-                args:                RunIntentArgs::default(),
-                environment_id:      None,
-                parent_id:           None,
-                title:               None,
-                goal:                None,
-            },
+            intent:          materialized.into_run_intent(),
             explicit_run_id: Some(run_id),
             actor:           actor.clone(),
             headers:         HeaderMap::new(),
@@ -351,7 +341,7 @@ mod tests {
     use fabro_automation::{AutomationDraft, AutomationTrigger, ScheduleTrigger};
     use fabro_static::EnvVars;
     use fabro_store::ListRunsQuery;
-    use fabro_types::{GitRunTarget, RunStatus};
+    use fabro_types::{GitRunTarget, RunStatus, RunTarget};
 
     use super::*;
     use crate::test_support::{TestAppStateBuilder, TestAutomationRunMaterializer};

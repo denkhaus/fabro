@@ -303,10 +303,7 @@ fn mount_version(
         .get(version.entrypoint())
         .cloned()
         .expect("validated workflow versions contain their entrypoint file");
-    let config_local = version
-        .entrypoint()
-        .resolve_reference("workflow.toml")
-        .expect("the static workflow config path should resolve beside a valid entrypoint");
+    let config_local = version.config_path();
     let config_path = version.files().get(&config_local).map(|source| {
         rebase_path(
             version.entrypoint(),

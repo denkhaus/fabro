@@ -130,13 +130,7 @@ pub fn build_sparse_run_overrides(input: RunOverrideInput<'_>) -> Option<RunLaye
 }
 
 pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
-    let root_location = WorkflowLocation::resolve(&input.workflow, &input.cwd)?;
-    if root_location.toml.is_none() && !root_location.graph.is_file() {
-        return Err(fabro_config::Error::WorkflowNotFound(
-            root_location.graph.display().to_string(),
-        )
-        .into());
-    }
+    let root_location = resolve_existing_workflow_location(&input.workflow, &input.cwd)?;
     let project_config = discover_project_config(&root_location.dir)?;
     let project_config_source = project_config
         .as_ref()
@@ -398,6 +392,19 @@ fn push_manifest_branch_best_effort(
     }
 
     let _ = push_branch_noninteractive(repo_path, "origin", branch);
+}
+
+/// Resolve a workflow reference and reject it when neither its config nor
+/// its graph exists on disk.
+/// A missing workflow surfaces as `fabro_config::Error::WorkflowNotFound`.
+fn resolve_existing_workflow_location(workflow: &Path, cwd: &Path) -> Result<WorkflowLocation> {
+    let location = WorkflowLocation::resolve(workflow, cwd)?;
+    if location.toml.is_none() && !location.graph.is_file() {
+        return Err(
+            fabro_config::Error::WorkflowNotFound(location.graph.display().to_string()).into(),
+        );
+    }
+    Ok(location)
 }
 
 fn normalize_absolute_path(base_dir: &Path, reference: &str) -> Option<PathBuf> {

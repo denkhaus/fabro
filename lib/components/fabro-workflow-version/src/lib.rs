@@ -116,7 +116,7 @@ impl ValidatedWorkflowVersion {
     /// run-admission time read the same bytes validation proved present.
     #[must_use]
     pub fn resolved_goal_file_content(&self) -> Option<&str> {
-        let config_path = workflow_config_path(&self.0);
+        let config_path = self.0.config_path();
         let source = self.0.files().get(&config_path)?;
         let layer: SettingsLayer = source.parse().expect("validated workflow.toml must parse");
         let RunGoalLayer::File { file } = layer.run.as_ref().and_then(|run| run.goal.as_ref())?
@@ -163,7 +163,7 @@ fn validate_config(
     version: &WorkflowVersion,
     template_roots: &mut TemplateRoots,
 ) -> Result<(), WorkflowVersionError> {
-    let config_path = workflow_config_path(version);
+    let config_path = version.config_path();
     let Some(source) = version.files().get(&config_path) else {
         return Ok(());
     };
@@ -210,13 +210,6 @@ fn validate_config(
         None => {}
     }
     Ok(())
-}
-
-fn workflow_config_path(version: &WorkflowVersion) -> WorkflowPath {
-    version
-        .entrypoint()
-        .resolve_reference("workflow.toml")
-        .expect("the static workflow config path must resolve beside a valid entrypoint")
 }
 
 #[expect(

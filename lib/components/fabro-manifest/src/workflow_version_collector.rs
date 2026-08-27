@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use fabro_config::project::WorkflowLocation;
+use fabro_api::types;
 use fabro_types::{
-    BlobHash, WorkflowPath, WorkflowPathParseError, WorkflowVersion, WorkflowVersionId,
+    WorkflowPath, WorkflowPathParseError, WorkflowVersion, WorkflowVersionId,
     WorkflowVersionShapeError,
 };
 use fabro_workflow_version::{ValidatedWorkflowVersion, WorkflowVersionError};
@@ -78,49 +78,56 @@ pub fn collect_workflow_versions(
     workflow: &Path,
     checkout_root: &Path,
 ) -> Result<CollectedWorkflowClosure, WorkflowVersionCollectError> {
-    let location = WorkflowLocation::resolve(workflow, checkout_root).map_err(|source| {
-        WorkflowVersionCollectError::Collect {
-            path:   workflow.to_path_buf(),
-            source: anyhow::Error::new(source),
-        }
-    })?;
-    if location.toml.is_none() && !location.graph.is_file() {
-        return Err(WorkflowVersionCollectError::WorkflowNotFound {
-            path: workflow.to_path_buf(),
-        });
-    }
+    let location =
+        crate::resolve_existing_workflow_location(workflow, checkout_root).map_err(|source| {
+            if matches!(
+                source.downcast_ref::<fabro_config::Error>(),
+                Some(fabro_config::Error::WorkflowNotFound(_))
+            ) {
+                WorkflowVersionCollectError::WorkflowNotFound {
+                    path: workflow.to_path_buf(),
+                }
+            } else {
+                WorkflowVersionCollectError::Collect {
+                    path: workflow.to_path_buf(),
+                    source,
+                }
+            }
+        })?;
 
     let inputs = HashMap::new();
     let collected = WorkflowBundler::new(checkout_root, &inputs)
-        .collect_versions(workflow)
+        .collect_versions(&location)
         .map_err(|source| WorkflowVersionCollectError::Collect {
             path: workflow.to_path_buf(),
             source,
         })?;
-    VersionAssembler::new(&collected).assemble()
+    VersionAssembler::new(collected).assemble()
 }
 
-struct VersionAssembler<'a> {
-    collected: &'a CollectedWorkflowSources,
-    visiting:  HashSet<String>,
-    ids:       HashMap<String, WorkflowVersionId>,
-    emitted:   HashSet<WorkflowVersionId>,
-    versions:  Vec<(WorkflowVersionId, ValidatedWorkflowVersion)>,
+struct VersionAssembler {
+    root_key: String,
+    /// Sources still waiting to be assembled; each is removed once visited.
+    pending:  HashMap<String, CollectedWorkflowSource>,
+    visiting: HashSet<String>,
+    ids:      HashMap<String, WorkflowVersionId>,
+    versions: Vec<(WorkflowVersionId, ValidatedWorkflowVersion)>,
 }
 
-impl<'a> VersionAssembler<'a> {
-    fn new(collected: &'a CollectedWorkflowSources) -> Self {
+impl VersionAssembler {
+    fn new(collected: CollectedWorkflowSources) -> Self {
         Self {
-            collected,
+            root_key: collected.root_key,
+            pending:  collected.workflows,
             visiting: HashSet::new(),
-            ids: HashMap::new(),
-            emitted: HashSet::new(),
+            ids:      HashMap::new(),
             versions: Vec::new(),
         }
     }
 
     fn assemble(mut self) -> Result<CollectedWorkflowClosure, WorkflowVersionCollectError> {
-        let root_id = self.assemble_one(&self.collected.root_key)?;
+        let root_key = std::mem::take(&mut self.root_key);
+        let root_id = self.assemble_one(&root_key)?;
         Ok(CollectedWorkflowClosure {
             root_id,
             versions: self.versions,
@@ -139,31 +146,20 @@ impl<'a> VersionAssembler<'a> {
                 path: workflow_path(key)?,
             });
         }
-
-        let dependency_keys = self
-            .collected
-            .workflows
-            .get(key)
-            .ok_or_else(|| WorkflowVersionCollectError::MissingWorkflow {
+        let source = self.pending.remove(key).ok_or_else(|| {
+            WorkflowVersionCollectError::MissingWorkflow {
                 path: key.to_owned(),
-            })?
-            .dependency_keys
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
+            }
+        })?;
+
         let mut dependencies = BTreeMap::new();
-        for dependency_key in dependency_keys {
-            let dependency_id = self.assemble_one(&dependency_key)?;
-            dependencies.insert(workflow_path(&dependency_key)?, dependency_id);
+        for dependency_key in &source.dependency_keys {
+            let dependency_id = self.assemble_one(dependency_key)?;
+            dependencies.insert(workflow_path(dependency_key)?, dependency_id);
         }
 
-        let source = self
-            .collected
-            .workflows
-            .get(key)
-            .expect("collected workflow must remain present while assembling");
         let entrypoint = workflow_path(key)?;
-        let files = workflow_files(&entrypoint, source)?;
+        let files = workflow_files(&entrypoint, source.workflow)?;
         let version =
             WorkflowVersion::new(entrypoint.clone(), files, dependencies).map_err(|source| {
                 WorkflowVersionCollectError::InvalidShape {
@@ -177,49 +173,38 @@ impl<'a> VersionAssembler<'a> {
                 source,
             }
         })?;
-        let canonical = validated.version().canonical_bytes().map_err(|source| {
+        let id = validated.version().id().map_err(|source| {
             WorkflowVersionCollectError::InvalidShape {
                 entrypoint: entrypoint.clone(),
                 source,
             }
         })?;
-        let id = WorkflowVersionId::from(BlobHash::new(&canonical));
 
         self.visiting.remove(key);
+        // Keys are distinct entrypoints and the entrypoint is part of the
+        // canonical bytes, so each key yields a distinct ID.
         self.ids.insert(key.to_owned(), id);
-        if self.emitted.insert(id) {
-            self.versions.push((id, validated));
-        }
+        self.versions.push((id, validated));
         Ok(id)
     }
 }
 
 fn workflow_files(
     entrypoint: &WorkflowPath,
-    source: &CollectedWorkflowSource,
+    workflow: types::ManifestWorkflow,
 ) -> Result<BTreeMap<WorkflowPath, String>, WorkflowVersionCollectError> {
     let mut files = BTreeMap::new();
-    insert_file(
-        &mut files,
-        entrypoint,
-        entrypoint.clone(),
-        source.workflow.source.clone(),
-    )?;
-    if let Some(config) = source.workflow.config.as_ref() {
+    insert_file(&mut files, entrypoint, entrypoint.clone(), workflow.source)?;
+    if let Some(config) = workflow.config {
         insert_file(
             &mut files,
             entrypoint,
             workflow_path(&config.path)?,
-            config.source.clone(),
+            config.source,
         )?;
     }
-    for (path, file) in &source.workflow.files {
-        insert_file(
-            &mut files,
-            entrypoint,
-            workflow_path(path)?,
-            file.content.clone(),
-        )?;
+    for (path, file) in workflow.files {
+        insert_file(&mut files, entrypoint, workflow_path(&path)?, file.content)?;
     }
     Ok(files)
 }
