@@ -12,4 +12,4 @@ provider = "slack"
 events = ["run.started", "run.completed", "run.failed"]
 
 [run.notifications.smoke.slack]
-channel = "#fabro-reviews"
+channel = "#dev-fabro"
