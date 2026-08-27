@@ -210,6 +210,15 @@ methods = ["dev-token"]
     )
 }
 
+#[test]
+fn run_record_store_is_database_owned() {
+    let state = test_app_state();
+    assert!(Arc::ptr_eq(
+        &state.stores.run_records,
+        &state.stores.runs.run_record_store(),
+    ));
+}
+
 async fn body_json(body: Body) -> serde_json::Value {
     let bytes = to_bytes(body, usize::MAX).await.unwrap();
     serde_json::from_slice(&bytes).unwrap()
@@ -3915,7 +3924,7 @@ async fn post_runs_run_intent_rejects_invalid_folder_paths_before_persistence() 
     assert!(
         state
             .stores
-            .run_summaries
+            .run_records
             .list_identities()
             .await
             .unwrap()
@@ -3947,7 +3956,7 @@ async fn post_runs_run_intent_applies_the_folder_target_environment_matrix() {
         assert!(
             state
                 .stores
-                .run_summaries
+                .run_records
                 .list_identities()
                 .await
                 .unwrap()
@@ -3982,7 +3991,7 @@ enabled = false
     assert!(
         disabled_state
             .stores
-            .run_summaries
+            .run_records
             .list_identities()
             .await
             .unwrap()
@@ -4224,7 +4233,7 @@ async fn post_runs_run_intent_rejects_none_target_with_local_environment_before_
     assert!(
         state
             .stores
-            .run_summaries
+            .run_records
             .list_identities()
             .await
             .unwrap()
@@ -4269,7 +4278,7 @@ async fn assert_run_intent_targets_unavailable(state: &Arc<AppState>) {
     assert!(
         state
             .stores
-            .run_summaries
+            .run_records
             .list_identities()
             .await
             .unwrap()

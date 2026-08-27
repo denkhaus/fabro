@@ -56,6 +56,18 @@ pub enum Error {
         run_id: String,
         field:  &'static str,
     },
+    #[error("run {run_id} head mismatch: expected {expected_last_seq}, stored {actual_last_seq:?}")]
+    RunHeadMismatch {
+        run_id:            String,
+        expected_last_seq: u32,
+        actual_last_seq:   Option<u32>,
+    },
+    #[error("stored run event {run_id} sequence {seq} has inconsistent field {field}")]
+    RunEventMismatch {
+        run_id: String,
+        seq:    u32,
+        field:  &'static str,
+    },
     #[error(transparent)]
     InvalidTransition(#[from] fabro_types::InvalidTransition),
     #[error("{0}")]

@@ -475,6 +475,276 @@ async fn runs_schema_creates_indexes_and_rejects_invalid_rows() -> anyhow::Resul
     Ok(())
 }
 
+#[tokio::test]
+async fn run_events_schema_has_final_shape_constraints_and_indexes() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let database = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
+    database.migrate().await?;
+
+    let run_columns = sqlx::query("PRAGMA table_info(runs)")
+        .fetch_all(database.pool())
+        .await?;
+    assert_eq!(
+        run_columns.len(),
+        24,
+        "the existing runs row must stay unchanged"
+    );
+
+    let event_columns = sqlx::query("PRAGMA table_info(run_events)")
+        .fetch_all(database.pool())
+        .await?;
+    let event_column_contract = event_columns
+        .iter()
+        .map(|column| {
+            (
+                column.get::<String, _>("name"),
+                column.get::<String, _>("type"),
+                column.get::<i64, _>("notnull"),
+                column.get::<i64, _>("pk"),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(event_column_contract, vec![
+        ("run_id".to_string(), "TEXT".to_string(), 1, 1),
+        ("seq".to_string(), "INTEGER".to_string(), 1, 2),
+        ("event_name".to_string(), "TEXT".to_string(), 1, 0),
+        ("node_id".to_string(), "TEXT".to_string(), 0, 0),
+        ("stage_id".to_string(), "TEXT".to_string(), 0, 0),
+        ("session_id".to_string(), "TEXT".to_string(), 0, 0),
+        ("event_json".to_string(), "TEXT".to_string(), 1, 0),
+    ]);
+
+    let foreign_keys = sqlx::query("PRAGMA foreign_key_list(run_events)")
+        .fetch_all(database.pool())
+        .await?;
+    assert_eq!(foreign_keys.len(), 1);
+    assert_eq!(foreign_keys[0].get::<String, _>("table"), "runs");
+    assert_eq!(foreign_keys[0].get::<String, _>("from"), "run_id");
+    assert_eq!(foreign_keys[0].get::<String, _>("to"), "id");
+    assert_eq!(foreign_keys[0].get::<String, _>("on_delete"), "CASCADE");
+
+    let indexes = sqlx::query("PRAGMA index_list(run_events)")
+        .fetch_all(database.pool())
+        .await?;
+    let named_indexes = indexes
+        .iter()
+        .filter_map(|index| {
+            let name = index.get::<String, _>("name");
+            name.starts_with("run_events_by_").then_some((
+                name,
+                index.get::<i64, _>("unique"),
+                index.get::<i64, _>("partial"),
+            ))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(named_indexes, vec![
+        (
+            "run_events_by_pull_request_creation_request".to_string(),
+            0,
+            1,
+        ),
+        ("run_events_by_session".to_string(), 0, 1),
+        ("run_events_by_legacy_node".to_string(), 0, 1),
+        ("run_events_by_stage".to_string(), 0, 1),
+    ]);
+    assert!(indexes.iter().all(|index| {
+        index.get::<i64, _>("unique") == 0
+            || index.get::<String, _>("name") == "sqlite_autoindex_run_events_1"
+    }));
+
+    insert_run_with_id(database.pool(), "parent", None).await?;
+    insert_run_with_id(database.pool(), "child", Some("parent")).await?;
+    insert_run_event(
+        database.pool(),
+        "parent",
+        1,
+        "run.created",
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    for invalid in [
+        insert_run_event(
+            database.pool(),
+            "parent",
+            1,
+            "run.created",
+            None,
+            None,
+            None,
+        )
+        .await,
+        insert_run_event(
+            database.pool(),
+            "missing",
+            1,
+            "run.created",
+            None,
+            None,
+            None,
+        )
+        .await,
+        insert_run_event(
+            database.pool(),
+            "parent",
+            0,
+            "run.created",
+            None,
+            None,
+            None,
+        )
+        .await,
+        insert_run_event(
+            database.pool(),
+            "parent",
+            1_000_000,
+            "run.created",
+            None,
+            None,
+            None,
+        )
+        .await,
+    ] {
+        assert!(invalid.is_err());
+    }
+    let invalid_json = sqlx::query(
+        "INSERT INTO run_events (run_id, seq, event_name, event_json) VALUES (?, ?, ?, ?)",
+    )
+    .bind("parent")
+    .bind(2_i64)
+    .bind("run.started")
+    .bind("not-json")
+    .execute(database.pool())
+    .await;
+    assert!(invalid_json.is_err());
+
+    sqlx::query("INSERT INTO blobs (hash, data) VALUES (?, ?)")
+        .bind("a".repeat(64))
+        .bind(vec![1_u8])
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM runs WHERE id = ?")
+        .bind("parent")
+        .execute(database.pool())
+        .await?;
+    let event_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM run_events WHERE run_id = 'parent'")
+            .fetch_one(database.pool())
+            .await?;
+    let child_parent: Option<String> =
+        sqlx::query_scalar("SELECT parent_id FROM runs WHERE id = 'child'")
+            .fetch_one(database.pool())
+            .await?;
+    let blob_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM blobs")
+        .fetch_one(database.pool())
+        .await?;
+    assert_eq!(event_count, 0);
+    assert_eq!(child_parent.as_deref(), Some("parent"));
+    assert_eq!(blob_count, 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn run_events_schema_query_plans_use_candidate_indexes() -> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let database = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
+    database.migrate().await?;
+
+    for (sql, expected_index) in [
+        (
+            "EXPLAIN QUERY PLAN SELECT * FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?",
+            "sqlite_autoindex_run_events_1",
+        ),
+        (
+            "EXPLAIN QUERY PLAN SELECT * FROM run_events WHERE run_id = ? AND seq = ?",
+            "sqlite_autoindex_run_events_1",
+        ),
+        (
+            "EXPLAIN QUERY PLAN SELECT * FROM run_events WHERE run_id = ? AND stage_id = ? ORDER BY seq ASC LIMIT ?",
+            "run_events_by_stage",
+        ),
+        (
+            "EXPLAIN QUERY PLAN SELECT * FROM run_events WHERE run_id = ? AND stage_id IS NULL AND node_id = ? ORDER BY seq ASC LIMIT ?",
+            "run_events_by_legacy_node",
+        ),
+        (
+            "EXPLAIN QUERY PLAN SELECT * FROM run_events WHERE run_id = ? AND session_id = ? AND event_name GLOB 'run.session.*' ORDER BY seq ASC LIMIT ?",
+            "run_events_by_session",
+        ),
+        (
+            "EXPLAIN QUERY PLAN SELECT * FROM run_events WHERE event_name = 'pull_request.creation_requested' ORDER BY run_id, seq",
+            "run_events_by_pull_request_creation_request",
+        ),
+    ] {
+        let details = sqlx::query(sql)
+            .bind("run")
+            .bind("value")
+            .bind(10_i64)
+            .fetch_all(database.pool())
+            .await?
+            .into_iter()
+            .map(|row| row.get::<String, _>("detail"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        assert!(
+            details.contains(expected_index),
+            "expected {expected_index} in query plan: {details}"
+        );
+    }
+
+    Ok(())
+}
+
+async fn insert_run_with_id(
+    pool: &fabro_db::DbPool,
+    id: &str,
+    parent_id: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r"
+INSERT INTO runs (
+    id, source_last_seq, created_at_ms, last_event_at_ms, status, parent_id, title,
+    input_tokens, summary_json
+) VALUES (?, 1, 0, 0, 'submitted', ?, 'title', 0, ?)
+",
+    )
+    .bind(id)
+    .bind(parent_id)
+    .bind(format!(r#"{{"id":"{id}"}}"#))
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn insert_run_event(
+    pool: &fabro_db::DbPool,
+    run_id: &str,
+    seq: i64,
+    event_name: &str,
+    node_id: Option<&str>,
+    stage_id: Option<&str>,
+    session_id: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r"
+INSERT INTO run_events (run_id, seq, event_name, node_id, stage_id, session_id, event_json)
+VALUES (?, ?, ?, ?, ?, ?, '{}')
+",
+    )
+    .bind(run_id)
+    .bind(seq)
+    .bind(event_name)
+    .bind(node_id)
+    .bind(stage_id)
+    .bind(session_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 async fn insert_minimal_run(
     pool: &fabro_db::DbPool,
     status: &str,

@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, OnceLock};
 
 use bytes::Bytes;
 use chrono::Utc;
@@ -14,7 +14,7 @@ use tracing::warn;
 use super::projection_cache::{CachedRunProjection, RunProjectionCache};
 use crate::run_state::{EventProjectionCache, RunProjectionReducer};
 use crate::{
-    BlobStore, Error, EventEnvelope, EventPayload, Result, RunProjection, RunSummaryStore, StageId,
+    BlobStore, Error, EventEnvelope, EventPayload, Result, RunProjection, RunRecordStore, StageId,
     keys,
 };
 
@@ -45,9 +45,7 @@ pub(crate) struct RunDatabaseInner {
     state_lock: Mutex<()>,
     projection_cache: Mutex<EventProjectionCache>,
     shared_projection_cache: Arc<RunProjectionCache>,
-    // Shared cell rather than a snapshot so a summary store attached after
-    // this writer opened is still picked up by later appends.
-    run_summary_store: Arc<OnceLock<Arc<RunSummaryStore>>>,
+    run_record_store: Arc<RunRecordStore>,
     recent_events: Mutex<VecDeque<EventEnvelope>>,
     recent_event_limit: usize,
     event_tx: broadcast::Sender<EventEnvelope>,
@@ -60,7 +58,7 @@ impl RunDatabase {
         read_only: bool,
         blob_store: Arc<BlobStore>,
         shared_projection_cache: Arc<RunProjectionCache>,
-        run_summary_store: Arc<OnceLock<Arc<RunSummaryStore>>>,
+        run_record_store: Arc<RunRecordStore>,
     ) -> Result<Self> {
         let cached_projection = shared_projection_cache.projection_snapshot(&run_id).await;
         let projection_cache = cached_projection.as_ref().map_or_else(
@@ -92,7 +90,7 @@ impl RunDatabase {
                 state_lock: Mutex::new(()),
                 projection_cache: Mutex::new(projection_cache),
                 shared_projection_cache,
-                run_summary_store,
+                run_record_store,
                 recent_events: Mutex::new(VecDeque::with_capacity(DEFAULT_EVENT_TAIL_LIMIT)),
                 recent_event_limit: DEFAULT_EVENT_TAIL_LIMIT,
                 event_tx,
@@ -121,6 +119,11 @@ impl RunDatabase {
 
     pub(crate) fn run_id(&self) -> RunId {
         self.inner.run_id
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shares_run_record_store(&self, store: &Arc<RunRecordStore>) -> bool {
+        Arc::ptr_eq(&self.inner.run_record_store, store)
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<EventEnvelope> {
@@ -231,15 +234,13 @@ impl RunDatabase {
     }
 
     async fn update_summary_after_committed_append(&self, cached: &CachedRunProjection) {
-        if let Some(store) = self.inner.run_summary_store.get() {
-            if let Err(err) = store.upsert_projection(cached).await {
-                warn!(
-                    run_id = %self.inner.run_id,
-                    source_last_seq = cached.last_seq,
-                    error = ?err,
-                    "failed to update SQLite run summary after committed append"
-                );
-            }
+        if let Err(err) = self.inner.run_record_store.upsert_projection(cached).await {
+            warn!(
+                run_id = %self.inner.run_id,
+                source_last_seq = cached.last_seq,
+                error = ?err,
+                "failed to update SQLite run record after committed append"
+            );
         }
     }
 

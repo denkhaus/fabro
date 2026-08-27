@@ -9,9 +9,9 @@ mod keyed_mutex;
 mod keys;
 mod legacy_blob_import;
 mod record;
+mod run_record_store;
 mod run_sessions;
 mod run_state;
-mod run_summary_store;
 mod serializable_projection;
 mod slate;
 mod sqlite_row;
@@ -37,15 +37,15 @@ pub use legacy_blob_import::{
     LegacyBlobImportError, LegacyBlobImportReport, LegacyBlobInventory, LegacyBlobInventoryError,
     LegacyBlobVerificationError, LegacyBlobVerificationReport,
 };
+pub use run_record_store::{
+    RunRecordStore, RunSummaryIdentity, RunSummaryListQuery, RunSummaryPage, RunSummarySort,
+    RunSummarySortDirection, RunSummaryVisibility,
+};
 pub use run_sessions::{
     ProjectedRunSession, project_run_session, project_run_session_with_context,
     project_run_sessions,
 };
 pub use run_state::RunProjectionReducer;
-pub use run_summary_store::{
-    RunSummaryIdentity, RunSummaryListQuery, RunSummaryPage, RunSummarySort,
-    RunSummarySortDirection, RunSummaryStore, RunSummaryVisibility,
-};
 pub use serializable_projection::SerializableProjection;
 pub use slate::{CachedRunProjection, Database, RunCatalogIndex, RunDatabase, Runs, UnreadableRun};
 pub use types::EventPayload;

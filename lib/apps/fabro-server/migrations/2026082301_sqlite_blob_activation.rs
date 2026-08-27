@@ -125,12 +125,14 @@ pub(crate) async fn activate_blob_storage(
     );
 
     let blob_store = Arc::new(fabro_store::BlobStore::new(database.clone_pool()));
+    let run_record_store = Arc::new(fabro_store::RunRecordStore::new(database.clone_pool()));
     let store = Arc::new(fabro_store::Database::new(
         object_store,
         slatedb_prefix,
         flush_interval,
         cache_path,
         Arc::clone(&blob_store),
+        run_record_store,
     ));
 
     let inventory = store
