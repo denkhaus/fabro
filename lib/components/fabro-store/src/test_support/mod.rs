@@ -8,8 +8,8 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
 use crate::keys::SlateKey;
 #[cfg(test)]
-use crate::{AuthCodeStore, AuthSessionStore, RunSummaryStore};
-use crate::{BlobStore, Database, Result};
+use crate::{AuthCodeStore, AuthSessionStore};
+use crate::{BlobStore, Database, Result, RunSummaryStore};
 
 /// Returns an isolated SQLite blob authority backed by its own in-memory
 /// database.
@@ -18,32 +18,48 @@ use crate::{BlobStore, Database, Result};
 /// by other tests in the same process. Reopen-style tests that model one
 /// process-wide blob authority across several store handles should call this
 /// once and share the result through [`test_database_with_blobs`].
-///
-/// The pool connects lazily so synchronous fixture builders can remain
-/// synchronous. Its single connection installs the production blob schema on
-/// first use.
 #[must_use]
 pub fn test_blob_store() -> Arc<BlobStore> {
+    Arc::new(BlobStore::new(lazy_in_memory_pool(&[
+        fabro_db::BLOBS_MIGRATION_SQL,
+    ])))
+}
+
+/// Returns an isolated SQLite run-summary store backed by its own in-memory
+/// database and the production `runs` and `run_events` schemas.
+#[must_use]
+pub fn test_run_summary_store() -> Arc<RunSummaryStore> {
+    Arc::new(RunSummaryStore::new(lazy_in_memory_pool(&[
+        fabro_db::RUNS_MIGRATION_SQL,
+        fabro_db::RUN_EVENTS_MIGRATION_SQL,
+    ])))
+}
+
+/// Builds a single-connection in-memory SQLite pool that installs
+/// `migrations` on first use.
+///
+/// The pool connects lazily so synchronous fixture builders can remain
+/// synchronous.
+fn lazy_in_memory_pool(migrations: &'static [&'static str]) -> sqlx::SqlitePool {
     let options = SqliteConnectOptions::new()
         .filename(":memory:")
         .foreign_keys(true);
-    let pool = SqlitePoolOptions::new()
+    SqlitePoolOptions::new()
         .max_connections(1)
         // A single in-memory test connection never needs reaping. Disabling
         // both timers also keeps this lazy fixture constructible from sync
         // tests, where SQLx has no Tokio runtime for maintenance tasks.
         .max_lifetime(None)
         .idle_timeout(None)
-        .after_connect(|connection, _metadata| {
+        .after_connect(move |connection, _metadata| {
             Box::pin(async move {
-                sqlx::query(fabro_db::BLOBS_MIGRATION_SQL)
-                    .execute(&mut *connection)
-                    .await?;
+                for migration in migrations {
+                    sqlx::raw_sql(*migration).execute(&mut *connection).await?;
+                }
                 Ok(())
             })
         })
-        .connect_lazy_with(options);
-    Arc::new(BlobStore::new(pool))
+        .connect_lazy_with(options)
 }
 
 /// Returns the SQLite file backing [`test_blob_store_at`] for `store_dir`.
@@ -119,7 +135,37 @@ pub fn test_database_with_blobs(
     cache_path: Option<PathBuf>,
     blobs: Arc<BlobStore>,
 ) -> Database {
-    Database::new(object_store, base_prefix, flush_interval, cache_path, blobs)
+    test_database_with_stores(
+        object_store,
+        base_prefix,
+        flush_interval,
+        cache_path,
+        blobs,
+        test_run_summary_store(),
+    )
+}
+
+/// Builds a Slate-backed run database with explicit shared SQLite stores.
+///
+/// Use this only when a test needs a failing, persistent, or shared store;
+/// ordinary fixtures should use [`test_database`].
+#[must_use]
+pub fn test_database_with_stores(
+    object_store: Arc<dyn ObjectStore>,
+    base_prefix: impl Into<String>,
+    flush_interval: Duration,
+    cache_path: Option<PathBuf>,
+    blobs: Arc<BlobStore>,
+    run_summaries: Arc<RunSummaryStore>,
+) -> Database {
+    Database::new(
+        object_store,
+        base_prefix,
+        flush_interval,
+        cache_path,
+        blobs,
+        run_summaries,
+    )
 }
 
 /// Seeds one canonical row in the legacy SlateDB blob keyspace.
@@ -171,13 +217,13 @@ pub(crate) async fn sqlite_auth_code_store() -> (tempfile::TempDir, AuthCodeStor
 }
 
 #[cfg(test)]
-pub(crate) async fn sqlite_summary_store() -> (tempfile::TempDir, RunSummaryStore) {
+pub(crate) async fn sqlite_run_summary_store() -> (tempfile::TempDir, RunSummaryStore) {
     let directory = tempfile::tempdir().unwrap();
-    let store = sqlite_summary_store_at(directory.path()).await;
+    let store = sqlite_run_summary_store_at(directory.path()).await;
     (directory, store)
 }
 
 #[cfg(test)]
-pub(crate) async fn sqlite_summary_store_at(directory: &Path) -> RunSummaryStore {
+pub(crate) async fn sqlite_run_summary_store_at(directory: &Path) -> RunSummaryStore {
     RunSummaryStore::new(sqlite_test_pool(directory).await)
 }

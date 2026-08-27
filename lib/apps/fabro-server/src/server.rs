@@ -2447,8 +2447,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         })
         .context("load environments")?,
     );
-    let run_summaries =
-        store.attach_run_summary_store(Arc::new(RunSummaryStore::new(db_pool.clone())));
+    let run_summaries = store.run_summary_store();
     let auth_codes = Arc::new(AuthCodeStore::new(db_pool.clone()));
     let auth_sessions = Arc::new(AuthSessionStore::new(db_pool.clone()));
     let mcp_server_dir = mcp_server_dir_for_active_config(&active_config_path);

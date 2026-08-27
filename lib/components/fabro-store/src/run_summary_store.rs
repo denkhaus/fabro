@@ -3,14 +3,30 @@ use std::fmt::Write as _;
 use std::sync::LazyLock;
 
 use chrono::{DateTime, Utc};
-use fabro_types::{BilledTokenCounts, Run, RunId, RunSize, RunStatusKind, RunTiming, timing};
-use sqlx::sqlite::{SqliteConnection, SqliteRow};
+use fabro_types::{
+    BilledTokenCounts, EventEnvelope, Run, RunEvent, RunId, RunSize, RunStatusKind, RunTiming,
+    SessionId, StageId, timing,
+};
+use sqlx::query::Query;
+use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
 use sqlx::{QueryBuilder, Row as _, Sqlite, SqlitePool};
 use strum::VariantArray as _;
 
 use crate::run_state::projected_billing;
 use crate::slate::CachedRunProjection;
-use crate::{Error, Result};
+use crate::{Error, EventPayload, Result, keys};
+
+const INSERT_RUN_SQL: &str = r"
+INSERT INTO runs (
+    id, source_last_seq, created_at_ms, started_at_ms, last_event_at_ms, completed_at_ms,
+    status, archived_at_ms, parent_id, title, workflow_slug, workflow_name,
+    repository_name, automation_id, diff_files_changed, diff_additions, diff_deletions,
+    input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cache_write_tokens,
+    total_usd_micros, summary_json
+) VALUES (
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+)
+";
 
 const UPSERT_RUN_SQL: &str = r"
 INSERT INTO runs (
@@ -47,6 +63,42 @@ ON CONFLICT(id) DO UPDATE SET
     total_usd_micros = excluded.total_usd_micros,
     summary_json = excluded.summary_json
 WHERE excluded.source_last_seq > runs.source_last_seq
+";
+
+const UPDATE_RUN_SQL: &str = r"
+UPDATE runs SET
+    source_last_seq = ?,
+    created_at_ms = ?,
+    started_at_ms = ?,
+    last_event_at_ms = ?,
+    completed_at_ms = ?,
+    status = ?,
+    archived_at_ms = ?,
+    parent_id = ?,
+    title = ?,
+    workflow_slug = ?,
+    workflow_name = ?,
+    repository_name = ?,
+    automation_id = ?,
+    diff_files_changed = ?,
+    diff_additions = ?,
+    diff_deletions = ?,
+    input_tokens = ?,
+    output_tokens = ?,
+    reasoning_tokens = ?,
+    cache_read_tokens = ?,
+    cache_write_tokens = ?,
+    total_usd_micros = ?,
+    summary_json = ?
+WHERE id = ? AND source_last_seq = ?
+";
+
+const SELECT_EVENT_COLUMNS: &str =
+    "SELECT run_id, seq, event_name, node_id, stage_id, session_id, event_json FROM run_events";
+
+const INSERT_EVENT_SQL: &str = r"
+INSERT INTO run_events (run_id, seq, event_name, node_id, stage_id, session_id, event_json)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ";
 
 const SELECT_RUN_SUMMARIES_SQL: &str = r"
@@ -148,9 +200,9 @@ impl RunSummaryStore {
     }
 
     pub(crate) async fn upsert_projection(&self, entry: &CachedRunProjection) -> Result<()> {
-        let record = ProjectedRunSummary::from_entry(entry);
+        let record = PreparedRunSummary::from_entry(entry);
         let mut connection = self.pool.acquire().await?;
-        upsert_run(&mut connection, &record).await?;
+        upsert_run_on_connection(&mut connection, &record).await?;
         Ok(())
     }
 
@@ -178,7 +230,8 @@ impl RunSummaryStore {
             if up_to_date {
                 continue;
             }
-            upsert_run(&mut transaction, &ProjectedRunSummary::from_entry(entry)).await?;
+            upsert_run_on_connection(&mut transaction, &PreparedRunSummary::from_entry(entry))
+                .await?;
         }
 
         let stale_ids = stored_seqs
@@ -284,6 +337,188 @@ FROM runs",
     }
 }
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the atomic SQL run path stays inactive until the authority cutover"
+    )
+)]
+impl RunSummaryStore {
+    pub(crate) async fn insert_first_event_on_connection(
+        connection: &mut SqliteConnection,
+        entry: &CachedRunProjection,
+        payload: &EventPayload,
+    ) -> Result<EventEnvelope> {
+        let record = PreparedRunSummary::from_entry(entry);
+        ensure_entry_identity(entry, &record, 1)?;
+        ensure_prepared_head(&record, 1)?;
+        let envelope = validate_event_for_record(&record, payload, 1)?;
+        if envelope.event.event_name() != "run.created" {
+            return Err(run_event_mismatch(&record.run.id, 1, "event_name"));
+        }
+
+        insert_run_on_connection(connection, &record).await?;
+        insert_event_on_connection(connection, &record, payload, &envelope).await?;
+        Ok(envelope)
+    }
+
+    pub(crate) async fn append_event_on_connection(
+        connection: &mut SqliteConnection,
+        expected_last_seq: u32,
+        entry: &CachedRunProjection,
+        payload: &EventPayload,
+    ) -> Result<EventEnvelope> {
+        let next_seq = next_event_seq_after(expected_last_seq)?;
+        let record = PreparedRunSummary::from_entry(entry);
+        ensure_entry_identity(entry, &record, next_seq)?;
+        ensure_prepared_head(&record, next_seq)?;
+        let envelope = validate_event_for_record(&record, payload, next_seq)?;
+
+        update_run_on_connection(connection, &record, expected_last_seq).await?;
+        insert_event_on_connection(connection, &record, payload, &envelope).await?;
+        Ok(envelope)
+    }
+
+    pub(crate) async fn list_events_on_connection(
+        connection: &mut SqliteConnection,
+        run_id: &RunId,
+    ) -> Result<Vec<EventEnvelope>> {
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_EVENT_COLUMNS);
+        query
+            .push(" WHERE run_id = ")
+            .push_bind(run_id.to_string())
+            .push(" ORDER BY seq ASC");
+        let expected_last_seq = select_run_head(&mut *connection, run_id)
+            .await?
+            .ok_or_else(|| Error::RunNotFound(run_id.to_string()))?;
+        let rows = query.build().fetch_all(&mut *connection).await?;
+        let actual_last_seq = rows
+            .last()
+            .map(|row| row.try_get::<i64, _>("seq"))
+            .transpose()?
+            .and_then(stored_seq);
+        if actual_last_seq != Some(expected_last_seq) {
+            return Err(Error::RunHeadMismatch {
+                run_id: run_id.to_string(),
+                expected_last_seq,
+                actual_last_seq,
+            });
+        }
+        decode_event_rows(&rows, run_id)
+    }
+
+    pub(crate) async fn list_events_from_with_limit_on_connection(
+        connection: &mut SqliteConnection,
+        run_id: &RunId,
+        start_seq: u32,
+        limit: usize,
+    ) -> Result<Vec<EventEnvelope>> {
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_EVENT_COLUMNS);
+        query
+            .push(" WHERE run_id = ")
+            .push_bind(run_id.to_string())
+            .push(" AND seq >= ")
+            .push_bind(i64::from(start_seq))
+            .push(" ORDER BY seq ASC LIMIT ")
+            .push_bind(sql_limit(limit));
+        let rows = query.build().fetch_all(&mut *connection).await?;
+        decode_event_rows(&rows, run_id)
+    }
+
+    pub(crate) async fn list_events_before_with_limit_on_connection(
+        connection: &mut SqliteConnection,
+        run_id: &RunId,
+        before_seq: Option<u32>,
+        limit: usize,
+    ) -> Result<Vec<EventEnvelope>> {
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_EVENT_COLUMNS);
+        query.push(" WHERE run_id = ").push_bind(run_id.to_string());
+        if let Some(before_seq) = before_seq {
+            query.push(" AND seq < ").push_bind(i64::from(before_seq));
+        }
+        query
+            .push(" ORDER BY seq DESC LIMIT ")
+            .push_bind(sql_limit(limit));
+        let rows = query.build().fetch_all(&mut *connection).await?;
+        decode_event_rows(&rows, run_id)
+    }
+
+    pub(crate) async fn get_event_on_connection(
+        connection: &mut SqliteConnection,
+        run_id: &RunId,
+        seq: u32,
+    ) -> Result<Option<EventEnvelope>> {
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_EVENT_COLUMNS);
+        query
+            .push(" WHERE run_id = ")
+            .push_bind(run_id.to_string())
+            .push(" AND seq = ")
+            .push_bind(i64::from(seq));
+        let row = query.build().fetch_optional(&mut *connection).await?;
+        row.as_ref()
+            .map(|row| decode_event_row(row, run_id, &run_id.to_string()))
+            .transpose()
+    }
+
+    pub(crate) async fn list_events_for_stage_from_with_limit_on_connection(
+        connection: &mut SqliteConnection,
+        run_id: &RunId,
+        stage_id: &StageId,
+        start_seq: u32,
+        limit: usize,
+    ) -> Result<Vec<EventEnvelope>> {
+        // Legacy rows for a first visit carry only `node_id`. Query them as a
+        // second `UNION ALL` arm instead of an `OR` so each arm can use its
+        // own partial index rather than scanning the run's primary key range.
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_EVENT_COLUMNS);
+        query
+            .push(" WHERE run_id = ")
+            .push_bind(run_id.to_string())
+            .push(" AND seq >= ")
+            .push_bind(i64::from(start_seq))
+            .push(" AND stage_id = ")
+            .push_bind(stage_id.to_string());
+        if stage_id.visit() == 1 {
+            query
+                .push(" UNION ALL ")
+                .push(SELECT_EVENT_COLUMNS)
+                .push(" WHERE run_id = ")
+                .push_bind(run_id.to_string())
+                .push(" AND seq >= ")
+                .push_bind(i64::from(start_seq))
+                .push(" AND stage_id IS NULL AND node_id = ")
+                .push_bind(stage_id.node_id().to_string());
+        }
+        query
+            .push(" ORDER BY seq ASC LIMIT ")
+            .push_bind(sql_limit(limit));
+        let rows = query.build().fetch_all(&mut *connection).await?;
+        decode_event_rows(&rows, run_id)
+    }
+
+    pub(crate) async fn list_events_for_session_from_with_limit_on_connection(
+        connection: &mut SqliteConnection,
+        run_id: &RunId,
+        session_id: &SessionId,
+        start_seq: u32,
+        limit: usize,
+    ) -> Result<Vec<EventEnvelope>> {
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_EVENT_COLUMNS);
+        query
+            .push(" WHERE run_id = ")
+            .push_bind(run_id.to_string())
+            .push(" AND seq >= ")
+            .push_bind(i64::from(start_seq))
+            .push(" AND session_id = ")
+            .push_bind(session_id.to_string())
+            .push(" AND event_name GLOB 'run.session.*' ORDER BY seq ASC LIMIT ")
+            .push_bind(sql_limit(limit));
+        let rows = query.build().fetch_all(&mut *connection).await?;
+        decode_event_rows(&rows, run_id)
+    }
+}
+
 /// Identity fields of a stored run summary, cheap to list for selector
 /// resolution.
 #[derive(Debug, Clone)]
@@ -295,7 +530,7 @@ pub struct RunSummaryIdentity {
 }
 
 #[derive(Debug)]
-struct ProjectedRunSummary {
+struct PreparedRunSummary {
     run:                Run,
     last_seq:           u32,
     workflow_name:      Option<String>,
@@ -308,7 +543,7 @@ struct ProjectedRunSummary {
     total_usd_micros:   Option<i64>,
 }
 
-impl ProjectedRunSummary {
+impl PreparedRunSummary {
     fn from_entry(entry: &CachedRunProjection) -> Self {
         let mut run = entry.summary.clone();
         if run.timing.is_none() {
@@ -340,6 +575,149 @@ impl ProjectedRunSummary {
     }
 }
 
+fn ensure_entry_identity(
+    entry: &CachedRunProjection,
+    record: &PreparedRunSummary,
+    seq: u32,
+) -> Result<()> {
+    if entry.run_id != record.run.id || entry.projection.spec.run_id != entry.run_id {
+        return Err(run_event_mismatch(&entry.run_id, seq, "run_id"));
+    }
+    Ok(())
+}
+
+fn ensure_prepared_head(record: &PreparedRunSummary, expected_last_seq: u32) -> Result<()> {
+    if record.last_seq != expected_last_seq {
+        return Err(Error::RunHeadMismatch {
+            run_id: record.run.id.to_string(),
+            expected_last_seq,
+            actual_last_seq: Some(record.last_seq),
+        });
+    }
+    Ok(())
+}
+
+fn validate_event_for_record(
+    record: &PreparedRunSummary,
+    payload: &EventPayload,
+    seq: u32,
+) -> Result<EventEnvelope> {
+    payload.validate(&record.run.id)?;
+    let event = RunEvent::try_from(payload)?;
+    if event.run_id != record.run.id {
+        return Err(run_event_mismatch(&record.run.id, seq, "run_id"));
+    }
+    Ok(EventEnvelope { seq, event })
+}
+
+fn run_event_mismatch(run_id: &RunId, seq: u32, field: &'static str) -> Error {
+    Error::RunEventMismatch {
+        run_id: run_id.to_string(),
+        seq,
+        field,
+    }
+}
+
+async fn insert_event_on_connection(
+    connection: &mut SqliteConnection,
+    record: &PreparedRunSummary,
+    payload: &EventPayload,
+    envelope: &EventEnvelope,
+) -> Result<()> {
+    let event_json = serde_json::to_string(payload)?;
+    sqlx::query(INSERT_EVENT_SQL)
+        .bind(record.run.id.to_string())
+        .bind(i64::from(envelope.seq))
+        .bind(envelope.event.event_name())
+        .bind(envelope.event.node_id.as_deref())
+        .bind(envelope.event.stage_id.as_ref().map(ToString::to_string))
+        .bind(envelope.event.session_id.as_deref())
+        .bind(event_json)
+        .execute(connection)
+        .await?;
+    Ok(())
+}
+
+fn sql_limit(limit: usize) -> i64 {
+    i64::try_from(limit.saturating_add(1)).unwrap_or(i64::MAX)
+}
+
+fn next_event_seq_after(last_seq: u32) -> Result<u32> {
+    last_seq
+        .checked_add(1)
+        .filter(|seq| *seq <= keys::MAX_EVENT_SEQ)
+        .ok_or(Error::EventSequenceExhausted {
+            max_seq: keys::MAX_EVENT_SEQ,
+        })
+}
+
+/// Decodes a stored sequence column, rejecting anything outside the valid
+/// `1..=MAX_EVENT_SEQ` range.
+fn stored_seq(value: i64) -> Option<u32> {
+    u32::try_from(value)
+        .ok()
+        .filter(|seq| (1..=keys::MAX_EVENT_SEQ).contains(seq))
+}
+
+fn decode_event_rows(rows: &[SqliteRow], run_id: &RunId) -> Result<Vec<EventEnvelope>> {
+    let run_id_text = run_id.to_string();
+    rows.iter()
+        .map(|row| decode_event_row(row, run_id, &run_id_text))
+        .collect()
+}
+
+fn decode_event_row(
+    row: &SqliteRow,
+    expected_run_id: &RunId,
+    expected_run_id_text: &str,
+) -> Result<EventEnvelope> {
+    let stored_run_id: String = row.try_get("run_id")?;
+    let raw_seq: i64 = row.try_get("seq")?;
+    let seq = stored_seq(raw_seq).ok_or_else(|| run_event_mismatch(expected_run_id, 0, "seq"))?;
+    if stored_run_id != expected_run_id_text {
+        return Err(run_event_mismatch(expected_run_id, seq, "run_id"));
+    }
+
+    let event_json: String = row.try_get("event_json")?;
+    let payload: EventPayload = serde_json::from_str(&event_json)?;
+    let event = RunEvent::try_from(&payload)?;
+    if event.run_id != *expected_run_id {
+        return Err(run_event_mismatch(expected_run_id, seq, "run_id"));
+    }
+
+    let stored_event_name: String = row.try_get("event_name")?;
+    if stored_event_name != event.event_name() {
+        return Err(run_event_mismatch(expected_run_id, seq, "event_name"));
+    }
+    let stored_node_id: Option<String> = row.try_get("node_id")?;
+    if stored_node_id.as_deref() != event.node_id.as_deref() {
+        return Err(run_event_mismatch(expected_run_id, seq, "node_id"));
+    }
+    let stored_stage_id: Option<String> = row.try_get("stage_id")?;
+    let decoded_stage_id = event.stage_id.as_ref().map(ToString::to_string);
+    if stored_stage_id != decoded_stage_id {
+        return Err(run_event_mismatch(expected_run_id, seq, "stage_id"));
+    }
+    let stored_session_id: Option<String> = row.try_get("session_id")?;
+    if stored_session_id.as_deref() != event.session_id.as_deref() {
+        return Err(run_event_mismatch(expected_run_id, seq, "session_id"));
+    }
+
+    Ok(EventEnvelope { seq, event })
+}
+
+async fn select_run_head(connection: &mut SqliteConnection, run_id: &RunId) -> Result<Option<u32>> {
+    let stored: Option<i64> = sqlx::query_scalar("SELECT source_last_seq FROM runs WHERE id = ?")
+        .bind(run_id.to_string())
+        .fetch_optional(connection)
+        .await?;
+    stored
+        .map(|value| {
+            stored_seq(value).ok_or_else(|| run_event_mismatch(run_id, 0, "source_last_seq"))
+        })
+        .transpose()
+}
+
 /// Older provider codecs could persist a negative disjoint bucket when a
 /// detail count exceeded its inclusive parent total. The SQLite summary is a
 /// rebuildable, nonnegative read model, so normalize those legacy values here
@@ -367,12 +745,42 @@ fn normalize_billing_for_read_model(mut billing: BilledTokenCounts) -> BilledTok
     billing
 }
 
-async fn upsert_run(connection: &mut SqliteConnection, record: &ProjectedRunSummary) -> Result<()> {
+async fn upsert_run_on_connection(
+    connection: &mut SqliteConnection,
+    record: &PreparedRunSummary,
+) -> Result<()> {
+    write_insert_shaped_run(connection, record, UPSERT_RUN_SQL).await
+}
+
+async fn insert_run_on_connection(
+    connection: &mut SqliteConnection,
+    record: &PreparedRunSummary,
+) -> Result<()> {
+    write_insert_shaped_run(connection, record, INSERT_RUN_SQL).await
+}
+
+async fn write_insert_shaped_run(
+    connection: &mut SqliteConnection,
+    record: &PreparedRunSummary,
+    sql: &'static str,
+) -> Result<()> {
+    bind_run_columns(sqlx::query(sql).bind(record.run.id.to_string()), record)?
+        .execute(connection)
+        .await?;
+    Ok(())
+}
+
+/// Binds the `runs` columns shared by the insert, upsert, and update
+/// statements, in the positional order those statements declare them
+/// (`source_last_seq` through `summary_json`).
+fn bind_run_columns<'q>(
+    query: Query<'q, Sqlite, SqliteArguments>,
+    record: &'q PreparedRunSummary,
+) -> Result<Query<'q, Sqlite, SqliteArguments>> {
     let run = &record.run;
     let diff = run.diff.unwrap_or_default();
     let summary_json = serde_json::to_string(run)?;
-    sqlx::query(UPSERT_RUN_SQL)
-        .bind(run.id.to_string())
+    Ok(query
         .bind(i64::from(record.last_seq))
         .bind(run.timestamps.created_at.timestamp_millis())
         .bind(
@@ -412,9 +820,27 @@ async fn upsert_run(connection: &mut SqliteConnection, record: &ProjectedRunSumm
         .bind(record.cache_read_tokens)
         .bind(record.cache_write_tokens)
         .bind(record.total_usd_micros)
-        .bind(summary_json)
-        .execute(connection)
+        .bind(summary_json))
+}
+
+async fn update_run_on_connection(
+    connection: &mut SqliteConnection,
+    record: &PreparedRunSummary,
+    expected_last_seq: u32,
+) -> Result<()> {
+    let run = &record.run;
+    let result = bind_run_columns(sqlx::query(UPDATE_RUN_SQL), record)?
+        .bind(run.id.to_string())
+        .bind(i64::from(expected_last_seq))
+        .execute(&mut *connection)
         .await?;
+    if result.rows_affected() == 0 {
+        return Err(Error::RunHeadMismatch {
+            run_id: run.id.to_string(),
+            expected_last_seq,
+            actual_last_seq: select_run_head(connection, &run.id).await?,
+        });
+    }
     Ok(())
 }
 
@@ -564,19 +990,20 @@ mod tests {
 
     use chrono::{DateTime, Utc};
     use fabro_types::{
-        AutomationRef, BilledTokenCounts, BlockedReason, Conclusion, DiffSummary, FailureReason,
-        Graph, PendingReason, RunDiff, RunId, RunProjection, RunSize, RunSpec, RunStatus,
-        RunStatusKind, RunTiming, StageOutcome, SuccessReason, WorkflowSettings, test_support,
+        AutomationRef, BilledTokenCounts, BlockedReason, Conclusion, DiffSummary, EventEnvelope,
+        FailureReason, Graph, PendingReason, RunDiff, RunId, RunProjection, RunSize, RunSpec,
+        RunStatus, RunStatusKind, RunTiming, SessionId, StageId, StageOutcome, SuccessReason,
+        WorkflowSettings, test_support,
     };
     use strum::VariantArray as _;
     use ulid::Ulid;
 
     use super::{
-        RunSummaryListQuery, RunSummarySort, RunSummarySortDirection, RunSummaryStore,
-        RunSummaryVisibility,
+        INSERT_EVENT_SQL, RunSummaryListQuery, RunSummarySort, RunSummarySortDirection,
+        RunSummaryStore, RunSummaryVisibility, decode_event_row,
     };
     use crate::slate::CachedRunProjection;
-    use crate::test_support as store_test_support;
+    use crate::{Error, EventPayload, test_support as store_test_support};
 
     fn dt(value: &str) -> DateTime<Utc> {
         value.parse().unwrap()
@@ -616,7 +1043,77 @@ mod tests {
     }
 
     async fn store() -> (tempfile::TempDir, RunSummaryStore) {
-        store_test_support::sqlite_summary_store().await
+        store_test_support::sqlite_run_summary_store().await
+    }
+
+    fn sql_event_payload(
+        run_id: &RunId,
+        event: &str,
+        node_id: Option<&str>,
+        stage_id: Option<&StageId>,
+        session_id: Option<&SessionId>,
+        properties: serde_json::Value,
+    ) -> EventPayload {
+        let mut value = serde_json::json!({
+            "id": format!("evt-{event}"),
+            "ts": "2026-08-27T12:00:00Z",
+            "run_id": run_id.to_string(),
+            "event": event,
+        });
+        let object = value.as_object_mut().unwrap();
+        object.insert("properties".to_string(), properties);
+        if let Some(node_id) = node_id {
+            object.insert("node_id".to_string(), node_id.into());
+        }
+        if let Some(stage_id) = stage_id {
+            object.insert("stage_id".to_string(), stage_id.to_string().into());
+        }
+        if let Some(session_id) = session_id {
+            object.insert("session_id".to_string(), session_id.to_string().into());
+        }
+        EventPayload::new(value, run_id).unwrap()
+    }
+
+    fn seqs(events: &[EventEnvelope]) -> Vec<u32> {
+        events.iter().map(|event| event.seq).collect()
+    }
+
+    fn created_payload(run_id: &RunId) -> EventPayload {
+        sql_event_payload(
+            run_id,
+            "run.created",
+            None,
+            None,
+            None,
+            serde_json::json!({
+                "title": "created",
+                "settings": WorkflowSettings::default(),
+                "graph": Graph::new("test"),
+                "workflow_slug": "test-workflow",
+                "labels": {},
+                "provenance": test_support::test_run_provenance(),
+            }),
+        )
+    }
+
+    async fn seed_sql_event(
+        store: &RunSummaryStore,
+        run_id: &RunId,
+        seq: u32,
+        payload: &EventPayload,
+    ) {
+        let event = fabro_types::RunEvent::try_from(payload).unwrap();
+        sqlx::query(INSERT_EVENT_SQL)
+            .bind(run_id.to_string())
+            .bind(i64::from(seq))
+            .bind(event.event_name())
+            .bind(event.node_id)
+            .bind(event.stage_id.map(|stage_id| stage_id.to_string()))
+            .bind(event.session_id)
+            .bind(serde_json::to_string(payload).unwrap())
+            .execute(&store.pool)
+            .await
+            .unwrap();
     }
 
     fn sample_status(kind: RunStatusKind) -> RunStatus {
@@ -641,6 +1138,500 @@ mod tests {
             },
             RunStatusKind::Dead => RunStatus::Dead,
         }
+    }
+
+    #[tokio::test]
+    async fn sql_run_transitions_are_atomic_and_guard_the_current_head() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
+        let first = entry(projection(id, "created", created_at), 1);
+        let first_payload = created_payload(&id);
+
+        let mut transaction = store.pool.begin().await.unwrap();
+        let first_envelope = RunSummaryStore::insert_first_event_on_connection(
+            &mut transaction,
+            &first,
+            &first_payload,
+        )
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+        assert_eq!(first_envelope.seq, 1);
+
+        let stored_first: (i64, String) =
+            sqlx::query_as("SELECT source_last_seq, event_json FROM runs JOIN run_events ON run_events.run_id = runs.id WHERE runs.id = ? AND run_events.seq = 1")
+                .bind(id.to_string())
+                .fetch_one(&store.pool)
+                .await
+                .unwrap();
+        assert_eq!(stored_first.0, 1);
+        assert_eq!(
+            stored_first.1,
+            serde_json::to_string(&first_payload).unwrap()
+        );
+
+        let mut duplicate_first = store.pool.begin().await.unwrap();
+        assert!(
+            RunSummaryStore::insert_first_event_on_connection(
+                &mut duplicate_first,
+                &first,
+                &first_payload,
+            )
+            .await
+            .is_err()
+        );
+        duplicate_first.rollback().await.unwrap();
+
+        let rolled_back_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 2);
+        let rolled_back = entry(projection(rolled_back_id, "rollback", created_at), 1);
+        let mut transaction = store.pool.begin().await.unwrap();
+        RunSummaryStore::insert_first_event_on_connection(
+            &mut transaction,
+            &rolled_back,
+            &created_payload(&rolled_back_id),
+        )
+        .await
+        .unwrap();
+        transaction.rollback().await.unwrap();
+        let rolled_back_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM runs WHERE id = ?")
+            .bind(rolled_back_id.to_string())
+            .fetch_one(&store.pool)
+            .await
+            .unwrap();
+        assert_eq!(rolled_back_rows, 0);
+
+        let invalid_id = run_id(created_at.timestamp_millis().cast_unsigned() + 2, 3);
+        let invalid = entry(projection(invalid_id, "invalid", created_at), 1);
+        let invalid_payload = sql_event_payload(
+            &invalid_id,
+            "run.title.updated",
+            None,
+            None,
+            None,
+            serde_json::json!({ "title": "too early" }),
+        );
+        let mut transaction = store.pool.begin().await.unwrap();
+        let error = RunSummaryStore::insert_first_event_on_connection(
+            &mut transaction,
+            &invalid,
+            &invalid_payload,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, Error::RunEventMismatch {
+            field: "event_name",
+            ..
+        }));
+        transaction.rollback().await.unwrap();
+
+        let rejected_id = run_id(created_at.timestamp_millis().cast_unsigned() + 3, 4);
+        sqlx::query(
+            "CREATE TRIGGER reject_test_event BEFORE INSERT ON run_events BEGIN SELECT RAISE(ABORT, 'rejected'); END",
+        )
+        .execute(&store.pool)
+        .await
+        .unwrap();
+        let rejected = entry(projection(rejected_id, "rejected", created_at), 1);
+        let mut transaction = store.pool.begin().await.unwrap();
+        assert!(
+            RunSummaryStore::insert_first_event_on_connection(
+                &mut transaction,
+                &rejected,
+                &created_payload(&rejected_id),
+            )
+            .await
+            .is_err()
+        );
+        transaction.rollback().await.unwrap();
+        let rejected_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM runs WHERE id = ?")
+            .bind(rejected_id.to_string())
+            .fetch_one(&store.pool)
+            .await
+            .unwrap();
+        assert_eq!(rejected_rows, 0);
+        sqlx::query("DROP TRIGGER reject_test_event")
+            .execute(&store.pool)
+            .await
+            .unwrap();
+
+        let mut updated_projection = projection(id, "updated", created_at);
+        updated_projection.last_event_at = created_at + chrono::Duration::seconds(1);
+        updated_projection.status = RunStatus::Running;
+        let second = entry(updated_projection, 2);
+        let second_payload = sql_event_payload(
+            &id,
+            "run.title.updated",
+            None,
+            None,
+            None,
+            serde_json::json!({ "title": "updated" }),
+        );
+        let mut transaction = store.pool.begin().await.unwrap();
+        RunSummaryStore::append_event_on_connection(&mut transaction, 1, &second, &second_payload)
+            .await
+            .unwrap();
+        transaction.commit().await.unwrap();
+        let updated_row: (i64, String, String, i64) = sqlx::query_as(
+            "SELECT source_last_seq, status, title, last_event_at_ms FROM runs WHERE id = ?",
+        )
+        .bind(id.to_string())
+        .fetch_one(&store.pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            updated_row,
+            (
+                2,
+                "running".to_string(),
+                "updated".to_string(),
+                (created_at + chrono::Duration::seconds(1)).timestamp_millis(),
+            )
+        );
+
+        let mut stale = store.pool.begin().await.unwrap();
+        let stale_error =
+            RunSummaryStore::append_event_on_connection(&mut stale, 1, &second, &second_payload)
+                .await
+                .unwrap_err();
+        assert!(matches!(stale_error, Error::RunHeadMismatch {
+            expected_last_seq: 1,
+            actual_last_seq: Some(2),
+            ..
+        }));
+        stale.rollback().await.unwrap();
+
+        let third = entry(projection(id, "third", created_at), 3);
+        let third_payload = sql_event_payload(
+            &id,
+            "future.event",
+            None,
+            None,
+            None,
+            serde_json::json!({ "preserved": true }),
+        );
+        let mut mismatched_value = third_payload.as_value().clone();
+        mismatched_value["run_id"] = rolled_back_id.to_string().into();
+        let mismatched_payload: EventPayload = serde_json::from_value(mismatched_value).unwrap();
+        let mut invalid = store.pool.begin().await.unwrap();
+        assert!(
+            RunSummaryStore::append_event_on_connection(
+                &mut invalid,
+                2,
+                &third,
+                &mismatched_payload,
+            )
+            .await
+            .is_err()
+        );
+        invalid.rollback().await.unwrap();
+        let mut rollback = store.pool.begin().await.unwrap();
+        RunSummaryStore::append_event_on_connection(&mut rollback, 2, &third, &third_payload)
+            .await
+            .unwrap();
+        rollback.rollback().await.unwrap();
+
+        seed_sql_event(&store, &id, 3, &third_payload).await;
+        let mut duplicate = store.pool.begin().await.unwrap();
+        assert!(
+            RunSummaryStore::append_event_on_connection(&mut duplicate, 2, &third, &third_payload,)
+                .await
+                .is_err()
+        );
+        duplicate.rollback().await.unwrap();
+        let head_after_failures: i64 =
+            sqlx::query_scalar("SELECT source_last_seq FROM runs WHERE id = ?")
+                .bind(id.to_string())
+                .fetch_one(&store.pool)
+                .await
+                .unwrap();
+        assert_eq!(head_after_failures, 2);
+
+        sqlx::query("DELETE FROM run_events WHERE run_id = ? AND seq = 3")
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        let mut transaction = store.pool.begin().await.unwrap();
+        RunSummaryStore::append_event_on_connection(&mut transaction, 2, &third, &third_payload)
+            .await
+            .unwrap();
+        transaction.commit().await.unwrap();
+        let sequences = sqlx::query_scalar::<_, i64>(
+            "SELECT seq FROM run_events WHERE run_id = ? ORDER BY seq",
+        )
+        .bind(id.to_string())
+        .fetch_all(&store.pool)
+        .await
+        .unwrap();
+        assert_eq!(sequences, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn sql_run_reads_preserve_paging_filters_json_and_legacy_gaps() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 11);
+        let first = entry(projection(id, "created", created_at), 1);
+        let mut transaction = store.pool.begin().await.unwrap();
+        RunSummaryStore::insert_first_event_on_connection(
+            &mut transaction,
+            &first,
+            &created_payload(&id),
+        )
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+
+        let visit_one = StageId::new("work", 1);
+        let visit_two = StageId::new("work", 2);
+        let session_id = SessionId::new();
+        let payloads = [
+            sql_event_payload(
+                &id,
+                "future.stage",
+                Some("work"),
+                Some(&visit_one),
+                None,
+                serde_json::json!({ "kind": "visit-one" }),
+            ),
+            sql_event_payload(
+                &id,
+                "future.stage",
+                Some("work"),
+                Some(&visit_two),
+                None,
+                serde_json::json!({ "kind": "visit-two" }),
+            ),
+            sql_event_payload(
+                &id,
+                "future.legacy",
+                Some("work"),
+                None,
+                None,
+                serde_json::json!({ "kind": "legacy" }),
+            ),
+            sql_event_payload(
+                &id,
+                "run.session.future",
+                None,
+                None,
+                Some(&session_id),
+                serde_json::json!({ "redacted": "[REDACTED]" }),
+            ),
+            sql_event_payload(
+                &id,
+                "future.non_session",
+                None,
+                None,
+                Some(&session_id),
+                serde_json::json!({ "same_session": true }),
+            ),
+        ];
+        for (index, payload) in payloads.iter().enumerate() {
+            seed_sql_event(&store, &id, u32::try_from(index).unwrap() + 2, payload).await;
+        }
+        sqlx::query("UPDATE runs SET source_last_seq = 6 WHERE id = ?")
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+
+        let mut connection = store.pool.acquire().await.unwrap();
+        let all = RunSummaryStore::list_events_on_connection(&mut connection, &id)
+            .await
+            .unwrap();
+        assert_eq!(seqs(&all), vec![1, 2, 3, 4, 5, 6]);
+        let forward =
+            RunSummaryStore::list_events_from_with_limit_on_connection(&mut connection, &id, 2, 2)
+                .await
+                .unwrap();
+        assert_eq!(seqs(&forward), vec![2, 3, 4]);
+        let reverse = RunSummaryStore::list_events_before_with_limit_on_connection(
+            &mut connection,
+            &id,
+            Some(5),
+            2,
+        )
+        .await
+        .unwrap();
+        assert_eq!(seqs(&reverse), vec![4, 3, 2]);
+        let exact = RunSummaryStore::get_event_on_connection(&mut connection, &id, 5)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(exact.event.event_name(), "run.session.future");
+        assert_eq!(
+            serde_json::to_value(&exact.event).unwrap(),
+            payloads[3].as_value().clone()
+        );
+
+        let visit_one_events =
+            RunSummaryStore::list_events_for_stage_from_with_limit_on_connection(
+                &mut connection,
+                &id,
+                &visit_one,
+                1,
+                10,
+            )
+            .await
+            .unwrap();
+        assert_eq!(seqs(&visit_one_events), vec![2, 4]);
+        let visit_two_events =
+            RunSummaryStore::list_events_for_stage_from_with_limit_on_connection(
+                &mut connection,
+                &id,
+                &visit_two,
+                1,
+                10,
+            )
+            .await
+            .unwrap();
+        assert_eq!(seqs(&visit_two_events), vec![3]);
+        let session_events =
+            RunSummaryStore::list_events_for_session_from_with_limit_on_connection(
+                &mut connection,
+                &id,
+                &session_id,
+                1,
+                10,
+            )
+            .await
+            .unwrap();
+        assert_eq!(seqs(&session_events), vec![5]);
+        drop(connection);
+
+        sqlx::query("DELETE FROM run_events WHERE run_id = ? AND seq = 3")
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        let mut connection = store.pool.acquire().await.unwrap();
+        let gapped = RunSummaryStore::list_events_on_connection(&mut connection, &id)
+            .await
+            .unwrap();
+        assert_eq!(gapped.last().unwrap().seq, 6);
+        assert_eq!(gapped.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn sql_run_reads_reject_extracted_column_and_identity_corruption() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 21);
+        let other_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 22);
+        store
+            .upsert_projection(&entry(projection(id, "one", created_at), 2))
+            .await
+            .unwrap();
+        store
+            .upsert_projection(&entry(projection(other_id, "two", created_at), 1))
+            .await
+            .unwrap();
+        let stage_id = StageId::new("work", 1);
+        let session_id = SessionId::new();
+        let payload = sql_event_payload(
+            &id,
+            "run.session.future",
+            Some("work"),
+            Some(&stage_id),
+            Some(&session_id),
+            serde_json::json!({ "safe": true }),
+        );
+        seed_sql_event(&store, &id, 2, &payload).await;
+
+        for (sql, field) in [
+            (
+                "UPDATE run_events SET event_name = 'wrong' WHERE run_id = ? AND seq = 2",
+                "event_name",
+            ),
+            (
+                "UPDATE run_events SET node_id = 'wrong' WHERE run_id = ? AND seq = 2",
+                "node_id",
+            ),
+            (
+                "UPDATE run_events SET stage_id = 'wrong@1' WHERE run_id = ? AND seq = 2",
+                "stage_id",
+            ),
+            (
+                "UPDATE run_events SET session_id = 'wrong' WHERE run_id = ? AND seq = 2",
+                "session_id",
+            ),
+        ] {
+            sqlx::query(sql)
+                .bind(id.to_string())
+                .execute(&store.pool)
+                .await
+                .unwrap();
+            let mut connection = store.pool.acquire().await.unwrap();
+            let error = RunSummaryStore::get_event_on_connection(&mut connection, &id, 2)
+                .await
+                .unwrap_err();
+            assert!(matches!(
+                &error,
+                Error::RunEventMismatch {
+                    field: mismatch_field,
+                    ..
+                } if *mismatch_field == field
+            ));
+            assert!(!error.to_string().contains(&session_id.to_string()));
+            drop(connection);
+            seed_sql_event_restore(&store, &id, 2, &payload).await;
+        }
+
+        let mut wrong_json = payload.as_value().clone();
+        wrong_json["run_id"] = other_id.to_string().into();
+        sqlx::query("UPDATE run_events SET event_json = ? WHERE run_id = ? AND seq = 2")
+            .bind(serde_json::to_string(&wrong_json).unwrap())
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        let mut connection = store.pool.acquire().await.unwrap();
+        assert!(matches!(
+            RunSummaryStore::get_event_on_connection(&mut connection, &id, 2)
+                .await
+                .unwrap_err(),
+            Error::RunEventMismatch {
+                field: "run_id",
+                ..
+            }
+        ));
+        drop(connection);
+
+        seed_sql_event_restore(&store, &id, 2, &payload).await;
+        sqlx::query("UPDATE run_events SET run_id = ? WHERE run_id = ? AND seq = 2")
+            .bind(other_id.to_string())
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        let row = sqlx::query(super::SELECT_EVENT_COLUMNS)
+            .fetch_one(&store.pool)
+            .await
+            .unwrap();
+        assert!(matches!(
+            decode_event_row(&row, &id, &id.to_string()).unwrap_err(),
+            Error::RunEventMismatch {
+                field: "run_id",
+                ..
+            }
+        ));
+    }
+
+    async fn seed_sql_event_restore(
+        store: &RunSummaryStore,
+        run_id: &RunId,
+        seq: u32,
+        payload: &EventPayload,
+    ) {
+        sqlx::query("DELETE FROM run_events WHERE run_id = ? AND seq = ?")
+            .bind(run_id.to_string())
+            .bind(i64::from(seq))
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        seed_sql_event(store, run_id, seq, payload).await;
     }
 
     /// The migration's `CHECK (status IN (...))` freezes the status strings;

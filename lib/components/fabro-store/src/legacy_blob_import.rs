@@ -1128,7 +1128,7 @@ mod tests {
         PASSIVE_CHECKPOINT_BYTES, set_automatic_checkpoint,
     };
     use crate::keys::SlateKey;
-    use crate::{BlobStore, Database};
+    use crate::{BlobStore, Database, test_support as store_test_support};
 
     type TestResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -1153,6 +1153,7 @@ mod tests {
                 Duration::from_millis(1),
                 None,
                 Arc::clone(&target),
+                store_test_support::test_run_summary_store(),
             );
             let source_db = source.open_db().await?;
             Ok(Self {
@@ -1853,6 +1854,7 @@ mod tests {
             Duration::from_millis(1),
             None,
             Arc::clone(&target),
+            store_test_support::test_run_summary_store(),
         );
 
         let mut connection = pool.acquire().await?;
