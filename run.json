@@ -1,0 +1,466 @@
+{
+  "title": "Run a progressive human interview and summarize the answers",
+  "spec": {
+    "run_id": "01M12DCDACAM5DE5MVHPZ50M21",
+    "settings": {
+      "project": {
+        "name": null,
+        "description": null,
+        "metadata": {}
+      },
+      "workflow": {
+        "name": null,
+        "description": null,
+        "graph": "workflow.fabro",
+        "metadata": {}
+      },
+      "run": {
+        "goal": {
+          "type": "inline",
+          "value": "Run a progressive human interview and summarize the answers"
+        },
+        "working_dir": null,
+        "metadata": {},
+        "inputs": {},
+        "model": {
+          "provider": "zai",
+          "name": "glm-5.3",
+          "fallbacks": {},
+          "controls": {
+            "reasoning_effort": null,
+            "speed": null
+          }
+        },
+        "git": {
+          "author": null
+        },
+        "prepare": {
+          "steps": [
+            {
+              "type": "script",
+              "script": "mise install"
+            },
+            {
+              "type": "script",
+              "script": "just bootstrap"
+            }
+          ],
+          "timeout_ms": 300000
+        },
+        "execution": {
+          "mode": "normal",
+          "approval": "prompt"
+        },
+        "checkpoint": {
+          "exclude_globs": [],
+          "skip_git_hooks": false,
+          "commit_timeout_ms": 30000
+        },
+        "clone": {
+          "enabled": true,
+          "depth": 100
+        },
+        "run_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "meta_branch": {
+          "enabled": true,
+          "push": true
+        },
+        "environment": {
+          "id": "mise",
+          "provider": "docker",
+          "image": {
+            "docker": null,
+            "dockerfile": {
+              "type": "inline",
+              "value": "# Lab runner image, built on demand by fabro (image.dockerfile).\n#\n# Content-hash tagged by fabro (fabro-runner-<sha12>) and rebuilt only\n# when this file changes; docker layer cache keeps incremental rebuilds\n# cheap. The build context is EMPTY (fabro limitation): .mise.toml cannot\n# be COPY'd, so the toolset below mirrors [tools] in .mise.toml — keep\n# both in sync (bun/nushell/go/just/ripgrep versions MUST match). ripgrep\n# rides the mise aqua backend (NOT apt): one tool source, same pin in both\n# files, agent search tools resolve through the shims like every other\n# tool (run 01M0SS23MJ planner burned 4-5 calls on a missing rg).\n#\n# Restores what fabro-meta-a7c3 asked for: tools baked in, per-run\n# `mise install` becomes a no-op version check instead of ~24.5s setup.\nFROM ubuntu:24.04\n\nARG MISE_VERSION=v2026.8.10\n\nENV MISE_DATA_DIR=/mise \\\n    BUN_INSTALL=/mise/bun-global \\\n    PATH=/usr/local/bin:/mise/shims:/mise/bun-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n\n# Sandbox requirements (bash, git) + mise itself.\nRUN set -eux; \\\n    apt-get update; \\\n    apt-get install -y --no-install-recommends bash git ca-certificates curl xz-utils; \\\n    rm -rf /var/lib/apt/lists/*; \\\n    curl -fsSL \"https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64\" \\\n        -o /usr/local/bin/mise; \\\n    chmod +x /usr/local/bin/mise; \\\n    mise --version\n\n# Workspace toolset, mirroring .mise.toml [tools] (see header note).\n# `mise use -g` sets global defaults (needed: shims resolve versions from\n# config; the empty context has no .mise.toml to copy) and installs. The\n# workspace .mise.toml pins the same versions for runs, so per-run\n# `mise install` stays a no-op check.\nRUN mise use -g \\\n        bun@1.4.0 \\\n        aqua:nushell/nushell@0.115.0 \\\n        go@1.27.0 \\\n        just@1.58.0 \\\n        aqua:BurntSushi/ripgrep@15.2.0 \\\n    && bun --version \\\n    && nu --version \\\n    && go version \\\n    && just --version \\\n    && rg --version\n\n# npm-distributed CLIs into the pinned BUN_INSTALL dir (see\n# scripts/bootstrap.nu): sd + ml available without per-run install.\nRUN mise exec -- bun install -g \\\n        @os-eco/seeds-cli@0.5.15 \\\n        @os-eco/mulch-cli@0.10.7 \\\n    && sd --version \\\n    && ml --version\n"
+            }
+          },
+          "resources": {
+            "cpu": 8,
+            "memory": "16GB",
+            "disk": null
+          },
+          "network": {
+            "mode": "allow_all",
+            "allow": []
+          },
+          "lifecycle": {
+            "preserve": false,
+            "stop_on_terminal": true,
+            "auto_stop": null
+          },
+          "labels": {
+            "purpose": "lean-mise-runner"
+          },
+          "env": {}
+        },
+        "notifications": {
+          "terminal": {
+            "enabled": true,
+            "provider": "slack",
+            "events": [
+              "run.completed",
+              "run.failed"
+            ],
+            "slack": {
+              "channel": "#dev-fabro"
+            }
+          }
+        },
+        "interviews": {
+          "provider": null,
+          "slack": null
+        },
+        "agent": {
+          "fabro_tools": false,
+          "mcps": {}
+        },
+        "hooks": [],
+        "scm": {
+          "provider": null,
+          "owner": null,
+          "repository": null,
+          "github": null
+        },
+        "pull_request": {
+          "enabled": true,
+          "draft": false,
+          "auto_merge": true,
+          "merge_strategy": "squash",
+          "model": "zai:glm-4.7"
+        },
+        "artifacts": {
+          "include": []
+        },
+        "integrations": {
+          "github": {
+            "permissions": {
+              "pull_requests": "write",
+              "contents": "write"
+            }
+          }
+        }
+      }
+    },
+    "graph": {
+      "name": "Interview",
+      "nodes": {
+        "freeform": {
+          "id": "freeform",
+          "attrs": {
+            "question_type": {
+              "String": "freeform"
+            },
+            "label": {
+              "String": "Add any final context, constraints, or nuance for the summary."
+            },
+            "shape": {
+              "String": "hexagon"
+            }
+          }
+        },
+        "multiple_choice": {
+          "id": "multiple_choice",
+          "attrs": {
+            "question_type": {
+              "String": "multiple_choice"
+            },
+            "label": {
+              "String": "Which theme should be the center of the final summary?"
+            },
+            "shape": {
+              "String": "hexagon"
+            }
+          }
+        },
+        "yes_no": {
+          "id": "yes_no",
+          "attrs": {
+            "shape": {
+              "String": "hexagon"
+            },
+            "label": {
+              "String": "Is this interview workflow easy to follow so far?"
+            },
+            "question_type": {
+              "String": "yes_no"
+            }
+          }
+        },
+        "summarize": {
+          "id": "summarize",
+          "attrs": {
+            "shape": {
+              "String": "tab"
+            },
+            "fidelity": {
+              "String": "summary:high"
+            },
+            "label": {
+              "String": "Summarize Interview"
+            },
+            "prompt": {
+              "String": "Summarize the full human interview. Include each question and answer in order, then synthesize the user's priorities, constraints, and open questions. Use the human.gate.<node>.question and human.gate.<node>.answer context keys when present. Do not invent missing answers."
+            }
+          }
+        },
+        "confirmation": {
+          "id": "confirmation",
+          "attrs": {
+            "question_type": {
+              "String": "confirmation"
+            },
+            "shape": {
+              "String": "hexagon"
+            },
+            "label": {
+              "String": "Confirm that you want to continue into more structured questions."
+            }
+          }
+        },
+        "start": {
+          "id": "start",
+          "attrs": {
+            "shape": {
+              "String": "Mdiamond"
+            },
+            "label": {
+              "String": "Start"
+            }
+          }
+        },
+        "exit": {
+          "id": "exit",
+          "attrs": {
+            "label": {
+              "String": "Exit"
+            },
+            "shape": {
+              "String": "Msquare"
+            }
+          }
+        },
+        "multi_select": {
+          "id": "multi_select",
+          "attrs": {
+            "label": {
+              "String": "Which supporting areas should the final summary emphasize?"
+            },
+            "question_type": {
+              "String": "multi_select"
+            },
+            "shape": {
+              "String": "hexagon"
+            }
+          }
+        }
+      },
+      "edges": [
+        {
+          "from": "start",
+          "to": "yes_no",
+          "attrs": {}
+        },
+        {
+          "from": "yes_no",
+          "to": "confirmation",
+          "attrs": {
+            "label": {
+              "String": "[Y] Yes"
+            }
+          }
+        },
+        {
+          "from": "yes_no",
+          "to": "confirmation",
+          "attrs": {
+            "label": {
+              "String": "[N] No"
+            }
+          }
+        },
+        {
+          "from": "confirmation",
+          "to": "multiple_choice",
+          "attrs": {
+            "label": {
+              "String": "[Y] Continue"
+            }
+          }
+        },
+        {
+          "from": "confirmation",
+          "to": "multiple_choice",
+          "attrs": {
+            "label": {
+              "String": "[N] Stop after this, but still summarize"
+            }
+          }
+        },
+        {
+          "from": "multiple_choice",
+          "to": "multi_select",
+          "attrs": {
+            "label": {
+              "String": "[G] Goals"
+            }
+          }
+        },
+        {
+          "from": "multiple_choice",
+          "to": "multi_select",
+          "attrs": {
+            "label": {
+              "String": "[R] Risks"
+            }
+          }
+        },
+        {
+          "from": "multiple_choice",
+          "to": "multi_select",
+          "attrs": {
+            "label": {
+              "String": "[T] Tradeoffs"
+            }
+          }
+        },
+        {
+          "from": "multiple_choice",
+          "to": "multi_select",
+          "attrs": {
+            "label": {
+              "String": "[Q] Open questions"
+            }
+          }
+        },
+        {
+          "from": "multi_select",
+          "to": "freeform",
+          "attrs": {
+            "label": {
+              "String": "[S] Success criteria"
+            }
+          }
+        },
+        {
+          "from": "multi_select",
+          "to": "freeform",
+          "attrs": {
+            "label": {
+              "String": "[B] Blockers"
+            }
+          }
+        },
+        {
+          "from": "multi_select",
+          "to": "freeform",
+          "attrs": {
+            "label": {
+              "String": "[D] Decisions needed"
+            }
+          }
+        },
+        {
+          "from": "multi_select",
+          "to": "freeform",
+          "attrs": {
+            "label": {
+              "String": "[N] Next steps"
+            }
+          }
+        },
+        {
+          "from": "freeform",
+          "to": "summarize",
+          "attrs": {
+            "freeform": {
+              "Boolean": true
+            }
+          }
+        },
+        {
+          "from": "summarize",
+          "to": "exit",
+          "attrs": {}
+        }
+      ],
+      "attrs": {
+        "goal": {
+          "String": "Run a progressive human interview and summarize the answers"
+        },
+        "rankdir": {
+          "String": "LR"
+        }
+      }
+    },
+    "graph_source": "digraph Interview {\n    graph [goal=\"Run a progressive human interview and summarize the answers\"]\n    rankdir=LR\n\n    start [shape=Mdiamond, label=\"Start\"]\n    exit  [shape=Msquare, label=\"Exit\"]\n\n    yes_no [\n        shape=hexagon,\n        label=\"Is this interview workflow easy to follow so far?\",\n        question_type=\"yes_no\"\n    ]\n    confirmation [\n        shape=hexagon,\n        label=\"Confirm that you want to continue into more structured questions.\",\n        question_type=\"confirmation\"\n    ]\n    multiple_choice [\n        shape=hexagon,\n        label=\"Which theme should be the center of the final summary?\",\n        question_type=\"multiple_choice\"\n    ]\n    multi_select [\n        shape=hexagon,\n        label=\"Which supporting areas should the final summary emphasize?\",\n        question_type=\"multi_select\"\n    ]\n    freeform [\n        shape=hexagon,\n        label=\"Add any final context, constraints, or nuance for the summary.\",\n        question_type=\"freeform\"\n    ]\n    summarize [\n        shape=tab,\n        label=\"Summarize Interview\",\n        fidelity=\"summary:high\",\n        prompt=\"Summarize the full human interview. Include each question and answer in order, then synthesize the user's priorities, constraints, and open questions. Use the human.gate.<node>.question and human.gate.<node>.answer context keys when present. Do not invent missing answers.\"\n    ]\n\n    start -> yes_no\n\n    yes_no -> confirmation [label=\"[Y] Yes\"]\n    yes_no -> confirmation [label=\"[N] No\"]\n\n    confirmation -> multiple_choice [label=\"[Y] Continue\"]\n    confirmation -> multiple_choice [label=\"[N] Stop after this, but still summarize\"]\n\n    multiple_choice -> multi_select [label=\"[G] Goals\"]\n    multiple_choice -> multi_select [label=\"[R] Risks\"]\n    multiple_choice -> multi_select [label=\"[T] Tradeoffs\"]\n    multiple_choice -> multi_select [label=\"[Q] Open questions\"]\n\n    multi_select -> freeform [label=\"[S] Success criteria\"]\n    multi_select -> freeform [label=\"[B] Blockers\"]\n    multi_select -> freeform [label=\"[D] Decisions needed\"]\n    multi_select -> freeform [label=\"[N] Next steps\"]\n\n    freeform -> summarize [freeform=true]\n    summarize -> exit\n}\n",
+    "workflow_slug": "interview",
+    "source_directory": "/home/denkhaus/dev/fabro",
+    "provenance": {
+      "server": {
+        "version": "0.337.0-nightly.1"
+      },
+      "client": {
+        "user_agent": "fabro-cli/0.337.0-nightly.1",
+        "name": "fabro-cli",
+        "version": "0.337.0-nightly.1"
+      },
+      "subject": {
+        "kind": "user",
+        "identity": {
+          "issuer": "fabro:dev",
+          "subject": "dev"
+        },
+        "login": "dev",
+        "auth_method": "dev_token"
+      }
+    },
+    "manifest_blob": "0d50b52db0c336624b2d5af574d6c3ad80858786b697d4c3d6ad6b5321f96bdd",
+    "definition_blob": "3dac954116b0a8a4f50c6ae5aa5f8db211e508274d06f74f7e6bfb5c65ff1a75",
+    "spec_blob": "5ac646fb55cf45e40a123f2f3a7501ec5f6a114038fdbbf9104948c34228a511",
+    "git": {
+      "origin_url": "https://github.com/denkhaus/fabro",
+      "branch": "denkhaus-lab",
+      "sha": "4c94fd559c5c281e0e9addda198d5f87eceb2847",
+      "dirty": "clean"
+    }
+  },
+  "web_url": "http://127.0.0.1:32276/runs/01M12DCDACAM5DE5MVHPZ50M21",
+  "start": null,
+  "status": {
+    "kind": "starting"
+  },
+  "status_updated_at": "2026-08-27T20:08:04.436343380Z",
+  "last_event_at": "2026-08-27T20:08:09.307454254Z",
+  "pending_control": null,
+  "checkpoints": [],
+  "conclusion": null,
+  "sandbox": {
+    "kind": "ready",
+    "plan": {
+      "provider": "docker"
+    },
+    "instance": {
+      "provider": "docker",
+      "image": "fabro-runner-f4ec112c0c4c",
+      "runtime": {
+        "id": "b7c09f72f17f457c4a50205fc4ca15e1fdb8d78dcdc59ad29353c123c4f1d9fd",
+        "working_directory": "/workspace/fabro",
+        "repo_cloned": true,
+        "clone_origin_url": "https://github.com/denkhaus/fabro",
+        "clone_branch": "denkhaus-lab",
+        "workspace_root": "/workspace",
+        "repos_root": "/repos",
+        "primary_repo_path": "/repos/denkhaus/fabro",
+        "primary_repo_link": "/workspace/fabro"
+      }
+    }
+  },
+  "pull_request": null,
+  "superseded_by": null,
+  "pending_interviews": {},
+  "stages": {}
+}
