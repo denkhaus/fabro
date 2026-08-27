@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl b/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl
+index 78807fe..36bcccb 100644
+--- a/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl
++++ b/.fabro/journal/01M11P68SHFS165HP9ATK6094V.jsonl
+@@ -3,3 +3,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M11P68SHFS165HP9ATK6094V","node":"implementer","visit":1,"status":"succeeded","ts":"2026-08-27T13:26:50Z","data":{"painpoints":[],"observations":["Near-miss while editing `/workspace/fabro/fib_test.go`: an edit_file replacement that swapped a table-literal tail accidentally deleted TestRunFormatShortcutEquivalence's entire loop body (the old_string spanned it). Caught by re-reading the region immediately after; `go vet` would have flagged the syntax break anyway. Lesson: when editing struct-literal tails inside test tables, keep old_string scoped to the literal lines only, never let it swallow the following loop."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M11P68SHFS165HP9ATK6094V","node":"tester","visit":1,"status":"succeeded","ts":"2026-08-27T13:26:55Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M11P68SHFS165HP9ATK6094V","node":"evidence","visit":1,"status":"succeeded","ts":"2026-08-27T13:27:03Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M11P68SHFS165HP9ATK6094V","node":"reviewer","visit":1,"status":"succeeded","ts":"2026-08-27T13:27:52Z","data":{"painpoints":[],"observations":["Full blob read end-to-end; diff complete (ends at evidence-complete marker, counts match visible hunks). All ten seed requirements traced to specific diff hunks; sum arithmetic (143, 110, empty-range 0) hand-verified. Gate treated as opaque-green per contract; did not re-run since nothing in the diff contradicts its coverage."]}}
