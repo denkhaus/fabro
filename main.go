@@ -141,81 +141,108 @@ func resolveMode(format string, asJSON, pretty bool) (outputMode, error) {
 	return mode, nil
 }
 
-// run writes at most count Fibonacci numbers to w, beginning at index
-// start (an unset -start value of 0 means the historical default of
-// 1), so it prints the indices start..start+count-1 and neither
-// -start nor -limit changes what count counts: a positive limit caps
-// the largest index printed (an unset -limit of 0 means no limit),
-// shrinking the range to start..min(start+count-1, limit), and a
-// limit below start leaves the range empty — zero lines, not an
-// error. In text mode each line is "<index>: <value>";
-// with pretty both columns are right-aligned, the index to the width
-// of the largest index printed and the value to the width of the
-// largest value printed (both sized from the limit-capped last
-// index), separated by ": ". In JSON mode each line is
-// one JSON object {"index": <int>, "fib": "<value>"} (JSON Lines).
-// In table mode each line is the value alone, right-justified to the
-// width of the largest value printed (no index column). In CSV mode
-// each line is one plain CSV record "<index>,<value>" (no header,
-// unquoted values), and with sum set exactly one record
-// "sum,<start>,<last>,<total>" carries the effective bounds and the
-// total. The mode comes
-// from format plus the -json/-pretty shortcuts via resolveMode: with
-// format unset the shortcuts keep their legacy JSON-wins meaning; with
-// format set (including text and table) a conflicting shortcut is an
-// error naming both flags, and an invalid format value is rejected.
-// With version set it prints only the single
-// line "gofib <Version>" and every other flag (including an invalid
-// count, start, limit, seed, or format, or a shortcut/format conflict)
-// is ignored. A positive seed selects
-// lookup mode: only the single index seed prints (in the active
-// output mode, with -pretty sized from that sole index), it overrides
-// -n, -start, and -limit, and the range-flag validation is skipped —
-// like -version, an invalid range flag alongside a positive seed is
-// ignored. A negative seed is rejected; seed 0 is the unset sentinel.
-// A positive seed combined with sum is rejected with an error naming
-// both -seed and -sum (checked after mode resolution, so -version and
-// format-conflict precedence are unchanged). With sum set, run prints
-// exactly one line carrying the big.Int sum of the Fibonacci numbers
-// in the same selected range instead of the per-number output: text
-// mode prints "sum: <value>", json mode one object
-// {"index_range":[first,last],"sum":"<value>"} with the sum as a
-// string, csv mode the single record "sum,<start>,<last>,<total>",
-// and pretty/table print the bare value followed by a newline.
-// An empty selected range (e.g. limit below start) sums to 0 and is
-// not an error; index_range still reports the computed effective
-// bounds. Otherwise run returns an error when count < 1, start < 0, or
-// limit < 0.
-func run(w io.Writer, start, count, limit, seed int, format string, asJSON, pretty, version, sum bool) error {
-	if version {
+// options holds every flag value gofib accepts. parseOptions is the
+// single place that fills it; adding a new flag (e.g. a future -o
+// output path) means adding one field here, one Var registration, and
+// at most one validation rule in parseOptions.
+type options struct {
+	n       int
+	start   int
+	limit   int
+	seed    int
+	format  string
+	json    bool
+	pretty  bool
+	version bool
+	sum     bool
+}
+
+// parseOptions registers gofib's flags, parses args, and applies every
+// validation rule gofib has; it is the single rejection point for bad
+// flag values. Validation order is fixed and behavior-preserving:
+//
+//   - -version short-circuits before any validation: when it is set,
+//     parseOptions returns the options as parsed with no error, so an
+//     invalid count, start, limit, seed, or format alongside -version
+//     is ignored (run still prints only the version line).
+//   - mode resolution: an invalid -format value, then any
+//     shortcut/format disagreement, is rejected.
+//   - a negative -seed is rejected.
+//   - a positive -seed combined with -sum is rejected.
+//   - range checks (-n >= 1, -start >= 0, -limit >= 0) run only when
+//     -seed is unset (0): a positive -seed overrides the range flags,
+//     whose values are then ignored, mirroring -version's
+//     ignore-invalid semantics.
+//
+// Flag-syntax errors (e.g. -n=abc) are not returned as errors: the
+// flag set uses the flag package's ExitOnError behavior (usage on
+// stderr, exit 2), exactly as before.
+func parseOptions(args []string) (options, error) {
+	var opts options
+	fs := flag.NewFlagSet("gofib", flag.ExitOnError)
+	fs.IntVar(&opts.n, "n", defaultCount, "how many Fibonacci numbers to print (must be >= 1; default 100)")
+	fs.IntVar(&opts.start, "start", 0, "index of the first Fibonacci number to print (must be >= 0; 0 starts at 1 like the default)")
+	fs.IntVar(&opts.limit, "limit", 0, "largest index to print (must be >= 0; 0 means no limit)")
+	fs.IntVar(&opts.seed, "seed", 0, "print only the Fibonacci number at this index, overriding -n, -start, and -limit (must be >= 0; 0 means unset)")
+	fs.StringVar(&opts.format, "format", "", "output mode: text, json, pretty, table, or csv (default text); must agree with -json/-pretty when those are also set")
+	fs.BoolVar(&opts.json, "json", false, `shortcut for -format json: emit JSON Lines instead of text (one {"index": i, "fib": "value"} object per number)`)
+	fs.BoolVar(&opts.pretty, "pretty", false, "shortcut for -format pretty: align text output into two right-aligned columns sized to the largest index and value")
+	fs.BoolVar(&opts.version, "version", false, "print \"gofib <version>\" and exit; takes precedence over all other flags")
+	fs.BoolVar(&opts.sum, "sum", false, "print the sum of the Fibonacci numbers in the selected range instead of the numbers themselves (cannot be combined with a positive -seed)")
+	fs.Parse(args)
+	if opts.version {
+		return opts, nil
+	}
+	if _, err := resolveMode(opts.format, opts.json, opts.pretty); err != nil {
+		return opts, err
+	}
+	if opts.seed < 0 {
+		return opts, fmt.Errorf("invalid value %d for flag -seed: must be >= 0", opts.seed)
+	}
+	if opts.seed > 0 && opts.sum {
+		return opts, fmt.Errorf("flags -seed and -sum conflict: -seed prints a single index but -sum prints the range sum")
+	}
+	if opts.seed == 0 {
+		if opts.n < 1 {
+			return opts, fmt.Errorf("invalid value %d for flag -n: must be >= 1", opts.n)
+		}
+		if opts.start < 0 {
+			return opts, fmt.Errorf("invalid value %d for flag -start: must be >= 0", opts.start)
+		}
+		if opts.limit < 0 {
+			return opts, fmt.Errorf("invalid value %d for flag -limit: must be >= 0", opts.limit)
+		}
+	}
+	return opts, nil
+}
+
+// run writes the Fibonacci output selected by opts to w. It performs no
+// flag validation: parseOptions has already rejected every bad value,
+// so run only renders. With version set it prints only the single line
+// "gofib <Version>" and ignores every other flag. A positive seed
+// selects lookup mode: only the single index seed prints (in the active
+// output mode, with -pretty sized from that sole index), overriding
+// -n, -start, and -limit. With sum set, run prints exactly one line
+// carrying the big.Int sum of the Fibonacci numbers in the same
+// selected range instead of the per-number output. An empty selected
+// range (e.g. limit below start) sums to 0 and prints zero lines in
+// line mode — never an error.
+func run(w io.Writer, opts options) error {
+	if opts.version {
 		fmt.Fprintf(w, "gofib %s\n", Version)
 		return nil
 	}
-	mode, err := resolveMode(format, asJSON, pretty)
+	// parseOptions has already validated format and the shortcuts, so
+	// this can never fail; the error return is purely defensive.
+	mode, err := resolveMode(opts.format, opts.json, opts.pretty)
 	if err != nil {
 		return err
 	}
-	if seed < 0 {
-		return fmt.Errorf("invalid value %d for flag -seed: must be >= 0", seed)
-	}
-	if seed > 0 && sum {
-		return fmt.Errorf("flags -seed and -sum conflict: -seed prints a single index but -sum prints the range sum")
-	}
-	if seed > 0 {
+	start, count, limit := opts.start, opts.n, opts.limit
+	if opts.seed > 0 {
 		// Lookup mode: exactly one entry for index seed, regardless
-		// of the range flags (whose validation is skipped, mirroring
-		// -version's ignore-invalid semantics).
-		start, count, limit = seed, 1, 0
-	} else {
-		if count < 1 {
-			return fmt.Errorf("invalid value %d for flag -n: must be >= 1", count)
-		}
-		if start < 0 {
-			return fmt.Errorf("invalid value %d for flag -start: must be >= 0", start)
-		}
-		if limit < 0 {
-			return fmt.Errorf("invalid value %d for flag -limit: must be >= 0", limit)
-		}
+		// of the range flags.
+		start, count, limit = opts.seed, 1, 0
 	}
 	if start == 0 {
 		start = defaultStart
@@ -229,7 +256,7 @@ func run(w io.Writer, start, count, limit, seed int, format string, asJSON, pret
 		last = limit
 	}
 	enc := json.NewEncoder(w)
-	if sum {
+	if opts.sum {
 		// Sum mode: one line with the big.Int total of the selected
 		// range instead of the per-number output. An empty range
 		// (start > last) leaves the total at 0 — not an error.
@@ -279,17 +306,12 @@ func run(w io.Writer, start, count, limit, seed int, format string, asJSON, pret
 }
 
 func main() {
-	n := flag.Int("n", defaultCount, "how many Fibonacci numbers to print (must be >= 1; default 100)")
-	start := flag.Int("start", 0, "index of the first Fibonacci number to print (must be >= 0; 0 starts at 1 like the default)")
-	limit := flag.Int("limit", 0, "largest index to print (must be >= 0; 0 means no limit)")
-	seed := flag.Int("seed", 0, "print only the Fibonacci number at this index, overriding -n, -start, and -limit (must be >= 0; 0 means unset)")
-	format := flag.String("format", "", "output mode: text, json, pretty, table, or csv (default text); must agree with -json/-pretty when those are also set")
-	asJSON := flag.Bool("json", false, "shortcut for -format json: emit JSON Lines instead of text (one {\"index\": i, \"fib\": \"value\"} object per number)")
-	pretty := flag.Bool("pretty", false, "shortcut for -format pretty: align text output into two right-aligned columns sized to the largest index and value")
-	version := flag.Bool("version", false, "print \"gofib <version>\" and exit; takes precedence over all other flags")
-	sum := flag.Bool("sum", false, "print the sum of the Fibonacci numbers in the selected range instead of the numbers themselves (cannot be combined with a positive -seed)")
-	flag.Parse()
-	if err := run(os.Stdout, *start, *n, *limit, *seed, *format, *asJSON, *pretty, *version, *sum); err != nil {
+	opts, err := parseOptions(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := run(os.Stdout, opts); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
