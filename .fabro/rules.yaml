@@ -1,0 +1,47 @@
+# Repository review rules for the code-review workflow (xhigh/max tiers
+# audit the full set; medium audits these plus the AGENTS.md pack).
+#
+# Rules are read from a review's base revision, so a change here takes
+# effect after it lands. Validate before committing:
+#   python3 .fabro/workflows/code-review/scripts/code_review.py lint-rules
+version: 1
+
+rules:
+  - id: project.generated-docs
+    description: >
+      Generated reference regions are owned by `cargo dev docs refresh`;
+      hand edits are overwritten on the next refresh and fail the
+      staleness check.
+    match:
+      paths:
+        - "docs/public/reference/cli.mdx"
+        - "docs/public/reference/user-configuration.mdx"
+    checks:
+      - id: generated-region-integrity
+        category: conventions
+        guidance: |
+          Content between a `{/* generated:... */}` marker and its closing
+          `{/* /generated:... */}` marker is generator output. Flag any
+          hand-written change inside those markers; anchor at the edited
+          line. The fix is to change the generator's source (the CLI's
+          clap definitions or the options source) and run
+          `cargo dev docs refresh`. Edits outside the markers are ordinary
+          documentation and are fine.
+
+  - id: project.cli-reference-sync
+    description: >
+      The CLI reference is captured from the CLI's own help output.
+    match:
+      paths:
+        - "lib/apps/fabro-cli/src/args.rs"
+    checks:
+      - id: docs-refresh
+        category: conventions
+        guidance: |
+          A change that adds, removes, or renames a CLI argument or
+          subcommand, or changes its help text or default value, must
+          include the regenerated `docs/public/reference/cli.mdx` in the
+          same change (run `cargo dev docs refresh`). Anchor the finding
+          at the changed argument, not at the documentation file. Purely
+          internal changes that do not alter the CLI's help output need no
+          refresh.
