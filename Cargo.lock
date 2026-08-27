@@ -3252,6 +3252,7 @@ dependencies = [
  "chrono",
  "fabro-api",
  "fabro-client",
+ "fabro-redact",
  "fabro-types",
  "fabro-util",
  "futures",

@@ -62,6 +62,7 @@ const ASK_FABRO_SYSTEM_PROMPT: &str = include_str!("prompts/ask_fabro.md.j2");
 const ASK_FABRO_RUN_TOOL_NAMES: &[&str] = &[
     fabro_tool::FABRO_RUN_EVENTS_TOOL_NAME,
     fabro_tool::FABRO_RUN_GET_TOOL_NAME,
+    fabro_tool::FABRO_RUN_LOG_TOOL_NAME,
 ];
 
 type SessionSseSender = mpsc::Sender<Result<Event, Infallible>>;

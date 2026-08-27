@@ -18,6 +18,7 @@ async-trait.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 fabro-api = { path = "../../foundation/fabro-api" }
 fabro-client = { path = "../../foundation/fabro-client" }
+fabro-redact.workspace = true
 fabro-types = { path = "../../foundation/fabro-types" }
 fabro-util = { path = "../../foundation/fabro-util" }
 futures.workspace = true

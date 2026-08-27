@@ -168,9 +168,7 @@ impl Concluded {
             &github_base_url,
         )?;
 
-        let created = open_pull_request(request)
-        .await
-        .map_err(|error| {
+        let created = open_pull_request(request).await.map_err(|error| {
             self.services.emitter.emit(&Event::PullRequestFailed {
                 creation_id: None,
                 error:       error.clone(),
@@ -309,7 +307,6 @@ mod tests {
 
     use super::*;
     use crate::error::FailureCategory;
-
 
     /// The PR content model must be `pr_resolved_model`, never the run-model
     /// fallback `pr_model` (regression a1e27c9bf: the dedicated model was

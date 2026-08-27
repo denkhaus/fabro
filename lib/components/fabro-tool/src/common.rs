@@ -91,6 +91,10 @@ pub trait FabroToolBackend: Send + Sync {
         body: types::SubmitAnswerRequest,
     ) -> anyhow::Result<()>;
 
+    async fn get_run_logs(&self, _run_id: &RunId) -> anyhow::Result<Option<Vec<u8>>> {
+        Err(run_logs_tool_unavailable_error())
+    }
+
     async fn get_run_pair_status(&self, _run_id: &RunId) -> anyhow::Result<RunPairStatusResponse> {
         Err(pair_tool_unavailable_error())
     }
@@ -135,6 +139,10 @@ fn pair_tool_unavailable_error() -> anyhow::Error {
     ToolError::message(format!("{FABRO_RUN_PAIR_TOOL_NAME} is not available")).into()
 }
 
+fn run_logs_tool_unavailable_error() -> anyhow::Error {
+    ToolError::message(format!("{FABRO_RUN_LOG_TOOL_NAME} is not available")).into()
+}
+
 pub trait RunManifestBuilder: Send + Sync {
     fn build_run_manifest(
         &self,
@@ -176,6 +184,7 @@ pub const FABRO_RUN_GET_TOOL_NAME: &str = "fabro_run_get";
 pub const FABRO_RUN_INTERACT_TOOL_NAME: &str = "fabro_run_interact";
 pub const FABRO_RUN_GATHER_TOOL_NAME: &str = "fabro_run_gather";
 pub const FABRO_RUN_EVENTS_TOOL_NAME: &str = "fabro_run_events";
+pub const FABRO_RUN_LOG_TOOL_NAME: &str = "fabro_run_logs";
 pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
@@ -207,6 +216,10 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroRunEventsParams>(
             FABRO_RUN_EVENTS_TOOL_NAME,
             "List, inspect, or search stored events for a Fabro workflow run.",
+        ),
+        tool_definition::<crate::FabroRunLogsParams>(
+            FABRO_RUN_LOG_TOOL_NAME,
+            "Read the persisted worker tracing log of a Fabro run, filtered by severity (warn and error by default). Lines are redacted; diagnostics only, never a mutation.",
         ),
     ]
 });
@@ -330,6 +343,7 @@ mod tests {
             FABRO_RUN_GATHER_TOOL_NAME,
             FABRO_RUN_PAIR_TOOL_NAME,
             FABRO_RUN_EVENTS_TOOL_NAME,
+            FABRO_RUN_LOG_TOOL_NAME,
         ]);
     }
 

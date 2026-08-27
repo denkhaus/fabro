@@ -174,6 +174,11 @@ impl FabroToolBackend for ClientBackend {
         self.client.list_run_events(run_id, after, limit).await
     }
 
+    async fn get_run_logs(&self, run_id: &RunId) -> anyhow::Result<Option<Vec<u8>>> {
+        self.ensure_run_scope(run_id)?;
+        self.client.get_run_logs(run_id).await
+    }
+
     async fn list_run_events_until(
         &self,
         run_id: &RunId,
