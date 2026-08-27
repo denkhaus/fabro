@@ -429,14 +429,116 @@
     }
   },
   "web_url": "http://127.0.0.1:32276/runs/01M12DCDACAM5DE5MVHPZ50M21",
-  "start": null,
-  "status": {
-    "kind": "starting"
+  "start": {
+    "start_time": "2026-08-27T20:08:09.329867648Z",
+    "run_branch": "fabro/run/01M12DCDACAM5DE5MVHPZ50M21",
+    "base_sha": "4c94fd559c5c281e0e9addda198d5f87eceb2847"
   },
-  "status_updated_at": "2026-08-27T20:08:04.436343380Z",
-  "last_event_at": "2026-08-27T20:08:09.307454254Z",
+  "status": {
+    "kind": "running"
+  },
+  "status_updated_at": "2026-08-27T20:08:29.262198848Z",
+  "last_event_at": "2026-08-27T20:08:29.262198848Z",
   "pending_control": null,
-  "checkpoints": [],
+  "checkpoints": [
+    {
+      "seq": 26,
+      "checkpoint": {
+        "timestamp": "2026-08-27T20:08:11.703703693Z",
+        "current_node": "start",
+        "completed_nodes": [
+          "start"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.node_visit_count": 1,
+          "internal.run_id": "01M12DCDACAM5DE5MVHPZ50M21",
+          "internal.work_dir": "/workspace/fabro",
+          "failure_class": "",
+          "graph.rankdir": "LR",
+          "outcome": "succeeded",
+          "internal.retry_count.start": 0,
+          "internal.thread_id": null,
+          "internal.fidelity": "compact",
+          "current_node": "start",
+          "failure_signature": "",
+          "graph.goal": "Run a progressive human interview and summarize the answers"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "yes_no",
+        "node_visits": {
+          "start": 1
+        }
+      },
+      "diff": {}
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-08-27T20:08:29.275273770Z",
+        "current_node": "yes_no",
+        "completed_nodes": [
+          "start",
+          "yes_no"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "thread.start.current_node": "yes_no",
+          "internal.work_dir": "/workspace/fabro",
+          "outcome": "succeeded",
+          "human.gate.label": "[Y] Yes",
+          "graph.rankdir": "LR",
+          "internal.retry_count.yes_no": 0,
+          "human.gate.yes_no.question": "Is this interview workflow easy to follow so far?",
+          "internal.node_visit_count": 1,
+          "graph.goal": "Run a progressive human interview and summarize the answers",
+          "current_node": "yes_no",
+          "internal.fidelity": "compact",
+          "internal.thread_id": "start",
+          "internal.retry_count.start": 0,
+          "human.gate.yes_no.answer": "yes",
+          "preferred_label": "[Y] Yes",
+          "failure_class": "",
+          "internal.run_id": "01M12DCDACAM5DE5MVHPZ50M21",
+          "human.gate.selected": "Y",
+          "failure_signature": "",
+          "human.gate.yes_no.label": "[Y] Yes"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "yes_no": {
+            "status": "succeeded",
+            "preferred_label": "[Y] Yes",
+            "suggested_next_ids": [
+              "confirmation"
+            ],
+            "context_updates": {
+              "human.gate.selected": "Y",
+              "human.gate.yes_no.answer": "yes",
+              "human.gate.yes_no.question": "Is this interview workflow easy to follow so far?",
+              "human.gate.label": "[Y] Yes",
+              "human.gate.yes_no.label": "[Y] Yes"
+            },
+            "usage": null
+          }
+        },
+        "next_node_id": "confirmation",
+        "node_visits": {
+          "yes_no": 1,
+          "start": 1
+        }
+      },
+      "diff": {}
+    }
+  ],
   "conclusion": null,
   "sandbox": {
     "kind": "ready",
@@ -462,5 +564,67 @@
   "pull_request": null,
   "superseded_by": null,
   "pending_interviews": {},
-  "stages": {}
+  "stages": {
+    "start@1": {
+      "first_event_seq": 23,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-08-27T20:08:11.702930170Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-27T20:08:11.688317387Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "yes_no@1": {
+      "first_event_seq": 27,
+      "prompt": null,
+      "response": null,
+      "completion": null,
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-08-27T20:08:11.716379266Z",
+      "handler": "human",
+      "graph_visit": 1,
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "running"
+    }
+  }
 }
