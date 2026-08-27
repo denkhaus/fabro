@@ -15,6 +15,9 @@ all written artifacts in English.
   `denkhaus`, product/lab worlds on `denkhaus-lab` (multi-context, see
   docs/agents/domain.md). NEVER git worktrees - branch switches happen
   in the main checkout.
+- Interrupted cycle? Reconstruct BEFORE selecting: `git status` (uncommitted
+  diff is the interrupted operation) + `sd list --status in_progress` tell
+  you what was mid-flight; continue that work instead of picking a new seed.
 - `sd ready` and the open-seed list for candidates. `ml prime <domain>`
   only when the cycle touches that domain.
 
