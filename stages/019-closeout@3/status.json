@@ -1,0 +1,6 @@
+{
+  "outcome": "succeeded",
+  "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+  "failure_reason": null,
+  "timestamp": "2026-08-27T13:40:34.511744449Z"
+}
