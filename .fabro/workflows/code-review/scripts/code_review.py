@@ -66,6 +66,11 @@ MAX_CHANGED_FILES_LISTED = 200
 # Rule-mapped review shape (every tier above low).
 GROUP_MAX_FILES = 10
 GROUP_CHAR_BUDGET = 2000  # estimated per-job path payload, in characters
+# A cell audits at most this many checks; a larger effective set splits into
+# evenly sized cells over the same files. Each cell reports at most
+# candidate_cap findings, so unbounded checks would dilute every check's
+# share of the cell's attention as repository rules stack up.
+MAX_CHECKS_PER_CELL = 12
 DISCOVERY_JOB_CEILING = 64  # discovery jobs (local + angle + rule-audit)
 # A small target at medium collapses to local passes and rule audits only
 # (no whole-change angles), mirroring the security-review workflow's
@@ -1342,27 +1347,30 @@ def build_rule_audit_cells(
     state: Mapping[str, Any],
     groups: Sequence[Sequence[str]],
 ) -> List[Dict[str, Any]]:
-    """Intersect file groups with per-file effective checks, deterministically.
+    """Pack files sharing one effective check set into audit cells.
 
-    Files inside one semantic group that share the same effective check-ID
-    set audit together; the ten-file and size caps still apply.
+    Packing is across the whole target, not within semantic groups: a rule
+    audit checks each file against the same guidance regardless of its
+    neighbors, so grouping only multiplied cells (calibration measured
+    rule cells as 43% of finder agents for 11% of candidates). Cells are
+    deterministic -- lexical files per check set, the ten-file and size
+    caps applied -- and ordered by check set, then first file.
     """
     rules_state = state.get("rules") or {}
     effective: Mapping[str, Sequence[str]] = rules_state.get("effective") or {}
-    cells: List[Dict[str, Any]] = []
-    for group in groups:
-        by_check_set: Dict[Tuple[str, ...], List[str]] = {}
-        for path in group:
-            check_ids = tuple(effective.get(path) or ())
-            if not check_ids:
-                continue
+    by_check_set: Dict[Tuple[str, ...], List[str]] = {}
+    for path in sorted(path for group in groups for path in group):
+        check_ids = tuple(effective.get(path) or ())
+        if check_ids:
             by_check_set.setdefault(check_ids, []).append(path)
-        for check_ids in sorted(by_check_set):
-            for chunk in chunk_paths(sorted(by_check_set[check_ids])):
-                cells.append(
-                    {"files": chunk, "check_ids": list(check_ids)}
-                )
-    cells.sort(key=lambda cell: (cell["files"][0], tuple(cell["check_ids"])))
+    cells: List[Dict[str, Any]] = []
+    for check_ids in sorted(by_check_set):
+        slice_count = -(-len(check_ids) // MAX_CHECKS_PER_CELL)
+        slice_size = -(-len(check_ids) // slice_count)
+        for start in range(0, len(check_ids), slice_size):
+            check_slice = check_ids[start : start + slice_size]
+            for chunk in chunk_paths(by_check_set[check_ids]):
+                cells.append({"files": chunk, "check_ids": list(check_slice)})
     return cells
 
 

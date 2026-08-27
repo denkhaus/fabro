@@ -72,7 +72,10 @@ Every tier above `low` projects one rule-mapped structure:
 - One local-correctness finder job per final group, four whole-change angle
   jobs (behavior preservation, contracts and data flow, design economy,
   performance and lifetime), and one rule-audit job per non-empty cell of
-  files sharing the same effective check set. Discovery is capped at 64
+  files sharing the same effective check set, packed across the whole
+  target rather than within groups (at most ten files and twelve checks
+  per cell; a larger check set splits into evenly sized cells over the
+  same files). Discovery is capped at 64
   jobs; a target that cannot fit fails before dispatch rather than omitting
   files or checks. A small target at `medium` (at most 5 files and 300
   changed lines, or a scope of at most 5 files) collapses the shape to the
