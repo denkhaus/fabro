@@ -116,8 +116,7 @@ impl ValidatedWorkflowVersion {
     /// run-admission time read the same bytes validation proved present.
     #[must_use]
     pub fn resolved_goal_file_content(&self) -> Option<&str> {
-        let config_path = WorkflowPath::new("workflow.toml")
-            .expect("the static workflow config path must be valid");
+        let config_path = workflow_config_path(&self.0);
         let source = self.0.files().get(&config_path)?;
         let layer: SettingsLayer = source.parse().expect("validated workflow.toml must parse");
         let RunGoalLayer::File { file } = layer.run.as_ref().and_then(|run| run.goal.as_ref())?
@@ -164,8 +163,7 @@ fn validate_config(
     version: &WorkflowVersion,
     template_roots: &mut TemplateRoots,
 ) -> Result<(), WorkflowVersionError> {
-    let config_path =
-        WorkflowPath::new("workflow.toml").expect("the static workflow config path must be valid");
+    let config_path = workflow_config_path(version);
     let Some(source) = version.files().get(&config_path) else {
         return Ok(());
     };
@@ -212,6 +210,13 @@ fn validate_config(
         None => {}
     }
     Ok(())
+}
+
+fn workflow_config_path(version: &WorkflowVersion) -> WorkflowPath {
+    version
+        .entrypoint()
+        .resolve_reference("workflow.toml")
+        .expect("the static workflow config path must resolve beside a valid entrypoint")
 }
 
 #[expect(
@@ -649,7 +654,7 @@ mod tests {
                     BTreeMap::from([
                         (path("graphs/main.fabro"), "digraph W {}".to_owned()),
                         (
-                            path("workflow.toml"),
+                            path("graphs/workflow.toml"),
                             "_version = 1\n[run]\ngoal = \"{% include \\\"shared.md\\\" %}\"\n"
                                 .to_owned(),
                         ),
@@ -675,6 +680,38 @@ mod tests {
                         TemplateDiscoveryError::Missing { reference, .. } if reference == "shared.md"
                     )
         ));
+    }
+
+    #[test]
+    fn discovers_workflow_config_beside_a_nested_entrypoint() {
+        let version = ValidatedWorkflowVersion::new(
+            WorkflowVersion::new(
+                path(".fabro/workflows/demo/workflow.fabro"),
+                BTreeMap::from([
+                    (
+                        path(".fabro/workflows/demo/workflow.fabro"),
+                        "digraph W {}".to_owned(),
+                    ),
+                    (
+                        path(".fabro/workflows/demo/workflow.toml"),
+                        "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"\n[run.goal]\nfile = \"goal.md\"\n"
+                            .to_owned(),
+                    ),
+                    (
+                        path(".fabro/workflows/demo/goal.md"),
+                        "Ship the nested workflow".to_owned(),
+                    ),
+                ]),
+                BTreeMap::new(),
+            )
+            .expect("nested workflow version should be structurally valid"),
+        )
+        .expect("entrypoint-adjacent workflow config should validate");
+
+        assert_eq!(
+            version.resolved_goal_file_content(),
+            Some("Ship the nested workflow")
+        );
     }
 
     #[test]

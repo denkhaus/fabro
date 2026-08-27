@@ -1210,8 +1210,8 @@ impl AppState {
             credentials,
             self.github_api_base_url.clone(),
             self.http_client.clone(),
-            (*self.stores.environments.catalog_layer()).clone(),
             Arc::clone(&self.automation_repo_cache),
+            fabro_workflow_version::WorkflowVersionStore::new(self.store_ref().blobs()),
         )
         .materialize(input)
         .await

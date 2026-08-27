@@ -4,6 +4,7 @@
 )]
 
 mod workflow_bundler;
+mod workflow_version_collector;
 
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
@@ -29,6 +30,9 @@ use fabro_workflow::git::{
 };
 
 use crate::workflow_bundler::WorkflowBundler;
+pub use crate::workflow_version_collector::{
+    CollectedWorkflowClosure, WorkflowVersionCollectError, collect_workflow_versions,
+};
 
 #[derive(Debug, Default)]
 pub struct ManifestBuildInput {

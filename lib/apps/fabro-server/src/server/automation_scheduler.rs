@@ -8,7 +8,9 @@ use croner::errors::CronError;
 use fabro_automation::{
     Automation, AutomationId, AutomationRevision, AutomationTriggerId, parse_schedule_expression,
 };
-use fabro_types::{AutomationRef, Principal, RunId, RunTarget, SystemActorKind};
+use fabro_types::{
+    AutomationRef, Principal, RunId, RunIntent, RunIntentArgs, RunTarget, SystemActorKind,
+};
 use tokio::time::sleep;
 use tracing::{Instrument, error, info, info_span, warn};
 
@@ -242,7 +244,6 @@ async fn fire_scheduled_automation_run(
             target,
             workflow: automation.workflow.clone(),
             run_id,
-            user_settings_path: state.active_config_path().to_path_buf(),
             temp_root: state.automation_temp_root(),
         })
         .await
@@ -258,7 +259,6 @@ async fn fire_scheduled_automation_run(
         }
     };
 
-    let explicit_title_supplied = materialized.manifest.title.is_some();
     let actor = Principal::System {
         system_kind: SystemActorKind::Engine,
     };
@@ -267,19 +267,24 @@ async fn fire_scheduled_automation_run(
         name:       Some(automation.name.clone()),
         trigger_id: Some(trigger_id.to_string()),
     };
-    // `create_run_from_manifest` produces a large future; box it to keep our
+    // RunIntent admission produces a large future; box it to keep our
     // stack frame small (matches handler/automations.rs).
-    let response = Box::pin(handler::runs::create_run_from_manifest(
+    let response = Box::pin(handler::runs::create_run_from_intent(
         Arc::clone(&state),
-        handler::runs::CreateRunFromManifestRequest {
-            manifest: materialized.manifest,
-            submitted_manifest_bytes: materialized.submitted_manifest_bytes,
+        handler::runs::CreateRunFromIntentRequest {
+            intent:          RunIntent {
+                workflow_version_id: materialized.workflow_version_id,
+                target:              RunTarget::Git(materialized.target),
+                args:                RunIntentArgs::default(),
+                environment_id:      None,
+                parent_id:           None,
+                title:               None,
+                goal:                None,
+            },
             explicit_run_id: Some(run_id),
-            explicit_title_supplied,
-            actor: actor.clone(),
-            headers: HeaderMap::new(),
-            automation: Some(automation_ref),
-            target: Some(RunTarget::Git(materialized.target)),
+            actor:           actor.clone(),
+            headers:         HeaderMap::new(),
+            automation:      Some(automation_ref),
         },
     ))
     .await;
@@ -343,12 +348,10 @@ fn run_due_schedules_once<'a>(
 
 #[cfg(test)]
 mod tests {
-    use fabro_api::types::RunManifest;
     use fabro_automation::{AutomationDraft, AutomationTrigger, ScheduleTrigger};
     use fabro_static::EnvVars;
     use fabro_store::ListRunsQuery;
     use fabro_types::{GitRunTarget, RunStatus};
-    use serde_json::json;
 
     use super::*;
     use crate::test_support::{TestAppStateBuilder, TestAutomationRunMaterializer};
@@ -412,35 +415,10 @@ mod tests {
             .expect("test automation should be created")
     }
 
-    fn minimal_manifest() -> RunManifest {
-        serde_json::from_value(json!({
-            "version": 1,
-            "cwd": "/tmp",
-            "target": {
-                "path": "workflow.fabro",
-            },
-            "workflows": {
-                "workflow.fabro": {
-                    "source": r#"digraph Test {
-                        graph [goal="Test"]
-                        start [shape=Mdiamond]
-                        exit  [shape=Msquare]
-                        start -> exit
-                    }"#,
-                    "files": {},
-                },
-            },
-        }))
-        .expect("minimal manifest should deserialize")
-    }
-
     fn succeeding_materializer() -> TestAutomationRunMaterializer {
-        let manifest = minimal_manifest();
-        let submitted_manifest_bytes =
-            serde_json::to_vec(&manifest).expect("manifest should serialize");
         let mut exact_target = git_target();
         exact_target.sha = Some("0123456789abcdef0123456789abcdef01234567".to_string());
-        TestAutomationRunMaterializer::succeed(manifest, submitted_manifest_bytes, exact_target)
+        TestAutomationRunMaterializer::succeed(exact_target)
     }
 
     fn test_state_with_materializer(materializer: TestAutomationRunMaterializer) -> Arc<AppState> {
@@ -616,6 +594,28 @@ mod tests {
         assert_eq!(automation_ref.name.as_deref(), Some("Nightly"));
         assert_eq!(automation_ref.trigger_id.as_deref(), Some("schedule"));
         let run_id = runs[0].id;
+        let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+        let projection = run_store.state().await.unwrap();
+        assert!(projection.spec.workflow_version_id.is_some());
+        assert_eq!(
+            projection.spec.target,
+            Some(RunTarget::Git(fabro_types::GitRunTarget {
+                repo:   "fabro-sh/fabro".to_string(),
+                branch: "main".to_string(),
+                tag:    None,
+                sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+            }))
+        );
+        assert_eq!(
+            run_store
+                .list_events()
+                .await
+                .unwrap()
+                .iter()
+                .filter(|event| event.event.event_name() == "run.start_requested")
+                .count(),
+            1
+        );
         assert!(matches!(
             state
                 .runs

@@ -2,11 +2,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fabro_api::types::RunManifest;
 use fabro_automation::AutomationId;
-use fabro_config::{EnvironmentLayer, MergeMap};
-use fabro_manifest::ManifestBuildInput;
-use fabro_types::{GitHubRepositorySlug, GitRunTarget, RunId, RunTarget, TargetValidationError};
+use fabro_manifest::{CollectedWorkflowClosure, WorkflowVersionCollectError};
+use fabro_types::{
+    GitHubRepositorySlug, GitRunTarget, RunId, TargetValidationError, WorkflowVersionId,
+};
+use fabro_workflow_version::{WorkflowVersionStore, WorkflowVersionStoreError};
 use tokio::{fs, task};
 
 use crate::git_checkout::{
@@ -15,19 +16,17 @@ use crate::git_checkout::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AutomationRunMaterializeInput {
-    pub automation_id:      AutomationId,
-    pub target:             GitRunTarget,
-    pub workflow:           String,
-    pub run_id:             RunId,
-    pub user_settings_path: PathBuf,
-    pub temp_root:          PathBuf,
+    pub automation_id: AutomationId,
+    pub target:        GitRunTarget,
+    pub workflow:      String,
+    pub run_id:        RunId,
+    pub temp_root:     PathBuf,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct AutomationRunMaterialized {
-    pub manifest:                 RunManifest,
-    pub submitted_manifest_bytes: Vec<u8>,
-    pub target:                   GitRunTarget,
+    pub workflow_version_id: WorkflowVersionId,
+    pub target:              GitRunTarget,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -48,25 +47,30 @@ pub(crate) enum RunMaterializeError {
         #[source]
         source: std::io::Error,
     },
-    #[error("failed to resolve automation workflow")]
+    #[error("automation workflow was not found")]
     WorkflowNotFound {
         #[source]
-        source: anyhow::Error,
+        source: WorkflowVersionCollectError,
     },
-    #[error("failed to build run manifest")]
-    Manifest {
+    #[error("failed to package automation workflow versions")]
+    Package {
         #[source]
-        source: anyhow::Error,
+        source: WorkflowVersionCollectError,
     },
-    #[error("manifest build task failed")]
-    ManifestTask {
+    #[error("workflow-version packaging task failed")]
+    PackageTask {
         #[source]
         source: task::JoinError,
     },
-    #[error("failed to serialize materialized run manifest")]
-    SerializeManifest {
+    #[error("failed to store automation workflow versions")]
+    VersionStore {
         #[source]
-        source: serde_json::Error,
+        source: WorkflowVersionStoreError,
+    },
+    #[error("stored workflow version ID `{actual}` did not match local ID `{expected}`")]
+    VersionIdMismatch {
+        expected: WorkflowVersionId,
+        actual:   WorkflowVersionId,
     },
     #[error("failed to load GitHub credentials")]
     Credentials {
@@ -85,11 +89,11 @@ pub(crate) trait AutomationRunMaterializer: Send + Sync {
 
 #[derive(Clone)]
 pub(crate) struct ProductionAutomationRunMaterializer {
-    github_credentials:   Option<fabro_github::GitHubCredentials>,
-    github_api_base_url:  String,
-    http_client:          Option<fabro_http::HttpClient>,
-    environment_defaults: MergeMap<EnvironmentLayer>,
-    repo_cache:           Arc<GitRepoCache>,
+    github_credentials:  Option<fabro_github::GitHubCredentials>,
+    github_api_base_url: String,
+    http_client:         Option<fabro_http::HttpClient>,
+    repo_cache:          Arc<GitRepoCache>,
+    version_store:       WorkflowVersionStore,
 }
 
 impl ProductionAutomationRunMaterializer {
@@ -97,15 +101,15 @@ impl ProductionAutomationRunMaterializer {
         github_credentials: Option<fabro_github::GitHubCredentials>,
         github_api_base_url: String,
         http_client: Option<fabro_http::HttpClient>,
-        environment_defaults: MergeMap<EnvironmentLayer>,
         repo_cache: Arc<GitRepoCache>,
+        version_store: WorkflowVersionStore,
     ) -> Self {
         Self {
             github_credentials,
             github_api_base_url,
             http_client,
-            environment_defaults,
             repo_cache,
+            version_store,
         }
     }
 }
@@ -161,101 +165,103 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
         let mut exact_target = input.target;
         exact_target.sha = Some(checked_out_sha);
 
-        let manifest_input = ManifestFromCheckoutInput {
+        let package_input = PackageFromCheckoutInput {
             workflow: input.workflow,
-            user_settings_path: input.user_settings_path,
             checkout_dir,
             target: exact_target,
-            environment_defaults: self.environment_defaults.clone(),
         };
-        task::spawn_blocking(move || build_manifest_from_checkout(manifest_input))
+        let packaged = task::spawn_blocking(move || package_from_checkout(package_input))
             .await
-            .map_err(|source| RunMaterializeError::ManifestTask { source })?
+            .map_err(|source| RunMaterializeError::PackageTask { source })??;
+
+        let root_id = packaged.closure.root_id();
+        for (expected, version) in packaged.closure.versions() {
+            let actual = self
+                .version_store
+                .put(version)
+                .await
+                .map_err(|source| RunMaterializeError::VersionStore { source })?;
+            if actual != expected {
+                return Err(RunMaterializeError::VersionIdMismatch { expected, actual });
+            }
+        }
+        Ok(AutomationRunMaterialized {
+            workflow_version_id: root_id,
+            target:              packaged.target,
+        })
     }
 }
 
 #[derive(Debug)]
-pub(crate) struct ManifestFromCheckoutInput {
-    workflow:             String,
-    user_settings_path:   PathBuf,
-    checkout_dir:         PathBuf,
-    target:               GitRunTarget,
-    environment_defaults: MergeMap<EnvironmentLayer>,
+struct PackageFromCheckoutInput {
+    workflow:     String,
+    checkout_dir: PathBuf,
+    target:       GitRunTarget,
 }
 
-fn build_manifest_from_checkout(
-    args: ManifestFromCheckoutInput,
-) -> Result<AutomationRunMaterialized, RunMaterializeError> {
-    let ManifestFromCheckoutInput {
+struct PackagedAutomationWorkflow {
+    closure: CollectedWorkflowClosure,
+    target:  GitRunTarget,
+}
+
+fn package_from_checkout(
+    args: PackageFromCheckoutInput,
+) -> Result<PackagedAutomationWorkflow, RunMaterializeError> {
+    let PackageFromCheckoutInput {
         workflow,
-        user_settings_path,
         checkout_dir,
         target,
-        environment_defaults,
     } = args;
-    // Re-validating the exact target (now carrying the checked-out SHA) yields
-    // the same `GitContext` projection the run-intent path uses.
-    let validated = RunTarget::Git(target)
-        .validate()
-        .map_err(|source| RunMaterializeError::InvalidTarget { source })?;
-    let RunTarget::Git(target) = validated.target else {
-        unreachable!("validating a Git target yields a Git target");
-    };
-    let built = fabro_manifest::build_run_manifest(ManifestBuildInput {
-        workflow: workflow.into(),
-        cwd: checkout_dir,
-        user_settings_path: Some(user_settings_path),
-        environment_defaults,
-        ..ManifestBuildInput::default()
-    })
-    .map_err(manifest_build_error)?;
-
-    let mut manifest = built.manifest;
-    manifest.git = validated.git;
-    let submitted_manifest_bytes = serde_json::to_vec(&manifest)
-        .map_err(|source| RunMaterializeError::SerializeManifest { source })?;
-    Ok(AutomationRunMaterialized {
-        manifest,
-        submitted_manifest_bytes,
-        target,
-    })
+    let workflow = PathBuf::from(workflow);
+    let closure = fabro_manifest::collect_workflow_versions(&workflow, &checkout_dir)
+        .map_err(package_error)?;
+    Ok(PackagedAutomationWorkflow { closure, target })
 }
 
-fn manifest_build_error(error: anyhow::Error) -> RunMaterializeError {
-    if error.chain().any(|source| {
-        source
-            .downcast_ref::<fabro_config::Error>()
-            .is_some_and(|err| matches!(err, fabro_config::Error::WorkflowNotFound(_)))
-    }) {
+fn package_error(error: WorkflowVersionCollectError) -> RunMaterializeError {
+    if matches!(&error, WorkflowVersionCollectError::WorkflowNotFound { .. }) {
         RunMaterializeError::WorkflowNotFound { source: error }
     } else {
-        RunMaterializeError::Manifest { source: error }
+        RunMaterializeError::Package { source: error }
     }
 }
 
 #[cfg(any(test, feature = "test-support"))]
 #[derive(Clone)]
 pub struct TestAutomationRunMaterializer {
-    inner: std::sync::Arc<std::sync::Mutex<TestAutomationRunMaterializerState>>,
+    inner:         std::sync::Arc<std::sync::Mutex<TestAutomationRunMaterializerState>>,
+    version_store: Option<WorkflowVersionStore>,
 }
 
 #[cfg(any(test, feature = "test-support"))]
 struct TestAutomationRunMaterializerState {
     captured_inputs: Vec<AutomationRunMaterializeInput>,
-    response:        Result<Box<AutomationRunMaterialized>, TargetValidationError>,
+    response:        Result<Box<TestMaterializedWorkflow>, TargetValidationError>,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[derive(Clone)]
+struct TestMaterializedWorkflow {
+    version: fabro_workflow_version::ValidatedWorkflowVersion,
+    target:  GitRunTarget,
+    store:   bool,
 }
 
 #[cfg(any(test, feature = "test-support"))]
 impl TestAutomationRunMaterializer {
-    pub fn succeed(
-        manifest: RunManifest,
-        submitted_manifest_bytes: Vec<u8>,
-        target: GitRunTarget,
-    ) -> Self {
-        Self::new(Ok(Box::new(AutomationRunMaterialized {
-            manifest,
-            submitted_manifest_bytes,
+    pub fn succeed(target: GitRunTarget) -> Self {
+        Self::new(Ok(Box::new(TestMaterializedWorkflow {
+            version: test_workflow_version(),
             target,
+            store: true,
+        })))
+    }
+
+    pub fn return_unstored_version(target: GitRunTarget) -> Self {
+        Self::new(Ok(Box::new(TestMaterializedWorkflow {
+            version: test_workflow_version(),
+            target,
+            store: false,
         })))
     }
 
@@ -263,12 +269,15 @@ impl TestAutomationRunMaterializer {
         Self::new(Err(TargetValidationError::Repository))
     }
 
-    fn new(response: Result<Box<AutomationRunMaterialized>, TargetValidationError>) -> Self {
+    fn new(response: Result<Box<TestMaterializedWorkflow>, TargetValidationError>) -> Self {
         Self {
-            inner: std::sync::Arc::new(std::sync::Mutex::new(TestAutomationRunMaterializerState {
-                captured_inputs: Vec::new(),
-                response,
-            })),
+            inner:         std::sync::Arc::new(std::sync::Mutex::new(
+                TestAutomationRunMaterializerState {
+                    captured_inputs: Vec::new(),
+                    response,
+                },
+            )),
+            version_store: None,
         }
     }
 
@@ -280,9 +289,33 @@ impl TestAutomationRunMaterializer {
             .clone()
     }
 
-    pub(crate) fn into_materializer(self) -> std::sync::Arc<dyn AutomationRunMaterializer> {
+    pub(crate) fn into_materializer(
+        mut self,
+        version_store: WorkflowVersionStore,
+    ) -> std::sync::Arc<dyn AutomationRunMaterializer> {
+        self.version_store = Some(version_store);
         std::sync::Arc::new(self)
     }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn test_workflow_version() -> fabro_workflow_version::ValidatedWorkflowVersion {
+    use std::collections::BTreeMap;
+
+    let entrypoint = fabro_types::WorkflowPath::new("workflow.fabro")
+        .expect("test workflow entrypoint should be valid");
+    let version = fabro_types::WorkflowVersion::new(
+        entrypoint.clone(),
+        BTreeMap::from([(
+            entrypoint,
+            "digraph Test { graph [goal=\"Test\"] start [shape=Mdiamond] exit [shape=Msquare] start -> exit }"
+                .to_string(),
+        )]),
+        BTreeMap::new(),
+    )
+    .expect("test workflow version should have a valid shape");
+    fabro_workflow_version::ValidatedWorkflowVersion::new(version)
+        .expect("test workflow version should validate")
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -292,16 +325,37 @@ impl AutomationRunMaterializer for TestAutomationRunMaterializer {
         &self,
         input: AutomationRunMaterializeInput,
     ) -> Result<AutomationRunMaterialized, RunMaterializeError> {
-        let mut guard = self
-            .inner
-            .lock()
-            .expect("test automation materializer lock poisoned");
-        guard.captured_inputs.push(input);
-        guard
-            .response
-            .clone()
-            .map(|materialized| *materialized)
-            .map_err(|source| RunMaterializeError::InvalidTarget { source })
+        let response = {
+            let mut guard = self
+                .inner
+                .lock()
+                .expect("test automation materializer lock poisoned");
+            guard.captured_inputs.push(input);
+            guard.response.clone()
+        };
+        let materialized =
+            *response.map_err(|source| RunMaterializeError::InvalidTarget { source })?;
+        let store = self
+            .version_store
+            .as_ref()
+            .expect("test materializer must be attached to a version store");
+        let workflow_version_id = if materialized.store {
+            store
+                .put(&materialized.version)
+                .await
+                .map_err(|source| RunMaterializeError::VersionStore { source })?
+        } else {
+            let canonical = materialized
+                .version
+                .version()
+                .canonical_bytes()
+                .expect("validated test workflow version should serialize canonically");
+            WorkflowVersionId::from(fabro_types::BlobHash::new(&canonical))
+        };
+        Ok(AutomationRunMaterialized {
+            workflow_version_id,
+            target: materialized.target,
+        })
     }
 }
 
@@ -312,23 +366,16 @@ mod tests {
         reason = "Materializer unit tests write small temporary workflow fixtures synchronously."
     )]
 
-    use std::collections::HashMap;
     use std::fs;
+    use std::time::Duration;
 
-    use fabro_types::DirtyStatus;
+    use object_store::memory::InMemory;
     use tempfile::TempDir;
 
     use super::*;
 
-    fn test_environment_defaults() -> MergeMap<EnvironmentLayer> {
-        MergeMap::from(HashMap::from([("default".to_string(), EnvironmentLayer {
-            provider: Some("local".to_string()),
-            ..EnvironmentLayer::default()
-        })]))
-    }
-
     #[test]
-    fn manifest_builder_uses_checkout_for_workflow_and_separate_git_context() {
+    fn package_builder_uses_checkout_relative_versions_and_exact_target() {
         let temp = TempDir::new().unwrap();
         let checkout = temp.path().join("checkout");
         let workflow_dir = checkout.join(".fabro/workflows/demo");
@@ -344,54 +391,87 @@ mod tests {
             "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"\n",
         )
         .unwrap();
-        let user_settings_path = temp.path().join("settings.toml");
-        fs::write(&user_settings_path, "_version = 1\n").unwrap();
         let sha = "0123456789abcdef0123456789abcdef01234567".to_string();
 
-        let materialized = build_manifest_from_checkout(ManifestFromCheckoutInput {
-            workflow:             "demo".to_string(),
-            user_settings_path:   user_settings_path.clone(),
-            checkout_dir:         checkout.clone(),
-            target:               GitRunTarget {
+        let packaged = package_from_checkout(PackageFromCheckoutInput {
+            workflow:     "demo".to_string(),
+            checkout_dir: checkout,
+            target:       GitRunTarget {
                 repo:   "workspace-org/app".to_string(),
                 branch: "release".to_string(),
                 tag:    Some("v1".to_string()),
                 sha:    Some(sha.clone()),
             },
-            environment_defaults: test_environment_defaults(),
         })
-        .expect("manifest should build from checkout");
+        .expect("workflow versions should package from checkout");
 
-        assert_eq!(materialized.manifest.cwd, checkout.display().to_string());
         assert_eq!(
-            materialized.manifest.target.path,
+            packaged
+                .closure
+                .versions()
+                .last()
+                .unwrap()
+                .1
+                .version()
+                .entrypoint()
+                .as_str(),
             ".fabro/workflows/demo/workflow.fabro"
         );
-        assert!(
-            materialized
-                .manifest
-                .configs
-                .iter()
-                .any(|config| config.path.as_deref() == Some(user_settings_path.to_str().unwrap()))
+        assert_eq!(packaged.target.tag.as_deref(), Some("v1"));
+        assert_eq!(packaged.target.sha.as_deref(), Some(sha.as_str()));
+    }
+
+    #[tokio::test]
+    async fn collected_closure_stores_dependency_first_and_idempotently() {
+        let temp = TempDir::new().unwrap();
+        let checkout = temp.path().join("checkout");
+        let workflow_dir = checkout.join(".fabro/workflows/root");
+        fs::create_dir_all(&workflow_dir).unwrap();
+        fs::write(checkout.join(".fabro/project.toml"), "_version = 1\n").unwrap();
+        fs::write(
+            workflow_dir.join("workflow.toml"),
+            "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"\n",
+        )
+        .unwrap();
+        fs::write(
+            workflow_dir.join("workflow.fabro"),
+            r#"digraph Root { child [stack.child_workflow="../child/workflow.fabro"] }"#,
+        )
+        .unwrap();
+        let child_dir = checkout.join(".fabro/workflows/child");
+        fs::create_dir_all(&child_dir).unwrap();
+        fs::write(child_dir.join("workflow.fabro"), "digraph Child {}").unwrap();
+
+        let packaged = package_from_checkout(PackageFromCheckoutInput {
+            workflow:     "root".to_string(),
+            checkout_dir: checkout,
+            target:       GitRunTarget {
+                repo:   "workspace-org/app".to_string(),
+                branch: "main".to_string(),
+                tag:    None,
+                sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+            },
+        })
+        .unwrap();
+        let database = fabro_store::test_support::test_database(
+            Arc::new(InMemory::new()),
+            "",
+            Duration::from_millis(1),
+            None,
         );
-        let git = materialized
-            .manifest
-            .git
-            .as_ref()
-            .expect("git context should be set");
-        assert_eq!(git.origin_url, "https://github.com/workspace-org/app");
-        assert_eq!(git.branch, "release");
-        assert_eq!(git.sha.as_deref(), Some(sha.as_str()));
-        assert_eq!(git.dirty, DirtyStatus::Clean);
-        assert_eq!(materialized.target.tag.as_deref(), Some("v1"));
-        assert_eq!(materialized.target.sha.as_deref(), Some(sha.as_str()));
-        let submitted_manifest: serde_json::Value =
-            serde_json::from_slice(&materialized.submitted_manifest_bytes)
-                .expect("submitted bytes should be a manifest");
-        assert!(submitted_manifest.get("run_id").is_none());
-        assert_eq!(
-            submitted_manifest,
-            serde_json::to_value(&materialized.manifest).unwrap()
-        );
+        let store = WorkflowVersionStore::new(database.blobs());
+
+        for _ in 0..2 {
+            for (expected, version) in packaged.closure.versions() {
+                assert_eq!(store.put(version).await.unwrap(), expected);
+            }
+        }
+        let loaded = store
+            .get_closure(&packaged.closure.root_id())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.root_id(), packaged.closure.root_id());
+        assert_eq!(loaded.versions().count(), 2);
     }
 }
