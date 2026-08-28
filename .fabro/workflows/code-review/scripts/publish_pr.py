@@ -1002,9 +1002,6 @@ class BatchPoster:
         self.repo = repo
         self.pr = pr
         self.head = plan["head"]
-        self.review_body = (
-            plan["summary"]["run_tag"] + "\nAutomated code review comments."
-        )
         self.by_id = {
             entry["finding_id"]: entry
             for entry in plan["placements"]
@@ -1026,13 +1023,15 @@ class BatchPoster:
             }
             for finding_id in finding_ids
         ]
+        # No review body: the run tag lives in the sticky summary and in
+        # every inline comment's identity tag, so body text here would
+        # only add a noise bubble to the PR timeline (R12).
         status, _ = self.client.request(
             "POST",
             f"/repos/{self.repo}/pulls/{self.pr}/reviews",
             {
                 "commit_id": self.head,
                 "event": "COMMENT",
-                "body": self.review_body,
                 "comments": comments,
             },
         )
