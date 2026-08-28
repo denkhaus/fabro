@@ -6,7 +6,7 @@ use fabro_config::RunScratch;
 use fabro_types::{
     BlobHash, ParallelBranchResult, format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref,
 };
-use futures::future::BoxFuture;
+use futures::future::{BoxFuture, try_join_all};
 use serde_json::Value;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
@@ -521,23 +521,51 @@ pub async fn resolve_text_or_blob_ref(value: &Value, run_store: &RunStoreHandle)
     }
 }
 
-/// Resolve a structured JSON value from inline context or a Fabro-managed
-/// blob reference.
+/// Resolve a structured JSON value from inline context or Fabro-managed blob
+/// references at any depth.
 ///
 /// Managed `file://` references are normalized through their content-addressed
 /// blob hash instead of reading an execution-local path. Ordinary strings and
 /// ordinary file references remain unchanged for the caller to validate.
-pub(crate) async fn resolve_json_value(value: Value, run_store: &RunStoreHandle) -> Result<Value> {
-    let blob_hash = value.as_str().and_then(|reference| {
-        parse_blob_ref(reference).or_else(|| parse_managed_blob_file_ref(reference))
-    });
-    let Some(blob_hash) = blob_hash else {
-        return Ok(value);
-    };
-
-    let bytes = read_required_blob(&blob_hash, run_store).await?;
-    serde_json::from_slice(&bytes)
-        .map_err(|err| Error::engine_with_source("artifact blob was not valid JSON", err))
+pub(crate) fn resolve_json_value(
+    value: Value,
+    run_store: &RunStoreHandle,
+) -> BoxFuture<'_, Result<Value>> {
+    Box::pin(async move {
+        match value {
+            Value::String(reference) => {
+                let blob_hash =
+                    parse_blob_ref(&reference).or_else(|| parse_managed_blob_file_ref(&reference));
+                let Some(blob_hash) = blob_hash else {
+                    return Ok(Value::String(reference));
+                };
+                let bytes = read_required_blob(&blob_hash, run_store).await?;
+                let resolved = serde_json::from_slice(&bytes).map_err(|err| {
+                    Error::engine_with_source("artifact blob was not valid JSON", err)
+                })?;
+                resolve_json_value(resolved, run_store).await
+            }
+            Value::Array(items) => {
+                let resolved = try_join_all(
+                    items
+                        .into_iter()
+                        .map(|item| resolve_json_value(item, run_store)),
+                )
+                .await?;
+                Ok(Value::Array(resolved))
+            }
+            Value::Object(items) => {
+                let resolved = try_join_all(items.into_iter().map(|(key, item)| async move {
+                    resolve_json_value(item, run_store)
+                        .await
+                        .map(|value| (key, value))
+                }))
+                .await?;
+                Ok(Value::Object(resolved.into_iter().collect()))
+            }
+            primitive => Ok(primitive),
+        }
+    })
 }
 
 /// Resolve a flat workflow context key (`context.NAME` or `NAME`) to a
@@ -963,6 +991,40 @@ mod tests {
                 .await
                 .unwrap(),
             value
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_json_value_hydrates_nested_parallel_branch_values() {
+        let run_store = make_run_store("nested-structured-json-resolution").await;
+        let finder_output = serde_json::json!({
+            "findings": [{"file": "src/lib.rs", "line": 7}]
+        });
+        let finder_blob = run_store
+            .write_blob(&serde_json::to_vec(&finder_output).unwrap())
+            .await
+            .unwrap();
+        let parallel_results = serde_json::json!([{
+            "id": "finder",
+            "index": 0,
+            "status": "succeeded",
+            "context_updates": {
+                "output.finder": format_blob_ref(&finder_blob),
+                "small": "kept inline"
+            }
+        }]);
+
+        let resolved = resolve_json_value(parallel_results, &run_store.into())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            resolved[0]["context_updates"]["output.finder"],
+            finder_output
+        );
+        assert_eq!(
+            resolved[0]["context_updates"]["small"],
+            serde_json::json!("kept inline")
         );
     }
 
