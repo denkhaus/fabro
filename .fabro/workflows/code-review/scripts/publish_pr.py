@@ -39,6 +39,7 @@ from typing import Any, Dict, List, Mapping, NoReturn, Optional, Sequence, Set, 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import render_report as renderer  # noqa: E402  (the bundle validators)
+from review_contract import FINDING_ID_RE  # noqa: E402
 
 
 PLAN_VERSION = 1
@@ -872,7 +873,7 @@ def validate_plan_document(
         if not isinstance(entry, dict):
             fail(f"plan {field} must be an object")
         finding_id = entry.get("finding_id")
-        if not isinstance(finding_id, str) or not renderer.FINDING_ID_RE.fullmatch(
+        if not isinstance(finding_id, str) or not FINDING_ID_RE.fullmatch(
             finding_id
         ):
             fail(f"plan {field}.finding_id is invalid")

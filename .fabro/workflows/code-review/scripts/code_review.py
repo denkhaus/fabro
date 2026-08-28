@@ -911,9 +911,9 @@ def assert_workspace_unchanged(state: Mapping[str, Any]) -> None:
     """Refuse to publish results derived from a tampered source tree.
 
     Tamper evidence behind the read-only tool guard: an agent that finds a way
-    to write could shape what the verifiers and the report see. Checked only at
-    the publication gates: final-tally, render-report, and publish-pr (the
-    last immediately before anything leaves for GitHub).
+    to write could shape what the verifiers and the report see. Checked at
+    final-tally after the last agent and again at publish-pr immediately before
+    anything leaves for GitHub.
     """
     expected = state.get("workspace_digest")
     actual = workspace_digest()
