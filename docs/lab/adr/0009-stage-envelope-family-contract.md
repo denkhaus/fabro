@@ -35,3 +35,37 @@ skills it gets. Decided in the 2026-08-26 grilling session:
 The envelope is part of the foundations that let the develop workflow
 run against the fabro repo itself; completion feeds the two-world
 retirement tracked in seed fabro-a9bb (timing decided jointly).
+
+## Amendment 2026-08-27 (fabro-47b5 design grilling)
+
+The `tools=` preset sugar decided above is dropped before first
+delivery: allow-only explicit comma lists. A preset name in the graph
+hides the granted tool set, while an explicit list is self-documenting
+and drift-safe when the catalog grows — new tools never leak into a
+restricted node. Presets remain an additive later option if explicit
+lists become unwieldy.
+
+Also settled in the same session:
+
+- No deny attribute and no run-level allowlist. Deny lists cannot
+  express "read-only" safely (MCP tools depend on run config and
+  cannot be enumerated in a graph; future native tools would leak),
+  and a run-level list would reintroduce the two-layer override
+  ambiguity (replace vs narrow) that allow-only removes. Consistent
+  with the no-graph-level-strict-mode decision above.
+- Question tools (`request_user_input`, `AskUserQuestion`) are exempt
+  from the policy in both directions: HITL is a workflow contract, not
+  model initiative (same posture as engine-stamped context keys in
+  900e).
+- `spawn_agent` requires explicit listing; child sessions inherit the
+  node's allow-list, so the policy does not vanish at the child
+  boundary.
+- `permission_level` is untouched: it is upstream's interactive CLI
+  approval axis (wire-contracted in the OpenAPI spec) and truthfully
+  reports "no approval gating" (`Full`) for workflow stages. The
+  per-stage tool-list projection (`agent_tools`) is the truthful
+  policy reflection; no derived coarse label.
+- Per-node `fabro_tools=` (opt-in list of `fabro_run_*` tools)
+  overrides the run-wide `agent.fabro_tools` flag; unset keeps the run
+  default. A default-denied opt-in family — the opposite posture of
+  the default-open native registry.
