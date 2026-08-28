@@ -6,7 +6,7 @@ use fabro_config::RunScratch;
 use fabro_types::{
     BlobHash, ParallelBranchResult, format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref,
 };
-use futures::future::BoxFuture;
+use futures::future::{BoxFuture, try_join_all};
 use serde_json::Value;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
@@ -527,10 +527,10 @@ pub async fn resolve_text_or_blob_ref(value: &Value, run_store: &RunStoreHandle)
 /// Managed `file://` references are normalized through their content-addressed
 /// blob hash instead of reading an execution-local path. Ordinary strings and
 /// ordinary file references remain unchanged for the caller to validate.
-pub(crate) fn resolve_json_value<'a>(
+pub(crate) fn resolve_json_value(
     value: Value,
-    run_store: &'a RunStoreHandle,
-) -> BoxFuture<'a, Result<Value>> {
+    run_store: &RunStoreHandle,
+) -> BoxFuture<'_, Result<Value>> {
     Box::pin(async move {
         match value {
             Value::String(reference) => {
@@ -546,18 +546,22 @@ pub(crate) fn resolve_json_value<'a>(
                 resolve_json_value(resolved, run_store).await
             }
             Value::Array(items) => {
-                let mut resolved = Vec::with_capacity(items.len());
-                for item in items {
-                    resolved.push(resolve_json_value(item, run_store).await?);
-                }
+                let resolved = try_join_all(
+                    items
+                        .into_iter()
+                        .map(|item| resolve_json_value(item, run_store)),
+                )
+                .await?;
                 Ok(Value::Array(resolved))
             }
             Value::Object(items) => {
-                let mut resolved = serde_json::Map::with_capacity(items.len());
-                for (key, item) in items {
-                    resolved.insert(key, resolve_json_value(item, run_store).await?);
-                }
-                Ok(Value::Object(resolved))
+                let resolved = try_join_all(items.into_iter().map(|(key, item)| async move {
+                    resolve_json_value(item, run_store)
+                        .await
+                        .map(|value| (key, value))
+                }))
+                .await?;
+                Ok(Value::Object(resolved.into_iter().collect()))
             }
             primitive => Ok(primitive),
         }
