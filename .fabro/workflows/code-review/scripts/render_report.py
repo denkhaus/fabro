@@ -2,8 +2,8 @@
 """Deterministic report renderer for the Fabro code-review workflow.
 
 Validates the canonical bundle written by `code_review.py final-tally` and
-derives every presentation artifact from it: the Markdown, HTML, and JSONL
-reports plus `metadata/revision.json`. No model output reaches a report
+derives every presentation artifact from it: the Markdown, HTML, JSONL, and
+SARIF reports plus `metadata/revision.json`. No model output reaches a report
 without passing this program's checks, and no finding text is ever placed
 into markup -- the HTML report receives one escaped JSON payload and renders
 it with `textContent`.
@@ -19,6 +19,7 @@ import re
 import sys
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Mapping, NoReturn, Sequence, Tuple
+from urllib.parse import quote
 
 
 CANONICAL_SCHEMA_VERSION = 3
@@ -395,6 +396,35 @@ def validate_coverage(value: object) -> Dict[str, Any]:
                     "coverage.rules.effectiveChecksByFile values must be "
                     "arrays of compiled check IDs"
                 )
+        catalog = rules.get("checkCatalog")
+        if catalog is not None:
+            catalog = as_map(catalog)
+            for check_id, entry in catalog.items():
+                if not isinstance(
+                    check_id, str
+                ) or not COMPILED_RULE_ID_RE.fullmatch(check_id):
+                    die(
+                        "coverage.rules.checkCatalog keys must be compiled "
+                        "check IDs"
+                    )
+                record = as_map(entry)
+                if record.get("category") not in CATEGORIES:
+                    die(
+                        f"coverage.rules.checkCatalog[{check_id}].category "
+                        "is not in the closed list"
+                    )
+                safe_text(
+                    record.get("guidance"),
+                    f"coverage.rules.checkCatalog[{check_id}].guidance",
+                    allow_empty=False,
+                )
+            for check_ids in effective.values():
+                for check_id in check_ids:
+                    if check_id not in catalog:
+                        die(
+                            "coverage.rules.checkCatalog is missing an "
+                            "effective check"
+                        )
     return coverage
 
 
@@ -682,14 +712,45 @@ def render_markdown(
     )
     rules = coverage.get("rules")
     if isinstance(rules, dict):
+        effective = rules.get("effectiveChecksByFile")
+        effective = effective if isinstance(effective, dict) else {}
+        audited_files = sum(1 for ids in effective.values() if ids)
+        distinct_checks = {
+            check_id
+            for ids in effective.values()
+            if isinstance(ids, list)
+            for check_id in ids
+        }
+        by_kind = (coverage.get("finders") or {}).get("byKind") or {}
+        cells = by_kind.get("rule-audit")
+        cells = cells if isinstance(cells, dict) else {}
+        rule_findings = [
+            finding for finding in findings if finding.get("rule_ids")
+        ]
+        filtered_count = len(coverage.get("filteredFindingReports") or [])
+        folded = int((manifest.get("counts") or {}).get("duplicates") or 0)
         counts = rules.get("counts") or {}
         lines.append(
-            "- Rules: "
-            f"{counts.get('builtin_packs', 0)} built-in and "
-            f"{counts.get('repo_packs', 0)} repository pack(s) "
-            f"({counts.get('builtin_checks', 0)} + "
-            f"{counts.get('repo_checks', 0)} check(s)) applied by path."
+            f"- Rules: audited {len(distinct_checks)} check(s) "
+            f"({counts.get('builtin_packs', 0)} built-in + "
+            f"{counts.get('repo_packs', 0)} repository pack(s)) across "
+            f"{audited_files} file(s) in {cells.get('returned', 0)} of "
+            f"{cells.get('dispatched', 0)} audit cell(s); "
+            f"{len(rule_findings)} violation(s) reported; "
+            f"{filtered_count} filtered; {folded} folded."
         )
+        if rule_findings:
+            per_check: Dict[str, int] = {}
+            for finding in rule_findings:
+                for check_id in finding["rule_ids"]:
+                    per_check[check_id] = per_check.get(check_id, 0) + 1
+            lines.append("- Violations by check:")
+            lines.extend(
+                f"  - {code_span(check_id)} x{count}"
+                for check_id, count in sorted(
+                    per_check.items(), key=lambda item: (-item[1], item[0])
+                )
+            )
         failed_cells = rules.get("failedAuditCells") or []
         if failed_cells:
             lines.append(
@@ -796,6 +857,211 @@ def jsonl_line(finding: Mapping[str, Any]) -> str:
     return json.dumps(record, ensure_ascii=False, separators=(",", ":"))
 
 
+# --- SARIF rendering ---------------------------------------------------------
+
+
+SARIF_SCHEMA_URI = "https://json.schemastore.org/sarif-2.1.0.json"
+SARIF_VERSION = "2.1.0"
+SARIF_LEVELS = {"HIGH": "error", "MEDIUM": "warning", "LOW": "note"}
+SARIF_UNVERIFIED_NOTE = (
+    "This finding comes from a low-effort single-pass review and was not "
+    "independently verified."
+)
+CATEGORY_DESCRIPTIONS = {
+    "correctness": (
+        "The change can produce wrong behavior: incorrect output, a crash, "
+        "or corrupted state."
+    ),
+    "reuse": "The change duplicates behavior the codebase already provides.",
+    "simplification": "The change is more complex than the problem requires.",
+    "efficiency": (
+        "The change does avoidable work: wasted time, memory, or I/O."
+    ),
+    "altitude": (
+        "The change solves the problem at the wrong level of abstraction."
+    ),
+    "conventions": "The change breaks a stated project convention or rule.",
+    "test-coverage": "The change lacks test coverage its behavior needs.",
+}
+
+
+def sarif_uri(path: str) -> str:
+    return quote(path, safe="/")
+
+
+def sarif_location(path: str, line: int) -> Dict[str, Any]:
+    return {
+        "physicalLocation": {
+            "artifactLocation": {
+                "uri": sarif_uri(path),
+                "uriBaseId": "%SRCROOT%",
+            },
+            "region": {"startLine": line},
+        }
+    }
+
+
+def sarif_rules(
+    findings: Sequence[Mapping[str, Any]],
+    coverage: Mapping[str, Any],
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    """One reportingDescriptor per rule ID the results reference.
+
+    A finding backed by compiled rule checks reports under its first check
+    ID, with the check's guidance as the rule help; a finding without one
+    reports under its category. Descriptors cover every cited check so the
+    check IDs in result properties stay resolvable.
+    """
+    rules_block = coverage.get("rules")
+    catalog: Mapping[str, Any] = {}
+    if isinstance(rules_block, dict) and isinstance(
+        rules_block.get("checkCatalog"), dict
+    ):
+        catalog = rules_block["checkCatalog"]
+    descriptors: List[Dict[str, Any]] = []
+    for category in CATEGORIES:
+        if any(
+            not finding["rule_ids"] and finding["category"] == category
+            for finding in findings
+        ):
+            description = CATEGORY_DESCRIPTIONS[category]
+            descriptors.append(
+                {
+                    "id": category,
+                    "shortDescription": {"text": description},
+                    "help": {"text": description},
+                }
+            )
+    cited_checks = sorted(
+        {
+            check_id
+            for finding in findings
+            for check_id in finding["rule_ids"]
+        }
+    )
+    for check_id in cited_checks:
+        descriptor: Dict[str, Any] = {"id": check_id}
+        entry = catalog.get(check_id)
+        guidance = (
+            str(entry.get("guidance") or "").strip()
+            if isinstance(entry, dict)
+            else ""
+        )
+        if guidance:
+            descriptor["fullDescription"] = {"text": guidance}
+            descriptor["help"] = {"text": guidance}
+        descriptors.append(descriptor)
+    indices = {
+        descriptor["id"]: index
+        for index, descriptor in enumerate(descriptors)
+    }
+    return descriptors, indices
+
+
+def sarif_result(
+    finding: Mapping[str, Any],
+    rule_indices: Mapping[str, int],
+) -> Dict[str, Any]:
+    rule_ids = finding["rule_ids"]
+    primary = rule_ids[0] if rule_ids else finding["category"]
+    message = (
+        f"{finding['summary']}\n\n"
+        f"Failure scenario: {finding['failure_scenario']}"
+    )
+    if finding["verdict"] == "UNVERIFIED":
+        message += "\n\n" + SARIF_UNVERIFIED_NOTE
+    result: Dict[str, Any] = {
+        "ruleId": primary,
+        "ruleIndex": rule_indices[primary],
+        "level": SARIF_LEVELS[finding["severity"]],
+        "message": {"text": message},
+        "locations": [sarif_location(finding["file"], finding["line"])],
+        "partialFingerprints": {
+            "codeReviewIdentity/v1": (
+                f"{finding['file']}:{finding['line']}:{finding['category']}"
+            )
+        },
+        "properties": {
+            key: finding[key]
+            for key in (
+                "id",
+                "category",
+                "severity",
+                "confidence",
+                "verdict",
+                "reports",
+                "reporters",
+                "rule_ids",
+                "anchors",
+                "source",
+            )
+        },
+    }
+    anchors = finding.get("anchors") or []
+    if anchors:
+        result["relatedLocations"] = [
+            {
+                **sarif_location(anchor["file"], anchor["line"]),
+                "message": {
+                    "text": (
+                        f"Also reported as {anchor['id']} "
+                        f"({anchor['category']}) and folded in."
+                    )
+                },
+            }
+            for anchor in anchors
+        ]
+    return result
+
+
+def render_sarif(
+    manifest: Mapping[str, Any],
+    findings: Sequence[Mapping[str, Any]],
+    coverage: Mapping[str, Any],
+    reasons: Sequence[str],
+) -> str:
+    rules, rule_indices = sarif_rules(findings, coverage)
+    run = {
+        "tool": {
+            "driver": {
+                "name": "code-review",
+                "informationUri": (
+                    "https://github.com/lithoscomputer/code-review"
+                ),
+                "rules": rules,
+            }
+        },
+        "automationDetails": {"id": f"code-review/{manifest['mode']}"},
+        "columnKind": "utf16CodeUnits",
+        "originalUriBaseIds": {
+            "%SRCROOT%": {
+                "description": {"text": "The root of the reviewed repository."}
+            }
+        },
+        "results": [
+            sarif_result(finding, rule_indices) for finding in findings
+        ],
+        "properties": {
+            "review_id": manifest.get("review_id"),
+            "mode": manifest.get("mode"),
+            "effort": manifest.get("effort"),
+            "model": manifest.get("model"),
+            "guidance": manifest.get("guidance") or "",
+            "completed_at": manifest.get("completed_at"),
+            "revision": manifest.get("revision"),
+            "verification": manifest["verification"]["status"],
+            "completion": manifest["completion"]["status"],
+            "partial_reasons": list(reasons),
+        },
+    }
+    document = {
+        "$schema": SARIF_SCHEMA_URI,
+        "version": SARIF_VERSION,
+        "runs": [run],
+    }
+    return json.dumps(document, ensure_ascii=True, indent=2) + "\n"
+
+
 # --- Entry point -------------------------------------------------------------
 
 
@@ -830,6 +1096,10 @@ def render(
     atomic_write(
         products / "CODE-REVIEW-RESULTS.jsonl",
         "".join(jsonl_line(finding) + "\n" for finding in findings),
+    )
+    atomic_write(
+        products / "CODE-REVIEW-RESULTS.sarif",
+        render_sarif(manifest, findings, coverage, reasons),
     )
     revision = {
         "schema_version": CANONICAL_SCHEMA_VERSION,

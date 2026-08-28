@@ -15,6 +15,20 @@ guidance = ""
 expected_min_findings = ""
 expected_file = ""
 expected_min_rule_findings = ""
+# Opt-in PR publishing (the publish_pr node). post_pr = "true" posts the
+# findings to the named pull request; everything else leaves the node a
+# no-op. pr_repo is the owner/name slug, pr_number the PR number.
+post_pr = ""
+pr_repo = ""
+pr_number = ""
+# Routing policy: findings at or below the severity (high|medium|low), or
+# in the listed categories (comma-separated), go to the summary comment
+# instead of inline. Empty disables that dimension; a malformed value
+# fails the plan (fail-closed).
+route_severity_below = ""
+route_categories = ""
+# Optional run-report URL included in the sticky summary.
+run_url = ""
 
 # Full history, for arbitrary base and range inputs.
 [run.clone]
@@ -35,9 +49,18 @@ enabled = false
 [run.environment]
 id = "code-review"
 
-[run.environment.env]
-GITHUB_TOKEN = ""
-GH_TOKEN = ""
+# The publish_pr node posts review comments, so the run needs a GitHub
+# token. Declaring these permissions makes Fabro mint a scoped
+# installation token and inject it as GITHUB_TOKEN into sandbox command
+# and agent execution; the grant is the minimum the publisher needs
+# (inline review comments and the sticky summary on the reviewed PR).
+# If the server has no GitHub integration, the run continues without a
+# token and publish_pr fails only when post_pr actually asks it to post.
+# Operating requirement (publisher spec R14): the launcher must not run
+# two publishing reviews of the same PR concurrently -- serialize runs
+# per repository+PR.
+[run.integrations.github.permissions]
+pull_requests = "write"
 
 [run.checkpoint]
 exclude_globs = [
@@ -52,6 +75,7 @@ include = [
   "CODE-REVIEW-*/CODE-REVIEW-RESULTS.md",
   "CODE-REVIEW-*/CODE-REVIEW-RESULTS.html",
   "CODE-REVIEW-*/CODE-REVIEW-RESULTS.jsonl",
+  "CODE-REVIEW-*/CODE-REVIEW-RESULTS.sarif",
   "CODE-REVIEW-*/evidence/review-manifest.json",
   "CODE-REVIEW-*/evidence/candidate-ledger.jsonl",
   "CODE-REVIEW-*/evidence/findings.json",
@@ -60,6 +84,8 @@ include = [
   "CODE-REVIEW-*/metadata/revision.json",
   "CODE-REVIEW-*/metadata/state.json",
   "CODE-REVIEW-*/metadata/review-meta.json",
+  "CODE-REVIEW-*/pr-publish-plan.json",
+  "CODE-REVIEW-*/pr-publish-outcome.json",
 ]
 
 [environments.code-review]

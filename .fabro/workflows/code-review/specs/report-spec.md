@@ -29,9 +29,10 @@ The canonical bundle is schema version 3.
   rule-mapped tiers it also records the authoritative target-file list, the
   grouping mode and final groups with fallback and corrections, whether a
   small target collapsed the shape, per-kind job accounting, the compiled
-  rule layers, the effective check IDs per file, overridden built-in checks
-  per file, the `.m` classification, and rule-audit cells that returned no
-  usable output.
+  rule layers, the effective check IDs per file, a `checkCatalog` with the
+  category and guidance text of every effective check, overridden built-in
+  checks per file, the `.m` classification, and rule-audit cells that
+  returned no usable output.
   `coverage.calibration` is a compact, aggregatable summary of how the
   run's candidates fared -- dispositions and verdicts overall and per
   reporter kind, reporter, rule check, and category, plus rejection reasons
@@ -50,6 +51,14 @@ timestamped result directory from the five canonical files:
 - `CODE-REVIEW-RESULTS.md` for people.
 - `CODE-REVIEW-RESULTS.html` for people, from `templates/report.html`.
 - `CODE-REVIEW-RESULTS.jsonl` for finding consumers and CI gates.
+- `CODE-REVIEW-RESULTS.sarif` for SARIF consumers such as GitHub Code
+  Scanning.
+
+At the rule-mapped tiers, the Markdown and HTML coverage sections include a
+rules-coverage summary derived from the canonical bundle: distinct checks
+audited (with pack counts) across audited files and audit cells, reported
+findings citing a check with a per-check violation breakdown, policy-filtered
+findings, and duplicates folded.
 
 It also writes `metadata/revision.json`, recording the reviewed revision, run
 settings, finding counts, verification status, and canonical bundle location.
@@ -152,6 +161,29 @@ text. The payload escapes `<`, `>`, `&`, and every non-ASCII codepoint, so no
 finding text can close the script element, open an HTML comment, or end a
 JavaScript statement. The template's script writes model-authored text with
 `textContent` only.
+
+## SARIF rendering
+
+`CODE-REVIEW-RESULTS.sarif` is one SARIF 2.1.0 run derived from the same
+validated bundle:
+
+- A finding backed by compiled rule checks reports under its first check ID;
+  the check's guidance from `coverage.rules.checkCatalog` becomes the rule's
+  description and help. A finding without rule checks reports under its
+  category, with a fixed description per category. The driver's rules list
+  covers every check ID any result cites.
+- Severity maps to level: `HIGH` is `error`, `MEDIUM` is `warning`, `LOW` is
+  `note`.
+- Each result's location is the finding's file and line relative to
+  `%SRCROOT%`; anchors become related locations. The finding's identity,
+  category, severity, confidence, verdict, reports, reporters, rule IDs,
+  anchors, and source are result properties, and the file, line, and
+  category form a stable partial fingerprint.
+- An `UNVERIFIED` finding (the `low` tier) says so in its result message and
+  carries the verdict in its properties.
+- The run's automation ID is `code-review/<mode>`, and the run properties
+  record the review ID, target, revision, request settings, verification and
+  completion statuses, and any partial-review reasons.
 
 ## Required relationships
 

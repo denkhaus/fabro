@@ -54,6 +54,7 @@ WORKFLOW_ROOT = Path(".fabro/workflows/code-review")
 CONTROL_DIR = WORKFLOW_ROOT / "runtime"
 STATE_PATH = CONTROL_DIR / "state.json"
 RENDERER_PATH = WORKFLOW_ROOT / "scripts/render_report.py"
+PUBLISHER_PATH = WORKFLOW_ROOT / "scripts/publish_pr.py"
 FINDINGS_SCHEMA_PATH = WORKFLOW_ROOT / "schemas/findings.schema.json"
 VERDICT_SCHEMA_PATH = WORKFLOW_ROOT / "schemas/verdict.schema.json"
 
@@ -3242,6 +3243,17 @@ def final_tally() -> None:
             "repoRuleFiles": list(rules_state.get("repo_rule_files") or []),
             "counts": dict(rules_state.get("counts") or {}),
             "effectiveChecksByFile": dict(rules_state.get("effective") or {}),
+            # The compiled text of every effective check, so the renderer
+            # can attach guidance to rule-derived findings (SARIF rule help).
+            "checkCatalog": {
+                check_id: {
+                    "category": check.get("category"),
+                    "guidance": check.get("guidance"),
+                }
+                for check_id, check in sorted(
+                    (rules_state.get("catalog") or {}).items()
+                )
+            },
             "overriddenBuiltinChecksByFile": dict(
                 rules_state.get("overridden") or {}
             ),
@@ -3394,6 +3406,126 @@ def render_report() -> None:
         verification_status=verification.get("status"),
         finding_count=len(findings),
     )
+
+
+def publish_pr_command(args: argparse.Namespace) -> None:
+    """Post the completed review to its GitHub PR (the P1 publisher).
+
+    The graph runs this node unconditionally after render-report; the
+    post_pr input decides whether anything happens. The plan step is pure
+    and runs with credentials scrubbed (R18); only apply sees
+    GITHUB_TOKEN. The plan and outcome files land in the products
+    directory as replayable evidence, peers of the canonical bundle.
+    """
+    requested = str(args.post_pr or "").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+        "on",
+    )
+    if not requested:
+        print("PR publishing not requested (post_pr is off)")
+        emit(publish_pr={"requested": False})
+        return
+    state = load_state()
+    if not isinstance(state.get("review_manifest"), dict):
+        raise WorkflowDataError(
+            "publish-pr requires a completed review bundle; it runs after "
+            "final-tally and render-report"
+        )
+    assert_workspace_unchanged(state)
+    repo = str(args.pr_repo or "").strip()
+    pr_text = str(args.pr_number or "").strip()
+    if not repo or not pr_text:
+        raise WorkflowDataError(
+            "post_pr is enabled but pr_repo/pr_number do not name the "
+            "target pull request"
+        )
+    if not pr_text.isdigit() or int(pr_text) < 1:
+        raise WorkflowDataError(
+            f"pr_number must be a positive integer, got {pr_text!r}"
+        )
+    if not os.environ.get("GITHUB_TOKEN"):
+        raise WorkflowDataError(
+            "publish-pr needs GITHUB_TOKEN in the environment; the "
+            "workflow's [run.integrations.github.permissions] makes Fabro "
+            "inject one when its GitHub integration is configured"
+        )
+    publisher = (root() / PUBLISHER_PATH).resolve()
+    if not publisher.is_file():
+        raise WorkflowDataError(f"the PR publisher is missing: {PUBLISHER_PATH}")
+    products_rel = str(state["products_rel"])
+    evidence_rel = str(state["evidence_rel"])
+    plan_rel = f"{products_rel}/pr-publish-plan.json"
+    outcome_rel = f"{products_rel}/pr-publish-outcome.json"
+
+    def run_publisher(
+        arguments: List[str],
+        environment: Optional[Dict[str, str]] = None,
+    ) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(publisher), *arguments],
+            cwd=root(),
+            env=environment,
+            capture_output=True,
+        )
+
+    # The plan step needs no credentials and runs without any (R18).
+    plan_environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in ("GITHUB_TOKEN", "GH_TOKEN")
+    }
+    result = run_publisher(
+        [
+            "plan",
+            "--evidence-dir", evidence_rel,
+            "--repo", repo,
+            "--pr", pr_text,
+            "--route-severity-below", str(args.route_severity_below or ""),
+            "--route-categories", str(args.route_categories or ""),
+            "--run-url", one_line(args.run_url, 2000),
+            "--output", plan_rel,
+        ],
+        plan_environment,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", "replace").strip()
+        raise WorkflowDataError(
+            "the publication plan failed: " + one_line(detail, 2000)
+        )
+    print(result.stdout.decode("utf-8", "replace").strip())
+
+    result = run_publisher(
+        [
+            "apply",
+            "--plan", plan_rel,
+            "--repo", repo,
+            "--pr", pr_text,
+            "--api-base", str(args.api_base),
+            "--outcome", outcome_rel,
+        ]
+    )
+    outcome_path = root() / outcome_rel
+    outcome: Dict[str, Any] = {}
+    if outcome_path.is_file():
+        value = read_json(outcome_path)
+        if isinstance(value, dict):
+            outcome = value
+    updates: Dict[str, Any] = {"requested": True}
+    if outcome:
+        updates["counts"] = outcome.get("counts")
+        updates["summary_url"] = outcome.get("summary_url") or ""
+        updates["outcome_path"] = outcome_rel
+    emit(publish_pr=updates)
+    stdout_text = result.stdout.decode("utf-8", "replace").strip()
+    if stdout_text:
+        print(stdout_text)
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", "replace").strip()
+        raise WorkflowDataError(
+            "posting to the PR failed: " + one_line(detail, 2000)
+        )
 
 
 def lint_rules() -> None:
@@ -3557,6 +3689,15 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("grouping", "sweep", *PHASE_OUTPUT_KEYS.keys()),
     )
 
+    publish_parser = subparsers.add_parser("publish-pr")
+    publish_parser.add_argument("--post-pr", default="")
+    publish_parser.add_argument("--pr-repo", default="")
+    publish_parser.add_argument("--pr-number", default="")
+    publish_parser.add_argument("--route-severity-below", default="")
+    publish_parser.add_argument("--route-categories", default="")
+    publish_parser.add_argument("--run-url", default="")
+    publish_parser.add_argument("--api-base", default="https://api.github.com")
+
     expectations_parser = subparsers.add_parser("verify-expectations")
     expectations_parser.add_argument("--expected-min-findings", default="")
     expectations_parser.add_argument("--expected-file", default="")
@@ -3586,6 +3727,7 @@ def main(argv: Sequence[str]) -> int:
         "tally": tally,
         "final-tally": final_tally,
         "render-report": render_report,
+        "publish-pr": lambda: publish_pr_command(args),
         "lint-rules": lint_rules,
         "verify-expectations": lambda: verify_expectations(
             args.expected_min_findings,

@@ -270,6 +270,45 @@ function renderCoverage() {
     "Verification: " + verification.votesCompleted + " of " +
     verification.votesDispatched + " verdict(s) returned (" +
     verification.status + ")."));
+  const rules = coverage.rules;
+  if (rules) {
+    const effective = rules.effectiveChecksByFile || {};
+    let auditedFiles = 0;
+    const distinct = new Set();
+    for (const ids of Object.values(effective)) {
+      if ((ids || []).length) auditedFiles++;
+      (ids || []).forEach(id => distinct.add(id));
+    }
+    const cells = ((coverage.finders || {}).byKind || {})["rule-audit"] || {};
+    const counts = rules.counts || {};
+    const ruleFindings = (DATA.findings || [])
+      .filter(f => (f.rule_ids || []).length);
+    const filtered0 = (coverage.filteredFindingReports || []).length;
+    const folded = (((DATA.meta || {}).counts) || {}).duplicates || 0;
+    list.appendChild(el("li", null,
+      "Rules: audited " + distinct.size + " check(s) (" +
+      (counts.builtin_packs || 0) + " built-in + " +
+      (counts.repo_packs || 0) + " repository pack(s)) across " +
+      auditedFiles + " file(s) in " + (cells.returned || 0) + " of " +
+      (cells.dispatched || 0) + " audit cell(s); " + ruleFindings.length +
+      " violation(s) reported; " + filtered0 + " filtered; " +
+      folded + " folded."));
+    if (ruleFindings.length) {
+      const perCheck = {};
+      for (const finding of ruleFindings) {
+        for (const id of finding.rule_ids) {
+          perCheck[id] = (perCheck[id] || 0) + 1;
+        }
+      }
+      const item = el("li", null, "Violations by check:");
+      const sub = el("ul");
+      Object.entries(perCheck)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .forEach(([id, n]) => sub.appendChild(el("li", null, id + " x" + n)));
+      item.appendChild(sub);
+      list.appendChild(item);
+    }
+  }
   const rejected = coverage.rejectedFindingReports || [];
   if (rejected.length) {
     const item = el("li", null,
