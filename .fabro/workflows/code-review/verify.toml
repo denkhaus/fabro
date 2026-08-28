@@ -24,6 +24,16 @@ expected_min_findings = "1"
 expected_file = ".fabro/workflows/code-review/fixtures/inventory_utils.py"
 expected_min_rule_findings = "1"
 
+# The shared graph's publish_pr node interpolates these inputs, so every
+# workflow.toml that runs the graph must define them; smoke runs never
+# post, so they stay empty.
+post_pr = ""
+pr_repo = ""
+pr_number = ""
+route_severity_below = ""
+route_categories = ""
+run_url = ""
+
 [run.run_branch]
 enabled = false
 

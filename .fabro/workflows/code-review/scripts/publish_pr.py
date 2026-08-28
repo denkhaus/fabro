@@ -126,11 +126,36 @@ def resolve_commit(token: str, field: str) -> str:
     return resolved
 
 
+def resolve_diff_base(token: str) -> str:
+    """The diff base as a commit, or a bare tree for a root commit.
+
+    A root commit's reviewed range starts at the empty tree, which is
+    tree-ish but not a commit; ``git diff`` accepts it as a base.
+    """
+    result = run_git("rev-parse", "--verify", "--quiet", token + "^{commit}")
+    resolved = result.stdout.decode("utf-8", "replace").strip()
+    if result.returncode == 0 and SHA_RE.fullmatch(resolved):
+        return resolved
+    result = run_git("rev-parse", "--verify", "--quiet", token + "^{tree}")
+    resolved = result.stdout.decode("utf-8", "replace").strip()
+    if result.returncode == 0 and SHA_RE.fullmatch(resolved):
+        return resolved
+    fail(
+        f"range base {token!r} does not resolve to a commit or tree in "
+        "this repository; plan must run inside the reviewed checkout"
+    )
+
+
 def right_side_hunks(base: str, head: str) -> Dict[str, List[Tuple[int, int]]]:
     """RIGHT-side hunk line ranges of ``git diff -U3 base head`` (R2).
 
     Hunks include context lines; a pure-deletion hunk has no RIGHT-side
-    lines and is skipped.
+    lines and is skipped. A ``+++ `` target line counts as a file header
+    only inside a file's preamble (between its ``diff --git`` boundary
+    and its first hunk): an added body line whose content starts with
+    ``++ `` renders as ``+++ `` but cannot reach the preamble, because
+    every hunk body line carries a +/-/space marker while a real file
+    boundary starts bare.
     """
     result = run_git(
         "diff", "--no-color", "--no-ext-diff", "--find-renames", "-U3",
@@ -141,8 +166,12 @@ def right_side_hunks(base: str, head: str) -> Dict[str, List[Tuple[int, int]]]:
         fail(f"git diff over the reviewed range failed: {detail}")
     ranges: Dict[str, List[Tuple[int, int]]] = {}
     current: Optional[str] = None
+    in_preamble = False
     for line in result.stdout.decode("utf-8", "replace").splitlines():
-        if line.startswith("+++ "):
+        if line.startswith("diff --git "):
+            in_preamble = True
+            current = None
+        elif in_preamble and line.startswith("+++ "):
             target = line[4:]
             if target == "/dev/null" or target.startswith('"'):
                 current = None
@@ -150,7 +179,10 @@ def right_side_hunks(base: str, head: str) -> Dict[str, List[Tuple[int, int]]]:
                 current = target[2:]
             else:
                 current = target
-        elif line.startswith("@@ ") and current is not None:
+        elif line.startswith("@@ "):
+            in_preamble = False
+            if current is None:
+                continue
             match = HUNK_HEADER_RE.match(line)
             if not match:
                 continue
@@ -209,6 +241,13 @@ def parse_batch_size(raw: str) -> int:
     except (TypeError, ValueError):
         return DEFAULT_BATCH_SIZE
     return value if value >= 1 else DEFAULT_BATCH_SIZE
+
+
+def parse_pr_number(raw: str) -> int:
+    text = str(raw).strip()
+    if not text.isdigit() or int(text) < 1:
+        fail(f"pr must be a positive integer, got {raw!r}")
+    return int(text)
 
 
 def routing_detail(
@@ -515,7 +554,7 @@ def resolve_reviewed_range(manifest: Mapping[str, Any]) -> Tuple[str, str, str]:
         fail(f"the manifest range is not two-sided: {range_text!r}")
     if not left_token:
         fail(f"the manifest range has no base side: {range_text!r}")
-    left_sha = resolve_commit(left_token, "range base")
+    left_sha = resolve_diff_base(left_token)
     resolved_head = resolve_commit(head, "reviewed head")
     if resolved_head != head:
         fail("the reviewed head commit is not present in this repository")
@@ -533,9 +572,7 @@ def command_plan(args: argparse.Namespace) -> int:
     repo = args.repo.strip()
     if not REPO_RE.fullmatch(repo) or ".." in repo:
         fail(f"repo must look like owner/name, got {args.repo!r}")
-    pr = int(args.pr)
-    if pr < 1:
-        fail("pr must be a positive integer")
+    pr = parse_pr_number(args.pr)
     # Fail-closed routing policy (R5): a malformed configuration fails the
     # plan before anything can be posted.
     threshold = parse_severity_threshold(args.route_severity_below)
@@ -1016,12 +1053,18 @@ class BatchPoster:
     def is_server_failure(status: Optional[int]) -> bool:
         return status is None or status == 408 or (status >= 500)
 
-    def mark_unverified(self, finding_ids: Sequence[str]) -> None:
+    UNVERIFIED_DETAIL = (
+        "a server error interrupted the write and the result could not "
+        "be verified"
+    )
+    DROPPED_DETAIL = (
+        "a server error dropped the write; the comment was verified "
+        "missing and the retry also failed"
+    )
+
+    def mark_failed(self, finding_ids: Sequence[str], detail: str) -> None:
         for finding_id in finding_ids:
-            self.failed[finding_id] = (
-                "a server error interrupted the write and the result could "
-                "not be verified"
-            )
+            self.failed[finding_id] = detail
 
     def reconcile(self, finding_ids: Sequence[str]) -> List[str]:
         """After a possibly-landed failure: absorb what landed, return what
@@ -1029,7 +1072,7 @@ class BatchPoster:
         return nothing (never risk a duplicate, R14)."""
         landed = self.landed_ids()
         if landed is None:
-            self.mark_unverified(finding_ids)
+            self.mark_failed(finding_ids, self.UNVERIFIED_DETAIL)
             return []
         self.posted.update(landed & set(self.by_id))
         return [fid for fid in finding_ids if fid not in landed]
@@ -1047,7 +1090,20 @@ class BatchPoster:
             elif self.is_server_failure(status):
                 missing = self.reconcile([finding_id])
                 if missing:
-                    self.mark_unverified(missing)
+                    # Verified missing, so one retry cannot duplicate (R14).
+                    retry_status = self.post_review([finding_id])
+                    if retry_status in (200, 201):
+                        self.posted.add(finding_id)
+                    elif retry_status == 422:
+                        self.failed[finding_id] = (
+                            "GitHub could not resolve the diff position (422)"
+                        )
+                    else:
+                        still_missing = self.reconcile([finding_id])
+                        if still_missing:
+                            self.mark_failed(
+                                still_missing, self.DROPPED_DETAIL
+                            )
             else:
                 self.failed[finding_id] = f"GitHub refused the comment (HTTP {status})"
 
@@ -1071,7 +1127,9 @@ class BatchPoster:
                     else:
                         still_missing = self.reconcile(missing)
                         if still_missing:
-                            self.mark_unverified(still_missing)
+                            self.mark_failed(
+                                still_missing, self.DROPPED_DETAIL
+                            )
             else:
                 for finding_id in to_send:
                     self.failed[finding_id] = (
@@ -1088,9 +1146,7 @@ def command_apply(args: argparse.Namespace) -> int:
     repo = args.repo.strip()
     if not REPO_RE.fullmatch(repo) or ".." in repo:
         fail(f"repo must look like owner/name, got {args.repo!r}")
-    pr = int(args.pr)
-    if pr < 1:
-        fail("pr must be a positive integer")
+    pr = parse_pr_number(args.pr)
     try:
         raw_plan = json.loads(Path(args.plan).read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
@@ -1128,30 +1184,23 @@ def command_apply(args: argparse.Namespace) -> int:
     )
 
     # Sticky-summary discovery (R7): only a marker comment authored by our
-    # own token identity is ever updated; the newest owned one wins.
+    # own token identity is ever updated; the newest owned one wins. While
+    # the login is still unknown, no comment counts as owned.
     def find_owned_summary(
         comments: Sequence[Mapping[str, Any]],
-        author: Optional[str],
     ) -> Optional[Dict[str, Any]]:
-        if author is None:
+        if login is None:
             return None
         owned = [
             comment
             for comment in comments
             if SUMMARY_MARKER in str(comment.get("body") or "")
-            and (comment.get("user") or {}).get("login") == author
+            and (comment.get("user") or {}).get("login") == login
             and isinstance(comment.get("id"), int)
         ]
         if not owned:
             return None
         return max(owned, key=lambda comment: comment["id"])
-
-    def create_anchor() -> Tuple[Optional[int], Optional[Dict[str, Any]]]:
-        return client.request(
-            "POST",
-            f"/repos/{repo}/issues/{pr}/comments",
-            {"body": summary["anchor_body"]},
-        )
 
     prior_comments = client.list_all(f"/repos/{repo}/issues/{pr}/comments")
     summary_comment_id: Optional[int] = None
@@ -1159,18 +1208,22 @@ def command_apply(args: argparse.Namespace) -> int:
     stale_skip = False
     anchor_failed = False
 
-    if login is not None:
-        existing = find_owned_summary(prior_comments, login)
-        if existing is not None:
-            stamp = completed_stamp(str(existing.get("body") or ""))
-            if is_newer_stamp(stamp, summary["completed_at"]):
-                # Stale-run guard (R14): never overwrite a newer review's
-                # summary.
-                stale_skip = True
-                summary_url = str(existing.get("html_url") or "")
-            else:
-                summary_comment_id = existing["id"]
-                summary_url = str(existing.get("html_url") or "")
+    # Take over an owned summary comment as the one to update -- unless it
+    # carries a newer review's completed tag: the stale-run guard (R14)
+    # never overwrites a newer review's summary.
+    def adopt(existing: Mapping[str, Any]) -> None:
+        nonlocal stale_skip, summary_comment_id, summary_url
+        summary_url = str(existing.get("html_url") or "")
+        stamp = completed_stamp(str(existing.get("body") or ""))
+        if is_newer_stamp(stamp, summary["completed_at"]):
+            stale_skip = True
+            summary_comment_id = None
+        else:
+            summary_comment_id = existing["id"]
+
+    existing = find_owned_summary(prior_comments)
+    if existing is not None:
+        adopt(existing)
 
     # Anchor before review on a cold start (R8). A failed anchor does not
     # abort the run; the final summary write settles the outcome (R16).
@@ -1180,31 +1233,30 @@ def command_apply(args: argparse.Namespace) -> int:
     # one summary (R7); if the delete fails, the probe is the newest owned
     # comment and later runs converge on it.
     if not stale_skip and summary_comment_id is None:
-        status, created = create_anchor()
+        status, created = client.request(
+            "POST",
+            f"/repos/{repo}/issues/{pr}/comments",
+            {"body": summary["anchor_body"]},
+        )
         if status in (200, 201) and isinstance(created, dict) and isinstance(
             created.get("id"), int
         ):
-            anchor_id = created["id"]
-            anchor_url = str(created.get("html_url") or "")
-            summary_comment_id = anchor_id
-            summary_url = anchor_url
+            summary_comment_id = created["id"]
+            summary_url = str(created.get("html_url") or "")
             if login is None:
                 login = (created.get("user") or {}).get("login")
-                prior = find_owned_summary(prior_comments, login)
+                prior = find_owned_summary(prior_comments)
                 if prior is not None:
                     delete_status, _ = client.request(
                         "DELETE",
-                        f"/repos/{repo}/issues/comments/{anchor_id}",
+                        f"/repos/{repo}/issues/comments/{summary_comment_id}",
                     )
                     deleted = delete_status in (200, 204)
-                    stamp = completed_stamp(str(prior.get("body") or ""))
-                    if is_newer_stamp(stamp, summary["completed_at"]):
-                        stale_skip = True
-                        summary_comment_id = None
-                        summary_url = str(prior.get("html_url") or "")
-                    elif deleted:
-                        summary_comment_id = prior["id"]
-                        summary_url = str(prior.get("html_url") or "")
+                    if deleted or is_newer_stamp(
+                        completed_stamp(str(prior.get("body") or "")),
+                        summary["completed_at"],
+                    ):
+                        adopt(prior)
         else:
             anchor_failed = True
             print(
@@ -1268,13 +1320,12 @@ def command_apply(args: argparse.Namespace) -> int:
             review_id,
             plan["config"].get("run_url") or "",
         )
-        if summary_comment_id is None and anchor_failed:
+        if summary_comment_id is None and anchor_failed and login is not None:
             # The anchor write may have landed despite its error; re-read
             # before choosing create over update (R14).
             try:
                 landed = find_owned_summary(
-                    client.list_all(f"/repos/{repo}/issues/{pr}/comments"),
-                    login,
+                    client.list_all(f"/repos/{repo}/issues/{pr}/comments")
                 )
             except PublishError:
                 landed = None

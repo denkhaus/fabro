@@ -895,7 +895,8 @@ def assert_workspace_unchanged(state: Mapping[str, Any]) -> None:
 
     Tamper evidence behind the read-only tool guard: an agent that finds a way
     to write could shape what the verifiers and the report see. Checked only at
-    the publication gates (final-tally and render-report).
+    the publication gates: final-tally, render-report, and publish-pr (the
+    last immediately before anything leaves for GitHub).
     """
     expected = state.get("workspace_digest")
     actual = workspace_digest()
@@ -3357,12 +3358,15 @@ def final_tally() -> None:
 # --- Rendering and expectations ----------------------------------------------
 
 
-def load_renderer() -> Any:
-    path = (root() / RENDERER_PATH).resolve()
+def resolve_workflow_script(rel_path: Path, description: str) -> Path:
+    path = (root() / rel_path).resolve()
     if not path.is_file():
-        raise WorkflowDataError(
-            f"the deterministic renderer is missing: {RENDERER_PATH}"
-        )
+        raise WorkflowDataError(f"the {description} is missing: {rel_path}")
+    return path
+
+
+def load_renderer() -> Any:
+    path = resolve_workflow_script(RENDERER_PATH, "deterministic renderer")
     spec = importlib.util.spec_from_file_location(
         "code_review_render_report",
         path,
@@ -3417,12 +3421,7 @@ def publish_pr_command(args: argparse.Namespace) -> None:
     GITHUB_TOKEN. The plan and outcome files land in the products
     directory as replayable evidence, peers of the canonical bundle.
     """
-    requested = str(args.post_pr or "").strip().lower() in (
-        "true",
-        "1",
-        "yes",
-        "on",
-    )
+    requested = args.post_pr.strip().lower() in ("true", "1", "yes", "on")
     if not requested:
         print("PR publishing not requested (post_pr is off)")
         emit(publish_pr={"requested": False})
@@ -3434,16 +3433,12 @@ def publish_pr_command(args: argparse.Namespace) -> None:
             "final-tally and render-report"
         )
     assert_workspace_unchanged(state)
-    repo = str(args.pr_repo or "").strip()
-    pr_text = str(args.pr_number or "").strip()
+    repo = args.pr_repo.strip()
+    pr_text = args.pr_number.strip()
     if not repo or not pr_text:
         raise WorkflowDataError(
             "post_pr is enabled but pr_repo/pr_number do not name the "
             "target pull request"
-        )
-    if not pr_text.isdigit() or int(pr_text) < 1:
-        raise WorkflowDataError(
-            f"pr_number must be a positive integer, got {pr_text!r}"
         )
     if not os.environ.get("GITHUB_TOKEN"):
         raise WorkflowDataError(
@@ -3451,9 +3446,7 @@ def publish_pr_command(args: argparse.Namespace) -> None:
             "workflow's [run.integrations.github.permissions] makes Fabro "
             "inject one when its GitHub integration is configured"
         )
-    publisher = (root() / PUBLISHER_PATH).resolve()
-    if not publisher.is_file():
-        raise WorkflowDataError(f"the PR publisher is missing: {PUBLISHER_PATH}")
+    publisher = resolve_workflow_script(PUBLISHER_PATH, "PR publisher")
     products_rel = str(state["products_rel"])
     evidence_rel = str(state["evidence_rel"])
     plan_rel = f"{products_rel}/pr-publish-plan.json"
@@ -3470,11 +3463,21 @@ def publish_pr_command(args: argparse.Namespace) -> None:
             capture_output=True,
         )
 
-    # The plan step needs no credentials and runs without any (R18).
+    def publisher_error(
+        prefix: str, failed: subprocess.CompletedProcess
+    ) -> WorkflowDataError:
+        detail = failed.stderr.decode("utf-8", "replace").strip()
+        return WorkflowDataError(prefix + one_line(detail, 2000))
+
+    # The plan step needs no credentials and runs with none (R18). Its
+    # environment is rebuilt from a benign allowlist, so a credential
+    # injected under any name -- not just the ones Fabro uses today --
+    # never reaches the plan.
     plan_environment = {
         key: value
         for key, value in os.environ.items()
-        if key not in ("GITHUB_TOKEN", "GH_TOKEN")
+        if key in ("PATH", "HOME", "TZ", "USER", "LOGNAME", "SHELL")
+        or key.startswith(("LANG", "LC_", "PYTHON", "TMP", "TEMP"))
     }
     result = run_publisher(
         [
@@ -3482,18 +3485,15 @@ def publish_pr_command(args: argparse.Namespace) -> None:
             "--evidence-dir", evidence_rel,
             "--repo", repo,
             "--pr", pr_text,
-            "--route-severity-below", str(args.route_severity_below or ""),
-            "--route-categories", str(args.route_categories or ""),
+            "--route-severity-below", args.route_severity_below,
+            "--route-categories", args.route_categories,
             "--run-url", one_line(args.run_url, 2000),
             "--output", plan_rel,
         ],
         plan_environment,
     )
     if result.returncode != 0:
-        detail = result.stderr.decode("utf-8", "replace").strip()
-        raise WorkflowDataError(
-            "the publication plan failed: " + one_line(detail, 2000)
-        )
+        raise publisher_error("the publication plan failed: ", result)
     print(result.stdout.decode("utf-8", "replace").strip())
 
     result = run_publisher(
@@ -3502,16 +3502,12 @@ def publish_pr_command(args: argparse.Namespace) -> None:
             "--plan", plan_rel,
             "--repo", repo,
             "--pr", pr_text,
-            "--api-base", str(args.api_base),
+            "--api-base", args.api_base,
             "--outcome", outcome_rel,
         ]
     )
-    outcome_path = root() / outcome_rel
-    outcome: Dict[str, Any] = {}
-    if outcome_path.is_file():
-        value = read_json(outcome_path)
-        if isinstance(value, dict):
-            outcome = value
+    value = read_json(root() / outcome_rel, required=False)
+    outcome: Dict[str, Any] = value if isinstance(value, dict) else {}
     updates: Dict[str, Any] = {"requested": True}
     if outcome:
         updates["counts"] = outcome.get("counts")
@@ -3522,10 +3518,7 @@ def publish_pr_command(args: argparse.Namespace) -> None:
     if stdout_text:
         print(stdout_text)
     if result.returncode != 0:
-        detail = result.stderr.decode("utf-8", "replace").strip()
-        raise WorkflowDataError(
-            "posting to the PR failed: " + one_line(detail, 2000)
-        )
+        raise publisher_error("posting to the PR failed: ", result)
 
 
 def lint_rules() -> None:
