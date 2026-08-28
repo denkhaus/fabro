@@ -6,7 +6,7 @@ use fabro_automation::{
     Automation, AutomationDraft, AutomationId, AutomationReplace, AutomationStoreError,
 };
 use fabro_store::{RunSummaryListQuery, RunSummaryVisibility};
-use fabro_types::{AutomationRef, RunId, RunTarget};
+use fabro_types::{AutomationRef, RunId};
 use fabro_util::error as error_util;
 use serde::Serialize;
 
@@ -132,7 +132,6 @@ async fn create_automation_run(
             target,
             workflow: automation.workflow.clone(),
             run_id,
-            user_settings_path: state.active_config_path().to_path_buf(),
             temp_root: state.automation_temp_root(),
         })
         .await
@@ -143,24 +142,20 @@ async fn create_automation_run(
             return ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, message).into_response();
         }
     };
-    let explicit_title_supplied = materialized.manifest.title.is_some();
     let automation_ref = AutomationRef {
         id:         automation.id.to_string(),
         name:       Some(automation.name.clone()),
         trigger_id: Some(api_trigger_id),
     };
 
-    let response = Box::pin(runs::create_run_from_manifest(
+    let response = Box::pin(runs::create_run_from_intent(
         Arc::clone(&state),
-        runs::CreateRunFromManifestRequest {
-            manifest: materialized.manifest,
-            submitted_manifest_bytes: materialized.submitted_manifest_bytes,
+        runs::CreateRunFromIntentRequest {
+            intent: materialized.into_run_intent(),
             explicit_run_id: Some(run_id),
-            explicit_title_supplied,
             actor: actor.clone(),
             headers,
             automation: Some(automation_ref),
-            target: Some(RunTarget::Git(materialized.target)),
         },
     ))
     .await;

@@ -541,7 +541,14 @@ async fn create_run(
     // round-trip would silently collapse duplicate keys to last-key-wins.
     let intent_error = match serde_json::from_slice::<RunIntent>(&body) {
         Ok(intent) => {
-            return Box::pin(create_run_from_intent(state, intent, actor, headers)).await;
+            return Box::pin(create_run_from_intent(state, CreateRunFromIntentRequest {
+                intent,
+                explicit_run_id: None,
+                actor,
+                headers,
+                automation: None,
+            }))
+            .await;
         }
         Err(err) => err,
     };
@@ -604,12 +611,28 @@ fn create_run_parse_error(
     ApiError::bad_request(manifest_error.to_string()).into_response()
 }
 
-async fn create_run_from_intent(
+pub(crate) struct CreateRunFromIntentRequest {
+    pub(crate) intent:          RunIntent,
+    /// Run ID preallocated by server-side automation code, never supplied by
+    /// an HTTP create body.
+    pub(crate) explicit_run_id: Option<RunId>,
+    pub(crate) actor:           Principal,
+    pub(crate) headers:         HeaderMap,
+    pub(crate) automation:      Option<AutomationRef>,
+}
+
+pub(crate) async fn create_run_from_intent(
     state: Arc<AppState>,
-    intent: RunIntent,
-    actor: Principal,
-    headers: HeaderMap,
+    request: CreateRunFromIntentRequest,
 ) -> Response {
+    let CreateRunFromIntentRequest {
+        intent,
+        explicit_run_id,
+        actor,
+        headers,
+        automation,
+    } = request;
+    let explicit_title_supplied = intent.title.is_some();
     // Validate the pure, in-memory request facts before paying for
     // blob-store reads and closure lowering.
     let ValidatedRunTarget { target, git } = match intent.target.validate() {
@@ -713,7 +736,7 @@ async fn create_run_from_intent(
         cli_overrides: None,
         input_overrides,
         inline_goal_override: intent.goal,
-        run_id: None,
+        run_id: explicit_run_id,
         title,
         parent_id: intent.parent_id,
         // Target identity and its Git projection are attached after provider
@@ -726,7 +749,7 @@ async fn create_run_from_intent(
         provenance: run_provenance(&headers, &actor),
         web_url: None,
         submitted_manifest_bytes: None,
-        automation: None,
+        automation,
     };
     let normalized = match run_compiler::normalize_source(raw_compiler_input) {
         Ok(normalized) => normalized,
@@ -764,7 +787,7 @@ async fn create_run_from_intent(
     finalize_created_run(
         state,
         prepared,
-        intent.title.is_some(),
+        explicit_title_supplied,
         entrypoint,
         CreatedRunErrorStyle::Intent,
     )

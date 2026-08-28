@@ -13,10 +13,7 @@ use serde_json::{Value, json};
 use sqlx::Row as _;
 use tower::ServiceExt;
 
-use crate::helpers::{
-    MINIMAL_DOT, api, checked_response, minimal_manifest_json, response_json, response_status,
-    run_json,
-};
+use crate::helpers::{api, checked_response, response_json, response_status, run_json};
 
 fn automation_body(id: &str, name: &str) -> Value {
     json!({
@@ -78,29 +75,26 @@ fn automation_app() -> (axum::Router, tempfile::TempDir, PathBuf) {
 }
 
 fn automation_app_with_fake_materializer() -> (axum::Router, tempfile::TempDir, PathBuf) {
+    automation_app_with_materializer(TestAutomationRunMaterializer::succeed(GitRunTarget {
+        repo:   "fabro-sh/fabro".to_string(),
+        branch: "main".to_string(),
+        tag:    None,
+        sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+    }))
+}
+
+fn automation_app_with_materializer(
+    materializer: TestAutomationRunMaterializer,
+) -> (axum::Router, tempfile::TempDir, PathBuf) {
     let temp_dir = tempfile::tempdir().expect("automation test tempdir should be created");
     let active_config_path = temp_dir.path().join("settings.toml");
     let vault_path = temp_dir.path().join("secrets.json");
     let sqlite_path = Storage::new(temp_dir.path()).sqlite_path();
-    let materialized_manifest: fabro_api::types::RunManifest =
-        serde_json::from_value(minimal_manifest_json(MINIMAL_DOT))
-            .expect("minimal run manifest fixture should deserialize");
-    let submitted_manifest_bytes =
-        serde_json::to_vec(&materialized_manifest).expect("minimal run manifest should serialize");
     let state = TestAppStateBuilder::new()
         .active_config_path(active_config_path)
         .vault_path(vault_path)
         .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
-        .automation_materializer(TestAutomationRunMaterializer::succeed(
-            materialized_manifest,
-            submitted_manifest_bytes,
-            GitRunTarget {
-                repo:   "fabro-sh/fabro".to_string(),
-                branch: "main".to_string(),
-                tag:    None,
-                sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
-            },
-        ))
+        .automation_materializer(materializer)
         .build();
     (build_test_router(state), temp_dir, sqlite_path)
 }
@@ -918,6 +912,25 @@ async fn successful_api_triggered_automation_run_persists_automation_metadata() 
     let retrieved = run_json(&app, run_id).await;
     assert_eq!(retrieved["id"], run_id);
     assert_eq!(retrieved["automation"], created["automation"]);
+}
+
+#[tokio::test]
+async fn api_triggered_automation_with_missing_version_does_not_create_or_start_a_run() {
+    let materializer = TestAutomationRunMaterializer::return_unstored_version(GitRunTarget {
+        repo:   "fabro-sh/fabro".to_string(),
+        branch: "main".to_string(),
+        tag:    None,
+        sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+    });
+    let (app, _temp_dir, _automation_dir) = automation_app_with_materializer(materializer);
+    create_automation(&app, "nightly", "Nightly").await;
+
+    let error = create_automation_run(&app, "nightly", StatusCode::NOT_FOUND).await;
+
+    assert_eq!(error["errors"][0]["code"], "workflow_version_not_found");
+    let runs = list_automation_runs(&app, "/automations/nightly/runs").await;
+    assert_eq!(runs["meta"]["total"], 0);
+    assert_eq!(runs["data"], json!([]));
 }
 
 #[tokio::test]

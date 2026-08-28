@@ -2827,11 +2827,13 @@ dependencies = [
  "fabro-test",
  "fabro-types",
  "fabro-workflow",
+ "fabro-workflow-version",
  "git2",
  "insta",
  "serde_json",
  "temp-env",
  "tempfile",
+ "thiserror 2.0.18",
  "toml 0.8.23",
 ]
 
