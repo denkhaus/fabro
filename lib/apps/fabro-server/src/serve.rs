@@ -783,6 +783,9 @@ where
     )
     .await
     .context("activating SQLite blob storage")?;
+    let store = migrations::activate_run_history(&database, &sqlite_path, store)
+        .await
+        .context("activating SQLite run history")?;
     // Refresh tokens now live in SQLite. Nothing reads the old records and no
     // reaper collects them any more, so clear them out once rather than
     // leaving them in the object store forever. Pending authorization codes
@@ -829,7 +832,7 @@ where
         .runs
         .warm_projection_cache()
         .await
-        .context("warming run projection cache and reconciling run summaries")?;
+        .context("warming run projection cache from SQLite")?;
     let reconciled = reconcile_incomplete_runs_on_startup(&state).await?;
     if reconciled > 0 {
         info!(

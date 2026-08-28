@@ -19,6 +19,6 @@ pub use self::redaction::{
 };
 pub use self::sink::{
     RunEventLogger, RunEventPersistenceError, RunEventSink, StoreProgressLogger, append_event,
-    append_event_if, append_event_to_sink,
+    append_event_if, append_event_to_sink, create_run,
 };
 pub use crate::stage_scope::StageScope;

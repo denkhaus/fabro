@@ -68,12 +68,13 @@ fn load_run_checkpoint(run_dir: &Path) -> Result<Checkpoint, Box<dyn std::error:
     } else {
         test_store_dir(&run_dir)
     };
-    let object_store = Arc::new(LocalFileSystem::new_with_prefix(store_dir)?);
-    let store = Arc::new(fabro_store::test_support::test_database(
+    let object_store = Arc::new(LocalFileSystem::new_with_prefix(&store_dir)?);
+    let store = Arc::new(fabro_store::test_support::test_database_at(
         object_store,
         "",
         std::time::Duration::from_millis(1),
         None,
+        &store_dir,
     ));
     let state = if tokio::runtime::Handle::try_current().is_ok() {
         std::thread::spawn(
@@ -172,12 +173,14 @@ async fn resolve_checkpoint_text(
         return Ok(current.to_string());
     }
 
-    let object_store = Arc::new(LocalFileSystem::new_with_prefix(test_store_dir(run_dir))?);
-    let store = fabro_store::test_support::test_database(
+    let store_dir = test_store_dir(run_dir);
+    let object_store = Arc::new(LocalFileSystem::new_with_prefix(&store_dir)?);
+    let store = fabro_store::test_support::test_database_at(
         object_store,
         "",
         std::time::Duration::from_millis(1),
         None,
+        &store_dir,
     );
     let run = store.open_run_reader(run_id).await?;
     let run_store = RunStoreHandle::from(run);

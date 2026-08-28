@@ -1,4 +1,5 @@
 use anyhow::Result as AnyResult;
+use chrono::Utc;
 use fabro_store::{Database, RunProjection, RunProjectionReducer};
 use fabro_types::{EventBody, EventEnvelope, ForkSourceRef, RunId, RunTarget};
 
@@ -154,12 +155,7 @@ async fn persist_forked_run(
         .current_checkpoint()
         .ok_or_else(|| Error::engine("forked run projection has no checkpoint"))?;
 
-    let run_store = store
-        .create_run(&spec.run_id)
-        .await
-        .map_err(|err| Error::engine(err.to_string()))?;
-
-    event::append_event(&run_store, &spec.run_id, &Event::RunCreated {
+    let first_event = Event::RunCreated {
         run_id:              spec.run_id,
         title:               None,
         settings:            serde_json::to_value(&spec.settings)
@@ -183,9 +179,10 @@ async fn persist_forked_run(
         retried_from:        None,
         parent_id:           None,
         web_url:             None,
-    })
-    .await
-    .map_err(|err| Error::engine(err.to_string()))?;
+    };
+    let run_store = event::create_run(store, &spec.run_id, &first_event, Utc::now())
+        .await
+        .map_err(|err| Error::engine(err.to_string()))?;
 
     let replayed_checkpoint =
         replay_historical_projection_events(&run_store, spec.run_id, historical_events).await?;

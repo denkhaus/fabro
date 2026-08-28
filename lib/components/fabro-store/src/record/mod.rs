@@ -7,8 +7,7 @@
 //! - [`Repository`]: performs the generic get/put/delete/scan operations.
 //!
 //! Production callers should add a named domain store on top of this layer
-//! rather than exposing `Repository<R>` directly. See `slate/blob_store.rs`
-//! and `slate/run_catalog_index.rs` for the intended pattern.
+//! rather than exposing `Repository<R>` directly.
 
 mod codec;
 mod record_id;

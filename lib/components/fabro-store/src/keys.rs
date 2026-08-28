@@ -1,4 +1,5 @@
 use std::fmt::{self, Write};
+#[cfg(test)]
 use std::ops::Range;
 
 use fabro_types::{RunId, SessionId};
@@ -28,6 +29,7 @@ impl SlateKey {
 
     /// Exclusive end bound of this key's prefix keyspace: every key under
     /// `self.into_prefix()` sorts below it and no other key sorts between.
+    #[cfg(test)]
     fn into_prefix_end(mut self) -> Self {
         self.0.push('\u{1}');
         self
@@ -51,10 +53,6 @@ impl AsRef<[u8]> for SlateKey {
 
 // --- Construction ---
 
-pub(crate) fn run_data_prefix(run_id: &RunId) -> SlateKey {
-    SlateKey::new("runs").with(run_id).into_prefix()
-}
-
 pub(crate) fn run_events_prefix(run_id: &RunId) -> SlateKey {
     SlateKey::new("runs")
         .with(run_id)
@@ -73,6 +71,7 @@ pub(crate) fn run_event_key(run_id: &RunId, seq: u32, epoch_ms: i64) -> SlateKey
         .with(format!("{seq:06}-{epoch_ms}"))
 }
 
+#[cfg(test)]
 pub(crate) fn run_event_seq_prefix(run_id: &RunId, seq: u32) -> SlateKey {
     SlateKey::new("runs")
         .with(run_id)
@@ -83,6 +82,7 @@ pub(crate) fn run_event_seq_prefix(run_id: &RunId, seq: u32) -> SlateKey {
 /// Scan range covering the run's event keys from `start_seq` to the end of
 /// the run's event namespace, so seek-based listing never touches keys of
 /// other runs or namespaces.
+#[cfg(test)]
 pub(crate) fn run_events_range(run_id: &RunId, start_seq: u32) -> Range<SlateKey> {
     let end = SlateKey::new("runs")
         .with(run_id)
@@ -101,6 +101,7 @@ pub(crate) fn session_by_id_key(session_id: &SessionId) -> SlateKey {
 
 // --- Parsing ---
 
+#[cfg(test)]
 pub(crate) fn parse_event_seq(key: &str) -> Option<u32> {
     let mut segments = SlateKey::segments(key);
     let _ = segments.next()?; // "runs"

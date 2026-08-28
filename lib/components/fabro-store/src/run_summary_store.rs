@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::sync::LazyLock;
 
@@ -7,9 +6,10 @@ use fabro_types::{
     BilledTokenCounts, EventEnvelope, Run, RunEvent, RunId, RunSize, RunStatusKind, RunTiming,
     SessionId, StageId, timing,
 };
+use sqlx::pool::PoolConnection;
 use sqlx::query::Query;
 use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
-use sqlx::{QueryBuilder, Row as _, Sqlite, SqlitePool};
+use sqlx::{QueryBuilder, Row as _, Sqlite, SqlitePool, Transaction};
 use strum::VariantArray as _;
 
 use crate::run_state::projected_billing;
@@ -28,6 +28,7 @@ INSERT INTO runs (
 )
 ";
 
+#[cfg(test)]
 const UPSERT_RUN_SQL: &str = r"
 INSERT INTO runs (
     id, source_last_seq, created_at_ms, started_at_ms, last_event_at_ms, completed_at_ms,
@@ -199,19 +200,104 @@ impl RunSummaryStore {
         Self { pool }
     }
 
-    pub(crate) async fn upsert_projection(&self, entry: &CachedRunProjection) -> Result<()> {
-        let record = PreparedRunSummary::from_entry(entry);
-        let mut connection = self.pool.acquire().await?;
-        upsert_run_on_connection(&mut connection, &record).await?;
-        Ok(())
-    }
-
     #[cfg(test)]
     pub(crate) async fn close_pool(&self) {
         self.pool.close().await;
     }
 
+    /// Corrupts one fixture history while preserving its current row so
+    /// cross-crate repair-endpoint tests can exercise unreadable SQL runs.
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn test_delete_run_events(&self, run_id: &RunId) -> Result<()> {
+        sqlx::query("DELETE FROM run_events WHERE run_id = ?")
+            .bind(run_id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Inserts a fixture event without reducing it into the current row.
+    ///
+    /// This deliberately creates an unreadable history for cross-crate repair
+    /// endpoint tests. It is never linked into production builds.
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn test_insert_unvalidated_event(
+        &self,
+        run_id: &RunId,
+        seq: u32,
+        payload: &serde_json::Value,
+    ) -> Result<()> {
+        let payload = EventPayload::new(payload.clone(), run_id)?;
+        let event = RunEvent::try_from(&payload)?;
+        let envelope = EventEnvelope { seq, event };
+        let event_json = serde_json::to_string(&payload)?;
+        let mut transaction = self.pool.begin().await?;
+        insert_event_json_on_connection(&mut transaction, run_id, &envelope, &event_json).await?;
+        let updated = sqlx::query("UPDATE runs SET source_last_seq = ? WHERE id = ?")
+            .bind(i64::from(seq))
+            .bind(run_id.to_string())
+            .execute(&mut *transaction)
+            .await?;
+        if updated.rows_affected() != 1 {
+            return Err(Error::RunNotFound(run_id.to_string()));
+        }
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_mark_run_history_activated(&self) -> Result<()> {
+        sqlx::query(
+            r"
+INSERT INTO legacy_run_history_activation (
+    singleton, source_fingerprint, source_runs, source_events, activated_at_ms
+) VALUES (1, zeroblob(32), 0, 0, 1)
+ON CONFLICT(singleton) DO NOTHING
+",
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_is_run_history_tombstoned(&self, run_id: &RunId) -> Result<bool> {
+        Ok(sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM legacy_run_history_deletions WHERE run_id = ?)",
+        )
+        .bind(run_id.to_string())
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
+    pub(crate) async fn acquire(&self) -> Result<PoolConnection<Sqlite>> {
+        Ok(self.pool.acquire().await?)
+    }
+
+    pub(crate) async fn begin(&self) -> Result<Transaction<'static, Sqlite>> {
+        Ok(self.pool.begin().await?)
+    }
+
+    pub(crate) async fn contains(&self, run_id: &RunId) -> Result<bool> {
+        Ok(
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?)")
+                .bind(run_id.to_string())
+                .fetch_one(&self.pool)
+                .await?,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn upsert_projection(&self, entry: &CachedRunProjection) -> Result<()> {
+        let record = PreparedRunSummary::from_entry(entry);
+        let mut connection = self.pool.acquire().await?;
+        upsert_run_on_connection(&mut connection, &record).await
+    }
+
+    #[cfg(test)]
     pub(crate) async fn reconcile(&self, entries: &[CachedRunProjection]) -> Result<()> {
+        use std::collections::{HashMap, HashSet};
+
         let mut transaction = self.pool.begin().await?;
         let stored_seqs: HashMap<String, i64> =
             sqlx::query_as::<_, (String, i64)>("SELECT id, source_last_seq FROM runs")
@@ -247,6 +333,132 @@ impl RunSummaryStore {
             delete.push(")");
             delete.build().execute(&mut *transaction).await?;
         }
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn list_run_ids(&self) -> Result<Vec<RunId>> {
+        sqlx::query_scalar::<_, String>("SELECT id FROM runs ORDER BY id ASC")
+            .fetch_all(&self.pool)
+            .await?
+            .into_iter()
+            .map(|stored_id| {
+                stored_id
+                    .parse::<RunId>()
+                    .map_err(|_| Error::RunSummaryMismatch {
+                        run_id: stored_id,
+                        field:  "id",
+                    })
+            })
+            .collect()
+    }
+
+    pub(crate) async fn head(&self, run_id: &RunId) -> Result<Option<u32>> {
+        let mut connection = self.acquire().await?;
+        select_run_head(&mut connection, run_id).await
+    }
+
+    pub(crate) async fn list_events_for_run(&self, run_id: &RunId) -> Result<Vec<EventEnvelope>> {
+        let mut connection = self.acquire().await?;
+        Self::list_events_on_connection(&mut connection, run_id).await
+    }
+
+    pub(crate) async fn list_events_from_with_limit(
+        &self,
+        run_id: &RunId,
+        start_seq: u32,
+        limit: usize,
+    ) -> Result<Vec<EventEnvelope>> {
+        let mut connection = self.acquire().await?;
+        Self::list_events_from_with_limit_on_connection(&mut connection, run_id, start_seq, limit)
+            .await
+    }
+
+    pub(crate) async fn list_events_before_with_limit(
+        &self,
+        run_id: &RunId,
+        before_seq: Option<u32>,
+        limit: usize,
+    ) -> Result<Vec<EventEnvelope>> {
+        let mut connection = self.acquire().await?;
+        Self::list_events_before_with_limit_on_connection(
+            &mut connection,
+            run_id,
+            before_seq,
+            limit,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_event_for_run(
+        &self,
+        run_id: &RunId,
+        seq: u32,
+    ) -> Result<Option<EventEnvelope>> {
+        let mut connection = self.acquire().await?;
+        Self::get_event_on_connection(&mut connection, run_id, seq).await
+    }
+
+    pub(crate) async fn list_events_for_stage_from_with_limit(
+        &self,
+        run_id: &RunId,
+        stage_id: &StageId,
+        start_seq: u32,
+        limit: usize,
+    ) -> Result<Vec<EventEnvelope>> {
+        let mut connection = self.acquire().await?;
+        Self::list_events_for_stage_from_with_limit_on_connection(
+            &mut connection,
+            run_id,
+            stage_id,
+            start_seq,
+            limit,
+        )
+        .await
+    }
+
+    pub(crate) async fn list_events_for_session_from_with_limit(
+        &self,
+        run_id: &RunId,
+        session_id: &SessionId,
+        start_seq: u32,
+        limit: usize,
+    ) -> Result<Vec<EventEnvelope>> {
+        let mut connection = self.acquire().await?;
+        Self::list_events_for_session_from_with_limit_on_connection(
+            &mut connection,
+            run_id,
+            session_id,
+            start_seq,
+            limit,
+        )
+        .await
+    }
+
+    pub(crate) async fn delete_canonical(&self, run_id: &RunId, deleted_at_ms: i64) -> Result<()> {
+        let mut transaction = self.begin().await?;
+        let activated: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM legacy_run_history_activation WHERE singleton = 1)",
+        )
+        .fetch_one(&mut *transaction)
+        .await?;
+        if activated {
+            sqlx::query(
+                r"
+INSERT INTO legacy_run_history_deletions (run_id, deleted_at_ms)
+VALUES (?, ?)
+ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
+",
+            )
+            .bind(run_id.to_string())
+            .bind(deleted_at_ms)
+            .execute(&mut *transaction)
+            .await?;
+        }
+        sqlx::query("DELETE FROM runs WHERE id = ?")
+            .bind(run_id.to_string())
+            .execute(&mut *transaction)
+            .await?;
         transaction.commit().await?;
         Ok(())
     }
@@ -327,23 +539,8 @@ FROM runs",
             has_more: consumed < total,
         })
     }
-
-    pub async fn delete(&self, run_id: &RunId) -> Result<()> {
-        sqlx::query("DELETE FROM runs WHERE id = ?")
-            .bind(run_id.to_string())
-            .execute(&self.pool)
-            .await?;
-        Ok(())
-    }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the atomic SQL run path stays inactive until the authority cutover"
-    )
-)]
 impl RunSummaryStore {
     pub(crate) async fn insert_first_event_on_connection(
         connection: &mut SqliteConnection,
@@ -953,6 +1150,7 @@ fn normalize_billing_for_read_model(mut billing: BilledTokenCounts) -> BilledTok
     billing
 }
 
+#[cfg(test)]
 async fn upsert_run_on_connection(
     connection: &mut SqliteConnection,
     record: &PreparedRunSummary,

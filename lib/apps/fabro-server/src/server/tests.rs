@@ -3265,17 +3265,16 @@ url = "http://127.0.0.1:32276"
 }
 
 #[tokio::test]
-async fn system_repair_runs_lists_catalog_entries_without_projection() {
+async fn system_repair_runs_lists_sql_rows_without_readable_history() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = RunId::new();
+    let run_store = state.stores.runs.create_run(&run_id).await.unwrap();
+    append_default_run_created(&run_store, run_id).await;
     state
         .stores
-        .runs
-        .catalog_index()
-        .await
-        .unwrap()
-        .add(&run_id)
+        .run_summaries
+        .test_delete_run_events(&run_id)
         .await
         .unwrap();
 
@@ -7617,10 +7616,8 @@ async fn create_unreadable_durable_run(state: &Arc<AppState>, run_id: RunId) {
     )
     .await
     .unwrap();
-    let err = run_store
-        .state()
-        .await
-        .expect_err("poison event should make the run projection unreadable");
+    let unreadable = state.stores.runs.open_run_reader(&run_id).await;
+    let err = unreadable.expect_err("poison event should make the run projection unreadable");
     assert!(
         err.to_string().contains("invalid completed stage status"),
         "unexpected projection error: {err}"

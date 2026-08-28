@@ -9,6 +9,7 @@ mod keyed_mutex;
 mod keys;
 mod legacy_blob_import;
 mod legacy_run_history_import;
+#[cfg(test)]
 mod record;
 mod run_sessions;
 mod run_state;
@@ -40,6 +41,7 @@ pub use legacy_blob_import::{
 };
 pub use legacy_run_history_import::{
     LegacyRunHistoryDiagnostics, LegacyRunHistoryImportError, LegacyRunHistoryImportReport,
+    LegacyRunHistorySourceIdentity, LegacyRunHistorySourceIdentityError,
     LegacyRunHistoryVerificationError, LegacyRunHistoryVerificationReport,
 };
 pub use run_sessions::{
@@ -52,7 +54,7 @@ pub use run_summary_store::{
     RunSummarySortDirection, RunSummaryStore, RunSummaryVisibility,
 };
 pub use serializable_projection::SerializableProjection;
-pub use slate::{CachedRunProjection, Database, RunCatalogIndex, RunDatabase, Runs, UnreadableRun};
+pub use slate::{CachedRunProjection, Database, RunDatabase, Runs, UnreadableRun};
 pub use types::EventPayload;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
