@@ -81,7 +81,6 @@ fn resolve_environment_fields(
         labels: layer.labels.clone().into_inner(),
         env: layer.env.clone().into_inner(),
     };
-    validate_daytona_image_settings(&environment, path, errors);
     environment
 }
 
@@ -201,23 +200,6 @@ fn dockerfile_source(dockerfile: &EnvironmentDockerfileLayer) -> DockerfileSourc
     }
 }
 
-fn validate_daytona_image_settings(
-    environment: &EnvironmentSettings,
-    path: &str,
-    errors: &mut Vec<ResolveError>,
-) {
-    if environment.provider == EnvironmentProvider::Daytona
-        && environment.image.docker.is_some()
-        && environment.image.dockerfile.is_some()
-    {
-        errors.push(ResolveError::Invalid {
-            path:   format!("{path}.image"),
-            reason: "daytona environments accept either image.docker or image.dockerfile, not both"
-                .to_string(),
-        });
-    }
-}
-
 fn validate_provider_capabilities(
     environment: &EnvironmentSettings,
     path: &str,
@@ -246,6 +228,15 @@ fn validate_provider_capabilities(
                 });
             }
         }
-        EnvironmentProvider::Daytona => {}
+        EnvironmentProvider::Daytona => {
+            if environment.image.docker.is_some() && environment.image.dockerfile.is_some() {
+                errors.push(ResolveError::Invalid {
+                    path:   format!("{path}.image"),
+                    reason: "daytona environments accept either image.docker or image.dockerfile, \
+                             not both"
+                        .to_string(),
+                });
+            }
+        }
     }
 }

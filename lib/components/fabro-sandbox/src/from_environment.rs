@@ -15,7 +15,8 @@ use fabro_types::settings::run::{
 
 #[cfg(feature = "daytona")]
 use crate::config::{
-    DaytonaNetwork, DaytonaSnapshotSettings, DockerfileSource as SandboxDockerfileSource,
+    DaytonaNetwork, DaytonaSnapshotSettings, DaytonaSnapshotSource,
+    DockerfileSource as SandboxDockerfileSource,
 };
 #[cfg(feature = "daytona")]
 use crate::daytona::DaytonaConfig;
@@ -28,30 +29,30 @@ pub fn daytona_config_from_environment(
     settings: &RunEnvironmentSettings,
     clone: &RunCloneSettings,
 ) -> DaytonaConfig {
-    let dockerfile = settings
-        .image
-        .dockerfile
-        .as_ref()
-        .map(|dockerfile| match dockerfile {
-            ResolvedDockerfileSource::Inline(text) => SandboxDockerfileSource::Inline(text.clone()),
-            ResolvedDockerfileSource::Path { path } => {
-                SandboxDockerfileSource::Path { path: path.clone() }
-            }
-        });
-    let snapshot = (settings.image.docker.is_some() || dockerfile.is_some()).then(|| {
-        DaytonaSnapshotSettings {
-            cpu: settings.resources.cpu,
-            memory: settings
-                .resources
-                .memory
-                .map(|size| size_to_gb_i32(size.as_bytes())),
-            disk: settings
-                .resources
-                .disk
-                .map(|size| size_to_gb_i32(size.as_bytes())),
-            image: settings.image.docker.clone(),
-            dockerfile,
-        }
+    // fabro-config rejects Daytona environments that set both image.docker
+    // and image.dockerfile. If both still arrive here, the image wins, which
+    // matches how the Docker provider treats the pair.
+    let source = match (&settings.image.docker, &settings.image.dockerfile) {
+        (Some(image), _) => Some(DaytonaSnapshotSource::Image(image.clone())),
+        (None, Some(ResolvedDockerfileSource::Inline(text))) => Some(
+            DaytonaSnapshotSource::Dockerfile(SandboxDockerfileSource::Inline(text.clone())),
+        ),
+        (None, Some(ResolvedDockerfileSource::Path { path })) => Some(
+            DaytonaSnapshotSource::Dockerfile(SandboxDockerfileSource::Path { path: path.clone() }),
+        ),
+        (None, None) => None,
+    };
+    let snapshot = source.map(|source| DaytonaSnapshotSettings {
+        cpu: settings.resources.cpu,
+        memory: settings
+            .resources
+            .memory
+            .map(|size| size_to_gb_i32(size.as_bytes())),
+        disk: settings
+            .resources
+            .disk
+            .map(|size| size_to_gb_i32(size.as_bytes())),
+        source,
     });
 
     DaytonaConfig {
@@ -260,8 +261,10 @@ mod tests {
         let config = daytona_config_from_environment(&settings, &RunCloneSettings::default());
         let snapshot = config.snapshot.expect("image should configure a snapshot");
 
-        assert_eq!(snapshot.image.as_deref(), Some("ubuntu:24.04"));
-        assert!(snapshot.dockerfile.is_none());
+        assert_eq!(
+            snapshot.source,
+            DaytonaSnapshotSource::Image("ubuntu:24.04".to_string())
+        );
         assert_eq!(snapshot.cpu, Some(2));
     }
 }

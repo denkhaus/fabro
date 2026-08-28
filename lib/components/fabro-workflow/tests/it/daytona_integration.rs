@@ -403,13 +403,15 @@ async fn daytona_snapshot_sandbox() {
     let config = DaytonaConfig {
         auto_stop_interval: Some(60),
         snapshot: Some(DaytonaSnapshotConfig {
-            cpu:        Some(2),
-            memory:     Some(4),
-            disk:       Some(10),
-            image:      None,
-            dockerfile: Some(fabro_sandbox::daytona::DockerfileSource::Inline(
-                "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y ripgrep".to_string(),
-            )),
+            cpu:    Some(2),
+            memory: Some(4),
+            disk:   Some(10),
+            source: fabro_sandbox::daytona::DaytonaSnapshotSource::Dockerfile(
+                fabro_sandbox::daytona::DockerfileSource::Inline(
+                    "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y ripgrep"
+                        .to_string(),
+                ),
+            ),
         }),
         ..DaytonaConfig::default()
     };
