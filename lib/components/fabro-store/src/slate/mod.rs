@@ -14,7 +14,7 @@ use projection_cache::RunProjectionCache;
 pub use run_store::RunDatabase;
 use run_store::RunDatabaseInner;
 use slatedb::config::{CompressionCodec, Settings};
-use tokio::sync::{Mutex, OnceCell};
+use tokio::sync::{Mutex, MutexGuard, OnceCell};
 use tracing::warn;
 
 use crate::{
@@ -148,17 +148,7 @@ impl Database {
         run_id: &RunId,
         payload: &EventPayload,
     ) -> Result<RunDatabase> {
-        self.warm_projection_cache().await?;
-        let mut active_runs = self.active_runs.lock().await;
-        if active_runs.contains_key(run_id) || self.run_summary_store.contains(run_id).await? {
-            return Err(Error::RunAlreadyExists(run_id.to_string()));
-        }
-        let run_store = RunDatabase::build_empty(
-            *run_id,
-            self.blobs(),
-            Arc::clone(&self.projection_cache),
-            self.run_summary_store(),
-        );
+        let (mut active_runs, run_store) = self.reserve_new_run(run_id).await?;
         let (envelope, cached) = run_store.commit_first_event(payload).await?;
         run_store.install_in_memory_state(&envelope, &cached).await;
         Self::cache_active_run(&mut active_runs, &run_store);
@@ -170,8 +160,23 @@ impl Database {
     /// create sequence-1 `run.created` atomically with the canonical row.
     #[cfg(any(test, feature = "test-support"))]
     pub async fn create_run(&self, run_id: &RunId) -> Result<RunDatabase> {
+        let (mut active_runs, run_store) = self.reserve_new_run(run_id).await?;
+        Self::cache_active_run(&mut active_runs, &run_store);
+        Ok(run_store)
+    }
+
+    /// Builds an empty handle for a run that exists neither in memory nor in
+    /// SQLite, returning the held `active_runs` guard so the caller can
+    /// register the handle before any concurrent creator observes the gap.
+    async fn reserve_new_run(
+        &self,
+        run_id: &RunId,
+    ) -> Result<(
+        MutexGuard<'_, HashMap<RunId, Arc<RunDatabaseInner>>>,
+        RunDatabase,
+    )> {
         self.warm_projection_cache().await?;
-        let mut active_runs = self.active_runs.lock().await;
+        let active_runs = self.active_runs.lock().await;
         if active_runs.contains_key(run_id) || self.run_summary_store.contains(run_id).await? {
             return Err(Error::RunAlreadyExists(run_id.to_string()));
         }
@@ -181,8 +186,7 @@ impl Database {
             Arc::clone(&self.projection_cache),
             self.run_summary_store(),
         );
-        Self::cache_active_run(&mut active_runs, &run_store);
-        Ok(run_store)
+        Ok((active_runs, run_store))
     }
 
     pub async fn open_run(&self, run_id: &RunId) -> Result<RunDatabase> {

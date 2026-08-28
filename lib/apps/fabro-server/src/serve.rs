@@ -783,7 +783,7 @@ where
     )
     .await
     .context("activating SQLite blob storage")?;
-    let store = migrations::activate_run_history(&database, &sqlite_path, store)
+    migrations::activate_run_history(&database, &sqlite_path, &store)
         .await
         .context("activating SQLite run history")?;
     // Refresh tokens now live in SQLite. Nothing reads the old records and no

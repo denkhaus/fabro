@@ -6,8 +6,9 @@
 //! - [`RecordId`]: converts the typed id to and from key segments.
 //! - [`Repository`]: performs the generic get/put/delete/scan operations.
 //!
-//! Production callers should add a named domain store on top of this layer
-//! rather than exposing `Repository<R>` directly.
+//! Production stores no longer read or write SlateDB records; this module is
+//! compiled only for tests that model the retired Slate layout and goes away
+//! with the remaining compatibility bridges.
 
 mod codec;
 mod record_id;

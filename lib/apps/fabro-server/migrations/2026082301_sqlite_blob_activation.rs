@@ -10,14 +10,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures_util::TryStreamExt as _;
 use object_store::ObjectStore;
-use sqlx::Connection as _;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use tokio::fs;
-use tokio::task::{JoinError, spawn_blocking};
 use tracing::{debug, info, warn};
 
+use crate::migrations::sqlite_activation_backup::{self, BackupError};
 use crate::server::resource_sampler;
 
 /// Earliest date this bridge becomes eligible for removal, assuming the first
@@ -28,7 +25,6 @@ pub(crate) const REMOVAL_DEADLINE: &str = "2026-09-22";
 
 const DISK_HEADROOM_BYTES: u64 = 64 * 1024 * 1024;
 const BACKUP_SUFFIX: &str = ".pre-blob-activation.bak";
-const STAGING_SUFFIX: &str = ".tmp";
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum BlobActivationError {
@@ -40,16 +36,6 @@ pub(crate) enum BlobActivationError {
     },
     #[error("inventorying the legacy blob source")]
     Inventory(#[source] fabro_store::LegacyBlobInventoryError),
-    #[error("reading activation backup metadata at {path}")]
-    BackupMetadata {
-        path:   PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
-    #[error("activation backup is not a regular file at {path}")]
-    BackupNotRegular { path: PathBuf },
-    #[error("activation backup permissions are not private at {path}")]
-    BackupNotPrivate { path: PathBuf },
     #[error(
         "activation backup is missing at {path} while {existing_rows} of {legacy_rows} legacy blob rows are already present in SQLite"
     )]
@@ -58,14 +44,6 @@ pub(crate) enum BlobActivationError {
         legacy_rows:   u64,
         existing_rows: u64,
     },
-    #[error("opening or checking activation backup integrity at {path}")]
-    BackupIntegrity {
-        path:   PathBuf,
-        #[source]
-        source: sqlx::Error,
-    },
-    #[error("activation backup integrity check did not return exactly one ok result at {path}")]
-    BackupIntegrityFailed { path: PathBuf },
     #[error("reading SQLite file metadata at {path}")]
     SqliteMetadata {
         path:   PathBuf,
@@ -81,16 +59,8 @@ pub(crate) enum BlobActivationError {
         required_bytes:  u64,
         available_bytes: u64,
     },
-    #[error("staging the pre-activation SQLite backup")]
-    StageBackup(#[source] fabro_db::SnapshotStagingError),
-    #[error("joining the activation backup publication task")]
-    JoinBackupPublication(#[source] JoinError),
-    #[error("publishing the activation backup at {path} without overwriting")]
-    PublishBackup {
-        path:   PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
+    #[error(transparent)]
+    Backup(#[from] BackupError),
     #[error("importing legacy blobs into SQLite")]
     Import(#[source] Box<fabro_store::LegacyBlobImportError>),
     #[error("verifying legacy and SQLite blobs")]
@@ -139,9 +109,9 @@ pub(crate) async fn activate_blob_storage(
         .legacy_blob_inventory(database.pool())
         .await
         .map_err(BlobActivationError::Inventory)?;
-    let backup_exists = backup_exists(&backup_path).await?;
+    let backup_exists = sqlite_activation_backup::backup_exists(&backup_path).await?;
     if backup_exists {
-        validate_backup(&backup_path).await?;
+        sqlite_activation_backup::validate_backup(&backup_path).await?;
     }
     if !backup_exists && inventory.pending_rows < inventory.rows {
         return Err(BlobActivationError::MissingBackupAfterImport {
@@ -191,7 +161,7 @@ pub(crate) async fn activate_blob_storage(
     let retained_backup = if backup_exists {
         Some(backup_path)
     } else if backup_required {
-        create_backup(database.pool(), &backup_path).await?;
+        sqlite_activation_backup::create_backup(database.pool(), &backup_path).await?;
         Some(backup_path)
     } else {
         None
@@ -257,17 +227,6 @@ fn compute_disk_preflight(
     Ok(required_free_bytes)
 }
 
-async fn backup_exists(path: &Path) -> Result<bool, BlobActivationError> {
-    match fs::metadata(path).await {
-        Ok(_) => Ok(true),
-        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(source) => Err(BlobActivationError::BackupMetadata {
-            path: path.to_path_buf(),
-            source,
-        }),
-    }
-}
-
 async fn sqlite_file_set_bytes(path: &Path) -> Result<u64, BlobActivationError> {
     let mut total = required_file_bytes(path).await?;
     for suffix in ["-wal", "-shm"] {
@@ -301,127 +260,8 @@ async fn optional_file_bytes(path: &Path) -> Result<u64, BlobActivationError> {
     }
 }
 
-async fn create_backup(
-    pool: &sqlx::SqlitePool,
-    backup_path: &Path,
-) -> Result<(), BlobActivationError> {
-    let staging_path = fabro_db::append_to_path(backup_path, STAGING_SUFFIX);
-    fabro_db::write_snapshot_to_staging(pool, &staging_path)
-        .await
-        .map_err(BlobActivationError::StageBackup)?;
-    validate_backup(&staging_path).await?;
-
-    let publish_staging = staging_path.clone();
-    let publish_backup = backup_path.to_path_buf();
-    let already_exists = spawn_blocking(move || {
-        let staging = tempfile::TempPath::from_path(publish_staging);
-        match staging.persist_noclobber(&publish_backup) {
-            Ok(()) => {
-                // Make the rename's directory entry durable: the retained
-                // backup is the documented rollback artifact, so it must not
-                // vanish in a crash after the import has already committed.
-                fabro_db::sync_parent_directory(&publish_backup)?;
-                Ok(false)
-            }
-            Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => Ok(true),
-            Err(error) => Err(error.error),
-        }
-    })
-    .await
-    .map_err(BlobActivationError::JoinBackupPublication)?
-    .map_err(|source| BlobActivationError::PublishBackup {
-        path: backup_path.to_path_buf(),
-        source,
-    })?;
-
-    // The staging copy was validated just before the atomic rename, so only a
-    // concurrently published file still needs its own validation.
-    if already_exists {
-        debug!(
-            backup_path = %backup_path.display(),
-            "Reusing concurrently published SQLite blob activation backup"
-        );
-        validate_backup(backup_path).await?;
-    }
-    Ok(())
-}
-
-async fn validate_backup(path: &Path) -> Result<(), BlobActivationError> {
-    let metadata =
-        fs::symlink_metadata(path)
-            .await
-            .map_err(|source| BlobActivationError::BackupMetadata {
-                path: path.to_path_buf(),
-                source,
-            })?;
-    if !metadata.is_file() {
-        return Err(BlobActivationError::BackupNotRegular {
-            path: path.to_path_buf(),
-        });
-    }
-    validate_private_permissions(path, &metadata)?;
-
-    let options = SqliteConnectOptions::new()
-        .filename(path)
-        .read_only(true)
-        .immutable(true)
-        .create_if_missing(false);
-    let mut connection = SqliteConnection::connect_with(&options)
-        .await
-        .map_err(|source| BlobActivationError::BackupIntegrity {
-            path: path.to_path_buf(),
-            source,
-        })?;
-    let ok = integrity_check_is_ok(&mut connection)
-        .await
-        .map_err(|source| BlobActivationError::BackupIntegrity {
-            path: path.to_path_buf(),
-            source,
-        })?;
-    if !ok {
-        return Err(BlobActivationError::BackupIntegrityFailed {
-            path: path.to_path_buf(),
-        });
-    }
-    Ok(())
-}
-
-/// Returns whether `PRAGMA integrity_check` reports exactly one `ok` row.
-async fn integrity_check_is_ok<'a, E>(executor: E) -> Result<bool, sqlx::Error>
-where
-    E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
-{
-    let mut rows = sqlx::query_scalar::<_, String>("PRAGMA integrity_check").fetch(executor);
-    let first = rows.try_next().await?;
-    let second = rows.try_next().await?;
-    Ok(first.as_deref() == Some("ok") && second.is_none())
-}
-
-#[cfg(unix)]
-fn validate_private_permissions(
-    path: &Path,
-    metadata: &std::fs::Metadata,
-) -> Result<(), BlobActivationError> {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    if metadata.permissions().mode() & 0o077 != 0 {
-        return Err(BlobActivationError::BackupNotPrivate {
-            path: path.to_path_buf(),
-        });
-    }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn validate_private_permissions(
-    _path: &Path,
-    _metadata: &std::fs::Metadata,
-) -> Result<(), BlobActivationError> {
-    Ok(())
-}
-
 async fn validate_live_integrity(pool: &sqlx::SqlitePool) -> Result<(), BlobActivationError> {
-    let ok = integrity_check_is_ok(pool)
+    let ok = sqlite_activation_backup::integrity_check_is_ok(pool)
         .await
         .map_err(BlobActivationError::LiveIntegrity)?;
     if !ok {
@@ -457,9 +297,9 @@ mod tests {
 
     use super::{
         BACKUP_SUFFIX, BlobActivationError, DISK_HEADROOM_BYTES, activate_blob_storage,
-        compute_disk_preflight, create_backup, final_truncate_checkpoint, sqlite_file_set_bytes,
-        validate_backup,
+        compute_disk_preflight, final_truncate_checkpoint, sqlite_file_set_bytes,
     };
+    use crate::migrations::sqlite_activation_backup::{self, BackupError, create_backup};
 
     type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -519,8 +359,8 @@ mod tests {
         database.migrate().await?;
         let backup_path = append_to_path(&sqlite_path, BACKUP_SUFFIX);
 
-        create_backup(database.pool(), &backup_path).await?;
-        validate_backup(&backup_path).await?;
+        sqlite_activation_backup::create_backup(database.pool(), &backup_path).await?;
+        sqlite_activation_backup::validate_backup(&backup_path).await?;
 
         assert!(backup_path.is_file());
         assert!(!append_to_path(&backup_path, "-wal").exists());
@@ -543,7 +383,7 @@ mod tests {
         let database = fabro_db::Database::connect(&sqlite_path).await?;
         database.migrate().await?;
         let backup_path = append_to_path(&sqlite_path, BACKUP_SUFFIX);
-        create_backup(database.pool(), &backup_path).await?;
+        sqlite_activation_backup::create_backup(database.pool(), &backup_path).await?;
         let original = fs::read(&backup_path).await?;
 
         sqlx::query("INSERT INTO blobs (hash, data) VALUES (?, ?)")
@@ -551,7 +391,7 @@ mod tests {
             .bind(b"later".as_slice())
             .execute(database.pool())
             .await?;
-        create_backup(database.pool(), &backup_path).await?;
+        sqlite_activation_backup::create_backup(database.pool(), &backup_path).await?;
 
         assert_eq!(fs::read(&backup_path).await?, original);
         Ok(())
@@ -572,7 +412,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            BlobActivationError::StageBackup(fabro_db::SnapshotStagingError::Write { .. })
+            BackupError::Stage(fabro_db::SnapshotStagingError::Write { .. })
         ));
         assert!(!backup_path.exists());
         Ok(())
@@ -806,8 +646,9 @@ mod tests {
         .expect_err("an invalid retained backup must fail closed");
         assert!(matches!(
             error,
-            BlobActivationError::BackupIntegrity { .. }
-                | BlobActivationError::BackupIntegrityFailed { .. }
+            BlobActivationError::Backup(
+                BackupError::Integrity { .. } | BackupError::IntegrityFailed { .. }
+            )
         ));
         let destination_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM blobs")
             .fetch_one(database.pool())

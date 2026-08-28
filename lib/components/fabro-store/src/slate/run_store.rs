@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -11,10 +10,12 @@ use super::projection_cache::{CachedRunProjection, RunProjectionCache};
 use crate::run_state::{EventProjectionCache, RunProjectionReducer};
 use crate::{
     BlobStore, Error, EventEnvelope, EventPayload, Result, RunProjection, RunSummaryStore, StageId,
-    keys,
+    run_summary_store,
 };
 
-const DEFAULT_EVENT_TAIL_LIMIT: usize = 1024;
+/// Broadcast capacity for live event subscribers; a lagging subscriber refills
+/// from SQLite.
+const EVENT_BROADCAST_CAPACITY: usize = 1024;
 
 #[derive(Clone)]
 pub struct RunDatabase {
@@ -39,8 +40,6 @@ pub(crate) struct RunDatabaseInner {
     projection_cache:        Mutex<EventProjectionCache>,
     shared_projection_cache: Arc<RunProjectionCache>,
     run_summary_store:       Arc<RunSummaryStore>,
-    recent_events:           Mutex<VecDeque<EventEnvelope>>,
-    recent_event_limit:      usize,
     event_tx:                broadcast::Sender<EventEnvelope>,
 }
 
@@ -60,13 +59,12 @@ impl RunDatabase {
                 state: Some(projection),
             }
         } else {
-            let events = run_summary_store.list_events_for_run(&run_id).await?;
-            let last_seq = events.last().map(|event| event.seq).ok_or_else(|| {
-                Error::InvalidEvent(format!("run {run_id} has no run.created event"))
-            })?;
+            let cached = Self::build_cached_projection(&run_summary_store, &run_id)
+                .await?
+                .ok_or_else(|| Error::RunNotFound(run_id.to_string()))?;
             EventProjectionCache {
-                last_seq,
-                state: Some(Arc::new(RunProjection::apply_events(&events)?)),
+                last_seq: cached.last_seq,
+                state:    Some(cached.projection),
             }
         };
         Ok(Self::from_projection_cache(
@@ -103,7 +101,7 @@ impl RunDatabase {
         run_summary_store: Arc<RunSummaryStore>,
         projection_cache: EventProjectionCache,
     ) -> Self {
-        let (event_tx, _) = broadcast::channel(DEFAULT_EVENT_TAIL_LIMIT.max(16));
+        let (event_tx, _) = broadcast::channel(EVENT_BROADCAST_CAPACITY);
         Self {
             inner: Arc::new(RunDatabaseInner {
                 run_id,
@@ -112,8 +110,6 @@ impl RunDatabase {
                 projection_cache: Mutex::new(projection_cache),
                 shared_projection_cache,
                 run_summary_store,
-                recent_events: Mutex::new(VecDeque::with_capacity(DEFAULT_EVENT_TAIL_LIMIT)),
-                recent_event_limit: DEFAULT_EVENT_TAIL_LIMIT,
                 event_tx,
             }),
             read_only,
@@ -154,10 +150,11 @@ impl RunDatabase {
         store: &RunSummaryStore,
         run_id: &RunId,
     ) -> Result<Option<CachedRunProjection>> {
-        if !store.contains(run_id).await? {
-            return Ok(None);
-        }
-        let events = store.list_events_for_run(run_id).await?;
+        let events = match store.list_events_for_run(run_id).await {
+            Ok(events) => events,
+            Err(Error::RunNotFound(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
         let last_seq = events
             .last()
             .map(|event| event.seq)
@@ -202,12 +199,6 @@ impl RunDatabase {
             .shared_projection_cache
             .replace(cached.clone())
             .await;
-
-        let mut recent_events = self.inner.recent_events.lock().await;
-        recent_events.push_back(event.clone());
-        while recent_events.len() > self.inner.recent_event_limit {
-            recent_events.pop_front();
-        }
     }
 
     pub(crate) fn publish(&self, event: &EventEnvelope) {
@@ -293,7 +284,7 @@ impl RunDatabase {
             let cache = self.inner.projection_cache.lock().await;
             (cache.last_seq, cache.state.clone())
         };
-        let seq = next_event_seq(expected_last_seq)?;
+        let seq = run_summary_store::next_event_seq_after(expected_last_seq)?;
         let prospective = EventEnvelope { seq, event };
         apply_cached_projection_event(&mut next_state, &prospective).map_err(event_rejected)?;
         let next_projection =
@@ -459,9 +450,6 @@ async fn refill_from_sql(
         }
     };
     for event in events {
-        if event.seq < *next_seq {
-            continue;
-        }
         *next_seq = event.seq.saturating_add(1);
         if sender.send(Ok(event)).is_err() {
             return false;
@@ -474,20 +462,6 @@ fn event_rejected(error: Error) -> Error {
     Error::EventRejected {
         source: Box::new(error),
     }
-}
-
-fn next_event_seq(last_seq: u32) -> Result<u32> {
-    let seq = last_seq
-        .checked_add(1)
-        .ok_or(Error::EventSequenceExhausted {
-            max_seq: keys::MAX_EVENT_SEQ,
-        })?;
-    if seq > keys::MAX_EVENT_SEQ {
-        return Err(Error::EventSequenceExhausted {
-            max_seq: keys::MAX_EVENT_SEQ,
-        });
-    }
-    Ok(seq)
 }
 
 fn apply_cached_projection_event(

@@ -1002,7 +1002,7 @@ fn sql_limit(limit: usize) -> i64 {
     i64::try_from(limit.saturating_add(1)).unwrap_or(i64::MAX)
 }
 
-fn next_event_seq_after(last_seq: u32) -> Result<u32> {
+pub(crate) fn next_event_seq_after(last_seq: u32) -> Result<u32> {
     last_seq
         .checked_add(1)
         .filter(|seq| *seq <= keys::MAX_EVENT_SEQ)
@@ -1032,11 +1032,7 @@ fn decode_event_rows_with_json(
 ) -> Result<Vec<(EventEnvelope, String)>> {
     let run_id_text = run_id.to_string();
     rows.iter()
-        .map(|row| {
-            let event_json: String = row.try_get("event_json")?;
-            let envelope = decode_event_row(row, run_id, &run_id_text)?;
-            Ok((envelope, event_json))
-        })
+        .map(|row| decode_event_row_with_json(row, run_id, &run_id_text))
         .collect()
 }
 
@@ -1072,6 +1068,17 @@ fn decode_event_row(
     expected_run_id: &RunId,
     expected_run_id_text: &str,
 ) -> Result<EventEnvelope> {
+    decode_event_row_with_json(row, expected_run_id, expected_run_id_text)
+        .map(|(envelope, _event_json)| envelope)
+}
+
+/// Decodes one event row and returns the raw `event_json` alongside it so
+/// callers that need both do not fetch the column twice.
+fn decode_event_row_with_json(
+    row: &SqliteRow,
+    expected_run_id: &RunId,
+    expected_run_id_text: &str,
+) -> Result<(EventEnvelope, String)> {
     let stored_run_id: String = row.try_get("run_id")?;
     let raw_seq: i64 = row.try_get("seq")?;
     let seq = stored_seq(raw_seq).ok_or_else(|| run_event_mismatch(expected_run_id, 0, "seq"))?;
@@ -1113,7 +1120,7 @@ fn decode_event_row(
         return Err(run_event_mismatch(expected_run_id, seq, "session_id"));
     }
 
-    Ok(EventEnvelope { seq, event })
+    Ok((EventEnvelope { seq, event }, event_json))
 }
 
 async fn select_run_head(connection: &mut SqliteConnection, run_id: &RunId) -> Result<Option<u32>> {

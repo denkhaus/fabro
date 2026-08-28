@@ -76,9 +76,8 @@ use crate::{Error, Result, keys};
 /// Generic typed key/value operations shared by the simple record-backed
 /// stores.
 ///
-/// This type is intentionally `pub(crate)`: callers should interact through a
-/// named store such as `BlobStore`, which can add
-/// domain-specific behavior on top of the generic storage primitives here.
+/// Test-only: production stores are SQLite-backed, so this exists solely to
+/// exercise the retired Slate layout from tests.
 pub(crate) struct Repository<R: Record> {
     db:      Arc<Db>,
     _record: PhantomData<R>,

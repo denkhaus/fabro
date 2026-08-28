@@ -60,6 +60,31 @@ pub(crate) fn run_events_prefix(run_id: &RunId) -> SlateKey {
         .into_prefix()
 }
 
+/// Prefix of the retired `runs/_index/by-start/<run_id>` catalog markers that
+/// the legacy layout kept beside each run's events.
+pub(crate) fn run_catalog_prefix() -> SlateKey {
+    run_catalog_root().into_prefix()
+}
+
+#[cfg(test)]
+pub(crate) fn run_catalog_key(run_id: &RunId) -> SlateKey {
+    run_catalog_root().with(run_id)
+}
+
+/// Extracts the run id from a full catalog marker key, or `None` when the key
+/// is not exactly `runs/_index/by-start/<run_id>`.
+pub(crate) fn parse_run_catalog_key(raw: &str) -> Option<RunId> {
+    let segments = SlateKey::segments(raw).collect::<Vec<_>>();
+    let ["runs", "_index", "by-start", run_id] = segments.as_slice() else {
+        return None;
+    };
+    run_id.parse().ok()
+}
+
+fn run_catalog_root() -> SlateKey {
+    SlateKey::new("runs").with("_index").with("by-start")
+}
+
 // Sequence keys zero-pad `seq` to six digits so lexicographic key order
 // matches numeric seq order through `MAX_EVENT_SEQ`. Seek-based event listing
 // (`run_events_range`) depends on this invariant, so event allocation rejects

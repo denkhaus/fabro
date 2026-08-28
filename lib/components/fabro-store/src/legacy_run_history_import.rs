@@ -89,6 +89,12 @@ pub struct LegacyRunHistorySourceIdentityError {
     failure: LegacyRunHistorySourceFailure,
 }
 
+impl From<LegacyRunHistorySourceFailure> for LegacyRunHistorySourceIdentityError {
+    fn from(failure: LegacyRunHistorySourceFailure) -> Self {
+        Self { failure }
+    }
+}
+
 impl fmt::Debug for LegacyRunHistorySourceIdentityError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -287,8 +293,6 @@ impl fmt::Debug for LegacyRunHistoryImportFailure {
 enum LegacyRunHistoryVerificationFailure {
     #[error("reading and validating the legacy run-history source")]
     Source(#[source] LegacyRunHistorySourceFailure),
-    #[error("reading legacy run-history activation state")]
-    ActivationState(#[source] sqlx::Error),
     #[error("reading legacy run-history deletion tombstones")]
     DeletionState(#[source] sqlx::Error),
     #[error("a legacy run-history deletion tombstone still has canonical SQLite data")]
@@ -585,37 +589,21 @@ impl Database {
     ) -> Result<LegacyRunHistorySourceIdentity, LegacyRunHistorySourceIdentityError> {
         const DOMAIN_SEPARATOR: &[u8] = b"fabro.legacy-run-history-source.v1\0";
 
-        let mut source = LegacyRunHistorySource::open(self)
-            .await
-            .map_err(|failure| LegacyRunHistorySourceIdentityError { failure })?;
+        let mut source = LegacyRunHistorySource::open(self).await?;
         let mut hasher = Sha256::new();
         hasher.update(DOMAIN_SEPARATOR);
         let mut runs = 0_u64;
         let mut events = 0_u64;
-        loop {
-            let Some(history) = source
-                .next_run(None)
-                .await
-                .map_err(|failure| LegacyRunHistorySourceIdentityError { failure })?
-            else {
-                break;
-            };
+        while let Some(history) = source.next_run(None).await? {
             runs = runs
                 .checked_add(1)
-                .ok_or_else(|| LegacyRunHistorySourceIdentityError {
-                    failure: LegacyRunHistorySourceFailure::CounterOverflow,
-                })?;
+                .ok_or(LegacyRunHistorySourceFailure::CounterOverflow)?;
             for event in &history.events {
-                hash_source_part(&mut hasher, &event.raw_key)
-                    .map_err(|failure| LegacyRunHistorySourceIdentityError { failure })?;
-                hash_source_part(&mut hasher, event.event_json.as_bytes())
-                    .map_err(|failure| LegacyRunHistorySourceIdentityError { failure })?;
-                events =
-                    events
-                        .checked_add(1)
-                        .ok_or_else(|| LegacyRunHistorySourceIdentityError {
-                            failure: LegacyRunHistorySourceFailure::CounterOverflow,
-                        })?;
+                hash_source_part(&mut hasher, &event.raw_key)?;
+                hash_source_part(&mut hasher, event.event_json.as_bytes())?;
+                events = events
+                    .checked_add(1)
+                    .ok_or(LegacyRunHistorySourceFailure::CounterOverflow)?;
             }
         }
         Ok(LegacyRunHistorySourceIdentity {
@@ -666,16 +654,12 @@ impl Database {
         let tombstones = legacy_run_history_tombstones(pool)
             .await
             .map_err(LegacyRunHistoryImportFailure::DeletionState)?;
-        require_tombstoned_destinations_absent(pool, &tombstones)
+        if tombstoned_destination_present(pool)
             .await
-            .map_err(|error| match error {
-                TombstoneCheckError::Sqlite(source) => {
-                    LegacyRunHistoryImportFailure::DeletionState(source)
-                }
-                TombstoneCheckError::DestinationPresent => {
-                    LegacyRunHistoryImportFailure::TombstonedDestinationPresent
-                }
-            })?;
+            .map_err(LegacyRunHistoryImportFailure::DeletionState)?
+        {
+            return Err(LegacyRunHistoryImportFailure::TombstonedDestinationPresent);
+        }
         if !activated {
             discard_projection_only_rows(pool, report).await?;
         }
@@ -739,22 +723,15 @@ impl Database {
         pool: &SqlitePool,
         report: &mut LegacyRunHistoryVerificationReport,
     ) -> Result<(), LegacyRunHistoryVerificationFailure> {
-        legacy_run_history_is_activated(pool)
-            .await
-            .map_err(LegacyRunHistoryVerificationFailure::ActivationState)?;
         let tombstones = legacy_run_history_tombstones(pool)
             .await
             .map_err(LegacyRunHistoryVerificationFailure::DeletionState)?;
-        require_tombstoned_destinations_absent(pool, &tombstones)
+        if tombstoned_destination_present(pool)
             .await
-            .map_err(|error| match error {
-                TombstoneCheckError::Sqlite(source) => {
-                    LegacyRunHistoryVerificationFailure::DeletionState(source)
-                }
-                TombstoneCheckError::DestinationPresent => {
-                    LegacyRunHistoryVerificationFailure::TombstonedDestinationPresent
-                }
-            })?;
+            .map_err(LegacyRunHistoryVerificationFailure::DeletionState)?
+        {
+            return Err(LegacyRunHistoryVerificationFailure::TombstonedDestinationPresent);
+        }
         let mut source_ids = HashSet::new();
         let mut source = LegacyRunHistorySource::open(self)
             .await
@@ -839,12 +816,7 @@ impl Database {
             .map_err(LegacyRunHistoryDiagnosticsFailure::OpenSource)?;
         let mut catalog_ids = Vec::new();
         let mut catalog = source
-            .scan_prefix(
-                SlateKey::new("runs")
-                    .with("_index")
-                    .with("by-start")
-                    .into_prefix(),
-            )
+            .scan_prefix(keys::run_catalog_prefix())
             .await
             .map_err(LegacyRunHistoryDiagnosticsFailure::ReadCatalog)?;
         while let Some(entry) = catalog
@@ -854,14 +826,9 @@ impl Database {
         {
             let key = std::str::from_utf8(&entry.key)
                 .map_err(LegacyRunHistoryDiagnosticsFailure::CatalogKeyUtf8)?;
-            let segments = SlateKey::segments(key).collect::<Vec<_>>();
-            let ["runs", "_index", "by-start", run_id] = segments.as_slice() else {
-                return Err(LegacyRunHistoryDiagnosticsFailure::InvalidCatalogKey);
-            };
             catalog_ids.push(
-                run_id
-                    .parse::<RunId>()
-                    .map_err(|_| LegacyRunHistoryDiagnosticsFailure::InvalidCatalogKey)?,
+                keys::parse_run_catalog_key(key)
+                    .ok_or(LegacyRunHistoryDiagnosticsFailure::InvalidCatalogKey)?,
             );
         }
         let mut diagnostics = LegacyRunHistoryDiagnostics {
@@ -1005,35 +972,19 @@ async fn legacy_run_history_tombstones(pool: &SqlitePool) -> Result<HashSet<Stri
     )
 }
 
-enum TombstoneCheckError {
-    Sqlite(sqlx::Error),
-    DestinationPresent,
-}
-
-async fn require_tombstoned_destinations_absent(
-    pool: &SqlitePool,
-    tombstones: &HashSet<String>,
-) -> Result<(), TombstoneCheckError> {
-    for run_id in tombstones {
-        let destination_present: bool = sqlx::query_scalar(
-            r"
+/// Returns whether any tombstoned run still has canonical SQLite rows.
+async fn tombstoned_destination_present(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        r"
 SELECT EXISTS(
-    SELECT 1 FROM runs WHERE id = ?
-    UNION ALL
-    SELECT 1 FROM run_events WHERE run_id = ?
+    SELECT 1 FROM legacy_run_history_deletions AS deletion
+    WHERE EXISTS(SELECT 1 FROM runs WHERE id = deletion.run_id)
+       OR EXISTS(SELECT 1 FROM run_events WHERE run_id = deletion.run_id)
 )
 ",
-        )
-        .bind(run_id)
-        .bind(run_id)
-        .fetch_one(pool)
-        .await
-        .map_err(TombstoneCheckError::Sqlite)?;
-        if destination_present {
-            return Err(TombstoneCheckError::DestinationPresent);
-        }
-    }
-    Ok(())
+    )
+    .fetch_one(pool)
+    .await
 }
 
 async fn discard_projection_only_rows(
@@ -1596,23 +1547,9 @@ mod tests {
         context.put_event(&first, 1, 10, &first_created).await?;
         context.put_event(&first, 4, 40, &first_submitted).await?;
         context.put_event(&second, 1, 20, &second_created).await?;
+        context.put_raw(keys::run_catalog_key(&first), b"").await?;
         context
-            .put_raw(
-                SlateKey::new("runs")
-                    .with("_index")
-                    .with("by-start")
-                    .with(first.to_string()),
-                b"",
-            )
-            .await?;
-        context
-            .put_raw(
-                SlateKey::new("runs")
-                    .with("_index")
-                    .with("by-start")
-                    .with(empty_marker.to_string()),
-                b"",
-            )
+            .put_raw(keys::run_catalog_key(&empty_marker), b"")
             .await?;
         context
             .source

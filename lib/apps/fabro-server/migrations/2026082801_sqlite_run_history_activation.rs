@@ -7,18 +7,14 @@
 //! an eligibility floor, never an automatic deletion trigger.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
-use futures_util::TryStreamExt as _;
-use sqlx::Connection as _;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
 use tokio::fs;
-use tokio::task::{JoinError, spawn_blocking};
-use tracing::{debug, info};
+use tracing::info;
+
+use crate::migrations::sqlite_activation_backup::{self, BackupError};
 
 const BACKUP_SUFFIX: &str = ".pre-run-history-activation.bak";
-const STAGING_SUFFIX: &str = ".tmp";
 const REMOVAL_WINDOW: Duration = Duration::days(30);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -52,38 +48,12 @@ pub(crate) enum RunHistoryActivationError {
         target_runs:   u64,
         target_events: u64,
     },
-    #[error("reading run-history activation backup metadata at {path}")]
-    BackupMetadata {
-        path:   PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
-    #[error("run-history activation backup is not a regular file at {path}")]
-    BackupNotRegular { path: PathBuf },
-    #[error("run-history activation backup permissions are not private at {path}")]
-    BackupNotPrivate { path: PathBuf },
     #[error(
         "run-history activation backup is missing at {path} after SQLite import progress was recorded"
     )]
     MissingBackupAfterProgress { path: PathBuf },
-    #[error("opening or checking run-history activation backup integrity at {path}")]
-    BackupIntegrity {
-        path:   PathBuf,
-        #[source]
-        source: sqlx::Error,
-    },
-    #[error("run-history activation backup integrity check failed at {path}")]
-    BackupIntegrityFailed { path: PathBuf },
-    #[error("staging the pre-activation SQLite backup")]
-    StageBackup(#[source] fabro_db::SnapshotStagingError),
-    #[error("joining the run-history backup publication task")]
-    JoinBackupPublication(#[source] JoinError),
-    #[error("publishing the run-history activation backup at {path} without overwriting")]
-    PublishBackup {
-        path:   PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
+    #[error(transparent)]
+    Backup(#[from] BackupError),
     #[error("importing legacy run history into SQLite")]
     Import(#[source] Box<fabro_store::LegacyRunHistoryImportError>),
     #[error("verifying legacy and SQLite run history")]
@@ -107,8 +77,8 @@ pub(crate) enum RunHistoryActivationError {
 pub(crate) async fn activate_run_history(
     database: &fabro_db::Database,
     sqlite_path: &Path,
-    store: Arc<fabro_store::Database>,
-) -> Result<Arc<fabro_store::Database>, RunHistoryActivationError> {
+    store: &fabro_store::Database,
+) -> Result<(), RunHistoryActivationError> {
     let canonical_path = fs::canonicalize(sqlite_path).await.map_err(|source| {
         RunHistoryActivationError::Canonicalize {
             path: sqlite_path.to_path_buf(),
@@ -138,17 +108,17 @@ pub(crate) async fn activate_run_history(
         });
     }
 
-    let backup_exists = backup_exists(&backup_path).await?;
-    if backup_exists {
-        validate_backup(&backup_path).await?;
+    let backup_present = sqlite_activation_backup::backup_exists(&backup_path).await?;
+    if backup_present {
+        sqlite_activation_backup::validate_backup(&backup_path).await?;
     }
     let import_progress = target_events != 0 || marker.is_some();
-    if identity.events != 0 && import_progress && !backup_exists {
+    if identity.events != 0 && import_progress && !backup_present {
         return Err(RunHistoryActivationError::MissingBackupAfterProgress { path: backup_path });
     }
-    let backup_required = identity.events != 0 && !backup_exists;
+    let backup_required = identity.events != 0 && !backup_present;
     if backup_required {
-        create_backup(database.pool(), &backup_path).await?;
+        sqlite_activation_backup::create_backup(database.pool(), &backup_path).await?;
     }
 
     let import = store
@@ -165,11 +135,10 @@ pub(crate) async fn activate_run_history(
         || Utc::now().timestamp_millis(),
         |record| record.activated_at_ms,
     );
-    let persisted = persist_activation_record(database.pool(), &identity, activated_at_ms).await?;
-    verify_marker(&persisted, &identity)?;
+    persist_activation_record(database.pool(), &identity, activated_at_ms).await?;
     final_truncate_checkpoint(database.pool()).await?;
 
-    let activated_at = DateTime::<Utc>::from_timestamp_millis(persisted.activated_at_ms)
+    let activated_at = DateTime::<Utc>::from_timestamp_millis(activated_at_ms)
         .ok_or(RunHistoryActivationError::InvalidActivationTimestamp)?;
     let removal_eligible_at = activated_at + REMOVAL_WINDOW;
     info!(
@@ -191,7 +160,7 @@ pub(crate) async fn activate_run_history(
         removal_eligible_at = %removal_eligible_at,
         "Activated SQLite run history"
     );
-    Ok(store)
+    Ok(())
 }
 
 async fn read_activation_record(
@@ -254,15 +223,13 @@ async fn persist_activation_record(
     pool: &sqlx::SqlitePool,
     identity: &fabro_store::LegacyRunHistorySourceIdentity,
     activated_at_ms: i64,
-) -> Result<ActivationRecord, RunHistoryActivationError> {
+) -> Result<(), RunHistoryActivationError> {
     let source_runs =
         i64::try_from(identity.runs).map_err(|_| RunHistoryActivationError::CountOverflow)?;
     let source_events =
         i64::try_from(identity.events).map_err(|_| RunHistoryActivationError::CountOverflow)?;
-    let mut transaction = pool
-        .begin()
-        .await
-        .map_err(RunHistoryActivationError::PersistMarker)?;
+    // A pre-existing marker was already verified against `identity` above, so
+    // leaving it untouched on conflict keeps the original activation time.
     sqlx::query(
         r"
 INSERT INTO legacy_run_history_activation (
@@ -275,142 +242,14 @@ ON CONFLICT(singleton) DO NOTHING
     .bind(source_runs)
     .bind(source_events)
     .bind(activated_at_ms)
-    .execute(&mut *transaction)
+    .execute(pool)
     .await
     .map_err(RunHistoryActivationError::PersistMarker)?;
-    transaction
-        .commit()
-        .await
-        .map_err(RunHistoryActivationError::PersistMarker)?;
-    read_activation_record(pool)
-        .await?
-        .ok_or(RunHistoryActivationError::InvalidMarker)
-}
-
-async fn backup_exists(path: &Path) -> Result<bool, RunHistoryActivationError> {
-    match fs::metadata(path).await {
-        Ok(_) => Ok(true),
-        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(source) => Err(RunHistoryActivationError::BackupMetadata {
-            path: path.to_path_buf(),
-            source,
-        }),
-    }
-}
-
-async fn create_backup(
-    pool: &sqlx::SqlitePool,
-    backup_path: &Path,
-) -> Result<(), RunHistoryActivationError> {
-    let staging_path = fabro_db::append_to_path(backup_path, STAGING_SUFFIX);
-    fabro_db::write_snapshot_to_staging(pool, &staging_path)
-        .await
-        .map_err(RunHistoryActivationError::StageBackup)?;
-    validate_backup(&staging_path).await?;
-
-    let publish_staging = staging_path.clone();
-    let publish_backup = backup_path.to_path_buf();
-    let already_exists = spawn_blocking(move || {
-        let staging = tempfile::TempPath::from_path(publish_staging);
-        match staging.persist_noclobber(&publish_backup) {
-            Ok(()) => {
-                fabro_db::sync_parent_directory(&publish_backup)?;
-                Ok(false)
-            }
-            Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => Ok(true),
-            Err(error) => Err(error.error),
-        }
-    })
-    .await
-    .map_err(RunHistoryActivationError::JoinBackupPublication)?
-    .map_err(|source| RunHistoryActivationError::PublishBackup {
-        path: backup_path.to_path_buf(),
-        source,
-    })?;
-    if already_exists {
-        debug!(
-            backup_path = %backup_path.display(),
-            "Reusing concurrently published SQLite run-history activation backup"
-        );
-        validate_backup(backup_path).await?;
-    }
-    Ok(())
-}
-
-async fn validate_backup(path: &Path) -> Result<(), RunHistoryActivationError> {
-    let metadata = fs::symlink_metadata(path).await.map_err(|source| {
-        RunHistoryActivationError::BackupMetadata {
-            path: path.to_path_buf(),
-            source,
-        }
-    })?;
-    if !metadata.is_file() {
-        return Err(RunHistoryActivationError::BackupNotRegular {
-            path: path.to_path_buf(),
-        });
-    }
-    validate_private_permissions(path, &metadata)?;
-
-    let options = SqliteConnectOptions::new()
-        .filename(path)
-        .read_only(true)
-        .immutable(true)
-        .create_if_missing(false);
-    let mut connection = SqliteConnection::connect_with(&options)
-        .await
-        .map_err(|source| RunHistoryActivationError::BackupIntegrity {
-            path: path.to_path_buf(),
-            source,
-        })?;
-    let ok = integrity_check_is_ok(&mut connection)
-        .await
-        .map_err(|source| RunHistoryActivationError::BackupIntegrity {
-            path: path.to_path_buf(),
-            source,
-        })?;
-    if !ok {
-        return Err(RunHistoryActivationError::BackupIntegrityFailed {
-            path: path.to_path_buf(),
-        });
-    }
-    Ok(())
-}
-
-async fn integrity_check_is_ok<'a, E>(executor: E) -> Result<bool, sqlx::Error>
-where
-    E: sqlx::Executor<'a, Database = sqlx::Sqlite>,
-{
-    let mut rows = sqlx::query_scalar::<_, String>("PRAGMA integrity_check").fetch(executor);
-    let first = rows.try_next().await?;
-    let second = rows.try_next().await?;
-    Ok(first.as_deref() == Some("ok") && second.is_none())
-}
-
-#[cfg(unix)]
-fn validate_private_permissions(
-    path: &Path,
-    metadata: &std::fs::Metadata,
-) -> Result<(), RunHistoryActivationError> {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    if metadata.permissions().mode() & 0o077 != 0 {
-        return Err(RunHistoryActivationError::BackupNotPrivate {
-            path: path.to_path_buf(),
-        });
-    }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn validate_private_permissions(
-    _path: &Path,
-    _metadata: &std::fs::Metadata,
-) -> Result<(), RunHistoryActivationError> {
     Ok(())
 }
 
 async fn validate_live_integrity(pool: &sqlx::SqlitePool) -> Result<(), RunHistoryActivationError> {
-    let ok = integrity_check_is_ok(pool)
+    let ok = sqlite_activation_backup::integrity_check_is_ok(pool)
         .await
         .map_err(RunHistoryActivationError::LiveIntegrity)?;
     if !ok {
@@ -538,12 +377,7 @@ mod tests {
             .put_event(&run_id, 2, "run.submitted", serde_json::json!({}))
             .await?;
 
-        activate_run_history(
-            &context.database,
-            &context.sqlite_path,
-            Arc::clone(&context.store),
-        )
-        .await?;
+        activate_run_history(&context.database, &context.sqlite_path, &context.store).await?;
         let first_marker = read_activation_record(context.database.pool())
             .await?
             .unwrap();
@@ -569,12 +403,7 @@ mod tests {
             2
         );
 
-        activate_run_history(
-            &context.database,
-            &context.sqlite_path,
-            Arc::clone(&context.store),
-        )
-        .await?;
+        activate_run_history(&context.database, &context.sqlite_path, &context.store).await?;
         assert_eq!(
             read_activation_record(context.database.pool()).await?,
             Some(first_marker)
@@ -629,23 +458,14 @@ mod tests {
         let context = TestContext::new("changed-run-activation-source").await?;
         let run_id = run_id();
         context.put_created(&run_id).await?;
-        activate_run_history(
-            &context.database,
-            &context.sqlite_path,
-            Arc::clone(&context.store),
-        )
-        .await?;
+        activate_run_history(&context.database, &context.sqlite_path, &context.store).await?;
 
         context
             .put_event(&run_id, 2, "run.submitted", serde_json::json!({}))
             .await?;
-        let error = activate_run_history(
-            &context.database,
-            &context.sqlite_path,
-            Arc::clone(&context.store),
-        )
-        .await
-        .expect_err("the source identity must remain stable after activation");
+        let error = activate_run_history(&context.database, &context.sqlite_path, &context.store)
+            .await
+            .expect_err("the source identity must remain stable after activation");
         assert!(matches!(error, RunHistoryActivationError::MarkerMismatch));
         assert_eq!(
             sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM run_events")
@@ -661,12 +481,7 @@ mod tests {
         let context = TestContext::new("empty-source-with-target").await?;
         let run_id = run_id();
         context.put_created(&run_id).await?;
-        activate_run_history(
-            &context.database,
-            &context.sqlite_path,
-            Arc::clone(&context.store),
-        )
-        .await?;
+        activate_run_history(&context.database, &context.sqlite_path, &context.store).await?;
         sqlx::query("DELETE FROM legacy_run_history_activation")
             .execute(context.database.pool())
             .await?;
@@ -681,7 +496,7 @@ mod tests {
                 context.database.clone_pool(),
             )),
         ));
-        let error = activate_run_history(&context.database, &context.sqlite_path, empty_store)
+        let error = activate_run_history(&context.database, &context.sqlite_path, &empty_store)
             .await
             .expect_err("unmarked SQLite rows cannot be adopted from an empty source");
         assert!(matches!(
@@ -701,13 +516,9 @@ mod tests {
             .import_legacy_run_history_into(context.database.pool())
             .await?;
 
-        let error = activate_run_history(
-            &context.database,
-            &context.sqlite_path,
-            Arc::clone(&context.store),
-        )
-        .await
-        .expect_err("partial import progress requires the retained backup");
+        let error = activate_run_history(&context.database, &context.sqlite_path, &context.store)
+            .await
+            .expect_err("partial import progress requires the retained backup");
         assert!(matches!(
             error,
             RunHistoryActivationError::MissingBackupAfterProgress { .. }
@@ -718,24 +529,14 @@ mod tests {
     #[tokio::test]
     async fn empty_source_and_target_need_no_backup_on_cold_or_warm_start() -> TestResult<()> {
         let context = TestContext::new("empty-run-activation").await?;
-        activate_run_history(
-            &context.database,
-            &context.sqlite_path,
-            Arc::clone(&context.store),
-        )
-        .await?;
+        activate_run_history(&context.database, &context.sqlite_path, &context.store).await?;
         let marker = read_activation_record(context.database.pool())
             .await?
             .unwrap();
         assert_eq!((marker.source_runs, marker.source_events), (0, 0));
         assert!(!context.backup_path().exists());
 
-        activate_run_history(
-            &context.database,
-            &context.sqlite_path,
-            Arc::clone(&context.store),
-        )
-        .await?;
+        activate_run_history(&context.database, &context.sqlite_path, &context.store).await?;
         assert!(!context.backup_path().exists());
         Ok(())
     }
