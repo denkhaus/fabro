@@ -436,7 +436,12 @@ ON CONFLICT(singleton) DO NOTHING
     }
 
     pub(crate) async fn delete_canonical(&self, run_id: &RunId, deleted_at_ms: i64) -> Result<()> {
-        let mut transaction = self.begin().await?;
+        // This transaction reads the activation marker before it writes the
+        // tombstone and run deletion. A deferred SQLite transaction can fail
+        // immediately when that read transaction is upgraded while another
+        // writer is active, bypassing the configured busy timeout. Reserve
+        // the write lock up front so concurrent deletes wait normally.
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let activated: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM legacy_run_history_activation WHERE singleton = 1)",
         )
@@ -1393,6 +1398,7 @@ fn overlay_live_wall_time(run: &mut Run, now: DateTime<Utc>) {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::time::Duration;
 
     use chrono::{DateTime, Utc};
     use fabro_types::{
@@ -1402,6 +1408,7 @@ mod tests {
         WorkflowSettings, test_support,
     };
     use strum::VariantArray as _;
+    use tokio::time;
     use ulid::Ulid;
 
     use super::{
@@ -1771,6 +1778,38 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(sequences, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn canonical_delete_waits_for_a_concurrent_writer() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 5);
+        let first = entry(projection(id, "created", created_at), 1);
+        let mut transaction = store.pool.begin().await.unwrap();
+        RunSummaryStore::insert_first_event_on_connection(
+            &mut transaction,
+            &first,
+            &created_payload(&id),
+        )
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+        store.test_mark_run_history_activated().await.unwrap();
+
+        let blocker = store.pool.begin_with("BEGIN IMMEDIATE").await.unwrap();
+        let contender = store.clone();
+        let delete = tokio::spawn(async move { contender.delete_canonical(&id, 2).await });
+        time::sleep(Duration::from_millis(25)).await;
+        assert!(
+            !delete.is_finished(),
+            "delete should wait for the existing writer"
+        );
+
+        blocker.commit().await.unwrap();
+        delete.await.unwrap().unwrap();
+        assert!(!store.contains(&id).await.unwrap());
+        assert!(store.test_is_run_history_tombstoned(&id).await.unwrap());
     }
 
     #[tokio::test]
