@@ -6,6 +6,8 @@ enabled is guaranteed inline-postable findings:
 - ``percentile`` indexes past the end of the list when fraction is 1.0.
 - ``moving_average`` divides every window by the full window size, so the
   tail averages are too small.
+- ``collect_values`` reuses its default list across calls, so results leak
+  between otherwise independent calls.
 """
 
 
@@ -23,3 +25,9 @@ def moving_average(values, window):
         chunk = values[start:start + window]
         averages.append(sum(chunk) / window)
     return averages
+
+
+def collect_values(values, collected=[]):
+    """Collect values for one independent operation."""
+    collected.extend(values)
+    return collected
