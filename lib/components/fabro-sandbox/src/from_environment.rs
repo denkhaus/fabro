@@ -15,7 +15,8 @@ use fabro_types::settings::run::{
 
 #[cfg(feature = "daytona")]
 use crate::config::{
-    DaytonaNetwork, DaytonaSnapshotSettings, DockerfileSource as SandboxDockerfileSource,
+    DaytonaNetwork, DaytonaSnapshotSettings, DaytonaSnapshotSource,
+    DockerfileSource as SandboxDockerfileSource,
 };
 #[cfg(feature = "daytona")]
 use crate::daytona::DaytonaConfig;
@@ -28,42 +29,48 @@ pub fn daytona_config_from_environment(
     settings: &RunEnvironmentSettings,
     clone: &RunCloneSettings,
 ) -> DaytonaConfig {
+    // fabro-config rejects Daytona environments that set both image.docker
+    // and image.dockerfile. If both still arrive here, the image wins, which
+    // matches how the Docker provider treats the pair.
+    let source = match (&settings.image.docker, &settings.image.dockerfile) {
+        (Some(image), _) => Some(DaytonaSnapshotSource::Image(image.clone())),
+        (None, Some(ResolvedDockerfileSource::Inline(text))) => Some(
+            DaytonaSnapshotSource::Dockerfile(SandboxDockerfileSource::Inline(text.clone())),
+        ),
+        (None, Some(ResolvedDockerfileSource::Path { path })) => Some(
+            DaytonaSnapshotSource::Dockerfile(SandboxDockerfileSource::Path { path: path.clone() }),
+        ),
+        (None, None) => None,
+    };
+    let snapshot = source.map(|source| DaytonaSnapshotSettings {
+        cpu: settings.resources.cpu,
+        memory: settings
+            .resources
+            .memory
+            .map(|size| size_to_gb_i32(size.as_bytes())),
+        disk: settings
+            .resources
+            .disk
+            .map(|size| size_to_gb_i32(size.as_bytes())),
+        source,
+    });
+
     DaytonaConfig {
         auto_stop_interval: settings
             .lifecycle
             .auto_stop
             .map(|duration| duration_to_minutes_i32(duration.as_std())),
-        labels:             (!settings.labels.is_empty()).then(|| settings.labels.clone()),
-        snapshot:           settings.image.dockerfile.as_ref().map(|dockerfile| {
-            DaytonaSnapshotSettings {
-                cpu:        settings.resources.cpu,
-                memory:     settings
-                    .resources
-                    .memory
-                    .map(|size| size_to_gb_i32(size.as_bytes())),
-                disk:       settings
-                    .resources
-                    .disk
-                    .map(|size| size_to_gb_i32(size.as_bytes())),
-                dockerfile: Some(match dockerfile {
-                    ResolvedDockerfileSource::Inline(text) => {
-                        SandboxDockerfileSource::Inline(text.clone())
-                    }
-                    ResolvedDockerfileSource::Path { path } => {
-                        SandboxDockerfileSource::Path { path: path.clone() }
-                    }
-                }),
-            }
-        }),
-        network:            Some(match settings.network.mode {
+        labels: (!settings.labels.is_empty()).then(|| settings.labels.clone()),
+        snapshot,
+        network: Some(match settings.network.mode {
             EnvironmentNetworkMode::Block => DaytonaNetwork::Block,
             EnvironmentNetworkMode::AllowAll => DaytonaNetwork::AllowAll,
             EnvironmentNetworkMode::CidrAllowList => {
                 DaytonaNetwork::AllowList(settings.network.allow.clone())
             }
         }),
-        clone_depth:        clone.depth_limit(),
-        skip_clone:         !clone.enabled,
+        clone_depth: clone.depth_limit(),
+        skip_clone: !clone.enabled,
     }
 }
 
@@ -242,5 +249,22 @@ mod tests {
             "unexpected error: {message}"
         );
         assert!(!missing.exists());
+    }
+
+    #[cfg(feature = "daytona")]
+    #[test]
+    fn daytona_config_maps_docker_image_to_snapshot() {
+        let mut settings = run_environment(EnvironmentProvider::Daytona);
+        settings.image.docker = Some("ubuntu:24.04".to_string());
+        settings.resources.cpu = Some(2);
+
+        let config = daytona_config_from_environment(&settings, &RunCloneSettings::default());
+        let snapshot = config.snapshot.expect("image should configure a snapshot");
+
+        assert_eq!(
+            snapshot.source,
+            DaytonaSnapshotSource::Image("ubuntu:24.04".to_string())
+        );
+        assert_eq!(snapshot.cpu, Some(2));
     }
 }
