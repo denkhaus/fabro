@@ -3302,7 +3302,7 @@ async fn system_repair_runs_lists_sql_rows_without_readable_history() {
         body["runs"][0]["error"]
             .as_str()
             .unwrap()
-            .contains("no events"),
+            .contains("head mismatch"),
         "got: {}",
         body["runs"][0]["error"]
     );
@@ -16485,7 +16485,6 @@ async fn cancel_run_requests_worker_runtime_stop_when_control_unavailable() {
         .parse::<RunId>()
         .unwrap();
     let worker_ref = test_worker_ref(u32::MAX);
-    tokio::time::pause();
 
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -16505,6 +16504,7 @@ async fn cancel_run_requests_worker_runtime_stop_when_control_unavailable() {
 
     assert_eq!(runtime.requested_refs(), vec![worker_ref.clone()]);
 
+    tokio::time::pause();
     advance_past_worker_cancel_grace().await;
     runtime.wait_for_forced_ref(&worker_ref).await;
 
@@ -16526,7 +16526,6 @@ async fn cancel_run_force_stops_worker_when_delivered_control_does_not_converge(
         .unwrap();
     let worker_ref = test_worker_ref(u32::MAX);
     let (answer_transport, _receiver) = worker_transport_with_receiver(run_id).await;
-    tokio::time::pause();
 
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -16547,6 +16546,7 @@ async fn cancel_run_force_stops_worker_when_delivered_control_does_not_converge(
     assert!(runtime.requested_refs().is_empty());
     assert!(runtime.forced_refs().is_empty());
 
+    tokio::time::pause();
     advance_past_worker_cancel_grace().await;
     runtime.wait_for_forced_ref(&worker_ref).await;
 
@@ -16569,7 +16569,6 @@ async fn cancel_run_watchdog_does_not_stop_replacement_worker() {
     let cancelled_worker_ref = test_worker_ref(u32::MAX - 1);
     let replacement_worker_ref = test_worker_ref(u32::MAX);
     let (answer_transport, _receiver) = worker_transport_with_receiver(run_id).await;
-    tokio::time::pause();
 
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -16587,6 +16586,7 @@ async fn cancel_run_watchdog_does_not_stop_replacement_worker() {
     let response = app.oneshot(req).await.unwrap();
     assert_status!(response, StatusCode::ACCEPTED).await;
 
+    tokio::time::pause();
     tokio::task::yield_now().await;
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -16613,7 +16613,6 @@ async fn cancel_run_watchdog_does_not_stop_worker_after_live_ref_clears() {
         .unwrap();
     let worker_ref = test_worker_ref(u32::MAX);
     let (answer_transport, _receiver) = worker_transport_with_receiver(run_id).await;
-    tokio::time::pause();
 
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -16631,6 +16630,7 @@ async fn cancel_run_watchdog_does_not_stop_worker_after_live_ref_clears() {
     let response = app.oneshot(req).await.unwrap();
     assert_status!(response, StatusCode::ACCEPTED).await;
 
+    tokio::time::pause();
     tokio::task::yield_now().await;
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -16657,7 +16657,6 @@ async fn repeated_cancel_request_arms_one_watchdog_and_persists_one_intent() {
         .unwrap();
     let worker_ref = test_worker_ref(u32::MAX);
     let (answer_transport, _receiver) = worker_transport_with_receiver(run_id).await;
-    tokio::time::pause();
 
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -16694,6 +16693,7 @@ async fn repeated_cancel_request_arms_one_watchdog_and_persists_one_intent() {
         .count();
     assert_eq!(request_count, 1);
 
+    tokio::time::pause();
     advance_past_worker_cancel_grace().await;
     runtime.wait_for_forced_ref(&worker_ref).await;
 
