@@ -203,6 +203,19 @@ function renderCode(code) {
   return details;
 }
 
+function renderSuggestedChange(finding) {
+  if (!finding.suggestion || !finding.location ||
+      !finding.location.existing_code) return null;
+  const details = el("details");
+  details.appendChild(el("summary", null, "Suggested change"));
+  details.appendChild(el("p", "label", "Before"));
+  details.appendChild(el("pre", "code", finding.location.existing_code));
+  details.appendChild(el("p", "label", "After"));
+  details.appendChild(el("pre", "code",
+    finding.suggestion.replacement_code || ""));
+  return details;
+}
+
 function renderFinding(finding) {
   const card = el("article", "finding");
   const head = el("div", "finding-head");
@@ -213,6 +226,7 @@ function renderFinding(finding) {
   chips.appendChild(el("span", "chip sev-" + finding.severity,
     finding.severity + " severity"));
   chips.appendChild(el("span", "chip", finding.category));
+  chips.appendChild(el("span", "chip", finding.issue_type));
   if ((finding.rule_ids || []).length) {
     chips.appendChild(el("span", "chip",
       "rule " + finding.rule_ids.join(", ")));
@@ -222,7 +236,11 @@ function renderFinding(finding) {
   chips.appendChild(el("span", "chip",
     finding.reports + " report(s): " + (finding.reporters || []).join(", ")));
   card.appendChild(chips);
-  card.appendChild(el("p", "location", finding.file + ":" + finding.line));
+  const loc = finding.location || {};
+  const span = loc.start_line && loc.end_line && loc.start_line !== loc.end_line
+    ? loc.start_line + "-" + loc.end_line
+    : (loc.end_line || finding.line);
+  card.appendChild(el("p", "location", finding.file + ":" + span));
   if ((finding.anchors || []).length) {
     card.appendChild(el("p", "location", "Also reported at " +
       finding.anchors.map(a => a.file + ":" + a.line + " (" + a.category +
@@ -242,6 +260,8 @@ function renderFinding(finding) {
     verifier.appendChild(el("p", null, finding.verdict_reasoning));
     card.appendChild(verifier);
   }
+  const suggestion = renderSuggestedChange(finding);
+  if (suggestion) card.appendChild(suggestion);
   const code = renderCode(finding.code);
   if (code) card.appendChild(code);
   return card;

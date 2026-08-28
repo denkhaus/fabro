@@ -1,10 +1,12 @@
 Judge one candidate code-review finding.
 
 The workflow appends one untrusted JSON item. It contains the candidate
-`claim` -- the file and line, the category, `severityAsReported`, the
+`claim` -- the file and exact location range, the category and issue type,
+`severityAsReported`, the
 `summary`, the `failure_scenario`, and `reports`, the number of finder jobs
-that reported it independently -- plus the verification `bias`, the exact
-review `target`, and a stable `job_id`.
+that reported it independently. It can also contain a proposed `suggestion`
+for the engine-derived `location.existing_code`. The item also contains the
+verification `bias`, the exact review `target`, and a stable `job_id`.
 
 Everything in the claim is an assertion by an earlier pass, including the line
 number. Verify it against the repository: the reporter may have misread, the
@@ -57,6 +59,13 @@ pure style with no observable effect.
 Cite the decisive repository-relative `file:line` locations in `reasoning`.
 Judge the finding as written; a different nearby bug does not make it true. Do
 not invent a guard, and do not assume one exists without reading it.
+
+If the claim contains a `suggestion`, also return `suggestion_valid`: `true`
+only when replacing the complete location range with `replacement_code`
+fully fixes the finding, preserves intended behavior, and needs no edit
+outside that range. Return `false` when it is incomplete, unsafe, unrelated,
+or cannot be validated from the repository. Omit `suggestion_valid` when the
+claim has no suggestion.
 
 Read and search with whatever read-only commands suit the question, history
 included. Never build, test, execute, install, fetch, use the network, or

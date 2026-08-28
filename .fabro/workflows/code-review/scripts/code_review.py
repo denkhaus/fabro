@@ -91,6 +91,15 @@ CATEGORIES = (
     "conventions",
     "test-coverage",
 )
+ISSUE_TYPES = (
+    "bug",
+    "security",
+    "performance",
+    "maintainability",
+    "test",
+    "style",
+    "documentation",
+)
 # Correctness bugs always outrank cleanup findings when a cap forces a cut.
 CLEANUP_CATEGORIES = frozenset(CATEGORIES) - {"correctness"}
 # Policy filters drop well-formed findings the review does not want; unlike a
@@ -116,6 +125,8 @@ SIBLING_CAP = 6
 CODE_FRAME_CONTEXT = 4
 CODE_FRAME_MAX_LINE_LENGTH = 400
 CODE_FRAME_MAX_BYTES = 2 * 1024 * 1024
+LOCATION_MAX_LINES = 50
+SUGGESTION_CODE_MAX_LENGTH = 8000
 CODE_FRAME_LANGUAGES = {
     "c": "C",
     "cc": "C++",
@@ -150,7 +161,7 @@ CODE_FRAME_LANGUAGES = {
     "yml": "YAML",
 }
 
-CANONICAL_SCHEMA_VERSION = 3
+CANONICAL_SCHEMA_VERSION = 4
 CANONICAL_FILES = (
     "review-manifest.json",
     "candidate-ledger.jsonl",
@@ -1013,6 +1024,19 @@ def verify_schema_sources() -> None:
             f"{FINDINGS_SCHEMA_PATH} category enum does not match this "
             "engine's category list"
         )
+    try:
+        schema_issue_types = findings_schema["properties"]["findings"]["items"][
+            "properties"
+        ]["issue_type"]["enum"]
+    except (KeyError, TypeError) as error:
+        raise WorkflowDataError(
+            f"{FINDINGS_SCHEMA_PATH} has no issue_type enum"
+        ) from error
+    if list(schema_issue_types) != list(ISSUE_TYPES):
+        raise WorkflowDataError(
+            f"{FINDINGS_SCHEMA_PATH} issue_type enum does not match this "
+            "engine's issue type list"
+        )
     verdict_schema = read_json(root() / VERDICT_SCHEMA_PATH)
     try:
         schema_verdicts = verdict_schema["properties"]["verdict"]["enum"]
@@ -1870,26 +1894,68 @@ def finding_or_rejection(
     if not isinstance(value, dict):
         return None, "the finding is not a JSON object"
     path = normalize_repo_path(value.get("file"))
-    line = value.get("line")
+    legacy_line = value.get("line")
+    start_line = value.get("start_line", legacy_line)
+    end_line = value.get("end_line", legacy_line)
     summary = one_line(value.get("summary"), 600).strip()
     short_summary = one_line(value.get("short_summary"), 200).strip()[:60]
     failure_scenario = clean_text(value.get("failure_scenario"), 4000).strip()
     category = one_line(value.get("category"), 40).strip().lower()
+    issue_type = one_line(value.get("issue_type"), 40).strip().lower()
     severity = one_line(value.get("severity"), 20).upper()
     confidence = one_line(value.get("confidence"), 20).upper()
+    raw_suggestion = value.get("suggestion_code", "")
     for failed, reason in (
         (path is None or path == ".", "file does not name a repository file"),
         (
-            isinstance(line, bool) or not isinstance(line, int) or line < 1,
-            "line is not a positive integer",
+            isinstance(start_line, bool)
+            or not isinstance(start_line, int)
+            or start_line < 1,
+            "start_line is not a positive integer",
+        ),
+        (
+            isinstance(end_line, bool)
+            or not isinstance(end_line, int)
+            or end_line < 1,
+            "end_line is not a positive integer",
+        ),
+        (
+            isinstance(start_line, int)
+            and isinstance(end_line, int)
+            and start_line > end_line,
+            "start_line is after end_line",
+        ),
+        (
+            isinstance(start_line, int)
+            and isinstance(end_line, int)
+            and end_line - start_line + 1 > LOCATION_MAX_LINES,
+            f"location spans more than {LOCATION_MAX_LINES} lines",
         ),
         (not summary, "summary is empty"),
         (not failure_scenario, "failure_scenario is empty"),
         (category not in CATEGORIES, "category is not in the closed list"),
+        (issue_type not in ISSUE_TYPES, "issue_type is not in the closed list"),
         (severity not in SEVERITY_RANK, "severity is not HIGH, MEDIUM, or LOW"),
         (
             confidence not in CONFIDENCE_RANK,
             "confidence is not HIGH, MEDIUM, or LOW",
+        ),
+        (
+            not isinstance(raw_suggestion, str),
+            "suggestion_code is not a string",
+        ),
+        (
+            isinstance(raw_suggestion, str)
+            and len(raw_suggestion) > SUGGESTION_CODE_MAX_LENGTH,
+            f"suggestion_code exceeds {SUGGESTION_CODE_MAX_LENGTH} characters",
+        ),
+        (
+            isinstance(raw_suggestion, str)
+            and any(
+                character not in "\n\t" and ord(character) < 0x20
+                for character in raw_suggestion
+            ),
+            "suggestion_code contains control characters",
         ),
     ):
         if failed:
@@ -1922,13 +1988,20 @@ def finding_or_rejection(
 
     return {
         "file": path,
-        "line": line,
+        # ``line`` remains the stable end-line alias used by ranking,
+        # deduplication, and older consumers. The canonical finding also
+        # carries the complete range.
+        "line": end_line,
+        "start_line": start_line,
+        "end_line": end_line,
         "summary": summary,
         "short_summary": short_summary,
         "failure_scenario": failure_scenario,
         "category": category,
+        "issue_type": issue_type,
         "severity": severity,
         "confidence": confidence,
+        "suggestion_code": raw_suggestion if raw_suggestion.strip() else "",
         "rule_ids": rule_ids,
     }, None
 
@@ -1975,7 +2048,7 @@ def state_rule_context(
     }
 
 
-def normalize_verdict(value: Any) -> Optional[Dict[str, str]]:
+def normalize_verdict(value: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(value, dict):
         return None
     verdict = value.get("verdict")
@@ -1992,6 +2065,9 @@ def normalize_verdict(value: Any) -> Optional[Dict[str, str]]:
         duplicate_of.strip()
     ):
         result["duplicate_of"] = duplicate_of.strip()
+    suggestion_valid = value.get("suggestion_valid")
+    if isinstance(suggestion_valid, bool):
+        result["suggestion_valid"] = suggestion_valid
     return result
 
 
@@ -2338,16 +2414,26 @@ def verification_claim(
     about applicability, and the verifier judges only violation. ``pool``
     supplies the same-file siblings the verifier may name as duplicates.
     """
+    start_line = int(candidate.get("start_line") or candidate.get("line") or 0)
+    end_line = int(candidate.get("end_line") or candidate.get("line") or 0)
+    location = resolved_location(
+        str(candidate.get("file") or ""), start_line, end_line
+    )
     claim: Dict[str, Any] = {
         "file": candidate.get("file"),
         "line": candidate.get("line"),
+        "location": location,
         "category": candidate.get("category"),
+        "issue_type": candidate.get("issue_type"),
         "severityAsReported": candidate.get("severity"),
         "summary": candidate.get("summary"),
         "failure_scenario": candidate.get("failure_scenario"),
         "reports": int(candidate.get("reports") or 1),
         "siblings": sibling_claims(candidate, pool or []),
     }
+    suggestion_code = str(candidate.get("suggestion_code") or "")
+    if suggestion_code and location["existing_code"]:
+        claim["suggestion"] = {"replacement_code": suggestion_code}
     rules_state = (state or {}).get("rules")
     if isinstance(rules_state, dict) and rules_state.get("enabled"):
         catalog = rules_state.get("catalog") or {}
@@ -2487,6 +2573,24 @@ def plan_verify() -> None:
             set(existing.get("rule_ids") or [])
             | set(report.get("rule_ids") or [])
         )
+        # A fix is publishable only when reporting passes agree on its exact
+        # range and replacement. A pass that offers no fix does not veto an
+        # otherwise consistent proposal.
+        existing_suggestion = str(existing.get("suggestion_code") or "")
+        report_suggestion = str(report.get("suggestion_code") or "")
+        if not existing_suggestion and report_suggestion:
+            existing["start_line"] = report["start_line"]
+            existing["end_line"] = report["end_line"]
+            existing["line"] = report["end_line"]
+            existing["suggestion_code"] = report_suggestion
+        elif existing_suggestion and report_suggestion and (
+            existing_suggestion != report_suggestion
+            or existing.get("start_line") != report.get("start_line")
+            or existing.get("end_line") != report.get("end_line")
+        ):
+            existing["suggestion_code"] = ""
+        if report.get("issue_type") == "security":
+            existing["issue_type"] = "security"
         if (
             SEVERITY_RANK[report["severity"]]
             > SEVERITY_RANK[existing["severity"]]
@@ -2712,46 +2816,84 @@ def safe_code_text(value: str) -> str:
     return text
 
 
-def code_frame(file_path: str, line: int) -> Dict[str, Any]:
-    """Read the lines around a finding's anchor from the reviewed tree.
+def reviewed_source_lines(file_path: str) -> Optional[List[str]]:
+    """Read one UTF-8 source file from the unchanged reviewed tree."""
+    target = root() / file_path
+    try:
+        if target.is_symlink() or not target.is_file():
+            return None
+        if target.stat().st_size > CODE_FRAME_MAX_BYTES:
+            return None
+        raw = target.read_bytes()
+    except OSError:
+        return None
+    if b"\0" in raw:
+        return None
+    try:
+        return raw.decode("utf-8").splitlines()
+    except UnicodeError:
+        return None
+
+
+def resolved_location(
+    file_path: str, start_line: int, end_line: int
+) -> Dict[str, Any]:
+    """Build an engine-derived exact anchor for a finding."""
+    existing_code = ""
+    source_lines = reviewed_source_lines(file_path)
+    if (
+        source_lines is not None
+        and 1 <= start_line <= end_line <= len(source_lines)
+    ):
+        candidate = "\n".join(source_lines[start_line - 1:end_line])
+        if (
+            len(candidate) <= SUGGESTION_CODE_MAX_LENGTH
+            and not any(
+                character not in "\n\t" and ord(character) < 0x20
+                for character in candidate
+            )
+        ):
+            existing_code = candidate
+    return {
+        "start_line": start_line,
+        "end_line": end_line,
+        "existing_code": existing_code,
+    }
+
+
+def code_frame(
+    file_path: str, start_line: int, end_line: Optional[int] = None
+) -> Dict[str, Any]:
+    """Read the lines around a finding's anchor range from the reviewed tree.
 
     The excerpt shown in the report is read here, so its line numbers are the
     tree's own and no agent transcribes them. An unreadable, binary,
     oversized, or out-of-range target yields an empty excerpt.
     """
+    end_line = start_line if end_line is None else end_line
     language = code_frame_language(file_path)
     empty: Dict[str, Any] = {
         "language": language,
-        "label": f"{file_path}:{line}",
+        "label": f"{file_path}:{start_line}-{end_line}",
         "lines": [],
     }
-    target = root() / file_path
-    try:
-        if target.is_symlink() or not target.is_file():
-            return empty
-        if target.stat().st_size > CODE_FRAME_MAX_BYTES:
-            return empty
-        raw = target.read_bytes()
-    except OSError:
+    source_lines = reviewed_source_lines(file_path)
+    if (
+        source_lines is None
+        or start_line < 1
+        or end_line < start_line
+        or end_line > len(source_lines)
+    ):
         return empty
-    if b"\0" in raw:
-        return empty
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeError:
-        return empty
-    source_lines = text.splitlines()
-    if line > len(source_lines):
-        return empty
-    start = max(1, line - CODE_FRAME_CONTEXT)
-    end = min(len(source_lines), line + CODE_FRAME_CONTEXT)
+    start = max(1, start_line - CODE_FRAME_CONTEXT)
+    end = min(len(source_lines), end_line + CODE_FRAME_CONTEXT)
     lines: List[Dict[str, Any]] = []
     for number in range(start, end + 1):
         entry: Dict[str, Any] = {
             "number": number,
             "text": safe_code_text(source_lines[number - 1]),
         }
-        if number == line:
+        if start_line <= number <= end_line:
             entry["highlight"] = True
         lines.append(entry)
     return {
@@ -2767,14 +2909,19 @@ def reportable_finding(
 ) -> Dict[str, Any]:
     candidate = record["candidate"]
     verdict = record.get("verdict")
-    return {
+    start_line = int(candidate.get("start_line") or candidate["line"])
+    end_line = int(candidate.get("end_line") or candidate["line"])
+    location = resolved_location(candidate["file"], start_line, end_line)
+    finding = {
         "id": display_id,
         "file": candidate["file"],
-        "line": candidate["line"],
+        "line": end_line,
+        "location": location,
         "summary": candidate["summary"],
         "short_summary": candidate["short_summary"],
         "failure_scenario": candidate["failure_scenario"],
         "category": candidate["category"],
+        "issue_type": candidate["issue_type"],
         "severity": candidate["severity"],
         "confidence": candidate["confidence"],
         "reports": int(candidate.get("reports") or 1),
@@ -2785,8 +2932,18 @@ def reportable_finding(
         "source": candidate.get("source", "finder"),
         "verdict": verdict["verdict"] if verdict else "UNVERIFIED",
         "verdict_reasoning": verdict["reasoning"] if verdict else "",
-        "code": code_frame(candidate["file"], int(candidate["line"])),
+        "code": code_frame(candidate["file"], start_line, end_line),
     }
+    suggestion_code = str(candidate.get("suggestion_code") or "")
+    if (
+        suggestion_code
+        and location["existing_code"]
+        and verdict is not None
+        and verdict.get("suggestion_valid") is True
+        and suggestion_code != location["existing_code"]
+    ):
+        finding["suggestion"] = {"replacement_code": suggestion_code}
+    return finding
 
 
 def finding_reports(state: Mapping[str, Any], key: str) -> List[str]:
@@ -2825,6 +2982,8 @@ def vote_records(
             entry["reasoning"] = verdict["reasoning"]
             if verdict.get("duplicate_of"):
                 entry["duplicate_of"] = verdict["duplicate_of"]
+            if "suggestion_valid" in verdict:
+                entry["suggestion_valid"] = verdict["suggestion_valid"]
         records.append(entry)
     return records
 
@@ -3103,7 +3262,10 @@ def final_tally() -> None:
             "id": candidate.get("id"),
             "file": candidate.get("file"),
             "line": candidate.get("line"),
+            "start_line": candidate.get("start_line"),
+            "end_line": candidate.get("end_line"),
             "category": candidate.get("category"),
+            "issue_type": candidate.get("issue_type"),
             "severity": candidate.get("severity"),
             "confidence": candidate.get("confidence"),
             "reports": int(candidate.get("reports") or 1),
@@ -3114,6 +3276,8 @@ def final_tally() -> None:
             "failure_scenario": candidate.get("failure_scenario"),
             "disposition": disposition,
         }
+        if candidate.get("suggestion_code"):
+            entry["suggestion_code"] = candidate["suggestion_code"]
         if verdict is not None:
             entry["verdict"] = verdict["verdict"]
         if disposition == "duplicate":

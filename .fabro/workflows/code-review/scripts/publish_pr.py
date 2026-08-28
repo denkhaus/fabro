@@ -49,6 +49,7 @@ DEFAULT_BATCH_SIZE = 50
 SUMMARY_BUDGET = 65000
 GITHUB_BODY_CAP = 65536
 SEVERITY_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
+SEVERITY_EMOJI = {"LOW": "🟡", "MEDIUM": "🟠", "HIGH": "🔴"}
 CANONICAL_FILE_NAMES = (
     "review-manifest.json",
     "candidate-ledger.jsonl",
@@ -67,6 +68,14 @@ HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 UNVERIFIED_NOTE = (
     "_This finding comes from a low-effort single-pass review and was not "
     "independently verified._"
+)
+PLAUSIBLE_WARNING = (
+    "> **Needs confirmation:** The verifier could not fully confirm this "
+    "finding from the available evidence."
+)
+UNVERIFIED_WARNING = (
+    "> **Not verified:** This finding comes from a low-effort single-pass "
+    "review and was not independently verified."
 )
 
 
@@ -201,6 +210,19 @@ def has_diff_position(
     return any(start <= line <= end for start, end in hunks.get(path, ()))
 
 
+def has_diff_range(
+    hunks: Mapping[str, Sequence[Tuple[int, int]]],
+    path: str,
+    start_line: int,
+    end_line: int,
+) -> bool:
+    """True when one RIGHT-side hunk contains the complete range."""
+    return any(
+        hunk_start <= start_line <= end_line <= hunk_end
+        for hunk_start, hunk_end in hunks.get(path, ())
+    )
+
+
 # --- Routing configuration (R3-R5, fail-closed) ------------------------------
 
 
@@ -296,6 +318,11 @@ def safe_code_block(code: Mapping[str, Any]) -> List[str]:
     return body
 
 
+def raw_code_block(text: str, language: str = "text") -> List[str]:
+    fence = backtick_fence([text])
+    return [fence + language, text, fence]
+
+
 def finding_detail_lines(finding: Mapping[str, Any]) -> List[str]:
     lines: List[str] = []
     if finding["summary"].strip() != finding["short_summary"].strip():
@@ -318,29 +345,99 @@ def finding_detail_lines(finding: Mapping[str, Any]) -> List[str]:
     return lines
 
 
+def inline_more_lines(finding: Mapping[str, Any]) -> List[str]:
+    verdict = str(finding["verdict"]).lower().capitalize()
+    confidence = str(finding["confidence"]).lower().capitalize()
+    lines = [
+        "",
+        "<details>",
+        f"<summary>More · {verdict} · {confidence} confidence</summary>",
+        "",
+        "**Impact:** "
+        + renderer.escape_markdown(finding["failure_scenario"]),
+        "",
+    ]
+    reasoning = str(finding.get("verdict_reasoning") or "").strip()
+    if reasoning:
+        evidence = renderer.escape_markdown(reasoning)
+    elif finding["verdict"] == "UNVERIFIED":
+        evidence = "No independent verification ran at this effort level."
+    else:
+        evidence = "No verifier reasoning was recorded."
+    lines.append("**Evidence:** " + evidence)
+
+    metadata: List[str] = []
+    reports = finding.get("reports")
+    reporters = finding.get("reporters") or []
+    if isinstance(reports, int) and reports > 1:
+        report_text = f"- Reported by {reports} review passes"
+        if reporters:
+            report_text += ": " + renderer.escape_markdown(
+                ", ".join(str(reporter) for reporter in reporters)
+            )
+        metadata.append(report_text)
+
+    rule_ids = finding.get("rule_ids") or []
+    if rule_ids:
+        label = "Rule" if len(rule_ids) == 1 else "Rules"
+        metadata.append(
+            f"- {label}: "
+            + ", ".join(renderer.code_span(rule_id) for rule_id in rule_ids)
+        )
+
+    for anchor in finding.get("anchors") or []:
+        location = f"{anchor['file']}:{anchor['line']}"
+        metadata.append(
+            f"- Related location: {renderer.code_span(location)} "
+            f"({renderer.escape_markdown(anchor['category'])}, "
+            f"{renderer.escape_markdown(anchor['id'])})"
+        )
+
+    if metadata:
+        lines.extend(["", *metadata])
+    lines.extend(["", "</details>"])
+    return lines
+
+
 def inline_comment_body(finding: Mapping[str, Any], review_id: str) -> str:
     tag = comment_tag(review_id, finding["id"])
+    issue_type = str(finding["issue_type"]).lower().capitalize()
     lines = [
         f"<!-- {tag} -->",
         "",
-        f"**{finding['severity']} · {finding['category']}** — "
+        f"**{SEVERITY_EMOJI[finding['severity']]} {issue_type}** — "
         + renderer.escape_markdown(finding["short_summary"]),
-        *finding_detail_lines(finding),
     ]
-    meta = f"Verdict {finding['verdict']} · confidence {finding['confidence']}"
-    rule_ids = finding.get("rule_ids") or []
-    if rule_ids:
-        meta += " · rule " + ", ".join(
-            renderer.code_span(rule_id) for rule_id in rule_ids
+    if finding["summary"].strip() != finding["short_summary"].strip():
+        lines.extend(["", renderer.escape_markdown(finding["summary"])])
+    if finding["verdict"] == "PLAUSIBLE":
+        lines.extend(["", PLAUSIBLE_WARNING])
+    elif finding["verdict"] == "UNVERIFIED":
+        lines.extend(["", UNVERIFIED_WARNING])
+    suggestion = finding.get("suggestion")
+    if isinstance(suggestion, dict):
+        lines.extend(
+            [
+                "",
+                *raw_code_block(suggestion["replacement_code"], "suggestion"),
+            ]
         )
-    lines.extend(["", f"_{meta}_"])
+    lines.extend(inline_more_lines(finding))
     return "\n".join(lines)
 
 
 def summary_section(
     finding: Mapping[str, Any], reason_text: Optional[str]
 ) -> str:
-    location = renderer.code_span(f"{finding['file']}:{finding['line']}")
+    location_data = finding["location"]
+    start_line = location_data["start_line"]
+    end_line = location_data["end_line"]
+    location_text = (
+        f"{finding['file']}:{start_line}"
+        if start_line == end_line
+        else f"{finding['file']}:{start_line}-{end_line}"
+    )
+    location = renderer.code_span(location_text)
     facts = [location]
     if reason_text:
         facts.append(reason_text)
@@ -353,7 +450,8 @@ def summary_section(
             + ", ".join(renderer.code_span(rule_id) for rule_id in rule_ids)
         )
     lines = [
-        f"### {finding['id']} · {finding['severity']} {finding['category']} — "
+        f"### {finding['id']} · {finding['severity']} "
+        f"{finding['issue_type']} / {finding['category']} — "
         + renderer.escape_markdown(finding["short_summary"]),
         "",
         " · ".join(facts),
@@ -362,6 +460,22 @@ def summary_section(
     excerpt = safe_code_block(finding["code"])
     if excerpt:
         lines.extend(["", *excerpt])
+    suggestion = finding.get("suggestion")
+    if isinstance(suggestion, dict):
+        lines.extend(
+            [
+                "",
+                "<details><summary>Suggested change</summary>",
+                "",
+                "**Before:**",
+                *raw_code_block(location_data["existing_code"]),
+                "",
+                "**After:**",
+                *raw_code_block(suggestion["replacement_code"]),
+                "",
+                "</details>",
+            ]
+        )
     return "\n".join(lines)
 
 
@@ -597,12 +711,19 @@ def command_plan(args: argparse.Namespace) -> int:
     # no-position reason and routing can never hide a placement.
     placements: List[Dict[str, Any]] = []
     for finding in findings:
+        location = finding["location"]
+        start_line = location["start_line"]
+        end_line = location["end_line"]
         base_entry = {
             "finding_id": finding["id"],
             "path": finding["file"],
-            "line": finding["line"],
+            "line": end_line,
+            "start_line": start_line,
+            "end_line": end_line,
         }
-        if not has_diff_position(hunks, finding["file"], finding["line"]):
+        if not has_diff_range(
+            hunks, finding["file"], start_line, end_line
+        ):
             placements.append(
                 {
                     **base_entry,
@@ -811,6 +932,24 @@ def validate_plan_document(
         line = entry.get("line")
         if isinstance(line, bool) or not isinstance(line, int) or line < 1:
             fail(f"plan {field}.line must be a positive integer")
+        start_line = entry.get("start_line")
+        end_line = entry.get("end_line")
+        if (
+            isinstance(start_line, bool)
+            or not isinstance(start_line, int)
+            or start_line < 1
+        ):
+            fail(f"plan {field}.start_line must be a positive integer")
+        if (
+            isinstance(end_line, bool)
+            or not isinstance(end_line, int)
+            or end_line < start_line
+            or end_line != line
+        ):
+            fail(
+                f"plan {field}.end_line must end at its line and not precede "
+                "start_line"
+            )
         body = require_text(entry.get("body"), f"{field}.body", GITHUB_BODY_CAP)
         placement = entry.get("placement")
         if placement == "inline":
@@ -1014,15 +1153,19 @@ class BatchPoster:
         self.batches_succeeded = 0
 
     def post_review(self, finding_ids: Sequence[str]) -> Optional[int]:
-        comments = [
-            {
-                "path": self.by_id[finding_id]["path"],
-                "line": self.by_id[finding_id]["line"],
+        comments: List[Dict[str, Any]] = []
+        for finding_id in finding_ids:
+            entry = self.by_id[finding_id]
+            comment: Dict[str, Any] = {
+                "path": entry["path"],
+                "line": entry["end_line"],
                 "side": "RIGHT",
-                "body": self.by_id[finding_id]["body"],
+                "body": entry["body"],
             }
-            for finding_id in finding_ids
-        ]
+            if entry["start_line"] != entry["end_line"]:
+                comment["start_line"] = entry["start_line"]
+                comment["start_side"] = "RIGHT"
+            comments.append(comment)
         # No review body: the run tag lives in the sticky summary and in
         # every inline comment's identity tag, so body text here would
         # only add a noise bubble to the PR timeline (R12).

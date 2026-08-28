@@ -14,6 +14,7 @@ Python 3.9-compatible. Standard library only.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import sys
@@ -22,7 +23,7 @@ from typing import Any, Dict, List, Mapping, NoReturn, Sequence, Tuple
 from urllib.parse import quote
 
 
-CANONICAL_SCHEMA_VERSION = 3
+CANONICAL_SCHEMA_VERSION = 4
 TEMPLATE_RELATIVE_PATH = ("..", "templates", "report.html")
 PAYLOAD_PLACEHOLDER = "__CODE_REVIEW_PAYLOAD__"
 
@@ -34,6 +35,15 @@ CATEGORIES = (
     "altitude",
     "conventions",
     "test-coverage",
+)
+ISSUE_TYPES = (
+    "bug",
+    "security",
+    "performance",
+    "maintainability",
+    "test",
+    "style",
+    "documentation",
 )
 SEVERITIES = ("HIGH", "MEDIUM", "LOW")
 FINDING_VERDICTS = ("CONFIRMED", "PLAUSIBLE", "UNVERIFIED")
@@ -58,6 +68,7 @@ COMPILED_RULE_ID_RE = re.compile(
 )
 MAX_TEXT = 8000
 MAX_RULE_IDS_PER_FINDING = 50
+MAX_LOCATION_LINES = 50
 
 
 class RenderError(RuntimeError):
@@ -211,8 +222,8 @@ def validate_code(value: object, field: str) -> Dict[str, Any]:
             line["highlight"] = True
             highlighted += 1
         normalized.append(line)
-    if normalized and highlighted != 1:
-        die(f"{field} must highlight exactly one line")
+    if normalized and highlighted < 1:
+        die(f"{field} must highlight at least one line")
     return {
         "language": code["language"],
         "label": code["label"],
@@ -230,12 +241,49 @@ def validate_finding(value: object, index: int) -> Dict[str, Any]:
     line = positive_int(finding.get("line"), f"{field}.line")
     if finding.get("category") not in CATEGORIES:
         die(f"{field}.category is not in the closed list")
+    if finding.get("issue_type") not in ISSUE_TYPES:
+        die(f"{field}.issue_type is not in the closed list")
     if finding.get("severity") not in SEVERITIES:
         die(f"{field}.severity is invalid")
     if finding.get("confidence") not in SEVERITIES:
         die(f"{field}.confidence is invalid")
     if finding.get("verdict") not in FINDING_VERDICTS:
         die(f"{field}.verdict is invalid")
+    location = as_map(finding.get("location"))
+    start_line = positive_int(
+        location.get("start_line"), f"{field}.location.start_line"
+    )
+    end_line = positive_int(
+        location.get("end_line"), f"{field}.location.end_line"
+    )
+    if start_line > end_line:
+        die(f"{field}.location starts after it ends")
+    if end_line - start_line + 1 > MAX_LOCATION_LINES:
+        die(f"{field}.location spans more than {MAX_LOCATION_LINES} lines")
+    if end_line != line:
+        die(f"{field}.line must equal location.end_line")
+    normalized_location = {
+        "start_line": start_line,
+        "end_line": end_line,
+        "existing_code": safe_text(
+            location.get("existing_code"),
+            f"{field}.location.existing_code",
+        ),
+    }
+    suggestion = finding.get("suggestion")
+    normalized_suggestion: Optional[Dict[str, str]] = None
+    if suggestion is not None:
+        suggestion_record = as_map(suggestion)
+        replacement = safe_text(
+            suggestion_record.get("replacement_code"),
+            f"{field}.suggestion.replacement_code",
+            allow_empty=False,
+        )
+        if not normalized_location["existing_code"]:
+            die(f"{field}.suggestion has no exact existing code anchor")
+        if replacement == normalized_location["existing_code"]:
+            die(f"{field}.suggestion does not change the anchored code")
+        normalized_suggestion = {"replacement_code": replacement}
     reporters = finding.get("reporters")
     if not isinstance(reporters, list) or not all(
         isinstance(item, str) for item in reporters
@@ -270,10 +318,21 @@ def validate_finding(value: object, index: int) -> Dict[str, Any]:
                 "category": record["category"],
             }
         )
-    return {
+    normalized_code = validate_code(finding.get("code"), f"{field}.code")
+    if normalized_code["lines"]:
+        highlighted = {
+            entry["number"]
+            for entry in normalized_code["lines"]
+            if entry.get("highlight")
+        }
+        expected = set(range(start_line, end_line + 1))
+        if highlighted != expected:
+            die(f"{field}.code highlights do not match its location")
+    normalized = {
         "id": display_id,
         "file": path,
         "line": line,
+        "location": normalized_location,
         "summary": safe_text(
             finding.get("summary"), f"{field}.summary", allow_empty=False
         ),
@@ -288,6 +347,7 @@ def validate_finding(value: object, index: int) -> Dict[str, Any]:
             allow_empty=False,
         ),
         "category": finding["category"],
+        "issue_type": finding["issue_type"],
         "severity": finding["severity"],
         "confidence": finding["confidence"],
         "reports": positive_int(finding.get("reports"), f"{field}.reports"),
@@ -299,8 +359,11 @@ def validate_finding(value: object, index: int) -> Dict[str, Any]:
         "verdict_reasoning": safe_text(
             finding.get("verdict_reasoning"), f"{field}.verdict_reasoning"
         ),
-        "code": validate_code(finding.get("code"), f"{field}.code"),
+        "code": normalized_code,
     }
+    if normalized_suggestion is not None:
+        normalized["suggestion"] = normalized_suggestion
+    return normalized
 
 
 def validate_findings(value: object) -> List[Dict[str, Any]]:
@@ -333,6 +396,8 @@ def validate_ledger(records: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]
         positive_int(record.get("line"), f"{field}.line")
         if record.get("category") not in CATEGORIES:
             die(f"{field}.category is not in the closed list")
+        if record.get("issue_type") not in ISSUE_TYPES:
+            die(f"{field}.issue_type is not in the closed list")
         if record.get("disposition") not in DISPOSITIONS:
             die(f"{field}.disposition is invalid")
         validated.append(dict(record))
@@ -351,6 +416,10 @@ def validate_votes(records: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]
             if record.get("verdict") not in VOTE_VERDICTS:
                 die(f"{field}.verdict is invalid")
             safe_text(record.get("reasoning"), f"{field}.reasoning")
+            if "suggestion_valid" in record and not isinstance(
+                record.get("suggestion_valid"), bool
+            ):
+                die(f"{field}.suggestion_valid must be a boolean")
         validated.append(dict(record))
     return validated
 
@@ -582,6 +651,12 @@ def code_block(code: Mapping[str, Any]) -> List[str]:
     return body
 
 
+def fenced_text(value: str, language: str = "text") -> List[str]:
+    longest = max((len(run) for run in re.findall(r"`+", value)), default=0)
+    fence = "`" * max(4, longest + 1)
+    return [fence + language, value, fence]
+
+
 def describe_target(manifest: Mapping[str, Any]) -> str:
     mode = str(manifest.get("mode"))
     if mode == "files":
@@ -601,11 +676,19 @@ def revision_summary(manifest: Mapping[str, Any]) -> str:
 
 
 def finding_markdown(finding: Mapping[str, Any]) -> List[str]:
-    location = f"{finding['file']}:{finding['line']}"
+    location_data = finding["location"]
+    start_line = location_data["start_line"]
+    end_line = location_data["end_line"]
+    location = (
+        f"{finding['file']}:{start_line}"
+        if start_line == end_line
+        else f"{finding['file']}:{start_line}-{end_line}"
+    )
     rule_ids = finding.get("rule_ids") or []
     lines = [
         f"### {finding['id']} · {finding['severity']} "
-        f"{finding['category']} — {escape_markdown(finding['short_summary'])}",
+        f"{finding['issue_type']} / {finding['category']} — "
+        f"{escape_markdown(finding['short_summary'])}",
         "",
         f"{code_span(location)} · verdict {finding['verdict']} · "
         f"confidence {finding['confidence']} · reported by "
@@ -636,6 +719,22 @@ def finding_markdown(finding: Mapping[str, Any]) -> List[str]:
     reasoning = str(finding.get("verdict_reasoning") or "").strip()
     if reasoning:
         lines.extend(["", f"**Verifier.** {escape_markdown(reasoning)}"])
+    suggestion = finding.get("suggestion")
+    if isinstance(suggestion, dict):
+        lines.extend(
+            [
+                "",
+                "<details><summary>Suggested change</summary>",
+                "",
+                "**Before:**",
+                *fenced_text(location_data["existing_code"]),
+                "",
+                "**After:**",
+                *fenced_text(suggestion["replacement_code"]),
+                "",
+                "</details>",
+            ]
+        )
     excerpt = code_block(finding["code"])
     if excerpt:
         lines.extend(["", *excerpt])
@@ -841,7 +940,9 @@ def jsonl_line(finding: Mapping[str, Any]) -> str:
             "id",
             "file",
             "line",
+            "location",
             "category",
+            "issue_type",
             "severity",
             "confidence",
             "verdict",
@@ -854,6 +955,8 @@ def jsonl_line(finding: Mapping[str, Any]) -> str:
             "source",
         )
     }
+    if finding.get("suggestion") is not None:
+        record["suggestion"] = finding["suggestion"]
     return json.dumps(record, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -889,14 +992,19 @@ def sarif_uri(path: str) -> str:
     return quote(path, safe="/")
 
 
-def sarif_location(path: str, line: int) -> Dict[str, Any]:
+def sarif_location(
+    path: str, start_line: int, end_line: Optional[int] = None
+) -> Dict[str, Any]:
+    region: Dict[str, Any] = {"startLine": start_line}
+    if end_line is not None and end_line != start_line:
+        region["endLine"] = end_line
     return {
         "physicalLocation": {
             "artifactLocation": {
                 "uri": sarif_uri(path),
                 "uriBaseId": "%SRCROOT%",
             },
-            "region": {"startLine": line},
+            "region": region,
         }
     }
 
@@ -970,22 +1078,36 @@ def sarif_result(
     )
     if finding["verdict"] == "UNVERIFIED":
         message += "\n\n" + SARIF_UNVERIFIED_NOTE
+    location = finding["location"]
+    start_line = location["start_line"]
+    end_line = location["end_line"]
+    fingerprint_anchor = (
+        location["existing_code"]
+        or f"{start_line}:{end_line}"
+    )
+    fingerprint = hashlib.sha256(
+        (
+            f"{finding['file']}\0{finding['issue_type']}\0"
+            f"{fingerprint_anchor}"
+        ).encode("utf-8")
+    ).hexdigest()
     result: Dict[str, Any] = {
         "ruleId": primary,
         "ruleIndex": rule_indices[primary],
         "level": SARIF_LEVELS[finding["severity"]],
         "message": {"text": message},
-        "locations": [sarif_location(finding["file"], finding["line"])],
+        "locations": [
+            sarif_location(finding["file"], start_line, end_line)
+        ],
         "partialFingerprints": {
-            "codeReviewIdentity/v1": (
-                f"{finding['file']}:{finding['line']}:{finding['category']}"
-            )
+            "codeReviewIdentity/v2": fingerprint
         },
         "properties": {
             key: finding[key]
             for key in (
                 "id",
                 "category",
+                "issue_type",
                 "severity",
                 "confidence",
                 "verdict",
@@ -997,6 +1119,32 @@ def sarif_result(
             )
         },
     }
+    suggestion = finding.get("suggestion")
+    if isinstance(suggestion, dict):
+        result["fixes"] = [
+            {
+                "description": {"text": "Apply the verified suggested change"},
+                "artifactChanges": [
+                    {
+                        "artifactLocation": {
+                            "uri": sarif_uri(finding["file"]),
+                            "uriBaseId": "%SRCROOT%",
+                        },
+                        "replacements": [
+                            {
+                                "deletedRegion": {
+                                    "startLine": start_line,
+                                    "endLine": end_line,
+                                },
+                                "insertedContent": {
+                                    "text": suggestion["replacement_code"]
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
     anchors = finding.get("anchors") or []
     if anchors:
         result["relatedLocations"] = [

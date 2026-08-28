@@ -7,7 +7,7 @@ report.
 
 ## Canonical files
 
-The canonical bundle is schema version 3.
+The canonical bundle is schema version 4.
 
 - `review-manifest.json` identifies the review, target, revision, request,
   completion status, counts, and canonical file set. At the rule-mapped
@@ -22,8 +22,10 @@ The canonical bundle is schema version 3.
   carries the candidate's applicable `rule_ids` (empty outside the
   rule-mapped tiers).
 - `findings.json` contains only the reportable subset. It is the authoritative
-  finding list. Each reported finding also carries a `code` excerpt, which the
-  ledger's candidate records do not, and its `rule_ids`.
+  finding list. Each reported finding carries its orthogonal `issue_type`, an
+  engine-derived `location` with the exact original code and start/end lines,
+  a highlighted `code` excerpt, and its `rule_ids`. A verified replacement is
+  stored as optional `suggestion.replacement_code`.
 - `coverage.json` records what the review dispatched, what returned, what was
   rejected for failing the finding contract, and what a cap dropped. At the
   rule-mapped tiers it also records the authoritative target-file list, the
@@ -39,9 +41,10 @@ The canonical bundle is schema version 3.
   and cap drops -- also emitted into the workflow context so calibration
   across many runs can read it from the event log.
 - `votes.jsonl` contains one record for each dispatched verification, with the
-  exact claim shown to the verifier (including its claimed `rule_ids` and the
-  file's effective checks at the rule-mapped tiers), plus its verdict and
-  reasoning when it completed.
+  exact claim shown to the verifier (including its location, proposed
+  replacement, claimed `rule_ids`, and the file's effective checks at the
+  rule-mapped tiers), plus its verdict and reasoning when it completed. A vote
+  over a proposed replacement also carries `suggestion_valid`.
 
 ## Derived files
 
@@ -117,6 +120,12 @@ verifier's instructions, never the arithmetic. At `low`, verification is
 skipped by design: findings carry `verdict: "UNVERIFIED"` and the reports say
 so.
 
+A proposed replacement is independent of the keep verdict. The verifier must
+return `suggestion_valid: true`, the engine must be able to read the exact
+original range from the unchanged reviewed tree, and the replacement must
+differ from it. Low-effort findings never carry suggestions because they have
+no independent verification.
+
 ## Deduplication and ranking
 
 A candidate's identity is its normalized file, line, and category. Two angles
@@ -146,12 +155,16 @@ categories (`reuse`, `simplification`, `efficiency`, `altitude`,
 report count, then confidence, then file and line. The report cap cuts from
 the bottom, and everything cut is in the ledger as `deferred-by-cap`.
 
-## Source excerpts
+## Locations, source excerpts, and suggestions
 
-A finding's `code` excerpt is not agent-quoted: `final-tally` reads the lines
-around the finding from the reviewed tree, so the line numbers are the tree's
-own and no agent transcribes them. The excerpt is omitted when the file is
-unreadable, binary, oversized, or the line is out of range.
+A finder supplies a bounded `start_line`/`end_line` range. `final-tally` reads
+that range from the reviewed tree and records its exact text as
+`location.existing_code`; the agent never supplies the canonical original
+text. The adjacent `code` excerpt is read the same way and highlights the
+complete range. Exact text and the excerpt are omitted when the file is
+unreadable, binary, oversized, or the range is invalid. A proposed
+`suggestion_code` becomes canonical only after the verifier approves it and
+the exact original text is available.
 
 ## HTML rendering
 
@@ -174,11 +187,14 @@ validated bundle:
   covers every check ID any result cites.
 - Severity maps to level: `HIGH` is `error`, `MEDIUM` is `warning`, `LOW` is
   `note`.
-- Each result's location is the finding's file and line relative to
+- Each result's location is the finding's file and line range relative to
   `%SRCROOT%`; anchors become related locations. The finding's identity,
-  category, severity, confidence, verdict, reports, reporters, rule IDs,
-  anchors, and source are result properties, and the file, line, and
-  category form a stable partial fingerprint.
+  category, issue type, severity, confidence, verdict, reports, reporters,
+  rule IDs, anchors, and source are result properties. File, issue type, and
+  exact original code form a stable hashed partial fingerprint, falling back
+  to the line range when source text is unavailable.
+- A verified suggestion becomes a SARIF `fix` that replaces the complete
+  location range.
 - An `UNVERIFIED` finding (the `low` tier) says so in its result message and
   carries the verdict in its properties.
 - The run's automation ID is `code-review/<mode>`, and the run properties
