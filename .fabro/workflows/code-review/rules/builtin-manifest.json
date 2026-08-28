@@ -86,7 +86,7 @@
     },
     {
       "path": "rules/builtin/language/arkts.yaml",
-      "sha256": "af33d250eb3aa46c4f37b14eafa0f4329aa2800a8cd4515047aa52f33aa116aa"
+      "sha256": "234846f961952b85d4979960a09db2a380b027e754dea22877032ccd22c039c4"
     },
     {
       "path": "rules/builtin/language/astro.yaml",
@@ -98,11 +98,11 @@
     },
     {
       "path": "rules/builtin/language/cpp.yaml",
-      "sha256": "3c9b9b4951f406eb3ccf185a9c18e6fc17c99693ac565ea506489c4925f1efe6"
+      "sha256": "5e99bbddbbf913328271e09528928b3c97b61d1dc3dcf91c7c5880c5ddb0f382"
     },
     {
       "path": "rules/builtin/language/elm.yaml",
-      "sha256": "70a8037e3c537162504dcd9b28e859d87b8a8e042d0f5f713082b3383d515769"
+      "sha256": "31993c24e5d472bdf9b65ec2436f4e49c2bfac877e5eb7e4cbb28fb66db0d2c5"
     },
     {
       "path": "rules/builtin/language/freemarker.yaml",
@@ -138,7 +138,7 @@
     },
     {
       "path": "rules/builtin/language/matlab.yaml",
-      "sha256": "0773945d54c9b818a7d52552176d21980f679f400f80a6e652e3cad9475f4c3d"
+      "sha256": "7482032d11b4196df25f4764ba4d1720f1330e9c5b2de77b568d4e1df80ffaa5"
     },
     {
       "path": "rules/builtin/language/nim.yaml",
@@ -158,7 +158,7 @@
     },
     {
       "path": "rules/builtin/language/python.yaml",
-      "sha256": "ee63e8cba2877d4ce50ec6a085cd449d2a5b7793a905d6a98155e1eac86ca04b"
+      "sha256": "c02fe9717e29f36eb605479531f62876ec78065b3eaefc38a94203c9b67d35b7"
     },
     {
       "path": "rules/builtin/language/r.yaml",

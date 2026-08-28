@@ -21,10 +21,15 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from review_contract import CATEGORIES, COMPILED_RULE_ID_RE  # noqa: E402
 
 
 class RuleLoaderError(ValueError):
@@ -48,25 +53,8 @@ MAX_YAML_DEPTH = 40
 LAYERS = ("builtin", "repo")
 MODES = ("merge", "override")
 
-# Kept in lockstep with the engine's closed category list; the engine asserts
-# equality before compiling rules.
-CATEGORIES = (
-    "correctness",
-    "reuse",
-    "simplification",
-    "efficiency",
-    "altitude",
-    "conventions",
-    "test-coverage",
-)
-
 ID_RE = re.compile(r"^[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$")
-COMPILED_ID_RE = re.compile(
-    r"^(builtin|repo):"
-    r"[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?"
-    r"/"
-    r"[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$"
-)
+COMPILED_ID_RE = COMPILED_RULE_ID_RE
 
 # The default pack applies only to files no other built-in pack matches, and
 # the repository-instructions pack applies to every file. Both behaviors are

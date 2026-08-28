@@ -52,7 +52,7 @@ rules:
         guidance: |
           - `Debug.log` or `Debug.toString` left in code paths that ship to production; `elm make --optimize` fails to compile with `Debug.log`/`Debug.todo` present, so leftover calls block optimized builds
           - `Debug.todo` used as a placeholder for unimplemented branches that are reachable in normal application flow rather than genuinely unreachable states
-          - Comparing custom types or records with `==` where the comparison actually needs `Debug.toString` or a dedicated field-by-field comparison, given Elm's structural equality semantics
+          - Comparing values that can contain functions with `==`, which can fail at runtime; compare dedicated fields instead. Do not recommend `Debug.toString` for comparisons because `Debug` is unavailable in `--optimize` builds
       - id: package-versioning-and-dependencies
         category: correctness
         guidance: |

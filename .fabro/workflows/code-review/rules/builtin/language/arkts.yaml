@@ -26,7 +26,7 @@ rules:
       - id: state-decorator-usage
         category: correctness
         guidance: |
-          - Arrays/objects decorated with `@State` will not trigger UI refresh when modified via push/property changes; references must be replaced
+          - `@State` observes array additions, removals, and item replacement, but not nested object property mutations; use `@Observed` + `@ObjectLink` when the UI depends on nested changes
           - Verify correct usage of `@Prop` (one-way) vs `@Link` (two-way) for the given scenario
           - Nested object state updates must use `@Observed` + `@ObjectLink`
           - Props drilling beyond 3 levels should use `@Provide/@Consume` instead
@@ -49,7 +49,7 @@ rules:
         guidance: |
           - Large lists (>20 items) must use `LazyForEach` instead of `ForEach`
           - Creating new objects, closures, or calling functions that return styles in the `build` method is prohibited, as it causes unnecessary child component rebuilds
-          - Complex computation results should be cached via `@Watch` to avoid redundant calculations on each render
+          - Complex computations repeated in `build` when their inputs have not changed; precompute on input changes or use an appropriate computed-state mechanism (`@Watch` is a change callback, not a cache)
           - Image resources should have proper caching strategies to avoid repeated loading
       - id: resource-access-standards
         category: correctness

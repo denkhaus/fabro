@@ -17,33 +17,28 @@ import json
 import hashlib
 import os
 import re
+import sys
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Mapping, NoReturn, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, NoReturn, Optional, Sequence, Tuple
 from urllib.parse import quote
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from review_contract import (  # noqa: E402
+    CATEGORIES,
+    COMPILED_RULE_ID_RE,
+    EFFORT_TIERS,
+    FINDING_ID_RE,
+    ISSUE_TYPES,
+    MAX_RULE_IDS_PER_FINDING,
+    REVIEW_MODES,
+)
 
 
 CANONICAL_SCHEMA_VERSION = 4
 TEMPLATE_RELATIVE_PATH = ("..", "templates", "report.html")
 PAYLOAD_PLACEHOLDER = "__CODE_REVIEW_PAYLOAD__"
 
-CATEGORIES = (
-    "correctness",
-    "reuse",
-    "simplification",
-    "efficiency",
-    "altitude",
-    "conventions",
-    "test-coverage",
-)
-ISSUE_TYPES = (
-    "bug",
-    "security",
-    "performance",
-    "maintainability",
-    "test",
-    "style",
-    "documentation",
-)
 SEVERITIES = ("HIGH", "MEDIUM", "LOW")
 FINDING_VERDICTS = ("CONFIRMED", "PLAUSIBLE", "UNVERIFIED")
 VOTE_VERDICTS = ("CONFIRMED", "PLAUSIBLE", "REFUTED")
@@ -56,17 +51,7 @@ DISPOSITIONS = (
 )
 VERIFICATION_STATUSES = ("complete", "partial", "skipped-low-effort")
 COMPLETION_STATUSES = ("complete", "partial")
-EFFORT_TIERS = ("low", "medium", "high", "xhigh", "max")
-REVIEW_MODES = ("changes", "commit", "files")
-FINDING_ID_RE = re.compile(r"^R[1-9][0-9]*$")
-COMPILED_RULE_ID_RE = re.compile(
-    r"^(builtin|repo):"
-    r"[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?"
-    r"/"
-    r"[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$"
-)
 MAX_TEXT = 8000
-MAX_RULE_IDS_PER_FINDING = 50
 MAX_LOCATION_LINES = 50
 UNVERIFIED_FINDING_NOTE = (
     "This finding comes from a low-effort single-pass review and was not "

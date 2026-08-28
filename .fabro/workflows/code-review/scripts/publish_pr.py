@@ -62,7 +62,6 @@ CANONICAL_FILE_NAMES = (
 )
 
 REVIEW_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
-FINDING_ID_RE = re.compile(r"^R[1-9][0-9]*$")
 REPO_RE = re.compile(
     r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
 )
@@ -873,7 +872,7 @@ def validate_plan_document(
         if not isinstance(entry, dict):
             fail(f"plan {field} must be an object")
         finding_id = entry.get("finding_id")
-        if not isinstance(finding_id, str) or not FINDING_ID_RE.fullmatch(
+        if not isinstance(finding_id, str) or not renderer.FINDING_ID_RE.fullmatch(
             finding_id
         ):
             fail(f"plan {field}.finding_id is invalid")
@@ -1174,8 +1173,9 @@ class BatchPoster:
         self.posted.update(landed & set(self.by_id))
         return [fid for fid in finding_ids if fid not in landed]
 
-    def post_individually(self, finding_ids: Sequence[str]) -> None:
-        """Per-comment fallback that isolates unpostable comments (R15)."""
+    def post_individual_pass(self, finding_ids: Sequence[str]) -> List[str]:
+        """Post once and return writes with an ambiguous server result."""
+        ambiguous: List[str] = []
         for finding_id in finding_ids:
             status = self.post_review([finding_id])
             if status in (200, 201):
@@ -1185,24 +1185,30 @@ class BatchPoster:
                     "GitHub could not resolve the diff position (422)"
                 )
             elif self.is_server_failure(status):
-                missing = self.reconcile([finding_id])
-                if missing:
-                    # Verified missing, so one retry cannot duplicate (R14).
-                    retry_status = self.post_review([finding_id])
-                    if retry_status in (200, 201):
-                        self.posted.add(finding_id)
-                    elif retry_status == 422:
-                        self.failed[finding_id] = (
-                            "GitHub could not resolve the diff position (422)"
-                        )
-                    else:
-                        still_missing = self.reconcile([finding_id])
-                        if still_missing:
-                            self.mark_failed(
-                                still_missing, self.DROPPED_DETAIL
-                            )
+                ambiguous.append(finding_id)
             else:
                 self.failed[finding_id] = f"GitHub refused the comment (HTTP {status})"
+        return ambiguous
+
+    def post_individually(self, finding_ids: Sequence[str]) -> None:
+        """Per-comment fallback that isolates unpostable comments (R15).
+
+        Reconcile ambiguous writes once per pass. This preserves duplicate
+        safety without re-paginating the complete comment history for every
+        failed comment.
+        """
+        ambiguous = self.post_individual_pass(finding_ids)
+        if not ambiguous:
+            return
+        missing = self.reconcile(ambiguous)
+        if not missing:
+            return
+        # Verified missing, so one retry cannot duplicate (R14).
+        retry_ambiguous = self.post_individual_pass(missing)
+        if retry_ambiguous:
+            still_missing = self.reconcile(retry_ambiguous)
+            if still_missing:
+                self.mark_failed(still_missing, self.DROPPED_DETAIL)
 
     def post_batch(self, batch_ids: Sequence[str]) -> None:
         to_send = [fid for fid in batch_ids if fid not in self.posted]

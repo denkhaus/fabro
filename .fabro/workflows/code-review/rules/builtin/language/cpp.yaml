@@ -10,7 +10,7 @@ rules:
   - id: language.cpp
     match:
       paths:
-        - "**/*.{cpp,cc,hpp}"
+        - "**/*.{cpp,cc,cxx,h,hpp,hh,hxx}"
     checks:
       - id: obvious-typos-or-spelling-errors
         category: conventions

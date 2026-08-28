@@ -50,6 +50,17 @@ from typing import (
     Tuple,
 )
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from review_contract import (  # noqa: E402
+    CATEGORIES,
+    COMPILED_RULE_ID_RE,
+    EFFORT_TIERS,
+    ISSUE_TYPES,
+    MAX_RULE_IDS_PER_FINDING,
+    REVIEW_MODES,
+)
+
 
 WORKFLOW_ROOT = Path(".fabro/workflows/code-review")
 CONTROL_DIR = WORKFLOW_ROOT / "runtime"
@@ -81,26 +92,6 @@ SMALL_DIFF_MAX_FILES = 5
 SMALL_DIFF_MAX_LINES = 300
 SMALL_SCOPE_MAX_FILES = 5
 
-EFFORT_TIERS = ("low", "medium", "high", "xhigh", "max")
-REVIEW_MODES = ("changes", "commit", "files")
-CATEGORIES = (
-    "correctness",
-    "reuse",
-    "simplification",
-    "efficiency",
-    "altitude",
-    "conventions",
-    "test-coverage",
-)
-ISSUE_TYPES = (
-    "bug",
-    "security",
-    "performance",
-    "maintainability",
-    "test",
-    "style",
-    "documentation",
-)
 # Correctness bugs always outrank cleanup findings when a cap forces a cut.
 CLEANUP_CATEGORIES = frozenset(CATEGORIES) - {"correctness"}
 # Policy filters drop well-formed findings the review does not want; unlike a
@@ -869,6 +860,20 @@ def diff_file_records(
     return records
 
 
+def diff_record_summary(
+    records: Mapping[str, Mapping[str, Any]],
+) -> Tuple[List[str], Optional[int]]:
+    """Return sorted paths and total text churn from one diff scan."""
+    churn = [
+        record.get("added", 0) + record.get("deleted", 0)
+        for record in records.values()
+        if isinstance(record.get("added"), int)
+        and isinstance(record.get("deleted"), int)
+    ]
+    total = sum(churn) if len(churn) == len(records) else None
+    return sorted(records), total
+
+
 def read_file_at_revision(revision: str, path: str) -> Optional[bytes]:
     result = git("show", f"{revision}:{path}")
     if result.returncode != 0:
@@ -1068,16 +1073,6 @@ def verify_schema_sources() -> None:
 
 # --- Rule compilation (rule-mapped tiers) -------------------------------------
 
-# Mirrors rule_loader.COMPILED_ID_RE; prepare asserts the two agree so the
-# lower tiers never need to import the loader (or PyYAML) to validate.
-COMPILED_RULE_ID_RE = re.compile(
-    r"^(builtin|repo):"
-    r"[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?"
-    r"/"
-    r"[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$"
-)
-
-
 def import_rule_loader() -> Any:
     try:
         import rule_loader
@@ -1086,14 +1081,6 @@ def import_rule_loader() -> Any:
             "the rule-mapped tiers need the rule loader and its pinned PyYAML "
             f"dependency (see README, Developing): {error}"
         ) from error
-    if tuple(rule_loader.CATEGORIES) != CATEGORIES:
-        raise WorkflowDataError(
-            "rule_loader's category list does not match this engine"
-        )
-    if rule_loader.COMPILED_ID_RE.pattern != COMPILED_RULE_ID_RE.pattern:
-        raise WorkflowDataError(
-            "rule_loader's compiled-ID pattern does not match this engine"
-        )
     return rule_loader
 
 
@@ -1598,16 +1585,7 @@ def prepare(args: argparse.Namespace) -> None:
             revision_range = f"{merge_base}..HEAD"
         if cell["rule_mapped"]:
             file_records = diff_file_records(revision_range, scope)
-            changed_files = sorted(file_records)
-            churn = [
-                record.get("added", 0) + record.get("deleted", 0)
-                for record in file_records.values()
-                if isinstance(record.get("added"), int)
-                and isinstance(record.get("deleted"), int)
-            ]
-            diff_lines = (
-                sum(churn) if len(churn) == len(file_records) else None
-            )
+            changed_files, diff_lines = diff_record_summary(file_records)
         else:
             changed_files, diff_lines = diff_stats(revision_range, scope)
     elif mode == "commit":
@@ -1629,16 +1607,7 @@ def prepare(args: argparse.Namespace) -> None:
         revision_range = f"{parent or empty_tree_hash()}..{target_commit}"
         if cell["rule_mapped"]:
             file_records = diff_file_records(revision_range, scope)
-            changed_files = sorted(file_records)
-            churn = [
-                record.get("added", 0) + record.get("deleted", 0)
-                for record in file_records.values()
-                if isinstance(record.get("added"), int)
-                and isinstance(record.get("deleted"), int)
-            ]
-            diff_lines = (
-                sum(churn) if len(churn) == len(file_records) else None
-            )
+            changed_files, diff_lines = diff_record_summary(file_records)
         else:
             changed_files, diff_lines = diff_stats(revision_range, scope)
     else:
@@ -1919,6 +1888,13 @@ def phase_jobs_context(
 # --- Finding and verdict normalization ---------------------------------------
 
 
+def bounded_rule_ids(values: Iterable[Any]) -> List[str]:
+    """Return the renderer-safe, deterministic union of compiled rule IDs."""
+    return sorted({value for value in values if isinstance(value, str)})[
+        :MAX_RULE_IDS_PER_FINDING
+    ]
+
+
 def finding_or_rejection(
     value: Any,
     rule_context: Optional[Mapping[str, Any]] = None,
@@ -2027,7 +2003,12 @@ def finding_or_rejection(
                 return None, "rule_id is not a compiled check ID"
             if raw_rule_id not in (effective.get(path) or ()):
                 return None, "the named rule check does not apply to the file"
-        rule_ids = sorted(set(raw_rule_ids))
+        rule_ids = bounded_rule_ids(raw_rule_ids)
+        if len(set(raw_rule_ids)) > MAX_RULE_IDS_PER_FINDING:
+            return None, (
+                "rule_ids names more than "
+                f"{MAX_RULE_IDS_PER_FINDING} distinct checks"
+            )
     if category == "conventions" and not rule_ids:
         return None, CONVENTIONS_FILTER_REASON
 
@@ -2615,15 +2596,15 @@ def plan_verify() -> None:
             merged = dict(report)
             merged["reports"] = 1
             merged["reporters"] = [report["angle"]]
-            merged["rule_ids"] = sorted(set(report.get("rule_ids") or []))
+            merged["rule_ids"] = bounded_rule_ids(report.get("rule_ids") or [])
             by_key[key] = merged
             continue
         existing["reports"] += 1
         if report["angle"] not in existing["reporters"]:
             existing["reporters"].append(report["angle"])
-        existing["rule_ids"] = sorted(
-            set(existing.get("rule_ids") or [])
-            | set(report.get("rule_ids") or [])
+        existing["rule_ids"] = bounded_rule_ids(
+            list(existing.get("rule_ids") or [])
+            + list(report.get("rule_ids") or [])
         )
         # A fix is publishable only when reporting passes agree on its exact
         # range and replacement. A pass that offers no fix does not veto an
@@ -2875,7 +2856,7 @@ def reviewed_revision(state: Optional[Mapping[str, Any]]) -> Optional[str]:
     return revision if isinstance(revision, str) and revision else None
 
 
-@functools.lru_cache(maxsize=256)
+@functools.lru_cache(maxsize=16)
 def reviewed_source_lines(
     file_path: str, revision: Optional[str] = None
 ) -> Optional[List[str]]:
@@ -3275,17 +3256,20 @@ def fold_duplicates(
             if reporter and reporter not in reporters:
                 reporters.append(reporter)
         primary["reporters"] = reporters
-        primary["rule_ids"] = sorted(
-            set(primary.get("rule_ids") or []) | set(secondary.get("rule_ids") or [])
+        primary["rule_ids"] = bounded_rule_ids(
+            list(primary.get("rule_ids") or [])
+            + list(secondary.get("rule_ids") or [])
         )
-        primary.setdefault("anchors", []).append(
-            {
-                "id": secondary_id,
-                "file": secondary.get("file"),
-                "line": secondary.get("line"),
-                "category": secondary.get("category"),
-            }
-        )
+        anchors = primary.setdefault("anchors", [])
+        if len(anchors) < MAX_RULE_IDS_PER_FINDING:
+            anchors.append(
+                {
+                    "id": secondary_id,
+                    "file": secondary.get("file"),
+                    "line": secondary.get("line"),
+                    "category": secondary.get("category"),
+                }
+            )
     primaries = [
         record
         for record in ordered
@@ -3373,6 +3357,19 @@ def final_tally() -> None:
     verified_ids = {
         record["candidate"].get("id") for record in reviewed
     }
+
+    def disposition_for(record: Mapping[str, Any]) -> str:
+        candidate = record["candidate"]
+        if str(candidate.get("id")) in folded:
+            return "duplicate"
+        if candidate_key(candidate) in reported_keys and record["kept"]:
+            return "reportable"
+        if record["kept"]:
+            return "deferred-by-cap"
+        if record.get("verdict") is None and use_verify:
+            return "verification-incomplete"
+        return "refuted"
+
     for candidate in state.get("candidates") or []:
         record = next(
             (
@@ -3391,30 +3388,14 @@ def final_tally() -> None:
                     )
                 )
             continue
-        if str(record["candidate"].get("id")) in folded:
-            disposition = "duplicate"
-        elif candidate_key(record["candidate"]) in reported_keys and record["kept"]:
-            disposition = "reportable"
-        elif record["kept"]:
-            disposition = "deferred-by-cap"
-        elif record.get("verdict") is None and use_verify:
-            disposition = "verification-incomplete"
+        disposition = disposition_for(record)
+        if disposition == "verification-incomplete":
             verification_incomplete += 1
-        else:
-            disposition = "refuted"
         ledger.append(ledger_entry(record, disposition))
     for record in sweep_reviewed:
-        if str(record["candidate"].get("id")) in folded:
-            disposition = "duplicate"
-        elif candidate_key(record["candidate"]) in reported_keys and record["kept"]:
-            disposition = "reportable"
-        elif record["kept"]:
-            disposition = "deferred-by-cap"
-        elif record.get("verdict") is None and use_verify:
-            disposition = "verification-incomplete"
+        disposition = disposition_for(record)
+        if disposition == "verification-incomplete":
             verification_incomplete += 1
-        else:
-            disposition = "refuted"
         ledger.append(ledger_entry(record, disposition))
 
     votes = (
@@ -3623,27 +3604,11 @@ def load_renderer() -> Any:
         raise WorkflowDataError("could not load the report renderer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    parity_checks = (
-        ("category list", tuple(module.CATEGORIES), CATEGORIES),
-        ("issue type list", tuple(module.ISSUE_TYPES), ISSUE_TYPES),
-        ("effort tiers", tuple(module.EFFORT_TIERS), EFFORT_TIERS),
-        ("review modes", tuple(module.REVIEW_MODES), REVIEW_MODES),
-    )
-    for label, renderer_value, engine_value in parity_checks:
-        if renderer_value != engine_value:
-            raise WorkflowDataError(
-                f"the renderer's {label} does not match this engine"
-            )
-    if module.COMPILED_RULE_ID_RE.pattern != COMPILED_RULE_ID_RE.pattern:
-        raise WorkflowDataError(
-            "the renderer's compiled-ID pattern does not match this engine"
-        )
     return module
 
 
 def render_report() -> None:
     state = load_state()
-    assert_workspace_unchanged(state)
     products_rel = str(state["products_rel"])
     evidence_rel = str(state["evidence_rel"])
     metadata_rel = str(state["metadata_rel"])

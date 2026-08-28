@@ -12,7 +12,8 @@ from __future__ import annotations
 import sys
 
 
-if not sys.flags.isolated or not sys.flags.safe_path:
+safe_path = getattr(sys.flags, "safe_path", sys.flags.isolated)
+if not sys.flags.isolated or not safe_path:
     print(
         "git_readonly.py: Python isolated mode is required; invoke with python3 -I",
         file=sys.stderr,

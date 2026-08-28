@@ -128,7 +128,7 @@ rules:
           - Loop-invariant work inside a loop: repeated `ismember` against the same set, repeated struct field lookups, repeated table indexing, repeated file access
           - Small element-wise loops that vectorize cleanly
           - A variable that changes class or shape mid-function instead of a new variable being introduced
-          - `parfor` used before the serial version has been profiled; `parfor` without a `numThreads` argument, which makes debugging inside called functions impossible
+          - `parfor` used before the serial version has been profiled; `parfor` without an explicit worker bound (the optional second argument, e.g. `parfor (i = 1:n, 4)`) where a deterministic pool size matters
           - Loop-carried dependencies, order-dependent output, or shared mutable state inside `parfor`; results that depend on iteration order are a correctness defect, not a performance note
           - Random number generation inside `parfor` without an explicit reproducible stream, where results must be repeatable
           - Do not raise micro-optimizations; clear code that is slower is explicitly preferred to fast code that is hard to follow
