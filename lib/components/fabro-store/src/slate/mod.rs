@@ -1621,13 +1621,7 @@ mod tests {
             .add(&bad_run_id)
             .await
             .unwrap();
-        let mut run_spec = serde_json::to_value(sample_run_spec("run-2")).unwrap();
-        let run_settings = run_spec
-            .get_mut("settings")
-            .and_then(|settings| settings.get_mut("run"))
-            .and_then(serde_json::Value::as_object_mut)
-            .unwrap();
-        run_settings.remove("integrations");
+        let run_spec = serde_json::to_value(sample_run_spec("run-2")).unwrap();
         store
             .put_unvalidated_run_event(
                 &bad_run_id,
@@ -1658,8 +1652,8 @@ mod tests {
         assert_eq!(unreadable[0].run_id, bad_run_id);
         assert_eq!(unreadable[0].created_at, bad_run_id.created_at());
         assert!(
-            unreadable[0].error.contains("missing field `integrations`"),
-            "expected missing integrations error, got: {}",
+            unreadable[0].error.contains("missing field `provenance`"),
+            "expected missing provenance error, got: {}",
             unreadable[0].error
         );
     }
