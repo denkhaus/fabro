@@ -25,7 +25,7 @@ rules:
           - Unbalanced or unescaped quotes in `msgid`/`msgid_plural` strings, breaking the entry
           - Multi-line continuation strings concatenated incorrectly (missing trailing space/newline between fragments that changes the resulting text)
           - Orphaned `msgid_plural` or `msgstr` without a preceding `msgid`
-          - Duplicate `msgid` definitions within the file that conflict with each other (different `msgctxt`, comments, or placeholders)
+          - Duplicate entries with the same `msgctxt` and `msgid` that conflict in comments or placeholders; the same `msgid` under different `msgctxt` values is valid disambiguation
           - A non-empty `msgstr` in a template entry, which usually means a translation was accidentally committed into the template
       - id: placeholder-consistency
         category: correctness

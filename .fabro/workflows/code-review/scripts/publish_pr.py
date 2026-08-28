@@ -12,8 +12,11 @@ Posts a completed review's findings to the reviewed GitHub PR in two steps:
   PR state) is confined here. The plan file is untrusted input: apply
   re-validates it before any write.
 
-Requirements register: .ai/plans/p1-pr-publisher-requirements.md (R-numbers
-below reference it). Executable specification: tests/test_pr_publisher.py.
+The canonical ``lithoscomputer/code-review`` source repository keeps the
+requirements register at ``.ai/plans/p1-pr-publisher-requirements.md`` and
+the executable specification at ``tests/test_pr_publisher.py``. Packaged
+workflow installs do not need to copy those development files. R-numbers
+below refer to that canonical requirements register.
 
 Python 3.9-compatible. Standard library only.
 """
@@ -65,17 +68,9 @@ REPO_RE = re.compile(
 )
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
-UNVERIFIED_NOTE = (
-    "_This finding comes from a low-effort single-pass review and was not "
-    "independently verified._"
-)
 PLAUSIBLE_WARNING = (
     "> **Needs confirmation:** The verifier could not fully confirm this "
     "finding from the available evidence."
-)
-UNVERIFIED_WARNING = (
-    "> **Not verified:** This finding comes from a low-effort single-pass "
-    "review and was not independently verified."
 )
 
 
@@ -167,7 +162,8 @@ def right_side_hunks(base: str, head: str) -> Dict[str, List[Tuple[int, int]]]:
     boundary starts bare.
     """
     result = run_git(
-        "diff", "--no-color", "--no-ext-diff", "--find-renames", "-U3",
+        "diff", "--no-color", "--no-ext-diff", "--no-textconv",
+        "--find-renames", "-U3",
         base, head,
     )
     if result.returncode != 0:
@@ -202,12 +198,6 @@ def right_side_hunks(base: str, head: str) -> Dict[str, List[Tuple[int, int]]]:
                     (start, start + count - 1)
                 )
     return ranges
-
-
-def has_diff_position(
-    hunks: Mapping[str, Sequence[Tuple[int, int]]], path: str, line: int
-) -> bool:
-    return any(start <= line <= end for start, end in hunks.get(path, ()))
 
 
 def has_diff_range(
@@ -294,35 +284,6 @@ def routing_detail(
 # --- Comment and summary rendering (R9, R11) ---------------------------------
 
 
-def backtick_fence(texts: Sequence[str]) -> str:
-    longest = 0
-    for text in texts:
-        for run in re.findall(r"`+", text):
-            longest = max(longest, len(run))
-    return "`" * max(4, longest + 1)
-
-
-def safe_code_block(code: Mapping[str, Any]) -> List[str]:
-    lines = code.get("lines") or []
-    if not lines:
-        return []
-    fence = backtick_fence([str(entry["text"]) for entry in lines])
-    width = max(len(str(entry["number"])) for entry in lines)
-    body = [fence + "text"]
-    for entry in lines:
-        marker = ">" if entry.get("highlight") else " "
-        body.append(
-            f"{marker} {str(entry['number']).rjust(width)} | {entry['text']}"
-        )
-    body.append(fence)
-    return body
-
-
-def raw_code_block(text: str, language: str = "text") -> List[str]:
-    fence = backtick_fence([text])
-    return [fence + language, text, fence]
-
-
 def finding_detail_lines(finding: Mapping[str, Any]) -> List[str]:
     lines: List[str] = []
     if finding["summary"].strip() != finding["short_summary"].strip():
@@ -335,7 +296,7 @@ def finding_detail_lines(finding: Mapping[str, Any]) -> List[str]:
         ]
     )
     if finding["verdict"] == "UNVERIFIED":
-        lines.extend(["", UNVERIFIED_NOTE])
+        lines.extend(["", renderer.UNVERIFIED_FINDING_ITALIC])
     else:
         reasoning = str(finding.get("verdict_reasoning") or "").strip()
         if reasoning:
@@ -413,13 +374,15 @@ def inline_comment_body(finding: Mapping[str, Any], review_id: str) -> str:
     if finding["verdict"] == "PLAUSIBLE":
         lines.extend(["", PLAUSIBLE_WARNING])
     elif finding["verdict"] == "UNVERIFIED":
-        lines.extend(["", UNVERIFIED_WARNING])
+        lines.extend(["", renderer.UNVERIFIED_FINDING_WARNING])
     suggestion = finding.get("suggestion")
     if isinstance(suggestion, dict):
         lines.extend(
             [
                 "",
-                *raw_code_block(suggestion["replacement_code"], "suggestion"),
+                *renderer.fenced_text(
+                    suggestion["replacement_code"], "suggestion"
+                ),
             ]
         )
     lines.extend(inline_more_lines(finding))
@@ -457,7 +420,7 @@ def summary_section(
         " · ".join(facts),
         *finding_detail_lines(finding),
     ]
-    excerpt = safe_code_block(finding["code"])
+    excerpt = renderer.code_block(finding["code"])
     if excerpt:
         lines.extend(["", *excerpt])
     suggestion = finding.get("suggestion")
@@ -468,10 +431,10 @@ def summary_section(
                 "<details><summary>Suggested change</summary>",
                 "",
                 "**Before:**",
-                *raw_code_block(location_data["existing_code"]),
+                *renderer.fenced_text(location_data["existing_code"]),
                 "",
                 "**After:**",
-                *raw_code_block(suggestion["replacement_code"]),
+                *renderer.fenced_text(suggestion["replacement_code"]),
                 "",
                 "</details>",
             ]
@@ -529,17 +492,9 @@ def summary_context_lines(
 ) -> List[str]:
     lines: List[str] = []
     if reasons:
-        lines.append(
-            "> **Partial review.** "
-            + " ".join(
-                renderer.escape_markdown(reason) + "." for reason in reasons
-            )
-        )
+        lines.append(renderer.partial_review_warning(reasons))
     if manifest["effort"] == "low":
-        lines.append(
-            "This was a low-effort single-pass review: findings were not "
-            "independently verified."
-        )
+        lines.append(renderer.LOW_EFFORT_REVIEW_NOTE)
     rules_text = rules_coverage_line(coverage, findings)
     if rules_text:
         lines.append(rules_text)

@@ -627,15 +627,26 @@ def discover_repo_rule_paths(paths: Iterable[str]) -> List[str]:
     return entrypoint + sorted(extras)
 
 
-def builtin_manifest_entries(workflow_root: Path) -> List[Dict[str, str]]:
-    """Hash every built-in YAML file on disk, in lexical path order."""
+def builtin_files_with_hashes(
+    workflow_root: Path,
+) -> List[Tuple[str, str, bytes]]:
+    """Read and hash every built-in YAML file in lexical path order."""
     rules_dir = workflow_root / BUILTIN_RULES_DIR
-    entries: List[Dict[str, str]] = []
+    entries: List[Tuple[str, str, bytes]] = []
     for path in sorted(rules_dir.rglob("*.yaml")):
         relative = path.relative_to(workflow_root).as_posix()
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        entries.append({"path": relative, "sha256": digest})
+        contents = path.read_bytes()
+        digest = hashlib.sha256(contents).hexdigest()
+        entries.append((relative, digest, contents))
     return entries
+
+
+def builtin_manifest_entries(workflow_root: Path) -> List[Dict[str, str]]:
+    """Hash every built-in YAML file on disk, in lexical path order."""
+    return [
+        {"path": path, "sha256": digest}
+        for path, digest, _contents in builtin_files_with_hashes(workflow_root)
+    ]
 
 
 def load_builtin_files(
@@ -662,8 +673,8 @@ def load_builtin_files(
             raise RuleLoaderError("built-in rule manifest entry is malformed")
         expected[entry["path"]] = entry["sha256"]
 
-    actual = builtin_manifest_entries(workflow_root)
-    actual_paths = {entry["path"] for entry in actual}
+    actual = builtin_files_with_hashes(workflow_root)
+    actual_paths = {path for path, _digest, _contents in actual}
     missing = sorted(set(expected) - actual_paths)
     extra = sorted(actual_paths - set(expected))
     if missing:
@@ -675,15 +686,13 @@ def load_builtin_files(
             "unexpected built-in rule files: " + ", ".join(extra)
         )
     files: List[Tuple[str, bytes]] = []
-    for entry in actual:
-        if expected[entry["path"]] != entry["sha256"]:
+    for path, digest, contents in actual:
+        if expected[path] != digest:
             raise RuleLoaderError(
                 f"built-in rule file does not match its manifest hash: "
-                f"{entry['path']}"
+                f"{path}"
             )
-        files.append(
-            (entry["path"], (workflow_root / entry["path"]).read_bytes())
-        )
+        files.append((path, contents))
     return files
 
 

@@ -32,7 +32,7 @@ rules:
       - id: insecure-resource-defaults
         category: correctness
         guidance: |
-          - A storage account without `minimumTlsVersion` set to a current version, or with `supportsHttpsTrafficOnly` explicitly set to `false`
+          - A storage account with `minimumTlsVersion` explicitly set to an outdated TLS version, or with `supportsHttpsTrafficOnly` explicitly set to `false`
           - A resource property that disables encryption-at-rest or transparent data encryption where the resource type supports enabling it
           - Do not flag a resource for merely omitting an optional hardening property when the diff gives no indication either way — only flag an explicit insecure value or an explicit disabling of a secure default
       - id: versioning-and-reproducibility

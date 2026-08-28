@@ -12,6 +12,8 @@ rules:
     match:
       paths:
         - "**/*.{tf,hcl,tfvars}"
+        - "**/*.tfstate"
+        - "**/*.tfstate.backup"
     checks:
       - id: obvious-typos-or-spelling-errors
         category: conventions

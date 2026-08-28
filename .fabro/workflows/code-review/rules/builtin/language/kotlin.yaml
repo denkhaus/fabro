@@ -8,143 +8,65 @@ version: 1
 
 rules:
   - id: language.kotlin
-    description: |
-      ### 1. Null Safety
-      - **Issue**: Nullable types not handled correctly, leading to potential `NullPointerException`.
-      - **Key checks**:
-        - Avoid overusing `!!` (non-null assertion); prefer safe calls `?.` or the Elvis operator `?:`.
-        - Ensure nullable properties from data classes or API responses are handled properly.
-      - **Bad example**:
-        ```kotlin
-        val length: Int = text!!.length // Risk: text may be null
-        ```
-      - **Improvement**:
-        ```kotlin
-        val length: Int = text?.length ?: 0 // Safe handling
-        ```
+    description: "> Favor precision over recall. Report a Kotlin issue only when the changed code provides a concrete failure or maintenance cost. Do not turn optional idioms into correctness requirements."
     match:
       paths:
-        - "**/*.kt"
+        - "**/*.{kt,kts}"
     checks:
+      - id: null-safety
+        category: correctness
+        guidance: |
+          - A `!!` assertion on a value that can be null on a reachable path, causing `NullPointerException`; prefer a safe call, explicit guard, or Elvis default that preserves intended behavior
+          - A nullable API or data-class property dereferenced without a prior check
+          - Do not flag `!!` when a nearby invariant proves the value non-null
       - id: dead-code
         category: simplification
         guidance: |
-          - Code blocks that can never be reached (e.g., branches where the condition is always false, code after a return statement)
-          - Variables that are declared but never read or referenced
-          - Large blocks of commented-out code (with no apparent intent to preserve)
-
-          ### 2. Function and Expression Conciseness
-          - **Issue**: Redundant code undermines Kotlin's conciseness.
-          - **Key checks**:
-            - Use `=` to simplify single-expression functions (e.g., `fun sum(a: Int, b: Int) = a + b`).
-            - Replace complex `if-else` chains with `when`.
-            - Avoid unnecessary `return` (e.g., use expression results directly in lambdas).
-          - **Bad example**:
-            ```kotlin
-            fun getGrade(score: Int): String {
-                if (score >= 90) return "A"
-                else if (score >= 80) return "B"
-                else return "C"
-            }
-            ```
-          - **Improvement**:
-            ```kotlin
-            fun getGrade(score: Int) = when {
-                score >= 90 -> "A"
-                score >= 80 -> "B"
-                else -> "C"
-            }
-            ```
-
-          ### 3. Collection Operation Optimization
-          - **Issue**: Inefficient collection operations causing performance problems.
-          - **Key checks**:
-            - Prefer `Sequence` for large collections (lazy evaluation reduces intermediate objects).
-            - Avoid redundant operations (e.g., merge multiple `filter` calls into one).
-            - Use `groupBy`, `associate`, etc. instead of manual iteration.
-          - **Bad example**:
-            ```kotlin
-            val evenSquares = listOf(1, 2, 3).map { it * it }.filter { it % 2 == 0 } // creates intermediate collections
-            ```
-          - **Improvement**:
-            ```kotlin
-            val evenSquares = listOf(1, 2, 3).asSequence()
-                .map { it * it }
-                .filter { it % 2 == 0 }
-                .toList() // lazy evaluation
-            ```
-
-          ---
-
-          ### 4. Proper Use of Coroutines
-          - **Issue**: Coroutine leaks or improper exception handling.
-          - **Key checks**:
-            - Use structured concurrency (`coroutineScope` or `supervisorScope` to manage lifecycle).
-            - Avoid `GlobalScope` (prone to resource leaks).
-            - Exception handling: wrap `withContext` or `async` in `try/catch`.
-          - **Bad example**:
-            ```kotlin
-            GlobalScope.launch { // escapes scope, may leak
-                fetchData()
-            }
-            ```
-          - **Improvement**:
-            ```kotlin
-            viewModelScope.launch { // structured concurrency
-                try {
-                    withContext(Dispatchers.IO) { fetchData() }
-                } catch (e: Exception) { /* handle exception */ }
-            }
-            ```
-
-          ### 5. Class and Object Design
-          - **Issue**: Not leveraging Kotlin features leads to redundancy.
-          - **Key checks**:
-            - **Data classes**: Use `data class` for pure data objects (auto-generates `equals`/`hashCode`).
-            - **Sealed classes/interfaces**: Use `sealed class` for restricted type hierarchies (enables exhaustive `when` branch checking).
-            - **Delegation**: Property delegation (e.g., `by lazy`) or class delegation (`by` for the decorator pattern).
-          - **Bad example**:
-            ```kotlin
-            class User(val name: String) {
-                // manually implementing toString()/equals()...
-            }
-            ```
-          - **Improvement**:
-            ```kotlin
-            data class User(val name: String) // standard methods auto-generated
-            ```
-
-          ### 6. Resource Management and Scope Functions
-          - **Issue**: Resources not released or scope functions misused.
-          - **Key checks**:
-            - Use `use` to auto-close file/network resources (e.g., `FileInputStream().use { ... }`).
-            - Scope functions (`let`, `apply`, etc.) should maintain readability; avoid excessive nesting.
-          - **Bad example**:
-            ```kotlin
-            val file = File("path")
-            val reader = BufferedReader(FileReader(file))
-            // forgot to call reader.close()
-            ```
-          - **Improvement**:
-            ```kotlin
-            File("path").inputStream().use { stream ->
-                // resource auto-closed
-            }
-            ```
-
-          ### 7. Performance Pitfalls
-          - **Issue**: Hidden performance overhead.
-          - **Key checks**:
-            - Inline functions: Use `inline` for higher-order functions to reduce lambda overhead (but avoid inlining large functions).
-            - Constants: Use `const val` for compile-time constants (instead of `val`).
-            - Avoid creating objects inside loops (e.g., `Regex` instances).
-
-          ### 8. Interoperability (Java Interaction)
-          - **Issue**: Compatibility problems when Java code calls Kotlin code.
-          - **Key checks**:
-            - Use `@JvmStatic` and `@JvmOverloads` to optimize APIs exposed to Java callers.
-            - Null safety annotations: Use `@Nullable`/`@NonNull` to help Java recognize nullability.
-
-          ### 9. Other Key Points
-          - **Immutability**: Prefer `val` over `var`.
-          - **String handling**: Use string templates (`"Value: $value"`) instead of concatenation.
+          - Unreachable branches or statements after an unconditional return or throw
+          - Variables, functions, or classes that are declared but never used
+          - Large blocks of commented-out code with no stated reason to retain them
+      - id: concise-expressions
+        category: simplification
+        guidance: |
+          - A verbose function or conditional whose direct expression form removes duplicated logic without hiding control flow
+          - Repeated `if`/`else if` equality checks that a `when` expression can express more safely
+          - Do not report optional expression-body or scope-function rewrites with no concrete benefit
+      - id: collection-performance
+        category: efficiency
+        guidance: |
+          - Multiple eager collection passes over a large or unbounded input that create avoidable intermediate collections; consider a sequence or one combined operation
+          - Manual iteration that repeats expensive lookups available from a standard collection operation
+          - Do not recommend sequences for small collections without a measurable allocation or latency concern
+      - id: coroutine-lifecycle
+        category: correctness
+        guidance: |
+          - `GlobalScope` or another detached coroutine whose work can outlive the owner, leak resources, or lose failures
+          - `async` work that is never awaited, or coroutine exceptions that escape the intended supervisor or error boundary
+          - Blocking I/O on a constrained dispatcher when the surrounding code establishes an appropriate I/O dispatcher
+      - id: type-design
+        category: altitude
+        guidance: |
+          - A closed state hierarchy modeled as an open type when exhaustive `when` handling is required and a sealed type would prevent missing cases
+          - A pure value holder with hand-written equality/hash behavior that can drift from its fields; a data class is the safer established abstraction
+          - Do not request a Kotlin feature only for terseness when the existing API has distinct behavior
+      - id: resource-management
+        category: correctness
+        guidance: |
+          - A closeable file, stream, cursor, or network resource that is not closed on every success and failure path; use `use` or an equivalent structured owner
+          - Nested scope functions that bind or return the wrong receiver and cause a concrete logic error
+      - id: runtime-performance
+        category: efficiency
+        guidance: |
+          - Recompiling regular expressions or allocating equivalent helper objects inside a hot loop
+          - A higher-order function on a verified hot path where an established inline helper avoids material lambda overhead
+          - Do not request `inline` or `const val` without a concrete runtime or initialization cost
+      - id: java-interop
+        category: correctness
+        guidance: |
+          - A Kotlin API called from Java whose generated shape makes the intended call impossible or ambiguous, and where `@JvmStatic`, `@JvmOverloads`, or an explicit overload fixes that contract
+          - Missing nullability information at a Java boundary that causes a reachable unsafe call
+      - id: kotlin-idioms
+        category: conventions
+        guidance: |
+          - Mutable `var` state where the value never changes and repository code consistently uses `val` for that invariant
+          - String concatenation that produces the wrong value or escaping, where a string template makes the intended interpolation explicit

@@ -6,7 +6,7 @@
     },
     {
       "path": "rules/builtin/format/bicep.yaml",
-      "sha256": "1b549eb4ea83a0fa23d0a1d139266dcc80cb1aeb514212602d5ad0fbd74473da"
+      "sha256": "0a4191dcbccec9a45c584d0796d00ffc9e857780b93d24f9edf3f060e80d77c2"
     },
     {
       "path": "rules/builtin/format/build-gradle.yaml",
@@ -58,7 +58,7 @@
     },
     {
       "path": "rules/builtin/format/pot.yaml",
-      "sha256": "f0ed089cfa808c2407066ed84da55b9359bdbac07754a43d1bcaf730405130a1"
+      "sha256": "223422af99eecfb72463d7f8e1de9095130eacfa302e7b1a4d3ea4a009922410"
     },
     {
       "path": "rules/builtin/format/prisma.yaml",
@@ -74,7 +74,7 @@
     },
     {
       "path": "rules/builtin/format/terraform.yaml",
-      "sha256": "bbfd40afa55f8131086c1a3d5f2a57dffd34879bfd17b12233f5cac9c61ffbd2"
+      "sha256": "81d83048def9ee11630242e3fb9129f27a3193bc469f62bcaf243c863e8992f0"
     },
     {
       "path": "rules/builtin/format/thrift.yaml",
@@ -106,7 +106,7 @@
     },
     {
       "path": "rules/builtin/language/freemarker.yaml",
-      "sha256": "4b71fdd2dacacbb4969687bb227e449683b0486035d902c763784cee13086367"
+      "sha256": "a4b7be672e84d5cb0fd335a02279542e96ad0ae880327ccd59d2566fc410a235"
     },
     {
       "path": "rules/builtin/language/go.yaml",
@@ -122,7 +122,7 @@
     },
     {
       "path": "rules/builtin/language/javascript-typescript.yaml",
-      "sha256": "a11a5ff6c37217ab7938cdf05b1dfbf71cfbd1ea3c7e78bb71adbd973f6aaed1"
+      "sha256": "ecdc07ad6a61db8f9d1ad8a80544831992c071a2c0eb54cf92ed391d6bf4eaab"
     },
     {
       "path": "rules/builtin/language/jsonnet.yaml",
@@ -134,7 +134,7 @@
     },
     {
       "path": "rules/builtin/language/kotlin.yaml",
-      "sha256": "c5ed824fbace28b161d1d0ac6c6e9b554ffed22085b2dd4a5c4fe1a9e4672160"
+      "sha256": "14a7545bf6f2817051a1c67d2266d4d5513c8a306f203300fc363a6da88e61a5"
     },
     {
       "path": "rules/builtin/language/matlab.yaml",

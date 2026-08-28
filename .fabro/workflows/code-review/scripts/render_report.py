@@ -17,7 +17,6 @@ import json
 import hashlib
 import os
 import re
-import sys
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Mapping, NoReturn, Sequence, Tuple
 from urllib.parse import quote
@@ -69,6 +68,18 @@ COMPILED_RULE_ID_RE = re.compile(
 MAX_TEXT = 8000
 MAX_RULE_IDS_PER_FINDING = 50
 MAX_LOCATION_LINES = 50
+UNVERIFIED_FINDING_NOTE = (
+    "This finding comes from a low-effort single-pass review and was not "
+    "independently verified."
+)
+UNVERIFIED_FINDING_ITALIC = f"_{UNVERIFIED_FINDING_NOTE}_"
+UNVERIFIED_FINDING_WARNING = (
+    "> **Not verified:** " + UNVERIFIED_FINDING_NOTE
+)
+LOW_EFFORT_REVIEW_NOTE = (
+    "This was a low-effort single-pass review: findings were not "
+    "independently verified."
+)
 
 
 class RenderError(RuntimeError):
@@ -635,11 +646,25 @@ def code_span(value: object) -> str:
     return f"`{text}`"
 
 
+def partial_review_warning(reasons: Sequence[str]) -> str:
+    return "> **Partial review.** " + " ".join(
+        escape_markdown(reason) + "." for reason in reasons
+    )
+
+
+def backtick_fence(texts: Sequence[str]) -> str:
+    longest = 0
+    for text in texts:
+        for run in re.findall(r"`+", text):
+            longest = max(longest, len(run))
+    return "`" * max(4, longest + 1)
+
+
 def code_block(code: Mapping[str, Any]) -> List[str]:
     lines = code.get("lines") or []
     if not lines:
         return []
-    fence = "````"
+    fence = backtick_fence([str(entry["text"]) for entry in lines])
     body: List[str] = [fence + "text"]
     width = max(len(str(entry["number"])) for entry in lines)
     for entry in lines:
@@ -652,8 +677,7 @@ def code_block(code: Mapping[str, Any]) -> List[str]:
 
 
 def fenced_text(value: str, language: str = "text") -> List[str]:
-    longest = max((len(run) for run in re.findall(r"`+", value)), default=0)
-    fence = "`" * max(4, longest + 1)
+    fence = backtick_fence([value])
     return [fence + language, value, fence]
 
 
@@ -777,17 +801,9 @@ def render_markdown(
         "",
     ]
     if manifest["effort"] == "low":
-        lines.extend(
-            [
-                "This was a low-effort single-pass review: findings were not "
-                "independently verified.",
-                "",
-            ]
-        )
+        lines.extend([LOW_EFFORT_REVIEW_NOTE, ""])
     if reasons:
-        lines.append("> **Partial review.** " + " ".join(
-            escape_markdown(reason) + "." for reason in reasons
-        ))
+        lines.append(partial_review_warning(reasons))
         lines.append("")
     if findings:
         lines.append("## Findings")
@@ -966,10 +982,6 @@ def jsonl_line(finding: Mapping[str, Any]) -> str:
 SARIF_SCHEMA_URI = "https://json.schemastore.org/sarif-2.1.0.json"
 SARIF_VERSION = "2.1.0"
 SARIF_LEVELS = {"HIGH": "error", "MEDIUM": "warning", "LOW": "note"}
-SARIF_UNVERIFIED_NOTE = (
-    "This finding comes from a low-effort single-pass review and was not "
-    "independently verified."
-)
 CATEGORY_DESCRIPTIONS = {
     "correctness": (
         "The change can produce wrong behavior: incorrect output, a crash, "
@@ -1077,7 +1089,7 @@ def sarif_result(
         f"Failure scenario: {finding['failure_scenario']}"
     )
     if finding["verdict"] == "UNVERIFIED":
-        message += "\n\n" + SARIF_UNVERIFIED_NOTE
+        message += "\n\n" + UNVERIFIED_FINDING_NOTE
     location = finding["location"]
     start_line = location["start_line"]
     end_line = location["end_line"]
@@ -1271,27 +1283,3 @@ def render(
         + "\n",
     )
     return findings, dict(manifest["verification"])
-
-
-def main(argv: Sequence[str]) -> int:
-    if len(argv) != 3:
-        print(
-            "usage: render_report.py <evidence_dir> <products_dir> "
-            "<metadata_dir>",
-            file=sys.stderr,
-        )
-        return 2
-    try:
-        findings, verification = render(argv[0], argv[1], argv[2])
-    except RenderError as error:
-        print(f"render_report.py: {error}", file=sys.stderr)
-        return 2
-    print(
-        f"Rendered {len(findings)} finding(s); verification "
-        f"{verification.get('status')}"
-    )
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

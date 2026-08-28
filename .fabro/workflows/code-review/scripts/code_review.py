@@ -28,6 +28,7 @@ PyYAML dependency; the low tier never imports it.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import importlib.util
 import json
@@ -922,12 +923,26 @@ def worktree_dirty() -> Optional[bool]:
     status = git("status", "--porcelain=v1", "-z", "--untracked-files=all")
     if status.returncode != 0:
         return None
-    for raw_entry in status.stdout.split(b"\0"):
+    entries = status.stdout.split(b"\0")
+    index = 0
+    while index < len(entries):
+        raw_entry = entries[index]
+        index += 1
         if not raw_entry:
             continue
         entry = raw_entry.decode("utf-8", "surrogateescape")
-        path = entry[3:].split(" -> ")[-1] if len(entry) >= 4 else entry
-        if not is_generated_path(path):
+        if len(entry) < 4:
+            return True
+        status_code = entry[:2]
+        paths = [entry[3:]]
+        if status_code[0] in {"R", "C"} or status_code[1] in {"R", "C"}:
+            if index >= len(entries) or not entries[index]:
+                return True
+            paths.append(
+                entries[index].decode("utf-8", "surrogateescape")
+            )
+            index += 1
+        if any(not is_generated_path(path) for path in paths):
             return True
     return False
 
@@ -950,7 +965,7 @@ def revision_record(
             "commit": target_commit,
             "parent": parent,
             "branch": branch,
-            "dirty": False,
+            "dirty": worktree_dirty(),
             "range": revision_range,
         }
     revision: Dict[str, Any] = {
@@ -1531,6 +1546,7 @@ def prepare(args: argparse.Namespace) -> None:
     # templates; the engine only records it so the report says what steering
     # was applied.
     guidance = clean_text(args.guidance, 2000).strip()
+    cell = EFFORT_CELLS[effort]
 
     revision_range: Optional[str] = None
     base: Optional[str] = None
@@ -1540,6 +1556,7 @@ def prepare(args: argparse.Namespace) -> None:
     changed_files: List[str] = []
     diff_lines: Optional[int] = None
     scope_file_count: Optional[int] = None
+    file_records: Optional[Dict[str, Dict[str, Any]]] = None
 
     if mode == "changes":
         if not inside_git_worktree():
@@ -1579,7 +1596,20 @@ def prepare(args: argparse.Namespace) -> None:
                     f"base {base!r} and HEAD have no merge base"
                 )
             revision_range = f"{merge_base}..HEAD"
-        changed_files, diff_lines = diff_stats(revision_range, scope)
+        if cell["rule_mapped"]:
+            file_records = diff_file_records(revision_range, scope)
+            changed_files = sorted(file_records)
+            churn = [
+                record.get("added", 0) + record.get("deleted", 0)
+                for record in file_records.values()
+                if isinstance(record.get("added"), int)
+                and isinstance(record.get("deleted"), int)
+            ]
+            diff_lines = (
+                sum(churn) if len(churn) == len(file_records) else None
+            )
+        else:
+            changed_files, diff_lines = diff_stats(revision_range, scope)
     elif mode == "commit":
         if not inside_git_worktree():
             raise WorkflowDataError("commit mode requires a Git worktree")
@@ -1597,7 +1627,20 @@ def prepare(args: argparse.Namespace) -> None:
             target_commit + "^",
         )
         revision_range = f"{parent or empty_tree_hash()}..{target_commit}"
-        changed_files, diff_lines = diff_stats(revision_range, scope)
+        if cell["rule_mapped"]:
+            file_records = diff_file_records(revision_range, scope)
+            changed_files = sorted(file_records)
+            churn = [
+                record.get("added", 0) + record.get("deleted", 0)
+                for record in file_records.values()
+                if isinstance(record.get("added"), int)
+                and isinstance(record.get("deleted"), int)
+            ]
+            diff_lines = (
+                sum(churn) if len(churn) == len(file_records) else None
+            )
+        else:
+            changed_files, diff_lines = diff_stats(revision_range, scope)
     else:
         if base_input or commit_input or range_input:
             raise WorkflowDataError(
@@ -1628,7 +1671,6 @@ def prepare(args: argparse.Namespace) -> None:
     empty_scope = mode == "files" and scope_file_count == 0
     empty_target = empty_diff or empty_scope
 
-    cell = EFFORT_CELLS[effort]
     state: Dict[str, Any] = {
         "version": 1,
         "root": str(root()),
@@ -1744,7 +1786,10 @@ def prepare(args: argparse.Namespace) -> None:
         # the grouping pass. Finder jobs are planned by plan-finders after
         # grouping.
         if mode in {"changes", "commit"}:
-            file_records = diff_file_records(revision_range, scope)
+            if file_records is None:
+                raise WorkflowDataError(
+                    "rule-mapped diff metadata was not prepared"
+                )
         else:
             file_records = {path: {"status": "full"} for path in changed_files}
         compile_rule_state(state, file_records)
@@ -2337,6 +2382,13 @@ def merge(phase: str) -> None:
             f"Merged {phase}: "
             f"{updates[f'{phase}_results_merged']} result(s) recorded"
         )
+    if phase in PHASE_OUTPUT_KEYS:
+        # The merge has copied every usable branch output into canonical
+        # state. Do not let the next fan-out inherit this fan-in payload.
+        # Fabro includes inherited context changes in each branch result, so
+        # retaining an earlier parallel.results array multiplies it by the
+        # next branch count and can exceed the checkpoint request limit.
+        updates["parallel.results"] = []
     save_state(state)
     emit(**updates)
 
@@ -2417,7 +2469,7 @@ def verification_claim(
     start_line = int(candidate.get("start_line") or candidate.get("line") or 0)
     end_line = int(candidate.get("end_line") or candidate.get("line") or 0)
     location = resolved_location(
-        str(candidate.get("file") or ""), start_line, end_line
+        str(candidate.get("file") or ""), start_line, end_line, state
     )
     claim: Dict[str, Any] = {
         "file": candidate.get("file"),
@@ -2816,17 +2868,38 @@ def safe_code_text(value: str) -> str:
     return text
 
 
-def reviewed_source_lines(file_path: str) -> Optional[List[str]]:
-    """Read one UTF-8 source file from the unchanged reviewed tree."""
-    target = root() / file_path
-    try:
-        if target.is_symlink() or not target.is_file():
-            return None
-        if target.stat().st_size > CODE_FRAME_MAX_BYTES:
-            return None
-        raw = target.read_bytes()
-    except OSError:
+def reviewed_revision(state: Optional[Mapping[str, Any]]) -> Optional[str]:
+    if not state or state.get("mode") not in {"changes", "commit"}:
         return None
+    revision = state.get("commit")
+    return revision if isinstance(revision, str) and revision else None
+
+
+@functools.lru_cache(maxsize=256)
+def reviewed_source_lines(
+    file_path: str, revision: Optional[str] = None
+) -> Optional[List[str]]:
+    """Read one UTF-8 source file from the exact reviewed revision."""
+    if revision is not None:
+        tree_entry = git("ls-tree", "-z", revision, "--", file_path)
+        if tree_entry.returncode != 0 or not tree_entry.stdout:
+            return None
+        mode = tree_entry.stdout.split(None, 1)[0]
+        if mode == b"120000":
+            return None
+        raw = read_file_at_revision(revision, file_path)
+        if raw is None or len(raw) > CODE_FRAME_MAX_BYTES:
+            return None
+    else:
+        target = root() / file_path
+        try:
+            if target.is_symlink() or not target.is_file():
+                return None
+            if target.stat().st_size > CODE_FRAME_MAX_BYTES:
+                return None
+            raw = target.read_bytes()
+        except OSError:
+            return None
     if b"\0" in raw:
         return None
     try:
@@ -2836,11 +2909,14 @@ def reviewed_source_lines(file_path: str) -> Optional[List[str]]:
 
 
 def resolved_location(
-    file_path: str, start_line: int, end_line: int
+    file_path: str,
+    start_line: int,
+    end_line: int,
+    state: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build an engine-derived exact anchor for a finding."""
     existing_code = ""
-    source_lines = reviewed_source_lines(file_path)
+    source_lines = reviewed_source_lines(file_path, reviewed_revision(state))
     if (
         source_lines is not None
         and 1 <= start_line <= end_line <= len(source_lines)
@@ -2862,7 +2938,10 @@ def resolved_location(
 
 
 def code_frame(
-    file_path: str, start_line: int, end_line: Optional[int] = None
+    file_path: str,
+    start_line: int,
+    end_line: Optional[int] = None,
+    state: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Read the lines around a finding's anchor range from the reviewed tree.
 
@@ -2877,7 +2956,7 @@ def code_frame(
         "label": f"{file_path}:{start_line}-{end_line}",
         "lines": [],
     }
-    source_lines = reviewed_source_lines(file_path)
+    source_lines = reviewed_source_lines(file_path, reviewed_revision(state))
     if (
         source_lines is None
         or start_line < 1
@@ -2906,12 +2985,15 @@ def code_frame(
 def reportable_finding(
     record: Mapping[str, Any],
     display_id: str,
+    state: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     candidate = record["candidate"]
     verdict = record.get("verdict")
     start_line = int(candidate.get("start_line") or candidate["line"])
     end_line = int(candidate.get("end_line") or candidate["line"])
-    location = resolved_location(candidate["file"], start_line, end_line)
+    location = resolved_location(
+        candidate["file"], start_line, end_line, state
+    )
     finding = {
         "id": display_id,
         "file": candidate["file"],
@@ -2932,7 +3014,9 @@ def reportable_finding(
         "source": candidate.get("source", "finder"),
         "verdict": verdict["verdict"] if verdict else "UNVERIFIED",
         "verdict_reasoning": verdict["reasoning"] if verdict else "",
-        "code": code_frame(candidate["file"], start_line, end_line),
+        "code": code_frame(
+            candidate["file"], start_line, end_line, state
+        ),
     }
     suggestion_code = str(candidate.get("suggestion_code") or "")
     if (
@@ -3242,7 +3326,7 @@ def final_tally() -> None:
     deferred_by_report_cap = max(0, len(kept_records) - len(reported_records))
 
     findings = [
-        reportable_finding(record, f"R{index}")
+        reportable_finding(record, f"R{index}", state)
         for index, record in enumerate(reported_records, 1)
     ]
 
@@ -3539,6 +3623,21 @@ def load_renderer() -> Any:
         raise WorkflowDataError("could not load the report renderer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    parity_checks = (
+        ("category list", tuple(module.CATEGORIES), CATEGORIES),
+        ("issue type list", tuple(module.ISSUE_TYPES), ISSUE_TYPES),
+        ("effort tiers", tuple(module.EFFORT_TIERS), EFFORT_TIERS),
+        ("review modes", tuple(module.REVIEW_MODES), REVIEW_MODES),
+    )
+    for label, renderer_value, engine_value in parity_checks:
+        if renderer_value != engine_value:
+            raise WorkflowDataError(
+                f"the renderer's {label} does not match this engine"
+            )
+    if module.COMPILED_RULE_ID_RE.pattern != COMPILED_RULE_ID_RE.pattern:
+        raise WorkflowDataError(
+            "the renderer's compiled-ID pattern does not match this engine"
+        )
     return module
 
 

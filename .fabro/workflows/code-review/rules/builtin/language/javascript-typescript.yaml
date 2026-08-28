@@ -10,7 +10,7 @@ rules:
   - id: language.javascript-typescript
     match:
       paths:
-        - "**/*.{ts,js,tsx,jsx}"
+        - "**/*.{ts,js,tsx,jsx,mts,cts,mjs,cjs}"
     checks:
       - id: obvious-typos-or-spelling-errors
         category: conventions

@@ -94,8 +94,9 @@ provider = "daytona"
 # The review's agents search the tree constantly. The mirrored buildpack-deps
 # noble image is the Daytona default base. It ships grep but not ripgrep,
 # which respects .gitignore and is far faster on a large repository.
-# The xhigh/max rule loader needs PyYAML; the pin and hashes below must stay
-# in lockstep with requirements-rules.txt (cp312 manylinux wheels + sdist).
+# Every tier above low uses the rule loader and needs PyYAML; the pin and
+# hashes below must stay in lockstep with requirements-rules.txt (cp312
+# manylinux wheels + sdist).
 [environments.code-review.image]
 dockerfile = """
 FROM ghcr.io/lithoscomputer/docker-mirror/buildpack-deps:noble@sha256:1fdce57bbb1105e0e515f6523bd0c3eb1df8b601847cfea140483672f6484afa
