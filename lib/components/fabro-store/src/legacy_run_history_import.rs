@@ -65,6 +65,18 @@ impl LegacyRunHistoryImportError {
     pub fn report(&self) -> &LegacyRunHistoryImportReport {
         &self.report
     }
+
+    /// Returns secondary errors encountered while rolling back a failed run
+    /// import transaction.
+    ///
+    /// The standard error source chain preserves the failure that interrupted
+    /// the import. Because that chain is linear, rollback errors are exposed
+    /// separately.
+    pub fn cleanup_errors(&self) -> impl Iterator<Item = &(dyn StdError + 'static)> {
+        let mut errors = Vec::new();
+        self.failure.collect_cleanup_errors(&mut errors);
+        errors.into_iter()
+    }
 }
 
 impl fmt::Debug for LegacyRunHistoryImportError {
@@ -180,6 +192,13 @@ impl LegacyRunHistoryImportFailure {
         match self {
             Self::RollbackRunTransaction { prior, .. } => prior.primary_failure(),
             _ => self,
+        }
+    }
+
+    fn collect_cleanup_errors<'a>(&'a self, errors: &mut Vec<&'a (dyn StdError + 'static)>) {
+        if let Self::RollbackRunTransaction { source, prior } = self {
+            errors.push(source);
+            prior.collect_cleanup_errors(errors);
         }
     }
 }
@@ -483,6 +502,9 @@ impl LegacyRunHistorySource {
 impl Database {
     /// Strictly imports legacy SlateDB run history into the inactive SQLite
     /// run store, committing one complete run at a time.
+    ///
+    /// The caller must prevent writes to both stores for the duration of the
+    /// import. This operation does not establish a cross-store snapshot.
     pub async fn import_legacy_run_history_into(
         &self,
         pool: &SqlitePool,
@@ -543,6 +565,9 @@ impl Database {
 
     /// Verifies every legacy history as an exact SQLite prefix and then
     /// independently replays and verifies every SQLite run.
+    ///
+    /// The caller must prevent writes to both stores for the duration of
+    /// verification. This operation does not establish a cross-store snapshot.
     pub async fn verify_legacy_run_history_in(
         &self,
         pool: &SqlitePool,
@@ -925,6 +950,18 @@ fn replay_destination(
     run_id: &RunId,
     events: &[(EventEnvelope, String)],
 ) -> crate::Result<CachedRunProjection> {
+    let Some((first, _event_json)) = events.first() else {
+        return Err(crate::Error::InvalidEvent(
+            "run projection requires an event".to_owned(),
+        ));
+    };
+    if first.seq != 1 {
+        return Err(crate::Error::RunEventMismatch {
+            run_id: run_id.to_string(),
+            seq:    first.seq,
+            field:  "seq",
+        });
+    }
     let envelopes = events
         .iter()
         .map(|(envelope, _event_json)| envelope.clone())
@@ -932,7 +969,7 @@ fn replay_destination(
     let projection = RunProjection::apply_events(&envelopes)?;
     let last_seq = envelopes
         .last()
-        .ok_or_else(|| crate::Error::InvalidEvent("run projection requires an event".to_owned()))?
+        .expect("a destination history validated as nonempty")
         .seq;
     Ok(CachedRunProjection::from_projection(
         *run_id, projection, last_seq,
@@ -1016,8 +1053,10 @@ mod tests {
     use ulid::Ulid;
 
     use super::{
-        ImportControls, LegacyRunHistoryDiagnostics, LegacyRunHistoryImportReport,
-        LegacyRunHistoryVerificationReport, parse_source_event,
+        ImportControls, LegacyRunHistoryDiagnostics, LegacyRunHistoryImportError,
+        LegacyRunHistoryImportFailure, LegacyRunHistoryImportReport,
+        LegacyRunHistoryVerificationFailure, LegacyRunHistoryVerificationReport,
+        parse_source_event,
     };
     use crate::keys::SlateKey;
     use crate::slate::CachedRunProjection;
@@ -1216,6 +1255,30 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn legacy_run_history_import_exposes_rollback_cleanup_errors() {
+        let error = LegacyRunHistoryImportError {
+            report:  LegacyRunHistoryImportReport::default(),
+            failure: LegacyRunHistoryImportFailure::RollbackRunTransaction {
+                source: sqlx::Error::Protocol("injected rollback failure".to_owned()),
+                prior:  Box::new(LegacyRunHistoryImportFailure::DestinationConflict),
+            },
+        };
+
+        assert_eq!(
+            error.source().map(ToString::to_string),
+            Some(
+                "the destination history is partial or conflicts with the legacy prefix".to_owned()
+            )
+        );
+        assert!(
+            error
+                .cleanup_errors()
+                .any(|source| source.downcast_ref::<sqlx::Error>().is_some()),
+            "rollback source was absent from cleanup errors"
+        );
+    }
+
     #[tokio::test]
     async fn legacy_run_history_imports_exact_json_gaps_and_count_only_diagnostics()
     -> TestResult<()> {
@@ -1318,6 +1381,47 @@ mod tests {
             committed_run_transactions: 1,
             ..LegacyRunHistoryImportReport::default()
         });
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_run_history_retry_and_verification_compare_summary_json_semantically()
+    -> TestResult<()> {
+        let context = TestContext::new().await?;
+        let run_id = run_id(11);
+        let mut created = created_value(&run_id, "labeled");
+        created["properties"]["labels"] = serde_json::json!({
+            "alpha": "one",
+            "beta": "two",
+            "gamma": "three",
+        });
+        context
+            .put_event(&run_id, 1, 10, &serde_json::to_string(&created)?)
+            .await?;
+        context.import().await?;
+
+        let compact: String = sqlx::query_scalar("SELECT summary_json FROM runs WHERE id = ?")
+            .bind(run_id.to_string())
+            .fetch_one(&context.sqlite)
+            .await?;
+        let reformatted =
+            serde_json::to_string_pretty(&serde_json::from_str::<serde_json::Value>(&compact)?)?;
+        assert_ne!(compact, reformatted);
+        sqlx::query("UPDATE runs SET summary_json = ? WHERE id = ?")
+            .bind(reformatted)
+            .bind(run_id.to_string())
+            .execute(&context.sqlite)
+            .await?;
+
+        let retry = context.import().await?;
+        assert_eq!(retry.verified_existing_runs, 1);
+        assert_eq!(retry.verified_existing_events, 1);
+        let verification = context
+            .source
+            .verify_legacy_run_history_in(&context.sqlite)
+            .await?;
+        assert_eq!(verification.target_runs, 1);
+        assert_eq!(verification.target_events, 1);
         Ok(())
     }
 
@@ -1710,6 +1814,57 @@ mod tests {
             sql_only_events: 1,
             ..LegacyRunHistoryVerificationReport::default()
         });
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn legacy_run_history_verification_rejects_invalid_sql_only_histories() -> TestResult<()>
+    {
+        let missing_first = TestContext::new().await?;
+        let missing_first_id = run_id(82);
+        let created = serde_json::to_string(&created_value(&missing_first_id, "missing-first"))?;
+        seed_destination_history(&missing_first.sqlite, &missing_first_id, &[(2, created)]).await?;
+        let error = missing_first
+            .source
+            .verify_legacy_run_history_in(&missing_first.sqlite)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error.failure,
+            LegacyRunHistoryVerificationFailure::ReplayDestination(
+                crate::Error::RunEventMismatch { field: "seq", .. }
+            )
+        ));
+
+        let noncanonical = TestContext::new().await?;
+        let noncanonical_id = run_id(83);
+        let canonical_json =
+            serde_json::to_string(&created_value(&noncanonical_id, "noncanonical"))?;
+        seed_destination_history(&noncanonical.sqlite, &noncanonical_id, &[(
+            1,
+            canonical_json.clone(),
+        )])
+        .await?;
+        let canonical_id = noncanonical_id.to_string();
+        let lowercase_id = canonical_id.to_lowercase();
+        assert_ne!(canonical_id, lowercase_id);
+        sqlx::query("UPDATE run_events SET event_json = ? WHERE run_id = ?")
+            .bind(canonical_json.replace(&canonical_id, &lowercase_id))
+            .bind(canonical_id)
+            .execute(&noncanonical.sqlite)
+            .await?;
+        let error = noncanonical
+            .source
+            .verify_legacy_run_history_in(&noncanonical.sqlite)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error.failure,
+            LegacyRunHistoryVerificationFailure::ReadDestination(crate::Error::RunEventMismatch {
+                field: "run_id",
+                ..
+            })
+        ));
         Ok(())
     }
 

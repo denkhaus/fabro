@@ -553,7 +553,7 @@ WHERE id = ?
         verify_run_field(&row, run, "cache_read_tokens", &record.cache_read_tokens)?;
         verify_run_field(&row, run, "cache_write_tokens", &record.cache_write_tokens)?;
         verify_run_field(&row, run, "total_usd_micros", &record.total_usd_micros)?;
-        verify_run_field(&row, run, "summary_json", &serde_json::to_string(run)?)?;
+        verify_run_json_field(&row, run)?;
         Ok(())
     }
 
@@ -852,6 +852,19 @@ where
     Ok(())
 }
 
+fn verify_run_json_field(row: &SqliteRow, run: &Run) -> Result<()> {
+    let stored_json: String = row.try_get("summary_json")?;
+    let stored: serde_json::Value = serde_json::from_str(&stored_json)?;
+    let expected = serde_json::to_value(run)?;
+    if stored != expected {
+        return Err(Error::RunSummaryMismatch {
+            run_id: run.id.to_string(),
+            field:  "summary_json",
+        });
+    }
+    Ok(())
+}
+
 fn decode_event_row(
     row: &SqliteRow,
     expected_run_id: &RunId,
@@ -866,6 +879,15 @@ fn decode_event_row(
 
     let event_json: String = row.try_get("event_json")?;
     let payload: EventPayload = serde_json::from_str(&event_json)?;
+    if payload
+        .as_value()
+        .get("run_id")
+        .and_then(serde_json::Value::as_str)
+        != Some(expected_run_id_text)
+    {
+        return Err(run_event_mismatch(expected_run_id, seq, "run_id"));
+    }
+    payload.validate(expected_run_id)?;
     let event = RunEvent::try_from(&payload)?;
     if event.run_id != *expected_run_id {
         return Err(run_event_mismatch(expected_run_id, seq, "run_id"));
