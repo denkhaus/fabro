@@ -3778,6 +3778,151 @@ async fn post_runs_run_intent_creates_submitted_none_target_without_git_projecti
 }
 
 #[tokio::test]
+async fn post_runs_run_intent_args_true_override_resolved_settings_without_starting() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    let state = TestAppStateBuilder::new()
+        .default_environment_provider(Some(EnvironmentProvider::Local))
+        .env_lookup(|_| None)
+        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .build();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let body = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": { "kind": "folder", "path": &workspace },
+            "args": {
+                "dry_run": true,
+                "auto_approve": true,
+                "preserve_sandbox": true
+            }
+        }),
+    )
+    .await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    assert_eq!(body["lifecycle"]["status"]["kind"], "submitted");
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    let projection = run_store.state().await.unwrap();
+    assert_eq!(
+        projection.spec.settings.run.execution.mode,
+        fabro_types::settings::run::RunMode::DryRun
+    );
+    assert_eq!(
+        projection.spec.settings.run.execution.approval,
+        fabro_types::settings::run::ApprovalMode::Auto
+    );
+    assert!(projection.spec.settings.run.environment.lifecycle.preserve);
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_args_false_are_distinct_from_omitted_overrides() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    let state = TestAppStateBuilder::new()
+        .runtime_settings(
+            default_test_server_settings(),
+            manifest_run_defaults_from_toml(
+                r#"
+[run.execution]
+mode = "dry_run"
+approval = "auto"
+
+[run.environment.lifecycle]
+preserve = true
+"#,
+            ),
+        )
+        .default_environment_provider(Some(EnvironmentProvider::Local))
+        .env_lookup(|_| None)
+        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .build();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+
+    let explicit_false = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": { "kind": "folder", "path": &workspace },
+            "args": {
+                "dry_run": false,
+                "auto_approve": false,
+                "preserve_sandbox": false
+            }
+        }),
+    )
+    .await;
+    let omitted = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": { "kind": "folder", "path": &workspace },
+            "args": {}
+        }),
+    )
+    .await;
+
+    assert_eq!(explicit_false["lifecycle"]["status"]["kind"], "submitted");
+    assert_eq!(omitted["lifecycle"]["status"]["kind"], "submitted");
+    let explicit_false_id = explicit_false["id"]
+        .as_str()
+        .unwrap()
+        .parse::<RunId>()
+        .unwrap();
+    let omitted_id = omitted["id"].as_str().unwrap().parse::<RunId>().unwrap();
+    let explicit_false = state
+        .stores
+        .runs
+        .open_run_reader(&explicit_false_id)
+        .await
+        .unwrap()
+        .state()
+        .await
+        .unwrap();
+    let omitted = state
+        .stores
+        .runs
+        .open_run_reader(&omitted_id)
+        .await
+        .unwrap()
+        .state()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        explicit_false.spec.settings.run.execution.mode,
+        fabro_types::settings::run::RunMode::Normal
+    );
+    assert_eq!(
+        explicit_false.spec.settings.run.execution.approval,
+        fabro_types::settings::run::ApprovalMode::Prompt
+    );
+    assert!(
+        !explicit_false
+            .spec
+            .settings
+            .run
+            .environment
+            .lifecycle
+            .preserve
+    );
+    assert_eq!(
+        omitted.spec.settings.run.execution.mode,
+        fabro_types::settings::run::RunMode::DryRun
+    );
+    assert_eq!(
+        omitted.spec.settings.run.execution.approval,
+        fabro_types::settings::run::ApprovalMode::Auto
+    );
+    assert!(omitted.spec.settings.run.environment.lifecycle.preserve);
+}
+
+#[tokio::test]
 async fn post_runs_run_intent_canonicalizes_and_persists_a_local_folder_target() {
     let dir = tempfile::tempdir().unwrap();
     let workspace = dir.path().join("workspace");

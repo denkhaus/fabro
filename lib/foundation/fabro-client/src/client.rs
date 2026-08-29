@@ -16,6 +16,7 @@ use fabro_types::{
     ArtifactUpload, BlobHash, EventEnvelope, PairId, PairMessageRecord, PairMessageRequest,
     PairRecord, PairStartRequest, PairTranscriptResponse, Run, RunEvent, RunEventDetailResponse,
     RunId, RunPairStatusResponse, RunProjection, SessionId, SessionRecord, StageId,
+    WorkflowVersion, WorkflowVersionId,
 };
 use fabro_util::exit::{ErrorExt, ExitClass};
 use futures::future::BoxFuture;
@@ -698,6 +699,42 @@ impl Client {
 
     pub async fn create_run_from_manifest(&self, manifest: types::RunManifest) -> Result<RunId> {
         self.submit_create_run(manifest.into()).await
+    }
+
+    pub async fn create_workflow_version(
+        &self,
+        version: &WorkflowVersion,
+    ) -> Result<WorkflowVersionId> {
+        let response = self
+            .send_api(|client| {
+                let version = version.clone();
+                async move { client.create_workflow_version().body(version).send().await }
+            })
+            .await?;
+        Ok(response.into_inner().workflow_version_id)
+    }
+
+    pub async fn register_workflow_versions<'a>(
+        &self,
+        versions: impl IntoIterator<Item = (WorkflowVersionId, &'a WorkflowVersion)>,
+    ) -> Result<()> {
+        for (completed, (expected_id, version)) in versions.into_iter().enumerate() {
+            let completed_noun = if completed == 1 { "entry" } else { "entries" };
+            let returned_id = self
+                .create_workflow_version(version)
+                .await
+                .with_context(|| {
+                    format!(
+                        "failed to register workflow version {expected_id} after {completed} {completed_noun} completed"
+                    )
+                })?;
+            if returned_id != expected_id {
+                bail!(
+                    "workflow version registration returned {returned_id} for expected {expected_id} after {completed} {completed_noun} completed"
+                );
+            }
+        }
+        Ok(())
     }
 
     pub async fn create_run_from_intent(&self, intent: types::RunIntent) -> Result<RunId> {
@@ -2281,13 +2318,15 @@ fn add_pr_upgrade_hint(err: anyhow::Error) -> anyhow::Error {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
     use chrono::Duration as ChronoDuration;
     use fabro_util::exit;
     use httpmock::Method::{GET, POST};
-    use httpmock::MockServer;
+    use httpmock::{HttpMockResponse, MockServer};
     use serde_json::json;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -2323,6 +2362,265 @@ mod tests {
             "ts": "2026-07-24T12:00:00Z",
             "properties": {},
         })
+    }
+
+    fn test_workflow_version(
+        name: &str,
+        workflow_dependencies: BTreeMap<fabro_types::WorkflowPath, fabro_types::WorkflowVersionId>,
+    ) -> fabro_types::WorkflowVersion {
+        let entrypoint = fabro_types::WorkflowPath::new("workflow.fabro").unwrap();
+        fabro_types::WorkflowVersion::new(
+            entrypoint.clone(),
+            BTreeMap::from([(entrypoint, format!("digraph {name} {{}}"))]),
+            workflow_dependencies,
+        )
+        .unwrap()
+    }
+
+    fn workflow_version_response(
+        workflow_version_id: &fabro_types::WorkflowVersionId,
+    ) -> HttpMockResponse {
+        HttpMockResponse::builder()
+            .status(201)
+            .header("content-type", "application/json")
+            .body(json!({ "workflow_version_id": workflow_version_id }).to_string())
+            .build()
+    }
+
+    #[tokio::test]
+    async fn create_workflow_version_posts_exact_version_and_returns_server_id() {
+        let server = MockServer::start_async().await;
+        let version = test_workflow_version("ExactVersion", BTreeMap::new());
+        let expected_id = version.id().unwrap();
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body(serde_json::to_value(&version).unwrap());
+                then.status(201)
+                    .header("content-type", "application/json")
+                    .json_body(json!({ "workflow_version_id": expected_id }));
+            })
+            .await;
+
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+        let actual_id = client.create_workflow_version(&version).await.unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(actual_id, expected_id);
+    }
+
+    #[tokio::test]
+    async fn register_workflow_versions_preserves_dependency_first_order() {
+        let server = MockServer::start_async().await;
+        let child = test_workflow_version("Child", BTreeMap::new());
+        let child_id = child.id().unwrap();
+        let parent = test_workflow_version(
+            "Parent",
+            BTreeMap::from([(fabro_types::WorkflowPath::new("child").unwrap(), child_id)]),
+        );
+        let parent_id = parent.id().unwrap();
+        let child_response_id = child_id;
+        let child_response_completed = Arc::new(AtomicBool::new(false));
+        let child_response_completed_for_child = Arc::clone(&child_response_completed);
+        let child_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body(serde_json::to_value(&child).unwrap());
+                then.respond_with(move |_| {
+                    let response = workflow_version_response(&child_response_id);
+                    child_response_completed_for_child.store(true, Ordering::SeqCst);
+                    response
+                });
+            })
+            .await;
+        let parent_response_id = parent_id;
+        let parent_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body(serde_json::to_value(&parent).unwrap());
+                then.respond_with(move |_| {
+                    assert!(
+                        child_response_completed.load(Ordering::SeqCst),
+                        "parent registration began before the child response completed"
+                    );
+                    workflow_version_response(&parent_response_id)
+                });
+            })
+            .await;
+
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+        client
+            .register_workflow_versions([(child_id, &child), (parent_id, &parent)])
+            .await
+            .unwrap();
+
+        child_mock.assert_async().await;
+        parent_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn register_workflow_versions_rejects_returned_id_mismatch() {
+        let server = MockServer::start_async().await;
+        let first = test_workflow_version("Expected", BTreeMap::new());
+        let expected_id = first.id().unwrap();
+        let returned_id = test_workflow_version("Returned", BTreeMap::new())
+            .id()
+            .unwrap();
+        let later = test_workflow_version("Later", BTreeMap::new());
+        let later_id = later.id().unwrap();
+        let first_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body(serde_json::to_value(&first).unwrap());
+                then.status(201)
+                    .header("content-type", "application/json")
+                    .json_body(json!({ "workflow_version_id": returned_id }));
+            })
+            .await;
+        let later_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body(serde_json::to_value(&later).unwrap());
+                then.status(201)
+                    .header("content-type", "application/json")
+                    .json_body(json!({ "workflow_version_id": later_id }));
+            })
+            .await;
+
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+        let error = client
+            .register_workflow_versions([(expected_id, &first), (later_id, &later)])
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+
+        first_mock.assert_async().await;
+        later_mock.assert_calls_async(0).await;
+        assert!(message.contains(&expected_id.to_string()));
+        assert!(message.contains(&returned_id.to_string()));
+        assert!(message.contains("0 entries completed"));
+    }
+
+    #[tokio::test]
+    async fn register_workflow_versions_stops_after_request_failure() {
+        let server = MockServer::start_async().await;
+        let first = test_workflow_version("First", BTreeMap::new());
+        let first_id = first.id().unwrap();
+        let failing = test_workflow_version("Failing", BTreeMap::new());
+        let failing_id = failing.id().unwrap();
+        let later = test_workflow_version("NeverSent", BTreeMap::new());
+        let later_id = later.id().unwrap();
+        let first_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body(serde_json::to_value(&first).unwrap());
+                then.status(201)
+                    .header("content-type", "application/json")
+                    .json_body(json!({ "workflow_version_id": first_id }));
+            })
+            .await;
+        let failing_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body(serde_json::to_value(&failing).unwrap());
+                then.status(422)
+                    .header("content-type", "application/json")
+                    .json_body(json!({
+                        "errors": [{
+                            "status": "422",
+                            "title": "Unprocessable Entity",
+                            "detail": "workflow dependency was not found",
+                            "code": "workflow_version_dependency_not_found"
+                        }]
+                    }));
+            })
+            .await;
+        let later_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body(serde_json::to_value(&later).unwrap());
+                then.status(201)
+                    .header("content-type", "application/json")
+                    .json_body(json!({ "workflow_version_id": later_id }));
+            })
+            .await;
+
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+        let error = client
+            .register_workflow_versions([
+                (first_id, &first),
+                (failing_id, &failing),
+                (later_id, &later),
+            ])
+            .await
+            .unwrap_err();
+
+        first_mock.assert_async().await;
+        failing_mock.assert_async().await;
+        later_mock.assert_calls_async(0).await;
+        assert!(error.to_string().contains(&failing_id.to_string()));
+        assert!(error.to_string().contains("1 entry completed"));
+        let failure = api_failure_for(&error).expect("API failure metadata should survive context");
+        assert_eq!(failure.status, fabro_http::StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            failure.code.as_deref(),
+            Some("workflow_version_dependency_not_found")
+        );
+    }
+
+    #[tokio::test]
+    async fn register_workflow_versions_accepts_empty_input_without_requests() {
+        let server = MockServer::start_async().await;
+        let unexpected = server
+            .mock_async(|when, then| {
+                when.method(POST).path("/api/v1/workflow-versions");
+                then.status(500);
+            })
+            .await;
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+
+        client
+            .register_workflow_versions(std::iter::empty::<(
+                fabro_types::WorkflowVersionId,
+                &fabro_types::WorkflowVersion,
+            )>())
+            .await
+            .unwrap();
+
+        unexpected.assert_calls_async(0).await;
+    }
+
+    #[tokio::test]
+    async fn create_workflow_version_accepts_repeated_canonical_content() {
+        let server = MockServer::start_async().await;
+        let version = test_workflow_version("Repeated", BTreeMap::new());
+        let expected_id = version.id().unwrap();
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/v1/workflow-versions")
+                    .json_body(serde_json::to_value(&version).unwrap());
+                then.status(201)
+                    .header("content-type", "application/json")
+                    .json_body(json!({ "workflow_version_id": expected_id }));
+            })
+            .await;
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+
+        let first = client.create_workflow_version(&version).await.unwrap();
+        let second = client.create_workflow_version(&version).await.unwrap();
+
+        mock.assert_calls_async(2).await;
+        assert_eq!(first, expected_id);
+        assert_eq!(second, expected_id);
     }
 
     #[cfg(unix)]
