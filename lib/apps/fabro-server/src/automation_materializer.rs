@@ -1,8 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fabro_automation::AutomationId;
+use fabro_automation::{AutomationGitWorkflowSource, AutomationId, AutomationValidationError};
 use fabro_manifest::WorkflowVersionCollectError;
 use fabro_types::{
     GitHubRepositorySlug, GitRunTarget, RunId, RunIntent, RunIntentArgs, RunTarget,
@@ -12,16 +12,18 @@ use fabro_workflow_version::{WorkflowVersionStore, WorkflowVersionStoreError};
 use tokio::{fs, task};
 
 use crate::git_checkout::{
-    GitCheckoutError, GitRepoCache, WorktreePrepareInput, resolve_git_auth_config,
+    GitAuthConfig, GitCheckoutError, GitCheckoutSelector, GitRepoCache, WorktreePrepareInput,
+    resolve_git_auth_config,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AutomationRunMaterializeInput {
-    pub automation_id: AutomationId,
-    pub target:        GitRunTarget,
-    pub workflow:      String,
-    pub run_id:        RunId,
-    pub temp_root:     PathBuf,
+    pub automation_id:   AutomationId,
+    pub target:          GitRunTarget,
+    pub workflow_source: Option<AutomationGitWorkflowSource>,
+    pub workflow:        String,
+    pub run_id:          RunId,
+    pub temp_root:       PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -53,9 +55,29 @@ pub(crate) enum RunMaterializeError {
         #[source]
         source: TargetValidationError,
     },
-    #[error("failed to prepare automation checkout")]
-    Checkout {
-        #[from]
+    #[error("invalid automation workflow source")]
+    InvalidWorkflowSource {
+        #[source]
+        source: AutomationValidationError,
+    },
+    #[error("failed to resolve automation target credentials")]
+    TargetCredentials {
+        #[source]
+        source: anyhow::Error,
+    },
+    #[error("failed to prepare automation target checkout")]
+    TargetCheckout {
+        #[source]
+        source: GitCheckoutError,
+    },
+    #[error("failed to resolve automation workflow-source credentials")]
+    WorkflowSourceCredentials {
+        #[source]
+        source: anyhow::Error,
+    },
+    #[error("failed to prepare automation workflow-source checkout")]
+    WorkflowSourceCheckout {
+        #[source]
         source: GitCheckoutError,
     },
     #[error("failed to prepare automation temporary directory {path}")]
@@ -84,8 +106,8 @@ pub(crate) enum RunMaterializeError {
         #[source]
         source: WorkflowVersionStoreError,
     },
-    #[error("failed to load GitHub credentials")]
-    Credentials {
+    #[error("failed to load server GitHub credentials")]
+    LoadCredentials {
         #[source]
         source: anyhow::Error,
     },
@@ -101,11 +123,35 @@ pub(crate) trait AutomationRunMaterializer: Send + Sync {
 
 #[derive(Clone)]
 pub(crate) struct ProductionAutomationRunMaterializer {
-    github_credentials:  Option<fabro_github::GitHubCredentials>,
-    github_api_base_url: String,
-    http_client:         Option<fabro_http::HttpClient>,
+    credential_resolver: Arc<dyn AutomationGitCredentialResolver>,
     repo_cache:          Arc<GitRepoCache>,
     version_store:       WorkflowVersionStore,
+    #[cfg(test)]
+    clone_urls:          Arc<std::collections::HashMap<GitHubRepositorySlug, String>>,
+}
+
+#[async_trait]
+trait AutomationGitCredentialResolver: Send + Sync {
+    async fn resolve(&self, repo: &GitHubRepositorySlug) -> anyhow::Result<Option<GitAuthConfig>>;
+}
+
+struct ServerGitHubCredentialResolver {
+    credentials:  Option<fabro_github::GitHubCredentials>,
+    api_base_url: String,
+    http_client:  Option<fabro_http::HttpClient>,
+}
+
+#[async_trait]
+impl AutomationGitCredentialResolver for ServerGitHubCredentialResolver {
+    async fn resolve(&self, repo: &GitHubRepositorySlug) -> anyhow::Result<Option<GitAuthConfig>> {
+        resolve_git_auth_config(
+            self.credentials.as_ref(),
+            repo,
+            &self.api_base_url,
+            self.http_client.clone(),
+        )
+        .await
+    }
 }
 
 impl ProductionAutomationRunMaterializer {
@@ -117,12 +163,50 @@ impl ProductionAutomationRunMaterializer {
         version_store: WorkflowVersionStore,
     ) -> Self {
         Self {
-            github_credentials,
-            github_api_base_url,
-            http_client,
+            credential_resolver: Arc::new(ServerGitHubCredentialResolver {
+                credentials: github_credentials,
+                api_base_url: github_api_base_url,
+                http_client,
+            }),
             repo_cache,
             version_store,
+            #[cfg(test)]
+            clone_urls: Arc::new(std::collections::HashMap::new()),
         }
+    }
+
+    async fn prepare_checkout(
+        &self,
+        repo: &GitHubRepositorySlug,
+        selector: GitCheckoutSelector<'_>,
+        auth: Option<&GitAuthConfig>,
+        worktree_dir: &Path,
+    ) -> Result<String, GitCheckoutError> {
+        let input = WorktreePrepareInput {
+            repo,
+            selector,
+            auth,
+            worktree_dir,
+        };
+        #[cfg(test)]
+        if let Some(clone_url) = self.clone_urls.get(repo) {
+            return self
+                .repo_cache
+                .prepare_worktree_with_clone_url(input, clone_url)
+                .await;
+        }
+        self.repo_cache.prepare_worktree(input).await
+    }
+
+    #[cfg(test)]
+    fn with_test_git(
+        mut self,
+        credential_resolver: Arc<dyn AutomationGitCredentialResolver>,
+        clone_urls: std::collections::HashMap<GitHubRepositorySlug, String>,
+    ) -> Self {
+        self.credential_resolver = credential_resolver;
+        self.clone_urls = Arc::new(clone_urls);
+        self
     }
 }
 
@@ -132,11 +216,42 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
         &self,
         input: AutomationRunMaterializeInput,
     ) -> Result<AutomationRunMaterialized, RunMaterializeError> {
-        let repo = GitHubRepositorySlug::try_new(&input.target.repo).ok_or(
-            RunMaterializeError::InvalidTarget {
-                source: TargetValidationError::Repository,
-            },
-        )?;
+        let validated_target = RunTarget::Git(input.target)
+            .validate()
+            .map_err(|source| RunMaterializeError::InvalidTarget { source })?;
+        let RunTarget::Git(mut exact_target) = validated_target.target else {
+            unreachable!("a validated Git target remains Git-backed");
+        };
+        let target_repo: GitHubRepositorySlug =
+            exact_target
+                .repo
+                .parse()
+                .map_err(|_| RunMaterializeError::InvalidTarget {
+                    source: TargetValidationError::Repository,
+                })?;
+        let workflow_source = input
+            .workflow_source
+            .map(AutomationGitWorkflowSource::validate)
+            .transpose()
+            .map_err(|source| RunMaterializeError::InvalidWorkflowSource { source })?;
+        let source_repo: Option<GitHubRepositorySlug> = workflow_source
+            .as_ref()
+            .map(|source| {
+                source
+                    .repo
+                    .parse()
+                    .map_err(|source| RunMaterializeError::InvalidWorkflowSource {
+                        source: AutomationValidationError::InvalidWorkflowSourceRepository {
+                            source,
+                        },
+                    })
+            })
+            .transpose()?;
+        let reuse_target_checkout = workflow_source.as_ref().is_none_or(|source| {
+            source_repo.as_ref() == Some(&target_repo)
+                && GitCheckoutSelector::from(source) == GitCheckoutSelector::from(&exact_target)
+        });
+
         fs::create_dir_all(&input.temp_root)
             .await
             .map_err(|source| RunMaterializeError::TempDirectory {
@@ -154,32 +269,52 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
                 path: input.temp_root.clone(),
                 source,
             })?;
-        let checkout_dir = temp_dir.path().join("repo");
-        let auth = resolve_git_auth_config(
-            self.github_credentials.as_ref(),
-            &repo,
-            &self.github_api_base_url,
-            self.http_client.clone(),
-        )
-        .await
-        .map_err(|source| RunMaterializeError::Credentials { source })?;
+        let target_checkout_dir = temp_dir.path().join("target");
+        let target_auth = self
+            .credential_resolver
+            .resolve(&target_repo)
+            .await
+            .map_err(|source| RunMaterializeError::TargetCredentials { source })?;
 
         let checked_out_sha = self
-            .repo_cache
-            .prepare_worktree(WorktreePrepareInput {
-                repo:         &repo,
-                target:       &input.target,
-                auth:         auth.as_ref(),
-                worktree_dir: &checkout_dir,
-            })
-            .await?;
-
-        let mut exact_target = input.target;
+            .prepare_checkout(
+                &target_repo,
+                GitCheckoutSelector::from(&exact_target),
+                target_auth.as_ref(),
+                &target_checkout_dir,
+            )
+            .await
+            .map_err(|source| RunMaterializeError::TargetCheckout { source })?;
+        let workflow_checkout_dir = if reuse_target_checkout {
+            target_checkout_dir
+        } else {
+            let source = workflow_source
+                .as_ref()
+                .expect("non-reused workflow checkout requires an explicit source");
+            let repo = source_repo
+                .as_ref()
+                .expect("a validated workflow source has a repository");
+            let source_auth = self
+                .credential_resolver
+                .resolve(repo)
+                .await
+                .map_err(|source| RunMaterializeError::WorkflowSourceCredentials { source })?;
+            let source_checkout_dir = temp_dir.path().join("workflow-source");
+            self.prepare_checkout(
+                repo,
+                GitCheckoutSelector::from(source),
+                source_auth.as_ref(),
+                &source_checkout_dir,
+            )
+            .await
+            .map_err(|source| RunMaterializeError::WorkflowSourceCheckout { source })?;
+            source_checkout_dir
+        };
         exact_target.sha = Some(checked_out_sha);
 
         let workflow = PathBuf::from(input.workflow);
         let closure = task::spawn_blocking(move || {
-            fabro_manifest::collect_workflow_versions(&workflow, &checkout_dir)
+            fabro_manifest::collect_workflow_versions(&workflow, &workflow_checkout_dir)
                 .map_err(package_error)
         })
         .await
@@ -223,7 +358,14 @@ pub struct TestAutomationRunMaterializer {
 #[cfg(any(test, feature = "test-support"))]
 struct TestAutomationRunMaterializerState {
     captured_inputs: Vec<AutomationRunMaterializeInput>,
-    response:        Result<Box<TestMaterializedWorkflow>, TargetValidationError>,
+    response:        Result<Box<TestMaterializedWorkflow>, TestMaterializeFailure>,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[derive(Clone)]
+enum TestMaterializeFailure {
+    InvalidTarget(TargetValidationError),
+    InvalidWorkflowSource,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -253,10 +395,16 @@ impl TestAutomationRunMaterializer {
     }
 
     pub fn fail_invalid_target() -> Self {
-        Self::new(Err(TargetValidationError::Repository))
+        Self::new(Err(TestMaterializeFailure::InvalidTarget(
+            TargetValidationError::Repository,
+        )))
     }
 
-    fn new(response: Result<Box<TestMaterializedWorkflow>, TargetValidationError>) -> Self {
+    pub fn fail_invalid_workflow_source() -> Self {
+        Self::new(Err(TestMaterializeFailure::InvalidWorkflowSource))
+    }
+
+    fn new(response: Result<Box<TestMaterializedWorkflow>, TestMaterializeFailure>) -> Self {
         Self {
             inner:         std::sync::Arc::new(std::sync::Mutex::new(
                 TestAutomationRunMaterializerState {
@@ -274,6 +422,16 @@ impl TestAutomationRunMaterializer {
             .expect("test automation materializer lock poisoned")
             .captured_inputs
             .clone()
+    }
+
+    pub fn captured_workflow_sources(&self) -> Vec<Option<AutomationGitWorkflowSource>> {
+        self.inner
+            .lock()
+            .expect("test automation materializer lock poisoned")
+            .captured_inputs
+            .iter()
+            .map(|input| input.workflow_source.clone())
+            .collect()
     }
 
     pub(crate) fn into_materializer(
@@ -320,8 +478,16 @@ impl AutomationRunMaterializer for TestAutomationRunMaterializer {
             guard.captured_inputs.push(input);
             guard.response.clone()
         };
-        let materialized =
-            *response.map_err(|source| RunMaterializeError::InvalidTarget { source })?;
+        let materialized = *response.map_err(|failure| match failure {
+            TestMaterializeFailure::InvalidTarget(source) => {
+                RunMaterializeError::InvalidTarget { source }
+            }
+            TestMaterializeFailure::InvalidWorkflowSource => {
+                RunMaterializeError::InvalidWorkflowSource {
+                    source: AutomationValidationError::InvalidWorkflowSourceBranch,
+                }
+            }
+        })?;
         let store = self
             .version_store
             .as_ref()
@@ -352,14 +518,251 @@ mod tests {
         reason = "Materializer unit tests write small temporary workflow fixtures synchronously."
     )]
 
+    use std::collections::HashMap;
     use std::fs;
     use std::path::Path;
+    use std::sync::Mutex;
     use std::time::Duration;
 
+    use fabro_automation::AutomationGitWorkflowSourceKind;
     use object_store::memory::InMemory;
     use tempfile::TempDir;
 
     use super::*;
+
+    const FAKE_TOKEN: &str = "ghu_automation_materializer_secret";
+
+    struct RecordingCredentialResolver {
+        repositories: Mutex<Vec<GitHubRepositorySlug>>,
+        fail_for:     Option<GitHubRepositorySlug>,
+    }
+
+    impl RecordingCredentialResolver {
+        fn succeeds() -> Self {
+            Self {
+                repositories: Mutex::new(Vec::new()),
+                fail_for:     None,
+            }
+        }
+
+        fn fails_for(repo: GitHubRepositorySlug) -> Self {
+            Self {
+                repositories: Mutex::new(Vec::new()),
+                fail_for:     Some(repo),
+            }
+        }
+
+        fn repositories(&self) -> Vec<String> {
+            self.repositories
+                .lock()
+                .expect("credential recorder lock poisoned")
+                .iter()
+                .map(ToString::to_string)
+                .collect()
+        }
+    }
+
+    #[async_trait]
+    impl AutomationGitCredentialResolver for RecordingCredentialResolver {
+        async fn resolve(
+            &self,
+            repo: &GitHubRepositorySlug,
+        ) -> anyhow::Result<Option<GitAuthConfig>> {
+            self.repositories
+                .lock()
+                .expect("credential recorder lock poisoned")
+                .push(repo.clone());
+            if self.fail_for.as_ref() == Some(repo) {
+                anyhow::bail!("test repository access denied")
+            }
+            Ok(Some(GitAuthConfig::new(
+                Some("x-access-token".to_string()),
+                Some(FAKE_TOKEN.to_string()),
+            )))
+        }
+    }
+
+    struct GitFixture {
+        bare:        PathBuf,
+        work:        PathBuf,
+        initial_sha: String,
+    }
+
+    fn run_git(args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .status()
+            .expect("git command should start");
+        assert!(status.success(), "git command failed: {args:?}");
+    }
+
+    fn git_output(args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .args(args)
+            .output()
+            .expect("git command should start");
+        assert!(output.status.success(), "git command failed: {args:?}");
+        String::from_utf8(output.stdout)
+            .expect("git output should be UTF-8")
+            .trim()
+            .to_string()
+    }
+
+    fn write_workflow(work: &Path, marker: &str) {
+        let workflow_dir = work.join(".fabro/workflows/demo");
+        fs::create_dir_all(&workflow_dir).unwrap();
+        fs::write(work.join(".fabro/project.toml"), "_version = 1\n").unwrap();
+        fs::write(
+            workflow_dir.join("workflow.toml"),
+            "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"\n",
+        )
+        .unwrap();
+        fs::write(
+            workflow_dir.join("workflow.fabro"),
+            format!(
+                "digraph Demo {{ graph [goal=\"{marker}\"] start [shape=Mdiamond] exit [shape=Msquare] start -> exit }}\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    fn seed_repository(root: &Path, name: &str, marker: &str) -> GitFixture {
+        let bare = root.join(format!("{name}.git"));
+        let work = root.join(format!("{name}-work"));
+        run_git(&[
+            "init",
+            "--bare",
+            "--initial-branch=main",
+            bare.to_str().unwrap(),
+        ]);
+        run_git(&["init", "--initial-branch=main", work.to_str().unwrap()]);
+        for (key, value) in [
+            ("user.email", "test@fabro.sh"),
+            ("user.name", "Fabro Test"),
+            ("commit.gpgsign", "false"),
+        ] {
+            run_git(&["-C", work.to_str().unwrap(), "config", key, value]);
+        }
+        write_workflow(&work, marker);
+        run_git(&["-C", work.to_str().unwrap(), "add", "."]);
+        run_git(&[
+            "-C",
+            work.to_str().unwrap(),
+            "commit",
+            "-m",
+            "initial workflow",
+        ]);
+        run_git(&[
+            "-C",
+            work.to_str().unwrap(),
+            "tag",
+            "-a",
+            "annotated-v1",
+            "-m",
+            "annotated v1",
+        ]);
+        run_git(&["-C", work.to_str().unwrap(), "tag", "lightweight-v1"]);
+        run_git(&[
+            "-C",
+            work.to_str().unwrap(),
+            "push",
+            "--tags",
+            bare.to_str().unwrap(),
+            "main",
+        ]);
+        let initial_sha = git_output(&["-C", work.to_str().unwrap(), "rev-parse", "HEAD"]);
+        GitFixture {
+            bare,
+            work,
+            initial_sha,
+        }
+    }
+
+    fn advance_repository(fixture: &GitFixture, marker: &str) -> String {
+        write_workflow(&fixture.work, marker);
+        run_git(&["-C", fixture.work.to_str().unwrap(), "add", "."]);
+        run_git(&[
+            "-C",
+            fixture.work.to_str().unwrap(),
+            "commit",
+            "-m",
+            "advance workflow",
+        ]);
+        run_git(&[
+            "-C",
+            fixture.work.to_str().unwrap(),
+            "push",
+            fixture.bare.to_str().unwrap(),
+            "main",
+        ]);
+        git_output(&["-C", fixture.work.to_str().unwrap(), "rev-parse", "HEAD"])
+    }
+
+    fn repository(value: &str) -> GitHubRepositorySlug {
+        GitHubRepositorySlug::try_new(value).expect("test repository should parse")
+    }
+
+    fn target(repo: &str) -> GitRunTarget {
+        GitRunTarget {
+            repo:   repo.to_string(),
+            branch: "main".to_string(),
+            tag:    None,
+            sha:    None,
+        }
+    }
+
+    fn source(
+        repo: &str,
+        kind: AutomationGitWorkflowSourceKind,
+        reference: &str,
+    ) -> AutomationGitWorkflowSource {
+        AutomationGitWorkflowSource {
+            repo: repo.to_string(),
+            kind,
+            reference: reference.to_string(),
+        }
+    }
+
+    fn input(
+        target_repo: &str,
+        workflow_source: Option<AutomationGitWorkflowSource>,
+        temp_root: &Path,
+    ) -> AutomationRunMaterializeInput {
+        AutomationRunMaterializeInput {
+            automation_id: AutomationId::new("nightly").unwrap(),
+            target: target(target_repo),
+            workflow_source,
+            workflow: "demo".to_string(),
+            run_id: RunId::new(),
+            temp_root: temp_root.to_path_buf(),
+        }
+    }
+
+    fn test_version_store() -> WorkflowVersionStore {
+        let database = fabro_store::test_support::test_database(
+            Arc::new(InMemory::new()),
+            "",
+            Duration::from_millis(1),
+            None,
+        );
+        WorkflowVersionStore::new(database.blobs())
+    }
+
+    fn production_materializer(
+        root: &Path,
+        store: WorkflowVersionStore,
+        resolver: Arc<RecordingCredentialResolver>,
+        clone_urls: HashMap<GitHubRepositorySlug, String>,
+    ) -> ProductionAutomationRunMaterializer {
+        ProductionAutomationRunMaterializer::new(
+            None,
+            "https://api.github.com".to_string(),
+            None,
+            Arc::new(GitRepoCache::new(root.join("cache"))),
+            store,
+        )
+        .with_test_git(resolver, clone_urls)
+    }
 
     #[tokio::test]
     async fn collected_closure_stores_dependency_first_and_idempotently() {
@@ -403,5 +806,434 @@ mod tests {
             .unwrap();
         assert_eq!(loaded.root_id(), closure.root_id());
         assert_eq!(loaded.versions().count(), 2);
+    }
+
+    #[tokio::test]
+    async fn omitted_source_packages_target_checkout_and_returns_exact_target() {
+        let temp = TempDir::new().unwrap();
+        let target_fixture = seed_repository(temp.path(), "target", "target workflow");
+        let target_repo = repository("fabro-sh/target");
+        let store = test_version_store();
+        let resolver = Arc::new(RecordingCredentialResolver::succeeds());
+        let materializer = production_materializer(
+            temp.path(),
+            store.clone(),
+            Arc::clone(&resolver),
+            HashMap::from([(
+                target_repo.clone(),
+                target_fixture.bare.to_string_lossy().into_owned(),
+            )]),
+        );
+
+        let materialized = materializer
+            .materialize(input("fabro-sh/target", None, &temp.path().join("runs")))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            materialized.target.sha.as_deref(),
+            Some(target_fixture.initial_sha.as_str())
+        );
+        let version = store
+            .get(&materialized.workflow_version_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            version
+                .version()
+                .files()
+                .values()
+                .any(|contents| contents.contains("target workflow"))
+        );
+        assert_eq!(resolver.repositories(), vec!["fabro-sh/target"]);
+    }
+
+    #[tokio::test]
+    async fn independent_source_packages_source_and_resolves_both_repositories() {
+        let temp = TempDir::new().unwrap();
+        let target_fixture = seed_repository(temp.path(), "target", "target workflow");
+        let source_fixture = seed_repository(temp.path(), "source", "source workflow");
+        let target_repo = repository("fabro-sh/target");
+        let source_repo = repository("fabro-sh/workflows");
+        let store = test_version_store();
+        let resolver = Arc::new(RecordingCredentialResolver::succeeds());
+        let materializer = production_materializer(
+            temp.path(),
+            store.clone(),
+            Arc::clone(&resolver),
+            HashMap::from([
+                (
+                    target_repo,
+                    target_fixture.bare.to_string_lossy().into_owned(),
+                ),
+                (
+                    source_repo,
+                    source_fixture.bare.to_string_lossy().into_owned(),
+                ),
+            ]),
+        );
+
+        let materialized = materializer
+            .materialize(input(
+                "fabro-sh/target",
+                Some(source(
+                    "fabro-sh/workflows",
+                    AutomationGitWorkflowSourceKind::Branch,
+                    "main",
+                )),
+                &temp.path().join("runs"),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            materialized.target.sha.as_deref(),
+            Some(target_fixture.initial_sha.as_str())
+        );
+        let version = store
+            .get(&materialized.workflow_version_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let canonical = version.version().canonical_bytes().unwrap();
+        let canonical = String::from_utf8(canonical).unwrap();
+        assert!(canonical.contains("source workflow"));
+        assert!(!canonical.contains("target workflow"));
+        assert!(!canonical.contains(&temp.path().display().to_string()));
+        assert_eq!(resolver.repositories(), vec![
+            "fabro-sh/target",
+            "fabro-sh/workflows"
+        ]);
+    }
+
+    #[tokio::test]
+    async fn identical_explicit_coordinate_reuses_checkout_and_credentials() {
+        let temp = TempDir::new().unwrap();
+        let fixture = seed_repository(temp.path(), "shared", "shared workflow");
+        let repo = repository("fabro-sh/shared");
+        let store = test_version_store();
+        let resolver = Arc::new(RecordingCredentialResolver::succeeds());
+        let materializer = production_materializer(
+            temp.path(),
+            store,
+            Arc::clone(&resolver),
+            HashMap::from([(repo, fixture.bare.to_string_lossy().into_owned())]),
+        );
+
+        materializer
+            .materialize(input(
+                "Fabro-Sh/Shared",
+                Some(source(
+                    "fabro-sh/shared",
+                    AutomationGitWorkflowSourceKind::Branch,
+                    "main",
+                )),
+                &temp.path().join("runs"),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(resolver.repositories(), vec!["Fabro-Sh/Shared"]);
+    }
+
+    #[tokio::test]
+    async fn same_repository_with_a_different_selector_uses_a_second_worktree() {
+        let temp = TempDir::new().unwrap();
+        let fixture = seed_repository(temp.path(), "shared", "shared workflow");
+        let repo = repository("fabro-sh/shared");
+        let resolver = Arc::new(RecordingCredentialResolver::succeeds());
+        let materializer = production_materializer(
+            temp.path(),
+            test_version_store(),
+            Arc::clone(&resolver),
+            HashMap::from([(repo, fixture.bare.to_string_lossy().into_owned())]),
+        );
+
+        materializer
+            .materialize(input(
+                "fabro-sh/shared",
+                Some(source(
+                    "fabro-sh/shared",
+                    AutomationGitWorkflowSourceKind::Tag,
+                    "annotated-v1",
+                )),
+                &temp.path().join("runs"),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(resolver.repositories(), vec![
+            "fabro-sh/shared",
+            "fabro-sh/shared"
+        ]);
+    }
+
+    #[tokio::test]
+    async fn source_ref_modes_pin_commits_while_branches_advance() {
+        let temp = TempDir::new().unwrap();
+        let target_fixture = seed_repository(temp.path(), "target", "target workflow");
+        let source_fixture = seed_repository(temp.path(), "source", "source v1");
+        let store = test_version_store();
+        let resolver = Arc::new(RecordingCredentialResolver::succeeds());
+        let materializer = production_materializer(
+            temp.path(),
+            store,
+            resolver,
+            HashMap::from([
+                (
+                    repository("fabro-sh/target"),
+                    target_fixture.bare.to_string_lossy().into_owned(),
+                ),
+                (
+                    repository("fabro-sh/source"),
+                    source_fixture.bare.to_string_lossy().into_owned(),
+                ),
+            ]),
+        );
+        let runs = temp.path().join("runs");
+        let materialize = |kind, reference: &str| {
+            materializer.materialize(input(
+                "fabro-sh/target",
+                Some(source("fabro-sh/source", kind, reference)),
+                &runs,
+            ))
+        };
+
+        let branch_v1 = materialize(AutomationGitWorkflowSourceKind::Branch, "main")
+            .await
+            .unwrap()
+            .workflow_version_id;
+        for tag in ["annotated-v1", "lightweight-v1"] {
+            let tagged = materialize(AutomationGitWorkflowSourceKind::Tag, tag)
+                .await
+                .unwrap();
+            assert_eq!(tagged.workflow_version_id, branch_v1, "{tag}");
+        }
+        let committed_v1 = materialize(
+            AutomationGitWorkflowSourceKind::Commit,
+            &source_fixture.initial_sha,
+        )
+        .await
+        .unwrap()
+        .workflow_version_id;
+        assert_eq!(committed_v1, branch_v1);
+
+        advance_repository(&source_fixture, "source v2");
+        let branch_v2 = materialize(AutomationGitWorkflowSourceKind::Branch, "main")
+            .await
+            .unwrap()
+            .workflow_version_id;
+        assert_ne!(branch_v2, branch_v1);
+        let committed_after_advance = materialize(
+            AutomationGitWorkflowSourceKind::Commit,
+            &source_fixture.initial_sha,
+        )
+        .await
+        .unwrap()
+        .workflow_version_id;
+        assert_eq!(committed_after_advance, committed_v1);
+    }
+
+    #[tokio::test]
+    async fn target_and_source_failures_keep_distinct_error_chains_without_tokens() {
+        let temp = TempDir::new().unwrap();
+        let target_fixture = seed_repository(temp.path(), "target", "target workflow");
+        let source_fixture = seed_repository(temp.path(), "source", "source workflow");
+        let target_repo = repository("fabro-sh/target");
+        let source_repo = repository("fabro-sh/source");
+        let clone_urls = HashMap::from([
+            (
+                target_repo.clone(),
+                target_fixture.bare.to_string_lossy().into_owned(),
+            ),
+            (
+                source_repo.clone(),
+                source_fixture.bare.to_string_lossy().into_owned(),
+            ),
+        ]);
+
+        let mut missing_target = input(
+            "fabro-sh/target",
+            None,
+            &temp.path().join("target-checkout-failure"),
+        );
+        missing_target.target.branch = "missing".to_string();
+        let error = production_materializer(
+            temp.path(),
+            test_version_store(),
+            Arc::new(RecordingCredentialResolver::succeeds()),
+            clone_urls.clone(),
+        )
+        .materialize(missing_target)
+        .await
+        .unwrap_err();
+        assert!(matches!(error, RunMaterializeError::TargetCheckout {
+            source: GitCheckoutError::FetchBranch { .. },
+        }));
+        assert!(!format!("{error:?}").contains(FAKE_TOKEN));
+
+        let target_resolver = Arc::new(RecordingCredentialResolver::fails_for(target_repo.clone()));
+        let error = production_materializer(
+            temp.path(),
+            test_version_store(),
+            target_resolver,
+            clone_urls.clone(),
+        )
+        .materialize(input(
+            "fabro-sh/target",
+            None,
+            &temp.path().join("target-failure"),
+        ))
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            RunMaterializeError::TargetCredentials { .. }
+        ));
+        assert!(!format!("{error:?}").contains(FAKE_TOKEN));
+
+        let source_resolver = Arc::new(RecordingCredentialResolver::fails_for(source_repo));
+        let error = production_materializer(
+            temp.path(),
+            test_version_store(),
+            source_resolver,
+            clone_urls,
+        )
+        .materialize(input(
+            "fabro-sh/target",
+            Some(source(
+                "fabro-sh/source",
+                AutomationGitWorkflowSourceKind::Branch,
+                "main",
+            )),
+            &temp.path().join("source-failure"),
+        ))
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            RunMaterializeError::WorkflowSourceCredentials { .. }
+        ));
+        assert!(!format!("{error:?}").contains(FAKE_TOKEN));
+
+        let error = production_materializer(
+            temp.path(),
+            test_version_store(),
+            Arc::new(RecordingCredentialResolver::succeeds()),
+            HashMap::from([
+                (
+                    target_repo,
+                    target_fixture.bare.to_string_lossy().into_owned(),
+                ),
+                (
+                    repository("fabro-sh/source"),
+                    source_fixture.bare.to_string_lossy().into_owned(),
+                ),
+            ]),
+        )
+        .materialize(input(
+            "fabro-sh/target",
+            Some(source(
+                "fabro-sh/source",
+                AutomationGitWorkflowSourceKind::Branch,
+                "missing",
+            )),
+            &temp.path().join("checkout-failure"),
+        ))
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            RunMaterializeError::WorkflowSourceCheckout {
+                source: GitCheckoutError::FetchBranch { .. },
+            }
+        ));
+        assert!(!format!("{error:?}").contains(FAKE_TOKEN));
+    }
+
+    #[tokio::test]
+    async fn workflow_discovery_and_version_storage_failures_remain_distinct() {
+        let temp = TempDir::new().unwrap();
+        let fixture = seed_repository(temp.path(), "target", "target workflow");
+        let repo = repository("fabro-sh/target");
+        let clone_urls = HashMap::from([(repo, fixture.bare.to_string_lossy().into_owned())]);
+        let mut missing = input(
+            "fabro-sh/target",
+            None,
+            &temp.path().join("missing-workflow"),
+        );
+        missing.workflow = ".fabro/workflows/absent/workflow.fabro".to_string();
+        let error = production_materializer(
+            temp.path(),
+            test_version_store(),
+            Arc::new(RecordingCredentialResolver::succeeds()),
+            clone_urls.clone(),
+        )
+        .materialize(missing)
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(error, RunMaterializeError::WorkflowNotFound { .. }),
+            "unexpected missing-workflow error: {error:?}"
+        );
+
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_lazy("sqlite::memory:")
+            .unwrap();
+        pool.close().await;
+        let failing_store = WorkflowVersionStore::new(Arc::new(fabro_store::BlobStore::new(pool)));
+        let error = production_materializer(
+            temp.path(),
+            failing_store,
+            Arc::new(RecordingCredentialResolver::succeeds()),
+            clone_urls,
+        )
+        .materialize(input(
+            "fabro-sh/target",
+            None,
+            &temp.path().join("store-failure"),
+        ))
+        .await
+        .unwrap_err();
+        assert!(matches!(error, RunMaterializeError::VersionStore { .. }));
+
+        fs::write(
+            fixture.work.join(".fabro/workflows/demo/workflow.fabro"),
+            "this is not a graph\n",
+        )
+        .unwrap();
+        run_git(&["-C", fixture.work.to_str().unwrap(), "add", "."]);
+        run_git(&[
+            "-C",
+            fixture.work.to_str().unwrap(),
+            "commit",
+            "-m",
+            "break workflow",
+        ]);
+        run_git(&[
+            "-C",
+            fixture.work.to_str().unwrap(),
+            "push",
+            fixture.bare.to_str().unwrap(),
+            "main",
+        ]);
+        let error = production_materializer(
+            temp.path(),
+            test_version_store(),
+            Arc::new(RecordingCredentialResolver::succeeds()),
+            HashMap::from([(
+                repository("fabro-sh/target"),
+                fixture.bare.to_string_lossy().into_owned(),
+            )]),
+        )
+        .materialize(input(
+            "fabro-sh/target",
+            None,
+            &temp.path().join("package-failure"),
+        ))
+        .await
+        .unwrap_err();
+        assert!(matches!(error, RunMaterializeError::Package { .. }));
     }
 }

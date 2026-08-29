@@ -212,6 +212,33 @@ pub fn is_valid_github_ref_selector(value: &str) -> bool {
             .all(|part| !part.is_empty() && !part.starts_with('.') && !has_lock_suffix(part))
 }
 
+/// Reports whether `value` is a canonical bare Git branch name.
+///
+/// Bare names exclude symbolic selectors, fully qualified refs, tag-prefixed
+/// selectors, commit SHAs, and the `heads/` prefix accepted only after Git has
+/// already entered the refs namespace.
+#[must_use]
+pub fn is_valid_git_branch_name(value: &str) -> bool {
+    is_valid_bare_git_ref_name(value) && !value.starts_with("heads/")
+}
+
+/// Reports whether `value` is a canonical bare Git tag name.
+///
+/// The input is a tag name rather than a selector, so `tags/`, `refs/`,
+/// symbolic `HEAD`, and exact commit SHAs are rejected.
+#[must_use]
+pub fn is_valid_git_tag_name(value: &str) -> bool {
+    is_valid_bare_git_ref_name(value)
+}
+
+fn is_valid_bare_git_ref_name(value: &str) -> bool {
+    value != "HEAD"
+        && !value.starts_with("tags/")
+        && !value.starts_with("refs/")
+        && normalize_git_commit_sha(value).is_none()
+        && is_valid_github_ref_selector(value)
+}
+
 /// Validates and canonicalizes an exact Git commit SHA.
 ///
 /// The grammar accepts exactly 40 untrimmed ASCII hexadecimal bytes. It does

@@ -23,6 +23,7 @@ import {
   findScheduleTrigger,
   gitTarget,
   hasEnabledApiTrigger,
+  workflowSourceSummary,
 } from "../lib/automation";
 import { useAutomations } from "../lib/queries";
 import { queryKeys } from "../lib/query-keys";
@@ -55,6 +56,7 @@ interface AutomationRow {
   workflow: string;
   repository: string;
   environmentId: string | null;
+  workflowSource?: string;
   schedule?: string;
   apiEnabled: boolean;
   icon: ComponentType<{ className?: string }>;
@@ -96,6 +98,9 @@ function mapAutomations(result: AutomationListResponse | undefined): AutomationR
       workflow:   a.workflow,
       repository: target?.repo ?? UNSUPPORTED_TARGET_LABEL,
       environmentId: a.environment_id,
+      workflowSource: a.workflow_source
+        ? workflowSourceSummary(a.workflow_source)
+        : undefined,
       schedule:   findScheduleTrigger(a)?.expression,
       apiEnabled: hasEnabledApiTrigger(a),
       icon:       slugIconMap[a.workflow] ?? CodeBracketIcon,
@@ -149,10 +154,13 @@ function AutomationCard({
             )}
           </div>
           <p className="mt-1 text-xs text-fg-muted">
-            {automation.repository}
+            Run target · {automation.repository}
             <span className={automation.environmentId ? "" : " text-coral"}>
               {" · "}{automation.environmentId ?? "environment required"}
             </span>
+          </p>
+          <p className="mt-0.5 truncate text-xs text-fg-muted">
+            Workflow source · {automation.workflowSource ?? "run target checkout"}
           </p>
         </div>
       </Link>
@@ -291,7 +299,8 @@ export default function Automations() {
         (triggerFilter === "manual" && a.schedule == null)) &&
       (a.name.toLowerCase().includes(lowerQuery) ||
         a.workflow.toLowerCase().includes(lowerQuery) ||
-        a.repository.toLowerCase().includes(lowerQuery)),
+        a.repository.toLowerCase().includes(lowerQuery) ||
+        a.workflowSource?.toLowerCase().includes(lowerQuery)),
   );
 
   async function confirmDelete() {

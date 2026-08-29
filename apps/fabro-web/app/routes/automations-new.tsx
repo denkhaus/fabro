@@ -14,6 +14,7 @@ import {
   isFormValid,
   targetFromFormValues,
   triggersFromFormValues,
+  workflowSourceFromFormValues,
   type AutomationFormValues,
 } from "../components/automation-form";
 import {
@@ -137,6 +138,7 @@ function AutomationCreateForm({
           environment_id: values.environmentId.trim(),
           target:      targetFromFormValues(values),
           workflow:    values.workflow.trim(),
+          workflow_source: workflowSourceFromFormValues(values),
           triggers: triggersFromFormValues(values),
         }),
       );

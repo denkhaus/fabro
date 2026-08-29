@@ -1,4 +1,9 @@
-import type { Automation, AutomationTrigger, RunTarget } from "@qltysh/fabro-api-client";
+import type {
+  Automation,
+  AutomationGitWorkflowSource,
+  AutomationTrigger,
+  RunTarget,
+} from "@qltysh/fabro-api-client";
 
 export type GitRunTarget = Extract<RunTarget, { kind: "git" }>;
 
@@ -26,4 +31,8 @@ export function findScheduleTrigger(
 
 export function hasEnabledApiTrigger(automation: Automation): boolean {
   return findApiTrigger(automation)?.enabled === true;
+}
+
+export function workflowSourceSummary(source: AutomationGitWorkflowSource): string {
+  return `${source.repo} · ${source.kind} ${source.ref}`;
 }

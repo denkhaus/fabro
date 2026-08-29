@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use fabro_automation::{AutomationGitWorkflowSource, AutomationGitWorkflowSourceKind};
 use fabro_store::KeyedMutex;
 use fabro_types::{GitHubRepositorySlug, GitRunTarget};
 use tokio::process::Command;
@@ -122,7 +123,7 @@ impl GitRepoCache {
         self.prepare_worktree_with_clone_url(args, &clone_url).await
     }
 
-    async fn prepare_worktree_with_clone_url(
+    pub(crate) async fn prepare_worktree_with_clone_url(
         &self,
         args: WorktreePrepareInput<'_>,
         clone_url: &str,
@@ -179,7 +180,7 @@ impl GitRepoCache {
                 .map_err(|source| GitCheckoutError::Clone { source })?;
         }
 
-        let fetch_target = GitFetchTarget::from(args.target);
+        let fetch_target = args.selector;
         run_git_plan(build_bare_fetch_plan(
             bare_dir,
             clone_url,
@@ -202,18 +203,19 @@ impl GitRepoCache {
 
 pub(crate) struct WorktreePrepareInput<'a> {
     pub repo:         &'a GitHubRepositorySlug,
-    pub target:       &'a GitRunTarget,
+    pub selector:     GitCheckoutSelector<'a>,
     pub auth:         Option<&'a GitAuthConfig>,
     pub worktree_dir: &'a Path,
 }
 
-enum GitFetchTarget<'a> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GitCheckoutSelector<'a> {
     Branch(&'a str),
     Tag(&'a str),
     Commit(&'a str),
 }
 
-impl<'a> From<&'a GitRunTarget> for GitFetchTarget<'a> {
+impl<'a> From<&'a GitRunTarget> for GitCheckoutSelector<'a> {
     fn from(target: &'a GitRunTarget) -> Self {
         if let Some(sha) = target.sha.as_deref() {
             Self::Commit(sha)
@@ -225,7 +227,17 @@ impl<'a> From<&'a GitRunTarget> for GitFetchTarget<'a> {
     }
 }
 
-impl GitFetchTarget<'_> {
+impl<'a> From<&'a AutomationGitWorkflowSource> for GitCheckoutSelector<'a> {
+    fn from(source: &'a AutomationGitWorkflowSource) -> Self {
+        match source.kind {
+            AutomationGitWorkflowSourceKind::Branch => Self::Branch(&source.reference),
+            AutomationGitWorkflowSourceKind::Tag => Self::Tag(&source.reference),
+            AutomationGitWorkflowSourceKind::Commit => Self::Commit(&source.reference),
+        }
+    }
+}
+
+impl GitCheckoutSelector<'_> {
     fn selector(&self) -> Cow<'_, str> {
         match self {
             Self::Branch(selector) | Self::Commit(selector) => Cow::Borrowed(selector),
@@ -281,7 +293,7 @@ pub(crate) struct GitAuthConfig {
 }
 
 impl GitAuthConfig {
-    fn new(username: Option<String>, password: Option<String>) -> Self {
+    pub(crate) fn new(username: Option<String>, password: Option<String>) -> Self {
         let Some(password) = password.filter(|value| !value.is_empty()) else {
             return Self {
                 extraheader:      None,
@@ -558,6 +570,7 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
+    use fabro_automation::{AutomationGitWorkflowSource, AutomationGitWorkflowSourceKind};
     use tempfile::TempDir;
 
     use super::*;
@@ -573,6 +586,70 @@ mod tests {
             tag:    tag.map(str::to_string),
             sha:    sha.map(str::to_string),
         }
+    }
+
+    fn workflow_source(
+        kind: AutomationGitWorkflowSourceKind,
+        reference: &str,
+    ) -> AutomationGitWorkflowSource {
+        AutomationGitWorkflowSource {
+            repo: "fabro-sh/workflows".to_string(),
+            kind,
+            reference: reference.to_string(),
+        }
+    }
+
+    #[test]
+    fn checkout_selectors_preserve_target_precedence_and_source_kind() {
+        let target = git_target(
+            "main",
+            Some("v1"),
+            Some("abcdef0123456789abcdef0123456789abcdef01"),
+        );
+        assert_eq!(
+            GitCheckoutSelector::from(&target),
+            GitCheckoutSelector::Commit("abcdef0123456789abcdef0123456789abcdef01")
+        );
+
+        for (source, expected) in [
+            (
+                workflow_source(AutomationGitWorkflowSourceKind::Branch, "main"),
+                GitCheckoutSelector::Branch("main"),
+            ),
+            (
+                workflow_source(AutomationGitWorkflowSourceKind::Tag, "v1"),
+                GitCheckoutSelector::Tag("v1"),
+            ),
+            (
+                workflow_source(
+                    AutomationGitWorkflowSourceKind::Commit,
+                    "abcdef0123456789abcdef0123456789abcdef01",
+                ),
+                GitCheckoutSelector::Commit("abcdef0123456789abcdef0123456789abcdef01"),
+            ),
+        ] {
+            assert_eq!(GitCheckoutSelector::from(&source), expected);
+        }
+    }
+
+    #[test]
+    fn checkout_reuse_identity_folds_only_repository_case() {
+        assert_eq!(
+            repository_slug("Fabro-Sh/Workflows"),
+            repository_slug("fabro-sh/workflows")
+        );
+        assert_ne!(
+            GitCheckoutSelector::Branch("Main"),
+            GitCheckoutSelector::Branch("main")
+        );
+        assert_ne!(
+            GitCheckoutSelector::Branch("v1"),
+            GitCheckoutSelector::Tag("v1")
+        );
+        assert_eq!(
+            GitCheckoutSelector::Commit("abcdef0123456789abcdef0123456789abcdef01"),
+            GitCheckoutSelector::Commit("abcdef0123456789abcdef0123456789abcdef01")
+        );
     }
 
     #[test]
@@ -810,7 +887,7 @@ mod tests {
             .prepare_worktree_with_clone_url(
                 WorktreePrepareInput {
                     repo:         &repo,
-                    target:       &target,
+                    selector:     GitCheckoutSelector::from(&target),
                     auth:         None,
                     worktree_dir: &worktree_a,
                 },
@@ -832,7 +909,7 @@ mod tests {
             .prepare_worktree_with_clone_url(
                 WorktreePrepareInput {
                     repo:         &repo,
-                    target:       &target,
+                    selector:     GitCheckoutSelector::from(&target),
                     auth:         None,
                     worktree_dir: &worktree_b,
                 },
@@ -863,7 +940,7 @@ mod tests {
             .prepare_worktree_with_clone_url(
                 WorktreePrepareInput {
                     repo:         &repo,
-                    target:       &target,
+                    selector:     GitCheckoutSelector::from(&target),
                     auth:         None,
                     worktree_dir: &worktree_a,
                 },
@@ -881,7 +958,7 @@ mod tests {
             .prepare_worktree_with_clone_url(
                 WorktreePrepareInput {
                     repo:         &repo,
-                    target:       &target,
+                    selector:     GitCheckoutSelector::from(&target),
                     auth:         None,
                     worktree_dir: &worktree_b,
                 },
@@ -919,7 +996,7 @@ mod tests {
                 .prepare_worktree_with_clone_url(
                     WorktreePrepareInput {
                         repo:         &repo,
-                        target:       &target,
+                        selector:     GitCheckoutSelector::from(&target),
                         auth:         None,
                         worktree_dir: &temp.path().join(name),
                     },
@@ -947,7 +1024,7 @@ mod tests {
             .prepare_worktree_with_clone_url(
                 WorktreePrepareInput {
                     repo:         &repo,
-                    target:       &missing_tag,
+                    selector:     GitCheckoutSelector::from(&missing_tag),
                     auth:         None,
                     worktree_dir: &temp.path().join("missing-tag"),
                 },
@@ -964,7 +1041,7 @@ mod tests {
             .prepare_worktree_with_clone_url(
                 WorktreePrepareInput {
                     repo:         &repo,
-                    target:       &unavailable_commit,
+                    selector:     GitCheckoutSelector::from(&unavailable_commit),
                     auth:         None,
                     worktree_dir: &temp.path().join("missing-commit"),
                 },

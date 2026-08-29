@@ -4949,6 +4949,7 @@ async fn fake_automation_materializer_injection_captures_input_and_returns_versi
         .materialize_automation_run(AutomationRunMaterializeInput {
             automation_id: AutomationId::new("nightly").unwrap(),
             target: target.clone(),
+            workflow_source: None,
             workflow: "demo".to_string(),
             run_id,
             temp_root: temp_root.clone(),

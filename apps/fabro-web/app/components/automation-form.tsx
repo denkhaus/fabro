@@ -3,6 +3,8 @@ import { Link } from "react-router";
 import { Switch } from "@headlessui/react";
 import type {
   Automation,
+  AutomationGitWorkflowSource,
+  AutomationGitWorkflowSourceKind,
   AutomationTrigger,
   Environment,
   Run,
@@ -26,29 +28,37 @@ export interface AutomationFormValues {
   name: string;
   description: string;
   environmentId: string;
-  repository: string;
-  branch: string;
-  tag: string;
-  sha: string;
+  targetRepository: string;
+  targetBranch: string;
+  targetTag: string;
+  targetSha: string;
   workflow: string;
+  usesSeparateWorkflowSource: boolean;
+  workflowSourceRepository: string;
+  workflowSourceKind: AutomationGitWorkflowSourceKind;
+  workflowSourceRef: string;
   manualEnabled: boolean;
   scheduleEnabled: boolean;
   cron: string;
 }
 
 export const EMPTY_AUTOMATION_FORM: AutomationFormValues = {
-  id:              "",
-  name:            "",
-  description:     "",
+  id:                         "",
+  name:                       "",
+  description:                "",
   environmentId:   "",
-  repository:      "",
-  branch:          "main",
-  tag:             "",
-  sha:             "",
-  workflow:        "",
-  manualEnabled:   true,
-  scheduleEnabled: false,
-  cron:            "0 9 * * 1-5",
+  targetRepository:           "",
+  targetBranch:               "main",
+  targetTag:                  "",
+  targetSha:                  "",
+  workflow:                   "",
+  usesSeparateWorkflowSource: false,
+  workflowSourceRepository:  "",
+  workflowSourceKind:        "branch",
+  workflowSourceRef:         "",
+  manualEnabled:             true,
+  scheduleEnabled:           false,
+  cron:                      "0 9 * * 1-5",
 };
 
 const CRON_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
@@ -62,19 +72,24 @@ export function automationToFormValues(automation: Automation): AutomationFormVa
   const apiTrigger = findApiTrigger(automation);
   const scheduleTrigger = findScheduleTrigger(automation);
   const target = gitTarget(automation.target);
+  const workflowSource = automation.workflow_source;
   return {
-    id:              automation.id,
-    name:            automation.name,
-    description:     automation.description ?? "",
+    id:                         automation.id,
+    name:                       automation.name,
+    description:                automation.description ?? "",
     environmentId:   automation.environment_id ?? "",
-    repository:      target?.repo ?? "",
-    branch:          target?.branch ?? EMPTY_AUTOMATION_FORM.branch,
-    tag:             target?.tag ?? "",
-    sha:             target?.sha ?? "",
-    workflow:        automation.workflow,
-    manualEnabled:   apiTrigger?.enabled ?? false,
-    scheduleEnabled: scheduleTrigger?.enabled ?? false,
-    cron:            scheduleTrigger?.expression ?? "0 9 * * 1-5",
+    targetRepository:           target?.repo ?? "",
+    targetBranch:               target?.branch ?? EMPTY_AUTOMATION_FORM.targetBranch,
+    targetTag:                  target?.tag ?? "",
+    targetSha:                  target?.sha ?? "",
+    workflow:                   automation.workflow,
+    usesSeparateWorkflowSource: workflowSource != null,
+    workflowSourceRepository:  workflowSource?.repo ?? "",
+    workflowSourceKind:        workflowSource?.kind ?? "branch",
+    workflowSourceRef:         workflowSource?.ref ?? "",
+    manualEnabled:             apiTrigger?.enabled ?? false,
+    scheduleEnabled:           scheduleTrigger?.enabled ?? false,
+    cron:                      scheduleTrigger?.expression ?? "0 9 * * 1-5",
   };
 }
 
@@ -97,7 +112,7 @@ export function automationFormValuesFromRun(
     name,
   );
   const canonicalTarget = gitTarget(runState?.spec.target);
-  const repository = canonicalTarget?.repo
+  const targetRepository = canonicalTarget?.repo
     ?? githubRepositoryFromSettings(settings)
     ?? githubRepositoryName(run.repository?.name)
     ?? githubRepositoryFromOriginUrl(run.repository?.origin_url)
@@ -112,16 +127,16 @@ export function automationFormValuesFromRun(
       : "";
   return {
     ...EMPTY_AUTOMATION_FORM,
-    id:         kebabify(name),
+    id: kebabify(name),
     name,
     environmentId,
-    repository,
-    branch:     canonicalTarget?.branch
+    targetRepository,
+    targetBranch: canonicalTarget?.branch
       ?? cloneBranch
-      ?? EMPTY_AUTOMATION_FORM.branch,
-    tag:        canonicalTarget?.tag ?? "",
-    sha:        canonicalTarget?.sha ?? "",
-    workflow:   run.workflow.slug?.trim() || kebabify(workflowName),
+      ?? EMPTY_AUTOMATION_FORM.targetBranch,
+    targetTag: canonicalTarget?.tag ?? "",
+    targetSha: canonicalTarget?.sha ?? "",
+    workflow: run.workflow.slug?.trim() || kebabify(workflowName),
   };
 }
 
@@ -146,10 +161,11 @@ export function isFormValid(values: AutomationFormValues): boolean {
     values.id.trim() !== "" &&
     values.name.trim() !== "" &&
     values.environmentId.trim() !== "" &&
-    values.repository.trim() !== "" &&
-    values.branch.trim() !== "" &&
-    isOptionalShaValid(values.sha) &&
-    values.workflow.trim() !== ""
+    values.targetRepository.trim() !== "" &&
+    values.targetBranch.trim() !== "" &&
+    isOptionalShaValid(values.targetSha) &&
+    values.workflow.trim() !== "" &&
+    isWorkflowSourceValid(values)
   );
 }
 
@@ -165,10 +181,32 @@ function isOptionalShaValid(sha: string): boolean {
 export function targetFromFormValues(values: AutomationFormValues): GitRunTarget {
   return {
     kind:   "git",
-    repo:   values.repository.trim(),
-    branch: values.branch.trim(),
-    tag:    values.tag.trim() || undefined,
-    sha:    values.sha.trim().toLowerCase() || undefined,
+    repo:   values.targetRepository.trim(),
+    branch: values.targetBranch.trim(),
+    tag:    values.targetTag.trim() || undefined,
+    sha:    values.targetSha.trim().toLowerCase() || undefined,
+  };
+}
+
+function isWorkflowSourceValid(values: AutomationFormValues): boolean {
+  if (!values.usesSeparateWorkflowSource) return true;
+  const reference = values.workflowSourceRef.trim();
+  return (
+    values.workflowSourceRepository.trim() !== "" &&
+    reference !== "" &&
+    (values.workflowSourceKind !== "commit" || GIT_SHA_RE.test(reference))
+  );
+}
+
+export function workflowSourceFromFormValues(
+  values: AutomationFormValues,
+): AutomationGitWorkflowSource | undefined {
+  if (!values.usesSeparateWorkflowSource) return undefined;
+  const reference = values.workflowSourceRef.trim();
+  return {
+    repo: values.workflowSourceRepository.trim(),
+    kind: values.workflowSourceKind,
+    ref: values.workflowSourceKind === "commit" ? reference.toLowerCase() : reference,
   };
 }
 
@@ -238,6 +276,36 @@ function describeCron(expression: string): string {
   return "Computed when saved";
 }
 
+function workflowSourceRefLabel(kind: AutomationGitWorkflowSourceKind): string {
+  switch (kind) {
+    case "branch": return "Branch";
+    case "tag": return "Tag";
+    case "commit": return "Exact commit";
+  }
+}
+
+function workflowSourceRefPlaceholder(kind: AutomationGitWorkflowSourceKind): string {
+  switch (kind) {
+    case "branch": return "main";
+    case "tag": return "v1.2.3";
+    case "commit": return "0123456789abcdef0123456789abcdef01234567";
+  }
+}
+
+function workflowSourceRefHelp(
+  kind: AutomationGitWorkflowSourceKind,
+  valid: boolean,
+): ReactNode {
+  if (kind === "commit") {
+    return valid
+      ? "Exactly 40 hexadecimal characters; the same workflow bytes are used every time."
+      : <span className="text-coral">Enter exactly 40 hexadecimal characters.</span>;
+  }
+  return kind === "branch"
+    ? "Bare branch name resolved again whenever the automation fires."
+    : "Bare tag name resolved again whenever the automation fires.";
+}
+
 interface AutomationFormFieldsProps {
   values: AutomationFormValues;
   onChange: (values: AutomationFormValues) => void;
@@ -256,7 +324,10 @@ export function AutomationFormFields({
   environmentsError = false,
 }: AutomationFormFieldsProps) {
   const slugTouchedRef = useRef(values.id.length > 0);
-  const shaValid = isOptionalShaValid(values.sha);
+  const shaValid = isOptionalShaValid(values.targetSha);
+  const workflowSourceRefValid = values.workflowSourceKind !== "commit"
+    ? values.workflowSourceRef.trim() !== ""
+    : GIT_SHA_RE.test(values.workflowSourceRef.trim());
   const compatibleEnvironments = environments
     .filter(isCloneBasedEnvironment)
     .sort((left, right) => left.id.localeCompare(right.id));
@@ -380,14 +451,17 @@ export function AutomationFormFields({
         </Row>
       </Panel>
 
-      <Panel title="Source">
-        <Row title={<Label required>Repository</Label>} help="GitHub repository in owner/repo form.">
+      <Panel title="Run target">
+        <Row
+          title={<Label required>Repository</Label>}
+          help="GitHub repository whose workspace the run changes, in owner/repo form."
+        >
           <input
             type="text"
-            name="repository"
-            aria-label="Repository"
-            value={values.repository}
-            onChange={(e) => patch({ repository: e.target.value })}
+            name="target_repository"
+            aria-label="Run target repository"
+            value={values.targetRepository}
+            onChange={(e) => patch({ targetRepository: e.target.value })}
             placeholder="acme/orders-api"
             autoComplete="off"
             spellCheck={false}
@@ -400,10 +474,10 @@ export function AutomationFormFields({
         >
           <input
             type="text"
-            name="branch"
+            name="target_branch"
             aria-label="Working branch"
-            value={values.branch}
-            onChange={(e) => patch({ branch: e.target.value })}
+            value={values.targetBranch}
+            onChange={(e) => patch({ targetBranch: e.target.value })}
             placeholder="main"
             autoComplete="off"
             spellCheck={false}
@@ -416,10 +490,10 @@ export function AutomationFormFields({
         >
           <input
             type="text"
-            name="tag"
+            name="target_tag"
             aria-label="Tag"
-            value={values.tag}
-            onChange={(e) => patch({ tag: e.target.value })}
+            value={values.targetTag}
+            onChange={(e) => patch({ targetTag: e.target.value })}
             placeholder="v1.2.3"
             autoComplete="off"
             spellCheck={false}
@@ -436,20 +510,27 @@ export function AutomationFormFields({
         >
           <input
             type="text"
-            name="sha"
+            name="target_sha"
             aria-label="Exact commit SHA"
             aria-invalid={!shaValid}
-            value={values.sha}
-            onChange={(e) => patch({ sha: e.target.value })}
+            value={values.targetSha}
+            onChange={(e) => patch({ targetSha: e.target.value })}
             placeholder="0123456789abcdef0123456789abcdef01234567"
             autoComplete="off"
             spellCheck={false}
             className={`${INPUT_CLASS} font-mono`}
           />
         </Row>
+      </Panel>
+
+      <Panel title="Workflow">
         <Row
           title={<Label required>Workflow slug</Label>}
-          help="Dash-separated identifier matching the workflow directory name (e.g. patch-cves)."
+          help={
+            values.usesSeparateWorkflowSource
+              ? "Dash-separated identifier resolved in the workflow source checkout."
+              : "Dash-separated identifier resolved in the run target checkout."
+          }
         >
           <input
             type="text"
@@ -463,6 +544,71 @@ export function AutomationFormFields({
             className={`${INPUT_CLASS} font-mono`}
           />
         </Row>
+        <Row
+          title="Different repository"
+          help="Load workflow files from another saved GitHub coordinate while keeping the run target independent."
+        >
+          <ToggleSwitch
+            checked={values.usesSeparateWorkflowSource}
+            onChange={(usesSeparateWorkflowSource) => patch({ usesSeparateWorkflowSource })}
+            label="Use a different workflow repository"
+          />
+        </Row>
+        {values.usesSeparateWorkflowSource ? (
+          <>
+            <Row
+              title={<Label required>Source repository</Label>}
+              help="GitHub owner/repo containing the workflow files."
+            >
+              <input
+                type="text"
+                name="workflow_source_repository"
+                aria-label="Workflow source repository"
+                value={values.workflowSourceRepository}
+                onChange={(e) => patch({ workflowSourceRepository: e.target.value })}
+                placeholder="acme/automation-workflows"
+                autoComplete="off"
+                spellCheck={false}
+                className={`${INPUT_CLASS} font-mono`}
+              />
+            </Row>
+            <Row
+              title={<Label required>Source kind</Label>}
+              help="Choose how Fabro interprets the source ref on every firing."
+            >
+              <select
+                name="workflow_source_kind"
+                aria-label="Workflow source kind"
+                value={values.workflowSourceKind}
+                onChange={(e) => patch({
+                  workflowSourceKind: e.target.value as AutomationGitWorkflowSourceKind,
+                })}
+                className={`${INPUT_CLASS} font-mono`}
+              >
+                <option value="branch">Branch</option>
+                <option value="tag">Tag</option>
+                <option value="commit">Exact commit</option>
+              </select>
+            </Row>
+            <Row
+              title={<Label required>{workflowSourceRefLabel(values.workflowSourceKind)}</Label>}
+              help={workflowSourceRefHelp(values.workflowSourceKind, workflowSourceRefValid)}
+            >
+              <input
+                type="text"
+                name="workflow_source_ref"
+                aria-label="Workflow source ref"
+                aria-invalid={!workflowSourceRefValid}
+                value={values.workflowSourceRef}
+                onChange={(e) => patch({ workflowSourceRef: e.target.value })}
+                placeholder={workflowSourceRefPlaceholder(values.workflowSourceKind)}
+                autoComplete="off"
+                spellCheck={false}
+                className={`${INPUT_CLASS} font-mono`}
+              />
+            </Row>
+          </>
+        ) : null}
       </Panel>
 
       <Panel title="Triggers">

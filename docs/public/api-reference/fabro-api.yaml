@@ -6728,6 +6728,43 @@ components:
 
     # ── Automations ──────────────────────────────────────────────────────
 
+    AutomationGitWorkflowSourceKind:
+      description: How an automation interprets the workflow source `ref`.
+      type: string
+      enum: [branch, tag, commit]
+
+    AutomationGitWorkflowSource:
+      description: >-
+        Explicit GitHub coordinate from which an automation acquires workflow
+        bytes. The kind makes `ref` unambiguous; this source is independent of
+        the run target and does not provide a working branch for the run.
+      type: object
+      additionalProperties: false
+      required:
+        - repo
+        - kind
+        - ref
+      properties:
+        repo:
+          type: string
+          minLength: 3
+          maxLength: 140
+          pattern: "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$"
+          description: GitHub repository slug in `owner/name` form.
+          example: acme/workflows
+        kind:
+          $ref: "#/components/schemas/AutomationGitWorkflowSourceKind"
+        ref:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: "^[A-Za-z0-9/._-]+$"
+          description: >-
+            Bare branch or tag name, or an exact 40-character commit SHA, as
+            selected by `kind`. Prefixes such as `refs/heads/` and `refs/tags/`
+            are not accepted.
+          example: main
+
     Automation:
       description: Public automation definition.
       type: object
@@ -6772,8 +6809,13 @@ components:
           $ref: "#/components/schemas/RunTarget"
         workflow:
           type: string
-          description: Workflow slug or path resolved in the selected repository checkout.
+          description: >-
+            Workflow slug or path resolved in the run-target checkout when
+            `workflow_source` is omitted, or in the explicit workflow-source
+            checkout when present.
           example: dependency-update
+        workflow_source:
+          $ref: "#/components/schemas/AutomationGitWorkflowSource"
         triggers:
           type: array
           items:
@@ -6867,8 +6909,13 @@ components:
           $ref: "#/components/schemas/RunTarget"
         workflow:
           type: string
-          description: Workflow slug or path resolved in the selected repository checkout.
+          description: >-
+            Workflow slug or path resolved in the run-target checkout when
+            `workflow_source` is omitted, or in the explicit workflow-source
+            checkout when present.
           example: dependency-update
+        workflow_source:
+          $ref: "#/components/schemas/AutomationGitWorkflowSource"
         triggers:
           type: array
           items:
@@ -6899,8 +6946,13 @@ components:
           $ref: "#/components/schemas/RunTarget"
         workflow:
           type: string
-          description: Workflow slug or path resolved in the selected repository checkout.
+          description: >-
+            Workflow slug or path resolved in the run-target checkout when
+            `workflow_source` is omitted, or in the explicit workflow-source
+            checkout when present.
           example: dependency-update
+        workflow_source:
+          $ref: "#/components/schemas/AutomationGitWorkflowSource"
         triggers:
           type: array
           items:

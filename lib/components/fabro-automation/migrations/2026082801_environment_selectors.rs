@@ -62,12 +62,13 @@ pub async fn backfill_environment_selectors(
     for automation in &incomplete {
         store
             .replace(&automation.id, &automation.revision, AutomationReplace {
-                name:           automation.name.clone(),
-                description:    automation.description.clone(),
-                environment_id: Some(environment_id.clone()),
-                target:         automation.target.clone(),
-                workflow:       automation.workflow.clone(),
-                triggers:       automation.triggers.clone(),
+                name:            automation.name.clone(),
+                description:     automation.description.clone(),
+                environment_id:  Some(environment_id.clone()),
+                target:          automation.target.clone(),
+                workflow:        automation.workflow.clone(),
+                workflow_source: automation.workflow_source.clone(),
+                triggers:        automation.triggers.clone(),
             })
             .await?;
     }

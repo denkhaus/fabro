@@ -24,6 +24,7 @@ import {
   findApiTrigger,
   findScheduleTrigger,
   gitTarget,
+  workflowSourceSummary,
 } from "../lib/automation";
 import { useAutomation, useAutomationRuns } from "../lib/queries";
 import { queryKeys } from "../lib/query-keys";
@@ -100,6 +101,7 @@ function AutomationHeader({ automation }: { automation: Automation }) {
   const scheduleTrigger = findScheduleTrigger(automation);
   const apiTrigger = findApiTrigger(automation);
   const target = gitTarget(automation.target);
+  const workflowSource = automation.workflow_source;
   const canRun = apiTrigger?.enabled === true && automation.environment_id !== null;
 
   async function onRun() {
@@ -146,7 +148,7 @@ function AutomationHeader({ automation }: { automation: Automation }) {
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
             <Chip icon={FolderIcon}>
-              {target?.repo ?? UNSUPPORTED_TARGET_LABEL}
+              Run target · {target?.repo ?? UNSUPPORTED_TARGET_LABEL}
               {target ? (
                 <span className="text-fg-muted/70">
                   {" · "}{target.branch}
@@ -155,7 +157,11 @@ function AutomationHeader({ automation }: { automation: Automation }) {
                 </span>
               ) : null}
             </Chip>
-            <Chip icon={RectangleStackIcon}>{automation.workflow}</Chip>
+            <Chip icon={RectangleStackIcon}>
+              Workflow · {automation.workflow} · {workflowSource
+                ? workflowSourceSummary(workflowSource)
+                : "run target checkout"}
+            </Chip>
             <Chip icon={CubeTransparentIcon}>
               {automation.environment_id ?? (
                 <span className="text-coral">Environment required</span>
