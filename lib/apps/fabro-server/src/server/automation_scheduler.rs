@@ -2,13 +2,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, StatusCode};
 use chrono::{DateTime, Utc};
 use croner::errors::CronError;
 use fabro_automation::{
     Automation, AutomationId, AutomationRevision, AutomationTriggerId, parse_schedule_expression,
 };
 use fabro_types::{AutomationRef, Principal, RunId, SystemActorKind};
+use fabro_util::error as error_util;
 use tokio::time::sleep;
 use tracing::{Instrument, error, info, info_span, warn};
 
@@ -229,7 +230,29 @@ async fn fire_scheduled_automation_run(
 ) {
     let automation_id = automation.id.clone();
     let run_id = RunId::new();
+    let environment_id = match handler::automations::resolve_automation_environment(
+        state.as_ref(),
+        automation.environment_id.as_deref(),
+        StatusCode::CONFLICT,
+    ) {
+        Ok(environment_id) => environment_id,
+        Err(err) => {
+            record_scheduler_error(state.as_ref(), &automation_id, err.detail()).await;
+            error!(
+                due_at = %due_at,
+                error = ?err,
+                "Scheduled automation environment is not runnable",
+            );
+            return;
+        }
+    };
     let Some(target) = automation.git_target().cloned() else {
+        record_scheduler_error(
+            state.as_ref(),
+            &automation_id,
+            "Stored automation target is not Git-backed",
+        )
+        .await;
         error!(
             automation_id = %automation_id,
             "Stored automation target is not Git-backed",
@@ -248,6 +271,8 @@ async fn fire_scheduled_automation_run(
     {
         Ok(materialized) => materialized,
         Err(err) => {
+            let message = error_util::collect_chain(&err).join(": ");
+            record_scheduler_error(state.as_ref(), &automation_id, &message).await;
             error!(
                 due_at = %due_at,
                 error = ?err,
@@ -270,7 +295,7 @@ async fn fire_scheduled_automation_run(
     let response = Box::pin(handler::runs::create_run_from_intent(
         Arc::clone(&state),
         handler::runs::CreateRunFromIntentRequest {
-            intent:          materialized.into_run_intent(),
+            intent:          materialized.into_run_intent(environment_id),
             explicit_run_id: Some(run_id),
             actor:           actor.clone(),
             headers:         HeaderMap::new(),
@@ -281,6 +306,12 @@ async fn fire_scheduled_automation_run(
 
     let status = response.status();
     if !status.is_success() {
+        record_scheduler_error(
+            state.as_ref(),
+            &automation_id,
+            &format!("Failed to create scheduled automation run ({status})"),
+        )
+        .await;
         warn!(
             run_id = %run_id,
             due_at = %due_at,
@@ -293,6 +324,7 @@ async fn fire_scheduled_automation_run(
     if let Err(err) =
         handler::lifecycle::queue_run_start(state.as_ref(), run_id, false, actor).await
     {
+        record_scheduler_error(state.as_ref(), &automation_id, err.detail()).await;
         warn!(
             run_id = %run_id,
             due_at = %due_at,
@@ -303,11 +335,29 @@ async fn fire_scheduled_automation_run(
         return;
     }
 
+    if automation.last_error.is_some() {
+        set_scheduler_error(state.as_ref(), &automation_id, None).await;
+    }
+
     info!(
         run_id = %run_id,
         due_at = %due_at,
         "Scheduled automation run queued",
     );
+}
+
+async fn record_scheduler_error(state: &AppState, id: &AutomationId, message: &str) {
+    set_scheduler_error(state, id, Some(message)).await;
+}
+
+async fn set_scheduler_error(state: &AppState, id: &AutomationId, message: Option<&str>) {
+    if let Err(err) = state.automation_store().set_last_error(id, message).await {
+        error!(
+            automation_id = %id,
+            error = ?err,
+            "Failed to persist automation scheduler status",
+        );
+    }
 }
 
 /// Drive one tick of the scheduler from a test. Boxed so the calling test
@@ -379,6 +429,8 @@ mod tests {
             revision: AutomationRevision::from_bytes(format!("{id}:{name}").as_bytes()),
             name: name.to_string(),
             description: None,
+            environment_id: Some("default".to_string()),
+            last_error: None,
             target: target(),
             workflow: "workflow.fabro".to_string(),
             triggers,
@@ -397,6 +449,7 @@ mod tests {
                 id: AutomationId::new(id).expect("test automation id should be valid"),
                 name: name.to_string(),
                 description: None,
+                environment_id: Some("default".to_string()),
                 target: target(),
                 workflow: "workflow.fabro".to_string(),
                 triggers,
@@ -568,10 +621,15 @@ mod tests {
     async fn due_schedule_only_automation_creates_started_run_with_automation_metadata() {
         let materializer = succeeding_materializer();
         let state = test_state_with_materializer(materializer);
-        create_automation(state.as_ref(), "nightly", "Nightly", vec![
+        let automation = create_automation(state.as_ref(), "nightly", "Nightly", vec![
             schedule_trigger("schedule", "* * * * *", true),
         ])
         .await;
+        state
+            .automation_store()
+            .set_last_error(&automation.id, Some("old failure"))
+            .await
+            .unwrap();
         let mut planner = AutomationSchedulePlanner::default();
 
         run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
@@ -579,6 +637,16 @@ mod tests {
 
         let runs = cached_runs(state.as_ref()).await;
         assert_eq!(runs.len(), 1);
+        assert_eq!(
+            state
+                .automation_store()
+                .get(&automation.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .last_error,
+            None,
+        );
         let automation_ref = runs[0].automation.as_ref().unwrap();
         assert_eq!(automation_ref.id, "nightly");
         assert_eq!(automation_ref.name.as_deref(), Some("Nightly"));
@@ -706,7 +774,7 @@ mod tests {
     async fn failing_materializer_waits_until_next_cron_occurrence() {
         let materializer = TestAutomationRunMaterializer::fail_invalid_target();
         let state = test_state_with_materializer(materializer.clone());
-        create_automation(state.as_ref(), "nightly", "Nightly", vec![
+        let automation = create_automation(state.as_ref(), "nightly", "Nightly", vec![
             schedule_trigger("schedule", "* * * * *", true),
         ])
         .await;
@@ -718,6 +786,16 @@ mod tests {
 
         assert!(cached_runs(state.as_ref()).await.is_empty());
         assert_eq!(materializer.captured_inputs().len(), 1);
+        assert!(
+            state
+                .automation_store()
+                .get(&automation.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .last_error
+                .is_some()
+        );
 
         run_due_schedules_once(Arc::clone(&state), &mut planner, second_due_time()).await;
 

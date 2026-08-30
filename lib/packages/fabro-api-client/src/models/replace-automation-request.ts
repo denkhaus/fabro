@@ -26,6 +26,10 @@ import type { RunTarget } from './run-target';
 export interface ReplaceAutomationRequest {
     'name': string;
     'description'?: string | null;
+    /**
+     * Server-managed Docker or Daytona environment selected when the automation fires.
+     */
+    'environment_id': string;
     'target': RunTarget;
     /**
      * Workflow slug or path resolved in the selected repository checkout.

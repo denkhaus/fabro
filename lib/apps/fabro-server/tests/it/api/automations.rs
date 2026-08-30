@@ -20,6 +20,7 @@ fn automation_body(id: &str, name: &str) -> Value {
         "id": id,
         "name": name,
         "description": "Runs on a schedule.",
+        "environment_id": "default",
         "target": {
             "kind": "git",
             "repo": "fabro-sh/fabro",
@@ -46,6 +47,7 @@ fn replacement_body(name: &str) -> Value {
     json!({
         "name": name,
         "description": null,
+        "environment_id": "default",
         "target": {
             "kind": "git",
             "repo": "fabro-sh/fabro",
@@ -269,6 +271,7 @@ async fn create_automation_persists_sql_aggregate() {
 
     assert_eq!(body["id"], "nightly");
     assert_eq!(body["name"], "Nightly");
+    assert_eq!(body["environment_id"], "default");
     assert_eq!(
         persisted_automation(&sqlite_path, "nightly").await,
         Some(json!({
@@ -280,6 +283,57 @@ async fn create_automation_persists_sql_aggregate() {
             }]
         }))
     );
+}
+
+#[tokio::test]
+async fn create_automation_requires_an_environment() {
+    let (app, _temp_dir, _sqlite_path) = automation_app();
+    let mut body = automation_body("nightly", "Nightly");
+    body.as_object_mut()
+        .expect("automation body should be an object")
+        .remove("environment_id");
+
+    let response = app
+        .oneshot(json_request(Method::POST, "/automations", &body))
+        .await
+        .expect("create automation without environment should respond");
+    let error = response_json(
+        response,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "POST /api/v1/automations without environment",
+    )
+    .await;
+
+    assert_eq!(
+        error["errors"][0]["code"],
+        "automation_environment_required"
+    );
+}
+
+#[tokio::test]
+async fn create_automation_rejects_missing_and_local_environments() {
+    let (app, _temp_dir, _sqlite_path) = automation_app();
+
+    for (environment_id, expected_code) in [
+        ("missing", "automation_environment_not_found"),
+        ("local", "automation_environment_incompatible"),
+    ] {
+        let mut body = automation_body(environment_id, "Nightly");
+        body["environment_id"] = json!(environment_id);
+        let response = app
+            .clone()
+            .oneshot(json_request(Method::POST, "/automations", &body))
+            .await
+            .expect("invalid automation environment should respond");
+        let error = response_json(
+            response,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("POST /api/v1/automations with {environment_id} environment"),
+        )
+        .await;
+
+        assert_eq!(error["errors"][0]["code"], expected_code);
+    }
 }
 
 #[tokio::test]
@@ -912,6 +966,72 @@ async fn successful_api_triggered_automation_run_persists_automation_metadata() 
     let retrieved = run_json(&app, run_id).await;
     assert_eq!(retrieved["id"], run_id);
     assert_eq!(retrieved["automation"], created["automation"]);
+}
+
+#[tokio::test]
+async fn api_triggered_automation_uses_its_selected_environment() {
+    let (app, _temp_dir, _sqlite_path) = automation_app_with_fake_materializer();
+    let environment = json!({
+        "id": "smoke",
+        "provider": "docker",
+        "cwd": null,
+        "image": { "docker": "buildpack-deps:noble", "dockerfile": null },
+        "resources": { "cpu": 2, "memory": "4GB", "disk": null },
+        "network": { "mode": "allow_all", "allow": [] },
+        "lifecycle": { "preserve": false, "stop_on_terminal": true, "auto_stop": null },
+        "labels": {},
+        "env": {}
+    });
+    let response = app
+        .clone()
+        .oneshot(json_request(Method::POST, "/environments", &environment))
+        .await
+        .expect("create smoke environment should respond");
+    response_status(
+        response,
+        StatusCode::CREATED,
+        "POST /api/v1/environments smoke",
+    )
+    .await;
+    let mut body = automation_body("nightly", "Nightly");
+    body["environment_id"] = json!("smoke");
+    create_automation_with_body(&app, &body).await;
+
+    let created = create_automation_run(&app, "nightly", StatusCode::CREATED).await;
+    let run_id = created["id"]
+        .as_str()
+        .expect("created automation run should include id");
+    let response = app
+        .oneshot(empty_request(
+            Method::GET,
+            &format!("/runs/{run_id}/settings"),
+        ))
+        .await
+        .expect("automation run settings should respond");
+    let settings = response_json(response, StatusCode::OK, "GET /api/v1/runs/{id}/settings").await;
+
+    assert_eq!(settings["run"]["environment"]["id"], "smoke");
+}
+
+#[tokio::test]
+async fn incomplete_legacy_automation_fails_before_materialization() {
+    let materializer = TestAutomationRunMaterializer::fail_invalid_target();
+    let (app, _temp_dir, sqlite_path) = automation_app_with_materializer(materializer);
+    create_automation(&app, "nightly", "Nightly").await;
+    let database = fabro_db::Database::connect(sqlite_path)
+        .await
+        .expect("automation test database should open");
+    sqlx::query("UPDATE automations SET environment_id = NULL WHERE id = 'nightly'")
+        .execute(database.pool())
+        .await
+        .expect("test automation environment should clear");
+
+    let error = create_automation_run(&app, "nightly", StatusCode::CONFLICT).await;
+
+    assert_eq!(
+        error["errors"][0]["code"],
+        "automation_environment_required"
+    );
 }
 
 #[tokio::test]

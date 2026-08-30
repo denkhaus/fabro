@@ -50,7 +50,7 @@ pub use fabro_api::types::{
     WriteBlobResponse,
 };
 use fabro_auth::{CredentialSource, SqlVaultCredentialSource, auth_issue_message};
-use fabro_automation::AutomationStore;
+use fabro_automation::{self, AutomationStore};
 use fabro_config::daemon::ServerDaemon;
 use fabro_config::{RunLayer, Storage, WorkflowSettingsBuilder};
 use fabro_db::DbPool;
@@ -2430,6 +2430,13 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         automation_materializer_override,
     } = config;
 
+    let automation_migration_pool = db_pool.clone();
+    load_store_blocking("automation environment migration", move || async move {
+        fabro_automation::backfill_environment_selectors(&automation_migration_pool)
+            .await
+            .map_err(anyhow::Error::new)
+    })
+    .context("backfill automation environment selectors")?;
     let automation_store = Arc::new(AutomationStore::new(db_pool.clone()));
     let local_provider_enabled = resolved_settings
         .server_settings

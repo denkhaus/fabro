@@ -72,28 +72,18 @@ pub enum WorkflowVersionCollectError {
 }
 
 /// Package one workflow and every separately runnable dependency from a local
-/// checkout. All paths are rooted at `checkout_root`, so moving the physical
-/// checkout does not change canonical version bytes or IDs.
+/// checkout. An extensionless selector names
+/// `.fabro/workflows/<selector>/workflow.toml` directly; repository project
+/// settings and user workflows do not participate in selection. All paths are
+/// rooted at `checkout_root`, so moving the physical checkout does not change
+/// canonical version bytes or IDs.
 pub fn collect_workflow_versions(
     workflow: &Path,
     checkout_root: &Path,
 ) -> Result<CollectedWorkflowClosure, WorkflowVersionCollectError> {
-    let location =
-        crate::resolve_existing_workflow_location(workflow, checkout_root).map_err(|source| {
-            if matches!(
-                source.downcast_ref::<fabro_config::Error>(),
-                Some(fabro_config::Error::WorkflowNotFound(_))
-            ) {
-                WorkflowVersionCollectError::WorkflowNotFound {
-                    path: workflow.to_path_buf(),
-                }
-            } else {
-                WorkflowVersionCollectError::Collect {
-                    path: workflow.to_path_buf(),
-                    source,
-                }
-            }
-        })?;
+    let repository_workflow = repository_workflow_path(workflow);
+    let location = crate::resolve_existing_workflow_location(&repository_workflow, checkout_root)
+        .map_err(|source| location_error(workflow, source))?;
 
     let inputs = HashMap::new();
     let collected = WorkflowBundler::new(checkout_root, &inputs)
@@ -103,6 +93,32 @@ pub fn collect_workflow_versions(
             source,
         })?;
     VersionAssembler::new(collected).assemble()
+}
+
+fn repository_workflow_path(workflow: &Path) -> PathBuf {
+    if workflow.is_relative() && workflow.extension().is_none() {
+        Path::new(".fabro/workflows")
+            .join(workflow)
+            .join("workflow.toml")
+    } else {
+        workflow.to_path_buf()
+    }
+}
+
+fn location_error(workflow: &Path, source: anyhow::Error) -> WorkflowVersionCollectError {
+    if matches!(
+        source.downcast_ref::<fabro_config::Error>(),
+        Some(fabro_config::Error::WorkflowNotFound(_))
+    ) {
+        WorkflowVersionCollectError::WorkflowNotFound {
+            path: workflow.to_path_buf(),
+        }
+    } else {
+        WorkflowVersionCollectError::Collect {
+            path: workflow.to_path_buf(),
+            source,
+        }
+    }
 }
 
 struct VersionAssembler {
@@ -253,7 +269,6 @@ mod tests {
     }
 
     fn write_complete_fixture(root: &Path) {
-        write(root, ".fabro/project.toml", "_version = 1\n");
         write(
             root,
             ".fabro/workflows/root/workflow.toml",
@@ -297,7 +312,7 @@ dockerfile = { path = "Dockerfile" }
     }
 
     #[test]
-    fn packages_complete_checkout_relative_dependency_closure() {
+    fn packages_named_workflow_without_project_config() {
         let temp = tempfile::tempdir().unwrap();
         write_complete_fixture(temp.path());
 
@@ -362,9 +377,38 @@ dockerfile = { path = "Dockerfile" }
     }
 
     #[test]
+    fn named_and_explicit_selectors_ignore_project_config() {
+        let temp = tempfile::tempdir().unwrap();
+        write_complete_fixture(temp.path());
+
+        let named = collect_workflow_versions(Path::new("root"), temp.path()).unwrap();
+        write(
+            temp.path(),
+            ".fabro/project.toml",
+            "this project config must not be loaded",
+        );
+        let explicit = collect_workflow_versions(
+            Path::new(".fabro/workflows/root/workflow.toml"),
+            temp.path(),
+        )
+        .unwrap();
+
+        assert_eq!(named.root_id(), explicit.root_id());
+        assert_eq!(
+            named
+                .versions()
+                .map(|(id, version)| (id, version.version().canonical_bytes().unwrap()))
+                .collect::<Vec<_>>(),
+            explicit
+                .versions()
+                .map(|(id, version)| (id, version.version().canonical_bytes().unwrap()))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn packages_nested_imported_and_diamond_dependencies_deterministically() {
         let temp = tempfile::tempdir().unwrap();
-        write(temp.path(), ".fabro/project.toml", "_version = 1\n");
         write(
             temp.path(),
             ".fabro/workflows/root/workflow.toml",
@@ -449,7 +493,6 @@ dockerfile = { path = "Dockerfile" }
     #[test]
     fn rejects_dependency_cycles() {
         let temp = tempfile::tempdir().unwrap();
-        write(temp.path(), ".fabro/project.toml", "_version = 1\n");
         write(
             temp.path(),
             ".fabro/workflows/root/workflow.toml",

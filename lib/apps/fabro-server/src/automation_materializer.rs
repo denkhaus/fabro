@@ -33,12 +33,12 @@ pub(crate) struct AutomationRunMaterialized {
 impl AutomationRunMaterialized {
     /// The admission request for an automation run: the packaged workflow
     /// version at the exact checked-out target, with no caller overrides.
-    pub(crate) fn into_run_intent(self) -> RunIntent {
+    pub(crate) fn into_run_intent(self, environment_id: String) -> RunIntent {
         RunIntent {
             workflow_version_id: self.workflow_version_id,
             target:              RunTarget::Git(self.target),
             args:                RunIntentArgs::default(),
-            environment_id:      None,
+            environment_id:      Some(environment_id),
             parent_id:           None,
             title:               None,
             goal:                None,
@@ -367,7 +367,6 @@ mod tests {
         let checkout = temp.path().join("checkout");
         let workflow_dir = checkout.join(".fabro/workflows/root");
         fs::create_dir_all(&workflow_dir).unwrap();
-        fs::write(checkout.join(".fabro/project.toml"), "_version = 1\n").unwrap();
         fs::write(
             workflow_dir.join("workflow.toml"),
             "_version = 1\n[workflow]\ngraph = \"workflow.fabro\"\n",

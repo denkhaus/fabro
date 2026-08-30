@@ -5,6 +5,7 @@ import { ChevronRightIcon } from "@heroicons/react/20/solid";
 import {
   ArrowPathIcon,
   ClockIcon,
+  CubeTransparentIcon,
   FolderIcon,
   MagnifyingGlassIcon,
   PlayIcon,
@@ -99,7 +100,7 @@ function AutomationHeader({ automation }: { automation: Automation }) {
   const scheduleTrigger = findScheduleTrigger(automation);
   const apiTrigger = findApiTrigger(automation);
   const target = gitTarget(automation.target);
-  const canRun = apiTrigger?.enabled === true;
+  const canRun = apiTrigger?.enabled === true && automation.environment_id !== null;
 
   async function onRun() {
     if (!canRun || running) return;
@@ -155,6 +156,11 @@ function AutomationHeader({ automation }: { automation: Automation }) {
               ) : null}
             </Chip>
             <Chip icon={RectangleStackIcon}>{automation.workflow}</Chip>
+            <Chip icon={CubeTransparentIcon}>
+              {automation.environment_id ?? (
+                <span className="text-coral">Environment required</span>
+              )}
+            </Chip>
             {scheduleTrigger ? (
               <Chip icon={ClockIcon}>{scheduleTrigger.expression}</Chip>
             ) : null}
@@ -162,6 +168,11 @@ function AutomationHeader({ automation }: { automation: Automation }) {
           {automation.description ? (
             <p className="mt-3 max-w-prose text-sm leading-relaxed text-fg-3">
               {automation.description}
+            </p>
+          ) : null}
+          {automation.last_error ? (
+            <p className="mt-3 max-w-prose rounded-md border border-coral/20 bg-coral/5 px-3 py-2 text-sm leading-relaxed text-coral">
+              Last scheduled run failed: {automation.last_error}
             </p>
           ) : null}
         </div>
@@ -177,7 +188,13 @@ function AutomationHeader({ automation }: { automation: Automation }) {
             type="button"
             onClick={onRun}
             disabled={!canRun || running}
-            title={canRun ? undefined : "Enable the API trigger to run it"}
+            title={
+              canRun
+                ? undefined
+                : automation.environment_id === null
+                  ? "Select an environment before running this automation"
+                  : "Enable the API trigger to run it"
+            }
             className={PRIMARY_BUTTON_CLASS}
           >
             <PlayIcon className="size-4" aria-hidden="true" />

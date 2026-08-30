@@ -15,6 +15,8 @@ pub enum AutomationValidationError {
     InvalidAutomationTriggerId { value: String },
     #[error("automation name must not be empty")]
     EmptyName,
+    #[error("automation environment is required")]
+    MissingEnvironment,
     #[error("automation target kind {kind:?} is not supported; only Git targets are accepted")]
     UnsupportedTarget { kind: String },
     #[error("automation Git target is invalid")]

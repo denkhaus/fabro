@@ -6737,6 +6737,8 @@ components:
         - revision
         - name
         - description
+        - environment_id
+        - last_error
         - target
         - workflow
         - triggers
@@ -6756,6 +6758,16 @@ components:
         description:
           type: ["string", "null"]
           example: Keeps dependencies fresh.
+        environment_id:
+          type: ["string", "null"]
+          description: |
+            Server-managed Docker or Daytona environment selected when the
+            automation fires. Null only for an incomplete definition migrated
+            from a release that predated environment selection.
+          example: daytona-smoke
+        last_error:
+          type: ["string", "null"]
+          description: Most recent scheduled-run failure, cleared after a scheduled run is queued successfully.
         target:
           $ref: "#/components/schemas/RunTarget"
         workflow:
@@ -6832,6 +6844,7 @@ components:
       required:
         - id
         - name
+        - environment_id
         - target
         - workflow
         - triggers
@@ -6846,6 +6859,10 @@ components:
         description:
           type: ["string", "null"]
           example: Keeps dependencies fresh.
+        environment_id:
+          type: string
+          description: Server-managed Docker or Daytona environment selected when the automation fires.
+          example: daytona-smoke
         target:
           $ref: "#/components/schemas/RunTarget"
         workflow:
@@ -6863,6 +6880,7 @@ components:
       additionalProperties: false
       required:
         - name
+        - environment_id
         - target
         - workflow
         - triggers
@@ -6873,6 +6891,10 @@ components:
         description:
           type: ["string", "null"]
           example: Keeps dependencies fresh.
+        environment_id:
+          type: string
+          description: Server-managed Docker or Daytona environment selected when the automation fires.
+          example: daytona-smoke
         target:
           $ref: "#/components/schemas/RunTarget"
         workflow:

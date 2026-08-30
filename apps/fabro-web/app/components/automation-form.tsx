@@ -1,8 +1,10 @@
 import { useRef, type ReactNode } from "react";
+import { Link } from "react-router";
 import { Switch } from "@headlessui/react";
 import type {
   Automation,
   AutomationTrigger,
+  Environment,
   Run,
   RunProjection,
   WorkflowSettings,
@@ -16,12 +18,14 @@ import {
 } from "../lib/automation";
 import { Panel, Row } from "./settings-panel";
 import { INPUT_CLASS } from "./ui";
+import { isCloneBasedEnvironment, providerLabel } from "../lib/environment-providers";
 import { sandboxRuntime } from "../lib/run-sandbox-lifecycle";
 
 export interface AutomationFormValues {
   id: string;
   name: string;
   description: string;
+  environmentId: string;
   repository: string;
   branch: string;
   tag: string;
@@ -36,6 +40,7 @@ export const EMPTY_AUTOMATION_FORM: AutomationFormValues = {
   id:              "",
   name:            "",
   description:     "",
+  environmentId:   "",
   repository:      "",
   branch:          "main",
   tag:             "",
@@ -61,6 +66,7 @@ export function automationToFormValues(automation: Automation): AutomationFormVa
     id:              automation.id,
     name:            automation.name,
     description:     automation.description ?? "",
+    environmentId:   automation.environment_id ?? "",
     repository:      target?.repo ?? "",
     branch:          target?.branch ?? EMPTY_AUTOMATION_FORM.branch,
     tag:             target?.tag ?? "",
@@ -76,6 +82,7 @@ export function automationFormValuesFromRun(
   run: Run,
   runState?: RunProjection | null,
   settings?: WorkflowSettings | null,
+  environments?: Environment[],
 ): AutomationFormValues {
   const name = firstPresentString(
     run.title,
@@ -96,10 +103,18 @@ export function automationFormValuesFromRun(
     ?? githubRepositoryFromOriginUrl(run.repository?.origin_url)
     ?? "";
   const cloneBranch = sandboxRuntime(run.sandbox)?.clone_branch;
+  const sourceEnvironment = settings?.run?.environment;
+  const environmentId = sourceEnvironment
+    && environments?.some(
+      (environment) => environment.id === sourceEnvironment.id && isCloneBasedEnvironment(environment),
+    )
+      ? sourceEnvironment.id
+      : "";
   return {
     ...EMPTY_AUTOMATION_FORM,
     id:         kebabify(name),
     name,
+    environmentId,
     repository,
     branch:     canonicalTarget?.branch
       ?? cloneBranch
@@ -130,6 +145,7 @@ export function isFormValid(values: AutomationFormValues): boolean {
   return (
     values.id.trim() !== "" &&
     values.name.trim() !== "" &&
+    values.environmentId.trim() !== "" &&
     values.repository.trim() !== "" &&
     values.branch.trim() !== "" &&
     isOptionalShaValid(values.sha) &&
@@ -226,15 +242,26 @@ interface AutomationFormFieldsProps {
   values: AutomationFormValues;
   onChange: (values: AutomationFormValues) => void;
   lockIdAndTarget?: boolean;
+  environments?: Environment[];
+  environmentsLoading?: boolean;
+  environmentsError?: boolean;
 }
 
 export function AutomationFormFields({
   values,
   onChange,
   lockIdAndTarget = false,
+  environments = [],
+  environmentsLoading = false,
+  environmentsError = false,
 }: AutomationFormFieldsProps) {
   const slugTouchedRef = useRef(values.id.length > 0);
   const shaValid = isOptionalShaValid(values.sha);
+  const compatibleEnvironments = environments
+    .filter(isCloneBasedEnvironment)
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const selectedEnvironmentMissing = values.environmentId !== ""
+    && !compatibleEnvironments.some((environment) => environment.id === values.environmentId);
 
   function patch(partial: Partial<AutomationFormValues>) {
     onChange({ ...values, ...partial });
@@ -301,6 +328,55 @@ export function AutomationFormFields({
             placeholder="Diagnose and fix CI build failures by analyzing logs and applying targeted patches."
             className={`${INPUT_CLASS} resize-y`}
           />
+        </Row>
+      </Panel>
+
+      <Panel title="Runtime">
+        <Row
+          title={<Label required>Environment</Label>}
+          help="Server-managed Docker or Daytona environment used whenever this automation runs."
+        >
+          <div className="space-y-2">
+            <select
+              name="environment_id"
+              aria-label="Automation environment"
+              value={values.environmentId}
+              onChange={(event) => patch({ environmentId: event.target.value })}
+              disabled={environmentsLoading || environmentsError || compatibleEnvironments.length === 0}
+              className={`${INPUT_CLASS} font-mono`}
+            >
+              <option value="">
+                {environmentsLoading ? "Loading environments…" : "Select an environment…"}
+              </option>
+              {selectedEnvironmentMissing ? (
+                <option value={values.environmentId} disabled>
+                  {values.environmentId} (unavailable)
+                </option>
+              ) : null}
+              {compatibleEnvironments.map((environment) => (
+                <option key={environment.id} value={environment.id}>
+                  {environment.id} · {providerLabel(environment.provider)}
+                </option>
+              ))}
+            </select>
+            {environmentsError ? (
+              <p className="text-xs leading-relaxed text-coral">
+                Couldn&apos;t load environments. Refresh the page and try again.
+              </p>
+            ) : !environmentsLoading && compatibleEnvironments.length === 0 ? (
+              <p className="text-xs leading-relaxed text-fg-muted">
+                No Docker or Daytona environments are available.{" "}
+                <Link to="/settings/environments" className="text-mint hover:text-fg">
+                  Create an environment
+                </Link>{" "}
+                before saving this automation.
+              </p>
+            ) : selectedEnvironmentMissing ? (
+              <p className="text-xs leading-relaxed text-coral">
+                This environment is no longer available. Choose another environment before saving.
+              </p>
+            ) : null}
+          </div>
         </Row>
       </Panel>
 
