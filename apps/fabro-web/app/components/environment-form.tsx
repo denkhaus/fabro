@@ -15,7 +15,6 @@ import type {
   ReplaceEnvironmentRequest,
 } from "@qltysh/fabro-api-client";
 
-import { CREATABLE_PROVIDERS } from "../lib/environment-providers";
 import { Label, Panel, Row } from "./settings-panel";
 import { INPUT_CLASS } from "./ui";
 import {
