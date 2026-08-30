@@ -19,6 +19,7 @@ import type { Automation, AutomationListResponse } from "@qltysh/fabro-api-clien
 import { Link, useNavigate } from "react-router";
 import { ApiError, apiData, automationsApi } from "../lib/api-client";
 import {
+  RUN_TARGET_CHECKOUT_LABEL,
   UNSUPPORTED_TARGET_LABEL,
   findScheduleTrigger,
   gitTarget,
@@ -160,7 +161,7 @@ function AutomationCard({
             </span>
           </p>
           <p className="mt-0.5 truncate text-xs text-fg-muted">
-            Workflow source · {automation.workflowSource ?? "run target checkout"}
+            Workflow source · {automation.workflowSource ?? RUN_TARGET_CHECKOUT_LABEL}
           </p>
         </div>
       </Link>

@@ -13,7 +13,7 @@ use tokio::{fs, task};
 
 use crate::git_checkout::{
     GitAuthConfig, GitCheckoutError, GitCheckoutSelector, GitRepoCache, WorktreePrepareInput,
-    resolve_git_auth_config,
+    github_clone_url, resolve_git_auth_config,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,23 +60,15 @@ pub(crate) enum RunMaterializeError {
         #[source]
         source: AutomationValidationError,
     },
-    #[error("failed to resolve automation target credentials")]
-    TargetCredentials {
+    #[error("failed to resolve automation {role} credentials")]
+    Credentials {
+        role:   CheckoutRole,
         #[source]
         source: anyhow::Error,
     },
-    #[error("failed to prepare automation target checkout")]
-    TargetCheckout {
-        #[source]
-        source: GitCheckoutError,
-    },
-    #[error("failed to resolve automation workflow-source credentials")]
-    WorkflowSourceCredentials {
-        #[source]
-        source: anyhow::Error,
-    },
-    #[error("failed to prepare automation workflow-source checkout")]
-    WorkflowSourceCheckout {
+    #[error("failed to prepare automation {role} checkout")]
+    Checkout {
+        role:   CheckoutRole,
         #[source]
         source: GitCheckoutError,
     },
@@ -113,6 +105,15 @@ pub(crate) enum RunMaterializeError {
     },
 }
 
+/// Which repository a checkout serves; only the error message differs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display)]
+pub(crate) enum CheckoutRole {
+    #[strum(serialize = "target")]
+    Target,
+    #[strum(serialize = "workflow-source")]
+    WorkflowSource,
+}
+
 #[async_trait]
 pub(crate) trait AutomationRunMaterializer: Send + Sync {
     async fn materialize(
@@ -123,34 +124,43 @@ pub(crate) trait AutomationRunMaterializer: Send + Sync {
 
 #[derive(Clone)]
 pub(crate) struct ProductionAutomationRunMaterializer {
-    credential_resolver: Arc<dyn AutomationGitCredentialResolver>,
-    repo_cache:          Arc<GitRepoCache>,
-    version_store:       WorkflowVersionStore,
-    #[cfg(test)]
-    clone_urls:          Arc<std::collections::HashMap<GitHubRepositorySlug, String>>,
+    remote_resolver: Arc<dyn AutomationGitRemoteResolver>,
+    repo_cache:      Arc<GitRepoCache>,
+    version_store:   WorkflowVersionStore,
+}
+
+/// Where to fetch a repository from and how to authenticate.
+#[derive(Clone)]
+struct GitRemote {
+    clone_url: String,
+    auth:      Option<GitAuthConfig>,
 }
 
 #[async_trait]
-trait AutomationGitCredentialResolver: Send + Sync {
-    async fn resolve(&self, repo: &GitHubRepositorySlug) -> anyhow::Result<Option<GitAuthConfig>>;
+trait AutomationGitRemoteResolver: Send + Sync {
+    async fn resolve(&self, repo: &GitHubRepositorySlug) -> anyhow::Result<GitRemote>;
 }
 
-struct ServerGitHubCredentialResolver {
+struct ServerGitHubRemoteResolver {
     credentials:  Option<fabro_github::GitHubCredentials>,
     api_base_url: String,
     http_client:  Option<fabro_http::HttpClient>,
 }
 
 #[async_trait]
-impl AutomationGitCredentialResolver for ServerGitHubCredentialResolver {
-    async fn resolve(&self, repo: &GitHubRepositorySlug) -> anyhow::Result<Option<GitAuthConfig>> {
-        resolve_git_auth_config(
+impl AutomationGitRemoteResolver for ServerGitHubRemoteResolver {
+    async fn resolve(&self, repo: &GitHubRepositorySlug) -> anyhow::Result<GitRemote> {
+        let auth = resolve_git_auth_config(
             self.credentials.as_ref(),
             repo,
             &self.api_base_url,
             self.http_client.clone(),
         )
-        .await
+        .await?;
+        Ok(GitRemote {
+            clone_url: github_clone_url(repo),
+            auth,
+        })
     }
 }
 
@@ -163,50 +173,53 @@ impl ProductionAutomationRunMaterializer {
         version_store: WorkflowVersionStore,
     ) -> Self {
         Self {
-            credential_resolver: Arc::new(ServerGitHubCredentialResolver {
+            remote_resolver: Arc::new(ServerGitHubRemoteResolver {
                 credentials: github_credentials,
                 api_base_url: github_api_base_url,
                 http_client,
             }),
             repo_cache,
             version_store,
-            #[cfg(test)]
-            clone_urls: Arc::new(std::collections::HashMap::new()),
         }
+    }
+
+    #[cfg(test)]
+    fn with_remote_resolver(mut self, resolver: Arc<dyn AutomationGitRemoteResolver>) -> Self {
+        self.remote_resolver = resolver;
+        self
+    }
+
+    async fn resolve_remote(
+        &self,
+        role: CheckoutRole,
+        repo: &GitHubRepositorySlug,
+    ) -> Result<GitRemote, RunMaterializeError> {
+        self.remote_resolver
+            .resolve(repo)
+            .await
+            .map_err(|source| RunMaterializeError::Credentials { role, source })
     }
 
     async fn prepare_checkout(
         &self,
+        role: CheckoutRole,
         repo: &GitHubRepositorySlug,
+        remote: &GitRemote,
         selector: GitCheckoutSelector<'_>,
-        auth: Option<&GitAuthConfig>,
         worktree_dir: &Path,
-    ) -> Result<String, GitCheckoutError> {
-        let input = WorktreePrepareInput {
-            repo,
-            selector,
-            auth,
-            worktree_dir,
-        };
-        #[cfg(test)]
-        if let Some(clone_url) = self.clone_urls.get(repo) {
-            return self
-                .repo_cache
-                .prepare_worktree_with_clone_url(input, clone_url)
-                .await;
-        }
-        self.repo_cache.prepare_worktree(input).await
-    }
-
-    #[cfg(test)]
-    fn with_test_git(
-        mut self,
-        credential_resolver: Arc<dyn AutomationGitCredentialResolver>,
-        clone_urls: std::collections::HashMap<GitHubRepositorySlug, String>,
-    ) -> Self {
-        self.credential_resolver = credential_resolver;
-        self.clone_urls = Arc::new(clone_urls);
-        self
+    ) -> Result<String, RunMaterializeError> {
+        self.repo_cache
+            .prepare_worktree(
+                WorktreePrepareInput {
+                    repo,
+                    selector,
+                    auth: remote.auth.as_ref(),
+                    worktree_dir,
+                },
+                &remote.clone_url,
+            )
+            .await
+            .map_err(|source| RunMaterializeError::Checkout { role, source })
     }
 }
 
@@ -234,23 +247,27 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
             .map(AutomationGitWorkflowSource::validate)
             .transpose()
             .map_err(|source| RunMaterializeError::InvalidWorkflowSource { source })?;
-        let source_repo: Option<GitHubRepositorySlug> = workflow_source
+        // A workflow source naming the target's exact coordinate shares its
+        // checkout; anything else needs a second worktree.
+        let separate_source = workflow_source
             .as_ref()
             .map(|source| {
                 source
                     .repo
-                    .parse()
+                    .parse::<GitHubRepositorySlug>()
+                    .map(|repo| (repo, source))
                     .map_err(|source| RunMaterializeError::InvalidWorkflowSource {
                         source: AutomationValidationError::InvalidWorkflowSourceRepository {
                             source,
                         },
                     })
             })
-            .transpose()?;
-        let reuse_target_checkout = workflow_source.as_ref().is_none_or(|source| {
-            source_repo.as_ref() == Some(&target_repo)
-                && GitCheckoutSelector::from(source) == GitCheckoutSelector::from(&exact_target)
-        });
+            .transpose()?
+            .filter(|(repo, source)| {
+                *repo != target_repo
+                    || GitCheckoutSelector::from(*source)
+                        != GitCheckoutSelector::from(&exact_target)
+            });
 
         fs::create_dir_all(&input.temp_root)
             .await
@@ -270,45 +287,38 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
                 source,
             })?;
         let target_checkout_dir = temp_dir.path().join("target");
-        let target_auth = self
-            .credential_resolver
-            .resolve(&target_repo)
-            .await
-            .map_err(|source| RunMaterializeError::TargetCredentials { source })?;
-
+        let target_remote = self
+            .resolve_remote(CheckoutRole::Target, &target_repo)
+            .await?;
         let checked_out_sha = self
             .prepare_checkout(
+                CheckoutRole::Target,
                 &target_repo,
+                &target_remote,
                 GitCheckoutSelector::from(&exact_target),
-                target_auth.as_ref(),
                 &target_checkout_dir,
             )
-            .await
-            .map_err(|source| RunMaterializeError::TargetCheckout { source })?;
-        let workflow_checkout_dir = if reuse_target_checkout {
-            target_checkout_dir
-        } else {
-            let source = workflow_source
-                .as_ref()
-                .expect("non-reused workflow checkout requires an explicit source");
-            let repo = source_repo
-                .as_ref()
-                .expect("a validated workflow source has a repository");
-            let source_auth = self
-                .credential_resolver
-                .resolve(repo)
-                .await
-                .map_err(|source| RunMaterializeError::WorkflowSourceCredentials { source })?;
-            let source_checkout_dir = temp_dir.path().join("workflow-source");
-            self.prepare_checkout(
-                repo,
-                GitCheckoutSelector::from(source),
-                source_auth.as_ref(),
-                &source_checkout_dir,
-            )
-            .await
-            .map_err(|source| RunMaterializeError::WorkflowSourceCheckout { source })?;
-            source_checkout_dir
+            .await?;
+        let workflow_checkout_dir = match separate_source {
+            None => target_checkout_dir,
+            Some((repo, source)) => {
+                let remote = if repo == target_repo {
+                    target_remote
+                } else {
+                    self.resolve_remote(CheckoutRole::WorkflowSource, &repo)
+                        .await?
+                };
+                let source_checkout_dir = temp_dir.path().join("workflow-source");
+                self.prepare_checkout(
+                    CheckoutRole::WorkflowSource,
+                    &repo,
+                    &remote,
+                    GitCheckoutSelector::from(source),
+                    &source_checkout_dir,
+                )
+                .await?;
+                source_checkout_dir
+            }
         };
         exact_target.sha = Some(checked_out_sha);
 
@@ -365,7 +375,21 @@ struct TestAutomationRunMaterializerState {
 #[derive(Clone)]
 enum TestMaterializeFailure {
     InvalidTarget(TargetValidationError),
+    /// Unit because `AutomationValidationError` is not `Clone`; any variant
+    /// exercises the same handler path.
     InvalidWorkflowSource,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl From<TestMaterializeFailure> for RunMaterializeError {
+    fn from(failure: TestMaterializeFailure) -> Self {
+        match failure {
+            TestMaterializeFailure::InvalidTarget(source) => Self::InvalidTarget { source },
+            TestMaterializeFailure::InvalidWorkflowSource => Self::InvalidWorkflowSource {
+                source: AutomationValidationError::InvalidWorkflowSourceBranch,
+            },
+        }
+    }
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -478,16 +502,7 @@ impl AutomationRunMaterializer for TestAutomationRunMaterializer {
             guard.captured_inputs.push(input);
             guard.response.clone()
         };
-        let materialized = *response.map_err(|failure| match failure {
-            TestMaterializeFailure::InvalidTarget(source) => {
-                RunMaterializeError::InvalidTarget { source }
-            }
-            TestMaterializeFailure::InvalidWorkflowSource => {
-                RunMaterializeError::InvalidWorkflowSource {
-                    source: AutomationValidationError::InvalidWorkflowSourceBranch,
-                }
-            }
-        })?;
+        let materialized = *response.map_err(RunMaterializeError::from)?;
         let store = self
             .version_store
             .as_ref()
@@ -562,23 +577,37 @@ mod tests {
         }
     }
 
+    /// Serves local bare fixtures as clone URLs while recording which
+    /// repositories had credentials resolved.
+    struct FixtureRemoteResolver {
+        credentials: Arc<RecordingCredentialResolver>,
+        clone_urls:  HashMap<GitHubRepositorySlug, String>,
+    }
+
     #[async_trait]
-    impl AutomationGitCredentialResolver for RecordingCredentialResolver {
-        async fn resolve(
-            &self,
-            repo: &GitHubRepositorySlug,
-        ) -> anyhow::Result<Option<GitAuthConfig>> {
-            self.repositories
+    impl AutomationGitRemoteResolver for FixtureRemoteResolver {
+        async fn resolve(&self, repo: &GitHubRepositorySlug) -> anyhow::Result<GitRemote> {
+            let recorder = &self.credentials;
+            recorder
+                .repositories
                 .lock()
                 .expect("credential recorder lock poisoned")
                 .push(repo.clone());
-            if self.fail_for.as_ref() == Some(repo) {
+            if recorder.fail_for.as_ref() == Some(repo) {
                 anyhow::bail!("test repository access denied")
             }
-            Ok(Some(GitAuthConfig::new(
-                Some("x-access-token".to_string()),
-                Some(FAKE_TOKEN.to_string()),
-            )))
+            let clone_url = self
+                .clone_urls
+                .get(repo)
+                .unwrap_or_else(|| panic!("no fixture clone URL for {repo}"))
+                .clone();
+            Ok(GitRemote {
+                clone_url,
+                auth: Some(GitAuthConfig::new(
+                    Some("x-access-token".to_string()),
+                    Some(FAKE_TOKEN.to_string()),
+                )),
+            })
         }
     }
 
@@ -761,7 +790,10 @@ mod tests {
             Arc::new(GitRepoCache::new(root.join("cache"))),
             store,
         )
-        .with_test_git(resolver, clone_urls)
+        .with_remote_resolver(Arc::new(FixtureRemoteResolver {
+            credentials: resolver,
+            clone_urls,
+        }))
     }
 
     #[tokio::test]
@@ -786,13 +818,7 @@ mod tests {
 
         let closure =
             fabro_manifest::collect_workflow_versions(Path::new("root"), &checkout).unwrap();
-        let database = fabro_store::test_support::test_database(
-            Arc::new(InMemory::new()),
-            "",
-            Duration::from_millis(1),
-            None,
-        );
-        let store = WorkflowVersionStore::new(database.blobs());
+        let store = test_version_store();
 
         for _ in 0..2 {
             for (expected, version) in closure.versions() {
@@ -938,7 +964,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn same_repository_with_a_different_selector_uses_a_second_worktree() {
+    async fn same_repository_with_a_different_selector_reuses_credentials_for_a_second_worktree() {
         let temp = TempDir::new().unwrap();
         let fixture = seed_repository(temp.path(), "shared", "shared workflow");
         let repo = repository("fabro-sh/shared");
@@ -963,10 +989,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(resolver.repositories(), vec![
-            "fabro-sh/shared",
-            "fabro-sh/shared"
-        ]);
+        assert_eq!(resolver.repositories(), vec!["fabro-sh/shared"]);
     }
 
     #[tokio::test]
@@ -1068,7 +1091,8 @@ mod tests {
         .materialize(missing_target)
         .await
         .unwrap_err();
-        assert!(matches!(error, RunMaterializeError::TargetCheckout {
+        assert!(matches!(error, RunMaterializeError::Checkout {
+            role:   CheckoutRole::Target,
             source: GitCheckoutError::FetchBranch { .. },
         }));
         assert!(!format!("{error:?}").contains(FAKE_TOKEN));
@@ -1087,10 +1111,10 @@ mod tests {
         ))
         .await
         .unwrap_err();
-        assert!(matches!(
-            error,
-            RunMaterializeError::TargetCredentials { .. }
-        ));
+        assert!(matches!(error, RunMaterializeError::Credentials {
+            role: CheckoutRole::Target,
+            ..
+        }));
         assert!(!format!("{error:?}").contains(FAKE_TOKEN));
 
         let source_resolver = Arc::new(RecordingCredentialResolver::fails_for(source_repo));
@@ -1111,10 +1135,10 @@ mod tests {
         ))
         .await
         .unwrap_err();
-        assert!(matches!(
-            error,
-            RunMaterializeError::WorkflowSourceCredentials { .. }
-        ));
+        assert!(matches!(error, RunMaterializeError::Credentials {
+            role: CheckoutRole::WorkflowSource,
+            ..
+        }));
         assert!(!format!("{error:?}").contains(FAKE_TOKEN));
 
         let error = production_materializer(
@@ -1143,12 +1167,10 @@ mod tests {
         ))
         .await
         .unwrap_err();
-        assert!(matches!(
-            error,
-            RunMaterializeError::WorkflowSourceCheckout {
-                source: GitCheckoutError::FetchBranch { .. },
-            }
-        ));
+        assert!(matches!(error, RunMaterializeError::Checkout {
+            role:   CheckoutRole::WorkflowSource,
+            source: GitCheckoutError::FetchBranch { .. },
+        }));
         assert!(!format!("{error:?}").contains(FAKE_TOKEN));
     }
 

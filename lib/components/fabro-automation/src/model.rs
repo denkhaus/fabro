@@ -171,13 +171,6 @@ pub enum AutomationGitWorkflowSourceKind {
     Commit,
 }
 
-impl AutomationGitWorkflowSourceKind {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        self.into()
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AutomationGitWorkflowSource {
@@ -403,7 +396,7 @@ fn normalize_replace(
         .filter(|environment_id| !environment_id.is_empty());
     value.workflow_source = value
         .workflow_source
-        .map(normalize_workflow_source)
+        .map(AutomationGitWorkflowSource::validate)
         .transpose()?;
     validate_fields(&value, require_environment)?;
 
@@ -440,12 +433,6 @@ fn normalize_replace(
     triggers.extend(schedules.into_iter().map(AutomationTrigger::Schedule));
     value.triggers = triggers;
     Ok(value)
-}
-
-fn normalize_workflow_source(
-    source: AutomationGitWorkflowSource,
-) -> Result<AutomationGitWorkflowSource, AutomationValidationError> {
-    source.validate()
 }
 
 fn validate_target(target: RunTarget) -> Result<RunTarget, AutomationValidationError> {

@@ -24,7 +24,7 @@ import {
   findApiTrigger,
   findScheduleTrigger,
   gitTarget,
-  workflowSourceSummary,
+  workflowSourceLabel,
 } from "../lib/automation";
 import { useAutomation, useAutomationRuns } from "../lib/queries";
 import { queryKeys } from "../lib/query-keys";
@@ -101,7 +101,6 @@ function AutomationHeader({ automation }: { automation: Automation }) {
   const scheduleTrigger = findScheduleTrigger(automation);
   const apiTrigger = findApiTrigger(automation);
   const target = gitTarget(automation.target);
-  const workflowSource = automation.workflow_source;
   const canRun = apiTrigger?.enabled === true && automation.environment_id !== null;
 
   async function onRun() {
@@ -158,9 +157,7 @@ function AutomationHeader({ automation }: { automation: Automation }) {
               ) : null}
             </Chip>
             <Chip icon={RectangleStackIcon}>
-              Workflow · {automation.workflow} · {workflowSource
-                ? workflowSourceSummary(workflowSource)
-                : "run target checkout"}
+              Workflow · {automation.workflow} · {workflowSourceLabel(automation.workflow_source)}
             </Chip>
             <Chip icon={CubeTransparentIcon}>
               {automation.environment_id ?? (

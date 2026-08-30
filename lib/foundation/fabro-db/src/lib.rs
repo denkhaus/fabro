@@ -28,11 +28,6 @@ pub const RUNS_MIGRATION_SQL: &str = include_str!("../migrations/2026071104_runs
 /// the production schema without a filesystem path into this crate.
 pub const RUN_EVENTS_MIGRATION_SQL: &str = include_str!("../migrations/2026082701_run_events.sql");
 
-/// The automation workflow-source migration, exposed so storage fixtures can
-/// install the production optional-coordinate columns and constraints.
-pub const AUTOMATION_WORKFLOW_SOURCES_MIGRATION_SQL: &str =
-    include_str!("../migrations/2026082802_automation_workflow_sources.sql");
-
 #[derive(Clone)]
 pub struct Database {
     pool: DbPool,

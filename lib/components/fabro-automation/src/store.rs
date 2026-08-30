@@ -162,7 +162,7 @@ impl AutomationStore {
         .bind(target.sha.as_deref())
         .bind(&automation.workflow)
         .bind(workflow_source.map(|source| source.repo.as_str()))
-        .bind(workflow_source.map(|source| source.kind.as_str()))
+        .bind(workflow_source.map(|source| <&'static str>::from(source.kind)))
         .bind(workflow_source.map(|source| source.reference.as_str()))
         .bind(id.as_str())
         .bind(expected.as_str())
@@ -373,7 +373,7 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     .bind(target.sha.as_deref())
     .bind(&automation.workflow)
     .bind(workflow_source.map(|source| source.repo.as_str()))
-    .bind(workflow_source.map(|source| source.kind.as_str()))
+    .bind(workflow_source.map(|source| <&'static str>::from(source.kind)))
     .bind(workflow_source.map(|source| source.reference.as_str()))
     .execute(&mut **transaction)
     .await?;

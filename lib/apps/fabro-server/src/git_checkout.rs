@@ -105,7 +105,8 @@ impl GitRepoCache {
             .join(format!("{}.git", repo.repo()))
     }
 
-    /// Prepare a worktree containing the requested ref of `repo` at
+    /// Prepare a worktree containing the requested ref of `repo`, fetched from
+    /// `clone_url`, at
     /// `worktree_dir`. Returns the resolved commit SHA.
     ///
     /// First call for a repo: a `--bare --depth 1` clone is created at
@@ -116,14 +117,6 @@ impl GitRepoCache {
     /// crashed prior calls block the add, the cache prunes those entries and
     /// retries once.
     pub(crate) async fn prepare_worktree(
-        &self,
-        args: WorktreePrepareInput<'_>,
-    ) -> Result<String, GitCheckoutError> {
-        let clone_url = github_clone_url(args.repo);
-        self.prepare_worktree_with_clone_url(args, &clone_url).await
-    }
-
-    pub(crate) async fn prepare_worktree_with_clone_url(
         &self,
         args: WorktreePrepareInput<'_>,
         clone_url: &str,
@@ -280,7 +273,7 @@ async fn bare_clone_may_be_corrupt(bare_dir: &Path) -> bool {
     }
 }
 
-fn github_clone_url(repo: &GitHubRepositorySlug) -> String {
+pub(crate) fn github_clone_url(repo: &GitHubRepositorySlug) -> String {
     let mut url = repo.https_url();
     url.push_str(".git");
     url
@@ -884,7 +877,7 @@ mod tests {
 
         let worktree_a = temp.path().join("wt-a");
         let sha_a = cache
-            .prepare_worktree_with_clone_url(
+            .prepare_worktree(
                 WorktreePrepareInput {
                     repo:         &repo,
                     selector:     GitCheckoutSelector::from(&target),
@@ -906,7 +899,7 @@ mod tests {
 
         let worktree_b = temp.path().join("wt-b");
         let sha_b = cache
-            .prepare_worktree_with_clone_url(
+            .prepare_worktree(
                 WorktreePrepareInput {
                     repo:         &repo,
                     selector:     GitCheckoutSelector::from(&target),
@@ -937,7 +930,7 @@ mod tests {
 
         let worktree_a = temp.path().join("wt-a");
         cache
-            .prepare_worktree_with_clone_url(
+            .prepare_worktree(
                 WorktreePrepareInput {
                     repo:         &repo,
                     selector:     GitCheckoutSelector::from(&target),
@@ -955,7 +948,7 @@ mod tests {
 
         let worktree_b = temp.path().join("wt-b");
         let sha = cache
-            .prepare_worktree_with_clone_url(
+            .prepare_worktree(
                 WorktreePrepareInput {
                     repo:         &repo,
                     selector:     GitCheckoutSelector::from(&target),
@@ -993,7 +986,7 @@ mod tests {
             ("commit", git_target("main", None, Some(&expected_sha))),
         ] {
             let sha = cache
-                .prepare_worktree_with_clone_url(
+                .prepare_worktree(
                     WorktreePrepareInput {
                         repo:         &repo,
                         selector:     GitCheckoutSelector::from(&target),
@@ -1021,7 +1014,7 @@ mod tests {
         let unavailable_commit = git_target("main", None, Some(unavailable_sha));
 
         let tag_error = cache
-            .prepare_worktree_with_clone_url(
+            .prepare_worktree(
                 WorktreePrepareInput {
                     repo:         &repo,
                     selector:     GitCheckoutSelector::from(&missing_tag),
@@ -1038,7 +1031,7 @@ mod tests {
         ));
 
         let commit_error = cache
-            .prepare_worktree_with_clone_url(
+            .prepare_worktree(
                 WorktreePrepareInput {
                     repo:         &repo,
                     selector:     GitCheckoutSelector::from(&unavailable_commit),

@@ -188,13 +188,16 @@ export function targetFromFormValues(values: AutomationFormValues): GitRunTarget
   };
 }
 
+function isWorkflowSourceRefValid(kind: AutomationGitWorkflowSourceKind, ref: string): boolean {
+  const reference = ref.trim();
+  return kind === "commit" ? GIT_SHA_RE.test(reference) : reference !== "";
+}
+
 function isWorkflowSourceValid(values: AutomationFormValues): boolean {
   if (!values.usesSeparateWorkflowSource) return true;
-  const reference = values.workflowSourceRef.trim();
   return (
     values.workflowSourceRepository.trim() !== "" &&
-    reference !== "" &&
-    (values.workflowSourceKind !== "commit" || GIT_SHA_RE.test(reference))
+    isWorkflowSourceRefValid(values.workflowSourceKind, values.workflowSourceRef)
   );
 }
 
@@ -276,34 +279,38 @@ function describeCron(expression: string): string {
   return "Computed when saved";
 }
 
-function workflowSourceRefLabel(kind: AutomationGitWorkflowSourceKind): string {
-  switch (kind) {
-    case "branch": return "Branch";
-    case "tag": return "Tag";
-    case "commit": return "Exact commit";
-  }
+interface WorkflowSourceKindCopy {
+  label: string;
+  placeholder: string;
+  help: string;
 }
 
-function workflowSourceRefPlaceholder(kind: AutomationGitWorkflowSourceKind): string {
-  switch (kind) {
-    case "branch": return "main";
-    case "tag": return "v1.2.3";
-    case "commit": return "0123456789abcdef0123456789abcdef01234567";
-  }
-}
+const WORKFLOW_SOURCE_KINDS: Record<AutomationGitWorkflowSourceKind, WorkflowSourceKindCopy> = {
+  branch: {
+    label:       "Branch",
+    placeholder: "main",
+    help:        "Bare branch name resolved again whenever the automation fires.",
+  },
+  tag: {
+    label:       "Tag",
+    placeholder: "v1.2.3",
+    help:        "Bare tag name resolved again whenever the automation fires.",
+  },
+  commit: {
+    label:       "Exact commit",
+    placeholder: "0123456789abcdef0123456789abcdef01234567",
+    help:        "Exactly 40 hexadecimal characters; the same workflow bytes are used every time.",
+  },
+};
 
 function workflowSourceRefHelp(
   kind: AutomationGitWorkflowSourceKind,
   valid: boolean,
 ): ReactNode {
-  if (kind === "commit") {
-    return valid
-      ? "Exactly 40 hexadecimal characters; the same workflow bytes are used every time."
-      : <span className="text-coral">Enter exactly 40 hexadecimal characters.</span>;
+  if (kind === "commit" && !valid) {
+    return <span className="text-coral">Enter exactly 40 hexadecimal characters.</span>;
   }
-  return kind === "branch"
-    ? "Bare branch name resolved again whenever the automation fires."
-    : "Bare tag name resolved again whenever the automation fires.";
+  return WORKFLOW_SOURCE_KINDS[kind].help;
 }
 
 interface AutomationFormFieldsProps {
@@ -325,9 +332,11 @@ export function AutomationFormFields({
 }: AutomationFormFieldsProps) {
   const slugTouchedRef = useRef(values.id.length > 0);
   const shaValid = isOptionalShaValid(values.targetSha);
-  const workflowSourceRefValid = values.workflowSourceKind !== "commit"
-    ? values.workflowSourceRef.trim() !== ""
-    : GIT_SHA_RE.test(values.workflowSourceRef.trim());
+  const workflowSourceRefValid = isWorkflowSourceRefValid(
+    values.workflowSourceKind,
+    values.workflowSourceRef,
+  );
+  const workflowSourceKind = WORKFLOW_SOURCE_KINDS[values.workflowSourceKind];
   const compatibleEnvironments = environments
     .filter(isCloneBasedEnvironment)
     .sort((left, right) => left.id.localeCompare(right.id));
@@ -585,13 +594,13 @@ export function AutomationFormFields({
                 })}
                 className={`${INPUT_CLASS} font-mono`}
               >
-                <option value="branch">Branch</option>
-                <option value="tag">Tag</option>
-                <option value="commit">Exact commit</option>
+                {Object.entries(WORKFLOW_SOURCE_KINDS).map(([kind, copy]) => (
+                  <option key={kind} value={kind}>{copy.label}</option>
+                ))}
               </select>
             </Row>
             <Row
-              title={<Label required>{workflowSourceRefLabel(values.workflowSourceKind)}</Label>}
+              title={<Label required>{workflowSourceKind.label}</Label>}
               help={workflowSourceRefHelp(values.workflowSourceKind, workflowSourceRefValid)}
             >
               <input
@@ -601,7 +610,7 @@ export function AutomationFormFields({
                 aria-invalid={!workflowSourceRefValid}
                 value={values.workflowSourceRef}
                 onChange={(e) => patch({ workflowSourceRef: e.target.value })}
-                placeholder={workflowSourceRefPlaceholder(values.workflowSourceKind)}
+                placeholder={workflowSourceKind.placeholder}
                 autoComplete="off"
                 spellCheck={false}
                 className={`${INPUT_CLASS} font-mono`}

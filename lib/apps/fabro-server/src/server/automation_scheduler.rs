@@ -263,8 +263,8 @@ async fn fire_scheduled_automation_run(
         .materialize_automation_run(AutomationRunMaterializeInput {
             automation_id: automation_id.clone(),
             target,
-            workflow_source: automation.workflow_source.clone(),
-            workflow: automation.workflow.clone(),
+            workflow_source: automation.workflow_source,
+            workflow: automation.workflow,
             run_id,
             temp_root: state.automation_temp_root(),
         })
@@ -448,6 +448,16 @@ mod tests {
         name: &str,
         triggers: Vec<AutomationTrigger>,
     ) -> Automation {
+        create_automation_with_source(state, id, name, None, triggers).await
+    }
+
+    async fn create_automation_with_source(
+        state: &AppState,
+        id: &str,
+        name: &str,
+        workflow_source: Option<AutomationGitWorkflowSource>,
+        triggers: Vec<AutomationTrigger>,
+    ) -> Automation {
         state
             .automation_store()
             .create(AutomationDraft {
@@ -456,29 +466,7 @@ mod tests {
                 description: None,
                 environment_id: Some("default".to_string()),
                 target: target(),
-                workflow_source: None,
-                workflow: "workflow.fabro".to_string(),
-                triggers,
-            })
-            .await
-            .expect("test automation should be created")
-    }
-
-    async fn create_automation_with_source(
-        state: &AppState,
-        id: &str,
-        workflow_source: AutomationGitWorkflowSource,
-        triggers: Vec<AutomationTrigger>,
-    ) -> Automation {
-        state
-            .automation_store()
-            .create(AutomationDraft {
-                id: AutomationId::new(id).expect("test automation id should be valid"),
-                name: id.to_string(),
-                description: None,
-                environment_id: Some("default".to_string()),
-                target: target(),
-                workflow_source: Some(workflow_source),
+                workflow_source,
                 workflow: "workflow.fabro".to_string(),
                 triggers,
             })
@@ -741,7 +729,8 @@ mod tests {
         create_automation_with_source(
             state.as_ref(),
             "scheduled-source",
-            workflow_source.clone(),
+            "scheduled-source",
+            Some(workflow_source.clone()),
             vec![schedule_trigger("schedule", "* * * * *", true)],
         )
         .await;
@@ -865,11 +854,12 @@ mod tests {
         create_automation_with_source(
             state.as_ref(),
             "failing-source",
-            AutomationGitWorkflowSource {
+            "failing-source",
+            Some(AutomationGitWorkflowSource {
                 repo:      "fabro-sh/workflows".to_string(),
                 kind:      AutomationGitWorkflowSourceKind::Branch,
                 reference: "main".to_string(),
-            },
+            }),
             vec![schedule_trigger("schedule", "* * * * *", true)],
         )
         .await;
