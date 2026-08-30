@@ -84,7 +84,19 @@ pub fn collect_workflow_versions(
 ) -> Result<CollectedWorkflowClosure, WorkflowVersionCollectError> {
     let repository_workflow = repository_workflow_path(workflow);
     let location = crate::resolve_existing_workflow_location(&repository_workflow, checkout_root)
-        .map_err(|source| location_error(workflow, source))?;
+        .map_err(|source| {
+            match source {
+                fabro_config::Error::WorkflowNotFound(_) => {
+                    WorkflowVersionCollectError::WorkflowNotFound {
+                        path: workflow.to_path_buf(),
+                    }
+                }
+                source => WorkflowVersionCollectError::Collect {
+                    path:   workflow.to_path_buf(),
+                    source: source.into(),
+                },
+            }
+        })?;
 
     let package_root =
         checkout_root
@@ -96,24 +108,25 @@ pub fn collect_workflow_versions(
                     checkout_root.display()
                 )),
             })?;
-    let location = canonicalize_location(location, workflow)?;
+    let location = canonicalize_location(location, |path, source| {
+        WorkflowVersionCollectError::Collect {
+            path:   workflow.to_path_buf(),
+            source: anyhow::Error::new(source).context(format!(
+                "failed to canonicalize workflow path {}",
+                path.display()
+            )),
+        }
+    })?;
     collect_workflow_versions_at_location(&location, &package_root, workflow)
 }
 
-fn canonicalize_location(
+/// Canonicalize a resolved workflow location so its paths compare against a
+/// canonical package root. `map_err` receives the path that failed.
+pub(super) fn canonicalize_location<E>(
     location: WorkflowLocation,
-    workflow: &Path,
-) -> Result<WorkflowLocation, WorkflowVersionCollectError> {
-    let canonicalize = |path: &Path| {
-        path.canonicalize()
-            .map_err(|source| WorkflowVersionCollectError::Collect {
-                path:   workflow.to_path_buf(),
-                source: anyhow::Error::new(source).context(format!(
-                    "failed to canonicalize workflow path {}",
-                    path.display()
-                )),
-            })
-    };
+    map_err: impl Fn(&Path, std::io::Error) -> E,
+) -> Result<WorkflowLocation, E> {
+    let canonicalize = |path: &Path| path.canonicalize().map_err(|source| map_err(path, source));
     let graph = canonicalize(&location.graph)?;
     let toml = location.toml.as_deref().map(canonicalize).transpose()?;
     let dir = graph
@@ -150,22 +163,6 @@ fn repository_workflow_path(workflow: &Path) -> PathBuf {
             .join("workflow.toml")
     } else {
         workflow.to_path_buf()
-    }
-}
-
-fn location_error(workflow: &Path, source: anyhow::Error) -> WorkflowVersionCollectError {
-    if matches!(
-        source.downcast_ref::<fabro_config::Error>(),
-        Some(fabro_config::Error::WorkflowNotFound(_))
-    ) {
-        WorkflowVersionCollectError::WorkflowNotFound {
-            path: workflow.to_path_buf(),
-        }
-    } else {
-        WorkflowVersionCollectError::Collect {
-            path: workflow.to_path_buf(),
-            source,
-        }
     }
 }
 
