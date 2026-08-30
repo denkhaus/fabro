@@ -308,13 +308,6 @@ fn validate_fields(
     if require_environment && value.environment_id.is_none() {
         return Err(AutomationValidationError::MissingEnvironment);
     }
-    if value
-        .environment_id
-        .as_deref()
-        .is_some_and(|environment_id| environment_id.trim().is_empty())
-    {
-        return Err(AutomationValidationError::MissingEnvironment);
-    }
     validate_workflow_selector(&value.workflow)?;
     validate_triggers(&value.triggers)
 }
@@ -326,7 +319,8 @@ fn normalize_replace(
     value.target = validate_target(value.target)?;
     value.environment_id = value
         .environment_id
-        .map(|environment_id| environment_id.trim().to_string());
+        .map(|environment_id| environment_id.trim().to_string())
+        .filter(|environment_id| !environment_id.is_empty());
     validate_fields(&value, require_environment)?;
 
     let api_enabled = value

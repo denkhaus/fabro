@@ -22,6 +22,18 @@ pub struct EnvironmentSelectorBackfillReport {
 pub async fn backfill_environment_selectors(
     pool: &DbPool,
 ) -> Result<EnvironmentSelectorBackfillReport, AutomationStoreError> {
+    let has_incomplete =
+        sqlx::query("SELECT 1 FROM automations WHERE environment_id IS NULL LIMIT 1")
+            .fetch_optional(pool)
+            .await?
+            .is_some();
+    if !has_incomplete {
+        return Ok(EnvironmentSelectorBackfillReport {
+            updated_rows:   0,
+            environment_id: None,
+        });
+    }
+
     let compatible_ids = sqlx::query_scalar::<_, String>(
         "SELECT id FROM environments WHERE provider IN ('docker', 'daytona') ORDER BY id",
     )

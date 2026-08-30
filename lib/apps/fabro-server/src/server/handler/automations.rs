@@ -266,7 +266,7 @@ pub(in crate::server) fn resolve_automation_environment(
             "automation_environment_required",
         ));
     };
-    let id = EnvironmentId::new(value.to_string()).map_err(|_| {
+    let id = value.parse::<EnvironmentId>().map_err(|_| {
         ApiError::with_code(
             status,
             "automation environment id is invalid",

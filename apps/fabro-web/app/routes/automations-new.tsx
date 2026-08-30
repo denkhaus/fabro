@@ -36,15 +36,18 @@ export default function AutomationsNew() {
   const runStateQuery = useRunState(fromRunId);
   const settingsQuery = useRunSettings(fromRunId);
   const environmentsQuery = useEnvironments();
+  const environments = environmentsQuery.data?.data;
+  const environmentsPending = environmentsQuery.isLoading && !environmentsQuery.data;
+  const environmentsError = Boolean(environmentsQuery.error);
 
   if (!fromRunId) {
     return (
       <AutomationCreateForm
         key="blank"
         initialValues={EMPTY_AUTOMATION_FORM}
-        environments={environmentsQuery.data?.data}
-        environmentsLoading={environmentsQuery.isLoading && !environmentsQuery.data}
-        environmentsError={Boolean(environmentsQuery.error)}
+        environments={environments}
+        environmentsLoading={environmentsPending}
+        environmentsError={environmentsError}
       />
     );
   }
@@ -54,7 +57,6 @@ export default function AutomationsNew() {
   const runPending = runQuery.isLoading && !runQuery.data;
   const runStatePending = runStateQuery.isLoading && !runStateQuery.data;
   const settingsPending = settingsQuery.isLoading && !settingsQuery.data;
-  const environmentsPending = environmentsQuery.isLoading && !environmentsQuery.data;
   if (runPending || runStatePending || settingsPending || environmentsPending) {
     return (
       <div className="space-y-6">
@@ -71,8 +73,8 @@ export default function AutomationsNew() {
       <AutomationCreateForm
         key={`missing:${fromRunId}`}
         initialValues={EMPTY_AUTOMATION_FORM}
-        environments={environmentsQuery.data?.data}
-        environmentsError={Boolean(environmentsQuery.error)}
+        environments={environments}
+        environmentsError={environmentsError}
         sourceError="The source run could not be loaded. You can still fill it out manually."
       />
     );
@@ -82,15 +84,15 @@ export default function AutomationsNew() {
     runQuery.data,
     runStateQuery.data ?? null,
     settingsQuery.data ?? null,
-    environmentsQuery.data?.data,
+    environments,
   );
 
   return (
     <AutomationCreateForm
       key={`from-run:${fromRunId}`}
       initialValues={initialValues}
-      environments={environmentsQuery.data?.data}
-      environmentsError={Boolean(environmentsQuery.error)}
+      environments={environments}
+      environmentsError={environmentsError}
     />
   );
 }

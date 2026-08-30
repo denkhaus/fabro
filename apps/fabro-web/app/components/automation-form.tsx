@@ -16,6 +16,7 @@ import {
   gitTarget,
   type GitRunTarget,
 } from "../lib/automation";
+import { isCloneBasedEnvironment, providerLabel } from "./environment-form";
 import { Panel, Row } from "./settings-panel";
 import { INPUT_CLASS } from "./ui";
 import { sandboxRuntime } from "../lib/run-sandbox-lifecycle";
@@ -104,8 +105,9 @@ export function automationFormValuesFromRun(
   const cloneBranch = sandboxRuntime(run.sandbox)?.clone_branch;
   const sourceEnvironment = settings?.run?.environment;
   const environmentId = sourceEnvironment
-    && sourceEnvironment.provider !== "local"
-    && environments?.some((environment) => environment.id === sourceEnvironment.id)
+    && environments?.some(
+      (environment) => environment.id === sourceEnvironment.id && isCloneBasedEnvironment(environment),
+    )
       ? sourceEnvironment.id
       : "";
   return {
@@ -186,10 +188,6 @@ function firstPresentString(...values: Array<string | null | undefined>): string
   return "";
 }
 
-function providerLabel(provider: string): string {
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
-}
-
 function githubRepositoryFromSettings(
   settings?: WorkflowSettings | null,
 ): string | null {
@@ -260,7 +258,7 @@ export function AutomationFormFields({
   const slugTouchedRef = useRef(values.id.length > 0);
   const shaValid = isOptionalShaValid(values.sha);
   const compatibleEnvironments = environments
-    .filter((environment) => environment.provider === "docker" || environment.provider === "daytona")
+    .filter(isCloneBasedEnvironment)
     .sort((left, right) => left.id.localeCompare(right.id));
   const selectedEnvironmentMissing = values.environmentId !== ""
     && !compatibleEnvironments.some((environment) => environment.id === values.environmentId);

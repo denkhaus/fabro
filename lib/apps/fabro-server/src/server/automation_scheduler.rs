@@ -335,7 +335,9 @@ async fn fire_scheduled_automation_run(
         return;
     }
 
-    clear_scheduler_error(state.as_ref(), &automation_id).await;
+    if automation.last_error.is_some() {
+        set_scheduler_error(state.as_ref(), &automation_id, None).await;
+    }
 
     info!(
         run_id = %run_id,
@@ -345,25 +347,15 @@ async fn fire_scheduled_automation_run(
 }
 
 async fn record_scheduler_error(state: &AppState, id: &AutomationId, message: &str) {
-    if let Err(err) = state
-        .automation_store()
-        .set_last_error(id, Some(message))
-        .await
-    {
-        error!(
-            automation_id = %id,
-            error = ?err,
-            "Failed to persist automation scheduler error",
-        );
-    }
+    set_scheduler_error(state, id, Some(message)).await;
 }
 
-async fn clear_scheduler_error(state: &AppState, id: &AutomationId) {
-    if let Err(err) = state.automation_store().set_last_error(id, None).await {
+async fn set_scheduler_error(state: &AppState, id: &AutomationId, message: Option<&str>) {
+    if let Err(err) = state.automation_store().set_last_error(id, message).await {
         error!(
             automation_id = %id,
             error = ?err,
-            "Failed to clear automation scheduler error",
+            "Failed to persist automation scheduler status",
         );
     }
 }

@@ -281,10 +281,7 @@ impl StoredAutomation {
                 workflow: self.workflow,
                 triggers,
             })
-            .map_err(|source| AutomationStoreError::StoredValidation {
-                id: id.clone(),
-                source,
-            })?;
+            .map_err(|source| AutomationStoreError::StoredValidation { id, source })?;
         automation.last_error = self.last_error;
         Ok(automation)
     }

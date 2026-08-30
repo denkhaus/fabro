@@ -14,7 +14,6 @@ use tracing::info;
 
 pub type DbPool = sqlx::SqlitePool;
 
-// Rebuild this crate whenever the bundled automation schema migration changes.
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 /// The blob-table migration, exposed so fixtures in other crates can install
