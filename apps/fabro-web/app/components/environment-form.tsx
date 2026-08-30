@@ -15,6 +15,7 @@ import type {
   ReplaceEnvironmentRequest,
 } from "@qltysh/fabro-api-client";
 
+import { CREATABLE_PROVIDERS } from "../lib/environment-providers";
 import { Label, Panel, Row } from "./settings-panel";
 import { INPUT_CLASS } from "./ui";
 import {
@@ -23,24 +24,6 @@ import {
   mapFromEntries,
   type KeyValueEntry,
 } from "./key-value-editor";
-
-// Providers a managed environment can be created with. `local` is a reserved,
-// in-memory environment, never a managed-environment provider, so it is never
-// offered. The provider is fixed at creation time and cannot be changed.
-export const CREATABLE_PROVIDERS = [
-  EnvironmentProvider.DOCKER,
-  EnvironmentProvider.DAYTONA,
-] as const;
-
-// Whether a server-managed environment can back Git-targeted work such as
-// automations: only the clone-based (creatable) providers qualify.
-export function isCloneBasedEnvironment(environment: Environment): boolean {
-  return (CREATABLE_PROVIDERS as readonly string[]).includes(environment.provider);
-}
-
-export function providerLabel(provider: string): string {
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
-}
 
 // Parse the `provider` query param used by the create flow into a creatable
 // provider, defaulting to Docker for anything unexpected.

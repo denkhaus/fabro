@@ -9,7 +9,7 @@ import type { Environment } from "@qltysh/fabro-api-client";
 import { ApiError, apiData, environmentsApi } from "../lib/api-client";
 import { useEnvironments, useServerSettings } from "../lib/queries";
 import { queryKeys } from "../lib/query-keys";
-import { CREATABLE_PROVIDERS, providerLabel } from "../components/environment-form";
+import { CREATABLE_PROVIDERS, providerLabel } from "../lib/environment-providers";
 import {
   Badge,
   Muted,

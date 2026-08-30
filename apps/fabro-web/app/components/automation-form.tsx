@@ -16,9 +16,9 @@ import {
   gitTarget,
   type GitRunTarget,
 } from "../lib/automation";
-import { isCloneBasedEnvironment, providerLabel } from "./environment-form";
 import { Panel, Row } from "./settings-panel";
 import { INPUT_CLASS } from "./ui";
+import { isCloneBasedEnvironment, providerLabel } from "../lib/environment-providers";
 import { sandboxRuntime } from "../lib/run-sandbox-lifecycle";
 
 export interface AutomationFormValues {
