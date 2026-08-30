@@ -19,6 +19,7 @@ async fn test_database() -> (tempfile::TempDir, Database) {
         .await
         .unwrap();
     database.migrate().await.unwrap();
+    insert_environment(database.pool(), "default", "docker").await;
     (dir, database)
 }
 
@@ -41,12 +42,13 @@ fn schedule(id: &str, expression: &str, enabled: bool) -> AutomationTrigger {
 
 fn draft(id: &str, api_enabled: bool) -> AutomationDraft {
     AutomationDraft {
-        id:          AutomationId::new(id).unwrap(),
-        name:        "Nightly".to_string(),
-        description: Some("Runs every night".to_string()),
-        target:      target(),
-        workflow:    "release".to_string(),
-        triggers:    vec![
+        id:             AutomationId::new(id).unwrap(),
+        name:           "Nightly".to_string(),
+        description:    Some("Runs every night".to_string()),
+        environment_id: Some("default".to_string()),
+        target:         target(),
+        workflow:       "release".to_string(),
+        triggers:       vec![
             schedule("z-last", "0 2 * * *", false),
             AutomationTrigger::Api(ApiTrigger {
                 id:      AutomationTriggerId::new("custom-api-id").unwrap(),
@@ -59,11 +61,12 @@ fn draft(id: &str, api_enabled: bool) -> AutomationDraft {
 
 fn replacement(name: &str, expression: &str) -> AutomationReplace {
     AutomationReplace {
-        name:        name.to_string(),
-        description: None,
-        target:      target(),
-        workflow:    "release".to_string(),
-        triggers:    vec![
+        name:           name.to_string(),
+        description:    None,
+        environment_id: Some("default".to_string()),
+        target:         target(),
+        workflow:       "release".to_string(),
+        triggers:       vec![
             schedule("nightly", expression, true),
             AutomationTrigger::Api(ApiTrigger {
                 id:      AutomationTriggerId::new("api").unwrap(),
@@ -87,6 +90,7 @@ async fn crud_normalizes_api_and_schedule_order() {
     let store = AutomationStore::new(database.clone_pool());
 
     let created = store.create(draft("nightly", true)).await.unwrap();
+    assert_eq!(created.environment_id.as_deref(), Some("default"));
     assert_eq!(trigger_ids(&created), vec!["manual", "a-first", "z-last"]);
     assert!(created.enabled_api_trigger().is_some());
 
@@ -110,6 +114,158 @@ async fn crud_normalizes_api_and_schedule_order() {
         .await
         .unwrap();
     assert!(store.get(&replaced.id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn create_requires_an_environment_and_environment_changes_revision() {
+    let (_dir, database) = test_database().await;
+    let store = AutomationStore::new(database.clone_pool());
+    let mut missing = draft("missing", true);
+    missing.environment_id = None;
+
+    let error = store.create(missing).await.unwrap_err();
+    assert!(matches!(error, AutomationStoreError::Validation { .. }));
+
+    let created = store.create(draft("nightly", true)).await.unwrap();
+    insert_environment(database.pool(), "daytona-smoke", "daytona").await;
+    let mut update = replacement("Nightly", "0 1 * * *");
+    update.environment_id = Some("daytona-smoke".to_string());
+    let replaced = store
+        .replace(&created.id, &created.revision, update)
+        .await
+        .unwrap();
+
+    assert_eq!(replaced.environment_id.as_deref(), Some("daytona-smoke"));
+    assert_ne!(replaced.revision, created.revision);
+
+    store
+        .set_last_error(&replaced.id, Some("environment unavailable"))
+        .await
+        .unwrap();
+    let failed = store.get(&replaced.id).await.unwrap().unwrap();
+    assert_eq!(
+        failed.last_error.as_deref(),
+        Some("environment unavailable")
+    );
+    assert_eq!(failed.revision, replaced.revision);
+
+    store.set_last_error(&replaced.id, None).await.unwrap();
+    assert_eq!(
+        store.get(&replaced.id).await.unwrap().unwrap().last_error,
+        None,
+    );
+}
+
+#[tokio::test]
+async fn legacy_environment_backfill_prefers_default_then_a_single_compatible_environment() {
+    let (_dir, database) = test_database().await;
+    insert_incomplete_automation(database.pool(), "with-default").await;
+    insert_environment(database.pool(), "daytona-smoke", "daytona").await;
+
+    let report = fabro_automation::backfill_environment_selectors(database.pool())
+        .await
+        .unwrap();
+    let store = AutomationStore::new(database.clone_pool());
+    let migrated = store
+        .get(&AutomationId::new("with-default").unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(report.updated_rows, 1);
+    assert_eq!(report.environment_id.as_deref(), Some("default"));
+    assert_eq!(migrated.environment_id.as_deref(), Some("default"));
+    assert_ne!(migrated.revision.as_str(), &"a".repeat(64));
+
+    sqlx::query("DELETE FROM automations WHERE id = 'with-default'")
+        .execute(database.pool())
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM environments WHERE id = 'default'")
+        .execute(database.pool())
+        .await
+        .unwrap();
+    insert_incomplete_automation(database.pool(), "single").await;
+    let report = fabro_automation::backfill_environment_selectors(database.pool())
+        .await
+        .unwrap();
+    let migrated = store
+        .get(&AutomationId::new("single").unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(report.environment_id.as_deref(), Some("daytona-smoke"));
+    assert_eq!(migrated.environment_id.as_deref(), Some("daytona-smoke"));
+}
+
+#[tokio::test]
+async fn legacy_environment_backfill_leaves_ambiguous_or_empty_catalogs_incomplete() {
+    let (_dir, database) = test_database().await;
+    sqlx::query("DELETE FROM environments WHERE id = 'default'")
+        .execute(database.pool())
+        .await
+        .unwrap();
+    insert_incomplete_automation(database.pool(), "empty").await;
+
+    let empty = fabro_automation::backfill_environment_selectors(database.pool())
+        .await
+        .unwrap();
+    assert_eq!(empty.updated_rows, 0);
+    assert_eq!(empty.environment_id, None);
+
+    insert_environment(database.pool(), "docker-one", "docker").await;
+    insert_environment(database.pool(), "daytona-two", "daytona").await;
+    insert_incomplete_automation(database.pool(), "ambiguous").await;
+    let ambiguous = fabro_automation::backfill_environment_selectors(database.pool())
+        .await
+        .unwrap();
+    let store = AutomationStore::new(database.clone_pool());
+
+    assert_eq!(ambiguous.updated_rows, 0);
+    assert_eq!(ambiguous.environment_id, None);
+    assert_eq!(
+        store
+            .get(&AutomationId::new("ambiguous").unwrap())
+            .await
+            .unwrap()
+            .unwrap()
+            .environment_id,
+        None,
+    );
+}
+
+async fn insert_incomplete_automation(pool: &fabro_db::DbPool, id: &str) {
+    sqlx::query(
+        r"
+        INSERT INTO automations (
+            id, revision, name, api_enabled, target_repository, target_branch,
+            target_tag, target_sha, target_workflow, environment_id
+        ) VALUES (?, ?, 'Legacy', 1, 'fabro-sh/fabro', 'main', NULL, NULL, 'release', NULL)
+        ",
+    )
+    .bind(id)
+    .bind("a".repeat(64))
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+async fn insert_environment(pool: &fabro_db::DbPool, id: &str, provider: &str) {
+    sqlx::query(
+        r"
+        INSERT INTO environments (
+            id, revision, provider, network_mode,
+            lifecycle_preserve, lifecycle_stop_on_terminal
+        ) VALUES (?, ?, ?, 'allow_all', 0, 1)
+        ",
+    )
+    .bind(id)
+    .bind("b".repeat(64))
+    .bind(provider)
+    .execute(pool)
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -169,6 +325,7 @@ async fn independent_pools_observe_writes_and_revision_conflicts() {
     let path = dir.path().join("fabro.sqlite3");
     let first_database = Database::connect(&path).await.unwrap();
     first_database.migrate().await.unwrap();
+    insert_environment(first_database.pool(), "default", "docker").await;
     let second_database = Database::connect(&path).await.unwrap();
     second_database.migrate().await.unwrap();
     let first = AutomationStore::new(first_database.clone_pool());
@@ -218,11 +375,12 @@ async fn failed_schedule_insert_rolls_back_parent_replace() {
     .await
     .unwrap();
     let replacement = AutomationReplace {
-        name:        "Should roll back".to_string(),
-        description: None,
-        target:      target(),
-        workflow:    "release".to_string(),
-        triggers:    vec![schedule("blocked", "0 7 * * *", true)],
+        name:           "Should roll back".to_string(),
+        description:    None,
+        environment_id: Some("default".to_string()),
+        target:         target(),
+        workflow:       "release".to_string(),
+        triggers:       vec![schedule("blocked", "0 7 * * *", true)],
     };
 
     let err = store

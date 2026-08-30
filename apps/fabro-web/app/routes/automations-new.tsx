@@ -2,10 +2,11 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useSWRConfig } from "swr";
 import { ChevronRightIcon } from "@heroicons/react/20/solid";
+import type { Environment } from "@qltysh/fabro-api-client";
 
 import { ApiError, apiData, automationsApi } from "../lib/api-client";
 import { queryKeys } from "../lib/query-keys";
-import { useRun, useRunSettings, useRunState } from "../lib/queries";
+import { useEnvironments, useRun, useRunSettings, useRunState } from "../lib/queries";
 import {
   AutomationFormFields,
   EMPTY_AUTOMATION_FORM,
@@ -34,12 +35,16 @@ export default function AutomationsNew() {
   const runQuery = useRun(fromRunId);
   const runStateQuery = useRunState(fromRunId);
   const settingsQuery = useRunSettings(fromRunId);
+  const environmentsQuery = useEnvironments();
 
   if (!fromRunId) {
     return (
       <AutomationCreateForm
         key="blank"
         initialValues={EMPTY_AUTOMATION_FORM}
+        environments={environmentsQuery.data?.data}
+        environmentsLoading={environmentsQuery.isLoading && !environmentsQuery.data}
+        environmentsError={Boolean(environmentsQuery.error)}
       />
     );
   }
@@ -49,7 +54,8 @@ export default function AutomationsNew() {
   const runPending = runQuery.isLoading && !runQuery.data;
   const runStatePending = runStateQuery.isLoading && !runStateQuery.data;
   const settingsPending = settingsQuery.isLoading && !settingsQuery.data;
-  if (runPending || runStatePending || settingsPending) {
+  const environmentsPending = environmentsQuery.isLoading && !environmentsQuery.data;
+  if (runPending || runStatePending || settingsPending || environmentsPending) {
     return (
       <div className="space-y-6">
         <PageHeader />
@@ -65,6 +71,8 @@ export default function AutomationsNew() {
       <AutomationCreateForm
         key={`missing:${fromRunId}`}
         initialValues={EMPTY_AUTOMATION_FORM}
+        environments={environmentsQuery.data?.data}
+        environmentsError={Boolean(environmentsQuery.error)}
         sourceError="The source run could not be loaded. You can still fill it out manually."
       />
     );
@@ -74,21 +82,30 @@ export default function AutomationsNew() {
     runQuery.data,
     runStateQuery.data ?? null,
     settingsQuery.data ?? null,
+    environmentsQuery.data?.data,
   );
 
   return (
     <AutomationCreateForm
       key={`from-run:${fromRunId}`}
       initialValues={initialValues}
+      environments={environmentsQuery.data?.data}
+      environmentsError={Boolean(environmentsQuery.error)}
     />
   );
 }
 
 function AutomationCreateForm({
   initialValues,
+  environments = [],
+  environmentsLoading = false,
+  environmentsError = false,
   sourceError = null,
 }: {
   initialValues: AutomationFormValues;
+  environments?: Environment[];
+  environmentsLoading?: boolean;
+  environmentsError?: boolean;
   sourceError?: string | null;
 }) {
   const navigate = useNavigate();
@@ -98,7 +115,10 @@ function AutomationCreateForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = isFormValid(values) && !submitting;
+  const canSubmit = isFormValid(values)
+    && !environmentsLoading
+    && !environmentsError
+    && !submitting;
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -112,6 +132,7 @@ function AutomationCreateForm({
           id:          values.id.trim(),
           name:        trimmedName,
           description: values.description.trim() || null,
+          environment_id: values.environmentId.trim(),
           target:      targetFromFormValues(values),
           workflow:    values.workflow.trim(),
           triggers: triggersFromFormValues(values),
@@ -134,7 +155,13 @@ function AutomationCreateForm({
     <form onSubmit={onSubmit} className="space-y-6">
       <PageHeader />
 
-      <AutomationFormFields values={values} onChange={setValues} />
+      <AutomationFormFields
+        values={values}
+        onChange={setValues}
+        environments={environments}
+        environmentsLoading={environmentsLoading}
+        environmentsError={environmentsError}
+      />
 
       {sourceError ? <ErrorMessage message={sourceError} /> : null}
       {error ? <ErrorMessage message={error} /> : null}

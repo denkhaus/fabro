@@ -20,6 +20,8 @@ macro_rules! select_automations_sql {
                 a.revision,
                 a.name,
                 a.description,
+                a.environment_id,
+                a.last_error,
                 a.api_enabled,
                 a.target_repository,
                 a.target_branch,
@@ -77,6 +79,33 @@ impl AutomationStore {
         Ok(row.is_some())
     }
 
+    pub async fn references_environment(
+        &self,
+        environment_id: &str,
+    ) -> Result<bool, AutomationStoreError> {
+        let row = sqlx::query("SELECT 1 FROM automations WHERE environment_id = ? LIMIT 1")
+            .bind(environment_id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.is_some())
+    }
+
+    pub async fn set_last_error(
+        &self,
+        id: &AutomationId,
+        message: Option<&str>,
+    ) -> Result<(), AutomationStoreError> {
+        let result = sqlx::query("UPDATE automations SET last_error = ? WHERE id = ?")
+            .bind(message)
+            .bind(id.as_str())
+            .execute(&self.pool)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(AutomationStoreError::NotFound { id: id.clone() });
+        }
+        Ok(())
+    }
+
     pub async fn create(&self, draft: AutomationDraft) -> Result<Automation, AutomationStoreError> {
         let (id, replace) = draft.into();
         let (automation, _) = Automation::from_replace(id.clone(), replace)?;
@@ -103,6 +132,8 @@ impl AutomationStore {
                 revision = ?,
                 name = ?,
                 description = ?,
+                environment_id = ?,
+                last_error = NULL,
                 api_enabled = ?,
                 target_repository = ?,
                 target_branch = ?,
@@ -115,6 +146,7 @@ impl AutomationStore {
         .bind(automation.revision.as_str())
         .bind(&automation.name)
         .bind(automation.description.as_deref())
+        .bind(automation.environment_id.as_deref())
         .bind(automation.api_enabled())
         .bind(&target.repo)
         .bind(&target.branch)
@@ -162,6 +194,8 @@ struct StoredAutomation {
     revision:          AutomationRevision,
     name:              String,
     description:       Option<String>,
+    environment_id:    Option<String>,
+    last_error:        Option<String>,
     api_enabled:       bool,
     target:            RunTarget,
     workflow:          String,
@@ -187,6 +221,8 @@ impl StoredAutomation {
             revision,
             name: row.try_get("name")?,
             description: row.try_get("description")?,
+            environment_id: row.try_get("environment_id")?,
+            last_error: row.try_get("last_error")?,
             api_enabled: row.try_get("api_enabled")?,
             target: RunTarget::Git(GitRunTarget {
                 repo:   row.try_get("target_repository")?,
@@ -236,14 +272,21 @@ impl StoredAutomation {
             triggers.push(AutomationTrigger::Api(ApiTrigger::manual()));
         }
         let id = self.id;
-        Automation::from_stored(id.clone(), self.revision, AutomationReplace {
-            name: self.name,
-            description: self.description,
-            target: self.target,
-            workflow: self.workflow,
-            triggers,
-        })
-        .map_err(|source| AutomationStoreError::StoredValidation { id, source })
+        let mut automation =
+            Automation::from_stored(id.clone(), self.revision, AutomationReplace {
+                name: self.name,
+                description: self.description,
+                environment_id: self.environment_id,
+                target: self.target,
+                workflow: self.workflow,
+                triggers,
+            })
+            .map_err(|source| AutomationStoreError::StoredValidation {
+                id: id.clone(),
+                source,
+            })?;
+        automation.last_error = self.last_error;
+        Ok(automation)
     }
 }
 
@@ -291,13 +334,14 @@ pub(crate) async fn insert_automation_ignoring_conflict(
             revision,
             name,
             description,
+            environment_id,
             api_enabled,
             target_repository,
             target_branch,
             target_tag,
             target_sha,
             target_workflow
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO NOTHING
         ",
     )
@@ -305,6 +349,7 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     .bind(automation.revision.as_str())
     .bind(&automation.name)
     .bind(automation.description.as_deref())
+    .bind(automation.environment_id.as_deref())
     .bind(automation.api_enabled())
     .bind(&target.repo)
     .bind(&target.branch)

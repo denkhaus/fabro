@@ -31,6 +31,14 @@ export interface Automation {
     'revision': string;
     'name': string;
     'description': string | null;
+    /**
+     * Server-managed Docker or Daytona environment selected when the automation fires. Null only for an incomplete definition migrated from a release that predated environment selection.
+     */
+    'environment_id': string | null;
+    /**
+     * Most recent scheduled-run failure, cleared after a scheduled run is queued successfully.
+     */
+    'last_error': string | null;
     'target': RunTarget;
     /**
      * Workflow slug or path resolved in the selected repository checkout.

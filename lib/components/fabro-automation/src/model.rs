@@ -34,13 +34,19 @@ pub fn parse_schedule_expression(expression: &str) -> Result<Cron, CronError> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Automation {
-    pub id:          AutomationId,
-    pub revision:    AutomationRevision,
-    pub name:        String,
-    pub description: Option<String>,
-    pub target:      RunTarget,
-    pub workflow:    String,
-    pub triggers:    Vec<AutomationTrigger>,
+    pub id:             AutomationId,
+    pub revision:       AutomationRevision,
+    pub name:           String,
+    pub description:    Option<String>,
+    /// Server-managed environment selected when the automation fires. Legacy
+    /// rows may be incomplete until an operator selects one.
+    pub environment_id: Option<String>,
+    /// Most recent scheduler failure. Runtime status is not part of the
+    /// optimistic-concurrency revision.
+    pub last_error:     Option<String>,
+    pub target:         RunTarget,
+    pub workflow:       String,
+    pub triggers:       Vec<AutomationTrigger>,
 }
 
 impl Automation {
@@ -54,7 +60,7 @@ impl Automation {
         id: AutomationId,
         draft: AutomationReplace,
     ) -> Result<(Self, Vec<u8>), AutomationStoreError> {
-        let draft = normalize_replace(draft)?;
+        let draft = normalize_replace(draft, true)?;
         let persisted = PersistedAutomation::from(draft.clone());
         let bytes = canonical_bytes(&persisted)?;
         let revision = AutomationRevision::from_bytes(&bytes);
@@ -67,7 +73,7 @@ impl Automation {
         revision: AutomationRevision,
         value: AutomationReplace,
     ) -> Result<Self, AutomationValidationError> {
-        let value = normalize_replace(value)?;
+        let value = normalize_replace(value, false)?;
         Ok(Self::from_validated_replace(id, revision, value))
     }
 
@@ -116,7 +122,7 @@ impl Automation {
         revision: AutomationRevision,
         persisted: PersistedAutomation,
     ) -> Result<Self, AutomationValidationError> {
-        let replace = normalize_replace(AutomationReplace::from(persisted))?;
+        let replace = normalize_replace(AutomationReplace::from(persisted), false)?;
         Ok(Self::from_validated_replace(id, revision, replace))
     }
 
@@ -130,6 +136,8 @@ impl Automation {
             revision,
             name: replace.name,
             description: replace.description,
+            environment_id: replace.environment_id,
+            last_error: None,
             target: replace.target,
             workflow: replace.workflow,
             triggers: replace.triggers,
@@ -192,23 +200,26 @@ pub struct ScheduleTrigger {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AutomationDraft {
-    pub id:          AutomationId,
-    pub name:        String,
+    pub id:             AutomationId,
+    pub name:           String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    pub target:      RunTarget,
-    pub workflow:    String,
-    pub triggers:    Vec<AutomationTrigger>,
+    pub description:    Option<String>,
+    #[serde(default)]
+    pub environment_id: Option<String>,
+    pub target:         RunTarget,
+    pub workflow:       String,
+    pub triggers:       Vec<AutomationTrigger>,
 }
 
 impl From<AutomationDraft> for (AutomationId, AutomationReplace) {
     fn from(value: AutomationDraft) -> Self {
         (value.id, AutomationReplace {
-            name:        value.name,
-            description: value.description,
-            target:      value.target,
-            workflow:    value.workflow,
-            triggers:    value.triggers,
+            name:           value.name,
+            description:    value.description,
+            environment_id: value.environment_id,
+            target:         value.target,
+            workflow:       value.workflow,
+            triggers:       value.triggers,
         })
     }
 }
@@ -216,34 +227,39 @@ impl From<AutomationDraft> for (AutomationId, AutomationReplace) {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AutomationReplace {
-    pub name:        String,
+    pub name:           String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    pub target:      RunTarget,
-    pub workflow:    String,
-    pub triggers:    Vec<AutomationTrigger>,
+    pub description:    Option<String>,
+    #[serde(default)]
+    pub environment_id: Option<String>,
+    pub target:         RunTarget,
+    pub workflow:       String,
+    pub triggers:       Vec<AutomationTrigger>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PersistedAutomation {
-    name:        String,
+    name:           String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
-    target:      RunTarget,
-    workflow:    String,
+    description:    Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    environment_id: Option<String>,
+    target:         RunTarget,
+    workflow:       String,
     #[serde(default)]
-    triggers:    Vec<AutomationTrigger>,
+    triggers:       Vec<AutomationTrigger>,
 }
 
 impl From<AutomationReplace> for PersistedAutomation {
     fn from(value: AutomationReplace) -> Self {
         Self {
-            name:        value.name,
-            description: value.description,
-            target:      value.target,
-            workflow:    value.workflow,
-            triggers:    value.triggers,
+            name:           value.name,
+            description:    value.description,
+            environment_id: value.environment_id,
+            target:         value.target,
+            workflow:       value.workflow,
+            triggers:       value.triggers,
         }
     }
 }
@@ -251,11 +267,12 @@ impl From<AutomationReplace> for PersistedAutomation {
 impl From<PersistedAutomation> for AutomationReplace {
     fn from(value: PersistedAutomation) -> Self {
         Self {
-            name:        value.name,
-            description: value.description,
-            target:      value.target,
-            workflow:    value.workflow,
-            triggers:    value.triggers,
+            name:           value.name,
+            description:    value.description,
+            environment_id: value.environment_id,
+            target:         value.target,
+            workflow:       value.workflow,
+            triggers:       value.triggers,
         }
     }
 }
@@ -281,9 +298,22 @@ fn parse_persisted(
     })
 }
 
-fn validate_fields(value: &AutomationReplace) -> Result<(), AutomationValidationError> {
+fn validate_fields(
+    value: &AutomationReplace,
+    require_environment: bool,
+) -> Result<(), AutomationValidationError> {
     if value.name.trim().is_empty() {
         return Err(AutomationValidationError::EmptyName);
+    }
+    if require_environment && value.environment_id.is_none() {
+        return Err(AutomationValidationError::MissingEnvironment);
+    }
+    if value
+        .environment_id
+        .as_deref()
+        .is_some_and(|environment_id| environment_id.trim().is_empty())
+    {
+        return Err(AutomationValidationError::MissingEnvironment);
     }
     validate_workflow_selector(&value.workflow)?;
     validate_triggers(&value.triggers)
@@ -291,9 +321,13 @@ fn validate_fields(value: &AutomationReplace) -> Result<(), AutomationValidation
 
 fn normalize_replace(
     mut value: AutomationReplace,
+    require_environment: bool,
 ) -> Result<AutomationReplace, AutomationValidationError> {
     value.target = validate_target(value.target)?;
-    validate_fields(&value)?;
+    value.environment_id = value
+        .environment_id
+        .map(|environment_id| environment_id.trim().to_string());
+    validate_fields(&value, require_environment)?;
 
     let api_enabled = value
         .triggers
@@ -502,11 +536,12 @@ enabled = true
     fn enabled_schedule_triggers_returns_only_enabled_schedule_triggers() {
         let (automation, _) =
             Automation::from_replace(AutomationId::new("nightly").unwrap(), AutomationReplace {
-                name:        "Nightly".to_string(),
-                description: None,
-                target:      target(),
-                workflow:    ".fabro/workflows/test/workflow.toml".to_string(),
-                triggers:    vec![
+                name:           "Nightly".to_string(),
+                description:    None,
+                environment_id: Some("default".to_string()),
+                target:         target(),
+                workflow:       ".fabro/workflows/test/workflow.toml".to_string(),
+                triggers:       vec![
                     api_trigger("manual"),
                     schedule_trigger_with_enabled("nightly", "0 0 * * *", true),
                     schedule_trigger_with_enabled("disabled", "0 1 * * *", false),
@@ -552,73 +587,81 @@ enabled = true
     fn validation_rejects_invalid_inputs() {
         let cases = [
             AutomationReplace {
-                name:        " ".to_string(),
-                description: None,
-                target:      target(),
-                workflow:    "release".to_string(),
-                triggers:    vec![api_trigger("manual")],
+                name:           " ".to_string(),
+                description:    None,
+                environment_id: Some("default".to_string()),
+                target:         target(),
+                workflow:       "release".to_string(),
+                triggers:       vec![api_trigger("manual")],
             },
             AutomationReplace {
-                name:        "Bad repo".to_string(),
-                description: None,
-                target:      RunTarget::Git(GitRunTarget {
+                name:           "Bad repo".to_string(),
+                description:    None,
+                environment_id: Some("default".to_string()),
+                target:         RunTarget::Git(GitRunTarget {
                     repo:   "not/github/slug".to_string(),
                     branch: "main".to_string(),
                     tag:    None,
                     sha:    None,
                 }),
-                workflow:    "release".to_string(),
-                triggers:    vec![api_trigger("manual")],
+                workflow:       "release".to_string(),
+                triggers:       vec![api_trigger("manual")],
             },
             AutomationReplace {
-                name:        "Bad ref".to_string(),
-                description: None,
-                target:      RunTarget::Git(GitRunTarget {
+                name:           "Bad ref".to_string(),
+                description:    None,
+                environment_id: Some("default".to_string()),
+                target:         RunTarget::Git(GitRunTarget {
                     repo:   "fabro-sh/fabro".to_string(),
                     branch: "main;rm".to_string(),
                     tag:    None,
                     sha:    None,
                 }),
-                workflow:    "release".to_string(),
-                triggers:    vec![api_trigger("manual")],
+                workflow:       "release".to_string(),
+                triggers:       vec![api_trigger("manual")],
             },
             AutomationReplace {
-                name:        "Bad workflow".to_string(),
-                description: None,
-                target:      target(),
-                workflow:    "../release".to_string(),
-                triggers:    vec![api_trigger("manual")],
+                name:           "Bad workflow".to_string(),
+                description:    None,
+                environment_id: Some("default".to_string()),
+                target:         target(),
+                workflow:       "../release".to_string(),
+                triggers:       vec![api_trigger("manual")],
             },
             AutomationReplace {
-                name:        "Duplicate trigger".to_string(),
-                description: None,
-                target:      target(),
-                workflow:    "release".to_string(),
-                triggers:    vec![
+                name:           "Duplicate trigger".to_string(),
+                description:    None,
+                environment_id: Some("default".to_string()),
+                target:         target(),
+                workflow:       "release".to_string(),
+                triggers:       vec![
                     api_trigger("manual"),
                     schedule_trigger("manual", "0 0 * * *"),
                 ],
             },
             AutomationReplace {
-                name:        "Two API triggers".to_string(),
-                description: None,
-                target:      target(),
-                workflow:    "release".to_string(),
-                triggers:    vec![api_trigger("one"), api_trigger("two")],
+                name:           "Two API triggers".to_string(),
+                description:    None,
+                environment_id: Some("default".to_string()),
+                target:         target(),
+                workflow:       "release".to_string(),
+                triggers:       vec![api_trigger("one"), api_trigger("two")],
             },
             AutomationReplace {
-                name:        "Six field cron".to_string(),
-                description: None,
-                target:      target(),
-                workflow:    "release".to_string(),
-                triggers:    vec![schedule_trigger("nightly", "0 0 0 * * *")],
+                name:           "Six field cron".to_string(),
+                description:    None,
+                environment_id: Some("default".to_string()),
+                target:         target(),
+                workflow:       "release".to_string(),
+                triggers:       vec![schedule_trigger("nightly", "0 0 0 * * *")],
             },
             AutomationReplace {
-                name:        "Bad cron".to_string(),
-                description: None,
-                target:      target(),
-                workflow:    "release".to_string(),
-                triggers:    vec![schedule_trigger("nightly", "99 0 * * *")],
+                name:           "Bad cron".to_string(),
+                description:    None,
+                environment_id: Some("default".to_string()),
+                target:         target(),
+                workflow:       "release".to_string(),
+                triggers:       vec![schedule_trigger("nightly", "99 0 * * *")],
             },
         ];
 

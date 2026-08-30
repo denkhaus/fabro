@@ -8,7 +8,7 @@ use serde::Serialize;
 use super::{ApiError, AppState, IntoResponse, Json, Response, StatusCode, demo};
 
 mod artifacts;
-mod automations;
+pub(in crate::server) mod automations;
 mod billing;
 mod completions;
 mod environments;

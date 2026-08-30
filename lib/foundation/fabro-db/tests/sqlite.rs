@@ -402,6 +402,21 @@ async fn automations_schema_enforces_aggregate_constraints() -> anyhow::Result<(
         .is_err()
     );
 
+    insert_minimal_environment(database.pool(), "automation-env", "docker", "allow_all").await?;
+    sqlx::query("UPDATE automations SET environment_id = 'automation-env' WHERE id = 'valid'")
+        .execute(database.pool())
+        .await?;
+    assert!(
+        sqlx::query("DELETE FROM environments WHERE id = 'automation-env'")
+            .execute(database.pool())
+            .await
+            .is_err(),
+        "an environment referenced by an automation must be protected by a foreign key"
+    );
+    sqlx::query("UPDATE automations SET environment_id = NULL WHERE id = 'valid'")
+        .execute(database.pool())
+        .await?;
+
     sqlx::query("DELETE FROM automations WHERE id = ?")
         .bind("valid")
         .execute(database.pool())
@@ -577,6 +592,15 @@ async fn unsupported_automation_targets_abort_before_schema_changes() -> anyhow:
 }
 
 async fn rewind_automation_target_migration(database: &fabro_db::Database) -> anyhow::Result<()> {
+    sqlx::query("DROP INDEX automations_environment_id_idx")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations DROP COLUMN last_error")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations DROP COLUMN environment_id")
+        .execute(database.pool())
+        .await?;
     sqlx::query("ALTER TABLE automations DROP COLUMN target_sha")
         .execute(database.pool())
         .await?;
@@ -586,7 +610,7 @@ async fn rewind_automation_target_migration(database: &fabro_db::Database) -> an
     sqlx::query("ALTER TABLE automations RENAME COLUMN target_branch TO target_ref")
         .execute(database.pool())
         .await?;
-    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 2026082601")
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version IN (2026082601, 2026082801)")
         .execute(database.pool())
         .await?;
     Ok(())

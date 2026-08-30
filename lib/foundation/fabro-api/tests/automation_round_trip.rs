@@ -22,6 +22,8 @@ fn automation_response_round_trips_public_json_shape() {
         "revision": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         "name": "Nightly dependency update",
         "description": null,
+        "environment_id": "daytona-smoke",
+        "last_error": null,
         "target": {
             "kind": "git",
             "repo": "fabro-sh/fabro",
@@ -55,6 +57,7 @@ fn create_automation_request_round_trips_public_json_shape() {
         "id": "nightly-deps",
         "name": "Nightly dependency update",
         "description": "Keep dependencies fresh",
+        "environment_id": "daytona-smoke",
         "target": {
             "kind": "git",
             "repo": "fabro-sh/fabro",
@@ -79,6 +82,7 @@ fn replace_automation_request_round_trips_public_json_shape() {
     let value = json!({
         "name": "Nightly dependency update",
         "description": "Keep dependencies fresh",
+        "environment_id": "daytona-smoke",
         "target": {
             "kind": "git",
             "repo": "fabro-sh/fabro",

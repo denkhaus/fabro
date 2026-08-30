@@ -105,6 +105,7 @@ fn parse_legacy_automation(
     Automation::from_stored(id.clone(), revision, AutomationReplace {
         name: legacy.name,
         description: legacy.description,
+        environment_id: None,
         target,
         workflow,
         triggers: legacy.triggers,
