@@ -90,6 +90,13 @@ decision, not an accident - it needs the user plus an ADR.
   docs): reviewers load `workflows/code-review-refactor.md` and the
   guideline pages covering the diff. Guide findings are findings, not
   opinions.
+- E2E-test verification (2026-08-31 lesson, fabro-47b5): a green
+  `--profile e2e` run can be a NO-OP for twin-only tests
+  (NEXTEST_PROFILE=e2e => TestMode::Strict => e2e_test(twin) prints
+  "skipping" and returns Ok) — run twin tests in the DEFAULT profile.
+  And tests/it's `LlmCodergenBackend`/`make_llm_backend` seam never
+  builds agent sessions: session-level features need httpmock + the
+  REAL `AgentApiBackend` (wire-body asserts are the strongest proof).
 
 ## Phase 4 - Deepen (conditional)
 
