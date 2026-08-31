@@ -107,7 +107,10 @@ pub fn resolve_local_workflow_package(
 }
 
 fn is_workflow_name(workflow: &Path) -> bool {
-    workflow.extension().is_none() && workflow.components().count() == 1
+    workflow.extension().is_none()
+        && workflow
+            .file_name()
+            .is_some_and(|name| workflow.as_os_str() == name)
 }
 
 fn resolve_named_workflow(
@@ -362,6 +365,28 @@ mod tests {
 
         let error = resolve_local_workflow_package(Path::new("hello"), &cwd, None).unwrap_err();
         assert!(matches!(error, LocalWorkflowPackageError::Resolve { .. }));
+    }
+
+    #[test]
+    fn dot_relative_directory_is_an_explicit_path_even_when_name_exists() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        init_repo(&project);
+        write_workflow(&project, ".fabro/workflows/hello", "digraph Named {}");
+        write_workflow(&project, "hello", "digraph Explicit {}");
+
+        let package = resolve_local_workflow_package(Path::new("./hello"), &project, None).unwrap();
+
+        assert_eq!(package.source_root(), project.canonicalize().unwrap());
+        assert_eq!(
+            package.workflow_location().graph,
+            project.join("hello/workflow.fabro").canonicalize().unwrap(),
+        );
+        assert_eq!(
+            root_version(&package).entrypoint().as_str(),
+            "hello/workflow.fabro",
+        );
     }
 
     #[test]

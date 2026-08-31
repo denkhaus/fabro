@@ -234,6 +234,40 @@ pub fn push_branch_noninteractive(repo: &Path, remote: &str, branch: &str) -> Re
     )
 }
 
+/// Read the exact commit currently advertised for a remote branch without
+/// allowing Git to prompt for credentials.
+///
+/// This queries the remote itself rather than trusting the checkout's local
+/// remote-tracking ref, which may be stale or may have been rewritten locally.
+pub fn remote_branch_sha_noninteractive(
+    repo: &Path,
+    remote: &str,
+    branch: &str,
+) -> Result<Option<String>> {
+    let branch_ref = format!("refs/heads/{branch}");
+    let output = git_cmd(repo)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .args(["ls-remote", "--refs", remote, &branch_ref])
+        .output()
+        .map_err(|e| Error::engine_with_source("git ls-remote failed", e))?;
+    if !output.status.success() {
+        return Err(git_error("git ls-remote failed"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let mut fields = line.split_whitespace();
+        let (Some(sha), Some(observed_ref), None) = (fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        if observed_ref == branch_ref {
+            return Ok(Some(sha.to_owned()));
+        }
+    }
+    Ok(None)
+}
+
 /// Push run and metadata branches to origin if a remote tracking branch exists.
 ///
 /// Callers supply pre-built refspecs so they control force-push (`+` prefix).

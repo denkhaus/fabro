@@ -84,19 +84,15 @@ pub fn collect_workflow_versions(
 ) -> Result<CollectedWorkflowClosure, WorkflowVersionCollectError> {
     let repository_workflow = repository_workflow_path(workflow);
     let location = crate::resolve_existing_workflow_location(&repository_workflow, checkout_root)
-        .map_err(|source| {
-            match source {
-                fabro_config::Error::WorkflowNotFound(_) => {
-                    WorkflowVersionCollectError::WorkflowNotFound {
-                        path: workflow.to_path_buf(),
-                    }
-                }
-                source => WorkflowVersionCollectError::Collect {
-                    path:   workflow.to_path_buf(),
-                    source: source.into(),
-                },
-            }
-        })?;
+        .map_err(|source| match source {
+        fabro_config::Error::WorkflowNotFound(_) => WorkflowVersionCollectError::WorkflowNotFound {
+            path: workflow.to_path_buf(),
+        },
+        source => WorkflowVersionCollectError::Collect {
+            path:   workflow.to_path_buf(),
+            source: source.into(),
+        },
+    })?;
 
     let package_root =
         checkout_root
