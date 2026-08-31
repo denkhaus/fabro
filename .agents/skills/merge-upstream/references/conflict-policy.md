@@ -58,3 +58,29 @@ upstream's new signatures; never revert upstream, never drop our features.
   `AsyncWriteExt as _` import looks unused under some feature unions — both
   pre-existing upstream artifacts, NOT merge regressions; clippy --workspace
   is the gate, don't chase them.
+
+## 2026-08-31 (v0.339.0-nightly.1)
+
+- Import-block widening: our fork widened cfg gates (`any(docker, daytona)`)
+  on imports that upstream keeps daytona-only and folds NEW types into
+  (DaytonaSnapshotSource + DockerfileSource alias in one use). Resolution:
+  keep our wider-gated import, add their new types to the daytona import,
+  and dedupe the alias — auto-merge otherwise leaves BOTH import forms.
+- Feature-mapping port onto upstream's new code: upstream's new
+  DaytonaSnapshotSource match duplicated our Inline/Path mapping inline;
+  replace their verbose arms with a call to OUR existing shared helper
+  (`sandbox_dockerfile_source`) — both sides' behavior identical, one map.
+- Obsolescence reversal in tests: conflict boundary can fall INSIDE our old
+  fn head (`fn daytona_image_docker_errors() { let err = ...(`
+  vs upstream `fn daytona_image_docker_resolves() { let settings = ...(`).
+  Drop our dangling head, take their fn, keep our adjacent feature tests.
+- Docs table rows merge PER CELL: upstream semantics for their provider
+  column, our cells (docker autobuild) survive in ours; update prose to
+  "either provider" when both sides now enforce the same rule.
+- Edit mechanics: when splicing conflict blocks by hand, APPLY the cut before
+  writing (a forgotten cut glued two fn heads into one line). Build old/new
+  from actual file lines + assert marker positions instead of retyping;
+  `=======` inside triple-quoted strings invites silent typos.
+- (false-alarm class, recurrence): nextest --no-run can warn unused import
+  (`tokio_stream::StreamExt as _` in server/tests.rs) that clippy
+  --all-targets -D warnings does NOT flag; upstream pre-existing, don't chase.

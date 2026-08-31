@@ -75,3 +75,27 @@ Upstream directions that may supersede our work — re-evaluate per merge:
 - Stale entries: fabro-890b CLOSED (PR model plumbing landed a1e27c9bf);
   run_workflow.nu no longer exists on meta/denkhaus-lab (lab restructure,
   fabro-a9bb) — verify lab script paths before citing them here.
+
+## 2026-08-31 (v0.339.0-nightly.1, merge 4a22e3d47)
+
+- Daytona now accepts image.docker as snapshot base (DaytonaSnapshotSource
+  enum): our validate_daytona_image_settings REMOVED as superseded; the
+  both-set rejection lives in upstream's validate_provider_capabilities.
+  Our docker-provider mutual exclusion (fabro-969f) kept — no upstream
+  equivalent. Seeds 72a0/829a/f251 updated with merge notes; f251 PR offer
+  still valid (upstream has no docker autobuild).
+- Upstream ships an in-repo product code-review workflow
+  (.fabro/workflows/code-review: rules/builtin YAML set, findings/verdict
+  schemas, publish_pr.py) and calibrates it on their own PRs — parallel to
+  our develop lab dogfooding. Evaluate cross-pollination for the revisor
+  line (ADR-0011): structured findings schema + rule_loader are reusable
+  concepts.
+- SQL run-record foundation landed INACTIVE (RunSummaryStore name kept until
+  cutover; migrations 2026082601 automation_run_targets, 2026082701
+  run_events, 2026082801 automation_environments; strict legacy run history
+  import+verify). Any fork state-to-SQL work must build on this line.
+- Automations now REQUIRE server-managed environments and use canonical run
+  targets + workflow versions — RunIntent admission stays the validated gate
+  layer for fork admission work (branch/tag/SHA matrix from PR #812).
+- Chat Completions streams reject tool-call index gaps (fabro-llm) —
+  robustness only, no fork impact.
