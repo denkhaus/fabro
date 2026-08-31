@@ -7,6 +7,7 @@ use sqlx::SqlitePool;
 
 #[cfg(test)]
 use crate::record::Repository;
+#[cfg(test)]
 use crate::record::{RawBytesCodec, Record};
 use crate::{Error, Result};
 
@@ -25,6 +26,7 @@ impl From<Bytes> for Blob {
     }
 }
 
+#[cfg(test)]
 impl Record for Blob {
     type Id = BlobHash;
     type Codec = RawBytesCodec;

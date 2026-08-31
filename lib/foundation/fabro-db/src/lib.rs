@@ -28,6 +28,11 @@ pub const RUNS_MIGRATION_SQL: &str = include_str!("../migrations/2026071104_runs
 /// the production schema without a filesystem path into this crate.
 pub const RUN_EVENTS_MIGRATION_SQL: &str = include_str!("../migrations/2026082701_run_events.sql");
 
+/// The temporary run-history activation migration, exposed so fixtures in
+/// other crates can install the production compatibility schema.
+pub const RUN_HISTORY_ACTIVATION_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026082802_run_history_activation.sql");
+
 #[derive(Clone)]
 pub struct Database {
     pool: DbPool,

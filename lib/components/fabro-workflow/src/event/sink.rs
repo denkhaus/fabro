@@ -4,14 +4,15 @@ use std::sync::Arc;
 
 use ::fabro_types::{RunEvent, RunId, RunProjection};
 use anyhow::Result;
-use fabro_store::RunDatabase;
+use chrono::{DateTime, Utc};
+use fabro_store::{Database, RunDatabase};
 use fabro_util::error::{SharedError, collect_chain};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot, watch};
 
 use super::emitter::Emitter;
 use super::redaction::{build_redacted_event_payload, redacted_event_json};
-use super::{Event, to_run_event};
+use super::{Event, to_run_event, to_run_event_at};
 use crate::runtime_store::RunStoreHandle;
 
 pub async fn append_event(run_store: &RunDatabase, run_id: &RunId, event: &Event) -> Result<()> {
@@ -21,6 +22,21 @@ pub async fn append_event(run_store: &RunDatabase, run_id: &RunId, event: &Event
         .append_event(&payload)
         .await
         .map(|_| ())
+        .map_err(anyhow::Error::from)
+}
+
+/// Creates a run by committing its redacted `run.created` event and canonical
+/// current row in one SQLite transaction.
+pub async fn create_run(
+    store: &Database,
+    run_id: &RunId,
+    event: &Event,
+    timestamp: DateTime<Utc>,
+) -> Result<RunDatabase> {
+    let stored = to_run_event_at(run_id, event, timestamp, None);
+    let payload = build_redacted_event_payload(&stored, run_id)?;
+    Box::pin(store.create_run_with_first_event(run_id, &payload))
+        .await
         .map_err(anyhow::Error::from)
 }
 

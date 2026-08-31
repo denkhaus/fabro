@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use chrono::Utc;
 use fabro_store::Database;
 use fabro_types::{RunId, RunProvenance, RunSpec, RunStatus};
 
@@ -64,12 +65,7 @@ pub async fn retry_run(
     let settings = serde_json::to_value(&settings).map_err(|err| Error::engine(err.to_string()))?;
     let graph = serde_json::to_value(&graph).map_err(|err| Error::engine(err.to_string()))?;
 
-    let retry_store = store
-        .create_run(&new_run_id)
-        .await
-        .map_err(|err| Error::engine(err.to_string()))?;
-
-    event::append_event(&retry_store, &new_run_id, &Event::RunCreated {
+    let first_event = Event::RunCreated {
         run_id: new_run_id,
         title: Some(title),
         settings,
@@ -91,9 +87,10 @@ pub async fn retry_run(
         retried_from: Some(source_run_id),
         parent_id,
         web_url: input.web_url.clone(),
-    })
-    .await
-    .map_err(|err| Error::engine(err.to_string()))?;
+    };
+    let retry_store = event::create_run(store, &new_run_id, &first_event, Utc::now())
+        .await
+        .map_err(|err| Error::engine(err.to_string()))?;
 
     event::append_event(&retry_store, &new_run_id, &Event::RunSubmitted {
         definition_blob,
