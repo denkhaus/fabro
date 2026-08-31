@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex, MutexGuard as StdMutexGuard};
 
 use bytes::Bytes;
 use fabro_types::{BlobHash, RunEvent, RunId, SessionId};
 use futures::Stream;
-use tokio::sync::{Mutex, broadcast, mpsc};
+use tokio::sync::{Mutex as AsyncMutex, broadcast, mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use super::projection_cache::{CachedRunProjection, RunProjectionCache};
@@ -36,11 +36,19 @@ impl std::fmt::Debug for RunDatabase {
 pub(crate) struct RunDatabaseInner {
     pub(crate) run_id:       RunId,
     blob_store:              Arc<BlobStore>,
-    pub(crate) state_lock:   Mutex<()>,
-    projection_cache:        Mutex<EventProjectionCache>,
+    pub(crate) state_lock:   AsyncMutex<()>,
+    projection_cache:        StdMutex<EventProjectionCache>,
     shared_projection_cache: Arc<RunProjectionCache>,
     run_summary_store:       Arc<RunSummaryStore>,
     event_tx:                broadcast::Sender<EventEnvelope>,
+}
+
+impl RunDatabaseInner {
+    fn lock_projection_cache(&self) -> StdMutexGuard<'_, EventProjectionCache> {
+        self.projection_cache.lock().expect(
+            "event projection cache mutex is never poisoned: no code panics while holding this lock",
+        )
+    }
 }
 
 impl RunDatabase {
@@ -52,7 +60,7 @@ impl RunDatabase {
         run_summary_store: Arc<RunSummaryStore>,
     ) -> Result<Self> {
         let projection_cache = if let Some((projection, last_seq)) =
-            shared_projection_cache.projection_snapshot(&run_id).await
+            shared_projection_cache.projection_snapshot(&run_id)
         {
             EventProjectionCache {
                 last_seq,
@@ -106,8 +114,8 @@ impl RunDatabase {
             inner: Arc::new(RunDatabaseInner {
                 run_id,
                 blob_store,
-                state_lock: Mutex::new(()),
-                projection_cache: Mutex::new(projection_cache),
+                state_lock: AsyncMutex::new(()),
+                projection_cache: StdMutex::new(projection_cache),
                 shared_projection_cache,
                 run_summary_store,
                 event_tx,
@@ -167,14 +175,12 @@ impl RunDatabase {
 
     async fn projected_state(&self) -> Result<Arc<RunProjection>> {
         let _state_guard = self.inner.state_lock.lock().await;
-        self.projected_state_locked().await
+        self.projected_state_locked()
     }
 
-    async fn projected_state_locked(&self) -> Result<Arc<RunProjection>> {
+    fn projected_state_locked(&self) -> Result<Arc<RunProjection>> {
         self.inner
-            .projection_cache
-            .lock()
-            .await
+            .lock_projection_cache()
             .state
             .clone()
             .ok_or_else(|| {
@@ -185,20 +191,17 @@ impl RunDatabase {
             })
     }
 
-    pub(crate) async fn install_in_memory_state(
+    pub(crate) fn install_in_memory_state(
         &self,
         event: &EventEnvelope,
         cached: &CachedRunProjection,
     ) {
         {
-            let mut projection_cache = self.inner.projection_cache.lock().await;
+            let mut projection_cache = self.inner.lock_projection_cache();
             projection_cache.state = Some(Arc::clone(&cached.projection));
             projection_cache.last_seq = event.seq;
         }
-        self.inner
-            .shared_projection_cache
-            .replace(cached.clone())
-            .await;
+        self.inner.shared_projection_cache.replace(cached.clone());
     }
 
     pub(crate) fn publish(&self, event: &EventEnvelope) {
@@ -212,7 +215,7 @@ impl RunDatabase {
         payload.validate(&self.inner.run_id)?;
         let event = RunEvent::try_from(payload)?;
         let _state_guard = self.inner.state_lock.lock().await;
-        if self.inner.projection_cache.lock().await.last_seq != 0 {
+        if self.inner.lock_projection_cache().last_seq != 0 {
             return Err(Error::RunAlreadyExists(self.inner.run_id.to_string()));
         }
         self.commit_event_locked(payload, event).await
@@ -242,7 +245,7 @@ impl RunDatabase {
         payload.validate(&self.inner.run_id)?;
         let event = RunEvent::try_from(payload)?;
         let _state_guard = self.inner.state_lock.lock().await;
-        let projection = self.projected_state_locked().await?;
+        let projection = self.projected_state_locked()?;
         if !predicate(&projection) {
             return Ok(None);
         }
@@ -270,7 +273,9 @@ impl RunDatabase {
         event: RunEvent,
     ) -> Result<EventEnvelope> {
         let (envelope, cached) = self.commit_event_locked(payload, event).await?;
-        Box::pin(self.install_in_memory_state(&envelope, &cached)).await;
+        // Keep post-commit propagation await-free: cancellation after SQLite
+        // commits must not leave either cache stale or omit the broadcast.
+        self.install_in_memory_state(&envelope, &cached);
         self.publish(&envelope);
         Ok(envelope)
     }
@@ -281,7 +286,7 @@ impl RunDatabase {
         event: RunEvent,
     ) -> Result<(EventEnvelope, CachedRunProjection)> {
         let (expected_last_seq, mut next_state) = {
-            let cache = self.inner.projection_cache.lock().await;
+            let cache = self.inner.lock_projection_cache();
             (cache.last_seq, cache.state.clone())
         };
         let seq = run_summary_store::next_event_seq_after(expected_last_seq)?;

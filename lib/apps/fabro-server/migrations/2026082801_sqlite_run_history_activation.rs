@@ -10,11 +10,11 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Duration, Utc};
 use tokio::fs;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::migrations::sqlite_activation_backup::{self, BackupError};
 
-const BACKUP_SUFFIX: &str = ".pre-run-history-activation.bak";
+pub(crate) const BACKUP_SUFFIX: &str = ".pre-run-history-activation.bak";
 const REMOVAL_WINDOW: Duration = Duration::days(30);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -33,8 +33,6 @@ pub(crate) enum RunHistoryActivationError {
         #[source]
         source: std::io::Error,
     },
-    #[error("identifying the legacy run-history source")]
-    SourceIdentity(#[source] fabro_store::LegacyRunHistorySourceIdentityError),
     #[error("reading the SQLite run-history activation state")]
     ActivationState(#[source] sqlx::Error),
     #[error("the persisted run-history activation marker does not match the legacy source")]
@@ -68,8 +66,6 @@ pub(crate) enum RunHistoryActivationError {
     InvalidActivationTimestamp,
     #[error("running the final SQLite WAL truncate checkpoint")]
     FinalCheckpoint(#[source] sqlx::Error),
-    #[error("the final SQLite WAL truncate checkpoint remained busy")]
-    FinalCheckpointBusy,
     #[error("a run-history activation count exceeds SQLite's integer range")]
     CountOverflow,
 }
@@ -78,6 +74,7 @@ pub(crate) async fn activate_run_history(
     database: &fabro_db::Database,
     sqlite_path: &Path,
     store: &fabro_store::Database,
+    identity: &fabro_store::LegacyRunHistorySourceIdentity,
 ) -> Result<(), RunHistoryActivationError> {
     let canonical_path = fs::canonicalize(sqlite_path).await.map_err(|source| {
         RunHistoryActivationError::Canonicalize {
@@ -92,15 +89,11 @@ pub(crate) async fn activate_run_history(
         "Starting SQLite run-history activation"
     );
 
-    let identity = store
-        .legacy_run_history_source_identity()
-        .await
-        .map_err(RunHistoryActivationError::SourceIdentity)?;
     let marker = read_activation_record(database.pool()).await?;
     let (target_runs, target_events) = target_counts(database.pool()).await?;
 
     if let Some(record) = &marker {
-        verify_marker(record, &identity)?;
+        verify_marker(record, identity)?;
     } else if identity.events == 0 && (target_runs != 0 || target_events != 0) {
         return Err(RunHistoryActivationError::EmptySourceWithTarget {
             target_runs,
@@ -135,7 +128,7 @@ pub(crate) async fn activate_run_history(
         || Utc::now().timestamp_millis(),
         |record| record.activated_at_ms,
     );
-    persist_activation_record(database.pool(), &identity, activated_at_ms).await?;
+    persist_activation_record(database.pool(), identity, activated_at_ms).await?;
     final_truncate_checkpoint(database.pool()).await?;
 
     let activated_at = DateTime::<Utc>::from_timestamp_millis(activated_at_ms)
@@ -266,7 +259,12 @@ async fn final_truncate_checkpoint(
         .await
         .map_err(RunHistoryActivationError::FinalCheckpoint)?;
     if busy != 0 {
-        return Err(RunHistoryActivationError::FinalCheckpointBusy);
+        // A concurrent reader can keep the WAL from truncating, but all
+        // activation data is already committed and remains durable in that
+        // WAL. A later checkpoint can truncate it after the reader exits.
+        warn!(
+            "The final SQLite run-history WAL truncate checkpoint could not complete; continuing startup"
+        );
     }
     Ok(())
 }
@@ -281,6 +279,7 @@ mod tests {
     use fabro_types::{Graph, RunId, WorkflowSettings, test_support};
     use object_store::memory::InMemory;
     use sqlx::Connection as _;
+    use tokio::fs;
     use ulid::Ulid;
 
     use super::{
@@ -359,6 +358,10 @@ mod tests {
             .await
         }
 
+        async fn source_identity(&self) -> TestResult<fabro_store::LegacyRunHistorySourceIdentity> {
+            Ok(self.store.legacy_run_history_source_identity().await?)
+        }
+
         fn backup_path(&self) -> PathBuf {
             fabro_db::append_to_path(&self.sqlite_path, BACKUP_SUFFIX)
         }
@@ -377,7 +380,14 @@ mod tests {
             .put_event(&run_id, 2, "run.submitted", serde_json::json!({}))
             .await?;
 
-        activate_run_history(&context.database, &context.sqlite_path, &context.store).await?;
+        let identity = context.source_identity().await?;
+        activate_run_history(
+            &context.database,
+            &context.sqlite_path,
+            &context.store,
+            &identity,
+        )
+        .await?;
         let first_marker = read_activation_record(context.database.pool())
             .await?
             .unwrap();
@@ -403,7 +413,13 @@ mod tests {
             2
         );
 
-        activate_run_history(&context.database, &context.sqlite_path, &context.store).await?;
+        activate_run_history(
+            &context.database,
+            &context.sqlite_path,
+            &context.store,
+            &identity,
+        )
+        .await?;
         assert_eq!(
             read_activation_record(context.database.pool()).await?,
             Some(first_marker)
@@ -412,7 +428,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn busy_final_checkpoint_fails_activation_closed() -> TestResult<()> {
+    async fn busy_final_checkpoint_warns_and_does_not_fail_activation() -> TestResult<()> {
         use sqlx::sqlite::{SqliteJournalMode, SqlitePoolOptions};
 
         let context = TestContext::new("busy-final-run-checkpoint").await?;
@@ -442,13 +458,12 @@ mod tests {
             .connect_with(checkpoint_options)
             .await?;
 
-        let error = final_truncate_checkpoint(&checkpoint_pool)
-            .await
-            .expect_err("a busy final truncate must fail startup closed");
-        assert!(matches!(
-            error,
-            RunHistoryActivationError::FinalCheckpointBusy
-        ));
+        final_truncate_checkpoint(&checkpoint_pool).await?;
+
+        let wal_bytes = fs::metadata(fabro_db::append_to_path(&context.sqlite_path, "-wal"))
+            .await?
+            .len();
+        assert!(wal_bytes > 0, "the WAL should remain untruncated");
         drop(reader);
         Ok(())
     }
@@ -458,14 +473,27 @@ mod tests {
         let context = TestContext::new("changed-run-activation-source").await?;
         let run_id = run_id();
         context.put_created(&run_id).await?;
-        activate_run_history(&context.database, &context.sqlite_path, &context.store).await?;
+        let original_identity = context.source_identity().await?;
+        activate_run_history(
+            &context.database,
+            &context.sqlite_path,
+            &context.store,
+            &original_identity,
+        )
+        .await?;
 
         context
             .put_event(&run_id, 2, "run.submitted", serde_json::json!({}))
             .await?;
-        let error = activate_run_history(&context.database, &context.sqlite_path, &context.store)
-            .await
-            .expect_err("the source identity must remain stable after activation");
+        let changed_identity = context.source_identity().await?;
+        let error = activate_run_history(
+            &context.database,
+            &context.sqlite_path,
+            &context.store,
+            &changed_identity,
+        )
+        .await
+        .expect_err("the source identity must remain stable after activation");
         assert!(matches!(error, RunHistoryActivationError::MarkerMismatch));
         assert_eq!(
             sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM run_events")
@@ -481,7 +509,14 @@ mod tests {
         let context = TestContext::new("empty-source-with-target").await?;
         let run_id = run_id();
         context.put_created(&run_id).await?;
-        activate_run_history(&context.database, &context.sqlite_path, &context.store).await?;
+        let identity = context.source_identity().await?;
+        activate_run_history(
+            &context.database,
+            &context.sqlite_path,
+            &context.store,
+            &identity,
+        )
+        .await?;
         sqlx::query("DELETE FROM legacy_run_history_activation")
             .execute(context.database.pool())
             .await?;
@@ -496,9 +531,15 @@ mod tests {
                 context.database.clone_pool(),
             )),
         ));
-        let error = activate_run_history(&context.database, &context.sqlite_path, &empty_store)
-            .await
-            .expect_err("unmarked SQLite rows cannot be adopted from an empty source");
+        let empty_identity = empty_store.legacy_run_history_source_identity().await?;
+        let error = activate_run_history(
+            &context.database,
+            &context.sqlite_path,
+            &empty_store,
+            &empty_identity,
+        )
+        .await
+        .expect_err("unmarked SQLite rows cannot be adopted from an empty source");
         assert!(matches!(
             error,
             RunHistoryActivationError::EmptySourceWithTarget { .. }
@@ -516,9 +557,15 @@ mod tests {
             .import_legacy_run_history_into(context.database.pool())
             .await?;
 
-        let error = activate_run_history(&context.database, &context.sqlite_path, &context.store)
-            .await
-            .expect_err("partial import progress requires the retained backup");
+        let identity = context.source_identity().await?;
+        let error = activate_run_history(
+            &context.database,
+            &context.sqlite_path,
+            &context.store,
+            &identity,
+        )
+        .await
+        .expect_err("partial import progress requires the retained backup");
         assert!(matches!(
             error,
             RunHistoryActivationError::MissingBackupAfterProgress { .. }
@@ -529,14 +576,27 @@ mod tests {
     #[tokio::test]
     async fn empty_source_and_target_need_no_backup_on_cold_or_warm_start() -> TestResult<()> {
         let context = TestContext::new("empty-run-activation").await?;
-        activate_run_history(&context.database, &context.sqlite_path, &context.store).await?;
+        let identity = context.source_identity().await?;
+        activate_run_history(
+            &context.database,
+            &context.sqlite_path,
+            &context.store,
+            &identity,
+        )
+        .await?;
         let marker = read_activation_record(context.database.pool())
             .await?
             .unwrap();
         assert_eq!((marker.source_runs, marker.source_events), (0, 0));
         assert!(!context.backup_path().exists());
 
-        activate_run_history(&context.database, &context.sqlite_path, &context.store).await?;
+        activate_run_history(
+            &context.database,
+            &context.sqlite_path,
+            &context.store,
+            &identity,
+        )
+        .await?;
         assert!(!context.backup_path().exists());
         Ok(())
     }

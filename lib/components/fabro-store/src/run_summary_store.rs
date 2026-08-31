@@ -9,7 +9,7 @@ use fabro_types::{
 use sqlx::pool::PoolConnection;
 use sqlx::query::Query;
 use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
-use sqlx::{QueryBuilder, Row as _, Sqlite, SqlitePool, Transaction};
+use sqlx::{Connection as _, QueryBuilder, Row as _, Sqlite, SqlitePool, Transaction};
 use strum::VariantArray as _;
 
 use crate::run_state::projected_billing;
@@ -596,6 +596,26 @@ impl RunSummaryStore {
     }
 
     pub(crate) async fn list_events_with_json_on_connection(
+        connection: &mut SqliteConnection,
+        run_id: &RunId,
+    ) -> Result<Vec<(EventEnvelope, String)>> {
+        // The current-row head and event rows must come from one snapshot.
+        // Otherwise a concurrent append between the two SELECTs looks like
+        // durable corruption even though both versions are individually valid.
+        let mut transaction = connection.begin().await?;
+        let events = Self::list_events_with_json_in_transaction(&mut transaction, run_id).await?;
+        transaction.commit().await?;
+        Ok(events)
+    }
+
+    pub(crate) async fn list_events_with_json_in_transaction(
+        transaction: &mut Transaction<'_, Sqlite>,
+        run_id: &RunId,
+    ) -> Result<Vec<(EventEnvelope, String)>> {
+        Self::list_events_with_json_in_snapshot(&mut *transaction, run_id).await
+    }
+
+    async fn list_events_with_json_in_snapshot(
         connection: &mut SqliteConnection,
         run_id: &RunId,
     ) -> Result<Vec<(EventEnvelope, String)>> {

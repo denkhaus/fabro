@@ -31,7 +31,7 @@ pub const RUN_EVENTS_MIGRATION_SQL: &str = include_str!("../migrations/202608270
 /// The temporary run-history activation migration, exposed so fixtures in
 /// other crates can install the production compatibility schema.
 pub const RUN_HISTORY_ACTIVATION_MIGRATION_SQL: &str =
-    include_str!("../migrations/2026082801_run_history_activation.sql");
+    include_str!("../migrations/2026082802_run_history_activation.sql");
 
 #[derive(Clone)]
 pub struct Database {

@@ -1039,7 +1039,7 @@ async fn import_one_run(
                 })?;
         let mut updated = *report;
         if has_destination {
-            let destination = RunSummaryStore::list_events_with_json_on_connection(
+            let destination = RunSummaryStore::list_events_with_json_in_transaction(
                 &mut transaction,
                 &history.run_id,
             )

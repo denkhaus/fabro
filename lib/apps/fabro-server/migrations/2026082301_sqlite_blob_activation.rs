@@ -15,6 +15,7 @@ use tokio::fs;
 use tracing::{debug, info, warn};
 
 use crate::migrations::sqlite_activation_backup::{self, BackupError};
+use crate::migrations::sqlite_run_history_activation::BACKUP_SUFFIX as RUN_HISTORY_BACKUP_SUFFIX;
 use crate::server::resource_sampler;
 
 /// Earliest date this bridge becomes eligible for removal, assuming the first
@@ -26,6 +27,20 @@ pub(crate) const REMOVAL_DEADLINE: &str = "2026-09-22";
 const DISK_HEADROOM_BYTES: u64 = 64 * 1024 * 1024;
 const BACKUP_SUFFIX: &str = ".pre-blob-activation.bak";
 
+pub(crate) struct ActivatedBlobStorage {
+    pub(crate) store:                Arc<fabro_store::Database>,
+    pub(crate) run_history_identity: fabro_store::LegacyRunHistorySourceIdentity,
+}
+
+impl std::fmt::Debug for ActivatedBlobStorage {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ActivatedBlobStorage")
+            .field("run_history_identity", &self.run_history_identity)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum BlobActivationError {
     #[error("canonicalizing the SQLite database path {path}")]
@@ -36,6 +51,8 @@ pub(crate) enum BlobActivationError {
     },
     #[error("inventorying the legacy blob source")]
     Inventory(#[source] fabro_store::LegacyBlobInventoryError),
+    #[error("identifying legacy run history before importing blobs")]
+    RunHistorySourceIdentity(#[source] fabro_store::LegacyRunHistorySourceIdentityError),
     #[error(
         "activation backup is missing at {path} while {existing_rows} of {legacy_rows} legacy blob rows are already present in SQLite"
     )]
@@ -80,7 +97,7 @@ pub(crate) async fn activate_blob_storage(
     slatedb_prefix: String,
     flush_interval: Duration,
     cache_path: Option<PathBuf>,
-) -> Result<Arc<fabro_store::Database>, BlobActivationError> {
+) -> Result<ActivatedBlobStorage, BlobActivationError> {
     let canonical_path = fs::canonicalize(sqlite_path).await.map_err(|source| {
         BlobActivationError::Canonicalize {
             path: sqlite_path.to_path_buf(),
@@ -109,6 +126,10 @@ pub(crate) async fn activate_blob_storage(
         .legacy_blob_inventory(database.pool())
         .await
         .map_err(BlobActivationError::Inventory)?;
+    let run_history_identity = store
+        .legacy_run_history_source_identity()
+        .await
+        .map_err(BlobActivationError::RunHistorySourceIdentity)?;
     let backup_exists = sqlite_activation_backup::backup_exists(&backup_path).await?;
     if backup_exists {
         sqlite_activation_backup::validate_backup(&backup_path).await?;
@@ -121,6 +142,15 @@ pub(crate) async fn activate_blob_storage(
         });
     }
     let backup_required = inventory.rows > 0 && !backup_exists;
+    let run_history_backup_path =
+        fabro_db::append_to_path(&canonical_path, RUN_HISTORY_BACKUP_SUFFIX);
+    let run_history_backup_exists =
+        sqlite_activation_backup::backup_exists(&run_history_backup_path).await?;
+    if run_history_backup_exists {
+        sqlite_activation_backup::validate_backup(&run_history_backup_path).await?;
+    }
+    let run_history_backup_required =
+        run_history_identity.events != 0 && !run_history_backup_exists;
     // The resource sampler treats a path with no matching mount as an
     // unsupported-but-benign condition (tmpfs or squashfs roots, network
     // filesystems, an unreadable mount table), so the preflight does too:
@@ -128,16 +158,25 @@ pub(crate) async fn activate_blob_storage(
     // could complete.
     if let Some(available_free_bytes) = resource_sampler::available_space_for_path(&canonical_path)
     {
-        let backup_reserve = if backup_required {
+        let sqlite_bytes = if backup_required || run_history_backup_required {
             sqlite_file_set_bytes(&canonical_path).await?
         } else {
             0
         };
+        let backup_reserve = if backup_required { sqlite_bytes } else { 0 };
+        let run_history_backup_reserve = if run_history_backup_required {
+            projected_sqlite_bytes(sqlite_bytes, inventory.pending_bytes)?
+        } else {
+            0
+        };
         // Only the rows the import still has to copy need new space; rows
-        // already present in SQLite cost nothing on a warm restart.
+        // already present in SQLite cost nothing on a warm restart. Reserve
+        // the projected post-import database size as well when run-history
+        // activation will immediately take its own full SQLite snapshot.
         let required_free_bytes = compute_disk_preflight(
             inventory.pending_bytes,
             backup_reserve,
+            run_history_backup_reserve,
             available_free_bytes,
         )?;
         debug!(
@@ -147,6 +186,9 @@ pub(crate) async fn activate_blob_storage(
             pending_bytes = inventory.pending_bytes,
             backup_required,
             backup_reserve,
+            run_history_events = run_history_identity.events,
+            run_history_backup_required,
+            run_history_backup_reserve,
             required_free_bytes,
             available_free_bytes,
             "Checked SQLite blob activation disk capacity"
@@ -197,25 +239,27 @@ pub(crate) async fn activate_blob_storage(
         passive_checkpoints = import.passive_checkpoints,
         backup_required,
         backup_path = ?retained_backup,
+        run_history_backup_required,
         removal_deadline = REMOVAL_DEADLINE,
         "Activated SQLite blob storage"
     );
-    Ok(store)
+    Ok(ActivatedBlobStorage {
+        store,
+        run_history_identity,
+    })
 }
 
 /// Fail-closed disk capacity check; returns the required free bytes.
 fn compute_disk_preflight(
     pending_bytes: u64,
     backup_reserve: u64,
+    run_history_backup_reserve: u64,
     available_free_bytes: u64,
 ) -> Result<u64, BlobActivationError> {
-    let half = pending_bytes
-        .checked_add(1)
-        .ok_or(BlobActivationError::DiskRequirementOverflow)?
-        / 2;
+    let import_reserve = blob_import_reserve(pending_bytes)?;
     let required_free_bytes = backup_reserve
-        .checked_add(pending_bytes)
-        .and_then(|value| value.checked_add(half))
+        .checked_add(import_reserve)
+        .and_then(|value| value.checked_add(run_history_backup_reserve))
         .and_then(|value| value.checked_add(DISK_HEADROOM_BYTES))
         .ok_or(BlobActivationError::DiskRequirementOverflow)?;
     if available_free_bytes < required_free_bytes {
@@ -225,6 +269,25 @@ fn compute_disk_preflight(
         });
     }
     Ok(required_free_bytes)
+}
+
+fn projected_sqlite_bytes(
+    sqlite_bytes: u64,
+    pending_bytes: u64,
+) -> Result<u64, BlobActivationError> {
+    sqlite_bytes
+        .checked_add(blob_import_reserve(pending_bytes)?)
+        .ok_or(BlobActivationError::DiskRequirementOverflow)
+}
+
+fn blob_import_reserve(pending_bytes: u64) -> Result<u64, BlobActivationError> {
+    let half = pending_bytes
+        .checked_add(1)
+        .ok_or(BlobActivationError::DiskRequirementOverflow)?
+        / 2;
+    pending_bytes
+        .checked_add(half)
+        .ok_or(BlobActivationError::DiskRequirementOverflow)
 }
 
 async fn sqlite_file_set_bytes(path: &Path) -> Result<u64, BlobActivationError> {
@@ -297,7 +360,8 @@ mod tests {
 
     use super::{
         BACKUP_SUFFIX, BlobActivationError, DISK_HEADROOM_BYTES, activate_blob_storage,
-        compute_disk_preflight, final_truncate_checkpoint, sqlite_file_set_bytes,
+        compute_disk_preflight, final_truncate_checkpoint, projected_sqlite_bytes,
+        sqlite_file_set_bytes,
     };
     use crate::migrations::sqlite_activation_backup::{self, BackupError, create_backup};
 
@@ -307,14 +371,26 @@ mod tests {
     fn disk_preflight_passes_at_equality_and_fails_one_byte_below() {
         let pending_bytes = 3;
         let backup_reserve = 10;
-        let required = backup_reserve + pending_bytes + 2 + DISK_HEADROOM_BYTES;
+        let run_history_backup_reserve = 20;
+        let required =
+            backup_reserve + pending_bytes + 2 + run_history_backup_reserve + DISK_HEADROOM_BYTES;
 
-        let required_free_bytes = compute_disk_preflight(pending_bytes, backup_reserve, required)
-            .expect("exact equality must pass");
+        let required_free_bytes = compute_disk_preflight(
+            pending_bytes,
+            backup_reserve,
+            run_history_backup_reserve,
+            required,
+        )
+        .expect("exact equality must pass");
         assert_eq!(required_free_bytes, required);
 
-        let error = compute_disk_preflight(pending_bytes, backup_reserve, required - 1)
-            .expect_err("one byte below must fail");
+        let error = compute_disk_preflight(
+            pending_bytes,
+            backup_reserve,
+            run_history_backup_reserve,
+            required - 1,
+        )
+        .expect_err("one byte below must fail");
         assert!(matches!(
             error,
             BlobActivationError::InsufficientDisk { .. }
@@ -324,14 +400,24 @@ mod tests {
     #[test]
     fn disk_preflight_requires_only_headroom_without_a_backup_reserve() {
         let required_free_bytes =
-            compute_disk_preflight(2, 0, u64::MAX).expect("available capacity should pass");
+            compute_disk_preflight(2, 0, 0, u64::MAX).expect("available capacity should pass");
         assert_eq!(required_free_bytes, 3 + DISK_HEADROOM_BYTES);
     }
 
     #[test]
+    fn disk_preflight_reserves_the_projected_post_import_database() {
+        let projected = projected_sqlite_bytes(10, 3).expect("the projection should fit");
+        assert_eq!(projected, 15);
+
+        let required = compute_disk_preflight(3, 0, projected, u64::MAX)
+            .expect("available capacity should pass");
+        assert_eq!(required, 20 + DISK_HEADROOM_BYTES);
+    }
+
+    #[test]
     fn disk_preflight_fails_closed_on_overflow() {
-        let error =
-            compute_disk_preflight(u64::MAX, 1, u64::MAX).expect_err("overflow must fail closed");
+        let error = compute_disk_preflight(u64::MAX, 1, 0, u64::MAX)
+            .expect_err("overflow must fail closed");
         assert!(matches!(
             error,
             BlobActivationError::DiskRequirementOverflow
@@ -435,7 +521,7 @@ mod tests {
         let legacy_hash = fabro_store::test_support::put_legacy_blob(&source, legacy_bytes).await?;
         drop(source);
 
-        let store = activate_blob_storage(
+        let activation = activate_blob_storage(
             &database,
             &sqlite_path,
             Arc::clone(&object_store),
@@ -444,6 +530,7 @@ mod tests {
             None,
         )
         .await?;
+        let store = activation.store;
         assert_eq!(
             store.blobs().read(&legacy_hash).await?.as_deref(),
             Some(legacy_bytes.as_slice())
@@ -475,7 +562,7 @@ mod tests {
         .await?;
         assert_eq!(fs::read(&backup_path).await?, original_backup);
         assert_eq!(
-            warm.blobs().read(&sqlite_only_hash).await?.as_deref(),
+            warm.store.blobs().read(&sqlite_only_hash).await?.as_deref(),
             Some(sqlite_only_bytes.as_slice())
         );
         Ok(())
@@ -552,7 +639,7 @@ mod tests {
 
         assert!(!append_to_path(&sqlite_path, BACKUP_SUFFIX).exists());
         assert_eq!(
-            activated.blobs().read(&hash).await?.as_deref(),
+            activated.store.blobs().read(&hash).await?.as_deref(),
             Some(bytes.as_slice())
         );
         Ok(())

@@ -150,7 +150,7 @@ impl Database {
     ) -> Result<RunDatabase> {
         let (mut active_runs, run_store) = self.reserve_new_run(run_id).await?;
         let (envelope, cached) = run_store.commit_first_event(payload).await?;
-        run_store.install_in_memory_state(&envelope, &cached).await;
+        run_store.install_in_memory_state(&envelope, &cached);
         Self::cache_active_run(&mut active_runs, &run_store);
         run_store.publish(&envelope);
         Ok(run_store)
@@ -268,7 +268,7 @@ impl Database {
                         }
                     }
                 }
-                self.projection_cache.replace_all(entries).await;
+                self.projection_cache.replace_all(entries);
                 Ok::<_, Error>(())
             })
             .await?;
@@ -281,7 +281,7 @@ impl Database {
         now: DateTime<Utc>,
     ) -> Result<Vec<CachedRunProjection>> {
         self.warm_projection_cache().await?;
-        Ok(self.projection_cache.list(query, now).await)
+        Ok(self.projection_cache.list(query, now))
     }
 
     pub async fn list_unreadable_runs(&self) -> Result<Vec<UnreadableRun>> {
@@ -322,7 +322,7 @@ impl Database {
             .test_insert_unvalidated_event(run_id, seq, payload)
             .await?;
         self.active_runs.lock().await.remove(run_id);
-        self.projection_cache.remove(run_id).await;
+        self.projection_cache.remove(run_id);
         Ok(())
     }
 
@@ -344,7 +344,7 @@ impl Database {
 
     pub async fn get_cached_run(&self, run_id: &RunId) -> Result<Option<CachedRunProjection>> {
         self.warm_projection_cache().await?;
-        Ok(self.projection_cache.get(run_id).await)
+        Ok(self.projection_cache.get(run_id))
     }
 
     pub async fn get_cached_projection(
@@ -355,7 +355,6 @@ impl Database {
         Ok(self
             .projection_cache
             .projection_snapshot(run_id)
-            .await
             .map(|(projection, _)| projection))
     }
 
@@ -365,14 +364,14 @@ impl Database {
         now: DateTime<Utc>,
     ) -> Result<Option<Run>> {
         self.warm_projection_cache().await?;
-        Ok(self.projection_cache.get_summary(run_id, now).await)
+        Ok(self.projection_cache.get_summary(run_id, now))
     }
 
     /// Run ids whose latest explicit pull request creation is still pending,
     /// oldest request first.
     pub async fn pending_pull_request_creation_run_ids(&self) -> Result<Vec<RunId>> {
         self.warm_projection_cache().await?;
-        Ok(self.projection_cache.pending_pull_request_creations().await)
+        Ok(self.projection_cache.pending_pull_request_creations())
     }
 
     pub async fn put_session_run_index(
@@ -398,8 +397,8 @@ impl Database {
         Ok(None)
     }
 
-    pub(crate) async fn remove_cached_run(&self, run_id: &RunId) {
-        self.projection_cache.remove(run_id).await;
+    pub(crate) fn remove_cached_run(&self, run_id: &RunId) {
+        self.projection_cache.remove(run_id);
     }
 
     pub async fn delete_run(&self, run_id: &RunId) -> Result<()> {
@@ -413,7 +412,7 @@ impl Database {
             .delete_canonical(run_id, Utc::now().timestamp_millis())
             .await?;
         active_runs.remove(run_id);
-        self.remove_cached_run(run_id).await;
+        self.remove_cached_run(run_id);
         if let Err(err) = self.delete_session_indexes_for_run(run_id).await {
             warn!(
                 run_id = %run_id,
