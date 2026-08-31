@@ -24,7 +24,7 @@ use fabro_llm::types::{Message as LlmMessage, Request as LlmRequest, TokenCounts
 use fabro_model::catalog::LlmCatalogSettings;
 use fabro_model::{Catalog, ModelRef, ProviderId, ReasoningEffort, Speed};
 use fabro_types::settings::ServerAuthMethod;
-use fabro_types::settings::run::EnvironmentProvider;
+use fabro_types::settings::run::{ApprovalMode, EnvironmentProvider};
 use fabro_types::{
     AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, FailureCategory,
     FailureDetail, GitRunTarget, Graph, InterviewQuestionRecord, Node, Outcome, ParallelBranchId,
@@ -3807,13 +3807,10 @@ async fn post_runs_run_intent_args_true_override_resolved_settings_without_start
     assert_eq!(body["lifecycle"]["status"]["kind"], "submitted");
     let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
     let projection = run_store.state().await.unwrap();
-    assert_eq!(
-        projection.spec.settings.run.execution.mode,
-        fabro_types::settings::run::RunMode::DryRun
-    );
+    assert_eq!(projection.spec.settings.run.execution.mode, RunMode::DryRun);
     assert_eq!(
         projection.spec.settings.run.execution.approval,
-        fabro_types::settings::run::ApprovalMode::Auto
+        ApprovalMode::Auto
     );
     assert!(projection.spec.settings.run.environment.lifecycle.preserve);
 }
@@ -3875,32 +3872,28 @@ preserve = true
         .parse::<RunId>()
         .unwrap();
     let omitted_id = omitted["id"].as_str().unwrap().parse::<RunId>().unwrap();
-    let explicit_false = state
+    let explicit_false_store = state
         .stores
         .runs
         .open_run_reader(&explicit_false_id)
         .await
-        .unwrap()
-        .state()
-        .await
         .unwrap();
-    let omitted = state
+    let explicit_false = explicit_false_store.state().await.unwrap();
+    let omitted_store = state
         .stores
         .runs
         .open_run_reader(&omitted_id)
         .await
-        .unwrap()
-        .state()
-        .await
         .unwrap();
+    let omitted = omitted_store.state().await.unwrap();
 
     assert_eq!(
         explicit_false.spec.settings.run.execution.mode,
-        fabro_types::settings::run::RunMode::Normal
+        RunMode::Normal
     );
     assert_eq!(
         explicit_false.spec.settings.run.execution.approval,
-        fabro_types::settings::run::ApprovalMode::Prompt
+        ApprovalMode::Prompt
     );
     assert!(
         !explicit_false
@@ -3911,13 +3904,10 @@ preserve = true
             .lifecycle
             .preserve
     );
-    assert_eq!(
-        omitted.spec.settings.run.execution.mode,
-        fabro_types::settings::run::RunMode::DryRun
-    );
+    assert_eq!(omitted.spec.settings.run.execution.mode, RunMode::DryRun);
     assert_eq!(
         omitted.spec.settings.run.execution.approval,
-        fabro_types::settings::run::ApprovalMode::Auto
+        ApprovalMode::Auto
     );
     assert!(omitted.spec.settings.run.environment.lifecycle.preserve);
 }
@@ -16556,7 +16546,7 @@ level = "debug"
         "goal should be persisted from the manifest"
     );
     assert!(
-        resolved_run.execution.mode == fabro_types::settings::run::RunMode::DryRun,
+        resolved_run.execution.mode == RunMode::DryRun,
         "run execution mode should inherit from server settings"
     );
     assert_eq!(
