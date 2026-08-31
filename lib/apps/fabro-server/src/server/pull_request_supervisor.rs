@@ -89,15 +89,6 @@ impl AppState {
     }
 
     #[cfg(test)]
-    pub(super) fn clear_pull_request_creation_queue(&self) {
-        *self
-            .pull_request_creation_queue
-            .lock()
-            .expect("pull request creation queue lock poisoned") =
-            PendingPullRequestCreationQueue::default();
-    }
-
-    #[cfg(test)]
     pub(super) fn pull_request_creation_queue_len(&self) -> usize {
         self.pull_request_creation_queue
             .lock()
@@ -260,21 +251,18 @@ pub(super) async fn recover_pending_pull_request_creations(
         .await?;
     let candidate_count = candidates.len();
     let mut pending = Vec::new();
-    let mut replay_errors = 0_usize;
+    let mut load_errors = 0_usize;
 
     for run_id in candidates {
-        let projection = match state.stores.runs.open_run_reader(&run_id).await {
-            Ok(reader) => match reader.state().await {
-                Ok(projection) => projection,
-                Err(error) => {
-                    replay_errors += 1;
-                    warn!(%run_id, %error, "Failed to replay pull request creation candidate");
-                    continue;
-                }
-            },
+        if !can_dispatch(&run_id, active, failures) {
+            continue;
+        }
+        let projection = match state.stores.runs.get_cached_projection(&run_id).await {
+            Ok(Some(projection)) => projection,
+            Ok(None) => continue,
             Err(error) => {
-                replay_errors += 1;
-                warn!(%run_id, %error, "Failed to open pull request creation candidate");
+                load_errors += 1;
+                warn!(%run_id, %error, "Failed to load pull request creation candidate");
                 continue;
             }
         };
@@ -285,11 +273,6 @@ pub(super) async fn recover_pending_pull_request_creations(
         else {
             continue;
         };
-        if active.values().any(|active_id| active_id == &run_id)
-            || failures.get(&run_id).copied().unwrap_or(0) >= MAX_WORKER_FAILURES_PER_RUN
-        {
-            continue;
-        }
         pending.push((creation.requested_at, run_id));
     }
 
@@ -305,10 +288,21 @@ pub(super) async fn recover_pending_pull_request_creations(
         candidate_count,
         pending_count,
         enqueued,
-        replay_errors,
+        load_errors,
         "Recovered pending pull request creations"
     );
     Ok(())
+}
+
+/// Whether the supervisor may hand `run_id` to a worker right now: not
+/// already being processed, and not past the store-failure retry cap.
+fn can_dispatch(
+    run_id: &RunId,
+    active: &HashMap<task::Id, RunId>,
+    failures: &HashMap<RunId, u32>,
+) -> bool {
+    !active.values().any(|active_id| active_id == run_id)
+        && failures.get(run_id).copied().unwrap_or(0) < MAX_WORKER_FAILURES_PER_RUN
 }
 
 async fn run_pull_request_creation_supervisor(state: Arc<AppState>) {
@@ -334,9 +328,7 @@ async fn run_pull_request_creation_supervisor(state: Arc<AppState>) {
             let Some(run_id) = state.pop_pull_request_creation() else {
                 break;
             };
-            if active.values().any(|active_id| active_id == &run_id)
-                || failures.get(&run_id).copied().unwrap_or(0) >= MAX_WORKER_FAILURES_PER_RUN
-            {
+            if !can_dispatch(&run_id, &active, &failures) {
                 continue;
             }
             let handle = workers.spawn(

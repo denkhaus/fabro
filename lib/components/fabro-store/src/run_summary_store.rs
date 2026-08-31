@@ -342,14 +342,7 @@ ON CONFLICT(singleton) DO NOTHING
             .fetch_all(&self.pool)
             .await?
             .into_iter()
-            .map(|stored_id| {
-                stored_id
-                    .parse::<RunId>()
-                    .map_err(|_| Error::RunSummaryMismatch {
-                        run_id: stored_id,
-                        field:  "id",
-                    })
-            })
+            .map(parse_stored_run_id)
             .collect()
     }
 
@@ -507,7 +500,12 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
     /// pagination semantics.
     pub async fn list_all(&self, now: DateTime<Utc>) -> Result<Vec<Run>> {
         let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
-        query.push(" ORDER BY created_at_ms DESC, id DESC");
+        push_order(
+            &mut query,
+            RunSummarySort::CreatedAt,
+            RunSummarySortDirection::Desc,
+            now,
+        );
         let rows = query.build().fetch_all(&self.pool).await?;
         decode_run_rows(&rows, now)
     }
@@ -527,7 +525,13 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
         for status in statuses {
             separated.push_bind(status.to_string());
         }
-        separated.push_unseparated(") ORDER BY created_at_ms DESC, id DESC");
+        separated.push_unseparated(")");
+        push_order(
+            &mut query,
+            RunSummarySort::CreatedAt,
+            RunSummarySortDirection::Desc,
+            now,
+        );
         let rows = query.build().fetch_all(&self.pool).await?;
         decode_run_rows(&rows, now)
     }
@@ -543,14 +547,7 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
         .fetch_all(&self.pool)
         .await?
         .into_iter()
-        .map(|stored_id| {
-            stored_id
-                .parse::<RunId>()
-                .map_err(|_| Error::RunSummaryMismatch {
-                    run_id: stored_id,
-                    field:  "id",
-                })
-        })
+        .map(parse_stored_run_id)
         .collect()
     }
 
@@ -569,12 +566,7 @@ FROM runs",
         rows.iter()
             .map(|row| {
                 let stored_id: String = row.try_get("id")?;
-                let id = stored_id
-                    .parse::<RunId>()
-                    .map_err(|_| Error::RunSummaryMismatch {
-                        run_id: stored_id,
-                        field:  "id",
-                    })?;
+                let id = parse_stored_run_id(stored_id)?;
                 Ok(RunSummaryIdentity {
                     id,
                     workflow_slug: row.try_get("workflow_slug")?,
@@ -1460,6 +1452,15 @@ fn push_order(
         RunSummarySortDirection::Desc => builder.push(" DESC"),
     };
     builder.push(", id DESC");
+}
+
+fn parse_stored_run_id(stored_id: String) -> Result<RunId> {
+    stored_id
+        .parse::<RunId>()
+        .map_err(|_| Error::RunSummaryMismatch {
+            run_id: stored_id,
+            field:  "id",
+        })
 }
 
 fn decode_run_row(row: &SqliteRow, now: DateTime<Utc>) -> Result<Run> {

@@ -2638,7 +2638,7 @@ async fn delete_run_internal(
     };
     let had_managed_run = managed_run.is_some();
     let durable_status = if managed_run.is_some() {
-        load_durable_run_status(state, &id).await
+        durable_run_status(state, id).await.ok().flatten()
     } else {
         None
     };
@@ -2703,16 +2703,6 @@ async fn delete_run_internal(
         SandboxDeleteOutcome::Absent if had_managed_run => Ok(DeleteRunOutcome::Deleted),
         SandboxDeleteOutcome::Absent => Ok(DeleteRunOutcome::AlreadyAbsent),
     }
-}
-
-async fn load_durable_run_status(state: &AppState, id: &RunId) -> Option<RunStatus> {
-    state
-        .stores
-        .run_summaries
-        .get(id, Utc::now())
-        .await
-        .ok()?
-        .map(|summary| summary.lifecycle.status)
 }
 
 async fn delete_run_sandbox_resource(

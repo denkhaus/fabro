@@ -10946,7 +10946,7 @@ async fn pull_request_creation_recovers_durable_request_after_crash_gap() {
 
     // Starting the supervisor after the request simulates server recovery:
     // the durable pending event is enough to resume the operation.
-    state.clear_pull_request_creation_queue();
+    let _ = state.drain_pull_request_creation_queue();
     let supervisor = spawn_pull_request_creation_supervisor(Arc::clone(&state));
 
     let creation_body = wait_for_pull_request_creation(&app, run_id).await;
