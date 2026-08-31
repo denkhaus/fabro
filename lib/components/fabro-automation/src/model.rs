@@ -4,10 +4,7 @@ use std::sync::LazyLock;
 use croner::Cron;
 use croner::errors::CronError;
 use croner::parser::{CronParser, Seconds, Year};
-use fabro_types::{
-    AutomationGitWorkflowSourceKind, GitHubRepositorySlug, GitRunTarget, RunTarget,
-    is_valid_git_branch_name, is_valid_git_tag_name, normalize_git_commit_sha,
-};
+use fabro_types::{GitRunTarget, RunTarget};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -151,42 +148,27 @@ impl Automation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AutomationGitWorkflowSource {
-    pub repo:      String,
-    pub kind:      AutomationGitWorkflowSourceKind,
-    #[serde(rename = "ref")]
-    pub reference: String,
-}
+/// A Git coordinate from which an automation loads workflow files.
+///
+/// This deliberately reuses the run target's branch/tag/SHA model. The branch
+/// is the fallback selector and audit context; it does not constrain an exact
+/// SHA to be reachable from that branch.
+pub type AutomationGitWorkflowSource = GitRunTarget;
 
-impl AutomationGitWorkflowSource {
-    /// Validate and canonicalize this saved GitHub workflow coordinate without
-    /// resolving remote repository state.
-    pub fn validate(mut self) -> Result<Self, AutomationValidationError> {
-        self.repo
-            .parse::<GitHubRepositorySlug>()
-            .map_err(
-                |source| AutomationValidationError::InvalidWorkflowSourceRepository { source },
-            )?;
-        match self.kind {
-            AutomationGitWorkflowSourceKind::Branch => {
-                if !is_valid_git_branch_name(&self.reference) {
-                    return Err(AutomationValidationError::InvalidWorkflowSourceBranch);
-                }
+/// Validate and canonicalize a saved workflow source without resolving remote
+/// repository state.
+pub fn validate_workflow_source(
+    source: AutomationGitWorkflowSource,
+) -> Result<AutomationGitWorkflowSource, AutomationValidationError> {
+    RunTarget::Git(source)
+        .validate()
+        .map(|validated| match validated.target {
+            RunTarget::Git(source) => source,
+            RunTarget::None {} | RunTarget::Folder { .. } => {
+                unreachable!("a validated Git workflow source remains Git-backed")
             }
-            AutomationGitWorkflowSourceKind::Tag => {
-                if !is_valid_git_tag_name(&self.reference) {
-                    return Err(AutomationValidationError::InvalidWorkflowSourceTag);
-                }
-            }
-            AutomationGitWorkflowSourceKind::Commit => {
-                self.reference = normalize_git_commit_sha(&self.reference)
-                    .ok_or(AutomationValidationError::InvalidWorkflowSourceCommit)?;
-            }
-        }
-        Ok(self)
-    }
+        })
+        .map_err(|source| AutomationValidationError::InvalidWorkflowSource { source })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -376,7 +358,7 @@ fn normalize_replace(
         .filter(|environment_id| !environment_id.is_empty());
     value.workflow_source = value
         .workflow_source
-        .map(AutomationGitWorkflowSource::validate)
+        .map(validate_workflow_source)
         .transpose()?;
     validate_fields(&value, require_environment)?;
 
@@ -491,9 +473,9 @@ mod tests {
     use fabro_types::{GitRunTarget, RunTarget, TargetValidationError};
 
     use crate::{
-        ApiTrigger, Automation, AutomationGitWorkflowSource, AutomationGitWorkflowSourceKind,
-        AutomationId, AutomationReplace, AutomationStoreError, AutomationTrigger,
-        AutomationTriggerId, AutomationValidationError, ScheduleTrigger,
+        ApiTrigger, Automation, AutomationGitWorkflowSource, AutomationId, AutomationReplace,
+        AutomationStoreError, AutomationTrigger, AutomationTriggerId, AutomationValidationError,
+        ScheduleTrigger,
     };
 
     fn target() -> RunTarget {
@@ -525,13 +507,15 @@ mod tests {
     }
 
     fn workflow_source(
-        kind: AutomationGitWorkflowSourceKind,
-        reference: &str,
+        branch: &str,
+        tag: Option<&str>,
+        sha: Option<&str>,
     ) -> AutomationGitWorkflowSource {
         AutomationGitWorkflowSource {
-            repo: "fabro-sh/workflows".to_string(),
-            kind,
-            reference: reference.to_string(),
+            repo:   "fabro-sh/workflows".to_string(),
+            branch: branch.to_string(),
+            tag:    tag.map(str::to_string),
+            sha:    sha.map(str::to_string),
         }
     }
 
@@ -593,29 +577,27 @@ mod tests {
     }
 
     #[test]
-    fn workflow_sources_round_trip_and_commits_are_canonicalized() {
-        for (kind, reference, expected) in [
-            (AutomationGitWorkflowSourceKind::Branch, "main", "main"),
+    fn workflow_sources_round_trip_and_shas_are_canonicalized() {
+        for (source, expected_sha) in [
+            (workflow_source("main", None, None), None),
+            (workflow_source("main", Some("release/v1"), None), None),
             (
-                AutomationGitWorkflowSourceKind::Tag,
-                "release/v1",
-                "release/v1",
-            ),
-            (
-                AutomationGitWorkflowSourceKind::Commit,
-                "ABCDEF0123456789ABCDEF0123456789ABCDEF01",
-                "abcdef0123456789abcdef0123456789abcdef01",
+                workflow_source(
+                    "context-only",
+                    Some("release/v1"),
+                    Some("ABCDEF0123456789ABCDEF0123456789ABCDEF01"),
+                ),
+                Some("abcdef0123456789abcdef0123456789abcdef01"),
             ),
         ] {
             let (automation, bytes) = Automation::from_replace(
                 AutomationId::new("nightly").unwrap(),
-                replace_with_source(Some(workflow_source(kind, reference))),
+                replace_with_source(Some(source)),
             )
             .unwrap();
 
             let source = automation.workflow_source.as_ref().unwrap();
-            assert_eq!(source.kind, kind);
-            assert_eq!(source.reference, expected);
+            assert_eq!(source.sha.as_deref(), expected_sha);
             assert!(
                 String::from_utf8(bytes.clone())
                     .unwrap()
@@ -635,7 +617,7 @@ mod tests {
             replace_with_source(None),
         )
         .unwrap();
-        let mut explicit_source = workflow_source(AutomationGitWorkflowSourceKind::Branch, "main");
+        let mut explicit_source = workflow_source("main", None, None);
         explicit_source.repo = "FABRO-SH/FABRO".to_string();
         let (explicit, _) = Automation::from_replace(
             AutomationId::new("nightly").unwrap(),
@@ -651,25 +633,25 @@ mod tests {
     fn workflow_source_validation_reports_the_invalid_coordinate_part() {
         let cases = [
             (
-                workflow_source(AutomationGitWorkflowSourceKind::Branch, "main"),
-                "repo",
+                workflow_source("main", None, None),
+                TargetValidationError::Repository,
             ),
             (
-                workflow_source(AutomationGitWorkflowSourceKind::Branch, "refs/heads/main"),
-                "branch",
+                workflow_source("refs/heads/main", None, None),
+                TargetValidationError::Branch,
             ),
             (
-                workflow_source(AutomationGitWorkflowSourceKind::Tag, "tags/v1"),
-                "tag",
+                workflow_source("main", Some("tags/v1"), None),
+                TargetValidationError::Tag,
             ),
             (
-                workflow_source(AutomationGitWorkflowSourceKind::Commit, "short"),
-                "commit",
+                workflow_source("main", None, Some("short")),
+                TargetValidationError::Sha,
             ),
         ];
 
-        for (mut source, expected_kind) in cases {
-            if expected_kind == "repo" {
+        for (mut source, expected) in cases {
+            if expected == TargetValidationError::Repository {
                 source.repo = "not/a/github/slug".to_string();
             }
             let error = Automation::from_replace(
@@ -680,22 +662,11 @@ mod tests {
             let AutomationStoreError::Validation { source } = error else {
                 panic!("expected validation error");
             };
-            assert!(match expected_kind {
-                "repo" => matches!(
-                    source,
-                    AutomationValidationError::InvalidWorkflowSourceRepository { .. }
-                ),
-                "branch" => matches!(
-                    source,
-                    AutomationValidationError::InvalidWorkflowSourceBranch
-                ),
-                "tag" => matches!(source, AutomationValidationError::InvalidWorkflowSourceTag),
-                "commit" => matches!(
-                    source,
-                    AutomationValidationError::InvalidWorkflowSourceCommit
-                ),
-                _ => false,
-            });
+            assert!(matches!(
+                source,
+                AutomationValidationError::InvalidWorkflowSource { source }
+                    if source == expected
+            ));
         }
     }
 

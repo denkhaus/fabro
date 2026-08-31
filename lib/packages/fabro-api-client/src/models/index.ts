@@ -32,7 +32,6 @@ export * from './auth-sessions-response';
 export * from './automation';
 export * from './automation-api-trigger';
 export * from './automation-git-workflow-source';
-export * from './automation-git-workflow-source-kind';
 export * from './automation-list-meta';
 export * from './automation-list-response';
 export * from './automation-ref';

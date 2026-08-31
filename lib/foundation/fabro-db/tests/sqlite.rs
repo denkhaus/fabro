@@ -388,18 +388,26 @@ async fn automations_schema_enforces_aggregate_constraints() -> anyhow::Result<(
         .await
         .is_err()
     );
-    for (repository, kind, reference) in [
-        (Some("fabro-sh/workflows"), None, None),
-        (None, Some("branch"), Some("main")),
-        (Some("fabro-sh/workflows"), Some("unknown"), Some("main")),
+    for (repository, branch, tag, sha) in [
+        (Some("fabro-sh/workflows"), None, None, None),
+        (None, Some("main"), None, None),
+        (None, None, Some("v1"), None),
+        (
+            Some("fabro-sh/workflows"),
+            Some("main"),
+            None,
+            Some("short"),
+        ),
     ] {
         let result = sqlx::query(
             "UPDATE automations SET workflow_source_repository = ?, \
-             workflow_source_kind = ?, workflow_source_ref = ? WHERE id = 'valid'",
+             workflow_source_branch = ?, workflow_source_tag = ?, workflow_source_sha = ? \
+             WHERE id = 'valid'",
         )
         .bind(repository)
-        .bind(kind)
-        .bind(reference)
+        .bind(branch)
+        .bind(tag)
+        .bind(sha)
         .execute(database.pool())
         .await;
         assert!(
@@ -410,7 +418,8 @@ async fn automations_schema_enforces_aggregate_constraints() -> anyhow::Result<(
 
     sqlx::query(
         "UPDATE automations SET workflow_source_repository = 'fabro-sh/workflows', \
-         workflow_source_kind = 'branch', workflow_source_ref = 'main' WHERE id = 'valid'",
+         workflow_source_branch = 'main', workflow_source_tag = 'v1', \
+         workflow_source_sha = '0123456789abcdef0123456789abcdef01234567' WHERE id = 'valid'",
     )
     .execute(database.pool())
     .await?;
@@ -478,7 +487,8 @@ async fn automation_workflow_sources_migrate_without_rewriting_existing_rows() -
 
     let row = sqlx::query(
         "SELECT id, revision, target_repository, target_branch, target_tag, target_sha, \
-         target_workflow, workflow_source_repository, workflow_source_kind, workflow_source_ref \
+         target_workflow, workflow_source_repository, workflow_source_branch, \
+         workflow_source_tag, workflow_source_sha \
          FROM automations WHERE id = 'preserved'",
     )
     .fetch_one(database.pool())
@@ -494,8 +504,9 @@ async fn automation_workflow_sources_migrate_without_rewriting_existing_rows() -
         row.get::<Option<String>, _>("workflow_source_repository"),
         None
     );
-    assert_eq!(row.get::<Option<String>, _>("workflow_source_kind"), None);
-    assert_eq!(row.get::<Option<String>, _>("workflow_source_ref"), None);
+    assert_eq!(row.get::<Option<String>, _>("workflow_source_branch"), None);
+    assert_eq!(row.get::<Option<String>, _>("workflow_source_tag"), None);
+    assert_eq!(row.get::<Option<String>, _>("workflow_source_sha"), None);
     let trigger_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM automation_triggers WHERE automation_id = 'preserved'",
     )
@@ -523,10 +534,13 @@ async fn rewind_automation_workflow_source_migration(
     sqlx::query("DROP TRIGGER automation_workflow_source_all_or_none_insert")
         .execute(database.pool())
         .await?;
-    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_ref")
+    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_sha")
         .execute(database.pool())
         .await?;
-    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_kind")
+    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_tag")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_branch")
         .execute(database.pool())
         .await?;
     sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_repository")

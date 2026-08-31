@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use fabro_automation::{AutomationGitWorkflowSource, AutomationGitWorkflowSourceKind};
 use fabro_store::KeyedMutex;
 use fabro_types::{GitHubRepositorySlug, GitRunTarget};
 use tokio::process::Command;
@@ -216,16 +215,6 @@ impl<'a> From<&'a GitRunTarget> for GitCheckoutSelector<'a> {
             Self::Tag(tag)
         } else {
             Self::Branch(&target.branch)
-        }
-    }
-}
-
-impl<'a> From<&'a AutomationGitWorkflowSource> for GitCheckoutSelector<'a> {
-    fn from(source: &'a AutomationGitWorkflowSource) -> Self {
-        match source.kind {
-            AutomationGitWorkflowSourceKind::Branch => Self::Branch(&source.reference),
-            AutomationGitWorkflowSourceKind::Tag => Self::Tag(&source.reference),
-            AutomationGitWorkflowSourceKind::Commit => Self::Commit(&source.reference),
         }
     }
 }
@@ -564,7 +553,6 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use fabro_automation::{AutomationGitWorkflowSource, AutomationGitWorkflowSourceKind};
     use tempfile::TempDir;
 
     use super::*;
@@ -582,19 +570,17 @@ mod tests {
         }
     }
 
-    fn workflow_source(
-        kind: AutomationGitWorkflowSourceKind,
-        reference: &str,
-    ) -> AutomationGitWorkflowSource {
-        AutomationGitWorkflowSource {
-            repo: "fabro-sh/workflows".to_string(),
-            kind,
-            reference: reference.to_string(),
+    fn workflow_source(branch: &str, tag: Option<&str>, sha: Option<&str>) -> GitRunTarget {
+        GitRunTarget {
+            repo:   "fabro-sh/workflows".to_string(),
+            branch: branch.to_string(),
+            tag:    tag.map(str::to_string),
+            sha:    sha.map(str::to_string),
         }
     }
 
     #[test]
-    fn checkout_selectors_preserve_target_precedence_and_source_kind() {
+    fn checkout_selectors_use_sha_then_tag_then_branch_precedence() {
         let target = git_target(
             "main",
             Some("v1"),
@@ -607,17 +593,18 @@ mod tests {
 
         for (source, expected) in [
             (
-                workflow_source(AutomationGitWorkflowSourceKind::Branch, "main"),
+                workflow_source("main", None, None),
                 GitCheckoutSelector::Branch("main"),
             ),
             (
-                workflow_source(AutomationGitWorkflowSourceKind::Tag, "v1"),
+                workflow_source("main", Some("v1"), None),
                 GitCheckoutSelector::Tag("v1"),
             ),
             (
                 workflow_source(
-                    AutomationGitWorkflowSourceKind::Commit,
-                    "abcdef0123456789abcdef0123456789abcdef01",
+                    "unrelated-context",
+                    Some("v1"),
+                    Some("abcdef0123456789abcdef0123456789abcdef01"),
                 ),
                 GitCheckoutSelector::Commit("abcdef0123456789abcdef0123456789abcdef01"),
             ),

@@ -6,8 +6,8 @@ use fabro_types::settings::InterpString;
 use fabro_types::settings::run::RunGoal;
 use fabro_types::test_support::{test_run_provenance, test_workflow_version_id};
 use fabro_types::{
-    AutomationGitWorkflowSourceKind, AutomationRef, GitRunTarget,
-    ResolvedAutomationGitWorkflowSource, RunTarget, WorkflowSettings, fixtures,
+    AutomationRef, GitRunTarget, ResolvedAutomationGitWorkflowSource, RunTarget, WorkflowSettings,
+    fixtures,
 };
 
 fn templated_settings() -> WorkflowSettings {
@@ -37,8 +37,9 @@ fn run_spec_round_trips_templated_settings() {
             trigger_id:      Some("schedule_1".to_string()),
             workflow_source: Some(Box::new(ResolvedAutomationGitWorkflowSource {
                 repo:         "fabro-sh/workflows".to_string(),
-                kind:         AutomationGitWorkflowSourceKind::Branch,
-                reference:    "main".to_string(),
+                branch:       "main".to_string(),
+                tag:          None,
+                sha:          None,
                 resolved_sha: "0123456789abcdef0123456789abcdef01234567".to_string(),
             })),
         }),
@@ -75,7 +76,7 @@ fn run_spec_round_trips_templated_settings() {
     assert_eq!(json["fork_source_ref"]["checkpoint_sha"], "def456");
     assert_eq!(json["automation"]["id"], "nightly");
     assert_eq!(json["automation"]["trigger_id"], "schedule_1");
-    assert_eq!(json["automation"]["workflow_source"]["ref"], "main");
+    assert_eq!(json["automation"]["workflow_source"]["branch"], "main");
     assert_eq!(
         json["automation"]["workflow_source"]["resolved_sha"],
         "0123456789abcdef0123456789abcdef01234567"

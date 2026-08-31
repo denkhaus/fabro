@@ -60,7 +60,6 @@ models/auth-session-user.ts
 models/auth-session.ts
 models/auth-sessions-response.ts
 models/automation-api-trigger.ts
-models/automation-git-workflow-source-kind.ts
 models/automation-git-workflow-source.ts
 models/automation-list-meta.ts
 models/automation-list-response.ts

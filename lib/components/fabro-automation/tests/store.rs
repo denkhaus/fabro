@@ -6,9 +6,9 @@
 use std::path::Path;
 
 use fabro_automation::{
-    ApiTrigger, AutomationDraft, AutomationGitWorkflowSource, AutomationGitWorkflowSourceKind,
-    AutomationId, AutomationReplace, AutomationRevision, AutomationStore, AutomationStoreError,
-    AutomationTrigger, AutomationTriggerId, ScheduleTrigger,
+    ApiTrigger, AutomationDraft, AutomationGitWorkflowSource, AutomationId, AutomationReplace,
+    AutomationRevision, AutomationStore, AutomationStoreError, AutomationTrigger,
+    AutomationTriggerId, ScheduleTrigger,
 };
 use fabro_db::Database;
 use fabro_types::{GitRunTarget, RunTarget};
@@ -43,13 +43,15 @@ fn schedule(id: &str, expression: &str, enabled: bool) -> AutomationTrigger {
 }
 
 fn workflow_source(
-    kind: AutomationGitWorkflowSourceKind,
-    reference: &str,
+    branch: &str,
+    tag: Option<&str>,
+    sha: Option<&str>,
 ) -> AutomationGitWorkflowSource {
     AutomationGitWorkflowSource {
-        repo: "fabro-sh/workflows".to_string(),
-        kind,
-        reference: reference.to_string(),
+        repo:   "fabro-sh/workflows".to_string(),
+        branch: branch.to_string(),
+        tag:    tag.map(str::to_string),
+        sha:    sha.map(str::to_string),
     }
 }
 
@@ -284,16 +286,17 @@ async fn insert_environment(pool: &fabro_db::DbPool, id: &str, provider: &str) {
 }
 
 #[tokio::test]
-async fn crud_round_trips_each_workflow_source_kind_and_clears_to_omission() {
+async fn crud_round_trips_workflow_source_selectors_and_clears_to_omission() {
     let (_dir, database) = test_database().await;
     let store = AutomationStore::new(database.clone_pool());
 
     for (index, source) in [
-        workflow_source(AutomationGitWorkflowSourceKind::Branch, "main"),
-        workflow_source(AutomationGitWorkflowSourceKind::Tag, "release/v1"),
+        workflow_source("main", None, None),
+        workflow_source("main", Some("release/v1"), None),
         workflow_source(
-            AutomationGitWorkflowSourceKind::Commit,
-            "ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+            "context-only",
+            Some("release/v1"),
+            Some("ABCDEF0123456789ABCDEF0123456789ABCDEF01"),
         ),
     ]
     .into_iter()
@@ -303,14 +306,12 @@ async fn crud_round_trips_each_workflow_source_kind_and_clears_to_omission() {
         let mut value = draft(&id, true);
         value.workflow_source = Some(source);
         let created = store.create(value).await.unwrap();
-        let expected_reference = if index == 2 {
-            "abcdef0123456789abcdef0123456789abcdef01"
-        } else {
-            created.workflow_source.as_ref().unwrap().reference.as_str()
-        };
         assert_eq!(
-            created.workflow_source.as_ref().unwrap().reference,
-            expected_reference
+            created
+                .workflow_source
+                .as_ref()
+                .and_then(|source| source.sha.as_deref()),
+            (index == 2).then_some("abcdef0123456789abcdef0123456789abcdef01")
         );
         assert_eq!(store.get(&created.id).await.unwrap(), Some(created.clone()));
 
@@ -322,7 +323,8 @@ async fn crud_round_trips_each_workflow_source_kind_and_clears_to_omission() {
             .unwrap();
         assert_eq!(replaced.workflow_source, None);
         let columns = sqlx::query(
-            "SELECT workflow_source_repository, workflow_source_kind, workflow_source_ref \
+            "SELECT workflow_source_repository, workflow_source_branch, workflow_source_tag, \
+             workflow_source_sha \
              FROM automations WHERE id = ?",
         )
         .bind(created.id.as_str())
@@ -334,11 +336,15 @@ async fn crud_round_trips_each_workflow_source_kind_and_clears_to_omission() {
             None
         );
         assert_eq!(
-            columns.get::<Option<String>, _>("workflow_source_kind"),
+            columns.get::<Option<String>, _>("workflow_source_branch"),
             None
         );
         assert_eq!(
-            columns.get::<Option<String>, _>("workflow_source_ref"),
+            columns.get::<Option<String>, _>("workflow_source_tag"),
+            None
+        );
+        assert_eq!(
+            columns.get::<Option<String>, _>("workflow_source_sha"),
             None
         );
     }
@@ -351,7 +357,7 @@ async fn corrupt_workflow_source_rows_are_rejected_as_stored_shape_errors() {
     let (_dir, database) = test_database().await;
     let store = AutomationStore::new(database.clone_pool());
     let partial = store.create(draft("partial", true)).await.unwrap();
-    let unknown = store.create(draft("unknown", true)).await.unwrap();
+    let orphan = store.create(draft("orphan", true)).await.unwrap();
 
     let mut connection = database.pool().acquire().await.unwrap();
     sqlx::query("DROP TRIGGER automation_workflow_source_all_or_none_update")
@@ -369,14 +375,11 @@ async fn corrupt_workflow_source_rows_are_rejected_as_stored_shape_errors() {
     .execute(&mut *connection)
     .await
     .unwrap();
-    sqlx::query(
-        "UPDATE automations SET workflow_source_repository = 'fabro-sh/workflows', \
-         workflow_source_kind = 'unknown', workflow_source_ref = 'main' WHERE id = ?",
-    )
-    .bind(unknown.id.as_str())
-    .execute(&mut *connection)
-    .await
-    .unwrap();
+    sqlx::query("UPDATE automations SET workflow_source_tag = 'v1' WHERE id = ?")
+        .bind(orphan.id.as_str())
+        .execute(&mut *connection)
+        .await
+        .unwrap();
     drop(connection);
 
     assert!(matches!(
@@ -384,8 +387,8 @@ async fn corrupt_workflow_source_rows_are_rejected_as_stored_shape_errors() {
         AutomationStoreError::StoredWorkflowSourceShape { .. }
     ));
     assert!(matches!(
-        store.get(&unknown.id).await.unwrap_err(),
-        AutomationStoreError::StoredWorkflowSourceKind { .. }
+        store.get(&orphan.id).await.unwrap_err(),
+        AutomationStoreError::StoredWorkflowSourceShape { .. }
     ));
 }
 

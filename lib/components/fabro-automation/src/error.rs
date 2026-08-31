@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use croner::errors::CronError;
-use fabro_types::{GitHubRepositorySlugError, TargetValidationError};
+use fabro_types::TargetValidationError;
 use toml::de::Error as TomlDeError;
 use toml::ser::Error as TomlSerError;
 
@@ -24,17 +24,11 @@ pub enum AutomationValidationError {
         #[source]
         source: TargetValidationError,
     },
-    #[error("automation workflow source repository must be a valid GitHub owner/name slug")]
-    InvalidWorkflowSourceRepository {
+    #[error("automation workflow source is invalid")]
+    InvalidWorkflowSource {
         #[source]
-        source: GitHubRepositorySlugError,
+        source: TargetValidationError,
     },
-    #[error("automation workflow source branch must be a non-empty bare branch name")]
-    InvalidWorkflowSourceBranch,
-    #[error("automation workflow source tag must be a non-empty bare tag name")]
-    InvalidWorkflowSourceTag,
-    #[error("automation workflow source commit must be exactly 40 ASCII hexadecimal characters")]
-    InvalidWorkflowSourceCommit,
     #[error("workflow selector {value:?} is not safe")]
     InvalidWorkflowSelector { value: String },
     #[error("duplicate automation trigger id {id:?}")]
@@ -90,13 +84,6 @@ pub enum AutomationStoreError {
     StoredTriggerShape { id: AutomationId },
     #[error("stored automation {id} has a partial workflow source coordinate")]
     StoredWorkflowSourceShape { id: AutomationId },
-    #[error("stored automation {id} has unknown workflow source kind {kind:?}")]
-    StoredWorkflowSourceKind {
-        id:     AutomationId,
-        kind:   String,
-        #[source]
-        source: strum::ParseError,
-    },
     #[error("stored automation {id} has an invalid revision")]
     InvalidRevision {
         id:     AutomationId,
@@ -184,7 +171,6 @@ impl AutomationStoreError {
             Self::StoredId { .. } => "stored_id",
             Self::StoredTriggerShape { .. } => "stored_trigger_shape",
             Self::StoredWorkflowSourceShape { .. } => "stored_workflow_source_shape",
-            Self::StoredWorkflowSourceKind { .. } => "stored_workflow_source_kind",
             Self::InvalidRevision { .. } => "invalid_revision",
             Self::Db { .. } => "db",
             Self::InvalidFilename { .. } => "invalid_filename",

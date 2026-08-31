@@ -6728,22 +6728,18 @@ components:
 
     # ── Automations ──────────────────────────────────────────────────────
 
-    AutomationGitWorkflowSourceKind:
-      description: How an automation interprets the workflow source `ref`.
-      type: string
-      enum: [branch, tag, commit]
-
     AutomationGitWorkflowSource:
       description: >-
         Explicit GitHub coordinate from which an automation acquires workflow
-        bytes. The kind makes `ref` unambiguous; this source is independent of
-        the run target and does not provide a working branch for the run.
+        bytes. The branch is the fallback selector and audit context. An
+        optional tag overrides the branch, and an optional exact SHA overrides
+        both without requiring branch ancestry. This source is independent of
+        the run target and does not provide its working branch.
       type: object
       additionalProperties: false
       required:
         - repo
-        - kind
-        - ref
+        - branch
       properties:
         repo:
           type: string
@@ -6752,41 +6748,59 @@ components:
           pattern: "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$"
           description: GitHub repository slug in `owner/name` form.
           example: acme/workflows
-        kind:
-          $ref: "#/components/schemas/AutomationGitWorkflowSourceKind"
-        ref:
+        branch:
           type: string
           minLength: 1
           maxLength: 255
           pattern: "^[A-Za-z0-9/._-]+$"
           description: >-
-            Bare branch or tag name, or an exact 40-character commit SHA, as
-            selected by `kind`. Prefixes such as `refs/heads/` and `refs/tags/`
-            are not accepted.
+            Required bare branch name used when neither tag nor SHA is present.
+            It is retained as context when an override is present and is not
+            an ancestry constraint.
           example: main
+        tag:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: "^[A-Za-z0-9/._-]+$"
+          description: >-
+            Optional bare tag name. Without `sha`, this tag is resolved whenever
+            the automation fires. Prefixes such as `refs/tags/` are rejected.
+          example: v1.2.3
+        sha:
+          type: string
+          pattern: "^[0-9A-Fa-f]{40}$"
+          description: >-
+            Optional exact commit, authoritative over tag and branch. The
+            server lowercase-normalizes it and fetches it directly; it need
+            not be reachable from the named branch.
 
     ResolvedAutomationGitWorkflowSource:
       description: >-
         Workflow source coordinate and exact commit captured when an
-        automation run was created. The requested ref remains available for
-        audit context while `resolved_sha` identifies the immutable source
+        automation run was created. The requested selectors remain available
+        for audit context while `resolved_sha` identifies the immutable source
         revision that supplied the workflow bytes.
       type: object
       additionalProperties: false
       required:
         - repo
-        - kind
-        - ref
+        - branch
         - resolved_sha
       properties:
         repo:
           type: string
           description: GitHub repository slug in `owner/name` form.
-        kind:
-          $ref: "#/components/schemas/AutomationGitWorkflowSourceKind"
-        ref:
+        branch:
           type: string
-          description: Branch, tag, or commit requested by the automation.
+          description: Required branch fallback and audit context.
+        tag:
+          type: string
+          description: Optional tag requested by the automation.
+        sha:
+          type: string
+          pattern: "^[0-9a-f]{40}$"
+          description: Optional exact commit requested by the automation.
         resolved_sha:
           type: string
           pattern: "^[0-9a-f]{40}$"

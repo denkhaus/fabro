@@ -114,9 +114,8 @@ pub use pull_request::{
 };
 pub use reasoning::ReasoningOutput;
 pub use repository::{
-    AutomationGitWorkflowSourceKind, GitHubRepositorySlug, GitHubRepositorySlugError,
-    RepositoryProvider, RepositoryRef, is_valid_git_branch_name, is_valid_git_tag_name,
-    normalize_git_commit_sha,
+    GitHubRepositorySlug, GitHubRepositorySlugError, RepositoryProvider, RepositoryRef,
+    is_valid_git_branch_name, is_valid_git_tag_name, normalize_git_commit_sha,
 };
 pub use run::{
     DirtyStatus, ForkSourceRef, GitContext, RunClientProvenance, RunProvenance,

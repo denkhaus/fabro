@@ -6,9 +6,9 @@ use sqlx::sqlite::SqliteRow;
 use sqlx::{Row as _, Sqlite, Transaction};
 
 use crate::{
-    ApiTrigger, Automation, AutomationDraft, AutomationGitWorkflowSource,
-    AutomationGitWorkflowSourceKind, AutomationId, AutomationReplace, AutomationRevision,
-    AutomationStoreError, AutomationTrigger, AutomationTriggerId, ScheduleTrigger,
+    ApiTrigger, Automation, AutomationDraft, AutomationGitWorkflowSource, AutomationId,
+    AutomationReplace, AutomationRevision, AutomationStoreError, AutomationTrigger,
+    AutomationTriggerId, ScheduleTrigger,
 };
 
 /// Shared projection for loading automations with their schedule triggers.
@@ -30,8 +30,9 @@ macro_rules! select_automations_sql {
                 a.target_sha,
                 a.target_workflow,
                 a.workflow_source_repository,
-                a.workflow_source_kind,
-                a.workflow_source_ref,
+                a.workflow_source_branch,
+                a.workflow_source_tag,
+                a.workflow_source_sha,
                 t.id AS trigger_id,
                 t.enabled AS trigger_enabled,
                 t.expression AS trigger_expression
@@ -146,8 +147,9 @@ impl AutomationStore {
                 target_sha = ?,
                 target_workflow = ?,
                 workflow_source_repository = ?,
-                workflow_source_kind = ?,
-                workflow_source_ref = ?
+                workflow_source_branch = ?,
+                workflow_source_tag = ?,
+                workflow_source_sha = ?
             WHERE id = ? AND revision = ?
             ",
         )
@@ -162,8 +164,9 @@ impl AutomationStore {
         .bind(target.sha.as_deref())
         .bind(&automation.workflow)
         .bind(workflow_source.map(|source| source.repo.as_str()))
-        .bind(workflow_source.map(|source| <&'static str>::from(source.kind)))
-        .bind(workflow_source.map(|source| source.reference.as_str()))
+        .bind(workflow_source.map(|source| source.branch.as_str()))
+        .bind(workflow_source.and_then(|source| source.tag.as_deref()))
+        .bind(workflow_source.and_then(|source| source.sha.as_deref()))
         .bind(id.as_str())
         .bind(expected.as_str())
         .execute(&mut *transaction)
@@ -355,9 +358,10 @@ pub(crate) async fn insert_automation_ignoring_conflict(
             target_sha,
             target_workflow,
             workflow_source_repository,
-            workflow_source_kind,
-            workflow_source_ref
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            workflow_source_branch,
+            workflow_source_tag,
+            workflow_source_sha
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO NOTHING
         ",
     )
@@ -373,8 +377,9 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     .bind(target.sha.as_deref())
     .bind(&automation.workflow)
     .bind(workflow_source.map(|source| source.repo.as_str()))
-    .bind(workflow_source.map(|source| <&'static str>::from(source.kind)))
-    .bind(workflow_source.map(|source| source.reference.as_str()))
+    .bind(workflow_source.map(|source| source.branch.as_str()))
+    .bind(workflow_source.and_then(|source| source.tag.as_deref()))
+    .bind(workflow_source.and_then(|source| source.sha.as_deref()))
     .execute(&mut **transaction)
     .await?;
     if result.rows_affected() == 0 {
@@ -389,25 +394,17 @@ fn stored_workflow_source(
     id: &AutomationId,
 ) -> Result<Option<AutomationGitWorkflowSource>, AutomationStoreError> {
     let repository = row.try_get::<Option<String>, _>("workflow_source_repository")?;
-    let kind = row.try_get::<Option<String>, _>("workflow_source_kind")?;
-    let reference = row.try_get::<Option<String>, _>("workflow_source_ref")?;
-    match (repository, kind, reference) {
-        (None, None, None) => Ok(None),
-        (Some(repo), Some(kind), Some(reference)) => {
-            let parsed_kind =
-                AutomationGitWorkflowSourceKind::from_str(&kind).map_err(|source| {
-                    AutomationStoreError::StoredWorkflowSourceKind {
-                        id: id.clone(),
-                        kind,
-                        source,
-                    }
-                })?;
-            Ok(Some(AutomationGitWorkflowSource {
-                repo,
-                kind: parsed_kind,
-                reference,
-            }))
-        }
+    let branch = row.try_get::<Option<String>, _>("workflow_source_branch")?;
+    let tag = row.try_get::<Option<String>, _>("workflow_source_tag")?;
+    let sha = row.try_get::<Option<String>, _>("workflow_source_sha")?;
+    match (repository, branch) {
+        (None, None) if tag.is_none() && sha.is_none() => Ok(None),
+        (Some(repo), Some(branch)) => Ok(Some(AutomationGitWorkflowSource {
+            repo,
+            branch,
+            tag,
+            sha,
+        })),
         _ => Err(AutomationStoreError::StoredWorkflowSourceShape { id: id.clone() }),
     }
 }

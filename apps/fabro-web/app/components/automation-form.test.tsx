@@ -21,39 +21,38 @@ describe("automation workflow source form values", () => {
       },
       sandbox: null,
     } as any);
-    expect(values.usesSeparateWorkflowSource).toBe(false);
+    expect(values.usesRemoteWorkflow).toBe(false);
     expect(workflowSourceFromFormValues(values)).toBeUndefined();
   });
 
-  test("branch, tag, and commit sources serialize unambiguously", () => {
+  test("branch, tag, and SHA selectors serialize with target precedence", () => {
     const base = {
       ...EMPTY_AUTOMATION_FORM,
-      usesSeparateWorkflowSource: true,
+      usesRemoteWorkflow:         true,
       workflowSourceRepository: " fabro-sh/workflows ",
+      workflowSourceBranch:     " main ",
     };
 
+    expect(workflowSourceFromFormValues(base)).toEqual({
+      repo: "fabro-sh/workflows", branch: "main",
+    });
     expect(workflowSourceFromFormValues({
       ...base,
-      workflowSourceKind: "branch",
-      workflowSourceRef:  " main ",
-    })).toEqual({ repo: "fabro-sh/workflows", kind: "branch", ref: "main" });
+      workflowSourceTag: " v1.2.3 ",
+    })).toEqual({ repo: "fabro-sh/workflows", branch: "main", tag: "v1.2.3" });
     expect(workflowSourceFromFormValues({
       ...base,
-      workflowSourceKind: "tag",
-      workflowSourceRef:  " v1.2.3 ",
-    })).toEqual({ repo: "fabro-sh/workflows", kind: "tag", ref: "v1.2.3" });
-    expect(workflowSourceFromFormValues({
-      ...base,
-      workflowSourceKind: "commit",
-      workflowSourceRef:  "ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+      workflowSourceTag: " v1.2.3 ",
+      workflowSourceSha: "ABCDEF0123456789ABCDEF0123456789ABCDEF01",
     })).toEqual({
       repo: "fabro-sh/workflows",
-      kind: "commit",
-      ref:  "abcdef0123456789abcdef0123456789abcdef01",
+      branch: "main",
+      tag: "v1.2.3",
+      sha: "abcdef0123456789abcdef0123456789abcdef01",
     });
   });
 
-  test("separate source fields are required and commits need 40 hex characters", () => {
+  test("remote workflow fields are required and SHAs need 40 hex characters", () => {
     const validBase = {
       ...EMPTY_AUTOMATION_FORM,
       id:                       "nightly",
@@ -62,15 +61,16 @@ describe("automation workflow source form values", () => {
       targetRepository:         "fabro-sh/app",
       targetBranch:             "main",
       workflow:                 "release",
-      usesSeparateWorkflowSource: true,
+      usesRemoteWorkflow:         true,
       workflowSourceRepository: "fabro-sh/workflows",
-      workflowSourceKind:       "commit" as const,
-      workflowSourceRef:        "0123456789abcdef0123456789abcdef01234567",
+      workflowSourceBranch:     "main",
+      workflowSourceSha:        "0123456789abcdef0123456789abcdef01234567",
     };
 
     expect(isFormValid(validBase)).toBe(true);
     expect(isFormValid({ ...validBase, workflowSourceRepository: "" })).toBe(false);
-    expect(isFormValid({ ...validBase, workflowSourceRef: "main" })).toBe(false);
+    expect(isFormValid({ ...validBase, workflowSourceBranch: "" })).toBe(false);
+    expect(isFormValid({ ...validBase, workflowSourceSha: "short" })).toBe(false);
   });
 
   test("editing preserves an explicit source even when it equals the target", () => {
@@ -81,17 +81,18 @@ describe("automation workflow source form values", () => {
       description: null,
       target:      { kind: "git", repo: "fabro-sh/fabro", branch: "main" },
       workflow:    "release",
-      workflow_source: { repo: "fabro-sh/fabro", kind: "branch", ref: "main" },
+      workflow_source: { repo: "fabro-sh/fabro", branch: "main" },
       triggers:    [],
     });
 
-    expect(values.usesSeparateWorkflowSource).toBe(true);
+    expect(values.usesRemoteWorkflow).toBe(true);
     expect(values.workflowSourceRepository).toBe("fabro-sh/fabro");
-    expect(values.workflowSourceKind).toBe("branch");
-    expect(values.workflowSourceRef).toBe("main");
+    expect(values.workflowSourceBranch).toBe("main");
+    expect(values.workflowSourceTag).toBe("");
+    expect(values.workflowSourceSha).toBe("");
     expect(workflowSourceFromFormValues({
       ...values,
-      usesSeparateWorkflowSource: false,
+      usesRemoteWorkflow: false,
     })).toBeUndefined();
   });
 });

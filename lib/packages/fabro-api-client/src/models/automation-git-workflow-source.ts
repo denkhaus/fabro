@@ -13,21 +13,25 @@
  */
 
 
-// May contain unused imports in some cases
-// @ts-ignore
-import type { AutomationGitWorkflowSourceKind } from './automation-git-workflow-source-kind';
 
 /**
- * Explicit GitHub coordinate from which an automation acquires workflow bytes. The kind makes `ref` unambiguous; this source is independent of the run target and does not provide a working branch for the run.
+ * Explicit GitHub coordinate from which an automation acquires workflow bytes. The branch is the fallback selector and audit context. An optional tag overrides the branch, and an optional exact SHA overrides both without requiring branch ancestry. This source is independent of the run target and does not provide its working branch.
  */
 export interface AutomationGitWorkflowSource {
     /**
      * GitHub repository slug in `owner/name` form.
      */
     'repo': string;
-    'kind': AutomationGitWorkflowSourceKind;
     /**
-     * Bare branch or tag name, or an exact 40-character commit SHA, as selected by `kind`. Prefixes such as `refs/heads/` and `refs/tags/` are not accepted.
+     * Required bare branch name used when neither tag nor SHA is present. It is retained as context when an override is present and is not an ancestry constraint.
      */
-    'ref': string;
+    'branch': string;
+    /**
+     * Optional bare tag name. Without `sha`, this tag is resolved whenever the automation fires. Prefixes such as `refs/tags/` are rejected.
+     */
+    'tag'?: string;
+    /**
+     * Optional exact commit, authoritative over tag and branch. The server lowercase-normalizes it and fetches it directly; it need not be reachable from the named branch.
+     */
+    'sha'?: string;
 }

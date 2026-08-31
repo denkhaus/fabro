@@ -391,8 +391,7 @@ fn run_due_schedules_once<'a>(
 #[cfg(test)]
 mod tests {
     use fabro_automation::{
-        AutomationDraft, AutomationGitWorkflowSource, AutomationGitWorkflowSourceKind,
-        AutomationTrigger, ScheduleTrigger,
+        AutomationDraft, AutomationGitWorkflowSource, AutomationTrigger, ScheduleTrigger,
     };
     use fabro_static::EnvVars;
     use fabro_store::ListRunsQuery;
@@ -723,9 +722,10 @@ mod tests {
         let materializer = succeeding_materializer();
         let state = test_state_with_materializer(materializer.clone());
         let workflow_source = AutomationGitWorkflowSource {
-            repo:      "fabro-sh/workflows".to_string(),
-            kind:      AutomationGitWorkflowSourceKind::Commit,
-            reference: "0123456789abcdef0123456789abcdef01234567".to_string(),
+            repo:   "fabro-sh/workflows".to_string(),
+            branch: "context-only".to_string(),
+            tag:    Some("v1".to_string()),
+            sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
         };
         create_automation_with_source(
             state.as_ref(),
@@ -750,12 +750,12 @@ mod tests {
                 .automation
                 .as_ref()
                 .and_then(|automation| automation.workflow_source.clone()),
-            Some(Box::new(ResolvedAutomationGitWorkflowSource {
-                repo:         workflow_source.repo,
-                kind:         workflow_source.kind,
-                reference:    workflow_source.reference,
-                resolved_sha: "ffffffffffffffffffffffffffffffffffffffff".to_string(),
-            }))
+            Some(Box::new(
+                ResolvedAutomationGitWorkflowSource::from_requested(
+                    workflow_source,
+                    "ffffffffffffffffffffffffffffffffffffffff".to_string(),
+                )
+            ))
         );
     }
 
@@ -870,9 +870,10 @@ mod tests {
             "failing-source",
             "failing-source",
             Some(AutomationGitWorkflowSource {
-                repo:      "fabro-sh/workflows".to_string(),
-                kind:      AutomationGitWorkflowSourceKind::Branch,
-                reference: "main".to_string(),
+                repo:   "fabro-sh/workflows".to_string(),
+                branch: "main".to_string(),
+                tag:    None,
+                sha:    None,
             }),
             vec![schedule_trigger("schedule", "* * * * *", true)],
         )

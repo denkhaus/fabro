@@ -45,13 +45,13 @@ An extensionless workflow such as `"release"` resolves directly to `.fabro/workf
 
 Automation admission does not read `.fabro/project.toml`. Put settings needed by the run in the workflow configuration or the selected server environment. Fabro packages the workflow and its runnable dependencies into immutable workflow versions before creating the run.
 
-### Using a separate workflow source
+### Using a remote workflow
 
 Omit `workflow_source` to resolve the `workflow` selector in the run-target checkout, as in the request above. This is the compatibility default for existing definitions.
 
-To keep reusable workflow files in another repository, provide an explicit source with one unambiguous ref kind:
+To keep reusable workflow files in another repository, enable a remote workflow and provide the same branch-plus-overrides coordinate used by Git run targets:
 
-```json title="Create automation with a separate workflow source"
+```json title="Create automation with a remote workflow"
 {
   "id": "nightly-release",
   "name": "Nightly release",
@@ -64,8 +64,7 @@ To keep reusable workflow files in another repository, provide an explicit sourc
   "workflow": "release",
   "workflow_source": {
     "repo": "acme/automation-workflows",
-    "kind": "branch",
-    "ref": "main"
+    "branch": "main"
   },
   "triggers": [
     { "type": "api", "id": "manual", "enabled": true }
@@ -73,7 +72,7 @@ To keep reusable workflow files in another repository, provide an explicit sourc
 }
 ```
 
-`kind` may be `branch`, `tag`, or `commit`. Branch and tag refs are bare names and are resolved again on every firing. A commit ref is exactly 40 hexadecimal characters and always selects that commit. The server uses its configured GitHub credentials independently for the target and workflow-source repositories, with read-only repository access for workflow materialization; automation requests never carry credentials.
+`branch` is required and is used when neither override is present. An optional bare `tag` takes precedence over the branch, and an optional 40-character `sha` takes precedence over both. The branch is retained as fallback and audit context; Fabro fetches an exact SHA directly and does not require it to be reachable from the named branch. Branches and tags are resolved again on every firing. The server uses its configured GitHub credentials independently for the target and workflow-source repositories, with read-only repository access for workflow materialization; automation requests never carry credentials.
 
 Fabro resolves the run target to an exact commit and checks out the selected workflow source before it creates a run. It packages the workflow and its dependencies into immutable, content-addressed workflow versions, then admits the run with the root workflow-version ID and the independently exact run target. The run's automation metadata records both the requested workflow-source coordinate and its resolved commit, so the mutable source can be audited after its branch or tag moves. If an explicit source names the same repository and effective selector as the target, Fabro reuses the checkout without removing the explicit saved source.
 
@@ -148,7 +147,7 @@ The server fires each enabled schedule trigger at its next occurrence and create
 
 The `/automations` area lists automations with create, edit, delete, and Run actions. The create and edit forms require a Docker or Daytona environment. Migrated automations without an environment are shown as incomplete and cannot run until edited. Saves are revision-checked, so concurrent edits fail loudly instead of silently overwriting each other. The detail page shows the automation's configuration, its most recent schedule error, and its run history with status, time, and repo filters.
 
-To bootstrap an automation from work you have already run, open a run's actions menu and choose **Create automation from run** — the new-automation form is pre-filled from that run's target repository and workflow. Its workflow source defaults to the target checkout because normal run summaries do not retain the automation's mutable source coordinate. You can select a separate source before saving. Runs that were created by an automation show **View automation** instead.
+To bootstrap an automation from work you have already run, open a run's actions menu and choose **Create automation from run** — the new-automation form is pre-filled from that run's target repository and workflow. Its workflow source defaults to the target checkout because normal run summaries do not retain the automation's mutable source coordinate. You can enable a remote workflow before saving. Runs that were created by an automation show **View automation** instead.
 
 ## API
 

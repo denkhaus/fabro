@@ -310,8 +310,8 @@ describe("AutomationsNew", () => {
     expect(fieldValue(renderer, "Automation environment")).toBe("");
     expect(switchChecked(renderer, "Enable manual and API triggers")).toBe(true);
     expect(switchChecked(renderer, "Enable scheduled triggers")).toBe(false);
-    expect(switchChecked(renderer, "Use a separate workflow source")).toBe(false);
-    expect(renderer.root.findAllByProps({ "aria-label": "Workflow source repository" })).toHaveLength(0);
+    expect(switchChecked(renderer, "Use a remote workflow")).toBe(false);
+    expect(renderer.root.findAllByProps({ "aria-label": "Remote workflow repository" })).toHaveLength(0);
   });
 
   test("environment selector offers Docker and Daytona but not local", async () => {
@@ -382,7 +382,7 @@ describe("AutomationsNew", () => {
     expect(fieldValue(renderer, "Automation environment")).toBe("default");
     expect(switchChecked(renderer, "Enable manual and API triggers")).toBe(true);
     expect(switchChecked(renderer, "Enable scheduled triggers")).toBe(false);
-    expect(switchChecked(renderer, "Use a separate workflow source")).toBe(false);
+    expect(switchChecked(renderer, "Use a remote workflow")).toBe(false);
     expect(
       renderer.root.findAllByProps({ "aria-label": "Cron expression" }),
     ).toHaveLength(0);
@@ -451,13 +451,16 @@ describe("AutomationsNew", () => {
     changeField(renderer, "Automation environment", "daytona-smoke");
     changeField(renderer, "Workflow slug", "release");
     act(() => {
-      byLabel(renderer, "Use a separate workflow source").props.onChange(true);
+      byLabel(renderer, "Use a remote workflow").props.onChange(true);
     });
-    changeField(renderer, "Workflow source repository", " fabro-sh/workflows ");
-    changeField(renderer, "Workflow source ref", "ABCDEF0123456789ABCDEF0123456789ABCDEF01");
-    act(() => {
-      byLabel(renderer, "Workflow source kind").props.onChange({ target: { value: "commit" } });
-    });
+    changeField(renderer, "Remote workflow repository", " fabro-sh/workflows ");
+    changeField(renderer, "Remote workflow branch", " release ");
+    changeField(renderer, "Remote workflow tag", " v2.0.0 ");
+    changeField(
+      renderer,
+      "Remote workflow exact commit SHA",
+      "ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+    );
 
     await act(async () => {
       await renderer.root.findByType("form").props.onSubmit({ preventDefault() {} });
@@ -467,8 +470,9 @@ describe("AutomationsNew", () => {
     expect(createAutomationMock.mock.calls[0]?.[0]).toMatchObject({
       workflow_source: {
         repo: "fabro-sh/workflows",
-        kind: "commit",
-        ref:  "abcdef0123456789abcdef0123456789abcdef01",
+        branch: "release",
+        tag: "v2.0.0",
+        sha: "abcdef0123456789abcdef0123456789abcdef01",
       },
     });
   });

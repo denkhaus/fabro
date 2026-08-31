@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
-use fabro_automation::{AutomationGitWorkflowSource, AutomationGitWorkflowSourceKind};
+use fabro_automation::AutomationGitWorkflowSource;
 use fabro_config::Storage;
 use fabro_server::server::build_router;
 use fabro_server::test_support::{
@@ -1047,8 +1047,8 @@ async fn api_triggered_run_passes_saved_workflow_source_to_materialization() {
     let mut body = automation_body("nightly", "Nightly");
     body["workflow_source"] = json!({
         "repo": "fabro-sh/workflows",
-        "kind": "tag",
-        "ref": "release-v1"
+        "branch": "main",
+        "tag": "release-v1"
     });
     create_automation_with_body(&app, &body).await;
 
@@ -1059,17 +1059,18 @@ async fn api_triggered_run_passes_saved_workflow_source_to_materialization() {
     assert_eq!(
         captured[0],
         Some(AutomationGitWorkflowSource {
-            repo:      "fabro-sh/workflows".to_string(),
-            kind:      AutomationGitWorkflowSourceKind::Tag,
-            reference: "release-v1".to_string(),
+            repo:   "fabro-sh/workflows".to_string(),
+            branch: "main".to_string(),
+            tag:    Some("release-v1".to_string()),
+            sha:    None,
         })
     );
     assert_eq!(
         created["automation"]["workflow_source"],
         json!({
             "repo": "fabro-sh/workflows",
-            "kind": "tag",
-            "ref": "release-v1",
+            "branch": "main",
+            "tag": "release-v1",
             "resolved_sha": "ffffffffffffffffffffffffffffffffffffffff"
         })
     );
@@ -1101,8 +1102,7 @@ async fn api_workflow_source_failure_does_not_create_or_start_a_run() {
     let mut body = automation_body("nightly", "Nightly");
     body["workflow_source"] = json!({
         "repo": "fabro-sh/workflows",
-        "kind": "branch",
-        "ref": "main"
+        "branch": "main"
     });
     create_automation_with_body(&app, &body).await;
 

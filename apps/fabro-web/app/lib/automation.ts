@@ -34,7 +34,9 @@ export function hasEnabledApiTrigger(automation: Automation): boolean {
 }
 
 export function workflowSourceSummary(source: AutomationGitWorkflowSource): string {
-  return `${source.repo} · ${source.kind} ${source.ref}`;
+  if (source.sha) return `${source.repo} · commit ${source.sha}`;
+  if (source.tag) return `${source.repo} · tag ${source.tag}`;
+  return `${source.repo} · branch ${source.branch}`;
 }
 
 export const RUN_TARGET_CHECKOUT_LABEL = "run target checkout";

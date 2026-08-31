@@ -1,13 +1,12 @@
 use fabro_api::types::{
     Automation as ApiAutomation, AutomationGitWorkflowSource as ApiAutomationGitWorkflowSource,
-    AutomationGitWorkflowSourceKind as ApiAutomationGitWorkflowSourceKind,
     AutomationTrigger as ApiAutomationTrigger,
     CreateAutomationRequest as ApiCreateAutomationRequest,
     ReplaceAutomationRequest as ApiReplaceAutomationRequest,
 };
 use fabro_automation::{
-    Automation, AutomationDraft, AutomationGitWorkflowSource, AutomationGitWorkflowSourceKind,
-    AutomationReplace, AutomationTrigger,
+    Automation, AutomationDraft, AutomationGitWorkflowSource, AutomationReplace, AutomationTrigger,
+    validate_workflow_source,
 };
 use serde_json::json;
 
@@ -18,7 +17,6 @@ use serde_json::json;
 const _: fn(ApiAutomation) -> Automation = |value| value;
 const _: fn(ApiAutomationTrigger) -> AutomationTrigger = |value| value;
 const _: fn(ApiAutomationGitWorkflowSource) -> AutomationGitWorkflowSource = |value| value;
-const _: fn(ApiAutomationGitWorkflowSourceKind) -> AutomationGitWorkflowSourceKind = |value| value;
 const _: fn(ApiCreateAutomationRequest) -> AutomationDraft = |value| value;
 const _: fn(ApiReplaceAutomationRequest) -> AutomationReplace = |value| value;
 
@@ -113,10 +111,19 @@ fn replace_automation_request_round_trips_public_json_shape() {
 
 #[test]
 fn automation_workflow_sources_round_trip_each_public_json_shape() {
-    for (kind, reference) in [
-        ("branch", "main"),
-        ("tag", "release/v1"),
-        ("commit", "abcdef0123456789abcdef0123456789abcdef01"),
+    for source in [
+        json!({"repo": "fabro-sh/workflows", "branch": "main"}),
+        json!({
+            "repo": "fabro-sh/workflows",
+            "branch": "main",
+            "tag": "release/v1"
+        }),
+        json!({
+            "repo": "fabro-sh/workflows",
+            "branch": "context-only",
+            "tag": "release/v1",
+            "sha": "abcdef0123456789abcdef0123456789abcdef01"
+        }),
     ] {
         let value = json!({
             "id": "nightly-deps",
@@ -128,11 +135,7 @@ fn automation_workflow_sources_round_trip_each_public_json_shape() {
                 "branch": "main"
             },
             "workflow": "dependency-update",
-            "workflow_source": {
-                "repo": "fabro-sh/workflows",
-                "kind": kind,
-                "ref": reference
-            },
+            "workflow_source": source,
             "triggers": []
         });
 
@@ -144,18 +147,18 @@ fn automation_workflow_sources_round_trip_each_public_json_shape() {
 #[test]
 fn automation_workflow_source_rejects_unknown_or_incomplete_coordinates() {
     for source in [
-        json!({"repo": "fabro-sh/workflows", "kind": "unknown", "ref": "main"}),
-        json!({"repo": "fabro-sh/workflows", "kind": "branch"}),
-        json!({"repo": "fabro-sh/workflows", "kind": "branch", "ref": "main", "extra": true}),
+        json!({"repo": "fabro-sh/workflows"}),
+        json!({"branch": "main"}),
+        json!({"repo": "fabro-sh/workflows", "branch": "main", "extra": true}),
     ] {
         assert!(serde_json::from_value::<ApiAutomationGitWorkflowSource>(source).is_err());
     }
 
     let invalid_commit: ApiAutomationGitWorkflowSource = serde_json::from_value(json!({
         "repo": "fabro-sh/workflows",
-        "kind": "commit",
-        "ref": "short"
+        "branch": "main",
+        "sha": "short"
     }))
     .unwrap();
-    assert!(invalid_commit.validate().is_err());
+    assert!(validate_workflow_source(invalid_commit).is_err());
 }

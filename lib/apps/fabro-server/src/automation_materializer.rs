@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fabro_automation::{AutomationGitWorkflowSource, AutomationId, AutomationValidationError};
+use fabro_automation::{
+    AutomationGitWorkflowSource, AutomationId, AutomationValidationError, validate_workflow_source,
+};
 use fabro_manifest::WorkflowVersionCollectError;
 use fabro_types::{
     GitHubRepositorySlug, GitRunTarget, ResolvedAutomationGitWorkflowSource, RunId, RunIntent,
@@ -245,7 +247,7 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
                 })?;
         let workflow_source = input
             .workflow_source
-            .map(AutomationGitWorkflowSource::validate)
+            .map(validate_workflow_source)
             .transpose()
             .map_err(|source| RunMaterializeError::InvalidWorkflowSource { source })?;
         // A workflow source naming the target's exact coordinate shares its
@@ -257,9 +259,9 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
                     .repo
                     .parse::<GitHubRepositorySlug>()
                     .map(|repo| (repo, source))
-                    .map_err(|source| RunMaterializeError::InvalidWorkflowSource {
-                        source: AutomationValidationError::InvalidWorkflowSourceRepository {
-                            source,
+                    .map_err(|_| RunMaterializeError::InvalidWorkflowSource {
+                        source: AutomationValidationError::InvalidWorkflowSource {
+                            source: TargetValidationError::Repository,
                         },
                     })
             })
@@ -324,12 +326,10 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
         };
         exact_target.sha = Some(checked_out_sha);
         let resolved_workflow_source = workflow_source.map(|source| {
-            Box::new(ResolvedAutomationGitWorkflowSource {
-                repo:         source.repo,
-                kind:         source.kind,
-                reference:    source.reference,
-                resolved_sha: workflow_checkout_sha,
-            })
+            Box::new(ResolvedAutomationGitWorkflowSource::from_requested(
+                source,
+                workflow_checkout_sha,
+            ))
         });
 
         let workflow = PathBuf::from(input.workflow);
@@ -397,7 +397,9 @@ impl From<TestMaterializeFailure> for RunMaterializeError {
         match failure {
             TestMaterializeFailure::InvalidTarget(source) => Self::InvalidTarget { source },
             TestMaterializeFailure::InvalidWorkflowSource => Self::InvalidWorkflowSource {
-                source: AutomationValidationError::InvalidWorkflowSourceBranch,
+                source: AutomationValidationError::InvalidWorkflowSource {
+                    source: TargetValidationError::Branch,
+                },
             },
         }
     }
@@ -506,12 +508,10 @@ impl AutomationRunMaterializer for TestAutomationRunMaterializer {
         input: AutomationRunMaterializeInput,
     ) -> Result<AutomationRunMaterialized, RunMaterializeError> {
         let workflow_source = input.workflow_source.as_ref().map(|source| {
-            Box::new(ResolvedAutomationGitWorkflowSource {
-                repo:         source.repo.clone(),
-                kind:         source.kind,
-                reference:    source.reference.clone(),
-                resolved_sha: "ffffffffffffffffffffffffffffffffffffffff".to_string(),
-            })
+            Box::new(ResolvedAutomationGitWorkflowSource::from_requested(
+                source.clone(),
+                "ffffffffffffffffffffffffffffffffffffffff".to_string(),
+            ))
         });
         let response = {
             let mut guard = self
@@ -559,7 +559,6 @@ mod tests {
     use std::sync::Mutex;
     use std::time::Duration;
 
-    use fabro_automation::AutomationGitWorkflowSourceKind;
     use object_store::memory::InMemory;
     use tempfile::TempDir;
 
@@ -762,13 +761,15 @@ mod tests {
 
     fn source(
         repo: &str,
-        kind: AutomationGitWorkflowSourceKind,
-        reference: &str,
+        branch: &str,
+        tag: Option<&str>,
+        sha: Option<&str>,
     ) -> AutomationGitWorkflowSource {
         AutomationGitWorkflowSource {
-            repo: repo.to_string(),
-            kind,
-            reference: reference.to_string(),
+            repo:   repo.to_string(),
+            branch: branch.to_string(),
+            tag:    tag.map(str::to_string),
+            sha:    sha.map(str::to_string),
         }
     }
 
@@ -924,11 +925,7 @@ mod tests {
         let materialized = materializer
             .materialize(input(
                 "fabro-sh/target",
-                Some(source(
-                    "fabro-sh/workflows",
-                    AutomationGitWorkflowSourceKind::Branch,
-                    "main",
-                )),
+                Some(source("fabro-sh/workflows", "main", None, None)),
                 &temp.path().join("runs"),
             ))
             .await
@@ -942,8 +939,9 @@ mod tests {
             materialized.workflow_source,
             Some(Box::new(ResolvedAutomationGitWorkflowSource {
                 repo:         "fabro-sh/workflows".to_string(),
-                kind:         AutomationGitWorkflowSourceKind::Branch,
-                reference:    "main".to_string(),
+                branch:       "main".to_string(),
+                tag:          None,
+                sha:          None,
                 resolved_sha: source_fixture.initial_sha.clone(),
             }))
         );
@@ -980,11 +978,7 @@ mod tests {
         let materialized = materializer
             .materialize(input(
                 "Fabro-Sh/Shared",
-                Some(source(
-                    "fabro-sh/shared",
-                    AutomationGitWorkflowSourceKind::Branch,
-                    "main",
-                )),
+                Some(source("fabro-sh/shared", "main", None, None)),
                 &temp.path().join("runs"),
             ))
             .await
@@ -994,8 +988,9 @@ mod tests {
             materialized.workflow_source,
             Some(Box::new(ResolvedAutomationGitWorkflowSource {
                 repo:         "fabro-sh/shared".to_string(),
-                kind:         AutomationGitWorkflowSourceKind::Branch,
-                reference:    "main".to_string(),
+                branch:       "main".to_string(),
+                tag:          None,
+                sha:          None,
                 resolved_sha: fixture.initial_sha,
             }))
         );
@@ -1020,8 +1015,9 @@ mod tests {
                 "fabro-sh/shared",
                 Some(source(
                     "fabro-sh/shared",
-                    AutomationGitWorkflowSourceKind::Tag,
-                    "annotated-v1",
+                    "main",
+                    Some("annotated-v1"),
+                    None,
                 )),
                 &temp.path().join("runs"),
             ))
@@ -1032,7 +1028,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn source_ref_modes_pin_commits_while_branches_advance() {
+    async fn source_selectors_pin_commits_while_branches_advance() {
         let temp = TempDir::new().unwrap();
         let target_fixture = seed_repository(temp.path(), "target", "target workflow");
         let source_fixture = seed_repository(temp.path(), "source", "source v1");
@@ -1054,27 +1050,26 @@ mod tests {
             ]),
         );
         let runs = temp.path().join("runs");
-        let materialize = |kind, reference: &str| {
+        let materialize = |branch: &str, tag: Option<&str>, sha: Option<&str>| {
             materializer.materialize(input(
                 "fabro-sh/target",
-                Some(source("fabro-sh/source", kind, reference)),
+                Some(source("fabro-sh/source", branch, tag, sha)),
                 &runs,
             ))
         };
 
-        let branch_v1 = materialize(AutomationGitWorkflowSourceKind::Branch, "main")
+        let branch_v1 = materialize("main", None, None)
             .await
             .unwrap()
             .workflow_version_id;
         for tag in ["annotated-v1", "lightweight-v1"] {
-            let tagged = materialize(AutomationGitWorkflowSourceKind::Tag, tag)
-                .await
-                .unwrap();
+            let tagged = materialize("main", Some(tag), None).await.unwrap();
             assert_eq!(tagged.workflow_version_id, branch_v1, "{tag}");
         }
         let committed_v1 = materialize(
-            AutomationGitWorkflowSourceKind::Commit,
-            &source_fixture.initial_sha,
+            "branch-that-does-not-exist",
+            Some("missing-tag"),
+            Some(&source_fixture.initial_sha),
         )
         .await
         .unwrap()
@@ -1082,14 +1077,15 @@ mod tests {
         assert_eq!(committed_v1, branch_v1);
 
         advance_repository(&source_fixture, "source v2");
-        let branch_v2 = materialize(AutomationGitWorkflowSourceKind::Branch, "main")
+        let branch_v2 = materialize("main", None, None)
             .await
             .unwrap()
             .workflow_version_id;
         assert_ne!(branch_v2, branch_v1);
         let committed_after_advance = materialize(
-            AutomationGitWorkflowSourceKind::Commit,
-            &source_fixture.initial_sha,
+            "branch-that-does-not-exist",
+            None,
+            Some(&source_fixture.initial_sha),
         )
         .await
         .unwrap()
@@ -1165,11 +1161,7 @@ mod tests {
         )
         .materialize(input(
             "fabro-sh/target",
-            Some(source(
-                "fabro-sh/source",
-                AutomationGitWorkflowSourceKind::Branch,
-                "main",
-            )),
+            Some(source("fabro-sh/source", "main", None, None)),
             &temp.path().join("source-failure"),
         ))
         .await
@@ -1197,11 +1189,7 @@ mod tests {
         )
         .materialize(input(
             "fabro-sh/target",
-            Some(source(
-                "fabro-sh/source",
-                AutomationGitWorkflowSourceKind::Branch,
-                "missing",
-            )),
+            Some(source("fabro-sh/source", "missing", None, None)),
             &temp.path().join("checkout-failure"),
         ))
         .await

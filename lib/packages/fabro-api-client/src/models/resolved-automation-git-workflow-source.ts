@@ -13,23 +13,27 @@
  */
 
 
-// May contain unused imports in some cases
-// @ts-ignore
-import type { AutomationGitWorkflowSourceKind } from './automation-git-workflow-source-kind';
 
 /**
- * Workflow source coordinate and exact commit captured when an automation run was created. The requested ref remains available for audit context while `resolved_sha` identifies the immutable source revision that supplied the workflow bytes.
+ * Workflow source coordinate and exact commit captured when an automation run was created. The requested selectors remain available for audit context while `resolved_sha` identifies the immutable source revision that supplied the workflow bytes.
  */
 export interface ResolvedAutomationGitWorkflowSource {
     /**
      * GitHub repository slug in `owner/name` form.
      */
     'repo': string;
-    'kind': AutomationGitWorkflowSourceKind;
     /**
-     * Branch, tag, or commit requested by the automation.
+     * Required branch fallback and audit context.
      */
-    'ref': string;
+    'branch': string;
+    /**
+     * Optional tag requested by the automation.
+     */
+    'tag'?: string;
+    /**
+     * Optional exact commit requested by the automation.
+     */
+    'sha'?: string;
     /**
      * Exact lowercase Git commit that supplied the workflow bytes.
      */

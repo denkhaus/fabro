@@ -3,9 +3,8 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::repository::AutomationGitWorkflowSourceKind;
 use crate::{
-    DiffSummary, InterviewQuestionRecord, Principal, PullRequestLink, RepositoryRef,
+    DiffSummary, GitRunTarget, InterviewQuestionRecord, Principal, PullRequestLink, RepositoryRef,
     RunControlAction, RunId, RunSandbox, RunStatus, RunTiming,
 };
 
@@ -120,10 +119,25 @@ impl WorkflowRef {
 #[serde(deny_unknown_fields)]
 pub struct ResolvedAutomationGitWorkflowSource {
     pub repo:         String,
-    pub kind:         AutomationGitWorkflowSourceKind,
-    #[serde(rename = "ref")]
-    pub reference:    String,
+    pub branch:       String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag:          Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha:          Option<String>,
     pub resolved_sha: String,
+}
+
+impl ResolvedAutomationGitWorkflowSource {
+    #[must_use]
+    pub fn from_requested(source: GitRunTarget, resolved_sha: String) -> Self {
+        Self {
+            repo: source.repo,
+            branch: source.branch,
+            tag: source.tag,
+            sha: source.sha,
+            resolved_sha,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
