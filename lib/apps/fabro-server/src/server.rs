@@ -91,6 +91,7 @@ use fabro_store::{
 };
 #[cfg(test)]
 use fabro_types::BlockedReason;
+use fabro_types::run_event::InterviewStartedProps;
 use fabro_types::settings::RunNamespace;
 use fabro_types::settings::run::{NotificationRouteSettings, RunMode};
 use fabro_types::settings::server::{
@@ -699,6 +700,12 @@ impl SlackService {
                 if props.question_id.is_empty() {
                     return;
                 }
+                // Route-based lifecycle notification (fabro-36d2): fires
+                // independently of the default-channel interview bot
+                // below, so runs parked at a gate reach configured
+                // routes even without a bot channel.
+                self.handle_lifecycle_event(state, envelope, run_web_url)
+                    .await;
                 let Some(default_channel) = self.default_channel.as_deref() else {
                     return;
                 };
@@ -712,17 +719,7 @@ impl SlackService {
                     return;
                 }
 
-                let question = runtime_question_from_interview_record(&InterviewQuestionRecord {
-                    id:              props.question_id.clone(),
-                    text:            props.question.clone(),
-                    stage:           props.stage.clone(),
-                    question_type:   props.question_type.parse().unwrap_or_default(),
-                    options:         props.options.clone(),
-                    allow_freeform:  props.allow_freeform,
-                    timeout_seconds: props.timeout_seconds,
-                    context_display: props.context_display.clone(),
-                    review_target:   props.review_target.clone(),
-                });
+                let question = interview_started_question(props);
                 let blocks = slack_blocks::question_to_blocks(
                     &event.run_id.to_string(),
                     &props.question_id,
@@ -790,9 +787,11 @@ impl SlackService {
         run_web_url: Option<&str>,
     ) {
         let event = &envelope.event;
-        let Some(details) = slack_lifecycle_details(event) else {
+        let question_pending = interview_question_pending_details(event);
+        let details = slack_lifecycle_details(event);
+        if question_pending.is_none() && details.is_none() {
             return;
-        };
+        }
         let event_name = event.body.event_name();
         let projection = match state.stores.runs.get_cached_run(&event.run_id).await {
             Ok(Some(cached)) => cached.projection,
@@ -834,17 +833,24 @@ impl SlackService {
         routes.sort_by_key(|(route_name, _)| *route_name);
 
         // Only completed/failed events need to recover prior PR details (a
-        // run.started event cannot have a prior PullRequestCreated).
-        let prior = if matches!(details.kind, slack_blocks::RunLifecycleKind::Started) {
-            PriorSlackLifecycleEventDetails::default()
-        } else {
+        // run.started event cannot have a prior PullRequestCreated, and a
+        // pending question never can either).
+        let needs_prior = matches!(
+            details.as_ref().map(|details| details.kind),
+            Some(
+                slack_blocks::RunLifecycleKind::Completed | slack_blocks::RunLifecycleKind::Failed
+            )
+        );
+        let prior = if needs_prior {
             load_prior_slack_lifecycle_event_details(state, event.run_id, envelope.seq).await
+        } else {
+            PriorSlackLifecycleEventDetails::default()
         };
         let workflow_label = slack_lifecycle_workflow_label(
             projection.as_ref(),
             details
-                .started_event_name
-                .as_deref()
+                .as_ref()
+                .and_then(|details| details.started_event_name.as_deref())
                 .or(prior.started_event_name.as_deref()),
             event_name,
         );
@@ -856,15 +862,26 @@ impl SlackService {
         });
         let run_id = event.run_id.to_string();
         let run_url = run_web_url.or(projection.web_url.as_deref());
-        let pull_request_blocks =
-            pull_request
-                .as_ref()
-                .map(|pull_request| slack_blocks::RunLifecyclePullRequest {
-                    number: pull_request.number,
-                    title:  pull_request.title.as_deref(),
-                    url:    pull_request.url.as_deref(),
-                });
-        let blocks =
+        let blocks = if let Some(question) = question_pending {
+            // Pending-question routes reuse the interview bot's block
+            // language (fabro-36d2): run id/url, question text, options,
+            // buttons, timeout.
+            slack_blocks::question_to_blocks(
+                &run_id,
+                question.question_id,
+                &question.question,
+                run_url,
+            )
+        } else {
+            let details = details.expect("details exist when no pending question");
+            let pull_request_blocks =
+                pull_request
+                    .as_ref()
+                    .map(|pull_request| slack_blocks::RunLifecyclePullRequest {
+                        number: pull_request.number,
+                        title:  pull_request.title.as_deref(),
+                        url:    pull_request.url.as_deref(),
+                    });
             slack_blocks::run_lifecycle_blocks(details.kind, &slack_blocks::RunLifecycleBlocks {
                 run_id: &run_id,
                 run_url,
@@ -872,7 +889,8 @@ impl SlackService {
                 result: details.result.as_deref(),
                 duration_ms: details.duration_ms,
                 pull_request: pull_request_blocks,
-            });
+            })
+        };
 
         let blocks = &blocks;
         let posts = routes.into_iter().filter_map(|(route_name, route)| {
@@ -930,6 +948,44 @@ impl SlackService {
         let answer_submission = AnswerSubmission::new(submission.answer, submission.actor);
         let _ = submit_pending_interview_answer(state.as_ref(), &pending, answer_submission).await;
     }
+}
+
+/// A pending interview question worth notifying routes about
+/// (fabro-36d2). The route key is the real event name,
+/// "interview.started"; answered/cancelled/timed-out questions stay
+/// run-internal.
+/// Build the runtime [`Question`] for an interview-started event. The
+/// default-channel bot path and the route-based lifecycle path share
+/// this so both always see the same question (fabro-36d2).
+fn interview_started_question(props: &InterviewStartedProps) -> Question {
+    runtime_question_from_interview_record(&InterviewQuestionRecord {
+        id:              props.question_id.clone(),
+        text:            props.question.clone(),
+        stage:           props.stage.clone(),
+        question_type:   props.question_type.parse().unwrap_or_default(),
+        options:         props.options.clone(),
+        allow_freeform:  props.allow_freeform,
+        timeout_seconds: props.timeout_seconds,
+        context_display: props.context_display.clone(),
+        review_target:   props.review_target.clone(),
+    })
+}
+
+fn interview_question_pending_details(event: &RunEvent) -> Option<PendingInterviewQuestion<'_>> {
+    match &event.body {
+        EventBody::InterviewStarted(props) if !props.question_id.is_empty() => {
+            Some(PendingInterviewQuestion {
+                question_id: props.question_id.as_str(),
+                question:    interview_started_question(props),
+            })
+        }
+        _ => None,
+    }
+}
+
+struct PendingInterviewQuestion<'a> {
+    question_id: &'a str,
+    question:    Question,
 }
 
 fn slack_lifecycle_details(event: &RunEvent) -> Option<SlackLifecycleDetails> {

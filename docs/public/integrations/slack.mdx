@@ -180,6 +180,8 @@ channel = "#deploys"
 
 Each enabled route posts one message when a matching event is emitted. Lifecycle messages include the run ID, a link back to Fabro when the server has a web URL, the workflow label, result and duration for terminal events, and pull request details when the run has already created or linked a PR.
 
+Routes may also subscribe to `interview.started`: when a run parks at a human gate, the question posts to the route's channel (question text, answer options with buttons, and the timeout when one is set). This is independent of the default interview channel — a route fires even when no default channel is configured, which is how unattended workflows (for example a scheduled revisor) get pinged for decisions. Answers, timeouts, and interruptions stay run-internal: only the pending question is notifiable. Note that the default interview channel and a route are independent: if a route's channel is the same as the default channel, the question appears there twice (one bot message with interactive state, one route notification).
+
 `run.failed` is a terminal run event. A stage can fail and still be followed by another graph edge that lets the run complete; in that case a route listening for `run.completed` fires, not `run.failed`.
 
 The route-level Slack channel is required for lifecycle notifications. The channel may be a literal (`"#deploys"`) or a server variable (`"{{ vars.DEPLOYS_SLACK_CHANNEL }}"`). If the channel is missing, empty, or cannot be resolved, Fabro logs a warning and skips that route without affecting the run or other notification routes.
@@ -249,4 +251,4 @@ Both must be set for the Slack integration to activate. If either is missing or 
 - **Single workspace** — Fabro connects to one Slack workspace at a time.
 - **One answer per question** — The first person to click a button or reply in a thread provides the answer. Subsequent interactions on the same question are ignored.
 - **No Slack steering** — Slack does not support [steering](/human-tools/steering) running agents.
-- **Lifecycle notifications are one-way** — `run.started`, `run.completed`, and `run.failed` messages are posted once per matching route and are not updated later.
+- **Lifecycle notifications are one-way** — `run.started`, `run.completed`, `run.failed`, and `interview.started` messages are posted once per matching route and are not updated later.

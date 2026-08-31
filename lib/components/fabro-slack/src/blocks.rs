@@ -113,6 +113,10 @@ fn header_section(question: &Question, run_web_url: Option<&str>) -> Value {
             escape_slack_controls(&question.stage)
         );
     }
+    if let Some(timeout_seconds) = question.timeout_seconds {
+        let minutes = (timeout_seconds / 60.0).round().max(1.0);
+        let _ = write!(text, "  ·  times out in ~{minutes}m");
+    }
     if let Some(url) = run_web_url {
         // The URL is server-owned (built from `server.web.url` + run id) and
         // does not flow through escape_slack_controls so the `<…|…>` link
@@ -507,6 +511,31 @@ mod tests {
             }
         }
         texts.join("\n")
+    }
+
+    #[test]
+    fn header_timeout_renders_none_clamp_and_rounding() {
+        fn header_for(timeout_seconds: Option<f64>) -> String {
+            let question = Question {
+                id: "q".to_string(),
+                text: "Ship it?".to_string(),
+                stage: "review".to_string(),
+                question_type: QuestionType::YesNo,
+                options: vec![],
+                allow_freeform: false,
+                timeout_seconds,
+                context_display: None,
+                review_target: None,
+                default: None,
+                metadata: std::collections::HashMap::new(),
+            };
+            serde_json::to_string(&header_section(&question, None)).unwrap()
+        }
+
+        assert!(!header_for(None).contains("times out"));
+        assert!(header_for(Some(300.0)).contains("times out in ~5m"));
+        assert!(header_for(Some(30.0)).contains("times out in ~1m"));
+        assert!(header_for(Some(90.0)).contains("times out in ~2m"));
     }
 
     #[test]
