@@ -704,6 +704,7 @@ pub(crate) async fn create_run_from_intent(
     });
 
     let entrypoint = lowered.entrypoint.clone();
+    let workflow_slug = fabro_config::project::workflow_slug_from_path(entrypoint.as_path());
     let raw_compiler_input = RawRunCompilerInput {
         workflow_bundle: lowered.workflow_bundle,
         entrypoint: lowered.entrypoint,
@@ -729,7 +730,7 @@ pub(crate) async fn create_run_from_intent(
         // admission via `with_target_and_git`; the compiler never reads them.
         git: None,
         storage_root: state.server_storage_dir(),
-        workflow_slug: None,
+        workflow_slug,
         workflow_version_id: Some(intent.workflow_version_id),
         target: None,
         provenance: run_provenance(&headers, &actor),

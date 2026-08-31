@@ -232,7 +232,7 @@ pub(crate) struct RunArgs {
     #[command(flatten)]
     pub(crate) inputs: InputOverrideArgs,
 
-    /// Path to a .fabro workflow file or .toml task config
+    /// Local workflow name, checkout path, .fabro file, or workflow TOML
     #[arg(required = true)]
     pub(crate) workflow: Option<PathBuf>,
 
@@ -248,7 +248,7 @@ pub(crate) struct RunArgs {
     #[arg(long)]
     pub(crate) goal: Option<String>,
 
-    /// Read the workflow goal from a file
+    /// Read a per-run goal value from a local file
     #[arg(long, conflicts_with = "goal")]
     pub(crate) goal_file: Option<PathBuf>,
 
@@ -1136,9 +1136,9 @@ pub(crate) struct UpgradeArgs {
 
 #[derive(Subcommand)]
 pub(crate) enum RunCommands {
-    /// Launch a workflow run
+    /// Register a local workflow version, create a run, and start it
     Run(RunArgs),
-    /// Create a workflow run (allocate run dir, persist spec)
+    /// Register a local workflow version and create a submitted run
     Create(RunArgs),
     /// Start a created workflow run on the server
     Start(StartArgs),

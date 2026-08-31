@@ -124,6 +124,8 @@ fn dry_run_create_start_attach_works_with_default_run_lookup() {
             "create",
             "--dry-run",
             "--auto-approve",
+            "--environment",
+            "local",
             workflow.to_str().unwrap(),
         ])
         .assert()
@@ -246,6 +248,8 @@ digraph BarBaz {
             "create",
             "--dry-run",
             "--auto-approve",
+            "--environment",
+            "local",
             workflow_path.to_str().unwrap(),
         ])
         .assert()
@@ -314,6 +318,8 @@ digraph FooWorkflow {
             "create",
             "--dry-run",
             "--auto-approve",
+            "--environment",
+            "local",
             workflow_path.to_str().unwrap(),
         ])
         .assert()

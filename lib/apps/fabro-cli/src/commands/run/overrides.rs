@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context as _, Result, anyhow, bail};
 use fabro_config::{
     CliLayer, CliOutputLayer, RunGoalLayer, RunLayer, parse_input_overrides, parse_labels,
 };
 use fabro_manifest::{RunOverrideInput, build_run_overrides};
+use fabro_types::RunIntentArgs;
 use fabro_types::settings::cli::OutputVerbosity;
 use fabro_types::settings::interp::InterpString;
 
@@ -16,6 +17,14 @@ pub(crate) struct ManifestSettingsOverrides {
     pub(crate) run:             Option<RunLayer>,
     pub(crate) cli:             Option<CliLayer>,
     pub(crate) input_overrides: HashMap<String, toml::Value>,
+}
+
+#[derive(Debug)]
+pub(super) struct PreparedIntentOverrides {
+    pub(super) run_layer:       RunLayer,
+    pub(super) input_overrides: HashMap<String, toml::Value>,
+    pub(super) intent_args:     RunIntentArgs,
+    pub(super) goal:            Option<String>,
 }
 
 fn sparse_flag(value: bool) -> Option<bool> {
@@ -67,25 +76,74 @@ fn current_dir_or_dot() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
-pub(crate) fn run_args_overrides(args: &RunArgs) -> Result<ManifestSettingsOverrides> {
-    let cwd = current_dir_or_dot();
-    let goal = goal_layer_from_args(args.goal.as_deref(), args.goal_file.as_deref(), &cwd)?;
-    let mut run = build_run_overrides(RunOverrideInput {
-        goal:             None,
-        model:            args.model.as_deref(),
-        provider:         args.provider.as_deref(),
-        environment:      args.environment.as_deref(),
-        preserve_sandbox: sparse_flag(args.preserve_sandbox),
-        dry_run:          sparse_flag(args.dry_run),
-        auto_approve:     sparse_flag(args.auto_approve),
-        labels:           parse_labels(&args.label),
+pub(super) fn prepare_intent_overrides(
+    args: &RunArgs,
+    cwd: &Path,
+) -> Result<PreparedIntentOverrides> {
+    let goal = match (args.goal.as_deref(), args.goal_file.as_deref()) {
+        (Some(_), Some(_)) => {
+            bail!("--goal and --goal-file are mutually exclusive; use exactly one")
+        }
+        (Some(goal), None) => Some(goal.to_string()),
+        (None, Some(path)) => {
+            let absolute = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                cwd.join(path)
+            };
+            Some(
+                std::fs::read_to_string(&absolute)
+                    .with_context(|| format!("failed to read goal file {}", absolute.display()))?,
+            )
+        }
+        (None, None) => None,
+    };
+    let input_overrides = parse_input_overrides(&args.inputs.values)?;
+    let inputs = input_overrides
+        .iter()
+        .map(|(key, value)| {
+            let value = match value {
+                toml::Value::String(value) => serde_json::Value::String(value.clone()),
+                toml::Value::Integer(value) => serde_json::Value::Number((*value).into()),
+                toml::Value::Float(value) => serde_json::Number::from_f64(*value)
+                    .map(serde_json::Value::Number)
+                    .ok_or_else(|| anyhow!("input override `{key}` must be a finite float"))?,
+                toml::Value::Boolean(value) => serde_json::Value::Bool(*value),
+                toml::Value::Datetime(_) | toml::Value::Array(_) | toml::Value::Table(_) => {
+                    bail!("input override `{key}` must be a scalar value")
+                }
+            };
+            Ok((key.clone(), value))
+        })
+        .collect::<Result<HashMap<_, _>>>()?;
+    let labels = parse_labels(&args.label);
+    let dry_run = sparse_flag(args.dry_run);
+    let auto_approve = sparse_flag(args.auto_approve);
+    let preserve_sandbox = sparse_flag(args.preserve_sandbox);
+    let run_layer = build_run_overrides(RunOverrideInput {
+        goal: goal.as_deref(),
+        model: args.model.as_deref(),
+        provider: args.provider.as_deref(),
+        environment: args.environment.as_deref(),
+        preserve_sandbox,
+        dry_run,
+        auto_approve,
+        labels: labels.clone(),
     });
-    run.goal = goal;
 
-    Ok(ManifestSettingsOverrides {
-        run:             Some(run),
-        cli:             cli_layer_for_verbose(args.verbose),
-        input_overrides: parse_input_overrides(&args.inputs.values)?,
+    Ok(PreparedIntentOverrides {
+        run_layer,
+        input_overrides,
+        intent_args: RunIntentArgs {
+            model: args.model.clone(),
+            provider: args.provider.clone(),
+            inputs,
+            labels,
+            dry_run,
+            auto_approve,
+            preserve_sandbox,
+        },
+        goal,
     })
 }
 
@@ -118,6 +176,150 @@ pub(crate) fn preflight_args_overrides(args: &PreflightArgs) -> Result<ManifestS
 )]
 mod tests {
     use super::*;
+
+    fn run_args() -> RunArgs {
+        RunArgs {
+            target:           crate::args::ServerTargetArgs::default(),
+            inputs:           crate::args::InputOverrideArgs::default(),
+            workflow:         Some(PathBuf::from("workflow.fabro")),
+            dry_run:          false,
+            auto_approve:     false,
+            goal:             None,
+            goal_file:        None,
+            model:            None,
+            provider:         None,
+            verbose:          false,
+            environment:      None,
+            label:            Vec::new(),
+            parent:           None,
+            preserve_sandbox: false,
+            detach:           false,
+        }
+    }
+
+    #[test]
+    fn intent_overrides_preserve_typed_values_and_sparse_flags() {
+        let mut args = run_args();
+        args.inputs.values = vec![
+            "string=hello".to_string(),
+            "boolean=true".to_string(),
+            "integer=42".to_string(),
+            "float=1.25".to_string(),
+        ];
+        args.goal = Some("Ship it".to_string());
+        args.model = Some("gpt-5".to_string());
+        args.provider = Some("openai".to_string());
+        args.environment = Some("cloud".to_string());
+        args.label = vec!["team=cli".to_string()];
+        args.dry_run = true;
+        args.auto_approve = true;
+        args.preserve_sandbox = true;
+        args.verbose = true;
+
+        let prepared = prepare_intent_overrides(&args, Path::new("/caller")).unwrap();
+
+        assert_eq!(prepared.goal.as_deref(), Some("Ship it"));
+        assert_eq!(
+            prepared.intent_args.inputs,
+            HashMap::from([
+                ("string".to_string(), serde_json::json!("hello")),
+                ("boolean".to_string(), serde_json::json!(true)),
+                ("integer".to_string(), serde_json::json!(42)),
+                ("float".to_string(), serde_json::json!(1.25)),
+            ])
+        );
+        assert_eq!(prepared.intent_args.model.as_deref(), Some("gpt-5"));
+        assert_eq!(prepared.intent_args.provider.as_deref(), Some("openai"));
+        assert_eq!(
+            prepared.intent_args.labels.get("team"),
+            Some(&"cli".to_string())
+        );
+        assert_eq!(prepared.intent_args.dry_run, Some(true));
+        assert_eq!(prepared.intent_args.auto_approve, Some(true));
+        assert_eq!(prepared.intent_args.preserve_sandbox, Some(true));
+        assert!(
+            !serde_json::to_value(&prepared.intent_args)
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .contains_key("verbose")
+        );
+        assert_eq!(
+            prepared.input_overrides,
+            HashMap::from([
+                (
+                    "string".to_string(),
+                    toml::Value::String("hello".to_string())
+                ),
+                ("boolean".to_string(), toml::Value::Boolean(true)),
+                ("integer".to_string(), toml::Value::Integer(42)),
+                ("float".to_string(), toml::Value::Float(1.25)),
+            ])
+        );
+        let RunGoalLayer::Inline(goal) = prepared.run_layer.goal.unwrap() else {
+            panic!("prepared run layer should use an inline goal");
+        };
+        assert_eq!(goal.as_source(), "Ship it");
+    }
+
+    #[test]
+    fn intent_overrides_leave_false_flags_absent() {
+        let prepared = prepare_intent_overrides(&run_args(), Path::new("/caller")).unwrap();
+
+        assert_eq!(prepared.intent_args.dry_run, None);
+        assert_eq!(prepared.intent_args.auto_approve, None);
+        assert_eq!(prepared.intent_args.preserve_sandbox, None);
+    }
+
+    #[test]
+    fn intent_goal_files_are_read_by_value_from_relative_and_absolute_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let relative = PathBuf::from("goals/task.md");
+        std::fs::create_dir_all(dir.path().join("goals")).unwrap();
+        std::fs::write(dir.path().join(&relative), "Goal from file").unwrap();
+
+        for goal_file in [relative, dir.path().join("goals/task.md")] {
+            let mut args = run_args();
+            args.goal_file = Some(goal_file);
+            let prepared = prepare_intent_overrides(&args, dir.path()).unwrap();
+
+            assert_eq!(prepared.goal.as_deref(), Some("Goal from file"));
+            let RunGoalLayer::Inline(goal) = prepared.run_layer.goal.unwrap() else {
+                panic!("goal-file content should become an inline validation override");
+            };
+            assert_eq!(goal.as_source(), "Goal from file");
+        }
+    }
+
+    #[test]
+    fn intent_goal_file_read_errors_preserve_the_resolved_path_and_source() {
+        let mut args = run_args();
+        args.goal_file = Some(PathBuf::from("missing.md"));
+
+        let error = prepare_intent_overrides(&args, Path::new("/caller")).unwrap_err();
+        assert!(error.to_string().contains("/caller/missing.md"));
+        assert!(error.source().is_some());
+    }
+
+    #[test]
+    fn intent_goal_and_goal_file_together_are_rejected_defensively() {
+        let mut args = run_args();
+        args.goal = Some("inline".to_string());
+        args.goal_file = Some(PathBuf::from("goal.md"));
+
+        let error = prepare_intent_overrides(&args, Path::new("/caller")).unwrap_err();
+        assert!(error.to_string().contains("mutually exclusive"));
+    }
+
+    #[test]
+    fn intent_overrides_reject_non_finite_float_with_input_key() {
+        let mut args = run_args();
+        args.inputs.values = vec!["temperature=nan".to_string()];
+
+        let error = prepare_intent_overrides(&args, Path::new("/caller")).unwrap_err();
+        assert!(error.to_string().contains("temperature"));
+        assert!(error.to_string().contains("finite"));
+    }
 
     #[test]
     fn goal_and_goal_file_together_is_rejected() {

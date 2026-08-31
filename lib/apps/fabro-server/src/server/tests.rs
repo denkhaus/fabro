@@ -3564,10 +3564,17 @@ async fn store_workflow_version(
     graph: &str,
     workflow_toml: Option<&str>,
 ) -> fabro_types::WorkflowVersionId {
-    let mut files = std::collections::BTreeMap::from([(
-        fabro_types::WorkflowPath::new("workflow.fabro").unwrap(),
-        graph.to_string(),
-    )]);
+    store_workflow_version_with_entrypoint(state, "workflow.fabro", graph, workflow_toml).await
+}
+
+async fn store_workflow_version_with_entrypoint(
+    state: &AppState,
+    entrypoint: &str,
+    graph: &str,
+    workflow_toml: Option<&str>,
+) -> fabro_types::WorkflowVersionId {
+    let entrypoint = fabro_types::WorkflowPath::new(entrypoint).unwrap();
+    let mut files = std::collections::BTreeMap::from([(entrypoint.clone(), graph.to_string())]);
     if let Some(workflow_toml) = workflow_toml {
         files.insert(
             fabro_types::WorkflowPath::new("workflow.toml").unwrap(),
@@ -3582,18 +3589,57 @@ async fn store_workflow_version(
             "FROM alpine:3".to_string(),
         );
     }
-    let version = fabro_types::WorkflowVersion::new(
-        fabro_types::WorkflowPath::new("workflow.fabro").unwrap(),
-        files,
-        std::collections::BTreeMap::new(),
-    )
-    .unwrap();
+    let version =
+        fabro_types::WorkflowVersion::new(entrypoint, files, std::collections::BTreeMap::new())
+            .unwrap();
     let version = fabro_workflow_version::ValidatedWorkflowVersion::new(version).unwrap();
     let blobs = state.store_ref().blobs();
     fabro_workflow_version::WorkflowVersionStore::new(blobs)
         .put(&version)
         .await
         .unwrap()
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_derives_workflow_slug_from_immutable_entrypoint() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    for (entrypoint, expected_slug) in [
+        ("deploy/workflow.fabro", "deploy"),
+        ("workflow.fabro", "workflow"),
+    ] {
+        let workflow_version_id =
+            store_workflow_version_with_entrypoint(&state, entrypoint, MINIMAL_DOT, None).await;
+        let body = post_run_manifest(
+            &app,
+            json!({
+                "workflow_version_id": workflow_version_id,
+                "target": { "kind": "none" },
+                "args": {}
+            }),
+        )
+        .await;
+        let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+        let projection = state
+            .stores
+            .runs
+            .open_run_reader(&run_id)
+            .await
+            .unwrap()
+            .state()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            projection.spec.workflow_slug.as_deref(),
+            Some(expected_slug)
+        );
+        assert_eq!(
+            projection.spec.workflow_version_id,
+            Some(workflow_version_id)
+        );
+    }
 }
 
 #[tokio::test]

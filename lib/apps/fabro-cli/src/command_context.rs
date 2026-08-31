@@ -17,7 +17,7 @@ use crate::args::{
     ServerConnectionArgs, ServerTargetArgs, printer_from_verbosity, require_no_json_override,
 };
 use crate::server_client::Client;
-use crate::user_config::LoadedSettings;
+use crate::user_config::{LoadedSettings, RunSettingsKeyPresence};
 use crate::{server_client, user_config};
 
 #[derive(Clone, Debug)]
@@ -33,24 +33,26 @@ pub(crate) enum ServerMode {
 }
 
 pub(crate) struct CommandContext {
-    printer:            Printer,
+    printer: Printer,
     process_local_json: bool,
-    cwd:                PathBuf,
-    base_config_path:   PathBuf,
-    cli_layer:          CliLayer,
-    storage_dir:        PathBuf,
-    run_settings:       std::result::Result<RunNamespace, SharedError>,
-    user_settings:      UserSettings,
-    server_mode:        ServerMode,
-    server:             OnceCell<Arc<Client>>,
-    llm_source:         OnceCell<Arc<dyn CredentialSource>>,
-    catalog:            OnceLock<Arc<Catalog>>,
+    cwd: PathBuf,
+    base_config_path: PathBuf,
+    cli_layer: CliLayer,
+    storage_dir: PathBuf,
+    run_settings: std::result::Result<RunNamespace, SharedError>,
+    user_settings: UserSettings,
+    run_settings_key_presence: RunSettingsKeyPresence,
+    server_mode: ServerMode,
+    server: OnceCell<Arc<Client>>,
+    llm_source: OnceCell<Arc<dyn CredentialSource>>,
+    catalog: OnceLock<Arc<Catalog>>,
 }
 
 struct ResolvedCommandSettings {
-    storage_dir:   PathBuf,
-    run_settings:  std::result::Result<RunNamespace, SharedError>,
-    user_settings: UserSettings,
+    storage_dir:               PathBuf,
+    run_settings:              std::result::Result<RunNamespace, SharedError>,
+    user_settings:             UserSettings,
+    run_settings_key_presence: RunSettingsKeyPresence,
 }
 
 impl CommandContext {
@@ -69,6 +71,7 @@ impl CommandContext {
             storage_dir: resolved_settings.storage_dir,
             run_settings: resolved_settings.run_settings,
             user_settings: resolved_settings.user_settings,
+            run_settings_key_presence: resolved_settings.run_settings_key_presence,
             server_mode: ServerMode::None,
             server: OnceCell::new(),
             llm_source: OnceCell::new(),
@@ -117,6 +120,10 @@ impl CommandContext {
 
     pub(crate) fn user_settings(&self) -> &UserSettings {
         &self.user_settings
+    }
+
+    pub(crate) fn run_settings_key_presence(&self) -> &RunSettingsKeyPresence {
+        &self.run_settings_key_presence
     }
 
     pub(crate) fn base_config_path(&self) -> &Path {
@@ -219,6 +226,7 @@ impl CommandContext {
             storage_dir: resolved_settings.storage_dir,
             run_settings: resolved_settings.run_settings,
             user_settings: resolved_settings.user_settings,
+            run_settings_key_presence: resolved_settings.run_settings_key_presence,
             server_mode,
             server: OnceCell::new(),
             llm_source: OnceCell::new(),
@@ -249,9 +257,10 @@ fn load_merged_settings(
 
 fn resolve_command_settings(loaded_settings: LoadedSettings) -> ResolvedCommandSettings {
     ResolvedCommandSettings {
-        storage_dir:   loaded_settings.storage_dir,
-        run_settings:  loaded_settings.run_settings,
-        user_settings: loaded_settings.user_settings,
+        storage_dir:               loaded_settings.storage_dir,
+        run_settings:              loaded_settings.run_settings,
+        user_settings:             loaded_settings.user_settings,
+        run_settings_key_presence: loaded_settings.run_settings_key_presence,
     }
 }
 
@@ -293,6 +302,7 @@ mod tests {
             storage_dir: resolved_settings.storage_dir,
             run_settings: resolved_settings.run_settings,
             user_settings: resolved_settings.user_settings,
+            run_settings_key_presence: resolved_settings.run_settings_key_presence,
             server_mode: ServerMode::None,
             server: OnceCell::new(),
             llm_source: OnceCell::new(),

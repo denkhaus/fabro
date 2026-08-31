@@ -1,7 +1,10 @@
 use fabro_api::types;
 
-use crate::args::{PreflightArgs, RunArgs};
+use crate::args::PreflightArgs;
+#[cfg(test)]
+use crate::args::RunArgs;
 
+#[cfg(test)]
 pub(crate) fn run_manifest_args(args: &RunArgs) -> Option<types::ManifestArgs> {
     let payload = types::ManifestArgs {
         auto_approve:     args.auto_approve.then_some(true),
