@@ -184,14 +184,6 @@ async fn create_run_session(
 
     let session_id = SessionId::new();
     let now = Utc::now();
-    if let Err(err) = state
-        .store_ref()
-        .put_session_run_index(&session_id, &run_id)
-        .await
-    {
-        return store_error(&err).into_response();
-    }
-
     let event = match append_run_session_event(
         &run_store,
         run_id,
@@ -1388,7 +1380,7 @@ async fn load_session(
     state: &AppState,
     session_id: SessionId,
 ) -> Result<(RunId, RunDatabase, ProjectedRunSession), Response> {
-    let run_id = match state.store_ref().get_session_run_id(&session_id).await {
+    let run_id = match state.store_ref().find_session_owner(&session_id).await {
         Ok(Some(run_id)) => run_id,
         Ok(None) => return Err(ApiError::not_found("Session not found.").into_response()),
         Err(err) => return Err(store_error(&err).into_response()),
@@ -1408,7 +1400,7 @@ async fn load_session_read(
     state: &AppState,
     session_id: SessionId,
 ) -> Result<(RunId, ProjectedRunSession), Response> {
-    let run_id = match state.store_ref().get_session_run_id(&session_id).await {
+    let run_id = match state.store_ref().find_session_owner(&session_id).await {
         Ok(Some(run_id)) => run_id,
         Ok(None) => return Err(ApiError::not_found("Session not found.").into_response()),
         Err(err) => return Err(store_error(&err).into_response()),
@@ -1428,7 +1420,7 @@ async fn load_session_run_reader(
     state: &AppState,
     session_id: SessionId,
 ) -> Result<(RunId, RunDatabase), Response> {
-    let run_id = match state.store_ref().get_session_run_id(&session_id).await {
+    let run_id = match state.store_ref().find_session_owner(&session_id).await {
         Ok(Some(run_id)) => run_id,
         Ok(None) => return Err(ApiError::not_found("Session not found.").into_response()),
         Err(err) => return Err(store_error(&err).into_response()),

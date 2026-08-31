@@ -664,7 +664,7 @@ async fn runs_schema_creates_indexes_and_rejects_invalid_rows() -> anyhow::Resul
 }
 
 #[tokio::test]
-async fn run_events_schema_has_final_shape_constraints_and_indexes() -> anyhow::Result<()> {
+async fn session_owner_schema_has_final_shape_constraints_and_indexes() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let database = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
     database.migrate().await?;
@@ -726,6 +726,7 @@ async fn run_events_schema_has_final_shape_constraints_and_indexes() -> anyhow::
         })
         .collect::<Vec<_>>();
     assert_eq!(named_indexes, vec![
+        ("run_events_by_session_owner".to_string(), 1, 1),
         (
             "run_events_by_pull_request_creation_request".to_string(),
             0,
@@ -737,6 +738,7 @@ async fn run_events_schema_has_final_shape_constraints_and_indexes() -> anyhow::
     ]);
     assert!(indexes.iter().all(|index| {
         index.get::<i64, _>("unique") == 0
+            || index.get::<String, _>("name") == "run_events_by_session_owner"
             || index.get::<String, _>("name") == "sqlite_autoindex_run_events_1"
     }));
 
@@ -791,7 +793,8 @@ async fn run_events_schema_has_final_shape_constraints_and_indexes() -> anyhow::
 }
 
 #[tokio::test]
-async fn run_events_schema_query_plans_use_candidate_indexes() -> anyhow::Result<()> {
+async fn run_events_schema_query_plans_use_candidate_indexes_including_session_owner()
+-> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let database = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
     database.migrate().await?;
@@ -816,6 +819,10 @@ async fn run_events_schema_query_plans_use_candidate_indexes() -> anyhow::Result
         (
             "EXPLAIN QUERY PLAN SELECT * FROM run_events WHERE run_id = ? AND session_id = ? AND event_name GLOB 'run.session.*' ORDER BY seq ASC LIMIT ?",
             "run_events_by_session",
+        ),
+        (
+            "EXPLAIN QUERY PLAN SELECT run_id, seq, event_name, node_id, stage_id, session_id, event_json FROM run_events WHERE session_id = ? AND event_name = 'run.session.created'",
+            "run_events_by_session_owner",
         ),
         (
             "EXPLAIN QUERY PLAN SELECT * FROM run_events WHERE event_name = 'pull_request.creation_requested' ORDER BY run_id, seq",
@@ -865,6 +872,99 @@ async fn run_events_schema_query_plans_use_candidate_indexes() -> anyhow::Result
         );
     }
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn session_owner_migration_preflight_is_count_only_retriable_and_idempotent()
+-> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let database = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
+    database.migrate().await?;
+
+    sqlx::query("DROP INDEX IF EXISTS run_events_by_session_owner")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 2026083101")
+        .execute(database.pool())
+        .await?;
+
+    for run_id in ["first", "second", "third", "fourth"] {
+        insert_run_with_id(database.pool(), run_id, None).await?;
+    }
+    for (run_id, session_id) in [
+        ("first", "collision-alpha"),
+        ("second", "collision-alpha"),
+        ("third", "collision-beta"),
+        ("fourth", "collision-beta"),
+    ] {
+        insert_session_creation_claim(database.pool(), run_id, session_id).await?;
+    }
+
+    let error = database
+        .migrate()
+        .await
+        .expect_err("duplicate session owners must abort migration");
+    let rendered = format!("{error:#}");
+    assert!(rendered.contains("2 duplicate session ownership groups"));
+    assert!(!rendered.contains("collision-alpha"));
+    assert!(!rendered.contains("collision-beta"));
+    assert!(!rendered.contains("sensitive event contents"));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM run_events WHERE event_name = 'run.session.created'"
+        )
+        .fetch_one(database.pool())
+        .await?,
+        4
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'run_events_by_session_owner'"
+        )
+        .fetch_one(database.pool())
+        .await?,
+        0
+    );
+
+    sqlx::query("DELETE FROM run_events WHERE run_id IN ('second', 'fourth')")
+        .execute(database.pool())
+        .await?;
+    database.migrate().await?;
+    database.migrate().await?;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'run_events_by_session_owner'"
+        )
+        .fetch_one(database.pool())
+        .await?,
+        1
+    );
+    Ok(())
+}
+
+async fn insert_session_creation_claim(
+    pool: &fabro_db::DbPool,
+    run_id: &str,
+    session_id: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r"
+INSERT INTO run_events (run_id, seq, event_name, session_id, event_json)
+VALUES (?, 1, 'run.session.created', ?, json_object(
+    'run_id', ?,
+    'event', 'run.session.created',
+    'session_id', ?,
+    'properties', json_object('note', 'sensitive event contents')
+))
+",
+    )
+    .bind(run_id)
+    .bind(session_id)
+    .bind(run_id)
+    .bind(session_id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

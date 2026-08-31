@@ -2,7 +2,7 @@ use std::fmt::{self, Write};
 #[cfg(test)]
 use std::ops::Range;
 
-use fabro_types::{RunId, SessionId};
+use fabro_types::RunId;
 
 pub(crate) const MAX_EVENT_SEQ: u32 = 999_999;
 
@@ -120,10 +120,6 @@ pub(crate) fn sessions_by_id_prefix() -> SlateKey {
     SlateKey::new("sessions").with("by-id").into_prefix()
 }
 
-pub(crate) fn session_by_id_key(session_id: &SessionId) -> SlateKey {
-    SlateKey::new("sessions").with("by-id").with(session_id)
-}
-
 // --- Parsing ---
 
 #[cfg(test)]
@@ -190,7 +186,9 @@ mod tests {
         // Sibling namespaces of the same run sort outside the range.
         assert!(!contains(&SlateKey::new("runs").with(run_id).with("state")));
         assert!(!contains(
-            &session_by_id_key(&fabro_types::SessionId::new())
+            &SlateKey::new("sessions")
+                .with("by-id")
+                .with(fabro_types::SessionId::new())
         ));
     }
 

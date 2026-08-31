@@ -33,6 +33,7 @@ pub fn test_run_summary_store() -> Arc<RunSummaryStore> {
         fabro_db::RUNS_MIGRATION_SQL,
         fabro_db::RUN_EVENTS_MIGRATION_SQL,
         fabro_db::RUN_HISTORY_ACTIVATION_MIGRATION_SQL,
+        fabro_db::RUN_EVENT_SESSION_OWNER_MIGRATION_SQL,
     ])))
 }
 
@@ -106,6 +107,7 @@ pub fn test_run_summary_store_at(store_dir: &Path) -> Arc<RunSummaryStore> {
             fabro_db::RUNS_MIGRATION_SQL,
             fabro_db::RUN_EVENTS_MIGRATION_SQL,
             fabro_db::RUN_HISTORY_ACTIVATION_MIGRATION_SQL,
+            fabro_db::RUN_EVENT_SESSION_OWNER_MIGRATION_SQL,
         ],
     )))
 }

@@ -1396,6 +1396,24 @@ mod tests {
         event_value(run_id, seq, "run.submitted", &serde_json::json!({}))
     }
 
+    fn session_created_value(
+        run_id: &RunId,
+        seq: u32,
+        session_id: &SessionId,
+    ) -> serde_json::Value {
+        let mut value = event_value(
+            run_id,
+            seq,
+            "run.session.created",
+            &serde_json::json!({ "title": "Imported session" }),
+        );
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("session_id".to_string(), session_id.to_string().into());
+        value
+    }
+
     #[tokio::test]
     async fn legacy_source_identity_covers_exact_keys_and_json_bytes() -> TestResult<()> {
         let context = TestContext::new().await?;
@@ -1534,17 +1552,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn legacy_run_history_imports_exact_json_gaps_and_count_only_diagnostics()
+    async fn session_owner_imports_typed_event_and_counts_opaque_legacy_reverse_rows()
     -> TestResult<()> {
         let context = TestContext::new().await?;
         let first = run_id(1);
         let second = run_id(2);
         let empty_marker = run_id(3);
         let stale = run_id(4);
+        let session_id = SessionId::new();
         let first_created = serde_json::to_string_pretty(&created_value(&first, "first"))?;
+        let first_session = serde_json::to_string(&session_created_value(&first, 3, &session_id))?;
         let first_submitted = serde_json::to_string(&submitted_value(&first, 4))?;
         let second_created = serde_json::to_string(&created_value(&second, "second"))?;
         context.put_event(&first, 1, 10, &first_created).await?;
+        context.put_event(&first, 3, 30, &first_session).await?;
         context.put_event(&first, 4, 40, &first_submitted).await?;
         context.put_event(&second, 1, 20, &second_created).await?;
         context.put_raw(keys::run_catalog_key(&first), b"").await?;
@@ -1552,8 +1573,10 @@ mod tests {
             .put_raw(keys::run_catalog_key(&empty_marker), b"")
             .await?;
         context
-            .source
-            .put_session_run_index(&SessionId::new(), &first)
+            .put_raw(
+                SlateKey::new("sessions").with("by-id").with(session_id),
+                b"opaque legacy reverse row",
+            )
             .await?;
 
         let stale_created = serde_json::to_string(&created_value(&stale, "stale"))?;
@@ -1572,9 +1595,9 @@ mod tests {
 
         assert_eq!(report, LegacyRunHistoryImportReport {
             scanned_source_runs: 2,
-            scanned_source_events: 3,
+            scanned_source_events: 4,
             imported_runs: 2,
-            imported_events: 3,
+            imported_events: 4,
             discarded_projection_only_rows: 1,
             committed_run_transactions: 2,
             diagnostics: LegacyRunHistoryDiagnostics {
@@ -1589,7 +1612,16 @@ mod tests {
                 .bind(first.to_string())
                 .fetch_all(&context.sqlite)
                 .await?;
-        assert_eq!(stored, vec![(1, first_created), (4, first_submitted)]);
+        assert_eq!(stored, vec![
+            (1, first_created),
+            (3, first_session),
+            (4, first_submitted)
+        ]);
+        let summaries = RunSummaryStore::new(context.sqlite.clone());
+        assert_eq!(
+            summaries.find_session_owner(&session_id).await?,
+            Some(first)
+        );
         assert_eq!(
             sqlx::query_scalar::<_, i64>("SELECT source_last_seq FROM runs WHERE id = ?")
                 .bind(first.to_string())
@@ -1603,7 +1635,7 @@ mod tests {
             .verify_legacy_run_history_in(&context.sqlite)
             .await?;
         assert_eq!(verification.target_runs, 2);
-        assert_eq!(verification.target_events, 3);
+        assert_eq!(verification.target_events, 4);
         Ok(())
     }
 
