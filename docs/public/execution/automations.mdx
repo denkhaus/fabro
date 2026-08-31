@@ -45,7 +45,7 @@ An extensionless workflow such as `"release"` resolves directly to `.fabro/workf
 
 Automation admission does not read `.fabro/project.toml`. Put settings needed by the run in the workflow configuration or the selected server environment. Fabro packages the workflow and its runnable dependencies into immutable workflow versions before creating the run.
 
-### Using a separate workflow repository
+### Using a separate workflow source
 
 Omit `workflow_source` to resolve the `workflow` selector in the run-target checkout, as in the request above. This is the compatibility default for existing definitions.
 
@@ -53,7 +53,9 @@ To keep reusable workflow files in another repository, provide an explicit sourc
 
 ```json title="Create automation with a separate workflow source"
 {
+  "id": "nightly-release",
   "name": "Nightly release",
+  "environment_id": "default",
   "target": {
     "kind": "git",
     "repo": "acme/orders-api",
@@ -71,9 +73,9 @@ To keep reusable workflow files in another repository, provide an explicit sourc
 }
 ```
 
-`kind` may be `branch`, `tag`, or `commit`. Branch and tag refs are bare names and are resolved again on every firing. A commit ref is exactly 40 hexadecimal characters and always selects that commit. The server uses its configured GitHub credentials independently for the target and workflow-source repositories; automation requests never carry credentials.
+`kind` may be `branch`, `tag`, or `commit`. Branch and tag refs are bare names and are resolved again on every firing. A commit ref is exactly 40 hexadecimal characters and always selects that commit. The server uses its configured GitHub credentials independently for the target and workflow-source repositories, with read-only repository access for workflow materialization; automation requests never carry credentials.
 
-Fabro resolves the run target to an exact commit and checks out the selected workflow source before it creates a run. It packages the workflow and its dependencies into immutable, content-addressed workflow versions, then admits the run with the root workflow-version ID and the independently exact run target. The mutable source coordinate is therefore resolved per firing, while the bytes used by that run remain pinned. If an explicit source names the same repository and effective selector as the target, Fabro reuses the checkout without removing the explicit saved source.
+Fabro resolves the run target to an exact commit and checks out the selected workflow source before it creates a run. It packages the workflow and its dependencies into immutable, content-addressed workflow versions, then admits the run with the root workflow-version ID and the independently exact run target. The run's automation metadata records both the requested workflow-source coordinate and its resolved commit, so the mutable source can be audited after its branch or tag moves. If an explicit source names the same repository and effective selector as the target, Fabro reuses the checkout without removing the explicit saved source.
 
 If target or source authentication, checkout, workflow discovery, packaging, or workflow-version storage fails, Fabro creates no run and sends no start request.
 

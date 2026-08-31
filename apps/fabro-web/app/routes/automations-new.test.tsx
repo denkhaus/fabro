@@ -310,7 +310,7 @@ describe("AutomationsNew", () => {
     expect(fieldValue(renderer, "Automation environment")).toBe("");
     expect(switchChecked(renderer, "Enable manual and API triggers")).toBe(true);
     expect(switchChecked(renderer, "Enable scheduled triggers")).toBe(false);
-    expect(switchChecked(renderer, "Use a different workflow repository")).toBe(false);
+    expect(switchChecked(renderer, "Use a separate workflow source")).toBe(false);
     expect(renderer.root.findAllByProps({ "aria-label": "Workflow source repository" })).toHaveLength(0);
   });
 
@@ -382,7 +382,7 @@ describe("AutomationsNew", () => {
     expect(fieldValue(renderer, "Automation environment")).toBe("default");
     expect(switchChecked(renderer, "Enable manual and API triggers")).toBe(true);
     expect(switchChecked(renderer, "Enable scheduled triggers")).toBe(false);
-    expect(switchChecked(renderer, "Use a different workflow repository")).toBe(false);
+    expect(switchChecked(renderer, "Use a separate workflow source")).toBe(false);
     expect(
       renderer.root.findAllByProps({ "aria-label": "Cron expression" }),
     ).toHaveLength(0);
@@ -451,7 +451,7 @@ describe("AutomationsNew", () => {
     changeField(renderer, "Automation environment", "daytona-smoke");
     changeField(renderer, "Workflow slug", "release");
     act(() => {
-      byLabel(renderer, "Use a different workflow repository").props.onChange(true);
+      byLabel(renderer, "Use a separate workflow source").props.onChange(true);
     });
     changeField(renderer, "Workflow source repository", " fabro-sh/workflows ");
     changeField(renderer, "Workflow source ref", "ABCDEF0123456789ABCDEF0123456789ABCDEF01");

@@ -353,19 +353,20 @@ async fn corrupt_workflow_source_rows_are_rejected_as_stored_shape_errors() {
     let partial = store.create(draft("partial", true)).await.unwrap();
     let unknown = store.create(draft("unknown", true)).await.unwrap();
 
+    let mut connection = database.pool().acquire().await.unwrap();
     sqlx::query("DROP TRIGGER automation_workflow_source_all_or_none_update")
-        .execute(database.pool())
+        .execute(&mut *connection)
         .await
         .unwrap();
     sqlx::query("PRAGMA ignore_check_constraints = ON")
-        .execute(database.pool())
+        .execute(&mut *connection)
         .await
         .unwrap();
     sqlx::query(
         "UPDATE automations SET workflow_source_repository = 'fabro-sh/workflows' WHERE id = ?",
     )
     .bind(partial.id.as_str())
-    .execute(database.pool())
+    .execute(&mut *connection)
     .await
     .unwrap();
     sqlx::query(
@@ -373,9 +374,10 @@ async fn corrupt_workflow_source_rows_are_rejected_as_stored_shape_errors() {
          workflow_source_kind = 'unknown', workflow_source_ref = 'main' WHERE id = ?",
     )
     .bind(unknown.id.as_str())
-    .execute(database.pool())
+    .execute(&mut *connection)
     .await
     .unwrap();
+    drop(connection);
 
     assert!(matches!(
         store.get(&partial.id).await.unwrap_err(),

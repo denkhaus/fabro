@@ -287,9 +287,10 @@ async fn fire_scheduled_automation_run(
         system_kind: SystemActorKind::Engine,
     };
     let automation_ref = AutomationRef {
-        id:         automation_id.to_string(),
-        name:       Some(automation.name.clone()),
-        trigger_id: Some(trigger_id.to_string()),
+        id:              automation_id.to_string(),
+        name:            Some(automation.name.clone()),
+        trigger_id:      Some(trigger_id.to_string()),
+        workflow_source: materialized.workflow_source.clone(),
     };
     // RunIntent admission produces a large future; box it to keep our
     // stack frame small (matches handler/automations.rs).
@@ -395,7 +396,7 @@ mod tests {
     };
     use fabro_static::EnvVars;
     use fabro_store::ListRunsQuery;
-    use fabro_types::{GitRunTarget, RunStatus, RunTarget};
+    use fabro_types::{GitRunTarget, ResolvedAutomationGitWorkflowSource, RunStatus, RunTarget};
 
     use super::*;
     use crate::test_support::{TestAppStateBuilder, TestAutomationRunMaterializer};
@@ -741,8 +742,21 @@ mod tests {
 
         let captured = materializer.captured_inputs();
         assert_eq!(captured.len(), 1);
-        assert_eq!(captured[0].workflow_source, Some(workflow_source));
-        assert_eq!(cached_runs(state.as_ref()).await.len(), 1);
+        assert_eq!(captured[0].workflow_source, Some(workflow_source.clone()));
+        let runs = cached_runs(state.as_ref()).await;
+        assert_eq!(runs.len(), 1);
+        assert_eq!(
+            runs[0]
+                .automation
+                .as_ref()
+                .and_then(|automation| automation.workflow_source.clone()),
+            Some(Box::new(ResolvedAutomationGitWorkflowSource {
+                repo:         workflow_source.repo,
+                kind:         workflow_source.kind,
+                reference:    workflow_source.reference,
+                resolved_sha: "ffffffffffffffffffffffffffffffffffffffff".to_string(),
+            }))
+        );
     }
 
     #[tokio::test]

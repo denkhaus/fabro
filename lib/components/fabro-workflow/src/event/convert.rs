@@ -2850,9 +2850,10 @@ mod tests {
             subject: user_principal("alice"),
         };
         let automation = AutomationRef {
-            id:         "nightly".to_string(),
-            name:       Some("Nightly".to_string()),
-            trigger_id: Some("schedule_1".to_string()),
+            id:              "nightly".to_string(),
+            name:            Some("Nightly".to_string()),
+            trigger_id:      Some("schedule_1".to_string()),
+            workflow_source: None,
         };
         let workflow_version_id = test_support::test_workflow_version_id();
 

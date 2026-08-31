@@ -695,7 +695,7 @@ fn main() {
         ),
         (
             "AutomationGitWorkflowSourceKind",
-            "fabro_automation::AutomationGitWorkflowSourceKind",
+            "fabro_types::AutomationGitWorkflowSourceKind",
             &[],
         ),
         ("AutomationRef", "fabro_types::AutomationRef", &[]),

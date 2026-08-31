@@ -1898,15 +1898,17 @@ mod tests {
 
         let mut first = projection(first_id, "bravo", created_at);
         first.spec.automation = Some(AutomationRef {
-            id:         "nightly".to_string(),
-            name:       None,
-            trigger_id: None,
+            id:              "nightly".to_string(),
+            name:            None,
+            trigger_id:      None,
+            workflow_source: None,
         });
         let mut second = projection(second_id, "alpha", created_at);
         second.spec.automation = Some(AutomationRef {
-            id:         "nightly".to_string(),
-            name:       None,
-            trigger_id: None,
+            id:              "nightly".to_string(),
+            name:            None,
+            trigger_id:      None,
+            workflow_source: None,
         });
         let mut archived = projection(archived_id, "charlie", created_at);
         archived.archived_at = Some(created_at);
@@ -1955,9 +1957,10 @@ mod tests {
         let run_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
         let mut projection = projection(run_id, "billed", created_at);
         projection.spec.automation = Some(AutomationRef {
-            id:         "nightly".to_string(),
-            name:       None,
-            trigger_id: None,
+            id:              "nightly".to_string(),
+            name:            None,
+            trigger_id:      None,
+            workflow_source: None,
         });
         projection.status = RunStatus::Succeeded {
             reason: SuccessReason::Completed,

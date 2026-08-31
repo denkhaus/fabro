@@ -1052,7 +1052,7 @@ async fn api_triggered_run_passes_saved_workflow_source_to_materialization() {
     });
     create_automation_with_body(&app, &body).await;
 
-    create_automation_run(&app, "nightly", StatusCode::CREATED).await;
+    let created = create_automation_run(&app, "nightly", StatusCode::CREATED).await;
 
     let captured = materializer.captured_workflow_sources();
     assert_eq!(captured.len(), 1);
@@ -1062,6 +1062,15 @@ async fn api_triggered_run_passes_saved_workflow_source_to_materialization() {
             repo:      "fabro-sh/workflows".to_string(),
             kind:      AutomationGitWorkflowSourceKind::Tag,
             reference: "release-v1".to_string(),
+        })
+    );
+    assert_eq!(
+        created["automation"]["workflow_source"],
+        json!({
+            "repo": "fabro-sh/workflows",
+            "kind": "tag",
+            "ref": "release-v1",
+            "resolved_sha": "ffffffffffffffffffffffffffffffffffffffff"
         })
     );
 }

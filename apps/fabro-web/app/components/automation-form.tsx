@@ -554,13 +554,13 @@ export function AutomationFormFields({
           />
         </Row>
         <Row
-          title="Different repository"
-          help="Load workflow files from another saved GitHub coordinate while keeping the run target independent."
+          title="Separate workflow source"
+          help="Resolve workflow files from an explicit repository and ref, independent of the run target. The repository may be the same as the target."
         >
           <ToggleSwitch
             checked={values.usesSeparateWorkflowSource}
             onChange={(usesSeparateWorkflowSource) => patch({ usesSeparateWorkflowSource })}
-            label="Use a different workflow repository"
+            label="Use a separate workflow source"
           />
         </Row>
         {values.usesSeparateWorkflowSource ? (

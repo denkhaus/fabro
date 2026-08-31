@@ -5,8 +5,8 @@ use croner::Cron;
 use croner::errors::CronError;
 use croner::parser::{CronParser, Seconds, Year};
 use fabro_types::{
-    GitHubRepositorySlug, GitRunTarget, RunTarget, is_valid_git_branch_name, is_valid_git_tag_name,
-    normalize_git_commit_sha,
+    AutomationGitWorkflowSourceKind, GitHubRepositorySlug, GitRunTarget, RunTarget,
+    is_valid_git_branch_name, is_valid_git_tag_name, normalize_git_commit_sha,
 };
 use serde::{Deserialize, Serialize};
 
@@ -149,26 +149,6 @@ impl Automation {
             triggers: replace.triggers,
         }
     }
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-    strum::Display,
-    strum::EnumString,
-    strum::IntoStaticStr,
-)]
-#[serde(rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
-pub enum AutomationGitWorkflowSourceKind {
-    Branch,
-    Tag,
-    Commit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

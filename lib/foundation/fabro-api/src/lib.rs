@@ -16,8 +16,7 @@ mod generated {
 pub mod types {
     pub use fabro_automation::{
         Automation, AutomationDraft as CreateAutomationRequest, AutomationGitWorkflowSource,
-        AutomationGitWorkflowSourceKind, AutomationReplace as ReplaceAutomationRequest,
-        AutomationTrigger,
+        AutomationReplace as ReplaceAutomationRequest, AutomationTrigger,
     };
     pub use fabro_environment::Environment;
     pub use fabro_model::{
@@ -46,13 +45,13 @@ pub mod types {
     pub use fabro_types::{
         ActivatedSkill, AgentControlState, AgentMcpToolSummary, AgentSkillActivationSource,
         AgentSkillSummary, AgentToolCategory, AgentToolSource, AgentToolSummary,
-        AgentToolsAvailableProps, AskFabro, AuthMethod, AutomationRef, BilledTokenCounts, BlobHash,
-        CommandTermination, Conclusion, ContentPart, CreateVariableRequest, DiffStats, DiffSummary,
-        DirtyStatus, EventEnvelope, ExecOutputTail, FailureCategory, FailureDetail,
-        FailureSignature, GitContext, GitRunTarget, IdpIdentity, IntegrationConnectionKind,
-        IntegrationConnectionState, IntegrationConnectionStatus, IntegrationProvider,
-        IntegrationStatus, InterviewOption, InterviewQuestionRecord, LlmOutputKind,
-        McpServerDraft as CreateMcpServerRequest, McpServerProjection,
+        AgentToolsAvailableProps, AskFabro, AuthMethod, AutomationGitWorkflowSourceKind,
+        AutomationRef, BilledTokenCounts, BlobHash, CommandTermination, Conclusion, ContentPart,
+        CreateVariableRequest, DiffStats, DiffSummary, DirtyStatus, EventEnvelope, ExecOutputTail,
+        FailureCategory, FailureDetail, FailureSignature, GitContext, GitRunTarget, IdpIdentity,
+        IntegrationConnectionKind, IntegrationConnectionState, IntegrationConnectionStatus,
+        IntegrationProvider, IntegrationStatus, InterviewOption, InterviewQuestionRecord,
+        LlmOutputKind, McpServerDraft as CreateMcpServerRequest, McpServerProjection,
         McpServerReplace as ReplaceMcpServerRequest, McpServerStatus, McpServerView as McpServer,
         McpTransportView, Message, PairId, PairMessageId, PairMessageRecord, PairMessageRequest,
         PairRecord, PairStartRequest, PairStatus, PairTarget, PairTranscriptEntry,

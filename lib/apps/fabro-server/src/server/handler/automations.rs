@@ -154,9 +154,10 @@ async fn create_automation_run(
         }
     };
     let automation_ref = AutomationRef {
-        id:         automation.id.to_string(),
-        name:       Some(automation.name.clone()),
-        trigger_id: Some(api_trigger_id),
+        id:              automation.id.to_string(),
+        name:            Some(automation.name.clone()),
+        trigger_id:      Some(api_trigger_id),
+        workflow_source: materialized.workflow_source.clone(),
     };
 
     let response = Box::pin(runs::create_run_from_intent(

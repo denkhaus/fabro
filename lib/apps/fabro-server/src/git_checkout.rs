@@ -323,7 +323,7 @@ impl GitAuthConfig {
     }
 }
 
-pub(crate) async fn resolve_git_auth_config(
+pub(crate) async fn resolve_git_read_auth_config(
     credentials: Option<&fabro_github::GitHubCredentials>,
     repo: &GitHubRepositorySlug,
     github_api_base_url: &str,
@@ -339,7 +339,8 @@ pub(crate) async fn resolve_git_auth_config(
         None => fabro_github::GitHubContext::new(credentials, github_api_base_url),
     };
     let (username, password) =
-        fabro_github::resolve_clone_credentials(&context, repo.owner(), repo.repo()).await?;
+        fabro_github::resolve_read_only_clone_credentials(&context, repo.owner(), repo.repo())
+            .await?;
     Ok(Some(GitAuthConfig::new(username, password)))
 }
 

@@ -5,7 +5,10 @@ use fabro_types::run::{DirtyStatus, ForkSourceRef, GitContext, RunSpec};
 use fabro_types::settings::InterpString;
 use fabro_types::settings::run::RunGoal;
 use fabro_types::test_support::{test_run_provenance, test_workflow_version_id};
-use fabro_types::{AutomationRef, GitRunTarget, RunTarget, WorkflowSettings, fixtures};
+use fabro_types::{
+    AutomationGitWorkflowSourceKind, AutomationRef, GitRunTarget,
+    ResolvedAutomationGitWorkflowSource, RunTarget, WorkflowSettings, fixtures,
+};
 
 fn templated_settings() -> WorkflowSettings {
     let mut settings = WorkflowSettings::default();
@@ -29,9 +32,15 @@ fn run_spec_round_trips_templated_settings() {
             sha:    Some("abc123".to_string()),
         })),
         automation:          Some(AutomationRef {
-            id:         "nightly".to_string(),
-            name:       Some("Nightly".to_string()),
-            trigger_id: Some("schedule_1".to_string()),
+            id:              "nightly".to_string(),
+            name:            Some("Nightly".to_string()),
+            trigger_id:      Some("schedule_1".to_string()),
+            workflow_source: Some(Box::new(ResolvedAutomationGitWorkflowSource {
+                repo:         "fabro-sh/workflows".to_string(),
+                kind:         AutomationGitWorkflowSourceKind::Branch,
+                reference:    "main".to_string(),
+                resolved_sha: "0123456789abcdef0123456789abcdef01234567".to_string(),
+            })),
         }),
         source_directory:    Some("/Users/client/project".to_string()),
         labels:              HashMap::from([("team".to_string(), "platform".to_string())]),
@@ -66,6 +75,11 @@ fn run_spec_round_trips_templated_settings() {
     assert_eq!(json["fork_source_ref"]["checkpoint_sha"], "def456");
     assert_eq!(json["automation"]["id"], "nightly");
     assert_eq!(json["automation"]["trigger_id"], "schedule_1");
+    assert_eq!(json["automation"]["workflow_source"]["ref"], "main");
+    assert_eq!(
+        json["automation"]["workflow_source"]["resolved_sha"],
+        "0123456789abcdef0123456789abcdef01234567"
+    );
     assert_eq!(
         json["workflow_version_id"],
         test_workflow_version_id().to_string()

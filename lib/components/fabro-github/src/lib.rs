@@ -1281,27 +1281,57 @@ pub async fn resolve_clone_credentials(
         GitHubCredentials::Installation(token) => token.valid_token()?.to_string(),
         GitHubCredentials::App(_) => {
             let client = ctx.http_client()?;
-            mint_git_contents_write_token(&client, ctx, owner, repo).await?
+            mint_git_token(
+                &client,
+                ctx,
+                owner,
+                repo,
+                serde_json::json!({ "contents": "write" }),
+            )
+            .await?
         }
     };
     Ok((Some("x-access-token".to_string()), Some(token)))
 }
 
-/// Mint an installation token scoped to repository contents writes.
-async fn mint_git_contents_write_token(
+/// Resolve credentials for fetching repository contents without granting a
+/// GitHub App token permission to push.
+///
+/// Static PATs and pre-minted installation tokens retain their configured
+/// permissions. App credentials mint a repository-scoped token with
+/// `contents: read`.
+pub async fn resolve_read_only_clone_credentials(
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+) -> anyhow::Result<(Option<String>, Option<String>)> {
+    let token = match ctx.creds {
+        GitHubCredentials::Pat(token) => token.clone(),
+        GitHubCredentials::Installation(token) => token.valid_token()?.to_string(),
+        GitHubCredentials::App(_) => {
+            let client = ctx.http_client()?;
+            mint_git_token(
+                &client,
+                ctx,
+                owner,
+                repo,
+                serde_json::json!({ "contents": "read" }),
+            )
+            .await?
+        }
+    };
+    Ok((Some("x-access-token".to_string()), Some(token)))
+}
+
+async fn mint_git_token(
     client: &impl HttpClient,
     ctx: &GitHubContext<'_>,
     owner: &str,
     repo: &str,
+    permissions: serde_json::Value,
 ) -> anyhow::Result<String> {
     ctx.creds
-        .resolve_bearer_token(
-            client,
-            owner,
-            repo,
-            ctx.base_url,
-            serde_json::json!({ "contents": "write" }),
-        )
+        .resolve_bearer_token(client, owner, repo, ctx.base_url, permissions)
         .await
 }
 
@@ -2548,6 +2578,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn resolve_read_only_clone_credentials_returns_static_token_unchanged() {
+        let creds = GitHubCredentials::Pat("ghu_test".to_string());
+
+        let credentials =
+            resolve_read_only_clone_credentials(&GitHubContext::new(&creds, ""), "owner", "repo")
+                .await
+                .unwrap();
+
+        assert_eq!(
+            credentials,
+            (
+                Some("x-access-token".to_string()),
+                Some("ghu_test".to_string())
+            )
+        );
+    }
+
+    #[tokio::test]
     async fn clone_token_requests_only_contents_write() {
         let mock = MockHttpClient::new()
             .on(
@@ -2569,9 +2617,50 @@ mod tests {
             slug:            None,
         });
         let context = GitHubContext::new(&credentials, "");
-        let token = mint_git_contents_write_token(&mock, &context, "owner", "repo")
-            .await
-            .unwrap();
+        let token = mint_git_token(
+            &mock,
+            &context,
+            "owner",
+            "repo",
+            serde_json::json!({ "contents": "write" }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(token, "ghs_xxx");
+    }
+
+    #[tokio::test]
+    async fn read_only_clone_token_requests_only_contents_read() {
+        let mock = MockHttpClient::new()
+            .on(
+                HttpMethod::Get,
+                "/repos/owner/repo/installation",
+                200,
+                r#"{"id": 123}"#,
+            )
+            .on(
+                HttpMethod::Post,
+                "/app/installations/123/access_tokens",
+                201,
+                r#"{"token": "ghs_xxx", "expires_at": "2099-01-01T00:00:00Z"}"#,
+            )
+            .with_req_body(r#"{"permissions":{"contents":"read"},"repositories":["repo"]}"#);
+        let credentials = GitHubCredentials::App(GitHubAppCredentials {
+            app_id:          "test".to_string(),
+            private_key_pem: test_rsa_key().to_string(),
+            slug:            None,
+        });
+        let context = GitHubContext::new(&credentials, "");
+        let token = mint_git_token(
+            &mock,
+            &context,
+            "owner",
+            "repo",
+            serde_json::json!({ "contents": "read" }),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(token, "ghs_xxx");
     }

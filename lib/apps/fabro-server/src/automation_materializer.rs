@@ -5,15 +5,15 @@ use async_trait::async_trait;
 use fabro_automation::{AutomationGitWorkflowSource, AutomationId, AutomationValidationError};
 use fabro_manifest::WorkflowVersionCollectError;
 use fabro_types::{
-    GitHubRepositorySlug, GitRunTarget, RunId, RunIntent, RunIntentArgs, RunTarget,
-    TargetValidationError, WorkflowVersionId,
+    GitHubRepositorySlug, GitRunTarget, ResolvedAutomationGitWorkflowSource, RunId, RunIntent,
+    RunIntentArgs, RunTarget, TargetValidationError, WorkflowVersionId,
 };
 use fabro_workflow_version::{WorkflowVersionStore, WorkflowVersionStoreError};
 use tokio::{fs, task};
 
 use crate::git_checkout::{
     GitAuthConfig, GitCheckoutError, GitCheckoutSelector, GitRepoCache, WorktreePrepareInput,
-    github_clone_url, resolve_git_auth_config,
+    github_clone_url, resolve_git_read_auth_config,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +30,7 @@ pub(crate) struct AutomationRunMaterializeInput {
 pub(crate) struct AutomationRunMaterialized {
     pub workflow_version_id: WorkflowVersionId,
     pub target:              GitRunTarget,
+    pub workflow_source:     Option<Box<ResolvedAutomationGitWorkflowSource>>,
 }
 
 impl AutomationRunMaterialized {
@@ -150,7 +151,7 @@ struct ServerGitHubRemoteResolver {
 #[async_trait]
 impl AutomationGitRemoteResolver for ServerGitHubRemoteResolver {
     async fn resolve(&self, repo: &GitHubRepositorySlug) -> anyhow::Result<GitRemote> {
-        let auth = resolve_git_auth_config(
+        let auth = resolve_git_read_auth_config(
             self.credentials.as_ref(),
             repo,
             &self.api_base_url,
@@ -299,8 +300,8 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
                 &target_checkout_dir,
             )
             .await?;
-        let workflow_checkout_dir = match separate_source {
-            None => target_checkout_dir,
+        let (workflow_checkout_dir, workflow_checkout_sha) = match separate_source {
+            None => (target_checkout_dir, checked_out_sha.clone()),
             Some((repo, source)) => {
                 let remote = if repo == target_repo {
                     target_remote
@@ -309,18 +310,27 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
                         .await?
                 };
                 let source_checkout_dir = temp_dir.path().join("workflow-source");
-                self.prepare_checkout(
-                    CheckoutRole::WorkflowSource,
-                    &repo,
-                    &remote,
-                    GitCheckoutSelector::from(source),
-                    &source_checkout_dir,
-                )
-                .await?;
-                source_checkout_dir
+                let source_sha = self
+                    .prepare_checkout(
+                        CheckoutRole::WorkflowSource,
+                        &repo,
+                        &remote,
+                        GitCheckoutSelector::from(source),
+                        &source_checkout_dir,
+                    )
+                    .await?;
+                (source_checkout_dir, source_sha)
             }
         };
         exact_target.sha = Some(checked_out_sha);
+        let resolved_workflow_source = workflow_source.map(|source| {
+            Box::new(ResolvedAutomationGitWorkflowSource {
+                repo:         source.repo,
+                kind:         source.kind,
+                reference:    source.reference,
+                resolved_sha: workflow_checkout_sha,
+            })
+        });
 
         let workflow = PathBuf::from(input.workflow);
         let closure = task::spawn_blocking(move || {
@@ -346,6 +356,7 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
         Ok(AutomationRunMaterialized {
             workflow_version_id: closure.root_id(),
             target:              exact_target,
+            workflow_source:     resolved_workflow_source,
         })
     }
 }
@@ -494,6 +505,14 @@ impl AutomationRunMaterializer for TestAutomationRunMaterializer {
         &self,
         input: AutomationRunMaterializeInput,
     ) -> Result<AutomationRunMaterialized, RunMaterializeError> {
+        let workflow_source = input.workflow_source.as_ref().map(|source| {
+            Box::new(ResolvedAutomationGitWorkflowSource {
+                repo:         source.repo.clone(),
+                kind:         source.kind,
+                reference:    source.reference.clone(),
+                resolved_sha: "ffffffffffffffffffffffffffffffffffffffff".to_string(),
+            })
+        });
         let response = {
             let mut guard = self
                 .inner
@@ -522,6 +541,7 @@ impl AutomationRunMaterializer for TestAutomationRunMaterializer {
         Ok(AutomationRunMaterialized {
             workflow_version_id,
             target: materialized.target,
+            workflow_source,
         })
     }
 }
@@ -860,6 +880,7 @@ mod tests {
             materialized.target.sha.as_deref(),
             Some(target_fixture.initial_sha.as_str())
         );
+        assert_eq!(materialized.workflow_source, None);
         let version = store
             .get(&materialized.workflow_version_id)
             .await
@@ -917,6 +938,15 @@ mod tests {
             materialized.target.sha.as_deref(),
             Some(target_fixture.initial_sha.as_str())
         );
+        assert_eq!(
+            materialized.workflow_source,
+            Some(Box::new(ResolvedAutomationGitWorkflowSource {
+                repo:         "fabro-sh/workflows".to_string(),
+                kind:         AutomationGitWorkflowSourceKind::Branch,
+                reference:    "main".to_string(),
+                resolved_sha: source_fixture.initial_sha.clone(),
+            }))
+        );
         let version = store
             .get(&materialized.workflow_version_id)
             .await
@@ -947,7 +977,7 @@ mod tests {
             HashMap::from([(repo, fixture.bare.to_string_lossy().into_owned())]),
         );
 
-        materializer
+        let materialized = materializer
             .materialize(input(
                 "Fabro-Sh/Shared",
                 Some(source(
@@ -960,6 +990,15 @@ mod tests {
             .await
             .unwrap();
 
+        assert_eq!(
+            materialized.workflow_source,
+            Some(Box::new(ResolvedAutomationGitWorkflowSource {
+                repo:         "fabro-sh/shared".to_string(),
+                kind:         AutomationGitWorkflowSourceKind::Branch,
+                reference:    "main".to_string(),
+                resolved_sha: fixture.initial_sha,
+            }))
+        );
         assert_eq!(resolver.repositories(), vec!["Fabro-Sh/Shared"]);
     }
 
