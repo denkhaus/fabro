@@ -12966,6 +12966,257 @@ async fn create_run_with_workflow_slug(state: &Arc<AppState>, run_id: RunId, wor
 }
 
 #[tokio::test]
+async fn fabro_ask_proves_the_wire_path_and_analyst_sentinels() {
+    use fabro_client::{Client as ServerClient, Credential as ClientCredential, ServerTarget};
+    use fabro_tool::{FabroAskParams, ValidatedAsk, ask_run};
+
+    // Scripted LLM: the strict mock carries the ANALYST SESSION sentinels
+    // as matchers — positive (resolved model id + the five policy-allowed
+    // tools) and negative (no write/shell tools reach the provider).
+    let mock_llm = httpmock::MockServer::start();
+    let state = crate::test_support::jwt_auth_state_with_openai_base_url(
+        &mock_llm.base_url(),
+        TEST_SESSION_SECRET,
+    );
+    // Resolve the model the way the server does for a session without an
+    // explicit pick: the default among providers with credentials (only
+    // openai has a vault key here).
+    let eligible = state
+        .resolve_llm_client()
+        .await
+        .expect("test LLM client should resolve")
+        .provider_ids()
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+    let expected_model = state
+        .catalog()
+        .resolve_selection(None, None, &eligible)
+        .expect("a default model should resolve")
+        .model;
+    let llm_post = mock_llm.mock(|when, then| {
+        when.method(httpmock::Method::POST)
+            .body_includes(format!(r#""model":"{expected_model}""#))
+            .body_includes("fabro_run_events")
+            .body_includes("fabro_run_get")
+            // The native read tools serialize under the profile's own
+            // vocabulary ("read…" family), not the canonical names.
+            .body_includes("read")
+            // Negative sentinels: quoted names must not appear anywhere —
+            // the ask-fabro policy denies every write/execute tool.
+            .body_excludes(r#""write_file""#)
+            .body_excludes(r#""shell""#)
+            .body_excludes(r#""spawn_agent""#);
+        then.status(200)
+            .header("content-type", "text/event-stream")
+            .body(
+                [
+                    r#"data: {"type":"response.output_text.delta","delta":"The gate timed out waiting for approval."}"#,
+                    "\n\n",
+                    r#"data: {"type":"response.completed","response":{"id":"resp_1","usage":{"input_tokens":10,"output_tokens":1,"total_tokens":11}}}"#,
+                    "\n\n",
+                ]
+                .concat(),
+            );
+    });
+
+    // Spawn the real router on a socket so the worker-credentialed
+    // fabro_client can reach it; the daemon record points the analyst's
+    // own API client at the same server.
+    let app = build_router(Arc::clone(&state), jwt_auth_mode());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("test server should bind");
+    let addr = listener
+        .local_addr()
+        .expect("test server should have a local address");
+    let runtime_directory =
+        fabro_config::Storage::new(state.server_storage_dir()).runtime_directory();
+    ServerDaemon::new(
+        std::process::id(),
+        Bind::Tcp(addr),
+        runtime_directory.log_path(),
+    )
+    .write(&runtime_directory)
+    .unwrap();
+    let server_task = tokio::spawn(async move {
+        let result = axum::serve(listener, app.into_make_service()).await;
+        if let Err(err) = result {
+            tracing::debug!(error = %err, "test ask server stopped");
+        }
+    });
+
+    // Terminal target runs: develop (in scope) and nightly (out of scope).
+    let terminal_run_with_slug = |slug: &'static str| {
+        let state = Arc::clone(&state);
+        async move {
+            let run_id = RunId::new();
+            let run_store = state.stores.runs.create_run(&run_id).await.unwrap();
+            for event in [
+                workflow_event::Event::RunCreated {
+                    run_id,
+                    title: None,
+                    settings: serde_json::to_value(fabro_types::WorkflowSettings::default())
+                        .unwrap(),
+                    graph: serde_json::to_value(Graph::new(slug)).unwrap(),
+                    workflow_source: None,
+                    labels: std::collections::BTreeMap::default(),
+                    source_directory: None,
+                    workflow_slug: Some(slug.to_string()),
+                    workflow_version_id: None,
+                    target: None,
+                    automation: None,
+                    provenance: test_support::test_run_provenance(),
+                    manifest_blob: None,
+                    spec_blob: None,
+                    git: None,
+                    fork_source_ref: None,
+                    retried_from: None,
+                    parent_id: None,
+                    web_url: None,
+                },
+                workflow_event::Event::SandboxInitialized {
+                    provider:          SandboxProviderKind::Local,
+                    id:                format!("sb-{slug}"),
+                    working_directory: "/sandbox/workdir".to_string(),
+                    image:             None,
+                    snapshot:          None,
+                    repo_cloned:       None,
+                    clone_origin_url:  None,
+                    clone_branch:      None,
+                    workspace_root:    None,
+                    repos_root:        None,
+                    primary_repo_path: None,
+                    primary_repo_link: None,
+                },
+                workflow_event::Event::RunPending {
+                    reason: fabro_types::PendingReason::ApprovalRequired,
+                    actor:  None,
+                },
+                workflow_event::Event::RunRunnable {
+                    source: fabro_types::RunRunnableSource::StartRequested,
+                    actor:  None,
+                },
+                workflow_event::Event::RunStarting,
+                workflow_event::Event::RunRunning,
+                workflow_event::Event::WorkflowRunCompleted {
+                    timing:               fabro_types::RunTiming::default(),
+                    artifact_count:       0,
+                    status:               "succeeded".to_string(),
+                    reason:               fabro_types::SuccessReason::Completed,
+                    failure:              None,
+                    total_usd_micros:     None,
+                    final_git_commit_sha: None,
+                    final_patch:          None,
+                    diff_summary:         None,
+                    billing:              None,
+                },
+            ] {
+                workflow_event::append_event(&run_store, &run_id, &event)
+                    .await
+                    .unwrap();
+            }
+            run_id
+        }
+    };
+    let develop_run_id = Box::pin(terminal_run_with_slug("develop")).await;
+    let nightly_run_id = Box::pin(terminal_run_with_slug("nightly")).await;
+
+    // Worker with inspects=["develop"] reaching the server over the wire.
+    let worker_token = issue_test_inspects_worker_token(&RunId::new(), &["develop".to_string()]);
+    let target: ServerTarget = format!("http://{addr}")
+        .parse()
+        .expect("test server target should parse");
+    let api_client = ServerClient::builder()
+        .target(target)
+        .credential(ClientCredential::Worker(worker_token))
+        .connect()
+        .await
+        .expect("worker client should connect");
+    let backend = std::sync::Arc::new(fabro_tool::fabro_client::ClientBackend::new(
+        std::sync::Arc::new(api_client),
+    ));
+
+    // Probe A: a user JWT through the same socket.
+    let user_client = ServerClient::builder()
+        .target(format!("http://{addr}").parse::<ServerTarget>().unwrap())
+        .credential(ClientCredential::DevToken(issue_test_user_jwt()))
+        .connect()
+        .await
+        .expect("user client should connect");
+    user_client
+        .resolve_run(&develop_run_id.to_string())
+        .await
+        .expect("PROBE A: user jwt resolve should work");
+
+    // Worker credential sanity on the wire before the ask chain.
+    fabro_tool::FabroToolBackend::resolve_run(backend.as_ref(), &develop_run_id.to_string())
+        .await
+        .expect("worker resolve should succeed");
+
+    // (a) In-scope ask: the full chain runs — session create over HTTP,
+    // turn streamed over SSE, analyst answer returned to the caller.
+    let result = ask_run(
+        std::sync::Arc::clone(&backend) as std::sync::Arc<dyn fabro_tool::FabroToolBackend>,
+        ValidatedAsk::try_from(FabroAskParams {
+            run_id:   develop_run_id.to_string(),
+            question: "Why did the gate time out?".to_string(),
+        })
+        .unwrap(),
+        &["develop".to_string()],
+    )
+    .await
+    .expect("in-scope ask should succeed through the real wire");
+    assert_eq!(result.answer, "The gate timed out waiting for approval.");
+    // The strict mock carried every sentinel (positive and negative); a
+    // hit proves the wire request satisfied all of them.
+    assert_eq!(llm_post.calls(), 1, "exactly one analyst turn");
+
+    // (b) Out-of-scope target: the tool rejects before the round trip.
+    let err = ask_run(
+        std::sync::Arc::clone(&backend) as std::sync::Arc<dyn fabro_tool::FabroToolBackend>,
+        ValidatedAsk::try_from(FabroAskParams {
+            run_id:   nightly_run_id.to_string(),
+            question: "Why did this run fail?".to_string(),
+        })
+        .unwrap(),
+        &["develop".to_string()],
+    )
+    .await
+    .expect_err("out-of-scope targets must be rejected");
+    assert!(err.as_str().contains("inspects scope"), "{err}");
+
+    // (c) Wire-level authz: session creation on the out-of-scope run is
+    // rejected BY THE SERVER (403), bypassing the tool-side check.
+    let direct_client = ServerClient::builder()
+        .target(
+            format!("http://{addr}")
+                .parse::<ServerTarget>()
+                .expect("target should parse"),
+        )
+        .credential(ClientCredential::Worker(issue_test_inspects_worker_token(
+            &RunId::new(),
+            &["develop".to_string()],
+        )))
+        .connect()
+        .await
+        .expect("direct client should connect");
+    let rejected = direct_client
+        .create_run_session(nightly_run_id, fabro_api::types::CreateRunSessionRequest {
+            title:    Some("revisor question".to_string()),
+            model:    None,
+            provider: None,
+        })
+        .await
+        .expect_err("server must reject out-of-scope session creation");
+    assert!(
+        rejected.to_string().contains("Access denied"),
+        "expected the server's 403 body on the wire, got: {rejected}"
+    );
+
+    server_task.abort();
+}
+
+#[tokio::test]
 async fn terminal_run_ask_fabro_turns_succeed_hermetically() {
     // Hermetic LLM: point the builtin openai provider at a local SSE mock
     // so the analyst turn runs end to end without network access.
@@ -12987,7 +13238,10 @@ async fn terminal_run_ask_fabro_turns_succeed_hermetically() {
             );
     });
 
-    let state = crate::test_support::jwt_auth_state_with_openai_base_url(&mock_llm.base_url());
+    let state = crate::test_support::jwt_auth_state_with_openai_base_url(
+        &mock_llm.base_url(),
+        TEST_SESSION_SECRET,
+    );
     let app = build_router(Arc::clone(&state), jwt_auth_mode());
 
     // build_agent_session reaches self_server_target() for the analyst's
@@ -13139,6 +13393,18 @@ async fn inspects_worker_creates_ask_session_only_on_declared_workflow_runs() {
     create_run_with_workflow_slug(&state, develop_run_id, "develop").await;
     create_run_with_workflow_slug(&state, nightly_run_id, "nightly").await;
     let inspects_token = issue_test_inspects_worker_token(&parent_run_id, &["develop".to_string()]);
+    {
+        let keys = crate::worker_token::WorkerTokenKeys::from_master_secret(
+            TEST_SESSION_SECRET.as_bytes(),
+        )
+        .unwrap();
+        let own =
+            crate::worker_token::decode_worker_token(&inspects_token, &keys).expect("CONTROL 0a");
+        let _ = own;
+        let state_decode =
+            crate::worker_token::decode_worker_token(&inspects_token, state.worker_token_keys());
+        let _ = state_decode.expect("CONTROL 0b: jwt_auth_app state keys decode");
+    }
     let plain_run_tools_token = issue_test_run_tools_worker_token(&parent_run_id);
 
     // Declared workflow: session creation succeeds.

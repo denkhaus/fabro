@@ -353,13 +353,16 @@ pub fn test_app_state() -> Arc<AppState> {
 }
 
 /// JWT-auth test state whose builtin `openai` provider points at
-/// `base_url`, with the test session secret wired for user JWTs.
-/// Ask-Fabro session tests use this for hermetic LLM round trips.
+/// `base_url`. `session_secret` must be the caller's module constant:
+/// test_support and server::tests define two DIFFERENT values under the
+/// same TEST_SESSION_SECRET name, and worker tokens validate against
+/// whatever this state loads. Ask-Fabro session tests use this for
+/// hermetic LLM round trips.
 #[expect(
     clippy::disallowed_methods,
     reason = "test helper writes a fixture server.env with sync std::fs::write"
 )]
-pub fn jwt_auth_state_with_openai_base_url(base_url: &str) -> Arc<AppState> {
+pub fn jwt_auth_state_with_openai_base_url(base_url: &str, session_secret: &str) -> Arc<AppState> {
     let vault_path = test_secret_store_path();
     let server_env_path = vault_path
         .parent()
@@ -367,7 +370,7 @@ pub fn jwt_auth_state_with_openai_base_url(base_url: &str) -> Arc<AppState> {
         .join("server.env");
     std::fs::write(
         &server_env_path,
-        format!("SESSION_SECRET={TEST_SESSION_SECRET}\n"),
+        format!("SESSION_SECRET={session_secret}\n"),
     )
     .expect("test server env should be writable");
     TestAppStateBuilder::new()
