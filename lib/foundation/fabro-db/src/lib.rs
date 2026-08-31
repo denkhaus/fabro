@@ -73,10 +73,11 @@ impl Database {
     }
 
     pub async fn migrate(&self) -> anyhow::Result<()> {
-        self.preflight_session_owner_index()
+        let applied = applied_migration_versions(&self.pool).await?;
+        self.preflight_session_owner_index(&applied)
             .await
             .context("checking session ownership before SQLite migrations")?;
-        self.snapshot_before_new_migrations()
+        self.snapshot_before_new_migrations(&applied)
             .await
             .context("snapshotting SQLite database before migrations")?;
         MIGRATOR
@@ -88,7 +89,16 @@ impl Database {
     /// Refuse the unique owner index when old event history contains
     /// collisions. The diagnostic is deliberately count-only because session
     /// identifiers and event contents are not safe startup-log fields.
-    async fn preflight_session_owner_index(&self) -> anyhow::Result<()> {
+    ///
+    /// Temporary compatibility guard: once every supported database has
+    /// applied the session-owner index migration the version check below
+    /// always short-circuits, and this preflight can be deleted along with
+    /// the run-history compatibility window.
+    async fn preflight_session_owner_index(&self, applied: &HashSet<i64>) -> anyhow::Result<()> {
+        if applied.contains(&SESSION_OWNER_INDEX_MIGRATION_VERSION) {
+            return Ok(());
+        }
+
         let run_events_exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'run_events')",
         )
@@ -96,11 +106,6 @@ impl Database {
         .await
         .context("checking for the run event table")?;
         if !run_events_exists {
-            return Ok(());
-        }
-
-        let applied = applied_migration_versions(&self.pool).await?;
-        if applied.contains(&SESSION_OWNER_INDEX_MIGRATION_VERSION) {
             return Ok(());
         }
 
@@ -145,8 +150,7 @@ FROM (
     /// from immediately before the most recent schema change. Failing to
     /// write the snapshot fails the migration: no rollback artifact, no
     /// schema change.
-    async fn snapshot_before_new_migrations(&self) -> anyhow::Result<()> {
-        let applied = applied_migration_versions(&self.pool).await?;
+    async fn snapshot_before_new_migrations(&self, applied: &HashSet<i64>) -> anyhow::Result<()> {
         let has_pending = MIGRATOR
             .iter()
             .any(|migration| !applied.contains(&migration.version));

@@ -3,8 +3,8 @@ use std::sync::LazyLock;
 
 use chrono::{DateTime, Utc};
 use fabro_types::{
-    BilledTokenCounts, EventBody, EventEnvelope, Run, RunEvent, RunId, RunSize, RunStatusKind,
-    RunTiming, SessionId, StageId, timing,
+    BilledTokenCounts, EventEnvelope, Run, RunEvent, RunId, RunSize, RunStatusKind, RunTiming,
+    SessionId, StageId, timing,
 };
 use sqlx::pool::PoolConnection;
 use sqlx::query::Query;
@@ -436,17 +436,12 @@ ON CONFLICT(singleton) DO NOTHING
     }
 
     pub(crate) async fn find_session_owner(&self, session_id: &SessionId) -> Result<Option<RunId>> {
-        let row = sqlx::query(
-            r"
-SELECT run_id, seq, event_name, node_id, stage_id, session_id, event_json
-FROM run_events
-WHERE session_id = ?
-  AND event_name = 'run.session.created'
-",
-        )
-        .bind(session_id.to_string())
-        .fetch_optional(&self.pool)
-        .await?;
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_EVENT_COLUMNS);
+        query
+            .push(" WHERE session_id = ")
+            .push_bind(session_id.to_string())
+            .push(" AND event_name = 'run.session.created'");
+        let row = query.build().fetch_optional(&self.pool).await?;
         let Some(row) = row else {
             return Ok(None);
         };
@@ -455,21 +450,14 @@ WHERE session_id = ?
         let run_id = stored_run_id
             .parse::<RunId>()
             .map_err(|_| Error::RunEventMismatch {
-                run_id: "<invalid>".to_string(),
+                run_id: stored_run_id.clone(),
                 seq:    0,
                 field:  "run_id",
             })?;
-        let envelope = decode_event_row(&row, &run_id, &stored_run_id)?;
-        if envelope.event.run_id != run_id {
-            return Err(run_event_mismatch(&run_id, envelope.seq, "run_id"));
-        }
-        let requested_session_id = session_id.to_string();
-        if envelope.event.session_id.as_deref() != Some(requested_session_id.as_str()) {
-            return Err(run_event_mismatch(&run_id, envelope.seq, "session_id"));
-        }
-        if !matches!(envelope.event.body, EventBody::RunSessionCreated(_)) {
-            return Err(run_event_mismatch(&run_id, envelope.seq, "event_name"));
-        }
+        // The WHERE clause pins the row's session_id and event_name columns
+        // to the requested values, and decoding verifies the envelope against
+        // every stored column, so a successful decode proves ownership.
+        decode_event_row(&row, &run_id, &stored_run_id)?;
         Ok(Some(run_id))
     }
 

@@ -888,11 +888,7 @@ mod tests {
             Some(first_id)
         );
 
-        let legacy_key = keys::SlateKey::new("sessions")
-            .with("by-id")
-            .with(session_id)
-            .as_ref()
-            .to_vec();
+        let legacy_key = keys::session_by_id_key(&session_id).as_ref().to_vec();
         let legacy = store.open_db().await.unwrap();
         assert!(legacy.get(&legacy_key).await.unwrap().is_none());
         legacy

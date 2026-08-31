@@ -120,6 +120,11 @@ pub(crate) fn sessions_by_id_prefix() -> SlateKey {
     SlateKey::new("sessions").with("by-id").into_prefix()
 }
 
+#[cfg(test)]
+pub(crate) fn session_by_id_key(session_id: &fabro_types::SessionId) -> SlateKey {
+    SlateKey::new("sessions").with("by-id").with(session_id)
+}
+
 // --- Parsing ---
 
 #[cfg(test)]
@@ -186,9 +191,7 @@ mod tests {
         // Sibling namespaces of the same run sort outside the range.
         assert!(!contains(&SlateKey::new("runs").with(run_id).with("state")));
         assert!(!contains(
-            &SlateKey::new("sessions")
-                .with("by-id")
-                .with(fabro_types::SessionId::new())
+            &session_by_id_key(&fabro_types::SessionId::new())
         ));
     }
 

@@ -1574,7 +1574,7 @@ mod tests {
             .await?;
         context
             .put_raw(
-                SlateKey::new("sessions").with("by-id").with(session_id),
+                keys::session_by_id_key(&session_id),
                 b"opaque legacy reverse row",
             )
             .await?;
