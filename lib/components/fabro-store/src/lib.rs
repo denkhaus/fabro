@@ -1,5 +1,3 @@
-use chrono::{DateTime, Utc};
-
 mod artifact_store;
 mod auth_code_store;
 pub mod auth_session_store;
@@ -54,12 +52,5 @@ pub use run_summary_store::{
     RunSummarySortDirection, RunSummaryStore, RunSummaryVisibility,
 };
 pub use serializable_projection::SerializableProjection;
-pub use slate::{CachedRunProjection, Database, RunDatabase, Runs, UnreadableRun};
+pub use slate::{Database, RunDatabase, UnreadableRun};
 pub use types::EventPayload;
-
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct ListRunsQuery {
-    pub start:     Option<DateTime<Utc>>,
-    pub end:       Option<DateTime<Utc>>,
-    pub parent_id: Option<fabro_types::RunId>,
-}

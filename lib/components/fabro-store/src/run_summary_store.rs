@@ -12,7 +12,7 @@ use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
 use sqlx::{Connection as _, QueryBuilder, Row as _, Sqlite, SqlitePool, Transaction};
 use strum::VariantArray as _;
 
-use crate::run_state::projected_billing;
+use crate::run_state::{build_summary, projected_billing};
 use crate::slate::CachedRunProjection;
 use crate::{Error, EventPayload, Result, keys};
 
@@ -503,6 +503,57 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
         row.map(|row| decode_run_row(&row, now)).transpose()
     }
 
+    /// Every current run row, without the bounded HTTP-list visibility or
+    /// pagination semantics.
+    pub async fn list_all(&self, now: DateTime<Utc>) -> Result<Vec<Run>> {
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
+        query.push(" ORDER BY created_at_ms DESC, id DESC");
+        let rows = query.build().fetch_all(&self.pool).await?;
+        decode_run_rows(&rows, now)
+    }
+
+    /// Every current run row whose durable status matches one of `statuses`.
+    pub async fn list_by_statuses(
+        &self,
+        statuses: &[RunStatusKind],
+        now: DateTime<Utc>,
+    ) -> Result<Vec<Run>> {
+        if statuses.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
+        query.push(" WHERE status IN (");
+        let mut separated = query.separated(", ");
+        for status in statuses {
+            separated.push_bind(status.to_string());
+        }
+        separated.push_unseparated(") ORDER BY created_at_ms DESC, id DESC");
+        let rows = query.build().fetch_all(&self.pool).await?;
+        decode_run_rows(&rows, now)
+    }
+
+    /// Run ids that have ever recorded an explicit pull request creation
+    /// request. Callers replay these candidate histories to determine whether
+    /// their latest request is still pending.
+    pub async fn list_pull_request_creation_candidate_run_ids(&self) -> Result<Vec<RunId>> {
+        sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT run_id FROM run_events \
+             WHERE event_name = 'pull_request.creation_requested'",
+        )
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(|stored_id| {
+            stored_id
+                .parse::<RunId>()
+                .map_err(|_| Error::RunSummaryMismatch {
+                    run_id: stored_id,
+                    field:  "id",
+                })
+        })
+        .collect()
+    }
+
     /// Identity fields for every stored run, for selector resolution without
     /// decoding full summaries.
     pub async fn list_identities(&self) -> Result<Vec<RunSummaryIdentity>> {
@@ -558,10 +609,7 @@ FROM runs",
         let rows = rows_query.build().fetch_all(&mut *transaction).await?;
         transaction.commit().await?;
 
-        let data = rows
-            .iter()
-            .map(|row| decode_run_row(row, now))
-            .collect::<Result<Vec<_>>>()?;
+        let data = decode_run_rows(&rows, now)?;
         let total = u64::try_from(total).expect("COUNT(*) is non-negative");
         let consumed = u64::from(query.offset).saturating_add(data.len() as u64);
         Ok(RunSummaryPage {
@@ -942,7 +990,7 @@ struct PreparedRunSummary {
 
 impl PreparedRunSummary {
     fn from_entry(entry: &CachedRunProjection) -> Self {
-        let mut run = entry.summary.clone();
+        let mut run = build_summary(&entry.projection, &entry.run_id);
         if run.timing.is_none() {
             let at = run
                 .timestamps
@@ -1433,6 +1481,10 @@ fn decode_run_row(row: &SqliteRow, now: DateTime<Utc>) -> Result<Run> {
     Ok(run)
 }
 
+fn decode_run_rows(rows: &[SqliteRow], now: DateTime<Utc>) -> Result<Vec<Run>> {
+    rows.iter().map(|row| decode_run_row(row, now)).collect()
+}
+
 fn overlay_live_wall_time(run: &mut Run, now: DateTime<Utc>) {
     if run.timestamps.completed_at.is_some() {
         return;
@@ -1456,9 +1508,9 @@ mod tests {
     use chrono::{DateTime, Utc};
     use fabro_types::{
         AutomationRef, BilledTokenCounts, BlockedReason, Conclusion, DiffSummary, EventEnvelope,
-        FailureReason, Graph, PendingReason, RunDiff, RunId, RunProjection, RunSize, RunSpec,
-        RunStatus, RunStatusKind, RunTiming, SessionId, StageId, StageOutcome, SuccessReason,
-        WorkflowSettings, test_support,
+        FailureReason, Graph, PendingReason, PullRequestCreationId, RunDiff, RunId, RunProjection,
+        RunSize, RunSpec, RunStatus, RunStatusKind, RunTiming, SessionId, StageId, StageOutcome,
+        SuccessReason, WorkflowSettings, test_support,
     };
     use strum::VariantArray as _;
     use tokio::time;
@@ -2365,6 +2417,175 @@ mod tests {
             .unwrap();
         assert_eq!(archived.data.len(), 1);
         assert_eq!(archived.data[0].id, archived_id);
+    }
+
+    #[tokio::test]
+    async fn list_all_is_unbounded_complete_and_newest_first() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-07-11T12:00:00Z");
+        let parent_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
+        let child_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 2);
+        let archived_id = run_id(created_at.timestamp_millis().cast_unsigned() + 2, 3);
+        let removing_id = run_id(created_at.timestamp_millis().cast_unsigned() + 3, 4);
+        let tied_low_id = run_id(created_at.timestamp_millis().cast_unsigned() + 4, 5);
+        let tied_high_id = run_id(created_at.timestamp_millis().cast_unsigned() + 4, 6);
+
+        let mut projections = vec![projection(parent_id, "parent", created_at)];
+        let mut child = projection(
+            child_id,
+            "child",
+            created_at + chrono::Duration::milliseconds(1),
+        );
+        child.parent_id = Some(parent_id);
+        projections.push(child);
+        let mut archived = projection(
+            archived_id,
+            "archived",
+            created_at + chrono::Duration::milliseconds(2),
+        );
+        archived.archived_at = Some(created_at + chrono::Duration::milliseconds(2));
+        projections.push(archived);
+        let mut removing = projection(
+            removing_id,
+            "removing",
+            created_at + chrono::Duration::milliseconds(3),
+        );
+        removing.status = RunStatus::Removing;
+        projections.push(removing);
+        projections.push(projection(
+            tied_low_id,
+            "tied-low",
+            created_at + chrono::Duration::milliseconds(4),
+        ));
+        projections.push(projection(
+            tied_high_id,
+            "tied-high",
+            created_at + chrono::Duration::milliseconds(4),
+        ));
+        for index in 0_u64..101 {
+            let timestamp_ms = created_at.timestamp_millis().cast_unsigned() + 10 + index;
+            projections.push(projection(
+                run_id(timestamp_ms, u128::from(index) + 10),
+                "bulk",
+                DateTime::from_timestamp_millis(timestamp_ms.cast_signed()).unwrap(),
+            ));
+        }
+
+        let mut expected_ids = Vec::new();
+        for projected in projections {
+            expected_ids.push(projected.spec.run_id);
+            store.upsert_projection(&entry(projected, 1)).await.unwrap();
+        }
+        expected_ids.sort_by(|left, right| {
+            right
+                .created_at()
+                .cmp(&left.created_at())
+                .then_with(|| right.cmp(left))
+        });
+
+        let listed = store.list_all(created_at).await.unwrap();
+        assert_eq!(listed.len(), 107);
+        assert_eq!(
+            listed.iter().map(|run| run.id).collect::<Vec<_>>(),
+            expected_ids
+        );
+        assert!(listed.iter().any(|run| run.id == archived_id));
+        assert!(listed.iter().any(|run| run.id == removing_id));
+        assert_eq!(
+            listed
+                .iter()
+                .find(|run| run.id == parent_id)
+                .unwrap()
+                .children_count,
+            1
+        );
+        let tied = listed
+            .iter()
+            .filter(|run| run.id == tied_low_id || run.id == tied_high_id)
+            .map(|run| run.id)
+            .collect::<Vec<_>>();
+        assert_eq!(tied, vec![tied_high_id, tied_low_id]);
+    }
+
+    #[tokio::test]
+    async fn list_by_statuses_is_exact_and_empty_is_empty() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-07-11T12:00:00Z");
+        for (index, kind) in RunStatusKind::VARIANTS.iter().enumerate() {
+            let id = run_id(
+                created_at.timestamp_millis().cast_unsigned() + u64::try_from(index).unwrap(),
+                u128::try_from(index).unwrap() + 1,
+            );
+            let mut projected = projection(id, &kind.to_string(), id.created_at());
+            projected.status = sample_status(*kind);
+            store.upsert_projection(&entry(projected, 1)).await.unwrap();
+        }
+
+        let startup_statuses = [
+            RunStatusKind::Starting,
+            RunStatusKind::Running,
+            RunStatusKind::Blocked,
+            RunStatusKind::Paused,
+            RunStatusKind::Removing,
+        ];
+        let listed = store
+            .list_by_statuses(&startup_statuses, created_at)
+            .await
+            .unwrap();
+        assert_eq!(
+            listed
+                .iter()
+                .map(|run| run.lifecycle.status.kind())
+                .collect::<std::collections::HashSet<_>>(),
+            startup_statuses.into_iter().collect()
+        );
+        assert_eq!(listed.len(), startup_statuses.len());
+        assert!(
+            store
+                .list_by_statuses(&[], created_at)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn pull_request_creation_candidates_are_distinct_and_indexed_by_event_name() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let first_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
+        let second_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 2);
+        let unrelated_id = run_id(created_at.timestamp_millis().cast_unsigned() + 2, 3);
+        for id in [first_id, second_id, unrelated_id] {
+            store
+                .upsert_projection(&entry(projection(id, "candidate", id.created_at()), 3))
+                .await
+                .unwrap();
+        }
+        for (run_id, seq) in [(first_id, 2), (first_id, 3), (second_id, 2)] {
+            let request = sql_event_payload(
+                &run_id,
+                "pull_request.creation_requested",
+                None,
+                None,
+                None,
+                serde_json::json!({
+                    "creation_id": PullRequestCreationId::new(),
+                    "model": "test-model",
+                    "force": false,
+                }),
+            );
+            seed_sql_event(&store, &run_id, seq, &request).await;
+        }
+
+        let mut candidates = store
+            .list_pull_request_creation_candidate_run_ids()
+            .await
+            .unwrap();
+        candidates.sort_unstable();
+        let mut expected = vec![first_id, second_id];
+        expected.sort_unstable();
+        assert_eq!(candidates, expected);
     }
 
     #[tokio::test]
