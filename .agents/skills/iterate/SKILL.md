@@ -40,6 +40,12 @@ decision, not an accident - it needs the user plus an ADR.
   grill-with-docs session FIRST (grilling + domain-modeling; evidence =
   CONTEXT.md, ADRs, seeds, code, rust-style-guide). Never guess at
   weichenstellende decisions - they belong to the user.
+- Public-contract NAMES (graph attributes, API fields, tool names, CLI
+  flags) are pivotal too: name the capability, not the consumer's motive
+  (2026-08-31 lesson: `revises` -> `inspects`, user decision AFTER
+  implementation - cheap only because nothing was committed). Surface
+  naming for user decision in Phase 1 or before the first commit,
+  never settle it silently in the diff.
 - Plan against the guide: the plan names the guideline pages the design
   must satisfy (newtypes, enums-vs-traits, error taxonomy, async task
   lifecycle, ...). A design that must deviate is itself a pivotal fork -
