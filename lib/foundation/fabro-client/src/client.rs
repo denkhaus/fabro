@@ -2321,13 +2321,14 @@ fn add_pr_upgrade_hint(err: anyhow::Error) -> anyhow::Error {
 mod tests {
     use std::collections::BTreeMap;
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
     use chrono::Duration as ChronoDuration;
     use fabro_types::WorkflowPath;
     use fabro_util::exit;
     use httpmock::Method::{GET, POST};
-    use httpmock::MockServer;
+    use httpmock::{HttpMockResponse, MockServer};
     use serde_json::json;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -2401,6 +2402,14 @@ mod tests {
             .json_body(json!({ "workflow_version_id": id }))
     }
 
+    fn workflow_version_response(id: WorkflowVersionId) -> HttpMockResponse {
+        HttpMockResponse::builder()
+            .status(201)
+            .header("content-type", "application/json")
+            .body(json!({ "workflow_version_id": id }).to_string())
+            .build()
+    }
+
     #[tokio::test]
     async fn create_workflow_version_posts_exact_version_and_returns_server_id() {
         let server = MockServer::start_async().await;
@@ -2444,7 +2453,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn register_workflow_versions_registers_every_entry_in_order() {
+    async fn register_workflow_versions_preserves_dependency_first_order() {
         let server = MockServer::start_async().await;
         let child = test_workflow_version("Child", BTreeMap::new());
         let child_id = child.id().unwrap();
@@ -2453,12 +2462,24 @@ mod tests {
             BTreeMap::from([(WorkflowPath::new("child").unwrap(), child_id)]),
         );
         let parent_id = parent.id().unwrap();
-        let child_mock = mock_create_workflow_version(&server, &child, |then| {
-            created_workflow_version(then, child_id)
+        let child_response_completed = Arc::new(AtomicBool::new(false));
+        let child_response_completed_for_child = Arc::clone(&child_response_completed);
+        let child_mock = mock_create_workflow_version(&server, &child, move |then| {
+            then.respond_with(move |_| {
+                let response = workflow_version_response(child_id);
+                child_response_completed_for_child.store(true, Ordering::SeqCst);
+                response
+            })
         })
         .await;
-        let parent_mock = mock_create_workflow_version(&server, &parent, |then| {
-            created_workflow_version(then, parent_id)
+        let parent_mock = mock_create_workflow_version(&server, &parent, move |then| {
+            then.respond_with(move |_| {
+                assert!(
+                    child_response_completed.load(Ordering::SeqCst),
+                    "parent registration began before the child response completed"
+                );
+                workflow_version_response(parent_id)
+            })
         })
         .await;
 
