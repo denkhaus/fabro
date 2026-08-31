@@ -71,3 +71,16 @@ run id, `ClientBackend::with_run_scope`, read-only auto-approved tools.
 - The d810 blocker class (unactionable seeds in the product tracker)
   dissolves under dogfooding (ADR-0012); until then the revisor files
   seeds only where they are actionable.
+
+## Amendment (2026-08-31): the graph attribute is `inspects`, not `revises`
+
+During implementation review the attribute name was reconsidered: the
+grant is a *capability* (read-only enumeration and Ask-Fabro authority
+over the declared workflows' runs), and the revisor is only its first
+consumer. Naming the mechanism after one motive (`revises`) would
+mislabel any future consumer — audit, triage, digest workflows. The
+attribute, worker-token claim, and scope vocabulary therefore use
+`inspects` ("this workflow inspects these workflows"). The revisor
+remains the ADR's subject; the mechanism it builds on is the neutral
+inspection scope. Decided jointly with the user in the 2026-08-31
+session; the seeds use the new name from fabro-0c32 onward.

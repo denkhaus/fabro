@@ -742,6 +742,31 @@ mod tests {
 
     #[async_trait]
     impl FabroToolBackend for MockInteractBackend {
+        async fn create_ask_session(
+            &self,
+            _run_id: &RunId,
+            _title: &str,
+        ) -> anyhow::Result<String> {
+            anyhow::bail!("ask sessions are not supported by this mock")
+        }
+
+        async fn submit_ask_turn(
+            &self,
+            _run_id: &RunId,
+            _session_id: &str,
+            _question: &str,
+        ) -> anyhow::Result<crate::AskTurnOutcome> {
+            anyhow::bail!("ask sessions are not supported by this mock")
+        }
+
+        async fn list_runs_of_workflow(
+            &self,
+            _workflow: &str,
+            _created_since: Option<chrono::DateTime<chrono::Utc>>,
+        ) -> anyhow::Result<Vec<Run>> {
+            anyhow::bail!("workflow enumeration is not supported by this mock")
+        }
+
         async fn create_run_from_spec(
             &self,
             _spec: &crate::ValidatedCreateRunSpec,

@@ -1158,6 +1158,8 @@ paths:
         - $ref: "#/components/parameters/PageOffset"
         - $ref: "#/components/parameters/IncludeArchived"
         - $ref: "#/components/parameters/ParentRunId"
+        - $ref: "#/components/parameters/RunsWorkflowSlug"
+        - $ref: "#/components/parameters/RunsCreatedSince"
         - $ref: "#/components/parameters/RunStatusFilter"
         - $ref: "#/components/parameters/RunsSort"
         - $ref: "#/components/parameters/RunsSortDirection"
@@ -6147,6 +6149,29 @@ components:
       schema:
         type: string
       example: 01JNQVR7M0EJ5GKAT2SC4ERS1Z
+
+    RunsWorkflowSlug:
+      name: workflow
+      in: query
+      required: false
+      description: >-
+        Return only runs of this workflow slug. Workers holding inspection
+        authority (graph attribute `inspects`) must set this parameter to
+        one of their declared workflows; other callers may omit it to list
+        every workflow.
+      schema:
+        type: string
+      example: develop
+
+    RunsCreatedSince:
+      name: created_since
+      in: query
+      required: false
+      description: Inclusive lower bound on run creation time (RFC 3339).
+      schema:
+        type: string
+        format: date-time
+      example: "2026-08-31T00:00:00Z"
 
     RunStatusFilter:
       name: status

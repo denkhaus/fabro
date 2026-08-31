@@ -52,7 +52,7 @@ use super::super::{
 use crate::error::ApiError;
 use crate::principal_middleware::{
     RequireCommandLog, RequireRunManagementTarget, RequireRunScoped, RequireRunStageScoped,
-    RequiredRunManagementActor, RequiredUser,
+    RequiredRunEnumerationActor, RequiredRunManagementActor, RequiredUser,
 };
 use crate::run_compiler::{
     self, ProjectSettingsPathError, ProjectSettingsSource, RawRunCompilerInput, RunCompilerError,
@@ -115,6 +115,14 @@ struct ListRunsParams {
     include_archived: bool,
     #[serde(default)]
     parent_id:        Option<RunId>,
+    /// Exact workflow-slug filter (`None` lists every workflow). Workers
+    /// with revisor authority must set it to one of their declared
+    /// workflows.
+    #[serde(default)]
+    workflow:         Option<String>,
+    /// Inclusive lower bound on `created_at` (RFC 3339).
+    #[serde(default)]
+    created_since:    Option<chrono::DateTime<chrono::Utc>>,
     #[serde(default)]
     status:           Vec<BoardColumn>,
     #[serde(default)]
@@ -130,6 +138,8 @@ impl ListRunsParams {
             visibility: summary_visibility(&self.status, self.include_archived),
             sort: self.sort,
             direction: self.direction,
+            workflow_slug: self.workflow.clone(),
+            created_since: self.created_since,
             limit: clamp_page_limit(self.limit),
             offset: clamp_page_offset(self.offset),
             ..RunSummaryListQuery::default()
@@ -348,10 +358,26 @@ async fn run_summary_at(
 }
 
 async fn list_runs(
-    _auth: RequiredRunManagementActor,
+    auth: RequiredRunEnumerationActor,
     State(state): State<Arc<AppState>>,
     ExtraQuery(params): ExtraQuery<ListRunsParams>,
 ) -> Response {
+    // ADR-0011 inspection scope: workers holding inspects authority may
+    // only enumerate runs of their declared workflows; the filter is
+    // mandatory.
+    if matches!(auth.0, Principal::Worker { .. })
+        && !auth.1.inspects().is_empty()
+        && !params
+            .workflow
+            .as_deref()
+            .is_some_and(|workflow| auth.1.inspects_allows(workflow))
+    {
+        tracing::warn!(
+            target: "worker_auth",
+            "worker denied run enumeration outside inspects scope"
+        );
+        return ApiError::forbidden().into_response();
+    }
     run_summary_page_response(&state, &params.summary_query()).await
 }
 

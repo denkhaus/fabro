@@ -1312,6 +1312,53 @@ impl Client {
         .await
     }
 
+    /// Enumerate runs of one workflow slug, newest first, including
+    /// archived runs. Used by the ADR-0011 revisor bookkeeping tool.
+    pub async fn list_runs_of_workflow(
+        &self,
+        workflow: &str,
+        created_since: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<Vec<Run>> {
+        let mut all_runs = Vec::new();
+        let mut offset = 0_u64;
+        let limit = 100_u64;
+
+        loop {
+            let response = self
+                .send_api(|client| {
+                    let workflow = workflow.to_string();
+                    async move {
+                        let mut request = client
+                            .list_runs()
+                            .page_limit(limit)
+                            .page_offset(offset)
+                            .include_archived(true)
+                            .workflow(workflow);
+                        if let Some(created_since) = created_since {
+                            request = request.created_since(created_since);
+                        }
+                        request.send().await
+                    }
+                })
+                .await?;
+            let parsed = response.into_inner();
+            let batch = parsed
+                .data
+                .into_iter()
+                .map(convert_type)
+                .collect::<Result<Vec<_>>>()?;
+            let batch_len = batch.len() as u64;
+            all_runs.extend(batch);
+
+            if !parsed.meta.has_more || batch_len == 0 {
+                break;
+            }
+            offset += batch_len;
+        }
+
+        Ok(all_runs)
+    }
+
     async fn list_store_runs_with_options(
         &self,
         options: ListStoreRunsOptions,

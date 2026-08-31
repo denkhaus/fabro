@@ -83,6 +83,24 @@ pub trait FabroToolBackend: Send + Sync {
         after: Option<u32>,
         limit: usize,
     ) -> anyhow::Result<Vec<fabro_types::EventEnvelope>>;
+    /// Open an Ask-Fabro session on `run_id` and return its session id.
+    async fn create_ask_session(&self, run_id: &RunId, title: &str) -> anyhow::Result<String>;
+
+    /// Submit one analyst turn and wait for its terminal event.
+    async fn submit_ask_turn(
+        &self,
+        run_id: &RunId,
+        session_id: &str,
+        question: &str,
+    ) -> anyhow::Result<crate::AskTurnOutcome>;
+
+    /// Enumerate runs of one workflow, newest first.
+    async fn list_runs_of_workflow(
+        &self,
+        workflow: &str,
+        created_since: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> anyhow::Result<Vec<Run>>;
+
     async fn list_run_questions(&self, run_id: &RunId) -> anyhow::Result<Vec<types::ApiQuestion>>;
     async fn submit_run_answer(
         &self,
@@ -186,6 +204,8 @@ pub const FABRO_RUN_GATHER_TOOL_NAME: &str = "fabro_run_gather";
 pub const FABRO_RUN_EVENTS_TOOL_NAME: &str = "fabro_run_events";
 pub const FABRO_RUN_LOG_TOOL_NAME: &str = "fabro_run_logs";
 pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
+pub const FABRO_ASK_TOOL_NAME: &str = "fabro_ask";
+pub const FABRO_RUNS_LIST_TOOL_NAME: &str = "fabro_runs_list";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
     vec![
@@ -220,6 +240,14 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroRunLogsParams>(
             FABRO_RUN_LOG_TOOL_NAME,
             "Read the persisted worker tracing log of a Fabro run, filtered by severity (warn and error by default). Lines are redacted; diagnostics only, never a mutation.",
+        ),
+        tool_definition::<crate::FabroAskParams>(
+            FABRO_ASK_TOOL_NAME,
+            "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. Requires the target run's workflow to be declared in this graph's inspects attribute.",
+        ),
+        tool_definition::<crate::FabroRunsListParams>(
+            FABRO_RUNS_LIST_TOOL_NAME,
+            "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
         ),
     ]
 });
@@ -344,6 +372,8 @@ mod tests {
             FABRO_RUN_PAIR_TOOL_NAME,
             FABRO_RUN_EVENTS_TOOL_NAME,
             FABRO_RUN_LOG_TOOL_NAME,
+            FABRO_ASK_TOOL_NAME,
+            FABRO_RUNS_LIST_TOOL_NAME,
         ]);
     }
 

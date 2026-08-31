@@ -205,14 +205,21 @@ const WORKER_RUN_TOOLS_SCOPE: &str = "agent:run_tools";
 
 #[derive(serde::Deserialize)]
 struct WorkerTokenScopeClaim {
-    scope: String,
+    scope:    String,
+    #[serde(default)]
+    inspects: Vec<String>,
+}
+
+fn worker_token_scope_claim(worker_token: &str) -> Option<WorkerTokenScopeClaim> {
+    // Local tool registration only. The server validates the token signature and
+    // scopes.
+    let token_data = insecure_decode::<WorkerTokenScopeClaim>(worker_token).ok()?;
+    Some(token_data.claims)
 }
 
 fn fabro_run_tools_enabled_from_worker_token(worker_token: &str) -> bool {
-    // Local tool registration only. The server validates the token signature and
-    // scopes.
-    insecure_decode::<WorkerTokenScopeClaim>(worker_token)
-        .is_ok_and(|token| worker_scope_has_run_tools(&token.claims.scope))
+    worker_token_scope_claim(worker_token)
+        .is_some_and(|claims| worker_scope_has_run_tools(&claims.scope))
 }
 
 fn worker_scope_has_run_tools(scope_claim: &str) -> bool {
@@ -238,6 +245,11 @@ fn build_fabro_run_tool_services(
     if worker_token.trim().is_empty() {
         return None;
     }
+    // ADR-0011 revisor scope: the graph's inspects attribute rides on the
+    // worker token; the inspects-gated tools only register when present.
+    let inspects = worker_token_scope_claim(worker_token)
+        .map(|claims| claims.inspects)
+        .unwrap_or_default();
     let backend = ClientBackend::new(Arc::new(client))
         .with_manifest_builder(Arc::new(WorkerRunManifestBuilder));
     Some(FabroRunToolServices {
@@ -245,6 +257,7 @@ fn build_fabro_run_tool_services(
         current_run_id,
         base_cwd: source_directory.map_or_else(|| run_dir.to_path_buf(), PathBuf::from),
         user_settings_path: active_settings_path(None),
+        inspects,
     })
 }
 

@@ -154,6 +154,10 @@ impl Default for RunSummaryVisibility {
 pub struct RunSummaryListQuery {
     pub parent_id:     Option<RunId>,
     pub automation_id: Option<String>,
+    /// Exact workflow-slug match; `None` matches every workflow.
+    pub workflow_slug: Option<String>,
+    /// Inclusive lower bound on `created_at`.
+    pub created_since: Option<DateTime<Utc>>,
     pub visibility:    RunSummaryVisibility,
     pub sort:          RunSummarySort,
     pub direction:     RunSummarySortDirection,
@@ -166,6 +170,8 @@ impl Default for RunSummaryListQuery {
         Self {
             parent_id:     None,
             automation_id: None,
+            workflow_slug: None,
+            created_since: None,
             visibility:    RunSummaryVisibility::default(),
             sort:          RunSummarySort::default(),
             direction:     RunSummarySortDirection::default(),
@@ -1064,6 +1070,15 @@ fn push_filters(builder: &mut QueryBuilder<Sqlite>, query: &RunSummaryListQuery)
             .push(" AND automation_id = ")
             .push_bind(automation_id.clone());
     }
+    if let Some(workflow_slug) = &query.workflow_slug {
+        builder
+            .push(" AND workflow_slug = ")
+            .push_bind(workflow_slug.clone());
+    }
+    if let Some(created_since) = query.created_since {
+        let since_ms = created_since.timestamp_millis();
+        builder.push(" AND created_at_ms >= ").push_bind(since_ms);
+    }
 
     match &query.visibility {
         RunSummaryVisibility::All => {}
@@ -1858,6 +1873,76 @@ mod tests {
             projected.status = sample_status(*kind);
             store.upsert_projection(&entry(projected, 1)).await.unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn list_filters_by_workflow_slug_and_created_since() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-07-11T12:00:00Z");
+        let develop_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
+        let audit_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 2);
+        let later_develop_id = run_id(created_at.timestamp_millis().cast_unsigned() + 2, 3);
+
+        let mut develop = projection(develop_id, "develop old", created_at);
+        develop.spec.workflow_slug = Some("develop".to_string());
+        let mut audit = projection(audit_id, "audit", created_at);
+        audit.spec.workflow_slug = Some("audit".to_string());
+        let mut later_develop = projection(later_develop_id, "develop new", created_at);
+        later_develop.spec.workflow_slug = Some("develop".to_string());
+        let later_created_at = created_at + chrono::Duration::hours(1);
+        let mut later_entry = entry(later_develop, 1);
+        later_entry.summary.timestamps.created_at = later_created_at;
+        for projected in [develop, audit] {
+            store.upsert_projection(&entry(projected, 1)).await.unwrap();
+        }
+        store.upsert_projection(&later_entry).await.unwrap();
+
+        let page = store
+            .list(
+                &RunSummaryListQuery {
+                    workflow_slug: Some("develop".to_string()),
+                    ..RunSummaryListQuery::default()
+                },
+                created_at,
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.total, 2);
+        assert!(
+            page.data
+                .iter()
+                .all(|summary| summary.workflow.slug.as_deref() == Some("develop"))
+        );
+
+        let page = store
+            .list(
+                &RunSummaryListQuery {
+                    workflow_slug: Some("develop".to_string()),
+                    created_since: Some(created_at + chrono::Duration::minutes(30)),
+                    ..RunSummaryListQuery::default()
+                },
+                created_at,
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.data[0].title, "develop new");
+
+        // The lower bound is inclusive: a run created exactly at the bound
+        // still matches.
+        let page = store
+            .list(
+                &RunSummaryListQuery {
+                    workflow_slug: Some("develop".to_string()),
+                    created_since: Some(later_created_at),
+                    ..RunSummaryListQuery::default()
+                },
+                created_at,
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.data[0].title, "develop new");
     }
 
     #[tokio::test]

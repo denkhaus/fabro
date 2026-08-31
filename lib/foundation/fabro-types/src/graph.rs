@@ -784,6 +784,35 @@ impl Graph {
             .and_then(|kb| usize::try_from(kb).ok().filter(|kb| *kb >= 1))
     }
 
+    /// Graph-level `inspects`: the comma-separated workflow slugs whose
+    /// runs this workflow may inspect and ask about (ADR-0011 inspection
+    /// scope; the revisor workflow is its first consumer). Split, trimmed,
+    /// and deduplicated; empty entries are dropped. An absent attribute
+    /// means no inspection authority.
+    ///
+    /// A string attribute:
+    ///
+    /// ```text
+    /// digraph {
+    ///   graph [inspects="develop"]
+    /// }
+    /// ```
+    #[must_use]
+    pub fn inspects(&self) -> Vec<String> {
+        let mut slugs: Vec<String> = self
+            .attrs
+            .get("inspects")
+            .and_then(AttrValue::as_str)
+            .map(split_key_list)
+            .unwrap_or_default()
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        slugs.sort_unstable();
+        slugs.dedup();
+        slugs
+    }
+
     /// Graph-level `preamble_inline_max_kb`: the per-value inline ceiling
     /// this graph's preambles apply before a single context or outcome
     /// value is demoted to a preview plus a file reference. Nodes override
@@ -960,6 +989,30 @@ mod tests {
             AttrValue::String(String::new()),
         );
         assert_eq!(node.context_allow_keys(), Some(Vec::new()));
+    }
+
+    #[test]
+    fn inspects_parses_trims_and_dedupes() {
+        let mut graph = Graph::new("revisor");
+        assert!(graph.inspects().is_empty());
+
+        graph.attrs.insert(
+            "inspects".to_string(),
+            AttrValue::String("develop".to_string()),
+        );
+        assert_eq!(graph.inspects(), vec!["develop"]);
+
+        graph.attrs.insert(
+            "inspects".to_string(),
+            AttrValue::String(" audit ,develop,,develop, ".to_string()),
+        );
+        assert_eq!(graph.inspects(), vec!["audit", "develop"]);
+
+        // An explicitly empty attribute grants no authority.
+        graph
+            .attrs
+            .insert("inspects".to_string(), AttrValue::String(String::new()));
+        assert!(graph.inspects().is_empty());
     }
 
     #[test]

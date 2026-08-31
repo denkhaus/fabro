@@ -187,6 +187,15 @@ async fn discard_session(
 
 pub fn register_fabro_run_tools(registry: &mut ToolRegistry, services: &FabroRunToolServices) {
     for definition in fabro_tool::tool_definitions() {
+        // Revises-gated tools (ADR-0011): only a graph declaring `inspects`
+        // gets ask/list authority; the server re-checks the scope.
+        let inspects_gated = matches!(
+            definition.name,
+            fabro_tool::FABRO_ASK_TOOL_NAME | fabro_tool::FABRO_RUNS_LIST_TOOL_NAME
+        );
+        if inspects_gated && services.inspects.is_empty() {
+            continue;
+        }
         registry.register(fabro_run_tool(definition, services.clone()));
     }
 }
@@ -324,6 +333,28 @@ async fn execute_fabro_run_tool(
             )
             .await?;
             let summary = fabro_tool::pair_run_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_ASK_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroAskParams>(name, args)?;
+            let result = fabro_tool::ask_run(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedAsk::try_from(params)?,
+                &services.inspects,
+            )
+            .await?;
+            let summary = fabro_tool::ask_run_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_RUNS_LIST_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunsListParams>(name, args)?;
+            let result = fabro_tool::runs_list(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedRunsList::try_from(params)?,
+                &services.inspects,
+            )
+            .await?;
+            let summary = fabro_tool::runs_list_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
         _ => Err(fabro_tool::ToolError::message(format!(
@@ -2317,7 +2348,22 @@ reasoning = false
             fabro_tool::FABRO_RUN_SEARCH_TOOL_NAME,
         ]);
 
+        // The inspects-gated tools (fabro_ask, fabro_runs_list) stay
+        // unregistered without declared authority; every other catalog
+        // entry must register with its exact shared definition.
         for definition in fabro_tool::tool_definitions() {
+            let inspects_gated = matches!(
+                definition.name,
+                fabro_tool::FABRO_ASK_TOOL_NAME | fabro_tool::FABRO_RUNS_LIST_TOOL_NAME
+            );
+            if inspects_gated {
+                assert!(
+                    registry.get(definition.name).is_none(),
+                    "{} must stay unregistered without inspects authority",
+                    definition.name
+                );
+                continue;
+            }
             let registered = registry
                 .get(definition.name)
                 .expect("shared Fabro run tool should be registered");
@@ -2498,6 +2544,158 @@ reasoning = false
         ]);
     }
 
+    #[test]
+    fn inspects_gated_tools_register_only_with_scope() {
+        // Without inspects authority the ask/list tools stay unregistered.
+        let (services, _backend) = fabro_run_tool_services();
+        let mut registry = ToolRegistry::new();
+        register_fabro_run_tools(&mut registry, &services);
+        assert!(registry.get(fabro_tool::FABRO_ASK_TOOL_NAME).is_none());
+        assert!(
+            registry
+                .get(fabro_tool::FABRO_RUNS_LIST_TOOL_NAME)
+                .is_none()
+        );
+        assert!(registry.get(fabro_tool::FABRO_RUN_GET_TOOL_NAME).is_some());
+
+        // With a declared inspects scope both register.
+        let mut services = services;
+        services.inspects = vec!["develop".to_string()];
+        let mut registry = ToolRegistry::new();
+        register_fabro_run_tools(&mut registry, &services);
+        assert!(registry.get(fabro_tool::FABRO_ASK_TOOL_NAME).is_some());
+        assert!(
+            registry
+                .get(fabro_tool::FABRO_RUNS_LIST_TOOL_NAME)
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn fabro_ask_returns_analyst_answer_for_in_scope_target() {
+        let backend = Arc::new(MockRunToolBackend {
+            resolve_workflow_slug: "develop".to_string(),
+            ask_answer: "the gate timed out".to_string(),
+            ..mock_backend()
+        });
+        let services = FabroRunToolServices {
+            backend:            backend.clone(),
+            current_run_id:     current_run_id(),
+            base_cwd:           PathBuf::from("/tmp/fabro-test"),
+            user_settings_path: PathBuf::from("/tmp/fabro-test/settings.toml"),
+            inspects:           vec!["develop".to_string()],
+        };
+        let mut registry = ToolRegistry::new();
+        register_fabro_run_tools(&mut registry, &services);
+        let tool = registry
+            .get(fabro_tool::FABRO_ASK_TOOL_NAME)
+            .expect("ask tool should be registered with inspects");
+
+        let output = (tool.executor)(
+            serde_json::json!({
+                "run_id": child_run_id().to_string(),
+                "question": "why did the reviewer fail?"
+            }),
+            tool_context(),
+        )
+        .await
+        .expect("in-scope ask should succeed");
+
+        assert!(output.contains("the gate timed out"), "{output}");
+        assert_eq!(backend.ask_turns.lock().unwrap().as_slice(), [(
+            "sess-1".to_string(),
+            "why did the reviewer fail?".to_string()
+        )]);
+    }
+
+    #[tokio::test]
+    async fn fabro_ask_rejects_target_outside_inspects_scope() {
+        let backend = Arc::new(MockRunToolBackend {
+            resolve_workflow_slug: "nightly".to_string(),
+            ..mock_backend()
+        });
+        let services = FabroRunToolServices {
+            backend:            backend.clone(),
+            current_run_id:     current_run_id(),
+            base_cwd:           PathBuf::from("/tmp/fabro-test"),
+            user_settings_path: PathBuf::from("/tmp/fabro-test/settings.toml"),
+            inspects:           vec!["develop".to_string()],
+        };
+
+        let err = fabro_tool::ask_run(
+            Arc::clone(&services.backend) as Arc<dyn fabro_tool::FabroToolBackend>,
+            fabro_tool::ValidatedAsk::try_from(fabro_tool::FabroAskParams {
+                run_id:   child_run_id().to_string(),
+                question: "why did the reviewer fail?".to_string(),
+            })
+            .unwrap(),
+            &services.inspects,
+        )
+        .await
+        .expect_err("out-of-scope targets must be rejected");
+
+        assert!(err.as_str().contains("inspects scope"), "{err}");
+        assert!(
+            backend.ask_session_run_ids.lock().unwrap().is_empty(),
+            "no session may be created for an out-of-scope target"
+        );
+    }
+
+    #[tokio::test]
+    async fn fabro_runs_list_requires_declared_workflow() {
+        let backend = Arc::new(MockRunToolBackend { ..mock_backend() });
+        let services = FabroRunToolServices {
+            backend:            backend.clone(),
+            current_run_id:     current_run_id(),
+            base_cwd:           PathBuf::from("/tmp/fabro-test"),
+            user_settings_path: PathBuf::from("/tmp/fabro-test/settings.toml"),
+            inspects:           vec!["develop".to_string()],
+        };
+        let make_params = |workflow: Option<&str>| {
+            fabro_tool::ValidatedRunsList::try_from(fabro_tool::FabroRunsListParams {
+                workflow:      workflow.map(str::to_string),
+                created_since: Some("2026-08-31T00:00:00Z".to_string()),
+            })
+            .unwrap()
+        };
+
+        // Missing workflow and foreign workflows are rejected before the
+        // backend is consulted.
+        let err = fabro_tool::runs_list(
+            Arc::clone(&services.backend) as Arc<dyn fabro_tool::FabroToolBackend>,
+            make_params(None),
+            &services.inspects,
+        )
+        .await
+        .expect_err("workflow is mandatory for inspects-scoped callers");
+        assert!(err.as_str().contains("required"), "{err}");
+
+        let err = fabro_tool::runs_list(
+            Arc::clone(&services.backend) as Arc<dyn fabro_tool::FabroToolBackend>,
+            make_params(Some("nightly")),
+            &services.inspects,
+        )
+        .await
+        .expect_err("foreign workflows must be rejected");
+        assert!(err.as_str().contains("inspects scope"), "{err}");
+        assert!(backend.listed_workflows.lock().unwrap().is_empty());
+
+        fabro_tool::runs_list(
+            Arc::clone(&services.backend) as Arc<dyn fabro_tool::FabroToolBackend>,
+            make_params(Some("develop")),
+            &services.inspects,
+        )
+        .await
+        .expect("declared workflow lists fine");
+        let expected_since = chrono::DateTime::parse_from_rfc3339("2026-08-31T00:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        assert_eq!(backend.listed_workflows.lock().unwrap().as_slice(), [(
+            "develop".to_string(),
+            Some(expected_since)
+        )]);
+    }
+
     #[tokio::test]
     async fn agent_run_interact_rejects_approval_actions_before_backend_dispatch() {
         for action in ["approve", "deny"] {
@@ -2558,20 +2756,42 @@ reasoning = false
 
     fn fabro_run_tool_services() -> (FabroRunToolServices, Arc<MockRunToolBackend>) {
         let backend = Arc::new(MockRunToolBackend {
-            child_id:            child_run_id(),
-            created_parent_ids:  Mutex::new(Vec::new()),
-            started_run_ids:     Mutex::new(Vec::new()),
-            approved_run_ids:    Mutex::new(Vec::new()),
-            denied_run_ids:      Mutex::new(Vec::new()),
-            pair_status_run_ids: Mutex::new(Vec::new()),
+            child_id:              child_run_id(),
+            created_parent_ids:    Mutex::new(Vec::new()),
+            started_run_ids:       Mutex::new(Vec::new()),
+            approved_run_ids:      Mutex::new(Vec::new()),
+            denied_run_ids:        Mutex::new(Vec::new()),
+            pair_status_run_ids:   Mutex::new(Vec::new()),
+            resolve_workflow_slug: "simple".to_string(),
+            ask_answer:            "the reviewer failed because the gate timed out".to_string(),
+            ask_session_run_ids:   Mutex::new(Vec::new()),
+            ask_turns:             Mutex::new(Vec::new()),
+            listed_workflows:      Mutex::new(Vec::new()),
         });
         let services = FabroRunToolServices {
             backend:            backend.clone(),
             current_run_id:     current_run_id(),
             base_cwd:           PathBuf::from("/tmp/fabro-test"),
             user_settings_path: PathBuf::from("/tmp/fabro-test/settings.toml"),
+            inspects:           Vec::new(),
         };
         (services, backend)
+    }
+
+    fn mock_backend() -> MockRunToolBackend {
+        MockRunToolBackend {
+            child_id:              child_run_id(),
+            created_parent_ids:    Mutex::new(Vec::new()),
+            started_run_ids:       Mutex::new(Vec::new()),
+            approved_run_ids:      Mutex::new(Vec::new()),
+            denied_run_ids:        Mutex::new(Vec::new()),
+            pair_status_run_ids:   Mutex::new(Vec::new()),
+            resolve_workflow_slug: "simple".to_string(),
+            ask_answer:            "mock answer".to_string(),
+            ask_session_run_ids:   Mutex::new(Vec::new()),
+            ask_turns:             Mutex::new(Vec::new()),
+            listed_workflows:      Mutex::new(Vec::new()),
+        }
     }
 
     fn tool_context() -> ToolContext {
@@ -2661,12 +2881,17 @@ reasoning = false
     }
 
     struct MockRunToolBackend {
-        child_id:            RunId,
-        created_parent_ids:  Mutex<Vec<Option<RunId>>>,
-        started_run_ids:     Mutex<Vec<RunId>>,
-        approved_run_ids:    Mutex<Vec<RunId>>,
-        denied_run_ids:      Mutex<Vec<RunId>>,
-        pair_status_run_ids: Mutex<Vec<RunId>>,
+        child_id:              RunId,
+        created_parent_ids:    Mutex<Vec<Option<RunId>>>,
+        started_run_ids:       Mutex<Vec<RunId>>,
+        approved_run_ids:      Mutex<Vec<RunId>>,
+        denied_run_ids:        Mutex<Vec<RunId>>,
+        pair_status_run_ids:   Mutex<Vec<RunId>>,
+        resolve_workflow_slug: String,
+        ask_answer:            String,
+        ask_session_run_ids:   Mutex<Vec<RunId>>,
+        ask_turns:             Mutex<Vec<(String, String)>>,
+        listed_workflows:      Mutex<Vec<(String, Option<chrono::DateTime<chrono::Utc>>)>>,
     }
 
     #[async_trait]
@@ -2684,12 +2909,48 @@ reasoning = false
 
         async fn resolve_run(&self, selector: &str) -> anyhow::Result<Run> {
             let run_id = selector.parse::<RunId>()?;
-            Ok(run(run_id, None, 0))
+            let mut resolved = run(run_id, None, 0);
+            resolved.workflow.slug = Some(self.resolve_workflow_slug.clone());
+            Ok(resolved)
         }
 
         async fn retrieve_run(&self, run_id: &RunId) -> anyhow::Result<Run> {
             assert_eq!(*run_id, self.child_id);
             Ok(run(self.child_id, Some(current_run_id()), 0))
+        }
+
+        async fn create_ask_session(&self, run_id: &RunId, _title: &str) -> anyhow::Result<String> {
+            self.ask_session_run_ids.lock().unwrap().push(*run_id);
+            Ok("sess-1".to_string())
+        }
+
+        async fn submit_ask_turn(
+            &self,
+            _run_id: &RunId,
+            session_id: &str,
+            question: &str,
+        ) -> anyhow::Result<fabro_tool::AskTurnOutcome> {
+            self.ask_turns
+                .lock()
+                .unwrap()
+                .push((session_id.to_string(), question.to_string()));
+            Ok(fabro_tool::AskTurnOutcome {
+                status: fabro_tool::AskTurnStatus::Succeeded,
+                answer: self.ask_answer.clone(),
+                error:  None,
+            })
+        }
+
+        async fn list_runs_of_workflow(
+            &self,
+            workflow: &str,
+            created_since: Option<chrono::DateTime<chrono::Utc>>,
+        ) -> anyhow::Result<Vec<Run>> {
+            self.listed_workflows
+                .lock()
+                .unwrap()
+                .push((workflow.to_string(), created_since));
+            Ok(Vec::new())
         }
 
         async fn start_run(&self, run_id: &RunId, resume: bool) -> anyhow::Result<Run> {

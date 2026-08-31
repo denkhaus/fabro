@@ -40,6 +40,38 @@ This exposes the same Fabro run tools available through [MCP](/agents/mcp):
 | `fabro_run_events` | Read stored events for a run |
 | `fabro_run_pair` | Pair with an active API-mode agent stage |
 
+### Inspects scope — reading other workflows
+
+A workflow may declare that it *inspects* other workflows: its agents gain
+read-only enumeration and Ask-Fabro authority over exactly those
+workflows' runs. The declaration names the capability, not the motive —
+the revisor is its first consumer, but auditing or triage workflows may
+declare it just the same. Declare the slugs on the graph:
+
+```graphviz
+digraph {
+  graph [goal="Improve the develop workflow", inspects="develop"]
+  // inspects="develop,audit" grants multiple workflows
+}
+```
+
+With `inspects` declared (and `run.agent.fabro_tools = true`), two
+additional tools register:
+
+| Tool | Purpose |
+|---|---|
+| `fabro_ask` | Ask one question to the Ask-Fabro analyst of another run and wait for the final answer |
+| `fabro_runs_list` | Enumerate runs of one declared workflow, optionally bounded by `created_since` |
+
+The declaration is the authority contract, enforced at three layers: the
+worker token carries the declared slugs, the tools reject targets outside
+them, and the server re-checks every session creation and enumeration
+request. A run whose workflow has no slug (for example legacy manifest
+runs) is never in scope. Note that the wider run-tool catalog
+(`fabro_run_get`, `fabro_run_events`, ...) remains governed by
+`run.agent.fabro_tools` alone; `inspects` gates the cross-workflow ask
+and enumeration paths.
+
 <Note>
 When a workflow agent calls `fabro_run_create`, Fabro always parents the created runs to the current run. If the agent supplies `parent_id`, it must match the current run ID.
 </Note>

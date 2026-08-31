@@ -3709,6 +3709,7 @@ fn worker_launch_spec(
     mode: RunExecutionMode,
     run_dir: &std::path::Path,
     agent_fabro_tools_enabled: bool,
+    inspects: &[String],
     github_app_private_key: Option<String>,
 ) -> anyhow::Result<WorkerLaunchSpec> {
     let current_exe = std::env::current_exe().context("reading current executable path")?;
@@ -3722,12 +3723,14 @@ fn worker_launch_spec(
             runtime_directory.record_path().display()
         )
     })?;
-    let scopes = if agent_fabro_tools_enabled {
+    let scopes = if agent_fabro_tools_enabled && !inspects.is_empty() {
+        WorkerScopeSet::run_worker_with_agent_run_tools_and_inspects(inspects)
+    } else if agent_fabro_tools_enabled {
         WorkerScopeSet::run_worker_with_agent_run_tools()
     } else {
         WorkerScopeSet::run_worker()
     };
-    let worker_token = issue_worker_token_with_scopes(state.worker_token_keys(), &run_id, scopes)
+    let worker_token = issue_worker_token_with_scopes(state.worker_token_keys(), &run_id, &scopes)
         .map_err(|_| anyhow::anyhow!("failed to sign worker token"))?;
     let log_destination = resolved_log_destination(state)?;
     let fabro_log = if (state.env_lookup)(EnvVars::FABRO_LOG).is_none() {
@@ -4362,6 +4365,13 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
         }
     };
     let agent_fabro_tools_enabled = run_state.spec.settings.run.agent.fabro_tools;
+    // ADR-0011 revisor scope: the graph's `inspects` attribute widens the
+    // worker token to inspect and ask about runs of the declared workflows.
+    let worker_inspects = if agent_fabro_tools_enabled {
+        run_state.spec.graph.inspects()
+    } else {
+        Vec::new()
+    };
     if reject_run_if_sandbox_provider_disabled(
         &state,
         &state.server_settings(),
@@ -4396,6 +4406,7 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
             execution_mode,
             &run_dir_for_build,
             agent_fabro_tools_enabled,
+            &worker_inspects,
             github_app_private_key,
         )
     })

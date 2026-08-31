@@ -805,13 +805,15 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
          * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {boolean} [includeArchived] Whether to include archived runs in the response. Defaults to &#x60;false&#x60;.
          * @param {string} [parentId] Return only runs currently linked to this orchestration parent.
+         * @param {string} [workflow] Return only runs of this workflow slug. Workers holding inspection authority (graph attribute &#x60;inspects&#x60;) must set this parameter to one of their declared workflows; other callers may omit it to list every workflow.
+         * @param {string} [createdSince] Inclusive lower bound on run creation time (RFC 3339).
          * @param {Array<BoardColumn>} [status] Filter runs by status bucket. Repeatable. When omitted, runs in the &#x60;removing&#x60; bucket are hidden; pass &#x60;status&#x3D;removing&#x60; to include them. Archived runs are hidden unless &#x60;include_archived&#x3D;true&#x60; or &#x60;status&#x3D;archived&#x60; is passed.
          * @param {ListRunsSortEnum} [sort] Field to sort by. Defaults to &#x60;created_at&#x60;.
          * @param {ListRunsDirectionEnum} [direction] Sort direction. Defaults to &#x60;desc&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRuns: async (pageLimit?: number, pageOffset?: number, includeArchived?: boolean, parentId?: string, status?: Array<BoardColumn>, sort?: ListRunsSortEnum, direction?: ListRunsDirectionEnum, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listRuns: async (pageLimit?: number, pageOffset?: number, includeArchived?: boolean, parentId?: string, workflow?: string, createdSince?: string, status?: Array<BoardColumn>, sort?: ListRunsSortEnum, direction?: ListRunsDirectionEnum, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/runs`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -844,6 +846,16 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
 
             if (parentId !== undefined) {
                 localVarQueryParameter['parent_id'] = parentId;
+            }
+
+            if (workflow !== undefined) {
+                localVarQueryParameter['workflow'] = workflow;
+            }
+
+            if (createdSince !== undefined) {
+                localVarQueryParameter['created_since'] = (createdSince as any instanceof Date) ?
+                    (createdSince as any).toISOString() :
+                    createdSince;
             }
 
             if (status) {
@@ -1819,14 +1831,16 @@ export const RunsApiFp = function(configuration?: Configuration) {
          * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {boolean} [includeArchived] Whether to include archived runs in the response. Defaults to &#x60;false&#x60;.
          * @param {string} [parentId] Return only runs currently linked to this orchestration parent.
+         * @param {string} [workflow] Return only runs of this workflow slug. Workers holding inspection authority (graph attribute &#x60;inspects&#x60;) must set this parameter to one of their declared workflows; other callers may omit it to list every workflow.
+         * @param {string} [createdSince] Inclusive lower bound on run creation time (RFC 3339).
          * @param {Array<BoardColumn>} [status] Filter runs by status bucket. Repeatable. When omitted, runs in the &#x60;removing&#x60; bucket are hidden; pass &#x60;status&#x3D;removing&#x60; to include them. Archived runs are hidden unless &#x60;include_archived&#x3D;true&#x60; or &#x60;status&#x3D;archived&#x60; is passed.
          * @param {ListRunsSortEnum} [sort] Field to sort by. Defaults to &#x60;created_at&#x60;.
          * @param {ListRunsDirectionEnum} [direction] Sort direction. Defaults to &#x60;desc&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listRuns(pageLimit?: number, pageOffset?: number, includeArchived?: boolean, parentId?: string, status?: Array<BoardColumn>, sort?: ListRunsSortEnum, direction?: ListRunsDirectionEnum, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedRunList>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listRuns(pageLimit, pageOffset, includeArchived, parentId, status, sort, direction, options);
+        async listRuns(pageLimit?: number, pageOffset?: number, includeArchived?: boolean, parentId?: string, workflow?: string, createdSince?: string, status?: Array<BoardColumn>, sort?: ListRunsSortEnum, direction?: ListRunsDirectionEnum, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedRunList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRuns(pageLimit, pageOffset, includeArchived, parentId, workflow, createdSince, status, sort, direction, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.listRuns']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -2249,14 +2263,16 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {boolean} [includeArchived] Whether to include archived runs in the response. Defaults to &#x60;false&#x60;.
          * @param {string} [parentId] Return only runs currently linked to this orchestration parent.
+         * @param {string} [workflow] Return only runs of this workflow slug. Workers holding inspection authority (graph attribute &#x60;inspects&#x60;) must set this parameter to one of their declared workflows; other callers may omit it to list every workflow.
+         * @param {string} [createdSince] Inclusive lower bound on run creation time (RFC 3339).
          * @param {Array<BoardColumn>} [status] Filter runs by status bucket. Repeatable. When omitted, runs in the &#x60;removing&#x60; bucket are hidden; pass &#x60;status&#x3D;removing&#x60; to include them. Archived runs are hidden unless &#x60;include_archived&#x3D;true&#x60; or &#x60;status&#x3D;archived&#x60; is passed.
          * @param {ListRunsSortEnum} [sort] Field to sort by. Defaults to &#x60;created_at&#x60;.
          * @param {ListRunsDirectionEnum} [direction] Sort direction. Defaults to &#x60;desc&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRuns(pageLimit?: number, pageOffset?: number, includeArchived?: boolean, parentId?: string, status?: Array<BoardColumn>, sort?: ListRunsSortEnum, direction?: ListRunsDirectionEnum, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedRunList> {
-            return localVarFp.listRuns(pageLimit, pageOffset, includeArchived, parentId, status, sort, direction, options).then((request) => request(axios, basePath));
+        listRuns(pageLimit?: number, pageOffset?: number, includeArchived?: boolean, parentId?: string, workflow?: string, createdSince?: string, status?: Array<BoardColumn>, sort?: ListRunsSortEnum, direction?: ListRunsDirectionEnum, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedRunList> {
+            return localVarFp.listRuns(pageLimit, pageOffset, includeArchived, parentId, workflow, createdSince, status, sort, direction, options).then((request) => request(axios, basePath));
         },
         /**
          * Merges the stored pull request for a run on GitHub.
@@ -2640,14 +2656,16 @@ export class RunsApi extends BaseAPI {
      * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {boolean} [includeArchived] Whether to include archived runs in the response. Defaults to &#x60;false&#x60;.
      * @param {string} [parentId] Return only runs currently linked to this orchestration parent.
+     * @param {string} [workflow] Return only runs of this workflow slug. Workers holding inspection authority (graph attribute &#x60;inspects&#x60;) must set this parameter to one of their declared workflows; other callers may omit it to list every workflow.
+     * @param {string} [createdSince] Inclusive lower bound on run creation time (RFC 3339).
      * @param {Array<BoardColumn>} [status] Filter runs by status bucket. Repeatable. When omitted, runs in the &#x60;removing&#x60; bucket are hidden; pass &#x60;status&#x3D;removing&#x60; to include them. Archived runs are hidden unless &#x60;include_archived&#x3D;true&#x60; or &#x60;status&#x3D;archived&#x60; is passed.
      * @param {ListRunsSortEnum} [sort] Field to sort by. Defaults to &#x60;created_at&#x60;.
      * @param {ListRunsDirectionEnum} [direction] Sort direction. Defaults to &#x60;desc&#x60;.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listRuns(pageLimit?: number, pageOffset?: number, includeArchived?: boolean, parentId?: string, status?: Array<BoardColumn>, sort?: ListRunsSortEnum, direction?: ListRunsDirectionEnum, options?: RawAxiosRequestConfig) {
-        return RunsApiFp(this.configuration).listRuns(pageLimit, pageOffset, includeArchived, parentId, status, sort, direction, options).then((request) => request(this.axios, this.basePath));
+    public listRuns(pageLimit?: number, pageOffset?: number, includeArchived?: boolean, parentId?: string, workflow?: string, createdSince?: string, status?: Array<BoardColumn>, sort?: ListRunsSortEnum, direction?: ListRunsDirectionEnum, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).listRuns(pageLimit, pageOffset, includeArchived, parentId, workflow, createdSince, status, sort, direction, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

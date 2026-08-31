@@ -35,7 +35,9 @@ use fabro_types::run_event::{
     RunSessionTurnSucceededProps, RunSessionUserMessageProps,
 };
 use fabro_types::settings::ModelRef as SettingsModelRef;
-use fabro_types::{EventBody, EventEnvelope, RunEvent, RunId, SessionDetail, SessionId, TurnId};
+use fabro_types::{
+    EventBody, EventEnvelope, Principal, RunEvent, RunId, SessionDetail, SessionId, TurnId,
+};
 use fabro_workflow::handler::llm::api::register_named_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
 use serde_json::Value;
@@ -51,7 +53,7 @@ use super::super::{
     AppState, EventListParams, PaginationParams, paginate_items, parse_run_id_path,
 };
 use crate::error::ApiError;
-use crate::principal_middleware::RequiredUser;
+use crate::principal_middleware::{RequiredAskFabroActor, RequiredUser};
 use crate::server_secrets::LlmClientResult;
 use crate::worker_token::issue_worker_token;
 
@@ -149,7 +151,7 @@ async fn list_run_sessions(
 }
 
 async fn create_run_session(
-    _auth: RequiredUser,
+    auth: RequiredAskFabroActor,
     State(state): State<Arc<AppState>>,
     Path(run_id): Path<String>,
     Json(request): Json<CreateRunSessionRequest>,
@@ -158,6 +160,9 @@ async fn create_run_session(
         Ok(id) => id,
         Err(response) => return response,
     };
+    if let Err(response) = ensure_worker_may_ask(&auth, &state, run_id).await {
+        return response;
+    }
     let run_store = match open_run(&state, run_id).await {
         Ok(store) => store,
         Err(response) => return response,
@@ -377,7 +382,7 @@ async fn attach_session_events(
 }
 
 async fn submit_turn(
-    _auth: RequiredUser,
+    auth: RequiredAskFabroActor,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(request): Json<SubmitTurnRequest>,
@@ -390,6 +395,9 @@ async fn submit_turn(
         Ok(context) => context,
         Err(response) => return response,
     };
+    if let Err(response) = ensure_worker_may_ask(&auth, &state, run_id).await {
+        return response;
+    }
     let input = request.input;
 
     let turn_id = match request.turn_id {
@@ -763,6 +771,7 @@ async fn build_agent_session(
         current_run_id:     run_id,
         base_cwd:           PathBuf::new(),
         user_settings_path: PathBuf::new(),
+        inspects:           Vec::new(),
     };
     register_named_fabro_run_tools(
         profile.tool_registry_mut(),
@@ -1383,6 +1392,43 @@ fn event_matches_session(event: &EventEnvelope, session_id: &str) -> bool {
         .as_deref()
         .is_some_and(|id| id == session_id)
         && event.event.body.is_run_session_event()
+}
+
+/// ADR-0011 inspection scope: a worker may only open Ask-Fabro sessions
+/// on runs whose workflow its token declares in `inspects`. Users are
+/// unrestricted.
+async fn ensure_worker_may_ask(
+    auth: &RequiredAskFabroActor,
+    state: &AppState,
+    run_id: RunId,
+) -> Result<(), Response> {
+    if matches!(auth.0, Principal::User(_)) {
+        return Ok(());
+    }
+    let run_store = match open_run_reader(state, run_id).await {
+        Ok(store) => store,
+        Err(response) => return Err(response),
+    };
+    let workflow_slug = run_store
+        .state()
+        .await
+        .map_err(|err| store_error(&err).into_response())?
+        .spec
+        .workflow_slug;
+    let allowed = workflow_slug
+        .as_deref()
+        .is_some_and(|slug| auth.1.inspects_allows(slug));
+    if allowed {
+        Ok(())
+    } else {
+        tracing::warn!(
+            target: "worker_auth",
+            run_id = %run_id,
+            workflow_slug = workflow_slug.as_deref().unwrap_or("<none>"),
+            "worker denied Ask-Fabro access outside inspects scope"
+        );
+        Err(ApiError::forbidden().into_response())
+    }
 }
 
 async fn load_session(

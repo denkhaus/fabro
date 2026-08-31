@@ -81,6 +81,10 @@ pub struct FabroRunToolServices {
     pub current_run_id:     RunId,
     pub base_cwd:           PathBuf,
     pub user_settings_path: PathBuf,
+    /// Workflow slugs this run's graph declares in `inspects` (ADR-0011).
+    /// Empty means no revisor authority: `fabro_ask` and
+    /// `fabro_runs_list` are not registered.
+    pub inspects:           Vec<String>,
 }
 
 /// Services shared across workflow phases.

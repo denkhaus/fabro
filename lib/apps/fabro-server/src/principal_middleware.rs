@@ -57,6 +57,13 @@ pub(crate) struct RequestAuth(pub(crate) AuthContextSlot);
 
 pub(crate) struct RequiredUser(pub(crate) UserPrincipal);
 pub(crate) struct RequiredRunManagementActor(pub(crate) Principal);
+/// Initiator allowed to open or continue Ask-Fabro sessions: any user, or a
+/// run worker whose token carries revisor authority (ADR-0011 `inspects`).
+/// Workers must still pass the per-target workflow check in the handler.
+pub(crate) struct RequiredAskFabroActor(pub(crate) Principal, pub(crate) WorkerScopeSet);
+/// Actor allowed to enumerate runs: any user, or any run worker (workers
+/// with revisor authority must filter to their declared workflows).
+pub(crate) struct RequiredRunEnumerationActor(pub(crate) Principal, pub(crate) WorkerScopeSet);
 pub(crate) struct RequiredRunToolActor(pub(crate) Principal);
 pub(crate) struct RequireRunScoped(pub(crate) RunId);
 pub(crate) struct RequireWorkerRunScoped(pub(crate) RunId);
@@ -215,6 +222,32 @@ impl<S: Send + Sync> FromRequestParts<S> for RequiredRunManagementActor {
             .cloned()
             .unwrap_or_else(AuthContextSlot::initial);
         require_run_management_actor(&slot).map(Self)
+    }
+}
+
+impl<S: Send + Sync> FromRequestParts<S> for RequiredAskFabroActor {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
+        let slot = parts
+            .extensions
+            .get::<AuthContextSlot>()
+            .cloned()
+            .unwrap_or_else(AuthContextSlot::initial);
+        require_ask_fabro_actor(&slot).map(|(principal, scopes)| Self(principal, scopes))
+    }
+}
+
+impl<S: Send + Sync> FromRequestParts<S> for RequiredRunEnumerationActor {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
+        let slot = parts
+            .extensions
+            .get::<AuthContextSlot>()
+            .cloned()
+            .unwrap_or_else(AuthContextSlot::initial);
+        require_run_enumeration_actor(&slot).map(|(principal, scopes)| Self(principal, scopes))
     }
 }
 
@@ -419,6 +452,40 @@ pub(crate) fn require_run_management_actor(slot: &AuthContextSlot) -> Result<Pri
         Some(Principal::User(user)) => Ok(Principal::User(user.clone())),
         Some(Principal::Worker { run_id }) if context.worker_scopes.has_agent_run_tools() => {
             Ok(Principal::Worker { run_id: *run_id })
+        }
+        Some(Principal::Worker { .. }) => Err(ApiError::forbidden()),
+        None | Some(_) => Err(auth_rejection(context.auth_status, context.auth_error_code)),
+    }
+}
+
+/// Accept users and inspects-scoped workers for Ask-Fabro session routes.
+pub(crate) fn require_ask_fabro_actor(
+    slot: &AuthContextSlot,
+) -> Result<(Principal, WorkerScopeSet), ApiError> {
+    let context = slot.0.lock().expect("auth context lock poisoned");
+    match &context.principal {
+        Some(principal @ Principal::User(_)) => Ok((principal.clone(), WorkerScopeSet::default())),
+        Some(principal @ Principal::Worker { .. })
+            if !context.worker_scopes.inspects().is_empty() =>
+        {
+            Ok((principal.clone(), context.worker_scopes.clone()))
+        }
+        Some(Principal::Worker { .. }) => Err(ApiError::forbidden()),
+        None | Some(_) => Err(auth_rejection(context.auth_status, context.auth_error_code)),
+    }
+}
+
+/// Accept users and workers for run enumeration routes.
+pub(crate) fn require_run_enumeration_actor(
+    slot: &AuthContextSlot,
+) -> Result<(Principal, WorkerScopeSet), ApiError> {
+    let context = slot.0.lock().expect("auth context lock poisoned");
+    match &context.principal {
+        Some(principal @ Principal::User(_)) => Ok((principal.clone(), WorkerScopeSet::default())),
+        Some(principal @ Principal::Worker { .. })
+            if context.worker_scopes.has_agent_run_tools() =>
+        {
+            Ok((principal.clone(), context.worker_scopes.clone()))
         }
         Some(Principal::Worker { .. }) => Err(ApiError::forbidden()),
         None | Some(_) => Err(auth_rejection(context.auth_status, context.auth_error_code)),
@@ -651,6 +718,7 @@ mod tests {
             run_id: run_id.to_string(),
             scope: scope.to_string(),
             jti: Uuid::new_v4().simple().to_string(),
+            inspects: Vec::new(),
         };
         jsonwebtoken::encode(
             &worker_token_header(),

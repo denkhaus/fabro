@@ -659,7 +659,7 @@ fn issue_test_run_tools_worker_token(run_id: &RunId) -> String {
     crate::worker_token::issue_worker_token_with_scopes(
         &keys,
         run_id,
-        crate::worker_token::WorkerScopeSet::run_worker_with_agent_run_tools(),
+        &crate::worker_token::WorkerScopeSet::run_worker_with_agent_run_tools(),
     )
     .expect("worker token should issue")
 }
@@ -2381,6 +2381,7 @@ fn worker_command_forwards_github_app_private_key_from_vault() {
         RunExecutionMode::Start,
         storage_dir.path(),
         false,
+        &[],
         Some("test-private-key".to_string()),
     )
     .unwrap();
@@ -2762,6 +2763,7 @@ fn worker_command(
         mode,
         run_dir,
         agent_fabro_tools_enabled,
+        &[],
         None,
     )?;
     Ok(LocalWorkerRuntime::command_for_spec(&spec))
@@ -12728,6 +12730,170 @@ async fn worker_token_accepts_run_scoped_routes_and_falls_back_to_user_jwt() {
         .await
         .unwrap();
     assert_status!(response, StatusCode::FORBIDDEN).await;
+}
+
+fn issue_test_inspects_worker_token(run_id: &RunId, inspects: &[String]) -> String {
+    let keys = WorkerTokenKeys::from_master_secret(TEST_SESSION_SECRET.as_bytes())
+        .expect("worker keys should derive");
+    crate::worker_token::issue_worker_token_with_scopes(
+        &keys,
+        run_id,
+        &crate::worker_token::WorkerScopeSet::run_worker_with_agent_run_tools_and_inspects(
+            inspects,
+        ),
+    )
+    .expect("worker token should issue")
+}
+
+fn unique_run_id() -> RunId {
+    RunId::new()
+}
+
+async fn create_run_with_workflow_slug(state: &Arc<AppState>, run_id: RunId, workflow_slug: &str) {
+    create_slack_notification_run(
+        state,
+        run_id,
+        fabro_types::WorkflowSettings::default(),
+        "revisor-scope",
+        Some(workflow_slug),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn inspects_worker_creates_ask_session_only_on_declared_workflow_runs() {
+    let (state, app) = jwt_auth_app();
+    let parent_run_id = unique_run_id();
+    let develop_run_id = unique_run_id();
+    let nightly_run_id = unique_run_id();
+    create_run_with_workflow_slug(&state, develop_run_id, "develop").await;
+    create_run_with_workflow_slug(&state, nightly_run_id, "nightly").await;
+    let inspects_token = issue_test_inspects_worker_token(&parent_run_id, &["develop".to_string()]);
+    let plain_run_tools_token = issue_test_run_tools_worker_token(&parent_run_id);
+
+    // Declared workflow: session creation succeeds.
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            &format!("/runs/{develop_run_id}/sessions"),
+            &inspects_token,
+            &json!({ "title": "revisor question" }),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::CREATED).await;
+
+    // Foreign workflow: rejected even though the token is otherwise valid.
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            &format!("/runs/{nightly_run_id}/sessions"),
+            &inspects_token,
+            &json!({ "title": "revisor question" }),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+
+    // Run-tools workers without inspects authority keep being rejected.
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            &format!("/runs/{develop_run_id}/sessions"),
+            &plain_run_tools_token,
+            &json!({ "title": "revisor question" }),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+
+    // A slug-less run is never in scope.
+    let user_jwt = issue_test_user_jwt();
+    let manifest_run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            &format!("/runs/{manifest_run_id}/sessions"),
+            &inspects_token,
+            &json!({ "title": "revisor question" }),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+}
+
+#[tokio::test]
+async fn inspects_worker_lists_runs_only_through_declared_workflow_filter() {
+    let (state, app) = jwt_auth_app();
+    let parent_run_id = unique_run_id();
+    let develop_run_id = unique_run_id();
+    create_run_with_workflow_slug(&state, develop_run_id, "develop").await;
+    let inspects_token = issue_test_inspects_worker_token(&parent_run_id, &["develop".to_string()]);
+    let plain_run_tools_token = issue_test_run_tools_worker_token(&parent_run_id);
+
+    // Unfiltered enumeration is denied for inspects workers.
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            "/runs",
+            &inspects_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+
+    // Foreign workflow filter is denied.
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            "/runs?workflow=nightly",
+            &inspects_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+
+    // Declared workflow filter succeeds and returns only that workflow.
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            "/runs?workflow=develop",
+            &inspects_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+    let slugs: Vec<&str> = body["data"]
+        .as_array()
+        .expect("run list data should be an array")
+        .iter()
+        .filter_map(|run| run["workflow"]["slug"].as_str())
+        .collect();
+    assert!(!slugs.is_empty(), "the develop run should be listed");
+    assert!(slugs.iter().all(|slug| *slug == "develop"), "{slugs:?}");
+
+    // Workers without inspects keep their legacy unfiltered access.
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            "/runs",
+            &plain_run_tools_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::OK).await;
 }
 
 #[tokio::test]

@@ -1,11 +1,13 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use anyhow::Context as _;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use fabro_api::types;
 use fabro_types::{
     EventEnvelope, PairId, PairMessageRecord, PairMessageRequest, PairRecord,
-    PairTranscriptResponse, Run, RunId, RunPairStatusResponse, RunProjection, StageId,
+    PairTranscriptResponse, Run, RunId, RunPairStatusResponse, RunProjection, SessionId, StageId,
 };
 
 use crate::{FabroToolBackend, RunManifestBuilder, ToolError};
@@ -135,6 +137,56 @@ impl FabroToolBackend for ClientBackend {
     async fn unarchive_run(&self, run_id: &RunId) -> anyhow::Result<Run> {
         self.ensure_run_scope(run_id)?;
         self.client.unarchive_run(run_id).await
+    }
+
+    async fn create_ask_session(&self, run_id: &RunId, title: &str) -> anyhow::Result<String> {
+        self.ensure_run_scope(run_id)?;
+        let session = self
+            .client
+            .create_run_session(*run_id, types::CreateRunSessionRequest {
+                title:    Some(title.to_string()),
+                model:    None,
+                provider: None,
+            })
+            .await?;
+        Ok(session.id.to_string())
+    }
+
+    async fn submit_ask_turn(
+        &self,
+        run_id: &RunId,
+        session_id: &str,
+        question: &str,
+    ) -> anyhow::Result<crate::AskTurnOutcome> {
+        self.ensure_run_scope(run_id)?;
+        let session_id: SessionId = session_id
+            .parse()
+            .map_err(anyhow::Error::new)
+            .with_context(|| format!("invalid Ask-Fabro session id {session_id}"))?;
+        let mut stream = self
+            .client
+            .submit_session_turn_stream(session_id, question)
+            .await?;
+
+        let mut collector = crate::AskTurnCollector::default();
+        while let Some(event) = stream.next_event().await? {
+            // Unparseable properties degrade to null: the collector only
+            // reads known terminal events, and a broken assistant message
+            // surfaces through the missing-terminal classification.
+            let properties = event.event.properties().unwrap_or(serde_json::Value::Null);
+            collector.absorb(event.event.event_name(), &properties);
+        }
+        Ok(collector.finish())
+    }
+
+    async fn list_runs_of_workflow(
+        &self,
+        workflow: &str,
+        created_since: Option<DateTime<Utc>>,
+    ) -> anyhow::Result<Vec<Run>> {
+        self.client
+            .list_runs_of_workflow(workflow, created_since)
+            .await
     }
 
     async fn list_store_runs(&self) -> anyhow::Result<Vec<Run>> {
