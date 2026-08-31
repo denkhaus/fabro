@@ -6,7 +6,6 @@ use fabro_api::types::{
 };
 use fabro_automation::{
     Automation, AutomationDraft, AutomationGitWorkflowSource, AutomationReplace, AutomationTrigger,
-    validate_workflow_source,
 };
 use serde_json::json;
 
@@ -160,5 +159,5 @@ fn automation_workflow_source_rejects_unknown_or_incomplete_coordinates() {
         "sha": "short"
     }))
     .unwrap();
-    assert!(validate_workflow_source(invalid_commit).is_err());
+    assert!(fabro_automation::validate_workflow_source(invalid_commit).is_err());
 }

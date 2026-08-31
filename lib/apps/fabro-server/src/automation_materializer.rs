@@ -2,20 +2,18 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use fabro_automation::{
-    AutomationGitWorkflowSource, AutomationId, AutomationValidationError, validate_workflow_source,
-};
+use fabro_automation::{AutomationGitWorkflowSource, AutomationId};
 use fabro_manifest::WorkflowVersionCollectError;
 use fabro_types::{
-    GitHubRepositorySlug, GitRunTarget, ResolvedAutomationGitWorkflowSource, RunId, RunIntent,
-    RunIntentArgs, RunTarget, TargetValidationError, WorkflowVersionId,
+    GitCoordinateValidationError, GitHubRepositorySlug, GitRunTarget,
+    ResolvedAutomationGitWorkflowSource, RunId, RunIntent, RunIntentArgs, RunTarget,
+    WorkflowVersionId,
 };
 use fabro_workflow_version::{WorkflowVersionStore, WorkflowVersionStoreError};
 use tokio::{fs, task};
 
 use crate::git_checkout::{
-    GitAuthConfig, GitCheckoutError, GitCheckoutSelector, GitRepoCache, WorktreePrepareInput,
-    github_clone_url, resolve_git_read_auth_config,
+    self, GitAuthConfig, GitCheckoutError, GitCheckoutSelector, GitRepoCache, WorktreePrepareInput,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,12 +54,12 @@ pub(crate) enum RunMaterializeError {
     #[error("invalid automation Git target")]
     InvalidTarget {
         #[source]
-        source: TargetValidationError,
+        source: GitCoordinateValidationError,
     },
     #[error("invalid automation workflow source")]
     InvalidWorkflowSource {
         #[source]
-        source: AutomationValidationError,
+        source: GitCoordinateValidationError,
     },
     #[error("failed to resolve automation {role} credentials")]
     Credentials {
@@ -153,7 +151,7 @@ struct ServerGitHubRemoteResolver {
 #[async_trait]
 impl AutomationGitRemoteResolver for ServerGitHubRemoteResolver {
     async fn resolve(&self, repo: &GitHubRepositorySlug) -> anyhow::Result<GitRemote> {
-        let auth = resolve_git_read_auth_config(
+        let auth = git_checkout::resolve_git_read_auth_config(
             self.credentials.as_ref(),
             repo,
             &self.api_base_url,
@@ -161,7 +159,7 @@ impl AutomationGitRemoteResolver for ServerGitHubRemoteResolver {
         )
         .await?;
         Ok(GitRemote {
-            clone_url: github_clone_url(repo),
+            clone_url: git_checkout::github_clone_url(repo),
             auth,
         })
     }
@@ -232,45 +230,24 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
         &self,
         input: AutomationRunMaterializeInput,
     ) -> Result<AutomationRunMaterialized, RunMaterializeError> {
-        let validated_target = RunTarget::Git(input.target)
+        let validated_target = input
+            .target
             .validate()
             .map_err(|source| RunMaterializeError::InvalidTarget { source })?;
-        let RunTarget::Git(mut exact_target) = validated_target.target else {
-            unreachable!("a validated Git target remains Git-backed");
-        };
-        let target_repo: GitHubRepositorySlug =
-            exact_target
-                .repo
-                .parse()
-                .map_err(|_| RunMaterializeError::InvalidTarget {
-                    source: TargetValidationError::Repository,
-                })?;
+        let target_repo = validated_target.repository().clone();
+        let mut exact_target = validated_target.into_target();
         let workflow_source = input
             .workflow_source
-            .map(validate_workflow_source)
+            .map(GitRunTarget::validate)
             .transpose()
             .map_err(|source| RunMaterializeError::InvalidWorkflowSource { source })?;
         // A workflow source naming the target's exact coordinate shares its
         // checkout; anything else needs a second worktree.
-        let separate_source = workflow_source
-            .as_ref()
-            .map(|source| {
-                source
-                    .repo
-                    .parse::<GitHubRepositorySlug>()
-                    .map(|repo| (repo, source))
-                    .map_err(|_| RunMaterializeError::InvalidWorkflowSource {
-                        source: AutomationValidationError::InvalidWorkflowSource {
-                            source: TargetValidationError::Repository,
-                        },
-                    })
-            })
-            .transpose()?
-            .filter(|(repo, source)| {
-                *repo != target_repo
-                    || GitCheckoutSelector::from(*source)
-                        != GitCheckoutSelector::from(&exact_target)
-            });
+        let separate_source = workflow_source.as_ref().filter(|source| {
+            source.repository() != &target_repo
+                || GitCheckoutSelector::from(source.target())
+                    != GitCheckoutSelector::from(&exact_target)
+        });
 
         fs::create_dir_all(&input.temp_root)
             .await
@@ -304,20 +281,21 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
             .await?;
         let (workflow_checkout_dir, workflow_checkout_sha) = match separate_source {
             None => (target_checkout_dir, checked_out_sha.clone()),
-            Some((repo, source)) => {
-                let remote = if repo == target_repo {
+            Some(source) => {
+                let repo = source.repository();
+                let remote = if repo == &target_repo {
                     target_remote
                 } else {
-                    self.resolve_remote(CheckoutRole::WorkflowSource, &repo)
+                    self.resolve_remote(CheckoutRole::WorkflowSource, repo)
                         .await?
                 };
                 let source_checkout_dir = temp_dir.path().join("workflow-source");
                 let source_sha = self
                     .prepare_checkout(
                         CheckoutRole::WorkflowSource,
-                        &repo,
+                        repo,
                         &remote,
-                        GitCheckoutSelector::from(source),
+                        GitCheckoutSelector::from(source.target()),
                         &source_checkout_dir,
                     )
                     .await?;
@@ -327,7 +305,7 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
         exact_target.sha = Some(checked_out_sha);
         let resolved_workflow_source = workflow_source.map(|source| {
             Box::new(ResolvedAutomationGitWorkflowSource::from_requested(
-                source,
+                source.into_target(),
                 workflow_checkout_sha,
             ))
         });
@@ -385,10 +363,8 @@ struct TestAutomationRunMaterializerState {
 #[cfg(any(test, feature = "test-support"))]
 #[derive(Clone)]
 enum TestMaterializeFailure {
-    InvalidTarget(TargetValidationError),
-    /// Unit because `AutomationValidationError` is not `Clone`; any variant
-    /// exercises the same handler path.
-    InvalidWorkflowSource,
+    InvalidTarget(GitCoordinateValidationError),
+    InvalidWorkflowSource(GitCoordinateValidationError),
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -396,11 +372,9 @@ impl From<TestMaterializeFailure> for RunMaterializeError {
     fn from(failure: TestMaterializeFailure) -> Self {
         match failure {
             TestMaterializeFailure::InvalidTarget(source) => Self::InvalidTarget { source },
-            TestMaterializeFailure::InvalidWorkflowSource => Self::InvalidWorkflowSource {
-                source: AutomationValidationError::InvalidWorkflowSource {
-                    source: TargetValidationError::Branch,
-                },
-            },
+            TestMaterializeFailure::InvalidWorkflowSource(source) => {
+                Self::InvalidWorkflowSource { source }
+            }
         }
     }
 }
@@ -433,12 +407,14 @@ impl TestAutomationRunMaterializer {
 
     pub fn fail_invalid_target() -> Self {
         Self::new(Err(TestMaterializeFailure::InvalidTarget(
-            TargetValidationError::Repository,
+            GitCoordinateValidationError::Repository,
         )))
     }
 
     pub fn fail_invalid_workflow_source() -> Self {
-        Self::new(Err(TestMaterializeFailure::InvalidWorkflowSource))
+        Self::new(Err(TestMaterializeFailure::InvalidWorkflowSource(
+            GitCoordinateValidationError::Branch,
+        )))
     }
 
     fn new(response: Result<Box<TestMaterializedWorkflow>, TestMaterializeFailure>) -> Self {
@@ -622,10 +598,7 @@ mod tests {
                 .clone();
             Ok(GitRemote {
                 clone_url,
-                auth: Some(GitAuthConfig::new(
-                    Some("x-access-token".to_string()),
-                    Some(FAKE_TOKEN.to_string()),
-                )),
+                auth: Some(GitAuthConfig::from_parts("x-access-token", FAKE_TOKEN)),
             })
         }
     }
@@ -815,6 +788,39 @@ mod tests {
             credentials: resolver,
             clone_urls,
         }))
+    }
+
+    #[tokio::test]
+    async fn coordinate_validation_errors_have_role_specific_nonduplicated_chains() {
+        let temp = TempDir::new().unwrap();
+        let materializer = production_materializer(
+            temp.path(),
+            test_version_store(),
+            Arc::new(RecordingCredentialResolver::succeeds()),
+            HashMap::new(),
+        );
+
+        let mut invalid_target =
+            input("fabro-sh/target", None, &temp.path().join("invalid-target"));
+        invalid_target.target.branch = "refs/heads/main".to_string();
+        let error = materializer.materialize(invalid_target).await.unwrap_err();
+        assert_eq!(fabro_util::error::collect_chain(&error), [
+            "invalid automation Git target",
+            "branch must be a non-empty branch name, not a ref or commit selector",
+        ]);
+
+        let error = materializer
+            .materialize(input(
+                "fabro-sh/target",
+                Some(source("fabro-sh/workflows", "refs/heads/main", None, None)),
+                &temp.path().join("invalid-source"),
+            ))
+            .await
+            .unwrap_err();
+        assert_eq!(fabro_util::error::collect_chain(&error), [
+            "invalid automation workflow source",
+            "branch must be a non-empty branch name, not a ref or commit selector",
+        ]);
     }
 
     #[tokio::test]

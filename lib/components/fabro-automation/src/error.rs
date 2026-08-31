@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use croner::errors::CronError;
-use fabro_types::TargetValidationError;
+use fabro_types::{GitCoordinateValidationError, TargetValidationError};
 use toml::de::Error as TomlDeError;
 use toml::ser::Error as TomlSerError;
 
@@ -27,7 +27,7 @@ pub enum AutomationValidationError {
     #[error("automation workflow source is invalid")]
     InvalidWorkflowSource {
         #[source]
-        source: TargetValidationError,
+        source: GitCoordinateValidationError,
     },
     #[error("workflow selector {value:?} is not safe")]
     InvalidWorkflowSelector { value: String },

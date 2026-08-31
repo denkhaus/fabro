@@ -66,6 +66,56 @@ pub struct GitRunTarget {
     pub sha:    Option<String>,
 }
 
+impl GitRunTarget {
+    /// Validates and canonicalizes this Git coordinate without resolving remote
+    /// repository state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the repository slug, branch, tag, or exact commit
+    /// does not use the canonical grammar accepted for Git-backed runs.
+    pub fn validate(self) -> Result<ValidatedGitRunTarget, GitCoordinateValidationError> {
+        let Self {
+            repo,
+            branch,
+            tag,
+            sha,
+        } = self;
+        let repository =
+            GitHubRepositorySlug::try_new(&repo).ok_or(GitCoordinateValidationError::Repository)?;
+        if !repository::is_valid_git_branch_name(&branch) {
+            return Err(GitCoordinateValidationError::Branch);
+        }
+        if tag
+            .as_deref()
+            .is_some_and(|tag| !repository::is_valid_git_tag_name(tag))
+        {
+            return Err(GitCoordinateValidationError::Tag);
+        }
+        let sha = sha
+            .map(|sha| {
+                repository::normalize_git_commit_sha(&sha).ok_or(GitCoordinateValidationError::Sha)
+            })
+            .transpose()?;
+        let git = GitContext {
+            origin_url: repository.https_url(),
+            branch:     branch.clone(),
+            sha:        sha.clone(),
+            dirty:      DirtyStatus::Clean,
+        };
+        Ok(ValidatedGitRunTarget {
+            target: Self {
+                repo,
+                branch,
+                tag,
+                sha,
+            },
+            repository,
+            git,
+        })
+    }
+}
+
 impl RunTarget {
     /// The wire `kind` discriminator (`git`, `none`, or `folder`), for
     /// diagnostics.
@@ -78,44 +128,18 @@ impl RunTarget {
     /// Git targets include their derived operational Git projection. Targets
     /// without a repository return no projection. Folder paths require
     /// filesystem validation and canonicalization during provider admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a Git target's repository slug, branch, tag, or
+    /// exact commit does not use the canonical grammar accepted for runs.
     pub fn validate(self) -> Result<ValidatedRunTarget, TargetValidationError> {
         match self {
-            Self::Git(GitRunTarget {
-                repo,
-                branch,
-                tag,
-                sha,
-            }) => {
-                let slug = GitHubRepositorySlug::try_new(&repo)
-                    .ok_or(TargetValidationError::Repository)?;
-                if !repository::is_valid_git_branch_name(&branch) {
-                    return Err(TargetValidationError::Branch);
-                }
-                if tag
-                    .as_deref()
-                    .is_some_and(|tag| !repository::is_valid_git_tag_name(tag))
-                {
-                    return Err(TargetValidationError::Tag);
-                }
-                let sha = sha
-                    .map(|sha| {
-                        repository::normalize_git_commit_sha(&sha).ok_or(TargetValidationError::Sha)
-                    })
-                    .transpose()?;
-                let git = GitContext {
-                    origin_url: slug.https_url(),
-                    branch:     branch.clone(),
-                    sha:        sha.clone(),
-                    dirty:      DirtyStatus::Clean,
-                };
+            Self::Git(target) => {
+                let validated = target.validate().map_err(TargetValidationError::from)?;
                 Ok(ValidatedRunTarget {
-                    target: Self::Git(GitRunTarget {
-                        repo,
-                        branch,
-                        tag,
-                        sha,
-                    }),
-                    git:    Some(git),
+                    target: Self::Git(validated.target),
+                    git:    Some(validated.git),
                 })
             }
             Self::None {} => Ok(ValidatedRunTarget {
@@ -130,12 +154,53 @@ impl RunTarget {
     }
 }
 
+/// A [`GitRunTarget`] whose local grammar has been validated and canonicalized.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedGitRunTarget {
+    target:     GitRunTarget,
+    repository: GitHubRepositorySlug,
+    git:        GitContext,
+}
+
+impl ValidatedGitRunTarget {
+    /// The canonical Git target coordinate.
+    #[must_use]
+    pub fn target(&self) -> &GitRunTarget {
+        &self.target
+    }
+
+    /// The parsed GitHub repository named by the target.
+    #[must_use]
+    pub fn repository(&self) -> &GitHubRepositorySlug {
+        &self.repository
+    }
+
+    /// Consume the validation proof and return the canonical Git target.
+    #[must_use]
+    pub fn into_target(self) -> GitRunTarget {
+        self.target
+    }
+}
+
 /// A [`RunTarget`] whose grammar has been validated, together with its
 /// optional operational Git projection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatedRunTarget {
     pub target: RunTarget,
     pub git:    Option<GitContext>,
+}
+
+/// A Git coordinate that failed local grammar validation.
+#[derive(Debug, thiserror::Error, Clone, Copy, PartialEq, Eq)]
+pub enum GitCoordinateValidationError {
+    #[error("repository must be a valid GitHub owner/name slug")]
+    Repository,
+    #[error("branch must be a non-empty branch name, not a ref or commit selector")]
+    Branch,
+    #[error("tag must be a non-empty bare tag name, not a ref or commit selector")]
+    Tag,
+    #[error("SHA must be exactly 40 ASCII hexadecimal characters")]
+    Sha,
 }
 
 /// A [`RunTarget`] that failed grammar validation.
@@ -149,4 +214,15 @@ pub enum TargetValidationError {
     Tag,
     #[error("target SHA must be exactly 40 ASCII hexadecimal characters")]
     Sha,
+}
+
+impl From<GitCoordinateValidationError> for TargetValidationError {
+    fn from(error: GitCoordinateValidationError) -> Self {
+        match error {
+            GitCoordinateValidationError::Repository => Self::Repository,
+            GitCoordinateValidationError::Branch => Self::Branch,
+            GitCoordinateValidationError::Tag => Self::Tag,
+            GitCoordinateValidationError::Sha => Self::Sha,
+        }
+    }
 }

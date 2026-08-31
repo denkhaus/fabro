@@ -270,40 +270,36 @@ pub(crate) fn github_clone_url(repo: &GitHubRepositorySlug) -> String {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct GitAuthConfig {
-    extraheader:      Option<String>,
+    extraheader:      String,
     sensitive_values: Vec<String>,
 }
 
 impl GitAuthConfig {
-    pub(crate) fn new(username: Option<String>, password: Option<String>) -> Self {
-        let Some(password) = password.filter(|value| !value.is_empty()) else {
-            return Self {
-                extraheader:      None,
-                sensitive_values: Vec::new(),
-            };
-        };
-        let username = username
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| "x-access-token".to_string());
+    pub(crate) fn new(credentials: &fabro_github::GitCloneCredentials) -> Self {
+        Self::from_parts(credentials.username(), credentials.password())
+    }
+
+    pub(crate) fn from_parts(username: &str, password: &str) -> Self {
         let encoded_credentials = BASE64_STANDARD.encode(format!("{username}:{password}"));
         let extraheader = basic_auth_header_from_encoded(&encoded_credentials);
         Self {
-            sensitive_values: vec![password, encoded_credentials, extraheader.clone()],
-            extraheader:      Some(extraheader),
+            sensitive_values: vec![
+                password.to_string(),
+                encoded_credentials,
+                extraheader.clone(),
+            ],
+            extraheader,
         }
     }
 
     fn git_env(&self, clone_url: &str) -> Vec<(String, String)> {
-        let Some(extraheader) = self.extraheader.as_ref() else {
-            return Vec::new();
-        };
         vec![
             ("GIT_CONFIG_COUNT".to_string(), "1".to_string()),
             (
                 "GIT_CONFIG_KEY_0".to_string(),
                 format!("http.{clone_url}.extraheader"),
             ),
-            ("GIT_CONFIG_VALUE_0".to_string(), extraheader.clone()),
+            ("GIT_CONFIG_VALUE_0".to_string(), self.extraheader.clone()),
         ]
     }
 
@@ -327,10 +323,10 @@ pub(crate) async fn resolve_git_read_auth_config(
         }
         None => fabro_github::GitHubContext::new(credentials, github_api_base_url),
     };
-    let (username, password) =
+    let credentials =
         fabro_github::resolve_read_only_clone_credentials(&context, repo.owner(), repo.repo())
             .await?;
-    Ok(Some(GitAuthConfig::new(username, password)))
+    Ok(Some(GitAuthConfig::new(&credentials)))
 }
 
 #[cfg(test)]
@@ -748,10 +744,7 @@ mod tests {
     fn credential_config_env_keeps_clone_url_uncredentialed() {
         let repo = repository_slug("fabro-sh/fabro");
         let clone_url = github_clone_url(&repo);
-        let auth = GitAuthConfig::new(
-            Some("x-access-token".to_string()),
-            Some("ghu_secret".to_string()),
-        );
+        let auth = GitAuthConfig::from_parts("x-access-token", "ghu_secret");
         let plan = build_bare_clone_plan(&clone_url, Path::new("/tmp/fabro-checkout"), Some(&auth));
 
         assert!(

@@ -132,7 +132,8 @@ pub use run_event::{
 pub use run_failure::RunFailure;
 pub use run_id::{RunId, fixtures};
 pub use run_intent::{
-    GitRunTarget, RunIntent, RunIntentArgs, RunTarget, TargetValidationError, ValidatedRunTarget,
+    GitCoordinateValidationError, GitRunTarget, RunIntent, RunIntentArgs, RunTarget,
+    TargetValidationError, ValidatedGitRunTarget, ValidatedRunTarget,
 };
 pub use run_projection::{
     ActivatedSkill, AgentControlState, CheckpointRecord, McpServerProjection, McpServerStatus,

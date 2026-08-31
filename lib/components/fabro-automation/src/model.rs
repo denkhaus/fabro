@@ -157,17 +157,17 @@ pub type AutomationGitWorkflowSource = GitRunTarget;
 
 /// Validate and canonicalize a saved workflow source without resolving remote
 /// repository state.
+///
+/// # Errors
+///
+/// Returns an error when the repository slug, branch, tag, or exact commit
+/// does not use the canonical Git-coordinate grammar.
 pub fn validate_workflow_source(
     source: AutomationGitWorkflowSource,
 ) -> Result<AutomationGitWorkflowSource, AutomationValidationError> {
-    RunTarget::Git(source)
+    source
         .validate()
-        .map(|validated| match validated.target {
-            RunTarget::Git(source) => source,
-            RunTarget::None {} | RunTarget::Folder { .. } => {
-                unreachable!("a validated Git workflow source remains Git-backed")
-            }
-        })
+        .map(fabro_types::ValidatedGitRunTarget::into_target)
         .map_err(|source| AutomationValidationError::InvalidWorkflowSource { source })
 }
 
@@ -470,7 +470,9 @@ fn validate_triggers(triggers: &[AutomationTrigger]) -> Result<(), AutomationVal
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::{GitRunTarget, RunTarget, TargetValidationError};
+    use fabro_types::{
+        GitCoordinateValidationError, GitRunTarget, RunTarget, TargetValidationError,
+    };
 
     use crate::{
         ApiTrigger, Automation, AutomationGitWorkflowSource, AutomationId, AutomationReplace,
@@ -634,24 +636,24 @@ mod tests {
         let cases = [
             (
                 workflow_source("main", None, None),
-                TargetValidationError::Repository,
+                GitCoordinateValidationError::Repository,
             ),
             (
                 workflow_source("refs/heads/main", None, None),
-                TargetValidationError::Branch,
+                GitCoordinateValidationError::Branch,
             ),
             (
                 workflow_source("main", Some("tags/v1"), None),
-                TargetValidationError::Tag,
+                GitCoordinateValidationError::Tag,
             ),
             (
                 workflow_source("main", None, Some("short")),
-                TargetValidationError::Sha,
+                GitCoordinateValidationError::Sha,
             ),
         ];
 
         for (mut source, expected) in cases {
-            if expected == TargetValidationError::Repository {
+            if expected == GitCoordinateValidationError::Repository {
                 source.repo = "not/a/github/slug".to_string();
             }
             let error = Automation::from_replace(
