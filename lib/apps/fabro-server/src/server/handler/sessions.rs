@@ -22,6 +22,7 @@ use fabro_api::types::{
 };
 use fabro_llm::types::ToolDefinition;
 use fabro_model::{AgentProfileKind, Catalog, ModelSelectionError, ProviderId, catalog};
+use fabro_sandbox::SandboxActivation;
 use fabro_sandbox::reconnect::reconnect_for_run;
 use fabro_static::EnvVars;
 use fabro_store::{
@@ -36,7 +37,8 @@ use fabro_types::run_event::{
 };
 use fabro_types::settings::ModelRef as SettingsModelRef;
 use fabro_types::{
-    EventBody, EventEnvelope, Principal, RunEvent, RunId, SessionDetail, SessionId, TurnId,
+    EventBody, EventEnvelope, Principal, RunEvent, RunId, RunStatus, SessionDetail, SessionId,
+    TurnId,
 };
 use fabro_workflow::handler::llm::api::register_named_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
@@ -532,13 +534,17 @@ async fn run_streaming_turn(
         return;
     }
 
+    // Terminal-run sessions are turn-scoped (fabro-b5bd): when this turn
+    // started the sandbox of a finished run, it owns stopping it again.
+    let mut turn_scoped_sandbox: Option<TurnScopedSandbox> = None;
     let outcome = {
         let runtime_entry = turn_lease.entry();
         let mut session_slot = runtime_entry.lock_session().await;
         if session_slot.is_none() {
             match build_agent_session(&state, run_id, &session).await {
-                Ok(agent_session) => {
+                Ok((agent_session, started_sandbox)) => {
                     *session_slot = Some(agent_session);
+                    turn_scoped_sandbox = started_sandbox;
                 }
                 Err(err) => {
                     error!(error = ?err, session_id = %session_id, turn_id = %turn_id, "Failed to build run-backed session runtime");
@@ -653,6 +659,14 @@ async fn run_streaming_turn(
             .await;
         }
     }
+
+    // Turn-scoped terminal-run sandbox (fabro-b5bd): the session is not
+    // cached across turns for finished runs, and the sandbox this turn
+    // started stops again now that the turn reached its terminal event.
+    if let Some(started_sandbox) = turn_scoped_sandbox {
+        turn_lease.entry().clear_session().await;
+        started_sandbox.finish().await;
+    }
 }
 
 struct TurnExecutionOutcome {
@@ -694,7 +708,7 @@ async fn build_agent_session(
     state: &AppState,
     run_id: RunId,
     session: &ProjectedRunSession,
-) -> Result<Session, AskFabroBuildError> {
+) -> Result<(Session, Option<TurnScopedSandbox>), AskFabroBuildError> {
     let catalog = state.catalog();
     let llm_result = state.resolve_llm_client().await.map_err(|err| {
         AskFabroBuildError::LlmUnconfigured(format!("LLM credentials are not configured: {err}"))
@@ -739,11 +753,25 @@ async fn build_agent_session(
     let sandbox = reconnect_for_run(sandbox_instance, daytona_api_key, Some(run_id))
         .await
         .map_err(AskFabroBuildError::SandboxUnavailable)?;
-    sandbox
+    let activation = sandbox
         .activate()
         .await
         .map_err(|err| AskFabroBuildError::SandboxUnavailable(anyhow::Error::new(err)))?;
     let sandbox: Arc<dyn fabro_agent::Sandbox> = Arc::from(sandbox);
+    // Terminal-run sessions own the sandbox liveness for the turn: the
+    // run lifecycle already stopped this sandbox, so an activation that
+    // started it again must be undone when the turn ends. Active runs
+    // keep the cached session; their lifecycle owns liveness. Distinct
+    // from read-only inspection (request-scoped restore, run_files.rs).
+    let turn_scoped_sandbox =
+        if ask_fabro_turn_holds_sandbox_liveness(activation, projection.status) {
+            Some(TurnScopedSandbox {
+                sandbox: Arc::clone(&sandbox),
+                run_id,
+            })
+        } else {
+            None
+        };
     // No optional web-tool dependencies: `AskFabroToolAccessPolicy` denies
     // `web_search` and `web_fetch`, and both `tools()` and the prompt are
     // filtered through that policy.
@@ -788,7 +816,7 @@ async fn build_agent_session(
         ..SessionOptions::default()
     };
 
-    Session::from_record(
+    let built = match Session::from_record(
         &session.record,
         &session.runtime_context,
         llm_result.client,
@@ -796,8 +824,52 @@ async fn build_agent_session(
         sandbox,
         config,
         None,
-    )
-    .map_err(|err| AskFabroBuildError::Agent(anyhow::Error::new(err)))
+    ) {
+        Ok(built) => built,
+        Err(err) => {
+            // This build started the sandbox of a terminal run; the turn
+            // that would stop it never runs, so stop it here (fabro-b5bd:
+            // no leaked container on the build-error path).
+            if let Some(started) = turn_scoped_sandbox {
+                started.finish().await;
+            }
+            return Err(AskFabroBuildError::Agent(anyhow::Error::new(err)));
+        }
+    };
+    Ok((built, turn_scoped_sandbox))
+}
+
+/// Whether an Ask-Fabro turn on a run in `status` owns the sandbox
+/// liveness after observing `activation`: only when the run already
+/// terminated (its lifecycle stopped the sandbox) and this activation
+/// started it again. Mirrors `inspection_should_stop` in `run_files.rs`
+/// with turn scope instead of request scope.
+fn ask_fabro_turn_holds_sandbox_liveness(activation: SandboxActivation, status: RunStatus) -> bool {
+    activation == SandboxActivation::Started && status.is_terminal()
+}
+
+/// A sandbox this Ask-Fabro turn started for a terminal run. The turn
+/// evicts the session and stops the sandbox when the turn ends — the
+/// session-held liveness concept (fabro-b5bd), narrowed to turn scope
+/// because the projected `runtime_context` rebuilds the full
+/// conversation statelessly.
+struct TurnScopedSandbox {
+    sandbox: Arc<dyn fabro_agent::Sandbox>,
+    run_id:  RunId,
+}
+
+impl TurnScopedSandbox {
+    /// Stop the sandbox again, best-effort: cleanup failures are logged,
+    /// never surfaced over the turn result.
+    async fn finish(self) {
+        if let Err(err) = self.sandbox.stop().await {
+            warn!(
+                run_id = %self.run_id,
+                error = %err,
+                "Failed to stop terminal-run sandbox after Ask-Fabro turn"
+            );
+        }
+    }
 }
 
 fn selected_session_model(
@@ -1546,6 +1618,41 @@ mod tests {
     use fabro_types::test_support;
 
     use super::*;
+
+    #[test]
+    fn turn_scoped_liveness_only_for_started_activations_on_terminal_runs() {
+        use fabro_types::{RunStatus, SuccessReason};
+
+        let succeeded = RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        };
+        let running = RunStatus::Running;
+
+        // Terminal run + this activation started the sandbox: the turn
+        // owns stopping it again.
+        assert!(ask_fabro_turn_holds_sandbox_liveness(
+            SandboxActivation::Started,
+            succeeded
+        ));
+
+        // Active runs: the run lifecycle owns the sandbox either way.
+        assert!(!ask_fabro_turn_holds_sandbox_liveness(
+            SandboxActivation::Started,
+            running
+        ));
+        assert!(!ask_fabro_turn_holds_sandbox_liveness(
+            SandboxActivation::AlreadyActive,
+            running
+        ));
+
+        // Terminal run whose sandbox was already running: someone else
+        // owns it (another session or a late stop); this turn must not
+        // stop it under an ongoing session.
+        assert!(!ask_fabro_turn_holds_sandbox_liveness(
+            SandboxActivation::AlreadyActive,
+            succeeded
+        ));
+    }
 
     fn stub_tool(name: &str) -> RegisteredTool {
         RegisteredTool {

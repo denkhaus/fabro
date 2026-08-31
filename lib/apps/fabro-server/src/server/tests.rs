@@ -12761,6 +12761,171 @@ async fn create_run_with_workflow_slug(state: &Arc<AppState>, run_id: RunId, wor
 }
 
 #[tokio::test]
+async fn terminal_run_ask_fabro_turns_succeed_hermetically() {
+    // Hermetic LLM: point the builtin openai provider at a local SSE mock
+    // so the analyst turn runs end to end without network access.
+    let mock_llm = httpmock::MockServer::start();
+    mock_llm.mock(|when, then| {
+        when.method(httpmock::Method::POST);
+        then.status(200)
+            .header("content-type", "text/event-stream")
+            .body(
+                // Responses-API SSE: one text delta, then a completed
+                // response carrying usage.
+                [
+                    r#"data: {"type":"response.output_text.delta","delta":"Post-mortem done."}"#,
+                    "\n\n",
+                    r#"data: {"type":"response.completed","response":{"id":"resp_1","usage":{"input_tokens":10,"output_tokens":1,"total_tokens":11}}}"#,
+                    "\n\n",
+                ]
+                .concat(),
+            );
+    });
+
+    let state = crate::test_support::jwt_auth_state_with_openai_base_url(&mock_llm.base_url());
+    let app = build_router(Arc::clone(&state), jwt_auth_mode());
+
+    // build_agent_session reaches self_server_target() for the analyst's
+    // API client; the test state needs the daemon record for that.
+    let runtime_directory =
+        fabro_config::Storage::new(state.server_storage_dir()).runtime_directory();
+    ServerDaemon::new(
+        std::process::id(),
+        Bind::Tcp("127.0.0.1:32299".parse::<std::net::SocketAddr>().unwrap()),
+        runtime_directory.log_path(),
+    )
+    .write(&runtime_directory)
+    .unwrap();
+    let run_id = RunId::new();
+    let run_store = state.stores.runs.create_run(&run_id).await.unwrap();
+
+    // A finished run whose sandbox instance is a local provider: the
+    // terminal-run session build path runs (sandbox reconnect +
+    // activation + guard evaluation) and fails cleanly on the missing
+    // LLM configuration instead of wedging the session runtime.
+    let mut events = vec![workflow_event::Event::RunCreated {
+        run_id,
+        title: None,
+        settings: serde_json::to_value(fabro_types::WorkflowSettings::default()).unwrap(),
+        graph: serde_json::to_value(Graph::new("ask-terminal")).unwrap(),
+        workflow_source: None,
+        labels: std::collections::BTreeMap::default(),
+        source_directory: None,
+        workflow_slug: Some("develop".to_string()),
+        workflow_version_id: None,
+        target: None,
+        automation: None,
+        provenance: test_support::test_run_provenance(),
+        manifest_blob: None,
+        spec_blob: None,
+        git: None,
+        fork_source_ref: None,
+        retried_from: None,
+        parent_id: None,
+        web_url: None,
+    }];
+    events.push(workflow_event::Event::SandboxInitialized {
+        provider:          SandboxProviderKind::Local,
+        id:                "sb-terminal".to_string(),
+        working_directory: "/sandbox/workdir".to_string(),
+        image:             None,
+        snapshot:          None,
+        repo_cloned:       None,
+        clone_origin_url:  None,
+        clone_branch:      None,
+        workspace_root:    None,
+        repos_root:        None,
+        primary_repo_path: None,
+        primary_repo_link: None,
+    });
+    events.push(workflow_event::Event::RunPending {
+        reason: fabro_types::PendingReason::ApprovalRequired,
+        actor:  None,
+    });
+    events.push(workflow_event::Event::RunRunnable {
+        source: fabro_types::RunRunnableSource::StartRequested,
+        actor:  None,
+    });
+    events.push(workflow_event::Event::RunStarting);
+    events.push(workflow_event::Event::RunRunning);
+    events.push(workflow_event::Event::WorkflowRunCompleted {
+        timing:               fabro_types::RunTiming::default(),
+        artifact_count:       0,
+        status:               "succeeded".to_string(),
+        reason:               fabro_types::SuccessReason::Completed,
+        failure:              None,
+        total_usd_micros:     None,
+        final_git_commit_sha: None,
+        final_patch:          None,
+        diff_summary:         None,
+        billing:              None,
+    });
+    for event in events {
+        workflow_event::append_event(&run_store, &run_id, &event)
+            .await
+            .unwrap();
+    }
+
+    let user_jwt = issue_test_user_jwt();
+    let create_session = |bearer: String| {
+        app.clone().oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/sessions")))
+                .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    serde_json::to_string(&serde_json::json!({ "title": "post-mortem" })).unwrap(),
+                ))
+                .unwrap(),
+        )
+    };
+    let response = create_session(user_jwt.clone()).await.unwrap();
+    let body = response_json!(response, StatusCode::CREATED).await;
+    let session_id = body["id"].as_str().unwrap().to_string();
+
+    for turn in 1..=2 {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(api(&format!("/sessions/{session_id}/turns")))
+                    .header(header::AUTHORIZATION, format!("Bearer {user_jwt}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        serde_json::to_string(&serde_json::json!({
+                            "input": format!("why did run {turn} finish?")
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Both turns must succeed end to end on a terminal run. This
+        // proves the terminal-run session BUILD path (guard evaluation
+        // included) works and never wedges the runtime; the local
+        // provider reports AlreadyActive, so the eviction+stop wiring
+        // (turn-scoped liveness, fabro-b5bd) is proven by the unit test
+        // and the wire proof rides on fabro-3b6d's rig.
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let stream = String::from_utf8_lossy(&bytes);
+        assert!(
+            stream.contains("run.session.turn.succeeded"),
+            "turn {turn} should succeed, stream tail: {}",
+            &stream[stream.len().saturating_sub(500)..]
+        );
+        assert!(
+            stream.contains("Post-mortem done."),
+            "turn {turn} should carry the analyst answer, stream: {stream}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn inspects_worker_creates_ask_session_only_on_declared_workflow_runs() {
     let (state, app) = jwt_auth_app();
     let parent_run_id = unique_run_id();

@@ -352,6 +352,34 @@ pub fn test_app_state() -> Arc<AppState> {
     ready_test_app_state_builder().build()
 }
 
+/// JWT-auth test state whose builtin `openai` provider points at
+/// `base_url`, with the test session secret wired for user JWTs.
+/// Ask-Fabro session tests use this for hermetic LLM round trips.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test helper writes a fixture server.env with sync std::fs::write"
+)]
+pub fn jwt_auth_state_with_openai_base_url(base_url: &str) -> Arc<AppState> {
+    let vault_path = test_secret_store_path();
+    let server_env_path = vault_path
+        .parent()
+        .expect("test secrets path should have parent")
+        .join("server.env");
+    std::fs::write(
+        &server_env_path,
+        format!("SESSION_SECRET={TEST_SESSION_SECRET}\n"),
+    )
+    .expect("test server env should be writable");
+    TestAppStateBuilder::new()
+        .vault_entries([(EnvVars::OPENAI_API_KEY, TEST_OPENAI_API_KEY)])
+        .llm_catalog_settings(llm_catalog_settings_with_provider_base_url(
+            "openai", base_url,
+        ))
+        .vault_path(vault_path)
+        .server_env_path(server_env_path)
+        .build()
+}
+
 pub fn test_app_state_with_registry_factory(
     registry_factory_override: impl Fn(Arc<dyn Interviewer>) -> HandlerRegistry + Send + Sync + 'static,
 ) -> Arc<AppState> {
