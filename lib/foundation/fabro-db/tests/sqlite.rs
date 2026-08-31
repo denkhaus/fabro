@@ -532,7 +532,7 @@ async fn rewind_automation_workflow_source_migration(
     sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_repository")
         .execute(database.pool())
         .await?;
-    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 2026082802")
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 2026082803")
         .execute(database.pool())
         .await?;
     Ok(())
