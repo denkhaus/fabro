@@ -5,16 +5,20 @@ use async_trait::async_trait;
 use fabro_api::types;
 use fabro_types::{
     EventEnvelope, PairId, PairMessageRecord, PairMessageRequest, PairRecord,
-    PairTranscriptResponse, Run, RunId, RunPairStatusResponse, RunProjection, StageId,
+    PairTranscriptResponse, Run, RunId, RunIntent, RunIntentArgs, RunPairStatusResponse,
+    RunProjection, StageId,
 };
 
-use crate::{FabroToolBackend, RunManifestBuilder, ToolError, common};
+use crate::{
+    CreateRunSubmission, FabroToolBackend, PreparedRunCreate, RunCreateAdapter, ToolError,
+    ValidatedCreateRunSpec, common,
+};
 
 #[derive(Clone)]
 pub struct ClientBackend {
-    client:                    Arc<::fabro_client::Client>,
-    manifest_builder:          Option<Arc<dyn RunManifestBuilder>>,
-    run_scope:                 Option<RunId>,
+    client:             Arc<::fabro_client::Client>,
+    run_create_adapter: Option<Arc<dyn RunCreateAdapter>>,
+    run_scope:          Option<RunId>,
     workflow_version_packager: Option<Arc<dyn crate::WorkflowVersionPackager>>,
 }
 
@@ -23,15 +27,15 @@ impl ClientBackend {
     pub fn new(client: Arc<::fabro_client::Client>) -> Self {
         Self {
             client,
-            manifest_builder: None,
+            run_create_adapter: None,
             run_scope: None,
             workflow_version_packager: None,
         }
     }
 
     #[must_use]
-    pub fn with_manifest_builder(mut self, builder: Arc<dyn RunManifestBuilder>) -> Self {
-        self.manifest_builder = Some(builder);
+    pub fn with_run_create_adapter(mut self, adapter: Arc<dyn RunCreateAdapter>) -> Self {
+        self.run_create_adapter = Some(adapter);
         self
     }
 
@@ -64,6 +68,41 @@ impl ClientBackend {
     }
 }
 
+fn run_intent_from_spec(
+    spec: &ValidatedCreateRunSpec,
+    prepared: PreparedRunCreate,
+    parent_id: Option<RunId>,
+) -> (RunIntent, Vec<String>) {
+    let PreparedRunCreate {
+        workflow_version_id,
+        target,
+        goal,
+        warnings,
+    } = prepared;
+    let intent = RunIntent {
+        workflow_version_id,
+        target,
+        args: RunIntentArgs {
+            model:            spec.model.clone(),
+            provider:         spec.provider.clone(),
+            inputs:           spec
+                .inputs
+                .iter()
+                .map(|(key, value)| (key.clone(), value.json().clone()))
+                .collect(),
+            labels:           spec.labels.clone(),
+            dry_run:          spec.dry_run,
+            auto_approve:     spec.auto_approve,
+            preserve_sandbox: spec.preserve_sandbox,
+        },
+        environment_id: spec.environment.clone(),
+        parent_id,
+        title: None,
+        goal,
+    };
+    (intent, warnings)
+}
+
 #[async_trait]
 impl FabroToolBackend for ClientBackend {
     /// Package the supplied tree, then register dependencies before parents.
@@ -94,24 +133,22 @@ impl FabroToolBackend for ClientBackend {
         &self,
         spec: &crate::ValidatedCreateRunSpec,
         cwd: &Path,
-        user_settings_path: &Path,
         parent_id: Option<RunId>,
-    ) -> anyhow::Result<RunId> {
+    ) -> anyhow::Result<CreateRunSubmission> {
         if let Some(parent_id) = parent_id.as_ref() {
             self.ensure_run_scope(parent_id)?;
         }
-        let Some(builder) = self.manifest_builder.as_ref() else {
+        let Some(adapter) = self.run_create_adapter.as_ref() else {
             return Err(ToolError::message(format!(
                 "{} is not available",
                 crate::FABRO_RUN_CREATE_TOOL_NAME
             ))
             .into());
         };
-        let mut manifest = builder
-            .build_run_manifest(spec, cwd, user_settings_path)
-            .map_err(anyhow::Error::new)?;
-        manifest.parent_id = parent_id.map(|run_id| run_id.to_string());
-        self.client.create_run_from_manifest(manifest).await
+        let prepared = adapter.prepare(&self.client, spec, cwd).await?;
+        let (intent, warnings) = run_intent_from_spec(spec, prepared, parent_id);
+        let run_id = self.client.create_run_from_intent(intent).await?;
+        Ok(CreateRunSubmission { run_id, warnings })
     }
 
     async fn resolve_run(&self, selector: &str) -> anyhow::Result<Run> {

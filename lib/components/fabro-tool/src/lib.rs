@@ -17,15 +17,17 @@ mod search;
 mod workflow_version;
 
 pub use common::{
-    FABRO_RUN_CREATE_TOOL_NAME, FABRO_RUN_EVENTS_TOOL_NAME, FABRO_RUN_GATHER_TOOL_NAME,
-    FABRO_RUN_GET_TOOL_NAME, FABRO_RUN_INTERACT_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME,
-    FABRO_RUN_SEARCH_TOOL_NAME, FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME, FabroToolBackend,
-    RunManifestBuilder, RunSummaryResult, ToolDefinition, ToolError, ToolResult, tool_definitions,
+    CreateRunSubmission, FABRO_RUN_CREATE_TOOL_NAME, FABRO_RUN_EVENTS_TOOL_NAME,
+    FABRO_RUN_GATHER_TOOL_NAME, FABRO_RUN_GET_TOOL_NAME, FABRO_RUN_INTERACT_TOOL_NAME,
+    FABRO_RUN_PAIR_TOOL_NAME, FABRO_RUN_SEARCH_TOOL_NAME, FabroToolBackend, PreparedRunCreate,
+    RunCreateAdapter, RunSummaryResult, ToolDefinition, ToolError, ToolResult, tool_definitions,
+    FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME,
 };
 pub use create::{
-    CreateRunOptions, CreateRunSpec, CreateRunSpecInput, CreateRunsResult, CreatedRunResult,
-    FabroRunCreateParams, RunInputValue, ValidatedCreateRunSpec, ValidatedCreateRuns, create_runs,
-    create_runs_text, create_runs_with_options,
+    CreateRunOptions, CreateRunSpec, CreateRunSpecInput, CreateRunWorkflowSource, CreateRunsResult,
+    CreatedRunResult, FabroRunCreateParams, InlineWorkflowSource, RunInputValue,
+    ValidatedCreateRunSpec, ValidatedCreateRunWorkflowSource, ValidatedCreateRuns,
+    ValidatedRunInputValue, create_runs, create_runs_text, create_runs_with_options,
 };
 pub use events::{
     FabroRunEventsParams, RunEventResult, RunEventsAction, RunEventsResult, ValidatedRunEvents,
