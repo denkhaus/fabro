@@ -1,13 +1,13 @@
 use std::str::FromStr as _;
 
 use fabro_db::DbPool;
+use fabro_types::{GitRunTarget, RunTarget};
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row as _, Sqlite, Transaction};
 
 use crate::{
     ApiTrigger, Automation, AutomationDraft, AutomationId, AutomationReplace, AutomationRevision,
-    AutomationStoreError, AutomationTarget, AutomationTrigger, AutomationTriggerId,
-    ScheduleTrigger,
+    AutomationStoreError, AutomationTrigger, AutomationTriggerId, ScheduleTrigger,
 };
 
 /// Shared projection for loading automations with their schedule triggers.
@@ -20,9 +20,13 @@ macro_rules! select_automations_sql {
                 a.revision,
                 a.name,
                 a.description,
+                a.environment_id,
+                a.last_error,
                 a.api_enabled,
                 a.target_repository,
-                a.target_ref,
+                a.target_branch,
+                a.target_tag,
+                a.target_sha,
                 a.target_workflow,
                 t.id AS trigger_id,
                 t.enabled AS trigger_enabled,
@@ -75,6 +79,33 @@ impl AutomationStore {
         Ok(row.is_some())
     }
 
+    pub async fn references_environment(
+        &self,
+        environment_id: &str,
+    ) -> Result<bool, AutomationStoreError> {
+        let row = sqlx::query("SELECT 1 FROM automations WHERE environment_id = ? LIMIT 1")
+            .bind(environment_id)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.is_some())
+    }
+
+    pub async fn set_last_error(
+        &self,
+        id: &AutomationId,
+        message: Option<&str>,
+    ) -> Result<(), AutomationStoreError> {
+        let result = sqlx::query("UPDATE automations SET last_error = ? WHERE id = ?")
+            .bind(message)
+            .bind(id.as_str())
+            .execute(&self.pool)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(AutomationStoreError::NotFound { id: id.clone() });
+        }
+        Ok(())
+    }
+
     pub async fn create(&self, draft: AutomationDraft) -> Result<Automation, AutomationStoreError> {
         let (id, replace) = draft.into();
         let (automation, _) = Automation::from_replace(id.clone(), replace)?;
@@ -93,6 +124,7 @@ impl AutomationStore {
         draft: AutomationReplace,
     ) -> Result<Automation, AutomationStoreError> {
         let (automation, _) = Automation::from_replace(id.clone(), draft)?;
+        let target = stored_git_target(&automation);
         let mut transaction = self.pool.begin().await?;
         let result = sqlx::query(
             r"
@@ -100,9 +132,13 @@ impl AutomationStore {
                 revision = ?,
                 name = ?,
                 description = ?,
+                environment_id = ?,
+                last_error = NULL,
                 api_enabled = ?,
                 target_repository = ?,
-                target_ref = ?,
+                target_branch = ?,
+                target_tag = ?,
+                target_sha = ?,
                 target_workflow = ?
             WHERE id = ? AND revision = ?
             ",
@@ -110,10 +146,13 @@ impl AutomationStore {
         .bind(automation.revision.as_str())
         .bind(&automation.name)
         .bind(automation.description.as_deref())
+        .bind(automation.environment_id.as_deref())
         .bind(automation.api_enabled())
-        .bind(&automation.target.repository)
-        .bind(&automation.target.ref_selector)
-        .bind(&automation.target.workflow)
+        .bind(&target.repo)
+        .bind(&target.branch)
+        .bind(target.tag.as_deref())
+        .bind(target.sha.as_deref())
+        .bind(&automation.workflow)
         .bind(id.as_str())
         .bind(expected.as_str())
         .execute(&mut *transaction)
@@ -155,8 +194,11 @@ struct StoredAutomation {
     revision:          AutomationRevision,
     name:              String,
     description:       Option<String>,
+    environment_id:    Option<String>,
+    last_error:        Option<String>,
     api_enabled:       bool,
-    target:            AutomationTarget,
+    target:            RunTarget,
+    workflow:          String,
     schedule_triggers: Vec<ScheduleTrigger>,
 }
 
@@ -179,12 +221,16 @@ impl StoredAutomation {
             revision,
             name: row.try_get("name")?,
             description: row.try_get("description")?,
+            environment_id: row.try_get("environment_id")?,
+            last_error: row.try_get("last_error")?,
             api_enabled: row.try_get("api_enabled")?,
-            target: AutomationTarget {
-                repository:   row.try_get("target_repository")?,
-                ref_selector: row.try_get("target_ref")?,
-                workflow:     row.try_get("target_workflow")?,
-            },
+            target: RunTarget::Git(GitRunTarget {
+                repo:   row.try_get("target_repository")?,
+                branch: row.try_get("target_branch")?,
+                tag:    row.try_get("target_tag")?,
+                sha:    row.try_get("target_sha")?,
+            }),
+            workflow: row.try_get("target_workflow")?,
             schedule_triggers: Vec::new(),
         })
     }
@@ -226,13 +272,18 @@ impl StoredAutomation {
             triggers.push(AutomationTrigger::Api(ApiTrigger::manual()));
         }
         let id = self.id;
-        Automation::from_stored(id.clone(), self.revision, AutomationReplace {
-            name: self.name,
-            description: self.description,
-            target: self.target,
-            triggers,
-        })
-        .map_err(|source| AutomationStoreError::StoredValidation { id, source })
+        let mut automation =
+            Automation::from_stored(id.clone(), self.revision, AutomationReplace {
+                name: self.name,
+                description: self.description,
+                environment_id: self.environment_id,
+                target: self.target,
+                workflow: self.workflow,
+                triggers,
+            })
+            .map_err(|source| AutomationStoreError::StoredValidation { id, source })?;
+        automation.last_error = self.last_error;
+        Ok(automation)
     }
 }
 
@@ -272,6 +323,7 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     transaction: &mut Transaction<'_, Sqlite>,
     automation: &Automation,
 ) -> Result<bool, AutomationStoreError> {
+    let target = stored_git_target(automation);
     let result = sqlx::query(
         r"
         INSERT INTO automations (
@@ -279,11 +331,14 @@ pub(crate) async fn insert_automation_ignoring_conflict(
             revision,
             name,
             description,
+            environment_id,
             api_enabled,
             target_repository,
-            target_ref,
+            target_branch,
+            target_tag,
+            target_sha,
             target_workflow
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO NOTHING
         ",
     )
@@ -291,10 +346,13 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     .bind(automation.revision.as_str())
     .bind(&automation.name)
     .bind(automation.description.as_deref())
+    .bind(automation.environment_id.as_deref())
     .bind(automation.api_enabled())
-    .bind(&automation.target.repository)
-    .bind(&automation.target.ref_selector)
-    .bind(&automation.target.workflow)
+    .bind(&target.repo)
+    .bind(&target.branch)
+    .bind(target.tag.as_deref())
+    .bind(target.sha.as_deref())
+    .bind(&automation.workflow)
     .execute(&mut **transaction)
     .await?;
     if result.rows_affected() == 0 {
@@ -302,6 +360,12 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     }
     insert_schedule_triggers(transaction, automation).await?;
     Ok(true)
+}
+
+fn stored_git_target(automation: &Automation) -> &GitRunTarget {
+    automation
+        .git_target()
+        .expect("stored automations have already passed Git-only validation")
 }
 
 async fn insert_schedule_triggers(

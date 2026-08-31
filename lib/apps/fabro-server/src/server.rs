@@ -50,7 +50,7 @@ pub use fabro_api::types::{
     WriteBlobResponse,
 };
 use fabro_auth::{CredentialSource, SqlVaultCredentialSource, auth_issue_message};
-use fabro_automation::AutomationStore;
+use fabro_automation::{self, AutomationStore};
 use fabro_config::daemon::ServerDaemon;
 use fabro_config::{RunLayer, Storage, WorkflowSettingsBuilder};
 use fabro_db::DbPool;
@@ -1239,13 +1239,13 @@ impl AppState {
         let credentials = self
             .github_credentials(&settings.server.integrations.github)
             .await
-            .map_err(|err| RunMaterializeError::Credentials(err.to_string()))?;
+            .map_err(|source| RunMaterializeError::Credentials { source })?;
         ProductionAutomationRunMaterializer::new(
             credentials,
             self.github_api_base_url.clone(),
             self.http_client.clone(),
-            (*self.stores.environments.catalog_layer()).clone(),
             Arc::clone(&self.automation_repo_cache),
+            fabro_workflow_version::WorkflowVersionStore::new(self.store_ref().blobs()),
         )
         .materialize(input)
         .await
@@ -2464,6 +2464,13 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         automation_materializer_override,
     } = config;
 
+    let automation_migration_pool = db_pool.clone();
+    load_store_blocking("automation environment migration", move || async move {
+        fabro_automation::backfill_environment_selectors(&automation_migration_pool)
+            .await
+            .map_err(anyhow::Error::new)
+    })
+    .context("backfill automation environment selectors")?;
     let automation_store = Arc::new(AutomationStore::new(db_pool.clone()));
     let local_provider_enabled = resolved_settings
         .server_settings
@@ -2481,8 +2488,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         })
         .context("load environments")?,
     );
-    let run_summaries =
-        store.attach_run_summary_store(Arc::new(RunSummaryStore::new(db_pool.clone())));
+    let run_summaries = store.run_summary_store();
     let auth_codes = Arc::new(AuthCodeStore::new(db_pool.clone()));
     let auth_sessions = Arc::new(AuthSessionStore::new(db_pool.clone()));
     let mcp_server_dir = mcp_server_dir_for_active_config(&active_config_path);

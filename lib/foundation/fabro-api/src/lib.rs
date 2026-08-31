@@ -16,7 +16,7 @@ mod generated {
 pub mod types {
     pub use fabro_automation::{
         Automation, AutomationDraft as CreateAutomationRequest,
-        AutomationReplace as ReplaceAutomationRequest, AutomationTarget, AutomationTrigger,
+        AutomationReplace as ReplaceAutomationRequest, AutomationTrigger,
     };
     pub use fabro_environment::Environment;
     pub use fabro_model::{

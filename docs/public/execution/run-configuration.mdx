@@ -345,8 +345,8 @@ memory = "8GB"
 |---|---|
 | `run.environment.id` | Environment slug to select. Defaults to `default`. |
 | `environments.<slug>.provider` | Required provider: `local`, `docker`, or `daytona`. |
-| `image.docker` | Docker image. Daytona rejects this field. |
-| `image.dockerfile` | Inline Dockerfile or `{ path = "Dockerfile" }`; Docker builds and reuses a `fabro-runner-<sha12>` image per content hash, Daytona creates or reuses an internally named snapshot. Cannot be combined with `image.docker` on Docker. Docker builds run with an empty context: `COPY`/`ADD` cannot reference repository files. |
+| `image.docker` | Docker image. Docker runs it directly; Daytona uses it to create or reuse an internally named snapshot. |
+| `image.dockerfile` | Inline Dockerfile or `{ path = "Dockerfile" }`; Docker builds and reuses a `fabro-runner-<sha12>` image per content hash, Daytona creates or reuses an internally named snapshot. Cannot be combined with `image.docker` on either provider. Docker builds run with an empty context: `COPY`/`ADD` cannot reference repository files. |
 | `resources.cpu` / `memory` / `disk` | Best-effort resource hints. Unsupported provider fields warn and continue. |
 | `network.mode` | `allow_all`, `block`, or `cidr_allow_list`. Local cannot enforce blocked/CIDR networking; Docker cannot enforce CIDR allow-lists. |
 | `network.allow` | CIDRs for `cidr_allow_list`; entries are validated as CIDRs. |

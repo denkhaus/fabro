@@ -33,7 +33,6 @@ use tokio::runtime::Builder as TokioRuntimeBuilder;
 use tokio_util::sync::CancellationToken;
 use ulid::Ulid;
 
-use crate::automation_materializer::AutomationRunMaterializer;
 pub use crate::automation_materializer::TestAutomationRunMaterializer;
 use crate::interp::process_env_var;
 use crate::jwt_auth::{AuthMode, ConfiguredAuth};
@@ -102,7 +101,7 @@ pub struct TestAppStateBuilder {
     default_environment_provider: Option<EnvironmentProvider>,
     env_lookup:                   EnvLookup,
     llm_catalog_settings:         LlmCatalogSettings,
-    automation_materializer:      Option<Arc<dyn AutomationRunMaterializer>>,
+    automation_materializer:      Option<TestAutomationRunMaterializer>,
     #[cfg(test)]
     worker_runtime:               Option<Arc<dyn WorkerRuntime>>,
 }
@@ -184,7 +183,7 @@ impl TestAppStateBuilder {
     }
 
     pub fn automation_materializer(mut self, materializer: TestAutomationRunMaterializer) -> Self {
-        self.automation_materializer = Some(materializer.into_materializer());
+        self.automation_materializer = Some(materializer);
         self
     }
 
@@ -282,6 +281,11 @@ impl TestAppStateBuilder {
             server::automation_dir_for_active_config(&active_config_path),
         )?;
         let preloaded_vault = test_secret_snapshot(db_pool.clone())?;
+        let automation_materializer_override = self.automation_materializer.map(|materializer| {
+            materializer.into_materializer(fabro_workflow_version::WorkflowVersionStore::new(
+                store.blobs(),
+            ))
+        });
         build_app_state(AppStateConfig {
             resolved_settings: resolved_runtime_settings_for_tests(
                 self.server_settings,
@@ -307,7 +311,7 @@ impl TestAppStateBuilder {
             worker_control_bus: None,
             #[cfg(test)]
             worker_runtime: self.worker_runtime,
-            automation_materializer_override: self.automation_materializer,
+            automation_materializer_override,
         })
     }
 }

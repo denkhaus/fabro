@@ -23,6 +23,7 @@ use super::size::Size;
 
 /// A structurally resolved `[run]` view for consumers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RunNamespace {
     pub goal:          Option<RunGoal>,
     pub working_dir:   Option<String>,

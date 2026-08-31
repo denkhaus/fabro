@@ -18,7 +18,12 @@ import { FilterButton } from "../components/runs-list/filter-button";
 import type { Automation, AutomationListResponse } from "@qltysh/fabro-api-client";
 import { Link, useNavigate } from "react-router";
 import { ApiError, apiData, automationsApi } from "../lib/api-client";
-import { findScheduleTrigger, hasEnabledApiTrigger } from "../lib/automation";
+import {
+  UNSUPPORTED_TARGET_LABEL,
+  findScheduleTrigger,
+  gitTarget,
+  hasEnabledApiTrigger,
+} from "../lib/automation";
 import { useAutomations } from "../lib/queries";
 import { queryKeys } from "../lib/query-keys";
 import { ConfirmDialog, PRIMARY_BUTTON_CLASS } from "../components/ui";
@@ -49,6 +54,7 @@ interface AutomationRow {
   name: string;
   workflow: string;
   repository: string;
+  environmentId: string | null;
   schedule?: string;
   apiEnabled: boolean;
   icon: ComponentType<{ className?: string }>;
@@ -81,17 +87,21 @@ const MENU_ITEM_DANGER_CLASS =
 
 function mapAutomations(result: AutomationListResponse | undefined): AutomationRow[] {
   const automations = result?.data ?? [];
-  return automations.map((a) => ({
-    id:         a.id,
-    revision:   a.revision,
-    name:       a.name,
-    workflow:   a.target.workflow,
-    repository: a.target.repository,
-    schedule:   findScheduleTrigger(a)?.expression,
-    apiEnabled: hasEnabledApiTrigger(a),
-    icon:       slugIconMap[a.target.workflow] ?? CodeBracketIcon,
-    color:      slugColorMap[a.target.workflow] ?? "var(--color-teal-500)",
-  }));
+  return automations.map((a) => {
+    const target = gitTarget(a.target);
+    return {
+      id:         a.id,
+      revision:   a.revision,
+      name:       a.name,
+      workflow:   a.workflow,
+      repository: target?.repo ?? UNSUPPORTED_TARGET_LABEL,
+      environmentId: a.environment_id,
+      schedule:   findScheduleTrigger(a)?.expression,
+      apiEnabled: hasEnabledApiTrigger(a),
+      icon:       slugIconMap[a.workflow] ?? CodeBracketIcon,
+      color:      slugColorMap[a.workflow] ?? "var(--color-teal-500)",
+    };
+  });
 }
 
 function PlayIcon({ className }: { className?: string }) {
@@ -116,7 +126,7 @@ function AutomationCard({
   onDelete: () => void;
 }) {
   const Icon = automation.icon;
-  const runDisabled = busy || running || !automation.apiEnabled;
+  const runDisabled = busy || running || !automation.apiEnabled || automation.environmentId === null;
   return (
     <div className="group flex items-center gap-4 rounded-md border border-line bg-panel/80 p-4 transition-all duration-200 hover:border-line-strong hover:bg-panel hover:shadow-lg hover:shadow-black/20">
       <Link to={`/automations/${automation.id}`} className="flex min-w-0 flex-1 items-center gap-4">
@@ -138,7 +148,12 @@ function AutomationCard({
               </span>
             )}
           </div>
-          <p className="mt-1 text-xs text-fg-muted">{automation.repository}</p>
+          <p className="mt-1 text-xs text-fg-muted">
+            {automation.repository}
+            <span className={automation.environmentId ? "" : " text-coral"}>
+              {" · "}{automation.environmentId ?? "environment required"}
+            </span>
+          </p>
         </div>
       </Link>
 
@@ -160,7 +175,9 @@ function AutomationCard({
             running
               ? "Starting run..."
               : automation.apiEnabled
-                ? "Run automation"
+                ? automation.environmentId
+                  ? "Run automation"
+                  : "Select an environment before running this automation"
                 : "Enable the API trigger to run it"
           }
           className="flex size-8 shrink-0 items-center justify-center rounded-full border border-mint/20 text-mint transition-colors hover:border-mint/50 hover:bg-mint/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-mint"

@@ -50,6 +50,31 @@ impl RunProjectionReducer for RunProjection {
         };
         let mut state = projection_from_created(first)?;
         for event in rest {
+            // Runs written before the runnable state was introduced can move
+            // directly from submitted to starting. Replay that historical
+            // shape through the equivalent current transition while keeping
+            // live single-event transitions strict.
+            if matches!(event.event.body, EventBody::RunStarting(_))
+                && matches!(state.status, RunStatus::Submitted)
+            {
+                state.try_apply_status(RunStatus::Runnable, event.event.ts)?;
+            }
+            if let EventBody::RunFailed(props) = &event.event.body {
+                let failed = RunStatus::Failed {
+                    reason: props.failure.reason,
+                };
+                if !state.status.can_transition_to(failed) {
+                    if matches!(
+                        state.status,
+                        RunStatus::Submitted | RunStatus::Pending { .. }
+                    ) {
+                        state.try_apply_status(RunStatus::Runnable, event.event.ts)?;
+                    }
+                    if matches!(state.status, RunStatus::Runnable) {
+                        state.try_apply_status(RunStatus::Starting, event.event.ts)?;
+                    }
+                }
+            }
             state.apply_event(event)?;
         }
         Ok(state)
@@ -2664,6 +2689,71 @@ mod tests {
             }))
             .unwrap(),
         }
+    }
+
+    fn historical_created_event() -> EventEnvelope {
+        test_raw_event(
+            1,
+            "run.created",
+            &json!({
+                "settings": WorkflowSettings::default(),
+                "graph": Graph::new("historical"),
+                "labels": {},
+                "provenance": test_support::test_run_provenance()
+            }),
+            None,
+        )
+    }
+
+    #[test]
+    fn historical_submitted_to_starting_transition_replays() {
+        let state = RunProjection::apply_events(&[
+            historical_created_event(),
+            test_raw_event(2, "run.submitted", &json!({}), None),
+            test_raw_event(3, "run.starting", &json!({}), None),
+        ])
+        .unwrap();
+
+        assert_eq!(state.status, RunStatus::Starting);
+    }
+
+    #[test]
+    fn historical_runnable_to_terminated_transition_replays() {
+        let state = RunProjection::apply_events(&[
+            historical_created_event(),
+            test_raw_event(2, "run.submitted", &json!({}), None),
+            test_raw_event(
+                3,
+                "run.runnable",
+                &json!({ "source": "start_requested" }),
+                None,
+            ),
+            test_raw_event(
+                4,
+                "run.failed",
+                &json!({
+                    "failure": {
+                        "reason": "terminated",
+                        "detail": {
+                            "message": "worker stopped before startup",
+                            "category": "deterministic"
+                        }
+                    },
+                    "timing": {
+                        "wall_time_ms": 1,
+                        "inference_time_ms": 0,
+                        "tool_time_ms": 0,
+                        "active_time_ms": 0
+                    }
+                }),
+                None,
+            ),
+        ])
+        .unwrap();
+
+        assert_eq!(state.status, RunStatus::Failed {
+            reason: FailureReason::Terminated,
+        });
     }
 
     #[test]

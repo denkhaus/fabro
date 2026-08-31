@@ -541,7 +541,14 @@ async fn create_run(
     // round-trip would silently collapse duplicate keys to last-key-wins.
     let intent_error = match serde_json::from_slice::<RunIntent>(&body) {
         Ok(intent) => {
-            return Box::pin(create_run_from_intent(state, intent, actor, headers)).await;
+            return Box::pin(create_run_from_intent(state, CreateRunFromIntentRequest {
+                intent,
+                explicit_run_id: None,
+                actor,
+                headers,
+                automation: None,
+            }))
+            .await;
         }
         Err(err) => err,
     };
@@ -562,6 +569,7 @@ async fn create_run(
             actor,
             headers,
             automation: None,
+            target: None,
         },
     ))
     .await
@@ -603,12 +611,28 @@ fn create_run_parse_error(
     ApiError::bad_request(manifest_error.to_string()).into_response()
 }
 
-async fn create_run_from_intent(
+pub(crate) struct CreateRunFromIntentRequest {
+    pub(crate) intent:          RunIntent,
+    /// Run ID preallocated by server-side automation code, never supplied by
+    /// an HTTP create body.
+    pub(crate) explicit_run_id: Option<RunId>,
+    pub(crate) actor:           Principal,
+    pub(crate) headers:         HeaderMap,
+    pub(crate) automation:      Option<AutomationRef>,
+}
+
+pub(crate) async fn create_run_from_intent(
     state: Arc<AppState>,
-    intent: RunIntent,
-    actor: Principal,
-    headers: HeaderMap,
+    request: CreateRunFromIntentRequest,
 ) -> Response {
+    let CreateRunFromIntentRequest {
+        intent,
+        explicit_run_id,
+        actor,
+        headers,
+        automation,
+    } = request;
+    let explicit_title_supplied = intent.title.is_some();
     // Validate the pure, in-memory request facts before paying for
     // blob-store reads and closure lowering.
     let ValidatedRunTarget { target, git } = match intent.target.validate() {
@@ -712,7 +736,7 @@ async fn create_run_from_intent(
         cli_overrides: None,
         input_overrides,
         inline_goal_override: intent.goal,
-        run_id: None,
+        run_id: explicit_run_id,
         title,
         parent_id: intent.parent_id,
         // Target identity and its Git projection are attached after provider
@@ -725,7 +749,7 @@ async fn create_run_from_intent(
         provenance: run_provenance(&headers, &actor),
         web_url: None,
         submitted_manifest_bytes: None,
-        automation: None,
+        automation,
     };
     let normalized = match run_compiler::normalize_source(raw_compiler_input) {
         Ok(normalized) => normalized,
@@ -763,7 +787,7 @@ async fn create_run_from_intent(
     finalize_created_run(
         state,
         prepared,
-        intent.title.is_some(),
+        explicit_title_supplied,
         entrypoint,
         CreatedRunErrorStyle::Intent,
     )
@@ -1086,9 +1110,8 @@ async fn validate_intent_environment(
     let provider = run_manifest::effective_sandbox_provider(&settings.run);
     let image = &settings.run.environment.image;
     let image_incompatible = match provider {
-        SandboxProviderKind::Local => false,
         SandboxProviderKind::Docker => image.docker.is_none() && image.dockerfile.is_some(),
-        SandboxProviderKind::Daytona => image.docker.is_some(),
+        SandboxProviderKind::Local | SandboxProviderKind::Daytona => false,
     };
     let (target_incompatible, detail) = match target {
         RunTarget::Git(_) => (
@@ -1142,6 +1165,9 @@ pub(crate) struct CreateRunFromManifestRequest {
     pub(crate) actor:                    Principal,
     pub(crate) headers:                  HeaderMap,
     pub(crate) automation:               Option<AutomationRef>,
+    /// Trusted canonical target supplied by an internal manifest producer.
+    /// Public legacy manifest requests always leave this absent.
+    pub(crate) target:                   Option<RunTarget>,
 }
 
 struct ManifestRunCompilerAdapter {
@@ -1287,6 +1313,7 @@ pub(crate) async fn create_run_from_manifest(
         actor,
         headers,
         automation,
+        target,
     } = request;
     let manifest_run_defaults = state.manifest_run_defaults();
     let manifest_environment_defaults = state.environment_store().catalog_layer();
@@ -1318,7 +1345,7 @@ pub(crate) async fn create_run_from_manifest(
         storage_root: state.server_storage_dir(),
         workflow_slug: None,
         workflow_version_id: None,
-        target: None,
+        target,
         provenance: run_provenance(&headers, &actor),
         web_url: None,
         submitted_manifest_bytes: Some(submitted_manifest_bytes),

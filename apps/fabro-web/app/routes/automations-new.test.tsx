@@ -10,7 +10,11 @@ import { setupReactTestEnv } from "../lib/test-utils";
 let currentRun: any = null;
 let currentRunError: unknown = null;
 let currentRunLoading = false;
+let currentRunState: any = null;
+let currentRunStateLoading = false;
 let currentRunSettings: any = null;
+let currentEnvironments: any[] = [];
+let currentEnvironmentsError: unknown = null;
 const queryCalls: Array<{ hook: string; id: string | undefined }> = [];
 const mountedRenderers: TestRenderer.ReactTestRenderer[] = [];
 let teardownReactEnv: (() => void) | undefined;
@@ -42,6 +46,11 @@ mock.module("@headlessui/react", () => ({
 }));
 
 mock.module("../lib/queries", () => ({
+  useEnvironments: () => ({
+    data:      { data: currentEnvironments, meta: { total: currentEnvironments.length } },
+    error:     currentEnvironmentsError,
+    isLoading: false,
+  }),
   useRun: (id: string | undefined) => {
     queryCalls.push({ hook: "useRun", id });
     return {
@@ -56,6 +65,14 @@ mock.module("../lib/queries", () => ({
       data:      currentRunSettings,
       error:     null,
       isLoading: false,
+    };
+  },
+  useRunState: (id: string | undefined) => {
+    queryCalls.push({ hook: "useRunState", id });
+    return {
+      data:      currentRunState,
+      error:     null,
+      isLoading: currentRunStateLoading,
     };
   },
 }));
@@ -179,6 +196,10 @@ function makeRun(overrides: Record<string, unknown> = {}) {
 function makeRunSettings() {
   return {
     run: {
+      environment: {
+        id:       "default",
+        provider: "docker",
+      },
       scm: {
         provider:   "github",
         owner:      "qltysh",
@@ -253,7 +274,15 @@ beforeEach(() => {
   currentRun = null;
   currentRunError = null;
   currentRunLoading = false;
+  currentRunState = null;
+  currentRunStateLoading = false;
   currentRunSettings = null;
+  currentEnvironments = [
+    { id: "default", provider: "docker" },
+    { id: "daytona-smoke", provider: "daytona" },
+    { id: "local", provider: "local" },
+  ];
+  currentEnvironmentsError = null;
   queryCalls.length = 0;
   createAutomationMock.mockClear();
   swrMutateMock.mockClear();
@@ -274,10 +303,55 @@ describe("AutomationsNew", () => {
     expect(fieldValue(renderer, "Automation name")).toBe("");
     expect(fieldValue(renderer, "Automation slug")).toBe("");
     expect(fieldValue(renderer, "Repository")).toBe("");
-    expect(fieldValue(renderer, "Default branch")).toBe("main");
+    expect(fieldValue(renderer, "Working branch")).toBe("main");
+    expect(fieldValue(renderer, "Tag")).toBe("");
+    expect(fieldValue(renderer, "Exact commit SHA")).toBe("");
     expect(fieldValue(renderer, "Workflow slug")).toBe("");
+    expect(fieldValue(renderer, "Automation environment")).toBe("");
     expect(switchChecked(renderer, "Enable manual and API triggers")).toBe(true);
     expect(switchChecked(renderer, "Enable scheduled triggers")).toBe(false);
+  });
+
+  test("environment selector offers Docker and Daytona but not local", async () => {
+    const { renderer } = await renderAutomationsNew("/automations/new");
+    const options = byLabel(renderer, "Automation environment").findAllByType("option");
+    const optionText = options.map((option) =>
+      option.children.join("").replace(/\s+/g, " ").trim(),
+    );
+
+    expect(optionText).toContain("default · Docker");
+    expect(optionText).toContain("daytona-smoke · Daytona");
+    expect(optionText.some((text) => text.includes("local"))).toBe(false);
+  });
+
+  test("no compatible environments explains recovery and blocks creation", async () => {
+    currentEnvironments = [{ id: "local", provider: "local" }];
+
+    const { renderer } = await renderAutomationsNew("/automations/new");
+
+    expect(textFromNode(renderer.toJSON())).toContain(
+      "No Docker or Daytona environments are available",
+    );
+    expect(
+      renderer.root.findByProps({ type: "submit" }).props.disabled,
+    ).toBe(true);
+  });
+
+  test("creation sends the selected environment id", async () => {
+    const { renderer } = await renderAutomationsNew("/automations/new");
+    changeField(renderer, "Automation name", "Nightly");
+    changeField(renderer, "Repository", "fabro-sh/fabro");
+    changeField(renderer, "Workflow slug", "hello");
+    changeField(renderer, "Automation environment", "daytona-smoke");
+
+    await act(async () => {
+      await renderer.root.findByType("form").props.onSubmit({ preventDefault() {} });
+    });
+
+    expect(createAutomationMock).toHaveBeenCalledTimes(1);
+    expect(createAutomationMock.mock.calls[0]?.[0]).toMatchObject({
+      environment_id: "daytona-smoke",
+    });
   });
 
   test("workflow slug input normalizes to kebab-case and preserves dashes", async () => {
@@ -299,15 +373,44 @@ describe("AutomationsNew", () => {
     expect(fieldValue(renderer, "Automation name")).toBe("Fix failing tests");
     expect(fieldValue(renderer, "Automation slug")).toBe("fix-failing-tests");
     expect(fieldValue(renderer, "Repository")).toBe("qltysh/fabro");
-    expect(fieldValue(renderer, "Default branch")).toBe("feature/from-run");
+    expect(fieldValue(renderer, "Working branch")).toBe("feature/from-run");
+    expect(fieldValue(renderer, "Tag")).toBe("");
+    expect(fieldValue(renderer, "Exact commit SHA")).toBe("");
     expect(fieldValue(renderer, "Workflow slug")).toBe("fix-ci");
+    expect(fieldValue(renderer, "Automation environment")).toBe("default");
     expect(switchChecked(renderer, "Enable manual and API triggers")).toBe(true);
     expect(switchChecked(renderer, "Enable scheduled triggers")).toBe(false);
     expect(
       renderer.root.findAllByProps({ "aria-label": "Cron expression" }),
     ).toHaveLength(0);
     expect(queryCalls).toContainEqual({ hook: "useRun", id: "run_1" });
+    expect(queryCalls).toContainEqual({ hook: "useRunState", id: "run_1" });
     expect(queryCalls).toContainEqual({ hook: "useRunSettings", id: "run_1" });
+  });
+
+  test("canonical run target wins over legacy run, settings, and sandbox projections", async () => {
+    currentRun = makeRun();
+    currentRunSettings = makeRunSettings();
+    currentRunState = {
+      spec: {
+        target: {
+          kind:   "git",
+          repo:   "canonical/repo",
+          branch: "release",
+          tag:    "v2.0.0",
+          sha:    "0123456789abcdef0123456789abcdef01234567",
+        },
+      },
+    };
+
+    const { renderer } = await renderAutomationsNew("/automations/new?from_run=run_1");
+
+    expect(fieldValue(renderer, "Repository")).toBe("canonical/repo");
+    expect(fieldValue(renderer, "Working branch")).toBe("release");
+    expect(fieldValue(renderer, "Tag")).toBe("v2.0.0");
+    expect(fieldValue(renderer, "Exact commit SHA")).toBe(
+      "0123456789abcdef0123456789abcdef01234567",
+    );
   });
 
   test("automationFormValuesFromRun kebab-cases the workflow name fallback", () => {
@@ -334,7 +437,7 @@ describe("AutomationsNew", () => {
     expect(textFromNode(renderer.toJSON())).toContain("fill it out manually");
     expect(fieldValue(renderer, "Automation name")).toBe("");
     expect(fieldValue(renderer, "Repository")).toBe("");
-    expect(fieldValue(renderer, "Default branch")).toBe("main");
+    expect(fieldValue(renderer, "Working branch")).toBe("main");
     expect(fieldValue(renderer, "Workflow slug")).toBe("");
   });
 });

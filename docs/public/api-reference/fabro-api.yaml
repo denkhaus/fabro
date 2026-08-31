@@ -6737,7 +6737,10 @@ components:
         - revision
         - name
         - description
+        - environment_id
+        - last_error
         - target
+        - workflow
         - triggers
       properties:
         id:
@@ -6755,34 +6758,26 @@ components:
         description:
           type: ["string", "null"]
           example: Keeps dependencies fresh.
+        environment_id:
+          type: ["string", "null"]
+          description: |
+            Server-managed Docker or Daytona environment selected when the
+            automation fires. Null only for an incomplete definition migrated
+            from a release that predated environment selection.
+          example: daytona-smoke
+        last_error:
+          type: ["string", "null"]
+          description: Most recent scheduled-run failure, cleared after a scheduled run is queued successfully.
         target:
-          $ref: "#/components/schemas/AutomationTarget"
+          $ref: "#/components/schemas/RunTarget"
+        workflow:
+          type: string
+          description: Workflow slug or path resolved in the selected repository checkout.
+          example: dependency-update
         triggers:
           type: array
           items:
             $ref: "#/components/schemas/AutomationTrigger"
-
-    AutomationTarget:
-      description: Repository and workflow selected by an automation.
-      type: object
-      additionalProperties: false
-      required:
-        - repository
-        - ref
-        - workflow
-      properties:
-        repository:
-          type: string
-          description: GitHub repository slug in `owner/repo` form.
-          example: fabro-sh/fabro
-        ref:
-          type: string
-          description: Branch, tag, or SHA selector resolved when materializing a run.
-          example: main
-        workflow:
-          type: string
-          description: Workflow slug or path resolved in the target repository.
-          example: dependency-update
 
     AutomationTrigger:
       description: |
@@ -6849,7 +6844,9 @@ components:
       required:
         - id
         - name
+        - environment_id
         - target
+        - workflow
         - triggers
       properties:
         id:
@@ -6862,8 +6859,16 @@ components:
         description:
           type: ["string", "null"]
           example: Keeps dependencies fresh.
+        environment_id:
+          type: string
+          description: Server-managed Docker or Daytona environment selected when the automation fires.
+          example: daytona-smoke
         target:
-          $ref: "#/components/schemas/AutomationTarget"
+          $ref: "#/components/schemas/RunTarget"
+        workflow:
+          type: string
+          description: Workflow slug or path resolved in the selected repository checkout.
+          example: dependency-update
         triggers:
           type: array
           items:
@@ -6875,7 +6880,9 @@ components:
       additionalProperties: false
       required:
         - name
+        - environment_id
         - target
+        - workflow
         - triggers
       properties:
         name:
@@ -6884,8 +6891,16 @@ components:
         description:
           type: ["string", "null"]
           example: Keeps dependencies fresh.
+        environment_id:
+          type: string
+          description: Server-managed Docker or Daytona environment selected when the automation fires.
+          example: daytona-smoke
         target:
-          $ref: "#/components/schemas/AutomationTarget"
+          $ref: "#/components/schemas/RunTarget"
+        workflow:
+          type: string
+          description: Workflow slug or path resolved in the selected repository checkout.
+          example: dependency-update
         triggers:
           type: array
           items:

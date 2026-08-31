@@ -303,8 +303,7 @@ fn mount_version(
         .get(version.entrypoint())
         .cloned()
         .expect("validated workflow versions contain their entrypoint file");
-    let config_local = WorkflowPath::new("workflow.toml")
-        .expect("the static workflow config path should be valid");
+    let config_local = version.config_path();
     let config_path = version.files().get(&config_local).map(|source| {
         rebase_path(
             version.entrypoint(),
@@ -564,10 +563,10 @@ mod tests {
                     "digraph Root { child [stack.child_workflow=\"../deps/run.fabro\"] }",
                 ),
                 (
-                    "workflow.toml",
+                    "flows/workflow.toml",
                     "_version = 1\n[run.goal]\nfile = \"goal.md\"\n",
                 ),
-                ("goal.md", "Ship {{ vars.owner }}"),
+                ("flows/goal.md", "Ship {{ vars.owner }}"),
             ],
             [("deps/run.fabro", child_id)],
         );
