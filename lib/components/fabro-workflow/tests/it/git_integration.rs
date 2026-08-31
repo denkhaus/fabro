@@ -12,7 +12,7 @@ use fabro_agent::Sandbox;
 use fabro_graphviz::graph::{AttrValue, Edge, Graph, Node};
 use fabro_types::{RunEvent, WorkflowSettings, fixtures};
 use fabro_workflow::event::Emitter;
-use fabro_workflow::git::{branch_needs_push, push_branch, push_ref};
+use fabro_workflow::git;
 use fabro_workflow::handler::HandlerRegistry;
 use fabro_workflow::handler::exit::ExitHandler;
 use fabro_workflow::handler::start::StartHandler;
@@ -178,7 +178,7 @@ fn push_ref_to_bare_remote() {
 
     rename_branch(&repo_dir, "test-push");
     let url = format!("file://{}", remote_dir.display());
-    push_ref(&repo_dir, &url, "refs/heads/test-push").unwrap();
+    git::push_ref(&repo_dir, &url, "refs/heads/test-push").unwrap();
 
     assert!(list_branch(&remote_dir, "test-push").contains("test-push"));
 }
@@ -194,7 +194,7 @@ fn push_branch_to_remote() {
     add_origin(&repo_dir, &remote_dir);
     rename_branch(&repo_dir, "main");
 
-    push_branch(&repo_dir, "origin", "main").unwrap();
+    git::push_branch(&repo_dir, "origin", "main").unwrap();
 
     assert!(list_branch(&remote_dir, "main").contains("main"));
 }
@@ -210,10 +210,10 @@ fn branch_needs_push_when_ahead() {
     add_origin(&repo_dir, &remote_dir);
     rename_branch(&repo_dir, "main");
 
-    push_branch(&repo_dir, "origin", "main").unwrap();
+    git::push_branch(&repo_dir, "origin", "main").unwrap();
     empty_commit(&repo_dir, "second");
 
-    assert!(branch_needs_push(&repo_dir, "origin", "main"));
+    assert!(git::branch_needs_push(&repo_dir, "origin", "main"));
 }
 
 #[test]
@@ -227,9 +227,39 @@ fn branch_needs_push_when_in_sync() {
     add_origin(&repo_dir, &remote_dir);
     rename_branch(&repo_dir, "main");
 
-    push_branch(&repo_dir, "origin", "main").unwrap();
+    git::push_branch(&repo_dir, "origin", "main").unwrap();
 
-    assert!(!branch_needs_push(&repo_dir, "origin", "main"));
+    assert!(!git::branch_needs_push(&repo_dir, "origin", "main"));
+}
+
+#[test]
+fn remote_branch_sha_ignores_a_locally_rewritten_tracking_ref() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo_dir = dir.path().join("repo");
+    let remote_dir = dir.path().join("remote.git");
+
+    init_bare_remote(&remote_dir);
+    init_repo(&repo_dir);
+    add_origin(&repo_dir, &remote_dir);
+    rename_branch(&repo_dir, "main");
+    git::push_branch(&repo_dir, "origin", "main").unwrap();
+    let remote_sha = git::head_sha(&repo_dir).unwrap();
+
+    empty_commit(&repo_dir, "local-only");
+    let local_sha = git::head_sha(&repo_dir).unwrap();
+    let update_tracking = Command::new("git")
+        .args(["update-ref", "refs/remotes/origin/main", "HEAD"])
+        .current_dir(&repo_dir)
+        .output()
+        .expect("git update-ref should run");
+    assert_success(&update_tracking, "git update-ref");
+    assert!(!git::branch_needs_push(&repo_dir, "origin", "main"));
+
+    assert_eq!(
+        git::remote_branch_sha_noninteractive(&repo_dir, "origin", "main").unwrap(),
+        Some(remote_sha.clone()),
+    );
+    assert_ne!(local_sha, remote_sha);
 }
 
 #[tokio::test]
