@@ -223,6 +223,8 @@ Other node types still need their shape, because their attributes don't identify
 | `project_memory` | Boolean | When `true` (default), prompt nodes discover and include project docs (`AGENTS.md`, `CLAUDE.md`, etc.) as a system prompt. Set to `false` to disable. |
 | `output_schema` | String | Optional structured output validation. Use `routing` for Fabro's built-in routing directive schema, `@path/to/schema.json` for a JSON Schema file, or an inline JSON Schema object string. Supported on agent, prompt, and command nodes. |
 | `output_retries` | Integer | Corrective structured-output turns inside the same prompt conversation or agent session. Default `2`; `0` validates once and fails without repair; negative values are treated as `0`. Separate from `max_retries`. |
+| `tools` | String | Allow-list of canonical tool names for this agent stage (comma-separated, e.g. `read_file,grep,glob`). Unset = the full default registry. Everything not named is denied, including MCP tools and `spawn_agent`; question tools (`request_user_input`, `AskUserQuestion`) stay available either way. Profile spellings (Kimi `Read`) resolve to their canonical names. Only agent nodes; validation warns elsewhere.
+| `fabro_tools` | String | Opt-in list of `fabro_run_*` tools for this agent stage (comma-separated, e.g. `fabro_run_get,fabro_run_logs`). Overrides the run-wide `run.agent.fabro_tools` flag when set; unset keeps the run default (off by default). The `fabro_ask`/`fabro_runs_list` tools additionally require the graph's `inspects` attribute.
 | `backend` | String | Agent execution backend: `api` (default) or `acp`. `api` runs Fabro's tool loop through provider APIs; `acp` runs an Agent Client Protocol stdio agent inside the active sandbox. Prompt nodes are API-only. See [Agents — Backends](/core-concepts/agents#backends). |
 | `acp.command` | String | Shell command for nodes with `backend="acp"`. Mutually exclusive with `acp.config`. The value is always parsed as a command string, not JSON. |
 | `acp.config` | String | JSON stdio ACP config for nodes with `backend="acp"`. Mutually exclusive with `acp.command`. |
@@ -255,6 +257,29 @@ audit [
 - Command nodes validate merged stdout and stderr only after the script exits with code `0`, using the same object selection as agents and prompts: custom schemas validate the last JSON object, and `routing` validates the last JSON object containing a recognized routing field. Print the intended JSON object last. A validation error is a deterministic, non-retryable failure with no repair turn or `status.json` fallback. `output_retries`, `retry_policy`, and `max_retries` do not retry it. Nonzero exits retain normal command failure behavior without schema validation.
 - For commands, custom schema output is stored at `output.{node_id}`; edge conditions cannot traverse into its fields. The `routing` schema applies routing fields and merges `context_updates` into flat context keys, which conditions can read (for example, `context.kept_count`).
 - `backend="acp"` with `output_schema` is unsupported in this release.
+
+#### Restricting an agent's tools
+
+`tools` narrows an agent stage to an explicit allow-list. The planner that
+must not touch the repository can be pinned to read-only inspection:
+
+```dot
+plan [
+  prompt="Read the failing evidence and plan the fix",
+  tools="read_file,grep,glob"
+]
+```
+
+- The list names **canonical** tools; validation warns about unknown
+  spellings (`Read` works because profiles resolve it, but `made_up_tool`
+  warns).
+- Omitted means **default-open**: the full registry including shell,
+  file writes, subagents, and configured MCP servers.
+- Subagent sessions (spawned through `spawn_agent`, if you allow it)
+  inherit the same list.
+- `fabro_tools` follows the opposite posture: the `fabro_run_*` catalog
+  is **default-denied** and opted into per node, overriding the run-wide
+  `run.agent.fabro_tools` flag.
 
 ### Command nodes
 

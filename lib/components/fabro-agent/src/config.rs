@@ -7,6 +7,9 @@ use fabro_mcp::config::McpServerSettings;
 use fabro_model::AgentProfileKind;
 use fabro_types::PermissionLevel;
 
+use crate::question_tools::is_question_tool;
+use crate::tool_permissions::canonical_tool_name;
+
 /// Callback invoked before each tool execution. Return `Ok(())` to allow,
 /// `Err(message)` to deny with the given message.
 pub type ToolApprovalFn = Arc<dyn Fn(&str, &serde_json::Value) -> Result<(), String> + Send + Sync>;
@@ -49,6 +52,65 @@ pub enum ToolExposureMode {
 /// logging, telemetry, and async decisions in [`ToolHookCallback`].
 pub trait ToolAccessPolicy: Send + Sync {
     fn access_for_tool(&self, tool_name: &str) -> ToolAccess;
+}
+
+/// Allow-only tool access policy: the listed CANONICAL tool names are
+/// exposed and executable; everything else is denied, including MCP tools
+/// and `spawn_agent`. Profile vocabularies (Kimi `Read`/`Grep`/`Glob`)
+/// resolve through [`canonical_tool_name`] so a profile's spelling of an
+/// allowed tool stays allowed. Question tools (`request_user_input`,
+/// `AskUserQuestion`) are exempt both ways: HITL is a workflow contract,
+/// like the engine-stamped context keys.
+///
+/// Workflow agent stages build this from the node's `tools` attribute
+/// (fabro-47b5, ADR-0009 amendment). Unset attribute = no policy = the
+/// default-open full registry.
+pub struct NamedToolAccessPolicy {
+    allowed: Vec<String>,
+}
+
+impl NamedToolAccessPolicy {
+    /// Build the policy from canonical (or profile-vocabulary) tool names.
+    /// Names are canonicalized on the way in so lookups compare canonical
+    /// to canonical.
+    #[must_use]
+    pub fn new<I, S>(allowed: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self {
+            allowed: allowed
+                .into_iter()
+                .map(|name| canonical_tool_name(&name.into()).to_owned())
+                .collect(),
+        }
+    }
+
+    /// The canonical names this policy allows, sorted for stable display.
+    #[must_use]
+    pub fn allowed_names(&self) -> Vec<&str> {
+        let mut names: Vec<&str> = self.allowed.iter().map(String::as_str).collect();
+        names.sort_unstable();
+        names
+    }
+}
+
+impl ToolAccessPolicy for NamedToolAccessPolicy {
+    fn access_for_tool(&self, tool_name: &str) -> ToolAccess {
+        if is_question_tool(tool_name) {
+            return ToolAccess::Allowed;
+        }
+        if self
+            .allowed
+            .iter()
+            .any(|allowed| allowed == canonical_tool_name(tool_name))
+        {
+            ToolAccess::Allowed
+        } else {
+            ToolAccess::Denied
+        }
+    }
 }
 
 /// Decision returned by a [`ToolHookCallback`] before a tool executes.
@@ -309,6 +371,55 @@ mod tests {
         fn access_for_tool(&self, _tool_name: &str) -> ToolAccess {
             self.0
         }
+    }
+
+    #[test]
+    fn named_policy_allows_listed_and_denies_everything_else() {
+        let policy = NamedToolAccessPolicy::new(["read_file", "grep", "glob"]);
+
+        assert_eq!(policy.access_for_tool("read_file"), ToolAccess::Allowed);
+        assert_eq!(policy.access_for_tool("grep"), ToolAccess::Allowed);
+        // Not listed: denied, including subagents and MCP servers.
+        assert_eq!(policy.access_for_tool("write_file"), ToolAccess::Denied);
+        assert_eq!(policy.access_for_tool("shell"), ToolAccess::Denied);
+        assert_eq!(policy.access_for_tool("spawn_agent"), ToolAccess::Denied);
+        assert_eq!(
+            policy.access_for_tool("mcp__github__tool"),
+            ToolAccess::Denied
+        );
+    }
+
+    #[test]
+    fn named_policy_resolves_profile_vocabularies_both_ways() {
+        // Kimi spells the canonical tools with capitals; both the list
+        // side and the lookup side canonicalize, so either spelling works.
+        let policy = NamedToolAccessPolicy::new(["Read", "grep"]);
+        assert_eq!(policy.access_for_tool("read_file"), ToolAccess::Allowed);
+        assert_eq!(policy.access_for_tool("Read"), ToolAccess::Allowed);
+        assert_eq!(policy.allowed_names(), vec!["grep", "read_file"]);
+    }
+
+    #[test]
+    fn named_policy_keeps_question_tools_exempt_both_ways() {
+        let policy = NamedToolAccessPolicy::new(["read_file"]);
+        // Not listed, but question tools stay allowed...
+        assert_eq!(
+            policy.access_for_tool("request_user_input"),
+            ToolAccess::Allowed
+        );
+        assert_eq!(
+            policy.access_for_tool("AskUserQuestion"),
+            ToolAccess::Allowed
+        );
+
+        // ...and an explicitly empty allow-list still admits them while
+        // denying even the listed-everything-else case.
+        let empty = NamedToolAccessPolicy::new(Vec::<String>::new());
+        assert_eq!(
+            empty.access_for_tool("request_user_input"),
+            ToolAccess::Allowed
+        );
+        assert_eq!(empty.access_for_tool("read_file"), ToolAccess::Denied);
     }
 
     #[test]

@@ -21,4 +21,7 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+fabro-agent = { path = "../fabro-agent" }
+strum = { workspace = true }
+fabro-tool = { path = "../fabro-tool" }
 toml = { workspace = true }

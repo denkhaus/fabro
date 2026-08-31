@@ -38,6 +38,9 @@ mod terminal_node;
 #[cfg(test)]
 pub(crate) mod test_support;
 mod thread_id_requires_fidelity_full;
+pub(crate) mod tool_catalog;
+mod tools_attribute_known;
+mod tools_requires_agent_node;
 mod type_known;
 mod unresolved_file_ref;
 
@@ -79,6 +82,8 @@ pub fn built_in_rules() -> Vec<Box<dyn LintRule>> {
         join_policy_removed::rule(),
         unresolved_file_ref::rule(),
         thread_id_requires_fidelity_full::rule(),
+        tools_attribute_known::rule(),
+        tools_requires_agent_node::rule(),
         selection_valid::rule(),
         random_selection_no_conditions::rule(),
         inert_attribute::rule(),

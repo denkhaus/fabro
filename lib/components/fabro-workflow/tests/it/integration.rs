@@ -2860,6 +2860,201 @@ reasoning = false
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn node_tools_attribute_narrows_the_wire_tool_set() {
+    use fabro_workflow::handler::llm::AgentApiBackend;
+    use fabro_workflow::steering_hub::SteeringHub;
+    use httpmock::Method::POST;
+    use httpmock::MockServer;
+
+    fn chat_completion_stream(text: &str) -> String {
+        let text_chunk = serde_json::json!({
+            "id": uuid::Uuid::new_v4().to_string(),
+            "model": "compact-model",
+            "choices": [{
+                "delta": {"content": text},
+                "finish_reason": null
+            }]
+        });
+        let usage_chunk = serde_json::json!({
+            "id": uuid::Uuid::new_v4().to_string(),
+            "model": "compact-model",
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 1,
+                "total_tokens": 11
+            }
+        });
+        format!("data: {text_chunk}\n\ndata: {usage_chunk}\n\ndata: [DONE]\n\n")
+    }
+
+    let server = MockServer::start_async().await;
+
+    // Scoped node: only read_file and grep may appear in the tools array.
+    let scoped_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/chat/completions")
+                .body_includes("\"stream\":true")
+                .body_includes("Inspect the run")
+                .body_includes("\"read_file\"")
+                .body_includes("\"grep\"")
+                .body_excludes("\"write_file\"")
+                .body_excludes("\"shell\"")
+                .body_excludes("\"spawn_agent\"");
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .body(chat_completion_stream("Scoped inspection done."));
+        })
+        .await;
+
+    // Default-open node: the full registry, including mutating tools.
+    let open_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/chat/completions")
+                .body_includes("\"stream\":true")
+                .body_includes("Do anything")
+                .body_includes("\"write_file\"")
+                .body_includes("\"shell\"");
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .body(chat_completion_stream("Open run done."));
+        })
+        .await;
+
+    let settings: LlmCatalogSettings = toml::from_str(&format!(
+        r#"
+[providers.compact]
+adapter = "openai_compatible"
+agent_profile = "openai"
+base_url = "{}"
+
+[providers.compact.auth]
+credentials = ["env:COMPACT_API_KEY"]
+
+[models.compact-model]
+provider = "compact"
+display_name = "Compact Model"
+family = "mock"
+default = true
+
+[models.compact-model.limits]
+context_window = 100000
+max_output = 1024
+
+[models.compact-model.features]
+tools = true
+vision = false
+reasoning = false
+"#,
+        server.base_url()
+    ))
+    .expect("test catalog should parse");
+    let catalog = Arc::new(Catalog::from_builtin_with_overrides(&settings).unwrap());
+    let source = auth_test_support::env_credential_source(|name| {
+        (name == "COMPACT_API_KEY").then(|| "sk-test".to_string())
+    });
+    let backend = AgentApiBackend::new_with_catalog(
+        "compact-model".to_string(),
+        ProviderId::from("compact"),
+        ModelFallbackPolicy::default(),
+        source,
+        Arc::new(SteeringHub::new(Arc::new(Emitter::default()))),
+        catalog,
+    );
+
+    let mut graph = make_graph_with_start_exit("NodeToolScope");
+    let mut scoped = Node::new("scoped_analyst");
+    scoped.attrs.insert(
+        "tools".to_string(),
+        AttrValue::String("read_file,grep".to_string()),
+    );
+    scoped.attrs.insert(
+        "prompt".to_string(),
+        AttrValue::String("Inspect the run.".to_string()),
+    );
+    let mut open_node = Node::new("open_analyst");
+    open_node.attrs.insert(
+        "prompt".to_string(),
+        AttrValue::String("Do anything.".to_string()),
+    );
+    graph.nodes.insert("scoped_analyst".to_string(), scoped);
+    graph.nodes.insert("open_analyst".to_string(), open_node);
+    graph.edges.push(Edge::new("start", "scoped_analyst"));
+    graph
+        .edges
+        .push(Edge::new("scoped_analyst", "open_analyst"));
+    graph.edges.push(Edge::new("open_analyst", "exit"));
+
+    let emitter = Emitter::default();
+    let events = collect_events(&emitter);
+    let mut registry = HandlerRegistry::new(Box::new(AgentHandler::new(Some(Box::new(backend)))));
+    registry.register("start", Box::new(StartHandler));
+    registry.register("exit", Box::new(ExitHandler));
+
+    let dir = tempfile::tempdir().unwrap();
+    let engine = WorkflowRunner::new(registry, Arc::new(emitter), local_env());
+    let run_options = RunOptions {
+        settings:         WorkflowSettings::default(),
+        run_dir:          dir.path().to_path_buf(),
+        cancel_token:     CancellationToken::new(),
+        run_id:           test_run_id("node-tools-wire"),
+        labels:           std::collections::HashMap::new(),
+        workflow_slug:    None,
+        github_app:       None,
+        base_branch:      None,
+        display_base_sha: None,
+        pre_run_git:      None,
+        fork_source_ref:  None,
+        git:              None,
+    };
+    let (outcome, _state) = engine
+        .run_with_state(&graph, &run_options)
+        .await
+        .expect("node-tools workflow should complete");
+    assert_eq!(outcome.status, StageOutcome::Succeeded);
+
+    // Wire proof: each node hit exactly its expected mock (the mocks match
+    // on tool presence/absence in the request body).
+    assert_eq!(scoped_mock.calls_async().await, 1);
+    assert_eq!(open_mock.calls_async().await, 1);
+
+    // Projection proof: the stage's effective tool list is the allow-list
+    // for the scoped node and the full registry for the open node.
+    let tool_names = |node_id: &str| -> Vec<String> {
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|event| {
+                event.event_name() == "agent.tools.available"
+                    && event.node_id.as_deref() == Some(node_id)
+            })
+            .flat_map(|event| match &event.body {
+                EventBody::AgentToolsAvailable(props) => props.tools.clone(),
+                _ => Vec::new(),
+            })
+            .map(|tool| tool.name)
+            .collect()
+    };
+    let mut scoped_tools = tool_names("scoped_analyst");
+    scoped_tools.sort();
+    // The allow-list plus the always-exempt question tool; no write, no
+    // shell, no subagent, no MCP.
+    assert_eq!(
+        scoped_tools,
+        vec!["grep", "read_file", "request_user_input"],
+        "{scoped_tools:?}"
+    );
+    let open_tools = tool_names("open_analyst");
+    assert!(
+        open_tools.contains(&"write_file".to_string()) && open_tools.contains(&"shell".to_string()),
+        "default-open node must expose the full registry: {open_tools:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn workflow_persists_authoritative_openrouter_cost_for_agent_stage() {
     use fabro_workflow::steering_hub::SteeringHub;
     use httpmock::Method::POST;

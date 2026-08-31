@@ -3332,10 +3332,13 @@ name = "fabro-validate"
 version = "0.339.0-nightly.1"
 dependencies = [
  "fabro-acp",
+ "fabro-agent",
  "fabro-graphviz",
  "fabro-model",
+ "fabro-tool",
  "fabro-types",
  "serde",
+ "strum 0.28.0",
  "thiserror 2.0.18",
  "toml 0.8.23",
 ]

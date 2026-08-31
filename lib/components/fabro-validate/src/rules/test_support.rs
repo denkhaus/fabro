@@ -28,3 +28,11 @@ pub(crate) fn minimal_graph() -> Graph {
     g.edges.push(Edge::new("start", "exit"));
     g
 }
+
+pub(crate) fn graph_with_nodes(nodes: impl IntoIterator<Item = Node>) -> Graph {
+    let mut g = minimal_graph();
+    for node in nodes {
+        g.nodes.insert(node.id.clone(), node);
+    }
+    g
+}

@@ -211,6 +211,15 @@ pub fn register_named_fabro_run_tools(
 ) {
     for definition in fabro_tool::tool_definitions() {
         if names.contains(&definition.name) {
+            // Same inspects gate as the full registration (fabro-0c32):
+            // ask/enumeration authority only exists with a declared scope.
+            let inspects_gated = matches!(
+                definition.name,
+                fabro_tool::FABRO_ASK_TOOL_NAME | fabro_tool::FABRO_RUNS_LIST_TOOL_NAME
+            );
+            if inspects_gated && services.inspects.is_empty() {
+                continue;
+            }
             registry.register(fabro_run_tool(definition, services.clone()));
         }
     }
@@ -1118,17 +1127,29 @@ impl AgentApiBackend {
         };
         let mut profile = profile_builder.build();
 
+        // Node-level `tools` (fabro-47b5, ADR-0009 amendment): an
+        // allow-list narrows this stage to the named canonical tools;
+        // unset keeps the default-open full registry. `permission_level`
+        // stays `Full`: it is upstream's interactive CLI approval axis,
+        // wire-contracted in the OpenAPI spec, and the policy is the
+        // narrowing mechanism, not the permission flag.
+        let node_tools = node.tools();
+        let node_fabro_tools = node.fabro_tools();
+        let tool_access_policy: Option<Arc<dyn fabro_agent::ToolAccessPolicy>> =
+            if node_tools.is_empty() {
+                None
+            } else {
+                Some(Arc::new(fabro_agent::NamedToolAccessPolicy::new(
+                    node_tools.iter().map(|tool| (*tool).to_owned()),
+                )))
+            };
         let config = SessionOptions {
             max_tokens: node.max_tokens(),
             reasoning_effort: controls.reasoning_effort,
             speed: controls.speed,
             tool_hooks,
             mcp_servers,
-            // Workflow agents run with no `tool_access_policy`, which exposes
-            // the entire tool registry (read, write, shell, subagent, MCP) and
-            // skips approval gating. Report that truthfully so the UI doesn't
-            // render "Unknown" for every workflow stage. Override per-stage if
-            // a future workflow attribute narrows the scope.
+            tool_access_policy,
             permission_level: Some(PermissionLevel::Full),
             ..SessionOptions::default()
         };
@@ -1145,12 +1166,29 @@ impl AgentApiBackend {
         let factory_env = Arc::clone(sandbox);
         let factory_tool_env = tool_env.cloned();
         let factory_fabro_run_tools = fabro_run_tools.clone();
+        let factory_node_fabro_tools: Vec<String> = node_fabro_tools
+            .iter()
+            .map(|tool| (*tool).to_owned())
+            .collect();
         let factory_permission_level = config.permission_level;
         let factory_tool_hooks = config.tool_hooks.clone();
+        let factory_tool_access_policy = config.tool_access_policy.clone();
         let factory: SessionFactory = Arc::new(move || {
             let mut child_profile = factory_profile_builder.build();
             if let Some(services) = factory_fabro_run_tools.clone() {
-                register_fabro_run_tools(child_profile.tool_registry_mut(), &services);
+                let names: Vec<&str> = factory_node_fabro_tools
+                    .iter()
+                    .map(String::as_str)
+                    .collect();
+                if names.is_empty() {
+                    register_fabro_run_tools(child_profile.tool_registry_mut(), &services);
+                } else {
+                    register_named_fabro_run_tools(
+                        child_profile.tool_registry_mut(),
+                        &services,
+                        &names,
+                    );
+                }
             }
             let child_profile: Arc<dyn AgentProfile> = Arc::from(child_profile);
             let mut session = Session::new(
@@ -1161,6 +1199,7 @@ impl AgentApiBackend {
                     reasoning_effort: controls.reasoning_effort,
                     speed: controls.speed,
                     tool_hooks: factory_tool_hooks.clone(),
+                    tool_access_policy: factory_tool_access_policy.clone(),
                     permission_level: factory_permission_level,
                     ..SessionOptions::default()
                 },
@@ -1174,7 +1213,17 @@ impl AgentApiBackend {
 
         profile.register_subagent_tools(supervisor.clone(), factory, 0);
         register_question_tools(provider.profile_kind, profile.tool_registry_mut());
-        if let Some(services) = fabro_run_tools {
+        // Node-level `fabro_tools` (fabro-47b5) overrides the run-wide
+        // `run.agent.fabro_tools` flag with an explicit opt-in list.
+        if !node_fabro_tools.is_empty() {
+            if let Some(services) = &fabro_run_tools {
+                register_named_fabro_run_tools(
+                    profile.tool_registry_mut(),
+                    services,
+                    &node_fabro_tools,
+                );
+            }
+        } else if let Some(services) = fabro_run_tools {
             register_fabro_run_tools(profile.tool_registry_mut(), &services);
         }
         let profile: Arc<dyn AgentProfile> = Arc::from(profile);

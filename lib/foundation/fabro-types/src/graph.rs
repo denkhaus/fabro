@@ -407,6 +407,29 @@ impl Node {
             .unwrap_or_default()
     }
 
+    /// Node-level `tools`: the comma-separated allow-list of CANONICAL
+    /// tool names this agent stage may use (fabro-47b5, ADR-0009
+    /// amendment). Unset = default open (the full registry). Everything
+    /// not named is denied, including MCP tools and `spawn_agent`;
+    /// question tools stay exempt both ways.
+    #[must_use]
+    pub fn tools(&self) -> Vec<&str> {
+        self.str_attr("tools")
+            .map(split_key_list)
+            .unwrap_or_default()
+    }
+
+    /// Node-level `fabro_tools`: the comma-separated opt-in list of
+    /// `fabro_run_*` tools this agent stage registers (fabro-47b5).
+    /// Unset keeps the run-wide `run.agent.fabro_tools` default (off by
+    /// default). Overrides the run-wide flag when set.
+    #[must_use]
+    pub fn fabro_tools(&self) -> Vec<&str> {
+        self.str_attr("fabro_tools")
+            .map(split_key_list)
+            .unwrap_or_default()
+    }
+
     /// Node-level `context_allow_keys`: the comma-separated allowlist of
     /// agent-authored context keys this node may write (seed fabro-900e,
     /// ADR-0009 stage envelope). `None` (attribute unset) means every key
@@ -989,6 +1012,29 @@ mod tests {
             AttrValue::String(String::new()),
         );
         assert_eq!(node.context_allow_keys(), Some(Vec::new()));
+    }
+
+    #[test]
+    fn tool_lists_parse_trim_and_drop_empty_entries() {
+        let mut node = Node::new("reviewer");
+        assert!(node.tools().is_empty());
+        assert!(node.fabro_tools().is_empty());
+
+        node.attrs.insert(
+            "tools".to_string(),
+            AttrValue::String(" read_file ,grep,,glob,".to_string()),
+        );
+        node.attrs.insert(
+            "fabro_tools".to_string(),
+            AttrValue::String(" fabro_run_get ,fabro_run_logs ".to_string()),
+        );
+        assert_eq!(node.tools(), vec!["read_file", "grep", "glob"]);
+        assert_eq!(node.fabro_tools(), vec!["fabro_run_get", "fabro_run_logs"]);
+
+        // An explicitly empty attribute means an explicitly empty list.
+        node.attrs
+            .insert("tools".to_string(), AttrValue::String(String::new()));
+        assert!(node.tools().is_empty());
     }
 
     #[test]

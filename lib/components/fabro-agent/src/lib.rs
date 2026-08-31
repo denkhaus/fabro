@@ -35,8 +35,8 @@ pub(crate) mod web_search;
 
 pub use agent_profile::AgentProfile;
 pub use config::{
-    NativeToolOptions, SessionOptions, ToolAccess, ToolAccessPolicy, ToolApprovalAdapter,
-    ToolExposureMode, ToolHookCallback, ToolHookDecision, ToolSecrets,
+    NamedToolAccessPolicy, NativeToolOptions, SessionOptions, ToolAccess, ToolAccessPolicy,
+    ToolApprovalAdapter, ToolExposureMode, ToolHookCallback, ToolHookDecision, ToolSecrets,
 };
 #[cfg(feature = "docker")]
 pub use docker_sandbox::{DockerSandbox, DockerSandboxOptions};
