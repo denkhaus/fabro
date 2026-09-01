@@ -7,7 +7,9 @@ Sections, in order. Keep it factual; every claim traces to evidence
    commit on denkhaus, pushed state.
 2. **Verification**: build / fmt / tests (counts, thread setting) /
    clippy / web tests / deploy+smoke result (7 checks), proof the
-   container runs merged code.
+   container runs merged code, and — when the merge carries data migrations —
+   the activation/migration outcome on REAL production data (log lines,
+   counts, marker written).
 3. **Upstream changes by theme**: group commits; per theme 2-6 sentences:
    what changed, and "what it means for us".
 4. **Our-code impact**: conflicts resolved (file, class, resolution),

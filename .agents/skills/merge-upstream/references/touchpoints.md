@@ -99,3 +99,24 @@ Upstream directions that may supersede our work — re-evaluate per merge:
   layer for fork admission work (branch/tag/SHA matrix from PR #812).
 - Chat Completions streams reject tool-call index gaps (fabro-llm) —
   robustness only, no fork impact.
+
+## 2026-09-01 (v0.342.0-nightly.0, merge 2df9dc69a + fix 31809f2ad)
+
+- SQLite run-history CUTOVER completed (was INACTIVE since v0.339): runs +
+  run_events now authoritative in SQLite, fail-closed activation with backup +
+  legacy import/verify at server start; deletion waits for the writer lock.
+  Fork run-store work MUST build on RunSummaryStore/SQLite, not SlateDB paths.
+- Upstream bug fixed on our side (fabro-b7c4, 31809f2ad): activation
+  rejected real legacy catalog keys (5-segment by-start layout). Parser now
+  accepts both; PR offer upstream still pending.
+- RunIntent registration spine + local producer support landed: workflow
+  versions register dependency-first; `fabro run` resolves local workflow
+  packages and observes git targets via remote SHA query
+  (remote_branch_sha_noninteractive), not local tracking refs. Run-target
+  admission work docks on RunIntent as before.
+- RunIntentArgs gained tri-state dry_run/auto_approve/preserve_sandbox wire
+  overrides — candidate mechanism for per-run execution overrides without
+  config edits (note for develop/revisor design).
+- ManifestRepoInfo split origin/push origins (see conflict-policy 2026-09-01):
+  our insteadOf canonicalization rides origin_url; push identity compares raw
+  config bytes (upstream semantics).

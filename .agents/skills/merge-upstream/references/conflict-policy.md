@@ -59,6 +59,25 @@ upstream's new signatures; never revert upstream, never drop our features.
   pre-existing upstream artifacts, NOT merge regressions; clippy --workspace
   is the gate, don't chase them.
 
+## 2026-09-01 (v0.342.0-nightly.0)
+
+- Struct extraction + dual-origin split: upstream reshaped
+  `detect_manifest_repo_info` from a tuple into `ManifestRepoInfo { origin_url,
+  push_origin_url, branch, sha }` with a BranchPublishStatus publish spine
+  (raw-config push identity comparison). Resolution: take upstream's shape
+  wholesale, re-attach our insteadOf canonicalization (16bbb8bfb) onto
+  `origin_url` ONLY — `push_origin_url` deliberately keeps raw config bytes.
+  Splice carefully: the conflict boundary can split the publish doc comment.
+- (new failure class, found by DEPLOY not by tests): upstream data-migration
+  code can reject REAL production data — v0.342's fail-closed SQLite
+  run-history activation died on 'a legacy run-catalog key is not canonical'
+  because upstream's parser/tests only know a synthetic key layout, while the
+  retired writer emitted `runs/_index/by-start/<YYYY-MM-DD>/<ulid>`
+  (RunId::key_segments). Fix locally (accept both layouts, regression-test the
+  real writer layout), then offer upstream. A crash-looping container after
+  `just up` = read activation logs from `docker logs` + inspect the SQLite
+  volume read-only before touching anything; the import is idempotent.
+
 ## 2026-08-31 (v0.339.0-nightly.1)
 
 - Import-block widening: our fork widened cfg gates (`any(docker, daytona)`)
