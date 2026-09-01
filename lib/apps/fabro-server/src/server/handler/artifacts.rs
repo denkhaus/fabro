@@ -86,7 +86,7 @@ async fn get_checkpoint(
         Ok(id) => id,
         Err(response) => return response,
     };
-    match state.cached_run_projection(&id).await {
+    match state.load_run_projection(&id).await {
         Ok(projection) => match projection.current_checkpoint() {
             Some(cp) => (StatusCode::OK, Json(cp.clone())).into_response(),
             None => (StatusCode::OK, Json(serde_json::json!(null))).into_response(),
@@ -132,7 +132,7 @@ async fn read_run_blob(
 
 async fn ensure_run_exists(state: &AppState, run_id: &RunId) -> Result<(), Response> {
     state
-        .cached_run_projection(run_id)
+        .load_run_projection(run_id)
         .await
         .map(|_| ())
         .map_err(IntoResponse::into_response)
@@ -330,7 +330,7 @@ async fn download_run_artifacts(
         Ok(id) => id,
         Err(response) => return response,
     };
-    let projection = match state.cached_run_projection(&id).await {
+    let projection = match state.load_run_projection(&id).await {
         Ok(projection) => projection,
         Err(error) => return error.into_response(),
     };

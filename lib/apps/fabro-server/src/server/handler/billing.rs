@@ -69,7 +69,7 @@ async fn list_run_stages(
         Err(response) => return response,
     };
 
-    let projection = match state.cached_run_projection(&id).await {
+    let projection = match state.load_run_projection(&id).await {
         Ok(projection) => projection,
         Err(err) => return err.into_response(),
     };
@@ -90,7 +90,7 @@ async fn get_run_billing(
     State(state): State<Arc<AppState>>,
     Path(id): Path<RunId>,
 ) -> Response {
-    let projection = match state.cached_run_projection(&id).await {
+    let projection = match state.load_run_projection(&id).await {
         Ok(projection) => projection,
         Err(err) => return err.into_response(),
     };

@@ -11630,15 +11630,115 @@ async fn get_run_state_exposes_pending_interviews() {
 }
 
 #[tokio::test]
-async fn cache_backed_run_endpoints_reflect_events_appended_after_warmup() {
+async fn restarted_run_state_details_load_from_sql_and_preserve_error_statuses() {
+    let object_store: Arc<dyn object_store::ObjectStore> =
+        Arc::new(object_store::memory::InMemory::new());
+    let summaries = fabro_store::test_support::test_run_summary_store();
+    let blobs = fabro_store::test_support::test_blob_store();
+    let first_store = Arc::new(fabro_store::test_support::test_database_with_stores(
+        Arc::clone(&object_store),
+        "runs",
+        std::time::Duration::from_millis(1),
+        None,
+        Arc::clone(&blobs),
+        Arc::clone(&summaries),
+    ));
+    let first_state = test_app_state_with_store(
+        default_test_server_settings(),
+        RunLayer::default(),
+        5,
+        first_store,
+        ArtifactStore::new(Arc::clone(&object_store), "artifacts"),
+    );
+    let healthy_id = fixtures::RUN_1;
+    let broken_id = fixtures::RUN_2;
+    create_durable_run_with_events(&first_state, healthy_id, &[
+        workflow_event::Event::RunSubmitted {
+            definition_blob: None,
+        },
+    ])
+    .await;
+    create_succeeded_run(&first_state, broken_id).await;
+    first_state
+        .stores
+        .run_summaries
+        .test_delete_run_events(&broken_id)
+        .await
+        .unwrap();
+    drop(first_state);
+
+    let reopened_store = Arc::new(fabro_store::test_support::test_database_with_stores(
+        Arc::clone(&object_store),
+        "runs",
+        std::time::Duration::from_millis(1),
+        None,
+        blobs,
+        summaries,
+    ));
+    let reopened_state = test_app_state_with_store(
+        default_test_server_settings(),
+        RunLayer::default(),
+        5,
+        reopened_store,
+        ArtifactStore::new(object_store, "artifacts"),
+    );
+    assert_eq!(
+        reconcile_incomplete_runs_on_startup(&reopened_state)
+            .await
+            .unwrap(),
+        0,
+        "startup reconciliation must not replay terminal histories"
+    );
+    let app = crate::test_support::build_test_router(reopened_state);
+
+    let healthy = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{healthy_id}/state")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let healthy_body = response_json!(healthy, StatusCode::OK).await;
+    assert_eq!(healthy_body["spec"]["run_id"], healthy_id.to_string());
+
+    let missing = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{}/state", fixtures::RUN_3)))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(missing, StatusCode::NOT_FOUND).await;
+
+    let broken = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{broken_id}/state")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(broken, StatusCode::INTERNAL_SERVER_ERROR).await;
+}
+
+#[tokio::test]
+async fn run_projection_endpoints_reflect_events_appended_to_an_open_run() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = create_run(&app, MINIMAL_DOT)
         .await
         .parse::<RunId>()
         .unwrap();
-
-    state.stores.runs.warm_projection_cache().await.unwrap();
 
     let run_store = state.stores.runs.open_run(&run_id).await.unwrap();
     workflow_event::append_event(&run_store, &run_id, &workflow_event::Event::RunRunnable {
@@ -12976,14 +13076,14 @@ async fn run_tool_worker_token_can_use_client_backend_routes_across_runs() {
     assert_ne!(response.status(), StatusCode::FORBIDDEN);
 
     let created_child = create_run_with_bearer(&app, &run_tool_worker_token).await;
-    let cached = state
+    let projection = state
         .stores
         .runs
-        .get_cached_projection(&created_child)
+        .load_run_projection(&created_child)
         .await
         .unwrap()
-        .expect("created run should be cached");
-    assert_eq!(cached.spec.provenance.subject, Principal::Worker {
+        .expect("created run should have a projection");
+    assert_eq!(projection.spec.provenance.subject, Principal::Worker {
         run_id: parent_run_id,
     },);
 

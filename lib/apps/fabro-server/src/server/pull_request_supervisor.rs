@@ -139,7 +139,7 @@ pub(in crate::server) async fn process_pull_request_creation(
 ) -> anyhow::Result<()> {
     let _create_guard = state.pull_request_create_locks.lock(run_id).await;
     let run_store = state.stores.runs.open_run(&run_id).await?;
-    let Some(run_state) = state.stores.runs.get_cached_projection(&run_id).await? else {
+    let Some(run_state) = state.stores.runs.load_run_projection(&run_id).await? else {
         return Ok(());
     };
     let Some(creation) = run_state
@@ -257,7 +257,7 @@ pub(super) async fn recover_pending_pull_request_creations(
         if !can_dispatch(&run_id, active, failures) {
             continue;
         }
-        let projection = match state.stores.runs.get_cached_projection(&run_id).await {
+        let projection = match state.stores.runs.load_run_projection(&run_id).await {
             Ok(Some(projection)) => projection,
             Ok(None) => continue,
             Err(error) => {
