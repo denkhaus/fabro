@@ -84,3 +84,31 @@ attribute, worker-token claim, and scope vocabulary therefore use
 remains the ADR's subject; the mechanism it builds on is the neutral
 inspection scope. Decided jointly with the user in the 2026-08-31
 session; the seeds use the new name from fabro-0c32 onward.
+
+## Amendment (2026-09-02): the inspection scope also gates the legacy run-tool routes (fabro-4556)
+
+`require_run_management_target` historically let any `agent:run_tools`
+worker hit per-run routes (events, state, questions, start/cancel/interrupt/
+steer, parent-link, pair) for ARBITRARY run ids — a documented bypass of
+the `inspects` gate, which then protected only ask/session creation and
+enumeration. Decided with the user (option a of fabro-4556): tighten before
+the revisor exists, while no production consumer relies on the bypass.
+
+A run-tools worker may now target a run only when it is:
+
+1. the worker's own run, or
+2. a run of a workflow its token declares in `inspects`, or
+3. a run the worker **created** (engine-stamped `created_by` provenance), or
+4. a run **descended from** the worker's run (parent-id ancestry walk,
+   cycle-guarded; the walk fails closed beyond 31 hops).
+
+Allowances 3 and 4 keep the sub-workflow flow intact (parent worker
+creates a child, links itself, reads child state) and close the
+false-parenthood escalation: provenance is engine-stamped at creation, so
+a worker cannot mint read access by linking itself to a foreign run —
+that link is itself denied by the same rule. Denials log a `worker_auth`
+warning and return 403; unknown targets return 404 (user-path parity).
+The boundary is pinned by
+`run_tool_worker_cross_run_routes_require_inspects_scope` plus the pair
+boundary tests; `require_run_management_actor` (no-target routes such as
+create) is unchanged.

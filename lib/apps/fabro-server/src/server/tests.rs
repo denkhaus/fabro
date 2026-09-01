@@ -13665,13 +13665,18 @@ async fn inspects_worker_lists_runs_only_through_declared_workflow_filter() {
 }
 
 #[tokio::test]
-async fn run_tool_worker_token_can_use_client_backend_routes_across_runs() {
+async fn run_tool_worker_cross_run_routes_require_inspects_scope() {
+    // fabro-4556: an `agent:run_tools` worker no longer manages arbitrary
+    // runs. Allowed targets: the worker's own run, runs of workflows its
+    // token declares in `inspects`, runs the worker created, and runs
+    // descended from it. Everything else on run-management routes is 403.
     let (state, app) = jwt_auth_app();
     let user_jwt = issue_test_user_jwt();
     let parent_run_id = create_run_with_bearer(&app, &user_jwt).await;
-    let target_run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let foreign_run_id = create_run_with_bearer(&app, &user_jwt).await;
     let run_tool_worker_token = issue_test_run_tools_worker_token(&parent_run_id);
 
+    // Unchanged surfaces: enumeration and resolve stay worker-accessible.
     let response = app
         .clone()
         .oneshot(bearer_request(
@@ -13688,7 +13693,7 @@ async fn run_tool_worker_token_can_use_client_backend_routes_across_runs() {
         .clone()
         .oneshot(bearer_request(
             Method::GET,
-            &format!("/runs/resolve?selector={target_run_id}"),
+            &format!("/runs/resolve?selector={foreign_run_id}"),
             &run_tool_worker_token,
             Body::empty(),
         ))
@@ -13696,11 +13701,12 @@ async fn run_tool_worker_token_can_use_client_backend_routes_across_runs() {
         .unwrap();
     assert_status!(response, StatusCode::OK).await;
 
+    // Foreign run: every run-management route denies the worker now.
     for path in [
-        format!("/runs/{target_run_id}"),
-        format!("/runs/{target_run_id}/state"),
-        format!("/runs/{target_run_id}/events"),
-        format!("/runs/{target_run_id}/questions"),
+        format!("/runs/{foreign_run_id}"),
+        format!("/runs/{foreign_run_id}/state"),
+        format!("/runs/{foreign_run_id}/events"),
+        format!("/runs/{foreign_run_id}/questions"),
     ] {
         let response = app
             .clone()
@@ -13712,26 +13718,81 @@ async fn run_tool_worker_token_can_use_client_backend_routes_across_runs() {
             ))
             .await
             .unwrap();
-        assert_status!(response, StatusCode::OK).await;
+        assert_status!(response, StatusCode::FORBIDDEN).await;
     }
 
     let response = app
         .clone()
         .oneshot(json_bearer_request(
             Method::POST,
-            &format!("/runs/{target_run_id}/start"),
+            &format!("/runs/{foreign_run_id}/start"),
             &run_tool_worker_token,
             &json!({ "resume": false }),
         ))
         .await
         .unwrap();
-    assert_status!(response, StatusCode::OK).await;
+    assert_status!(response, StatusCode::FORBIDDEN).await;
 
     let response = app
         .clone()
         .oneshot(bearer_request(
             Method::POST,
-            &format!("/runs/{target_run_id}/cancel"),
+            &format!("/runs/{foreign_run_id}/cancel"),
+            &run_tool_worker_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+
+    for (method, path) in [
+        (Method::POST, format!("/runs/{foreign_run_id}/archive")),
+        (Method::POST, format!("/runs/{foreign_run_id}/unarchive")),
+        (Method::POST, format!("/runs/{foreign_run_id}/interrupt")),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(bearer_request(
+                method,
+                &path,
+                &run_tool_worker_token,
+                Body::empty(),
+            ))
+            .await
+            .unwrap();
+        assert_status!(response, StatusCode::FORBIDDEN).await;
+    }
+
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            &format!("/runs/{foreign_run_id}/steer"),
+            &run_tool_worker_token,
+            &json!({ "text": "continue", "interrupt": false }),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            &format!("/runs/{foreign_run_id}/questions/q-1/answer"),
+            &run_tool_worker_token,
+            &json!({ "kind": "yes" }),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+
+    // Self-access passes without any scope walk.
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{parent_run_id}/state"),
             &run_tool_worker_token,
             Body::empty(),
         ))
@@ -13739,51 +13800,8 @@ async fn run_tool_worker_token_can_use_client_backend_routes_across_runs() {
         .unwrap();
     assert_status!(response, StatusCode::OK).await;
 
-    for path in [
-        format!("/runs/{target_run_id}/archive"),
-        format!("/runs/{target_run_id}/unarchive"),
-        format!("/runs/{target_run_id}/interrupt"),
-    ] {
-        let response = app
-            .clone()
-            .oneshot(bearer_request(
-                Method::POST,
-                &path,
-                &run_tool_worker_token,
-                Body::empty(),
-            ))
-            .await
-            .unwrap();
-        assert_ne!(response.status(), StatusCode::UNAUTHORIZED, "{path}");
-        assert_ne!(response.status(), StatusCode::FORBIDDEN, "{path}");
-    }
-
-    let response = app
-        .clone()
-        .oneshot(json_bearer_request(
-            Method::POST,
-            &format!("/runs/{target_run_id}/steer"),
-            &run_tool_worker_token,
-            &json!({ "text": "continue", "interrupt": false }),
-        ))
-        .await
-        .unwrap();
-    assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
-    assert_ne!(response.status(), StatusCode::FORBIDDEN);
-
-    let response = app
-        .clone()
-        .oneshot(json_bearer_request(
-            Method::POST,
-            &format!("/runs/{target_run_id}/questions/q-1/answer"),
-            &run_tool_worker_token,
-            &json!({ "kind": "yes" }),
-        ))
-        .await
-        .unwrap();
-    assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
-    assert_ne!(response.status(), StatusCode::FORBIDDEN);
-
+    // Creator allowance: a run created BY the worker stays manageable even
+    // before any parent link exists — the sub-workflow pattern.
     let created_child = create_run_with_bearer(&app, &run_tool_worker_token).await;
     let cached = state
         .stores
@@ -13801,11 +13819,25 @@ async fn run_tool_worker_token_can_use_client_backend_routes_across_runs() {
 
     let response = app
         .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{created_child}/state"),
+            &run_tool_worker_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::OK).await;
+
+    // The creator may link itself as the child's parent and unlink again;
+    // false parenthood of foreign runs is denied by the same rule.
+    let response = app
+        .clone()
         .oneshot(json_bearer_request(
             Method::PUT,
             &format!("/runs/{created_child}/parent"),
             &run_tool_worker_token,
-            &json!({ "parent_id": target_run_id.to_string() }),
+            &json!({ "parent_id": parent_run_id.to_string() }),
         ))
         .await
         .unwrap();
@@ -13822,15 +13854,202 @@ async fn run_tool_worker_token_can_use_client_backend_routes_across_runs() {
         .await
         .unwrap();
     assert_status!(response, StatusCode::OK).await;
+
+    // Linking a FOREIGN run as parent is denied — that would mint read
+    // access out of nothing.
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::PUT,
+            &format!("/runs/{foreign_run_id}/parent"),
+            &run_tool_worker_token,
+            &json!({ "parent_id": parent_run_id.to_string() }),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+
+    // Unknown run: 404 parity with the user path (not a scope 403).
+    let unknown_run_id = RunId::new();
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{unknown_run_id}/state"),
+            &run_tool_worker_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::NOT_FOUND).await;
+
+    // inspects allowance: a worker declaring the target's workflow passes.
+    let smoke_run_id = RunId::new();
+    create_run_with_workflow_slug(&state, smoke_run_id, "smoke").await;
+    let inspects_token = issue_test_inspects_worker_token(&RunId::new(), &["smoke".to_string()]);
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{smoke_run_id}/state"),
+            &inspects_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::OK).await;
+
+    // ...while the same worker without the declaration is denied.
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{smoke_run_id}/state"),
+            &run_tool_worker_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
 }
 
 #[tokio::test]
-async fn run_tools_worker_can_read_pair_status_and_transcript_across_runs() {
+async fn run_tool_worker_ancestor_allowance_independent_of_creator() {
+    // fabro-4556 rule 3 in isolation: a run the worker did NOT create
+    // becomes targetable when a USER links it below the worker's run.
+    // Without the ancestry walk this test fails — creator alone must not
+    // carry it.
+    let (state, app) = jwt_auth_app();
+    let user_jwt = issue_test_user_jwt();
+    let worker_run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let user_child = create_run_with_bearer(&app, &user_jwt).await;
+    let worker_token = issue_test_run_tools_worker_token(&worker_run_id);
+
+    // Before the link: the user-created child is foreign to the worker.
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{user_child}/state"),
+            &worker_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+
+    // A user (not the worker) links the child under the worker's run.
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::PUT,
+            &format!("/runs/{user_child}/parent"),
+            &user_jwt,
+            &json!({ "parent_id": worker_run_id.to_string() }),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::OK).await;
+
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{user_child}/state"),
+            &worker_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::OK).await;
+
+    // Sanity: the allowance came from ancestry, not provenance.
+    let cached = state
+        .stores
+        .runs
+        .get_cached_run(&user_child)
+        .await
+        .unwrap()
+        .expect("child should be cached");
+    assert!(
+        !matches!(
+            &cached.projection.spec.provenance.subject,
+            Principal::Worker { run_id } if run_id == &worker_run_id
+        ),
+        "child must not be worker-created for this test to pin ancestry"
+    );
+}
+
+/// Store-level parent-link corruption for authorization tests: the link
+/// API rejects cycles, so a cyclic chain can only be written directly as
+/// events.
+async fn append_parent_linked_event(state: &Arc<AppState>, child: RunId, parent: RunId) {
+    let run_store = state.stores.runs.open_run(&child).await.unwrap();
+    workflow_event::append_event(
+        &run_store,
+        &child,
+        &workflow_event::Event::RunParentLinked {
+            previous_parent_id: None,
+            parent_id:          parent,
+            actor:              None,
+        },
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn run_tool_worker_cyclic_parent_chain_fails_closed() {
+    // Cycle guard: a corrupt parent chain (mutual parents, only writable
+    // at the store level — the link API rejects cycles) must deny, not
+    // loop.
+    let (state, app) = jwt_auth_app();
+    let user_jwt = issue_test_user_jwt();
+    let worker_run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let run_a = create_run_with_bearer(&app, &user_jwt).await;
+    let run_b = create_run_with_bearer(&app, &user_jwt).await;
+    let worker_token = issue_test_run_tools_worker_token(&worker_run_id);
+
+    // Store-level corruption: a <-> b mutual parents.
+    append_parent_linked_event(&state, run_a, run_b).await;
+    append_parent_linked_event(&state, run_b, run_a).await;
+
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{run_a}/state"),
+            &worker_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+}
+
+#[tokio::test]
+async fn run_tools_worker_reads_pair_status_and_transcript_for_created_runs_only() {
+    // fabro-4556: pair routes share the run-management inspection scope —
+    // foreign targets are 403, runs the worker created stay readable.
     let (state, app) = jwt_auth_app();
     let user_jwt = issue_test_user_jwt();
     let origin_run_id = create_run_with_bearer(&app, &user_jwt).await;
-    let target_run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let foreign_run_id = create_run_with_bearer(&app, &user_jwt).await;
     let worker_token = issue_test_run_tools_worker_token(&origin_run_id);
+
+    let response = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{foreign_run_id}/pair"),
+            &worker_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+
+    let target_run_id = create_run_with_bearer(&app, &worker_token).await;
     let pair_id = append_pair_transcript_fixture(&state, target_run_id).await;
 
     let response = app
@@ -13861,12 +14080,28 @@ async fn run_tools_worker_can_read_pair_status_and_transcript_across_runs() {
 }
 
 #[tokio::test]
-async fn run_tools_worker_start_pair_reaches_worker_control_domain_across_runs() {
+async fn run_tools_worker_start_pair_reaches_worker_control_domain_for_created_runs() {
+    // fabro-4556: the worker-control domain probe keeps its semantics on
+    // runs the worker created; foreign targets never reach the handler.
     let (state, app) = jwt_auth_app();
     let user_jwt = issue_test_user_jwt();
     let origin_run_id = create_run_with_bearer(&app, &user_jwt).await;
-    let target_run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let foreign_run_id = create_run_with_bearer(&app, &user_jwt).await;
     let worker_token = issue_test_run_tools_worker_token(&origin_run_id);
+
+    let response = app
+        .clone()
+        .oneshot(json_bearer_request(
+            Method::POST,
+            &format!("/runs/{foreign_run_id}/pair"),
+            &worker_token,
+            &json!({ "stage_id": "ignored" }),
+        ))
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::FORBIDDEN).await;
+
+    let target_run_id = create_run_with_bearer(&app, &worker_token).await;
     let target = pair_test_target();
     let _temp_dir = insert_running_control_run(&state, target_run_id, None);
     {

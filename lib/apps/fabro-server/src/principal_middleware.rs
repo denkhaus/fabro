@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 
@@ -7,6 +7,7 @@ use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use chrono::Utc;
 use fabro_types::{AuthMethod, BlobHash, IdpIdentity, Principal, RunId, StageId, UserPrincipal};
 use jsonwebtoken::decode_header;
 use strum::IntoStaticStr;
@@ -315,8 +316,21 @@ impl FromRequestParts<Arc<AppState>> for RequireRunManagementTarget {
             );
         };
         let run_id = parse_run_id_path(id)?;
-        let actor = require_run_management_target(&auth_slot_from_parts(parts), &run_id)
+        let decision = require_run_management_target(&auth_slot_from_parts(parts), &run_id)
             .map_err(IntoResponse::into_response)?;
+        // The scope check needs the store, so it runs after the auth-context
+        // lock is released inside `require_run_management_target`.
+        let actor = match decision {
+            RunManagementTarget::Allowed(principal) => principal,
+            RunManagementTarget::CrossRunWorker {
+                principal,
+                worker_run_id,
+                scopes,
+            } => {
+                authorize_cross_run_worker_target(state, &worker_run_id, &scopes, &run_id).await?;
+                principal
+            }
+        };
         Ok(Self(run_id, actor))
     }
 }
@@ -514,21 +528,120 @@ fn require_worker_for_run(slot: &AuthContextSlot, route_run_id: &RunId) -> Resul
     }
 }
 
+/// Principal decision for a run-management route targeting `route_run_id`.
+///
+/// `fabro-4556`: a worker holding `agent:run_tools` no longer passes for
+/// arbitrary run ids at this layer. The extractor resolves
+/// [`RunManagementTarget::CrossRunWorker`] against the ADR-0011 inspection
+/// scope — own run, `inspects`-declared workflows, created runs, and
+/// descendant runs — once store access is available.
+#[derive(Debug, PartialEq)]
+enum RunManagementTarget {
+    Allowed(Principal),
+    CrossRunWorker {
+        principal:     Principal,
+        worker_run_id: RunId,
+        scopes:        WorkerScopeSet,
+    },
+}
+
 fn require_run_management_target(
     slot: &AuthContextSlot,
     route_run_id: &RunId,
-) -> Result<Principal, ApiError> {
+) -> Result<RunManagementTarget, ApiError> {
     let context = slot.0.lock().expect("auth context lock poisoned");
     match &context.principal {
-        Some(Principal::User(user)) => Ok(Principal::User(user.clone())),
-        Some(Principal::Worker { run_id })
-            if run_id == route_run_id || context.worker_scopes.has_agent_run_tools() =>
+        Some(principal @ Principal::User(_)) => Ok(RunManagementTarget::Allowed(principal.clone())),
+        Some(principal @ Principal::Worker { run_id }) if run_id == route_run_id => {
+            Ok(RunManagementTarget::Allowed(principal.clone()))
+        }
+        Some(principal @ Principal::Worker { run_id })
+            if context.worker_scopes.has_agent_run_tools() =>
         {
-            Ok(Principal::Worker { run_id: *run_id })
+            Ok(RunManagementTarget::CrossRunWorker {
+                principal:     principal.clone(),
+                worker_run_id: *run_id,
+                scopes:        context.worker_scopes.clone(),
+            })
         }
         Some(Principal::Worker { .. }) => Err(ApiError::forbidden()),
         None | Some(_) => Err(auth_rejection(context.auth_status, context.auth_error_code)),
     }
+}
+
+/// Hard cap for ancestry walks: run lineage deeper than any real sub-workflow
+/// nesting is treated as a scope denial instead of unbounded traversal.
+const MAX_ANCESTRY_DEPTH: usize = 32;
+
+/// Enforce the ADR-0011 inspection scope on cross-run targets of
+/// run-management routes (`fabro-4556`): an `agent:run_tools` worker may
+/// touch only its own run, runs of workflows its token declares in
+/// `inspects`, runs it created, or runs descended from its own run.
+///
+/// The creator and ancestor allowances keep the sub-workflow flow intact —
+/// a parent worker creates a child, links itself as parent, then reads child
+/// state — while false parenthood of foreign runs stays impossible:
+/// provenance is engine-stamped at creation, and linking a foreign run
+/// already requires a creator-or-ancestor relationship.
+async fn authorize_cross_run_worker_target(
+    state: &AppState,
+    worker_run_id: &RunId,
+    scopes: &WorkerScopeSet,
+    target_run_id: &RunId,
+) -> Result<(), Response> {
+    let mut visited = HashSet::new();
+    let mut target_known = false;
+    let mut target_slug = None;
+    let mut cursor = Some(*target_run_id);
+    for _ in 0..MAX_ANCESTRY_DEPTH {
+        let Some(current) = cursor else {
+            break;
+        };
+        if current == *worker_run_id {
+            return Ok(());
+        }
+        if !visited.insert(current) {
+            break;
+        }
+        let run = state
+            .stores
+            .runs
+            .get_cached_summary(&current, Utc::now())
+            .await
+            .map_err(|err| {
+                ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
+            })?;
+        let Some(run) = run else {
+            break;
+        };
+        if current == *target_run_id {
+            target_known = true;
+            target_slug.clone_from(&run.workflow.slug);
+            if let Some(slug) = run.workflow.slug.as_deref() {
+                if scopes.inspects_allows(slug) {
+                    return Ok(());
+                }
+            }
+            if matches!(
+                &run.created_by,
+                Principal::Worker { run_id } if run_id == worker_run_id
+            ) {
+                return Ok(());
+            }
+        }
+        cursor = run.parent_id;
+    }
+    if !target_known {
+        return Err(ApiError::not_found("Run not found.").into_response());
+    }
+    tracing::warn!(
+        target: "worker_auth",
+        run_id = %target_run_id,
+        worker_run_id = %worker_run_id,
+        workflow_slug = target_slug.as_deref().unwrap_or("<none>"),
+        "worker denied run-management access outside inspection scope"
+    );
+    Err(ApiError::forbidden().into_response())
 }
 
 fn classify_request(req: &Request, state: &AppState) -> RequestAuthContext {
@@ -964,7 +1077,7 @@ mod tests {
 
         assert_eq!(
             require_run_management_target(&slot, &RunId::new()).unwrap(),
-            user,
+            RunManagementTarget::Allowed(user),
         );
     }
 
@@ -979,12 +1092,14 @@ mod tests {
 
         assert_eq!(
             require_run_management_target(&slot, &run_id).unwrap(),
-            Principal::Worker { run_id },
+            RunManagementTarget::Allowed(Principal::Worker { run_id }),
         );
     }
 
     #[test]
-    fn run_management_target_accepts_cross_run_with_run_tools_scope() {
+    fn run_management_target_defers_cross_run_run_tools_worker_to_scope_check() {
+        // fabro-4556: cross-run run-tools workers no longer pass here; the
+        // extractor resolves them against the inspects scope first.
         let token_run_id = RunId::new();
         let route_run_id = RunId::new();
         let slot = AuthContextSlot::initial();
@@ -995,8 +1110,12 @@ mod tests {
 
         assert_eq!(
             require_run_management_target(&slot, &route_run_id).unwrap(),
-            Principal::Worker {
-                run_id: token_run_id,
+            RunManagementTarget::CrossRunWorker {
+                principal:     Principal::Worker {
+                    run_id: token_run_id,
+                },
+                worker_run_id: token_run_id,
+                scopes:        WorkerScopeSet::run_worker_with_agent_run_tools(),
             },
         );
     }

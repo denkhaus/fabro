@@ -67,10 +67,16 @@ The declaration is the authority contract, enforced at three layers: the
 worker token carries the declared slugs, the tools reject targets outside
 them, and the server re-checks every session creation and enumeration
 request. A run whose workflow has no slug (for example legacy manifest
-runs) is never in scope. Note that the wider run-tool catalog
-(`fabro_run_get`, `fabro_run_events`, ...) remains governed by
-`run.agent.fabro_tools` alone; `inspects` gates the cross-workflow ask
-and enumeration paths.
+runs) is never in scope.
+
+The wider run-tool catalog (`fabro_run_get`, `fabro_run_events`, run
+state, questions, pair routes, start/cancel/interrupt/steer) is scoped by
+the same rule at the server: a worker holding `run.agent.fabro_tools`
+may target a run only when it is the worker's **own** run, a run of a
+workflow its token declares in `inspects`, a run **created by** the
+worker, or a run **descended from** the worker's run (sub-workflow
+children). Every other cross-run target is rejected with a 403 and a
+`worker_auth` warning. Users are unaffected.
 
 <Note>
 When a workflow agent calls `fabro_run_create`, Fabro always parents the created runs to the current run. If the agent supplies `parent_id`, it must match the current run ID.
