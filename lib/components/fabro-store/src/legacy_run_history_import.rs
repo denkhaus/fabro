@@ -1607,6 +1607,47 @@ mod tests {
         Ok(())
     }
 
+    /// Real deployments wrote catalog markers as
+    /// `runs/_index/by-start/<YYYY-MM-DD>/<run_id>` (`RunId::key_segments()`
+    /// prefixed the start date). The canonical layout drops the date, but the
+    /// activation diagnostics must accept both so existing markers migrate
+    /// (fabro-b7c4).
+    #[tokio::test]
+    async fn legacy_run_history_import_accepts_date_prefixed_catalog_markers() -> TestResult<()> {
+        let context = TestContext::new().await?;
+        let dated = run_id(1);
+        let canonical = run_id(2);
+        let dated_created = serde_json::to_string(&created_value(&dated, "dated"))?;
+        let canonical_created = serde_json::to_string(&created_value(&canonical, "canonical"))?;
+        context.put_event(&dated, 1, 10, &dated_created).await?;
+        context
+            .put_event(&canonical, 1, 20, &canonical_created)
+            .await?;
+        context
+            .put_raw(keys::run_catalog_key_legacy(&dated), b"")
+            .await?;
+        context
+            .put_raw(keys::run_catalog_key(&canonical), b"")
+            .await?;
+
+        let report = context.import().await?;
+
+        assert_eq!(report, LegacyRunHistoryImportReport {
+            scanned_source_runs: 2,
+            scanned_source_events: 2,
+            imported_runs: 2,
+            imported_events: 2,
+            committed_run_transactions: 2,
+            diagnostics: LegacyRunHistoryDiagnostics {
+                catalog_markers:       2,
+                empty_catalog_markers: 0,
+                session_reverse_rows:  0,
+            },
+            ..LegacyRunHistoryImportReport::default()
+        });
+        Ok(())
+    }
+
     #[tokio::test]
     async fn legacy_run_history_retry_uses_complete_destination_histories_as_progress()
     -> TestResult<()> {

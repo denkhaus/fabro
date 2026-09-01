@@ -71,14 +71,41 @@ pub(crate) fn run_catalog_key(run_id: &RunId) -> SlateKey {
     run_catalog_root().with(run_id)
 }
 
+/// Legacy catalog marker key exactly as the retired writer produced it:
+/// `runs/_index/by-start/<YYYY-MM-DD>/<run_id>` (start date from
+/// `RunId::key_segments()`).
+#[cfg(test)]
+pub(crate) fn run_catalog_key_legacy(run_id: &RunId) -> SlateKey {
+    run_catalog_root()
+        .with(run_id.created_at().format("%Y-%m-%d"))
+        .with(run_id)
+}
+
 /// Extracts the run id from a full catalog marker key, or `None` when the key
-/// is not exactly `runs/_index/by-start/<run_id>`.
+/// is not a legacy `runs/_index/by-start/...` catalog marker.
+///
+/// The retired catalog carried two layouts. Canonical markers are exactly
+/// `runs/_index/by-start/<run_id>`, but the writer that populated real
+/// deployments prefixed each run id with its start date
+/// (`RunId::key_segments()`), producing
+/// `runs/_index/by-start/<YYYY-MM-DD>/<run_id>`. Both carry the run id in
+/// their final segment, so both layouts parse and pre-existing markers can
+/// migrate; anything else is rejected.
 pub(crate) fn parse_run_catalog_key(raw: &str) -> Option<RunId> {
     let segments = SlateKey::segments(raw).collect::<Vec<_>>();
-    let ["runs", "_index", "by-start", run_id] = segments.as_slice() else {
-        return None;
-    };
-    run_id.parse().ok()
+    match segments.as_slice() {
+        ["runs", "_index", "by-start", run_id] => run_id.parse().ok(),
+        ["runs", "_index", "by-start", date, run_id] if is_legacy_start_date(date) => {
+            run_id.parse().ok()
+        }
+        _ => None,
+    }
+}
+
+/// Validates the `YYYY-MM-DD` start-date segment the legacy catalog writer
+/// placed between the prefix and each run id.
+fn is_legacy_start_date(segment: &str) -> bool {
+    chrono::NaiveDate::parse_from_str(segment, "%Y-%m-%d").is_ok()
 }
 
 fn run_catalog_root() -> SlateKey {
@@ -153,6 +180,26 @@ mod tests {
     fn into_prefix_appends_trailing_null_byte() {
         let key = SlateKey::new("a").with("b").into_prefix();
         assert_eq!(key.as_ref(), b"a\0b\0");
+    }
+
+    #[test]
+    fn run_catalog_keys_parse_canonical_and_legacy_layouts() {
+        let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
+
+        let canonical = run_catalog_key(&run_id);
+        assert_eq!(parse_run_catalog_key(canonical.as_str()), Some(run_id));
+
+        let legacy = run_catalog_key_legacy(&run_id);
+        assert_eq!(parse_run_catalog_key(legacy.as_str()), Some(run_id));
+    }
+
+    #[test]
+    fn run_catalog_keys_reject_non_date_middle_segments() {
+        let run_id: RunId = "01JT56VE4Z5NZ814GZN2JZD65A".parse().unwrap();
+        let malformed = run_catalog_root().with("not-a-date").with(run_id);
+        assert_eq!(parse_run_catalog_key(malformed.as_str()), None);
+        assert_eq!(parse_run_catalog_key("runs"), None);
+        assert_eq!(parse_run_catalog_key("runs\0_index\0by-start\0"), None);
     }
 
     #[test]
