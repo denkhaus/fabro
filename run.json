@@ -659,7 +659,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-01T12:55:11.836318910Z",
-  "last_event_at": "2026-09-01T13:05:15.278427236Z",
+  "last_event_at": "2026-09-01T13:05:32.689394538Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -842,9 +842,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 282,
       "checkpoint": {
-        "timestamp": "2026-09-01T13:05:15.502601037Z",
+        "timestamp": "2026-09-01T13:05:20.619324732Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -853,9 +853,207 @@
         ],
         "node_retries": {},
         "context_values": {
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 5577,
+            "preview": "Implementation complete. Summary of changes:\n\n**`/workspace/fabro/.fabro/workflows/develop/scripts/evidence.nu`** (+76/−8): added `seed-status-at` (reads the seed's status from `.seeds/issues.jsonl`"
+          },
+          "current_node": "implementer",
+          "current_seed_id": "fabro-7e44",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Nushell gotcha hit while implementing: a custom command param typed `string` rejects a runtime `nothing` passed via an if-expression (parser error 'expected string, found nothing'), which would have crashed evidence.nu's no-seed-in-progress path — fixed by typing the param `any` with an explicit null guard; recorded to mulch (domain develop-workflow).",
+              "As the brief predicted, this seed's own edits are loop-classified (`.fabro/` prefix), so the new per-seed diff mechanism cannot demonstrate itself on its own changes — verification relied on sourcing the helpers in `nu -c` and synthetic `diff-section` calls rather than the capture output."
+            ]
+          },
+          "current_seed_brief": "Scope: edit `.fabro/workflows/develop/scripts/evidence.nu` and align the shared wording in `.fabro/workflows/develop/prompts/reviewer.md` (both tracked at repo root `/workspace/fabro`; gofib code and qualitygate are out of scope). Acceptance criteria:\n- New fact helper resolves the CURRENT seed's claim commit: walk `git log --format=%H -- .seeds/issues.jsonl` newest-first and find the newest commit C where the in-progress seed's `status` transitions to `in_progress` (records are one JSON object per line; compare the seed's status at C vs C^).\n- Diff anchor = that claim commit itself (the engine's planner checkpoint, subject `fabro(<run-id>): planner (succeeded)`). Resolved ambiguity: base is the claim commit, not its parent — the claim commit carries only tracker churn and loop paths are filtered from the diff anyway, so `git diff <claim>` covers exactly post-claim work.\n- ONLY the diff scope changes: `diff-section` uses the seed-claim base; numstat rows, integrity counts, and the seed-work file list stay run-scoped (run base) per spec.\n- Header names the diff base mechanically: first integrity line gains the seed-claim SHA (e.g. `evidence: base=<run-base> seed=<id> diff-base=<claim-short>`); the trailing duplicate integrity line stays in sync; the diff section head says per-seed/claim base, not \"against run base\".\n- Fallback: if no claim commit resolves (squashed history, claim predates repo state), diff against the run base and say so in the header (mirror the existing grounded / NO RUN BASE note pattern) — never a silent mis-scoped diff.\n- Re-plan cycles must NOT re-anchor: a second planner visit creates no status transition, so all cycles of the seed stay visible in later reviews.\n- Skip files whose per-seed diff is empty (seed-1 leftovers in the run-scoped file list) — no blank-line noise; the file list naming files with zero per-seed hunks is by design, not a bug.\n- Keep `-U3` context and HARD_CAP semantics unchanged; ~15-25 KB captures regardless of loop count is the expected outcome, not new code.\n- Reviewer prompt (`prompts/reviewer.md`, Evidence-capture bullet): update `git diff -U1 against the run base` to the per-seed claim base named in the header, and fix the stale `-U1` to `-U3` (script has used -U3 since 2026-08-27; the seed says keep -U3) — evidence.nu's header warns this wording is contract shared with the prompt.\n- Verification without worktree mutation: run `nu .fabro/workflows/develop/scripts/evidence.nu` — exits 0, header names diff-base as this run's planner checkpoint; plus source the script in `nu -c` and print the helper's resolved claim base for the in-progress seed. Note: this seed's own edits are loop-classified (`.fabro/` prefix), so the capture's diff section will show no seed-work hunks for them — the reviewer verifies by reading the files directly.",
+          "failure_signature": "",
+          "graph.preamble_budget_kb": "24",
+          "graph.rankdir": "LR",
+          "outcome": "succeeded",
+          "thread.planner.current_node": "implementer",
+          "internal.fidelity": "summary:high",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 5260,
+            "preview": "Claimed `fabro-7e44`: the evidence capture must diff against the current seed's claim commit instead of the run base. I inspected `evidence.nu`, the checkpoint-commit format (`fabro(<run-id>): <node> "
+          },
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.planner": 0,
+          "internal.run_id": "01M1EGK6J8CNP9APJ7PWE6WE74",
+          "failure_class": "",
+          "last_stage": "implementer",
+          "last_response": "Implementation complete. Summary of changes:\n\n**`/workspace/fabro/.fabro/workflows/develop/scripts/evidence.nu`** (+76/−8): added `seed-status-at` (reads the seed's status from `.seeds/issues.jsonl`",
+          "implementation_summary": "Edited `.fabro/workflows/develop/scripts/evidence.nu` (new `seed-status-at` + `seed-claim-base` helpers resolving the in-progress seed's claim commit by status transition over `.seeds/issues.jsonl` history; header/`integrity-line` now carry `diff-base=<claim-short>` in both the first and trailing lines; `diff-section` anchors at the claim commit, names the per-seed base in its head, and skips empty per-seed diffs without blank noise or false omission; run-scoped numstat/counts/file list untouched; fallback to run base stated in header; `-U3`/`HARD_CAP` unchanged; fixed a latent crash where a `string`-typed param rejected runtime null on the no-seed path) and `.fabro/workflows/develop/prompts/reviewer.md` (Evidence-capture bullet: per-seed claim base named in header, `-U1` → `-U3`). Verified: script exits 0 with `diff-base=4b9ee80` (this run's planner checkpoint); sourced helper resolution, fallback, null, and empty-diff paths all exercised. Per-criterion report: all 10 brief bullets PASS as itemized above.",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1
+          },
+          "internal.thread_id": "planner",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.start.current_node": "planner",
+          "current_seed_title": "develop: scope the evidence diff per seed, not per run base",
+          "graph.max_node_visits": "40",
+          "internal.seed_cycle_anchor": "fabro-7e44",
+          "internal.retry_count.start": 0,
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "preferred_label": "Implemented",
+          "internal.node_visit_count": 1
+        },
+        "node_outcomes": {
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "current_seed_brief": "Scope: edit `.fabro/workflows/develop/scripts/evidence.nu` and align the shared wording in `.fabro/workflows/develop/prompts/reviewer.md` (both tracked at repo root `/workspace/fabro`; gofib code and qualitygate are out of scope). Acceptance criteria:\n- New fact helper resolves the CURRENT seed's claim commit: walk `git log --format=%H -- .seeds/issues.jsonl` newest-first and find the newest commit C where the in-progress seed's `status` transitions to `in_progress` (records are one JSON object per line; compare the seed's status at C vs C^).\n- Diff anchor = that claim commit itself (the engine's planner checkpoint, subject `fabro(<run-id>): planner (succeeded)`). Resolved ambiguity: base is the claim commit, not its parent — the claim commit carries only tracker churn and loop paths are filtered from the diff anyway, so `git diff <claim>` covers exactly post-claim work.\n- ONLY the diff scope changes: `diff-section` uses the seed-claim base; numstat rows, integrity counts, and the seed-work file list stay run-scoped (run base) per spec.\n- Header names the diff base mechanically: first integrity line gains the seed-claim SHA (e.g. `evidence: base=<run-base> seed=<id> diff-base=<claim-short>`); the trailing duplicate integrity line stays in sync; the diff section head says per-seed/claim base, not \"against run base\".\n- Fallback: if no claim commit resolves (squashed history, claim predates repo state), diff against the run base and say so in the header (mirror the existing grounded / NO RUN BASE note pattern) — never a silent mis-scoped diff.\n- Re-plan cycles must NOT re-anchor: a second planner visit creates no status transition, so all cycles of the seed stay visible in later reviews.\n- Skip files whose per-seed diff is empty (seed-1 leftovers in the run-scoped file list) — no blank-line noise; the file list naming files with zero per-seed hunks is by design, not a bug.\n- Keep `-U3` context and HARD_CAP semantics unchanged; ~15-25 KB captures regardless of loop count is the expected outcome, not new code.\n- Reviewer prompt (`prompts/reviewer.md`, Evidence-capture bullet): update `git diff -U1 against the run base` to the per-seed claim base named in the header, and fix the stale `-U1` to `-U3` (script has used -U3 since 2026-08-27; the seed says keep -U3) — evidence.nu's header warns this wording is contract shared with the prompt.\n- Verification without worktree mutation: run `nu .fabro/workflows/develop/scripts/evidence.nu` — exits 0, header names diff-base as this run's planner checkpoint; plus source the script in `nu -c` and print the helper's resolved claim base for the in-progress seed. Note: this seed's own edits are loop-classified (`.fabro/` prefix), so the capture's diff section will show no seed-work hunks for them — the reviewer verifies by reading the files directly.",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 5260,
+                "preview": "Claimed `fabro-7e44`: the evidence capture must diff against the current seed's claim commit instead of the run base. I inspected `evidence.nu`, the checkpoint-commit format (`fabro(<run-id>): <node> "
+              },
+              "last_stage": "planner",
+              "last_response": "Claimed `fabro-7e44`: the evidence capture must diff against the current seed's claim commit instead of the run base. I inspected `evidence.nu`, the checkpoint-commit format (`fabro(<run-id>): <node> ",
+              "current_seed_title": "develop: scope the evidence diff per seed, not per run base",
+              "current_seed_id": "fabro-7e44",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "`sd prime` (seeds onboard banner) instructs every session to run `sd close`, `sd sync && git push` before finishing — directly contradicting the develop workflow role rules where only the deterministic Closeout closes seeds and stages never push. Where: seeds-cli prime output 'Session Close Protocol' section; evidence: run 01M1EGK6J8CNP9APJ7PWE6WE74 planner pass (stage prompt explicitly overrides it, but an LLM skimming the banner could comply with it). Fix idea: role-scoped prime (e.g. `sd prime --role implementer` suppressing close/push instructions) or a workflow-level note that the close protocol applies to human interactive sessions only."
+                  }
+                ],
+                "observations": [
+                  "Only two seeds remain open: fabro-7e44 (Medium, claimed this pass) and fabro-f831 (Low, next). Both target `.fabro/workflows/develop/` assets, which evidence.nu classifies as loop churn — their captures will show zero seed-work diff hunks and reviewers must verify by reading files with tools.",
+                  "Stale contradiction found and resolved in the brief: `prompts/reviewer.md` line 11 still describes the diff as `git diff -U1` against the run base, while evidence.nu has done `-U3` since 2026-08-27 — the brief pins -U3 in both places.",
+                  "Spec ambiguity resolved: 'anchor at the commit where the seed was claimed' = the claim checkpoint commit itself (not its parent), and re-plan planner visits must not re-anchor (no status transition), so multi-cycle seed work stays visible; claim identification is transition-based on `.seeds/issues.jsonl`, which survives identical checkpoint subjects."
+                ]
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 50460,
+                    "output_tokens": 2981,
+                    "reasoning_tokens": 14936,
+                    "cache_read_tokens": 265728,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 218552
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 354686,
+              "tool_time_ms": 4710,
+              "active_time_ms": 359396
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Edited `.fabro/workflows/develop/scripts/evidence.nu` (new `seed-status-at` + `seed-claim-base` helpers resolving the in-progress seed's claim commit by status transition over `.seeds/issues.jsonl` history; header/`integrity-line` now carry `diff-base=<claim-short>` in both the first and trailing lines; `diff-section` anchors at the claim commit, names the per-seed base in its head, and skips empty per-seed diffs without blank noise or false omission; run-scoped numstat/counts/file list untouched; fallback to run base stated in header; `-U3`/`HARD_CAP` unchanged; fixed a latent crash where a `string`-typed param rejected runtime null on the no-seed path) and `.fabro/workflows/develop/prompts/reviewer.md` (Evidence-capture bullet: per-seed claim base named in header, `-U1` → `-U3`). Verified: script exits 0 with `diff-base=4b9ee80` (this run's planner checkpoint); sourced helper resolution, fallback, null, and empty-diff paths all exercised. Per-criterion report: all 10 brief bullets PASS as itemized above.",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 5577,
+                "preview": "Implementation complete. Summary of changes:\n\n**`/workspace/fabro/.fabro/workflows/develop/scripts/evidence.nu`** (+76/−8): added `seed-status-at` (reads the seed's status from `.seeds/issues.jsonl`"
+              },
+              "last_stage": "implementer",
+              "last_response": "Implementation complete. Summary of changes:\n\n**`/workspace/fabro/.fabro/workflows/develop/scripts/evidence.nu`** (+76/−8): added `seed-status-at` (reads the seed's status from `.seeds/issues.jsonl`",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Nushell gotcha hit while implementing: a custom command param typed `string` rejects a runtime `nothing` passed via an if-expression (parser error 'expected string, found nothing'), which would have crashed evidence.nu's no-seed-in-progress path — fixed by typing the param `any` with an explicit null guard; recorded to mulch (domain develop-workflow).",
+                  "As the brief predicted, this seed's own edits are loop-classified (`.fabro/` prefix), so the new per-seed diff mechanism cannot demonstrate itself on its own changes — verification relied on sourcing the helpers in `nu -c` and synthetic `diff-section` calls rather than the capture output."
+                ]
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 24861,
+                    "output_tokens": 5443,
+                    "reasoning_tokens": 4952,
+                    "cache_read_tokens": 361024,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 174384
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/workflows/develop/prompts/reviewer.md",
+              "/workspace/fabro/.fabro/workflows/develop/scripts/evidence.nu"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 211040,
+              "tool_time_ms": 4468,
+              "active_time_ms": 215508
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "91fa29178cf872346bbcb9595daa1ba05956c824",
+        "node_visits": {
+          "implementer": 1,
+          "start": 1,
+          "planner": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl b/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl\nindex c813f50..d3ac633 100644\n--- a/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl\n+++ b/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl\n@@ -1,2 +1,3 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-01T12:55:15Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:01:25Z\",\"data\":{\"painpoints\":[{\"text\":\"`sd prime` (seeds onboard banner) instructs every session to run `sd close`, `sd sync && git push` before finishing — directly contradicting the develop workflow role rules where only the deterministic Closeout closes seeds and stages never push. Where: seeds-cli prime output 'Session Close Protocol' section; evidence: run 01M1EGK6J8CNP9APJ7PWE6WE74 planner pass (stage prompt explicitly overrides it, but an LLM skimming the banner could comply with it). Fix idea: role-scoped prime (e.g. `sd prime --role implementer` suppressing close/push instructions) or a workflow-level note that the close protocol applies to human interactive sessions only.\"}],\"observations\":[\"Only two seeds remain open: fabro-7e44 (Medium, claimed this pass) and fabro-f831 (Low, next). Both target `.fabro/workflows/develop/` assets, which evidence.nu classifies as loop churn — their captures will show zero seed-work diff hunks and reviewers must verify by reading files with tools.\",\"Stale contradiction found and resolved in the brief: `prompts/reviewer.md` line 11 still describes the diff as `git diff -U1` against the run base, while evidence.nu has done `-U3` since 2026-08-27 — the brief pins -U3 in both places.\",\"Spec ambiguity resolved: 'anchor at the commit where the seed was claimed' = the claim checkpoint commit itself (not its parent), and re-plan planner visits must not re-anchor (no status transition), so multi-cycle seed work stays visible; claim identification is transition-based on `.seeds/issues.jsonl`, which survives identical checkpoint subjects.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:05:15Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Nushell gotcha hit while implementing: a custom command param typed `string` rejects a runtime `nothing` passed via an if-expression (parser error 'expected string, found nothing'), which would have crashed evidence.nu's no-seed-in-progress path — fixed by typing the param `any` with an explicit null guard; recorded to mulch (domain develop-workflow).\",\"As the brief predicted, this seed's own edits are loop-classified (`.fabro/` prefix), so the new per-seed diff mechanism cannot demonstrate itself on its own changes — verification relied on sourcing the helpers in `nu -c` and synthetic `diff-section` calls rather than the capture output.\"]}}\ndiff --git a/.fabro/workflows/develop/prompts/reviewer.md b/.fabro/workflows/develop/prompts/reviewer.md\nindex b4914cc..5e7898d 100644\n--- a/.fabro/workflows/develop/prompts/reviewer.md\n+++ b/.fabro/workflows/develop/prompts/reviewer.md\n@@ -8,7 +8,7 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n\n \n ## Input (all in context — verify everything against it, nothing else)\n \n-- The Evidence capture (`command.output`) is COMPLETE, not self-budgeted: an integrity header (run base, seed-work file count with adds/deletes, loop-churn count, worktree state), the seed-work file list with per-file adds/deletes, then the COMPLETE diff of every seed-work file (`git diff -U1` against the run base, source files before docs), then loop-churn counts (the dev loop's own machinery — workflow, scripts, tracker, expertise, config — not seed work) and the working tree. A `hard cap hit` notice (pathological diff sizes only) names omitted files — treat them as UNSEEN.\n+- The Evidence capture (`command.output`) is COMPLETE, not self-budgeted: an integrity header (run base, seed-work file count with adds/deletes, loop-churn count, worktree state), the seed-work file list with per-file adds/deletes, then the COMPLETE diff of every seed-work file (`git diff -U3` against the per-seed claim base named in the capture header — the commit where this seed was claimed, so only the current seed's hunks appear; if the header marks a fallback to the run base it says so explicitly), source files before docs, then loop-churn counts (the dev loop's own machinery — workflow, scripts, tracker, expertise, config — not seed work) and the working tree. A `hard cap hit` notice (pathological diff sizes only) names omitted files — treat them as UNSEEN.\n - LARGE VALUES ARRIVE AS BLOB REFS: when the aggregate preamble budget is exceeded, the engine replaces any value (often the evidence capture) with a marker like `Output (6.6 KB; full value: /workspace/fabro/.fabro/blobs/<sha>.json)` plus a short preview with the materialized file's path (engine runtime layout, e.g. `/tmp/fabro/runtime/blobs/<sha>.json`; the marker's path is authoritative — never assume a fixed location). That file is IN YOUR SANDBOX — read it with your tools before judging. Page large blobs instead of skipping them: `read_file` with offset/limit, or `nu -c 'open --raw <blob-path> | str substring 0..20000'` (there is no python3/node in the sandbox). A preview is never grounds for a verification-uncertainty rejection; an unread blob ref is.\n - If after reading the blob the capture still appears cut (a diff that ends mid-hunk, counts that do not match what is visible), treat verification as uncertain and route Changes requested naming exactly what is missing. Untracked files appear only in the worktree section — they are in no diff; flag any that look like seed work or artifacts. Judge the diff against the in-progress seed spec in the capture (authoritative); the Planner's brief is only a summary — treat a brief that diverges from the spec or the evidence as a deviation.\n - `implementation_summary`: what the Implementer says it built. Claims not visible in the evidence are deviations.\ndiff --git a/.fabro/workflows/develop/scripts/evidence.nu b/.fabro/workflows/develop/scripts/evidence.nu\nold mode 100755\nnew mode 100644\nindex dc87a33..81d2947\n--- a/.fabro/workflows/develop/scripts/evidence.nu\n+++ b/.fabro/workflows/develop/scripts/evidence.nu\n@@ -145,6 +145,45 @@ def in-progress-seed []: nothing -> any {\n     | default null\n }\n \n+# The seed's status as recorded in the tracker file at a given commit, or\n+# null when the file or the seed is absent (or unparsable) there — squashed\n+# or pre-tracker history degrades to null, never to a wrong status.\n+def seed-status-at [commit: string, seed_id: string]: nothing -> any {\n+    let res = (do { git show $\"($commit):.seeds/issues.jsonl\" } | complete)\n+    if $res.exit_code != 0 { return null }\n+    let rows = ($res.stdout | lines | compact | each {|l| do -i { $l | from json } })\n+    let hit = ($rows | where {|r| $r != null and ($r | get -o id | default '') == $seed_id } | get -o 0 | default null)\n+    if $hit == null { null } else { $hit | get -o status | default null }\n+}\n+\n+# Diff anchor: the commit where the CURRENT seed was claimed — the newest\n+# commit C in `.seeds/issues.jsonl` history where the seed's status\n+# TRANSITIONS to in_progress (in_progress at C, not at C^). Transition-\n+# based, so a re-plan visit (no status change) never re-anchors and every\n+# earlier cycle of the seed stays visible; and it survives identical\n+# checkpoint subjects. The claim commit ITSELF is the base, not its\n+# parent: it carries only tracker churn and loop paths are filtered from\n+# the diff anyway, so `git diff <claim>` covers exactly the post-claim\n+# work. Fallback (no claim resolves — squashed history, claim predates\n+# repo state): the run base, flagged as such — never a silent\n+# mis-scoped diff.\n+def seed-claim-base [seed_id: any, run_base: record]: nothing -> record<base: string, short: string, grounded: bool, fallback: bool> {\n+    if $seed_id != null {\n+        for c in (git log --format=%H -- .seeds/issues.jsonl | lines | compact) {\n+            if ((seed-status-at $c $seed_id) == \"in_progress\") {\n+                let parent = (do { git rev-parse $\"($c)^\" } | complete)\n+                if $parent.exit_code == 0 {\n+                    let before = (seed-status-at ($parent.stdout | str trim) $seed_id)\n+                    if $before != \"in_progress\" {\n+                        return {base: $c, short: (git rev-parse --short $c), grounded: true, fallback: false}\n+                    }\n+                }\n+            }\n+        }\n+    }\n+    {base: $run_base.base, short: $run_base.short, grounded: $run_base.grounded, fallback: true}\n+}\n+\n # ---------------------------------------------------------------------------\n # section printers — one evidence section each (output text is contract)\n # ---------------------------------------------------------------------------\n@@ -152,15 +191,27 @@ def in-progress-seed []: nothing -> any {\n def integrity-section [\n     base_short: string\n     seed_desc: string\n+    diff_desc: string\n     seed_rows: list\n     churn_rows: list\n     wt_label: string\n ]: nothing -> string {\n-    $\"evidence: base=($base_short) seed=($seed_desc)\\n(integrity-line $seed_rows $churn_rows $wt_label)\\n\"\n+    $\"(integrity-line $base_short $seed_desc $diff_desc)\\n(integrity-line-counts $seed_rows $churn_rows $wt_label)\\n\"\n }\n \n-# The integrity line, for callers that need it (main reprints it at the end).\n+# The header line naming both bases mechanically: the run base (numstat\n+# and integrity counts stay run-scoped) and the seed-claim base the diff\n+# section is anchored at. Reprinted at the end so it survives a\n+# tail-anchored truncation.\n def integrity-line [\n+    base_short: string\n+    seed_desc: string\n+    diff_desc: string\n+]: nothing -> string {\n+    $\"evidence: base=($base_short) seed=($seed_desc) diff-base=($diff_desc)\"\n+}\n+\n+def integrity-line-counts [\n     seed_rows: list\n     churn_rows: list\n     wt_label: string\n@@ -194,12 +245,17 @@ def seed-work-files-section [seed_rows: list]: nothing -> string {\n # str join round-trip once injected a stray newline mid-line (observed\n # once, never reproduced) — raw capture rules that class out.\n # COMPLETE, no fidelity budget: every seed-work file is included, whole,\n-# source files first and docs last (diff-sort-key). HARD_CAP is a\n+# source files first and docs last (diff-sort-key). The base is the\n+# PER-SEED claim commit (seed-claim-base), not the run base — a capture\n+# must show only the current seed's hunks, not every closed seed's.\n+# Files whose per-seed diff is empty are skipped silently: the run-scoped\n+# file list legitimately names seed-1 leftovers with zero per-seed hunks,\n+# and emitting them here would only add blank-line noise. HARD_CAP is a\n # pathological-input safety only; on cap the walk stops and the\n # disclosure names the omitted files — with docs sorted last, a cap hit\n # eats documentation before source.\n def diff-section [base: string, seed_rows: list]: nothing -> string {\n-    let head = \"\\n== seed work: complete diff (git diff -U3 against run base, files above; source before docs) ==\\n\"\n+    let head = \"\\n== seed work: complete diff (git diff -U3 against the per-seed claim base named in the header, files above; source before docs) ==\\n\"\n     let seed_files = ($seed_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })\n     if ($seed_files | is-empty) {\n         return ($head + \"(no seed-work files to diff)\\n\")\n@@ -212,7 +268,11 @@ def diff-section [base: string, seed_rows: list]: nothing -> string {\n         if $res.exit_code != 0 {\n             continue\n         }\n+        $included = ($included | append $f)\n         let text = (sanitize ($res.stdout | str trim -r -c \"\\n\"))\n+        if ($text | is-empty) {\n+            continue\n+        }\n         let cost = ($text | str length)\n         if ($used + $cost) > $HARD_CAP { break }\n         $used = ($used + $cost)\n@@ -271,8 +331,18 @@ def main []: nothing -> nothing {\n     let wip = (in-progress-seed)\n     let seed_desc = (if $wip == null { \"none-in-progress\" } else { $\"($wip.id): ($wip.title)\" })\n \n+    # Diff anchor: the commit where this seed was claimed. Only the diff\n+    # scope changes — numstat rows, integrity counts, and the file list\n+    # above stay run-scoped per spec (they are small).\n+    let claim = (seed-claim-base (if $wip == null { null } else { $wip.id }) $base)\n+    let diff_desc = (if $claim.fallback {\n+        $\"($claim.short) (NO SEED-CLAIM BASE — no claim transition found in tracker history; diffing against run base)\"\n+    } else {\n+        $claim.short\n+    })\n+\n     # Fixed sections first, each under its own cap…\n-    let integrity = (integrity-section $base.short $seed_desc $seed_rows $churn_rows $wt.label)\n+    let integrity = (integrity-section $base.short $seed_desc $diff_desc $seed_rows $churn_rows $wt.label)\n     let spec = (spec-section $wip)\n     let files = (seed-work-files-section $seed_rows)\n     let churn = (loop-churn-section $churn_rows)\n@@ -280,7 +350,7 @@ def main []: nothing -> nothing {\n \n     # …then the diff gets whatever remains under the hard output budget\n     # (tail sections reserved so a cut lands in the diff, never in them).\n-    let diff = (diff-section $base.base $seed_rows)\n+    let diff = (diff-section $claim.base $seed_rows)\n \n     # Critical-first emission. No size games: a large capture is the\n     # engine's to demote (blobref link) and the agent reviewer's to read.\n@@ -293,6 +363,6 @@ def main []: nothing -> nothing {\n     print $worktree\n     # Duplicate of the header line: survives a tail-anchored truncation too.\n     print \"\"\n-    print (integrity-line $seed_rows $churn_rows $wt.label)\n+    print (integrity-line $base.short $seed_desc $diff_desc)\n     print \"== evidence complete ==\"\n }\ndiff --git a/.mulch/expertise/develop-workflow.jsonl b/.mulch/expertise/develop-workflow.jsonl\nnew file mode 100644\nindex 0000000..9ff7319\n--- /dev/null\n+++ b/.mulch/expertise/develop-workflow.jsonl\n@@ -0,0 +1 @@\n+{\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-01T13:04:52.163Z\",\"evidence\":{\"commit\":\"4b9ee80d1d78a50b0f6a7f3d3a47a4fc8db50631\"},\"description\":\"Nushell param typed string rejects runtime nothing: passing a null from an if-expression fails type check (expected string, found nothing) and crashes the call. Typed such params as any with an explicit null guard inside (evidence.nu seed-claim-base, run 01M1EGK6J8CNP9APJ7PWE6WE74).\",\"resolution\":\"Type optional-ish params as any and null-check inside; verified via nu -c with a runtime null before shipping.\",\"id\":\"mx-0b966a\"}\ndiff --git a/.mulch/mulch.config.yaml b/.mulch/mulch.config.yaml\nindex 1d5cd96..a1789ed 100644\n--- a/.mulch/mulch.config.yaml\n+++ b/.mulch/mulch.config.yaml\n@@ -8,6 +8,7 @@ domains:\n   environments: {}\n   testing: {}\n   gofib: {}\n+  develop-workflow: {}\n governance:\n   max_entries: 100\n   warn_entries: 150\n",
+        "summary": {
+          "files_changed": 6,
+          "additions": 84,
+          "deletions": 9
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-01T13:05:32.905582974Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
           "outcome": "succeeded",
           "internal.seed_cycle_anchor": "fabro-7e44",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -871,15 +1069,19 @@
           "failure_class": "",
           "seed_cycles": {
             "planner": 1,
-            "implementer": 1
+            "implementer": 1,
+            "tester": 1
           },
           "current_seed_title": "develop: scope the evidence diff per seed, not per run base",
           "current_seed_id": "fabro-7e44",
+          "thread.implementer.current_node": "tester",
           "graph.cycle_counter_reset_key": "current_seed_id",
+          "internal.retry_count.tester": 0,
           "preferred_label": "Implemented",
           "internal.retry_count.planner": 0,
           "last_stage": "implementer",
           "internal.retry_count.implementer": 0,
+          "command.output": "blob://sha256/dfec44016e170ed344daaa5287fb93b33920fd0dfb2717b735bc4b289b9825a7",
           "failure_signature": "",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -898,10 +1100,10 @@
           "graph.rankdir": "LR",
           "internal.work_dir": "/workspace/fabro",
           "last_response": "Implementation complete. Summary of changes:\n\n**`/workspace/fabro/.fabro/workflows/develop/scripts/evidence.nu`** (+76/−8): added `seed-status-at` (reads the seed's status from `.seeds/issues.jsonl`",
-          "current_node": "implementer",
+          "current_node": "tester",
           "current_seed_brief": "Scope: edit `.fabro/workflows/develop/scripts/evidence.nu` and align the shared wording in `.fabro/workflows/develop/prompts/reviewer.md` (both tracked at repo root `/workspace/fabro`; gofib code and qualitygate are out of scope). Acceptance criteria:\n- New fact helper resolves the CURRENT seed's claim commit: walk `git log --format=%H -- .seeds/issues.jsonl` newest-first and find the newest commit C where the in-progress seed's `status` transitions to `in_progress` (records are one JSON object per line; compare the seed's status at C vs C^).\n- Diff anchor = that claim commit itself (the engine's planner checkpoint, subject `fabro(<run-id>): planner (succeeded)`). Resolved ambiguity: base is the claim commit, not its parent — the claim commit carries only tracker churn and loop paths are filtered from the diff anyway, so `git diff <claim>` covers exactly post-claim work.\n- ONLY the diff scope changes: `diff-section` uses the seed-claim base; numstat rows, integrity counts, and the seed-work file list stay run-scoped (run base) per spec.\n- Header names the diff base mechanically: first integrity line gains the seed-claim SHA (e.g. `evidence: base=<run-base> seed=<id> diff-base=<claim-short>`); the trailing duplicate integrity line stays in sync; the diff section head says per-seed/claim base, not \"against run base\".\n- Fallback: if no claim commit resolves (squashed history, claim predates repo state), diff against the run base and say so in the header (mirror the existing grounded / NO RUN BASE note pattern) — never a silent mis-scoped diff.\n- Re-plan cycles must NOT re-anchor: a second planner visit creates no status transition, so all cycles of the seed stay visible in later reviews.\n- Skip files whose per-seed diff is empty (seed-1 leftovers in the run-scoped file list) — no blank-line noise; the file list naming files with zero per-seed hunks is by design, not a bug.\n- Keep `-U3` context and HARD_CAP semantics unchanged; ~15-25 KB captures regardless of loop count is the expected outcome, not new code.\n- Reviewer prompt (`prompts/reviewer.md`, Evidence-capture bullet): update `git diff -U1 against the run base` to the per-seed claim base named in the header, and fix the stale `-U1` to `-U3` (script has used -U3 since 2026-08-27; the seed says keep -U3) — evidence.nu's header warns this wording is contract shared with the prompt.\n- Verification without worktree mutation: run `nu .fabro/workflows/develop/scripts/evidence.nu` — exits 0, header names diff-base as this run's planner checkpoint; plus source the script in `nu -c` and print the helper's resolved claim base for the in-progress seed. Note: this seed's own edits are loop-classified (`.fabro/` prefix), so the capture's diff section will show no seed-work hunks for them — the reviewer verifies by reading the files directly.",
           "implementation_summary": "Edited `.fabro/workflows/develop/scripts/evidence.nu` (new `seed-status-at` + `seed-claim-base` helpers resolving the in-progress seed's claim commit by status transition over `.seeds/issues.jsonl` history; header/`integrity-line` now carry `diff-base=<claim-short>` in both the first and trailing lines; `diff-section` anchors at the claim commit, names the per-seed base in its head, and skips empty per-seed diffs without blank noise or false omission; run-scoped numstat/counts/file list untouched; fallback to run base stated in header; `-U3`/`HARD_CAP` unchanged; fixed a latent crash where a `string`-typed param rejected runtime null on the no-seed path) and `.fabro/workflows/develop/prompts/reviewer.md` (Evidence-capture bullet: per-seed claim base named in header, `-U1` → `-U3`). Verified: script exits 0 with `diff-base=4b9ee80` (this run's planner checkpoint); sourced helper resolution, fallback, null, and empty-diff paths all exercised. Per-criterion report: all 10 brief bullets PASS as itemized above.",
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "internal.retry_count.start": 0
         },
         "node_outcomes": {
@@ -1019,12 +1221,27 @@
           "start": {
             "status": "succeeded",
             "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/dfec44016e170ed344daaa5287fb93b33920fd0dfb2717b735bc4b289b9825a7"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 11107,
+              "active_time_ms": 11107
+            }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
           "implementer": 1,
           "start": 1,
+          "tester": 1,
           "planner": 1
         }
       },
@@ -1057,6 +1274,57 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "tester@1": {
+      "first_event_seq": 285,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-01T13:05:32.689394538Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 600000
+      },
+      "script_timing": {
+        "output": "blob://sha256/dfec44016e170ed344daaa5287fb93b33920fd0dfb2717b735bc4b289b9825a7",
+        "exit_code": 0,
+        "duration_ms": 11107,
+        "termination": "exited",
+        "output_bytes": 288,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 288,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-01T13:05:20.638597540Z",
+      "handler": "command",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 11111,
+        "inference_time_ms": 0,
+        "tool_time_ms": 11107,
+        "active_time_ms": 11107
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "planner@1": {
       "first_event_seq": 27,
       "prompt": null,
