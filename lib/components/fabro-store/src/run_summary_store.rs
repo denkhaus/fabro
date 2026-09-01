@@ -435,6 +435,32 @@ ON CONFLICT(singleton) DO NOTHING
         .await
     }
 
+    pub(crate) async fn find_session_owner(&self, session_id: &SessionId) -> Result<Option<RunId>> {
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_EVENT_COLUMNS);
+        query
+            .push(" WHERE session_id = ")
+            .push_bind(session_id.to_string())
+            .push(" AND event_name = 'run.session.created'");
+        let row = query.build().fetch_optional(&self.pool).await?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        let stored_run_id: String = row.try_get("run_id")?;
+        let run_id = stored_run_id
+            .parse::<RunId>()
+            .map_err(|_| Error::RunEventMismatch {
+                run_id: stored_run_id.clone(),
+                seq:    0,
+                field:  "run_id",
+            })?;
+        // The WHERE clause pins the row's session_id and event_name columns
+        // to the requested values, and decoding verifies the envelope against
+        // every stored column, so a successful decode proves ownership.
+        decode_event_row(&row, &run_id, &stored_run_id)?;
+        Ok(Some(run_id))
+    }
+
     pub(crate) async fn delete_canonical(&self, run_id: &RunId, deleted_at_ms: i64) -> Result<()> {
         // This transaction reads the activation marker before it writes the
         // tombstone and run deletion. A deferred SQLite transaction can fail
@@ -1536,6 +1562,17 @@ mod tests {
         )
     }
 
+    fn session_created_payload(run_id: &RunId, session_id: &SessionId) -> EventPayload {
+        sql_event_payload(
+            run_id,
+            "run.session.created",
+            None,
+            None,
+            Some(session_id),
+            serde_json::json!({ "title": "Owned session" }),
+        )
+    }
+
     async fn seed_sql_event(
         store: &RunSummaryStore,
         run_id: &RunId,
@@ -1805,6 +1842,122 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(sequences, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn session_owner_lookup_resolves_only_typed_creation_events() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 31);
+        store
+            .upsert_projection(&entry(projection(id, "owner", created_at), 3))
+            .await
+            .unwrap();
+
+        let owner_session = SessionId::new();
+        seed_sql_event(
+            &store,
+            &id,
+            2,
+            &session_created_payload(&id, &owner_session),
+        )
+        .await;
+        assert_eq!(
+            store.find_session_owner(&owner_session).await.unwrap(),
+            Some(id)
+        );
+
+        let non_owner_session = SessionId::new();
+        let non_creation = sql_event_payload(
+            &id,
+            "run.session.future",
+            None,
+            None,
+            Some(&non_owner_session),
+            serde_json::json!({ "kind": "future" }),
+        );
+        seed_sql_event(&store, &id, 3, &non_creation).await;
+        assert_eq!(
+            store.find_session_owner(&non_owner_session).await.unwrap(),
+            None
+        );
+        assert_eq!(
+            store.find_session_owner(&SessionId::new()).await.unwrap(),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn session_owner_lookup_rejects_corrupt_selected_events() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 32);
+        let other_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 33);
+        store
+            .upsert_projection(&entry(projection(id, "owner", created_at), 2))
+            .await
+            .unwrap();
+        let session_id = SessionId::new();
+        let payload = session_created_payload(&id, &session_id);
+        seed_sql_event(&store, &id, 2, &payload).await;
+
+        let mut wrong_event_name = payload.as_value().clone();
+        wrong_event_name["event"] = "run.session.future".into();
+        sqlx::query("UPDATE run_events SET event_json = ? WHERE run_id = ? AND seq = 2")
+            .bind(serde_json::to_string(&wrong_event_name).unwrap())
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        assert!(matches!(
+            store.find_session_owner(&session_id).await.unwrap_err(),
+            Error::RunEventMismatch {
+                field: "event_name",
+                ..
+            }
+        ));
+
+        seed_sql_event_restore(&store, &id, 2, &payload).await;
+        let mut wrong_run = payload.as_value().clone();
+        wrong_run["run_id"] = other_id.to_string().into();
+        sqlx::query("UPDATE run_events SET event_json = ? WHERE run_id = ? AND seq = 2")
+            .bind(serde_json::to_string(&wrong_run).unwrap())
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        assert!(matches!(
+            store.find_session_owner(&session_id).await.unwrap_err(),
+            Error::RunEventMismatch {
+                field: "run_id",
+                ..
+            }
+        ));
+
+        seed_sql_event_restore(&store, &id, 2, &payload).await;
+        let mut wrong_session = payload.as_value().clone();
+        wrong_session["session_id"] = SessionId::new().to_string().into();
+        sqlx::query("UPDATE run_events SET event_json = ? WHERE run_id = ? AND seq = 2")
+            .bind(serde_json::to_string(&wrong_session).unwrap())
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        assert!(matches!(
+            store.find_session_owner(&session_id).await.unwrap_err(),
+            Error::RunEventMismatch {
+                field: "session_id",
+                ..
+            }
+        ));
+
+        seed_sql_event_restore(&store, &id, 2, &payload).await;
+        sqlx::query("UPDATE run_events SET event_json = '{}' WHERE run_id = ? AND seq = 2")
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        assert!(store.find_session_owner(&session_id).await.is_err());
     }
 
     #[tokio::test]

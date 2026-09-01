@@ -2,7 +2,7 @@ use std::fmt::{self, Write};
 #[cfg(test)]
 use std::ops::Range;
 
-use fabro_types::{RunId, SessionId};
+use fabro_types::RunId;
 
 pub(crate) const MAX_EVENT_SEQ: u32 = 999_999;
 
@@ -120,7 +120,8 @@ pub(crate) fn sessions_by_id_prefix() -> SlateKey {
     SlateKey::new("sessions").with("by-id").into_prefix()
 }
 
-pub(crate) fn session_by_id_key(session_id: &SessionId) -> SlateKey {
+#[cfg(test)]
+pub(crate) fn session_by_id_key(session_id: &fabro_types::SessionId) -> SlateKey {
     SlateKey::new("sessions").with("by-id").with(session_id)
 }
 

@@ -16,6 +16,8 @@ pub type DbPool = sqlx::SqlitePool;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
+const SESSION_OWNER_INDEX_MIGRATION_VERSION: i64 = 2_026_083_101;
+
 /// The blob-table migration, exposed so fixtures in other crates can install
 /// the production blob schema without a filesystem path into this crate.
 pub const BLOBS_MIGRATION_SQL: &str = include_str!("../migrations/2026081301_blobs.sql");
@@ -27,6 +29,11 @@ pub const RUNS_MIGRATION_SQL: &str = include_str!("../migrations/2026071104_runs
 /// The run-event migration, exposed so fixtures in other crates can install
 /// the production schema without a filesystem path into this crate.
 pub const RUN_EVENTS_MIGRATION_SQL: &str = include_str!("../migrations/2026082701_run_events.sql");
+
+/// The run-session owner index migration, exposed so fixtures in other crates
+/// can install the production run-history indexes.
+pub const RUN_EVENT_SESSION_OWNER_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026083101_run_event_session_owner.sql");
 
 /// The temporary run-history activation migration, exposed so fixtures in
 /// other crates can install the production compatibility schema.
@@ -66,13 +73,64 @@ impl Database {
     }
 
     pub async fn migrate(&self) -> anyhow::Result<()> {
-        self.snapshot_before_new_migrations()
+        let applied = applied_migration_versions(&self.pool).await?;
+        self.preflight_session_owner_index(&applied)
+            .await
+            .context("checking session ownership before SQLite migrations")?;
+        self.snapshot_before_new_migrations(&applied)
             .await
             .context("snapshotting SQLite database before migrations")?;
         MIGRATOR
             .run(&self.pool)
             .await
             .context("running SQLite migrations")
+    }
+
+    /// Refuse the unique owner index when old event history contains
+    /// collisions. The diagnostic is deliberately count-only because session
+    /// identifiers and event contents are not safe startup-log fields.
+    ///
+    /// Temporary compatibility guard: once every supported database has
+    /// applied the session-owner index migration the version check below
+    /// always short-circuits, and this preflight can be deleted along with
+    /// the run-history compatibility window.
+    async fn preflight_session_owner_index(&self, applied: &HashSet<i64>) -> anyhow::Result<()> {
+        if applied.contains(&SESSION_OWNER_INDEX_MIGRATION_VERSION) {
+            return Ok(());
+        }
+
+        let run_events_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'run_events')",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .context("checking for the run event table")?;
+        if !run_events_exists {
+            return Ok(());
+        }
+
+        let collision_groups: i64 = sqlx::query_scalar(
+            r"
+SELECT COUNT(*)
+FROM (
+    SELECT session_id
+    FROM run_events
+    WHERE session_id IS NOT NULL
+      AND event_name = 'run.session.created'
+    GROUP BY session_id
+    HAVING COUNT(*) > 1
+)
+",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .context("counting duplicate session ownership groups")?;
+        if collision_groups > 0 {
+            anyhow::bail!(
+                "cannot create the unique session owner index: found {collision_groups} duplicate session ownership groups"
+            );
+        }
+        Ok(())
     }
 
     /// Copy the database aside before applying migrations it has not seen.
@@ -92,8 +150,7 @@ impl Database {
     /// from immediately before the most recent schema change. Failing to
     /// write the snapshot fails the migration: no rollback artifact, no
     /// schema change.
-    async fn snapshot_before_new_migrations(&self) -> anyhow::Result<()> {
-        let applied = applied_migration_versions(&self.pool).await?;
+    async fn snapshot_before_new_migrations(&self, applied: &HashSet<i64>) -> anyhow::Result<()> {
         let has_pending = MIGRATOR
             .iter()
             .any(|migration| !applied.contains(&migration.version));

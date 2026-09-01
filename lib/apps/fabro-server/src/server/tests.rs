@@ -12188,10 +12188,11 @@ async fn append_run_event_rejects_reserved_archive_event() {
     let response = app.oneshot(req).await.unwrap();
     let body = response_json!(response, StatusCode::BAD_REQUEST).await;
     assert!(
-        body["errors"][0]["detail"]
-            .as_str()
-            .is_some_and(|message| message.contains("run.archived is a lifecycle event")),
-        "expected lifecycle rejection, got: {body}"
+        body["errors"][0]["detail"].as_str().is_some_and(|message| {
+            message
+                .contains("run.archived must be performed through its dedicated operation endpoint")
+        }),
+        "expected dedicated-operation rejection, got: {body}"
     );
 }
 
