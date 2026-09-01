@@ -381,6 +381,7 @@ mod tests {
 
     fn ctx(env: Arc<dyn Sandbox>) -> ToolContext {
         ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),

@@ -9,7 +9,7 @@ use tracing::debug;
 use crate::config::{SessionOptions, ToolHookCallback, ToolHookDecision};
 use crate::event::{Emitter, SessionBoundEmitter};
 use crate::question_tools::{self, AgentToolRuntime, is_question_tool};
-use crate::sandbox::{OutputCaptureStats, Sandbox};
+use crate::sandbox::{FsScope, OutputCaptureStats, Sandbox};
 use crate::session::ToolEnvProvider;
 use crate::tool_registry::{AgentEventEmitter, RegisteredTool, ToolContext, ToolRegistry};
 use crate::truncation::{
@@ -454,6 +454,7 @@ async fn execute_and_emit_one_tool_with_lookup(
         tool_env_provider,
         agent_tool_runtime,
         write_locks,
+        config.fs_scope.clone(),
     )
     .await;
     let retained = retain_tool_result(executed.result, executed.output_stats);
@@ -537,6 +538,7 @@ async fn execute_one_tool(
     tool_env_provider: Option<&Arc<dyn ToolEnvProvider>>,
     agent_tool_runtime: &AgentToolRuntime,
     write_locks: Option<BatchWriteLocks>,
+    fs_scope: Option<Arc<FsScope>>,
 ) -> ExecutedToolResult {
     match registered_tool {
         Some(tool) => {
@@ -566,6 +568,7 @@ async fn execute_one_tool(
                 session_id: Some(session_id.to_owned()),
                 root_session_id: Some(root_session_id.to_owned()),
                 tool_call_id: Some(tc.id.clone()),
+                fs_scope,
                 agent_event_emitter,
             };
             let execution = (tool.executor)(tc.arguments.clone(), ctx);

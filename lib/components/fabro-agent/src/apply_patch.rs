@@ -516,6 +516,27 @@ fn format_summary(added: &[String], modified: &[String], deleted: &[String]) -> 
     output
 }
 
+/// Every filesystem path a patch writes or deletes, including rename
+/// targets. Used for scope pre-checks (fabro-ba96) so a denied target
+/// rejects the whole patch before any operation applies.
+fn patch_target_paths(ops: &[PatchOperation]) -> Vec<&str> {
+    let mut paths = Vec::new();
+    for op in ops {
+        match op {
+            PatchOperation::Add { path, .. } | PatchOperation::Delete { path } => {
+                paths.push(path.as_str());
+            }
+            PatchOperation::Update { path, new_path, .. } => {
+                paths.push(path.as_str());
+                if let Some(new_path) = new_path {
+                    paths.push(new_path.as_str());
+                }
+            }
+        }
+    }
+    paths
+}
+
 pub fn make_apply_patch_tool() -> RegisteredTool {
     RegisteredTool {
         definition: ToolDefinition::custom(
@@ -534,6 +555,19 @@ pub fn make_apply_patch_tool() -> RegisteredTool {
                     .ok_or_else(|| "apply_patch expects raw patch text".to_string())?;
 
                 let ops = parse_apply_patch(patch_text)?;
+                // Scope pre-check (fabro-ba96): validate every target path
+                // before the first file operation so a denied path rejects
+                // the whole patch instead of leaving earlier operations
+                // applied. The sandbox-level decorator re-checks each
+                // individual operation as defense in depth.
+                if let Some(scope) = ctx.fs_scope.as_ref() {
+                    let working_dir = ctx.env.working_directory();
+                    for path in patch_target_paths(&ops) {
+                        scope
+                            .check_write(working_dir, path)
+                            .map_err(|error| error.display_with_causes())?;
+                    }
+                }
                 apply_patch_operations_locked(&ops, ctx.env.as_ref(), ctx.write_locks.as_ref())
                     .await
             })
@@ -577,6 +611,7 @@ mod tests {
         // per batch; sharing it here is what makes the race detectable.
         let locks = write_locks::new_batch_write_locks();
         let ctx_with_locks = || ToolContext {
+            fs_scope:            None,
             write_locks:         Some(locks.clone()),
             env:                 env.clone(),
             cancel:              CancellationToken::new(),
@@ -1080,6 +1115,7 @@ mod tests {
 *** End Patch
 ";
         let ctx = ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),
@@ -1097,6 +1133,47 @@ mod tests {
         assert_eq!(
             output,
             "Success. Updated the following files:\nA hello.txt\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_patch_rejects_the_whole_patch_when_one_target_is_outside_fs_scope() {
+        use crate::sandbox::FsScope;
+
+        let env = Arc::new(MutableMockSandbox::new(HashMap::new()));
+        let tool = make_apply_patch_tool();
+        let patch = "\
+*** Begin Patch
+*** Add File: ok.rs
++fn main() {}
+*** Add File: notes.md
++outside the write list
+*** End Patch
+";
+        let scope = Arc::new(FsScope::try_new(&[], Some(&["*.rs"])).unwrap());
+        let ctx = ToolContext {
+            fs_scope:            Some(scope),
+            write_locks:         None,
+            env:                 Arc::clone(&env) as Arc<dyn Sandbox>,
+            cancel:              CancellationToken::new(),
+            tool_env_provider:   None,
+            session_id:          None,
+            root_session_id:     None,
+            tool_call_id:        None,
+            agent_event_emitter: None,
+        };
+
+        let error = (tool.executor)(serde_json::json!(patch), ctx)
+            .await
+            .expect_err("patch with an out-of-scope target must fail");
+
+        // The denial names the offending path...
+        assert!(error.contains("notes.md"), "unexpected error: {error}");
+        assert!(error.contains("fs_write"), "unexpected error: {error}");
+        // ...and nothing was applied: the in-scope target stays absent.
+        assert!(
+            env.read_file_text("ok.rs").await.is_err(),
+            "atomic pre-check must not leave earlier operations applied"
         );
     }
 

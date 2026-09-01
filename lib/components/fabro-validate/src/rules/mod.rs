@@ -10,6 +10,9 @@ mod exit_no_outgoing;
 mod fidelity_valid;
 mod for_each_contract;
 mod freeform_edge_count;
+mod fs_attrs_require_agent_node;
+mod fs_globs_valid;
+mod fs_scope_consistency;
 mod goal_gate_has_retry;
 mod import_error;
 mod inert_attribute;
@@ -85,6 +88,9 @@ pub fn built_in_rules() -> Vec<Box<dyn LintRule>> {
         unresolved_file_ref::rule(),
         thread_id_requires_fidelity_full::rule(),
         tools_attribute_known::rule(),
+        fs_globs_valid::rule(),
+        fs_attrs_require_agent_node::rule(),
+        fs_scope_consistency::rule(),
         tools_requires_agent_node::rule(),
         selection_valid::rule(),
         random_selection_no_conditions::rule(),

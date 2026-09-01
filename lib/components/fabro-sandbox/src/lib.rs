@@ -2,6 +2,7 @@ pub mod config;
 pub mod error;
 #[cfg(any(feature = "docker", feature = "daytona"))]
 pub mod from_environment;
+pub mod fs_scope;
 pub mod provider;
 pub mod sandbox;
 pub mod sandbox_spec;
@@ -43,6 +44,7 @@ pub use fabro_github::token_source::{
     InstallationTokenSource, ResolvedToken, TokenProvenance, TokenSnapshot,
 };
 pub use fabro_types::{RunSandboxInstance, SandboxProviderKind};
+pub use fs_scope::{FsScope, FsScopeError, ScopeDenial, ScopedSandbox};
 pub use git_retry::{
     CredentialContext, GitRetryReason, RetryPlan, classify_failure, retry_git_operation,
 };
@@ -63,7 +65,7 @@ pub use sandbox::{
     OutputCaptureStats, PushAttempt, PushError, PushReport, RefreshOutcome, RemoteCredentialAction,
     Sandbox, SandboxActivation, SandboxEvent, SandboxEventCallback, SandboxFile, StderrCollector,
     StdioProcess, StdioProcessHandle, StdioProcessTermination, WalkOptions, format_lines_numbered,
-    redacted_output_tail, setup_git_via_exec, shell_quote,
+    grep_result_path, redacted_output_tail, setup_git_via_exec, shell_quote,
 };
 pub use sandbox_spec::SandboxSpec;
 pub use terminal::{TerminalSession, TerminalSize, open_terminal_for_run};

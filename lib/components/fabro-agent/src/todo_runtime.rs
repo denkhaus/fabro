@@ -168,6 +168,7 @@ mod tests {
     fn ctx_with(emitter: Arc<CollectingEmitter>) -> ToolContext {
         let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
         ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),

@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::{ToolAccessPolicy, ToolExposureMode};
 use crate::native_tool::{NativeTool, ToolVocabulary};
-use crate::sandbox::{OutputCaptureStats, Sandbox};
+use crate::sandbox::{FsScope, OutputCaptureStats, Sandbox};
 use crate::session::ToolEnvProvider;
 use crate::tool_permissions;
 use crate::types::AgentEvent;
@@ -43,6 +43,11 @@ pub struct ToolContext {
     pub root_session_id:     Option<String>,
     /// Active model-native tool call ID, when available.
     pub tool_call_id:        Option<String>,
+    /// Per-stage filesystem scope (fabro-ba96). Mirrors the session's
+    /// `ScopedSandbox` wrapper so path-aware tools (`apply_patch`) can
+    /// pre-check every target before applying anything. `None` outside
+    /// scoped stages.
+    pub fs_scope:            Option<Arc<FsScope>>,
     /// Narrow emitter for typed agent events (todo mutations and similar).
     pub agent_event_emitter: Option<Arc<dyn AgentEventEmitter>>,
 }
@@ -514,6 +519,7 @@ mod tests {
 
         let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
         let ctx = ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),

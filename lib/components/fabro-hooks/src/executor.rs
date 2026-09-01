@@ -428,6 +428,7 @@ impl HookExecutorImpl {
                         session_id:          None,
                         root_session_id:     None,
                         tool_call_id:        Some(tc.id.clone()),
+                        fs_scope:            None,
                         agent_event_emitter: None,
                     };
                     let result = match tool {

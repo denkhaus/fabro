@@ -6161,6 +6161,7 @@ mod tests {
         let mut rx = session.subscribe();
         let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
         let ctx = ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),

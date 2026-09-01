@@ -8,6 +8,7 @@ use fabro_model::AgentProfileKind;
 use fabro_types::PermissionLevel;
 
 use crate::question_tools::is_question_tool;
+use crate::sandbox::FsScope;
 use crate::tool_permissions::canonical_tool_name;
 
 /// Callback invoked before each tool execution. Return `Ok(())` to allow,
@@ -256,11 +257,18 @@ pub struct SessionOptions {
     /// Wall-clock timeout for the entire `process_input` call.
     /// When set, the session's cancel token is triggered after this duration.
     pub wall_clock_timeout: Option<Duration>,
+    /// Per-stage filesystem scope (fabro-ba96, ADR-0009). The session's
+    /// sandbox is wrapped by the workflow layer; this field exposes the
+    /// same scope to tool-layer pre-checks (`apply_patch` path
+    /// validation) so multi-path writes reject atomically instead of
+    /// partially applying. `None` = unrestricted (default-open).
+    pub fs_scope: Option<Arc<FsScope>>,
 }
 
 impl std::fmt::Debug for SessionOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SessionOptions")
+            .field("fs_scope", &self.fs_scope)
             .field("max_tokens", &self.max_tokens)
             .field("reasoning_effort", &self.reasoning_effort)
             .field("speed", &self.speed)
@@ -297,6 +305,7 @@ impl std::fmt::Debug for SessionOptions {
 impl Default for SessionOptions {
     fn default() -> Self {
         Self {
+            fs_scope: None,
             max_tokens: None,
             reasoning_effort: None,
             speed: None,

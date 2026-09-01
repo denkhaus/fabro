@@ -5,11 +5,18 @@ use bollard::errors::Error as BollardError;
 use fabro_util::error::{collect_causes, render_with_causes};
 
 use crate::ExecResult;
+use crate::fs_scope::ScopeDenial;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
     Message(String),
+
+    /// A per-stage filesystem scope (fs_hide/fs_write) denied an
+    /// operation on `path` (fabro-ba96, ADR-0009). Tool-layer drift
+    /// protection: shell remains the documented escape hatch.
+    #[error("path '{path}' {reason}")]
+    StageFsScope { path: String, reason: ScopeDenial },
 
     #[error("{message}")]
     Context {

@@ -322,6 +322,7 @@ mod tests {
     async fn execute(tool: &RegisteredTool, args: serde_json::Value) -> Result<String, String> {
         let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
         (tool.executor)(args, ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),

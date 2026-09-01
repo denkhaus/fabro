@@ -671,6 +671,7 @@ mod kimi_todo_tests {
     fn ctx() -> ToolContext {
         let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
         ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),
@@ -792,6 +793,7 @@ mod tests {
     fn ctx_for(session: &str, root: &str) -> ToolContext {
         let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
         ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),

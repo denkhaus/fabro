@@ -498,23 +498,9 @@ pub(crate) async fn execute_grep(
 
 /// Extract the file path from `<path>:<line>:<content>` grep output.
 ///
-/// A search of one concrete file may omit `<path>`, in which case the searched
-/// path itself is returned. Candidate separators are walked so paths that
-/// contain colons (including Windows drive prefixes) still parse correctly.
-pub(crate) fn grep_result_path<'a>(line: &'a str, searched: &'a str) -> &'a str {
-    let mut rest = line;
-    let mut consumed = 0usize;
-    while let Some(index) = rest.find(':') {
-        let after = &rest[index + 1..];
-        let digit_count = after.chars().take_while(char::is_ascii_digit).count();
-        if digit_count > 0 && after[digit_count..].starts_with(':') {
-            return &line[..consumed + index];
-        }
-        consumed += index + 1;
-        rest = after;
-    }
-    searched
-}
+/// Shared with the sandbox layer's scope filtering; see
+/// `fabro_sandbox::grep_result_path`.
+pub(crate) use crate::sandbox::grep_result_path;
 
 #[must_use]
 pub fn make_glob_tool() -> RegisteredTool {
@@ -865,6 +851,7 @@ mod tests {
             ..Default::default()
         });
         let result = (tool.executor)(serde_json::json!({"file_path": "/test.txt"}), ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),
@@ -891,6 +878,7 @@ mod tests {
         });
 
         let result = (tool.executor)(serde_json::json!({"file_path": "/test.txt"}), ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),
@@ -919,6 +907,7 @@ mod tests {
         let result = (tool.executor)(
             serde_json::json!({"file_path": "/test.txt", "offset": 2, "limit": 2}),
             ToolContext {
+                fs_scope: None,
                 write_locks: None,
                 env,
                 cancel: CancellationToken::new(),
@@ -935,6 +924,7 @@ mod tests {
 
     fn locked_ctx(env: Arc<dyn Sandbox>, locks: &BatchWriteLocks) -> ToolContext {
         ToolContext {
+            fs_scope: None,
             env,
             cancel: CancellationToken::new(),
             tool_env_provider: None,
@@ -1028,6 +1018,7 @@ mod tests {
         let result = (tool.executor)(
             serde_json::json!({"file_path": "/out.txt", "content": "hello"}),
             ToolContext {
+                fs_scope:            None,
                 write_locks:         None,
                 env:                 env_clone,
                 cancel:              CancellationToken::new(),
@@ -1064,6 +1055,7 @@ mod tests {
                 "new_string": "goodbye"
             }),
             ToolContext {
+                fs_scope:            None,
                 write_locks:         None,
                 env:                 env_clone,
                 cancel:              CancellationToken::new(),
@@ -1098,6 +1090,7 @@ mod tests {
                 "new_string": "replacement"
             }),
             ToolContext {
+                fs_scope: None,
                 write_locks: None,
                 env,
                 cancel: CancellationToken::new(),
@@ -1128,6 +1121,7 @@ mod tests {
                 "new_string": "cc"
             }),
             ToolContext {
+                fs_scope: None,
                 write_locks: None,
                 env,
                 cancel: CancellationToken::new(),
@@ -1162,6 +1156,7 @@ mod tests {
                 "replace_all": true
             }),
             ToolContext {
+                fs_scope:            None,
                 write_locks:         None,
                 env:                 env_clone,
                 cancel:              CancellationToken::new(),
@@ -1196,6 +1191,7 @@ mod tests {
                 "new_string": "goodbye"
             }),
             ToolContext {
+                fs_scope:            None,
                 write_locks:         None,
                 env:                 env_clone,
                 cancel:              CancellationToken::new(),
@@ -1215,6 +1211,7 @@ mod tests {
 
     fn shell_context(env: Arc<dyn Sandbox>) -> ToolContext {
         ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),
@@ -1228,6 +1225,7 @@ mod tests {
 
     fn shell_context_with_emitter(env: Arc<dyn Sandbox>, emitter: &Emitter) -> ToolContext {
         ToolContext {
+            fs_scope: None,
             write_locks: None,
             session_id: Some("test-session".to_string()),
             root_session_id: Some("test-session".to_string()),
@@ -1315,6 +1313,7 @@ mod tests {
         let _result = (tool.executor)(
             serde_json::json!({"command": "sleep 1", "timeout_ms": 5000}),
             ToolContext {
+                fs_scope:            None,
                 write_locks:         None,
                 env:                 env_clone,
                 cancel:              CancellationToken::new(),
@@ -1597,6 +1596,7 @@ mod tests {
         let _result = (tool.executor)(
             serde_json::json!({"command": "echo $MY_KEY"}),
             ToolContext {
+                fs_scope:            None,
                 write_locks:         None,
                 env:                 env_clone,
                 cancel:              CancellationToken::new(),
@@ -1646,6 +1646,7 @@ mod tests {
         let _result = (tool.executor)(
             serde_json::json!({"command": "echo $GITHUB_TOKEN"}),
             ToolContext {
+                fs_scope:            None,
                 write_locks:         None,
                 env:                 env.clone(),
                 cancel:              CancellationToken::new(),
@@ -1668,6 +1669,7 @@ mod tests {
         let _result = (tool.executor)(
             serde_json::json!({"command": "echo $GITHUB_TOKEN"}),
             ToolContext {
+                fs_scope:            None,
                 write_locks:         None,
                 env:                 env.clone(),
                 cancel:              CancellationToken::new(),
@@ -1696,6 +1698,7 @@ mod tests {
         let result = (tool.executor)(
             serde_json::json!({"command": "echo $GITHUB_TOKEN"}),
             ToolContext {
+                fs_scope: None,
                 write_locks: None,
                 env,
                 cancel: CancellationToken::new(),
@@ -1726,6 +1729,7 @@ mod tests {
         });
 
         let result = (tool.executor)(serde_json::json!({"file_path": "/test.txt"}), ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),
@@ -1746,6 +1750,7 @@ mod tests {
         let env = Arc::new(MockSandbox::default());
         let env_clone: Arc<dyn Sandbox> = env.clone();
         let _result = (tool.executor)(serde_json::json!({"command": "echo hello"}), ToolContext {
+            fs_scope:            None,
             write_locks:         None,
             env:                 env_clone,
             cancel:              CancellationToken::new(),
@@ -1779,6 +1784,7 @@ mod tests {
         let _result = (tool.executor)(
             serde_json::json!({"url": "https://example.com"}),
             ToolContext {
+                fs_scope:            None,
                 write_locks:         None,
                 env:                 env_clone,
                 cancel:              CancellationToken::new(),
@@ -1805,6 +1811,7 @@ mod tests {
             ..Default::default()
         });
         let result = (tool.executor)(serde_json::json!({"pattern": "fn"}), ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),
@@ -1828,6 +1835,7 @@ mod tests {
             ..Default::default()
         });
         let result = (tool.executor)(serde_json::json!({"pattern": "src/**/*.rs"}), ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),
@@ -1857,6 +1865,7 @@ mod tests {
         let tool = make_web_search_tool_with_api_key("fake-key".into());
         let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
         let result = (tool.executor)(serde_json::json!({}), ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),
@@ -1892,6 +1901,7 @@ mod tests {
             .expect("web_search should be registered");
         let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
         let result = (tool.executor)(serde_json::json!({}), ToolContext {
+            fs_scope: None,
             write_locks: None,
             env,
             cancel: CancellationToken::new(),
@@ -1927,6 +1937,7 @@ mod tests {
         let result = (tool.executor)(
             serde_json::json!({"url": "https://example.com"}),
             ToolContext {
+                fs_scope:            None,
                 write_locks:         None,
                 env:                 env_clone,
                 cancel:              CancellationToken::new(),
@@ -1969,6 +1980,7 @@ mod tests {
         let result = (tool.executor)(
             serde_json::json!({"url": "ftp://example.com/file"}),
             ToolContext {
+                fs_scope: None,
                 write_locks: None,
                 env,
                 cancel: CancellationToken::new(),
@@ -1995,6 +2007,7 @@ mod tests {
         let _result = (tool.executor)(
             serde_json::json!({"url": "https://example.com", "timeout_ms": 15000}),
             ToolContext {
+                fs_scope:            None,
                 write_locks:         None,
                 env:                 env_clone,
                 cancel:              CancellationToken::new(),
@@ -2022,6 +2035,7 @@ mod tests {
         let _result = (tool.executor)(
             serde_json::json!({"url": "https://example.com", "timeout_ms": 120_000}),
             ToolContext {
+                fs_scope:            None,
                 write_locks:         None,
                 env:                 env_clone,
                 cancel:              CancellationToken::new(),
@@ -2058,6 +2072,7 @@ mod tests {
         let result = (tool.executor)(
             serde_json::json!({"url": "https://example.com"}),
             ToolContext {
+                fs_scope: None,
                 write_locks: None,
                 env,
                 cancel: CancellationToken::new(),
@@ -2090,6 +2105,7 @@ mod tests {
         let result = (tool.executor)(
             serde_json::json!({"url": "https://nonexistent.example.com"}),
             ToolContext {
+                fs_scope: None,
                 write_locks: None,
                 env,
                 cancel: CancellationToken::new(),
@@ -2143,6 +2159,7 @@ mod tests {
         let result = (tool.executor)(
             serde_json::json!({"url": "https://example.com", "prompt": "What is Rust?"}),
             ToolContext {
+                fs_scope: None,
                 write_locks: None,
                 env,
                 cancel: CancellationToken::new(),
@@ -2179,6 +2196,7 @@ mod tests {
         let result = (tool.executor)(
             serde_json::json!({"url": "https://example.com", "prompt": "What is Rust?"}),
             ToolContext {
+                fs_scope: None,
                 write_locks: None,
                 env,
                 cancel: CancellationToken::new(),
@@ -2253,6 +2271,7 @@ mod tests {
         let result = (tool.executor)(
             serde_json::json!({"url": "https://example.com", "prompt": "Summarize this"}),
             ToolContext {
+                fs_scope: None,
                 write_locks: None,
                 env,
                 cancel: CancellationToken::new(),
@@ -2312,6 +2331,7 @@ mod tests {
         let result = (tool.executor)(
             serde_json::json!({"query": "rust programming language"}),
             ToolContext {
+                fs_scope: None,
                 write_locks: None,
                 env,
                 cancel: CancellationToken::new(),

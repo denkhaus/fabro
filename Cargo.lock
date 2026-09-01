@@ -3338,6 +3338,7 @@ dependencies = [
  "fabro-model",
  "fabro-tool",
  "fabro-types",
+ "fabro-util",
  "fabro-workflow",
  "serde",
  "strum 0.28.0",

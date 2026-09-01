@@ -254,6 +254,23 @@ Shell commands have two timeout settings:
 
 The agent can request a specific timeout via the `timeout_ms` parameter, but it's always capped at the maximum.
 
+## Per-stage filesystem scope
+
+Agent stages can scope their view of the workspace with two node attributes (see [the DOT reference](/reference/dot-language)). The scope is **drift protection**: it keeps an agent inside its lane mechanically, so prompt rules become enforceable. It is not adversarial containment — `shell` executes untouched and remains the documented escape hatch (pair `fs_hide`/`fs_write` with a `tools=` allow-list that excludes `shell` when a stage needs real containment).
+
+```dot
+implement [shape=box, prompt="@prompts/implement.md",
+    fs_hide=".fabro/**,.seeds/**,scripts/**,justfile",
+    fs_write="**/*.go,go.mod"]
+```
+
+- **`fs_hide`** — comma-separated workspace-relative globs that behave as if they did not exist for the stage. Reads of hidden paths fail with a scope error, `file_exists` reports `false`, discovery results (`grep`, `glob`, `list_dir`, `walk_files`) are filtered so hidden files do not leak through listings, and writes/deletes to hidden paths are denied. A `dir/**` glob also hides the `dir` entry itself.
+- **`fs_write`** — comma-separated workspace-relative globs the stage may write. Unset (default): every write is admitted. Set: only matching paths are writable; deletes and `apply_patch` targets count as writes, and paths outside the workspace are denied while a list is set. An explicitly empty list (`fs_write=""`) admits no write at all — the cheapest way to build a read-only reviewer or planner.
+
+Globs use the engine's workspace-relative language: `/` separators, `*` and `?` within one segment, `**` across directories, no absolute paths or `..`. `fabro validate` fails on globs that do not compile, warns when a `fs_write` entry sits inside a `fs_hide` glob (hidden paths are never writable), and notes when a scoped stage still allows `shell`.
+
+The scope applies to the whole stage session: spawned subagents inherit it, and session-level file reads (project memory, skills) flow through the same window. Run-level plumbing — git, checkpoints, evidence capture — uses its own unfiltered sandbox handle. `apply_patch` validates every target path before applying anything, so an out-of-scope patch is rejected atomically instead of partially applied.
+
 ## Extending with MCP
 
 Additional tools can be added via [MCP servers](/agents/mcp). MCP tools appear alongside built-in tools in the agent's tool set and follow the same permission and execution model.

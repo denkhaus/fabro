@@ -795,6 +795,7 @@ mod tests {
 
         let env: Arc<dyn Sandbox> = Arc::new(MockSandbox::default());
         let context = |session_id: &str| ToolContext {
+            fs_scope:            None,
             write_locks:         None,
             env:                 Arc::clone(&env),
             cancel:              CancellationToken::new(),

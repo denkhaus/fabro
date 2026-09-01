@@ -503,6 +503,7 @@ mod tests {
 
     fn context() -> ToolContext {
         ToolContext {
+            fs_scope:            None,
             write_locks:         None,
             env:                 Arc::new(MockSandbox::default()) as Arc<dyn Sandbox>,
             cancel:              CancellationToken::new(),

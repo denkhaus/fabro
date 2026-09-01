@@ -104,3 +104,32 @@ sandbox/run-dir); the registered executor closes over a shared,
 per-node-refreshable state, so spawned subagent helpers serve the same
 view. fabro-validate catalogs the name
 (`KNOWN_WORKFLOW_TOOL_NAMES`, cross-checked against the workflow crate).
+
+## Amendment 2026-09-03 (fabro-ba96 design grilling): the filesystem axis
+
+`fs_hide`/`fs_write` settle the fifth and final piece. User-agreed decisions:
+
+1. **Names:** flat `fs_hide` + `fs_write` — the dotted `fs.hide`/`fs.write`
+   from the original proposal is rejected; dotted keys stay foreign to the
+   parser (original family decision unchanged).
+2. **Nonexistent semantics:** a hidden path behaves as if it did not exist —
+   reads fail, `file_exists` is `false`, discovery results are filtered (no
+   leak via `glob`/`grep`/`list_dir`), writes are denied. A `dir/**` glob
+   also hides the `dir` entry itself.
+3. **Write posture:** `fs_write` unset = open; set = allow-list only, with
+   outside-workspace writes denied while a list is set; explicitly empty =
+   read-only stage. Deletes and patch targets count as writes.
+4. **Enforcement seam:** a `ScopedSandbox` decorator wraps the stage
+   session's sandbox (and the subagent factory's), so every file tool in
+   every vocabulary plus `apply_patch` paths are covered by one seam and
+   children inherit the scope. Session-level reads (memory, skills) flow
+   through the same window — feature, not bug. Run-level plumbing keeps
+   its own unwrapped handle.
+5. **Atomicity:** `apply_patch` pre-checks all target paths via the same
+   policy (exposed through `ToolContext`) before applying anything.
+6. **Validation:** invalid globs are errors; non-agent nodes warn (the
+   47b5 precedent); `fs_write`-inside-`fs_hide` warns; shell-pairing is an
+   Info note (drift-protection reminder), never a failure.
+
+With ba96 the envelope family is complete; the two-world retirement
+(fabro-a9bb) can draw on the full vocabulary.

@@ -6,9 +6,10 @@ use async_trait::async_trait;
 use fabro_agent::subagent::{SessionFactory, SubAgentSupervisor};
 use fabro_agent::tool_registry::{RegisteredTool, ToolContext, ToolRegistry, ToolSource};
 use fabro_agent::{
-    AgentEvent, AgentProfile, AgentProfileBuilder, CompletionCoordinator, Message as AgentMessage,
-    Sandbox, Session, SessionOptions, SessionShutdownReason, StaticEnvProvider, ToolEnvProvider,
-    ToolSecrets, WebFetchSummarizer, canonical_tool_name, register_question_tools,
+    AgentEvent, AgentProfile, AgentProfileBuilder, CompletionCoordinator, FsScope,
+    Message as AgentMessage, Sandbox, ScopedSandbox, Session, SessionOptions,
+    SessionShutdownReason, StaticEnvProvider, ToolEnvProvider, ToolSecrets, WebFetchSummarizer,
+    canonical_tool_name, register_question_tools,
 };
 use fabro_auth::CredentialSource;
 use fabro_graphviz::graph::{AttrValue, Node};
@@ -556,6 +557,34 @@ fn last_assistant_response(session: &Session) -> String {
             None
         })
         .unwrap_or_default()
+}
+
+/// Compile a node's `fs_hide`/`fs_write` attributes into a filesystem
+/// scope, or `None` when the node declares neither (the default-open
+/// posture). Shared by the stage session and the subagent factory so the
+/// scope is identical at both boundaries (fabro-ba96).
+///
+/// # Errors
+///
+/// Fails closed when a glob does not compile: an invalid scope fails the
+/// stage instead of silently running unrestricted.
+fn node_fs_scope(node: &Node) -> Result<Option<Arc<FsScope>>, Error> {
+    let hide = node.fs_hide();
+    let write = node.fs_write();
+    if hide.is_empty() && write.is_none() {
+        return Ok(None);
+    }
+    FsScope::try_new(&hide, write.as_deref())
+        .map(|scope| Some(Arc::new(scope)))
+        .map_err(|error| {
+            Error::handler_with_source(
+                format!(
+                    "node '{}' declares an invalid fs_hide/fs_write glob",
+                    node.id
+                ),
+                error,
+            )
+        })
 }
 
 fn emit_agent_tools_available(
@@ -1155,6 +1184,17 @@ impl AgentApiBackend {
                     node_tools.iter().map(|tool| (*tool).to_owned()),
                 )))
             };
+        // Node-level filesystem scope (fabro-ba96, ADR-0009 stage
+        // envelope): compile fs_hide/fs_write once, wrap the stage
+        // sandbox (and the subagent factory env below) so every file
+        // operation of the session — in any tool vocabulary — enforces
+        // the scope, and expose the same policy to tool-layer pre-checks
+        // via SessionOptions. Fail-closed on invalid globs.
+        let fs_scope = node_fs_scope(node)?;
+        let stage_sandbox: Arc<dyn Sandbox> = match &fs_scope {
+            Some(scope) => Arc::new(ScopedSandbox::new(Arc::clone(sandbox), Arc::clone(scope))),
+            None => Arc::clone(sandbox),
+        };
         let config = SessionOptions {
             max_tokens: node.max_tokens(),
             reasoning_effort: controls.reasoning_effort,
@@ -1163,6 +1203,7 @@ impl AgentApiBackend {
             mcp_servers,
             tool_access_policy,
             permission_level: Some(PermissionLevel::Full),
+            fs_scope,
             ..SessionOptions::default()
         };
 
@@ -1175,7 +1216,7 @@ impl AgentApiBackend {
         // have, so a subagent's tool calls must pass through them too.
         let factory_client = client.clone();
         let factory_profile_builder = profile_builder;
-        let factory_env = Arc::clone(sandbox);
+        let factory_env = Arc::clone(&stage_sandbox);
         let factory_tool_env = tool_env.cloned();
         let factory_fabro_run_tools = fabro_run_tools.clone();
         let factory_node_fabro_tools: Vec<String> = node_fabro_tools
@@ -1185,6 +1226,7 @@ impl AgentApiBackend {
         let factory_permission_level = config.permission_level;
         let factory_tool_hooks = config.tool_hooks.clone();
         let factory_tool_access_policy = config.tool_access_policy.clone();
+        let factory_fs_scope = config.fs_scope.clone();
         // Stage context pull (fabro-e804): the shared state is created once
         // per session and captured by the parent registry and the subagent
         // factory alike, so spawned helpers serve the same per-node view.
@@ -1223,6 +1265,7 @@ impl AgentApiBackend {
                     tool_hooks: factory_tool_hooks.clone(),
                     tool_access_policy: factory_tool_access_policy.clone(),
                     permission_level: factory_permission_level,
+                    fs_scope: factory_fs_scope.clone(),
                     ..SessionOptions::default()
                 },
                 None,
@@ -1263,7 +1306,7 @@ impl AgentApiBackend {
         let mut session = Session::new(
             client,
             profile,
-            Arc::clone(sandbox),
+            stage_sandbox,
             config,
             Some(supervisor_for_session),
         );
@@ -2040,6 +2083,60 @@ mod tests {
 
     use super::*;
     use crate::context::Context;
+
+    #[test]
+    fn node_fs_scope_compiles_node_attributes_and_defaults_to_none() {
+        use fabro_graphviz::graph::{AttrValue, Node as GraphNode};
+
+        fn node_with_attrs(attrs: &[(&str, &str)]) -> GraphNode {
+            let mut node = GraphNode::new("a");
+            for (key, value) in attrs {
+                node.attrs
+                    .insert((*key).to_string(), AttrValue::String((*value).to_string()));
+            }
+            node
+        }
+
+        // Default-open: neither attribute declared.
+        let plain = node_with_attrs(&[("prompt", "work")]);
+        assert!(node_fs_scope(&plain).unwrap().is_none());
+
+        // Both axes compile into one scope.
+        let scoped = node_with_attrs(&[
+            ("fs_hide", ".fabro/**, .seeds/**"),
+            ("fs_write", "*.go, go.mod"),
+        ]);
+        let scope = node_fs_scope(&scoped).unwrap().expect("scope is active");
+        let working_dir = "/workspace";
+        assert!(scope.is_path_hidden(working_dir, "/workspace/.fabro/x"));
+        assert!(scope.check_write(working_dir, "/workspace/main.go").is_ok());
+        // `*` stays within one segment (require_literal_separator), so a
+        // nested path needs `**/*.go` — the documented glob language.
+        assert!(
+            scope
+                .check_write(working_dir, "/workspace/src/main.go")
+                .is_err()
+        );
+        assert!(
+            scope
+                .check_write(working_dir, "/workspace/justfile")
+                .is_err()
+        );
+
+        // An explicitly empty fs_write list makes the stage read-only.
+        let read_only = node_with_attrs(&[("fs_write", "")]);
+        let scope = node_fs_scope(&read_only).unwrap().expect("scope is active");
+        assert!(scope.check_write(working_dir, "/workspace/any.rs").is_err());
+
+        // Invalid globs fail closed instead of silently running open.
+        let broken = node_with_attrs(&[("fs_hide", "../*")]);
+        let error = node_fs_scope(&broken).expect_err("invalid glob fails the stage");
+        assert!(
+            error.to_string().contains("fs_hide"),
+            "unexpected error: {error}"
+        );
+    }
+
     use crate::services::FabroRunToolServices;
 
     struct ShutdownTestProfile {
@@ -2902,6 +2999,7 @@ reasoning = false
             session_id:          None,
             root_session_id:     None,
             tool_call_id:        None,
+            fs_scope:            None,
             agent_event_emitter: None,
         }
     }

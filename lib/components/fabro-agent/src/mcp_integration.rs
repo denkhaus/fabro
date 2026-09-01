@@ -98,6 +98,7 @@ mod tests {
         let result = (tool.executor)(
             serde_json::json!({"message": "test message"}),
             ToolContext {
+                fs_scope: None,
                 write_locks: None,
                 env,
                 cancel: CancellationToken::new(),

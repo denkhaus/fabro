@@ -1146,6 +1146,29 @@ pub struct DirEntry {
     pub size:   Option<u64>,
 }
 
+/// Extract the file path from a grep result line
+/// `<path>:<line>:<content>`.
+///
+/// A search of one concrete file may omit `<path>`, in which case the
+/// searched path itself is returned. Candidate separators are walked so
+/// paths that contain colons (including Windows drive prefixes) still
+/// parse correctly.
+#[must_use]
+pub fn grep_result_path<'a>(line: &'a str, searched: &'a str) -> &'a str {
+    let mut rest = line;
+    let mut consumed = 0usize;
+    while let Some(index) = rest.find(':') {
+        let after = &rest[index + 1..];
+        let digit_count = after.chars().take_while(char::is_ascii_digit).count();
+        if digit_count > 0 && after[digit_count..].starts_with(':') {
+            return &line[..consumed + index];
+        }
+        consumed += index + 1;
+        rest = after;
+    }
+    searched
+}
+
 /// A regular file discovered inside a sandbox.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxFile {
@@ -3238,5 +3261,24 @@ mod tests {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod grep_result_path_tests {
+    use super::grep_result_path;
+
+    #[test]
+    fn parses_paths_with_and_without_prefix() {
+        assert_eq!(grep_result_path("src/a.rs:12:let x = 1;", "."), "src/a.rs");
+        assert_eq!(
+            grep_result_path("only content", "searched.txt"),
+            "searched.txt"
+        );
+        // Colons inside the path must not cut it short.
+        assert_eq!(
+            grep_result_path("we:ird/path.rs:3:x", "."),
+            "we:ird/path.rs"
+        );
     }
 }

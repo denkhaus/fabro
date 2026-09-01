@@ -60,9 +60,9 @@ pub use question_tools::{
 };
 pub use sandbox::{
     CommandOutputCallback, DirEntry, ExecResult, ExecStreamingRequest, ExecStreamingResult,
-    GrepOptions, OutputCaptureStats, RefreshOutcome, RemoteCredentialAction, Sandbox, SandboxEvent,
-    SandboxEventCallback, StderrCollector, StdioProcess, StdioProcessHandle, TokenProvenance,
-    TokenSnapshot, format_lines_numbered, shell_quote,
+    FsScope, GrepOptions, OutputCaptureStats, RefreshOutcome, RemoteCredentialAction, Sandbox,
+    SandboxEvent, SandboxEventCallback, ScopedSandbox, StderrCollector, StdioProcess,
+    StdioProcessHandle, TokenProvenance, TokenSnapshot, format_lines_numbered, shell_quote,
 };
 pub use session::{
     CompletionCoordinator, Session, SessionControlHandle, SessionInputTiming,

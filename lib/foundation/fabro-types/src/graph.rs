@@ -433,6 +433,32 @@ impl Node {
             .unwrap_or_default()
     }
 
+    /// Node-level `fs_hide`: the comma-separated deny-list of
+    /// workspace-relative globs hidden from this agent stage (seed
+    /// fabro-ba96, ADR-0009 stage envelope). Hidden paths behave as if
+    /// they did not exist for the stage: reads fail, `file_exists`
+    /// reports `false`, discovery results (`grep`/`glob`/`list_dir`/
+    /// `walk_files`) are filtered, and writes are denied. Unset or empty
+    /// = the default-open posture, nothing hidden.
+    #[must_use]
+    pub fn fs_hide(&self) -> Vec<&str> {
+        self.str_attr("fs_hide")
+            .map(split_key_list)
+            .unwrap_or_default()
+    }
+
+    /// Node-level `fs_write`: the comma-separated allow-list of
+    /// workspace-relative globs this agent stage may write (seed
+    /// fabro-ba96). `None` (attribute unset) admits every write — the
+    /// default-open posture. `Some(list)` restricts writes to the listed
+    /// globs: everything else, including paths outside the workspace, is
+    /// denied. `Some(empty)` admits no write at all (a read-only stage).
+    /// Deletes and patch targets count as writes.
+    #[must_use]
+    pub fn fs_write(&self) -> Option<Vec<&str>> {
+        self.str_attr("fs_write").map(split_key_list)
+    }
+
     /// Node-level `context_allow_keys`: the comma-separated allowlist of
     /// agent-authored context keys this node may write (seed fabro-900e,
     /// ADR-0009 stage envelope). `None` (attribute unset) means every key
