@@ -78,7 +78,10 @@ digraph Develop {
         retry_policy="standard",
         preamble_stages_ignore="planner,reviewer,implementer",
         // fabro-900e: stable context_updates contract (see planner).
-        context_allow_keys="implementation_summary,journal"
+        // lesson_capture added by seed fabro-f831 (run 01M1EGK6J8): the
+        // implementer prompt REQUIRES the mx-id-or-skip answer as data —
+        // the envelope dropped it once (visible notice) until declared here.
+        context_allow_keys="implementation_summary,lesson_capture,journal"
     ]
 
     // Tester: deterministic quality gate, no agent. The host project defines
