@@ -18,7 +18,7 @@ use fabro_api::types::{
     BoardColumn, ManifestConfigType, ManifestGoalType, RunIntent, RunManifest, SubmitAnswerRequest,
     UpdateRunParentRequest, UpdateRunRequest,
 };
-use fabro_config::{CliLayer, RunLayer, Storage};
+use fabro_config::{CliLayer, RunLayer, Storage, project};
 use fabro_environment::{DEFAULT_ENVIRONMENT_ID, EnvironmentId};
 use fabro_interview::AnswerSubmission;
 use fabro_llm::client::Client as LlmClient;
@@ -704,7 +704,7 @@ pub(crate) async fn create_run_from_intent(
     });
 
     let entrypoint = lowered.entrypoint.clone();
-    let workflow_slug = fabro_config::project::workflow_slug_from_path(entrypoint.as_path());
+    let workflow_slug = project::workflow_slug_from_path(entrypoint.as_path());
     let raw_compiler_input = RawRunCompilerInput {
         workflow_bundle: lowered.workflow_bundle,
         entrypoint: lowered.entrypoint,

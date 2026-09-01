@@ -1,3 +1,8 @@
+#![expect(
+    clippy::disallowed_methods,
+    reason = "integration tests stage temporary workflow and Git fixtures with synchronous APIs"
+)]
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -63,12 +68,19 @@ fn mock_workflow_version_registrations(server: &MockServer) -> Mock<'_> {
     server.mock(|when, then| {
         when.method("POST").path("/api/v1/workflow-versions");
         then.respond_with(|request| {
-            let version: fabro_types::WorkflowVersion =
-                serde_json::from_slice(request.body_ref()).unwrap();
+            let version: fabro_types::WorkflowVersion = serde_json::from_slice(request.body_ref())
+                .expect("workflow-version request body should be valid JSON");
             HttpMockResponse::builder()
                 .status(201)
                 .header("content-type", "application/json")
-                .body(json!({ "workflow_version_id": version.id().unwrap() }).to_string())
+                .body(
+                    json!({
+                        "workflow_version_id": version
+                            .id()
+                            .expect("mocked workflow version should have a valid ID")
+                    })
+                    .to_string(),
+                )
                 .build()
         });
     })
@@ -83,10 +95,10 @@ fn mock_intent_create<'a>(
     server.mock(|when, then| {
         when.method("POST").path("/api/v1/runs");
         then.respond_with(move |request| {
-            requests
-                .lock()
-                .unwrap()
-                .push(serde_json::from_slice(request.body_ref()).unwrap());
+            requests.lock().unwrap().push(
+                serde_json::from_slice(request.body_ref())
+                    .expect("run-intent request body should be valid JSON"),
+            );
             HttpMockResponse::builder()
                 .status(201)
                 .header("content-type", "application/json")
@@ -98,19 +110,19 @@ fn mock_intent_create<'a>(
 
 fn write_workflow(root: &std::path::Path, directory: &str, graph_name: &str) -> std::path::PathBuf {
     let directory = root.join(directory);
-    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::create_dir_all(&directory).expect("workflow fixture directory should be created");
     std::fs::write(
         directory.join("workflow.toml"),
         "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n",
     )
-    .unwrap();
+    .expect("workflow fixture manifest should be written");
     std::fs::write(
         directory.join("workflow.fabro"),
         format!(
             "digraph {graph_name} {{ start [shape=Mdiamond] exit [shape=Msquare] start -> exit }}"
         ),
     )
-    .unwrap();
+    .expect("workflow fixture graph should be written");
     directory.join("workflow.toml")
 }
 
@@ -123,13 +135,16 @@ fn run_git(path: &std::path::Path, args: &[&str]) -> String {
         .args(args)
         .current_dir(path)
         .output()
-        .unwrap();
+        .expect("Git fixture command should execute");
     assert!(
         output.status.success(),
         "git {args:?} failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    String::from_utf8(output.stdout).unwrap().trim().to_string()
+    String::from_utf8(output.stdout)
+        .expect("Git fixture output should be UTF-8")
+        .trim()
+        .to_string()
 }
 
 fn init_git_repository(path: &std::path::Path) {
@@ -540,7 +555,7 @@ provider = "local"
         })
     );
     assert_eq!(intent["environment_id"], "local");
-    assert_eq!(intent["parent_id"], parent_id.to_string());
+    assert_eq!(intent["parent_id"], parent_id.clone());
     assert_eq!(intent["goal"], "Goal read from caller cwd");
     assert_eq!(intent["args"]["model"], "gpt-5");
     assert_eq!(intent["args"]["provider"], "openai");
@@ -1532,12 +1547,12 @@ fn create_uses_workflow_owned_pull_request_settings_only() {
     std::fs::create_dir_all(project.path().join(".fabro")).unwrap();
     std::fs::write(
         project.path().join(".fabro/project.toml"),
-        r#"_version = 1
+        r"_version = 1
 
 [run.pull_request]
 enabled = true
 draft = false
-"#,
+",
     )
     .unwrap();
     let workflow = write_workflow(project.path(), "workflow", "PullRequestAuthority");

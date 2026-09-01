@@ -76,6 +76,10 @@ fn current_dir_or_dot() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "CLI argument preparation synchronously reads one local goal file before submission"
+)]
 pub(super) fn prepare_intent_overrides(
     args: &RunArgs,
     cwd: &Path,
@@ -176,11 +180,12 @@ pub(crate) fn preflight_args_overrides(args: &PreflightArgs) -> Result<ManifestS
 )]
 mod tests {
     use super::*;
+    use crate::args::{InputOverrideArgs, ServerTargetArgs};
 
     fn run_args() -> RunArgs {
         RunArgs {
-            target:           crate::args::ServerTargetArgs::default(),
-            inputs:           crate::args::InputOverrideArgs::default(),
+            target:           ServerTargetArgs::default(),
+            inputs:           InputOverrideArgs::default(),
             workflow:         Some(PathBuf::from("workflow.fabro")),
             dry_run:          false,
             auto_approve:     false,

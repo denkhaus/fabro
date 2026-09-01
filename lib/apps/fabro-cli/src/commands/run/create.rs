@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use anyhow::{Context as _, anyhow, bail};
+use fabro_config::project;
 use fabro_server::manifest_validation;
 use fabro_types::settings::run::EnvironmentProvider;
 use fabro_types::{DirtyStatus, RunId, RunIntent, RunTarget};
@@ -68,8 +69,7 @@ pub(crate) async fn create_run(
         ctx.base_config_path(),
         *ctx.run_settings_key_presence(),
     );
-    let project_config =
-        fabro_config::project::discover_project_config(&package.workflow_location().dir)?;
+    let project_config = project::discover_project_config(&package.workflow_location().dir)?;
     if let Some(path) = project_config.as_deref() {
         warn_untransmitted_settings(
             ctx,

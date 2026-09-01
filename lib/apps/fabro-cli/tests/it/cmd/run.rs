@@ -59,13 +59,18 @@ fn mock_workflow_version_registrations(server: &MockServer) -> Mock<'_> {
     server.mock(|when, then| {
         when.method("POST").path("/api/v1/workflow-versions");
         then.respond_with(|request| {
-            let version: fabro_types::WorkflowVersion =
-                serde_json::from_slice(request.body_ref()).unwrap();
+            let version: fabro_types::WorkflowVersion = serde_json::from_slice(request.body_ref())
+                .expect("workflow-version request body should be valid JSON");
             HttpMockResponse::builder()
                 .status(201)
                 .header("content-type", "application/json")
                 .body(
-                    serde_json::json!({ "workflow_version_id": version.id().unwrap() }).to_string(),
+                    serde_json::json!({
+                        "workflow_version_id": version
+                            .id()
+                            .expect("mocked workflow version should have a valid ID")
+                    })
+                    .to_string(),
                 )
                 .build()
         });
@@ -808,7 +813,7 @@ fn local_foreground_run_prints_artifact_paths_from_server_artifact_list() {
 "#,
     );
     context.write_temp(
-        "artifact-summary/run.toml",
+        "artifact-summary/workflow.toml",
         r#"_version = 1
 
 [workflow]
@@ -835,7 +840,7 @@ include = ["assets/**"]
             "local",
             "--provider",
             "openai",
-            "run.toml",
+            "workflow.toml",
         ])
         .output()
         .expect("command should execute");

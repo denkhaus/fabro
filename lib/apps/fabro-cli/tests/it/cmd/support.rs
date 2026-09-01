@@ -397,7 +397,7 @@ pub(crate) fn setup_local_sandbox_run(context: &TestContext) -> WorkspaceRunSetu
 "#,
     );
     write_text_file(
-        &workspace_dir.join("run.toml"),
+        &workspace_dir.join("workflow.toml"),
         r#"_version = 1
 
 [workflow]
@@ -412,7 +412,7 @@ id = "local"
 "#,
     );
 
-    let run = run_local_workflow(context, &workspace_dir, "run.toml");
+    let run = run_local_workflow(context, &workspace_dir, "workflow.toml");
     assert!(run_state(&run.run_dir).sandbox.is_some());
 
     WorkspaceRunSetup { run, workspace_dir }

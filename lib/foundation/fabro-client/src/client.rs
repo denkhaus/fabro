@@ -2337,6 +2337,7 @@ mod tests {
 
     use chrono::Duration as ChronoDuration;
     use fabro_types::WorkflowPath;
+    use fabro_types::settings::run::EnvironmentProvider;
     use fabro_util::exit;
     use httpmock::Method::{GET, POST};
     use httpmock::{HttpMockResponse, MockServer};
@@ -2456,10 +2457,7 @@ mod tests {
 
         mock.assert_async().await;
         assert_eq!(environment.id.as_str(), "local");
-        assert_eq!(
-            environment.settings.provider,
-            fabro_types::settings::run::EnvironmentProvider::Local
-        );
+        assert_eq!(environment.settings.provider, EnvironmentProvider::Local);
     }
 
     #[tokio::test]
