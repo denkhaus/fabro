@@ -246,21 +246,13 @@ fn build_fabro_run_tool_services(
         .parent()
         .map(|parent| parent.join("workflows"));
     let backend = ClientBackend::new(Arc::new(client)).with_run_create_adapter(Arc::new(
-        worker_run_create_adapter(provider, inherited_target, user_workflows_root),
+        ServerRunCreateAdapter::worker(provider, inherited_target, user_workflows_root),
     )).with_workflow_version_packager(Arc::new(SuppliedWorkflowVersionPackager));
     Some(FabroRunToolServices {
         backend: Arc::new(backend),
         current_run_id,
         base_cwd: source_directory.map_or_else(|| run_dir.to_path_buf(), PathBuf::from),
     })
-}
-
-fn worker_run_create_adapter(
-    provider: EnvironmentProvider,
-    inherited_target: Option<RunTarget>,
-    user_workflows_root: Option<PathBuf>,
-) -> ServerRunCreateAdapter {
-    ServerRunCreateAdapter::worker(provider, inherited_target, user_workflows_root)
 }
 
 /// Load the worker's secret vault from the run's storage root.
@@ -1209,6 +1201,7 @@ mod tests {
     use fabro_interview::{
         AnswerValue, ControlInterviewer, Interviewer, Question, WorkerControlEnvelope,
     };
+    use fabro_server::run_tool_create::ServerRunCreateAdapter;
     use fabro_types::run_event::{
         InterviewCompletedProps, InterviewStartedProps, RunCompletedProps, RunControlEffectProps,
         RunFailedProps, RunStatusTransitionProps,
@@ -1295,7 +1288,7 @@ mod tests {
             .unwrap()
             .runs
             .remove(0);
-        let adapter = super::worker_run_create_adapter(
+        let adapter = ServerRunCreateAdapter::worker(
             EnvironmentProvider::Docker,
             Some(inherited.clone()),
             Some(temp.path().join("workflows")),
