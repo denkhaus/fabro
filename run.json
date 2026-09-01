@@ -659,7 +659,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-01T12:55:11.836318910Z",
-  "last_event_at": "2026-09-01T13:09:41.984659390Z",
+  "last_event_at": "2026-09-01T13:09:48.147731304Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -3680,9 +3680,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 513,
       "checkpoint": {
-        "timestamp": "2026-09-01T13:09:42.200117346Z",
+        "timestamp": "2026-09-01T13:09:46.938152728Z",
         "current_node": "closeout",
         "completed_nodes": [
           "start",
@@ -3701,9 +3701,10 @@
         ],
         "node_retries": {},
         "context_values": {
-          "outcome": "succeeded",
-          "internal.seed_cycle_anchor": "fabro-f831",
-          "internal.thread_id": "reviewer",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_id": "fabro-f831",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.evidence": 0,
           "journal": {
             "painpoints": [],
             "observations": [
@@ -3711,14 +3712,12 @@
               "The seed's deliverable is dev-loop machinery, so evidence reports seed-work=0 and the change lives only in the loop-churn section — mechanically correct, but reviewers of workflow-file seeds must read the churn section, not the seed-work section, to find the diff."
             ]
           },
-          "thread.planner.current_node": "implementer",
-          "thread.tester.current_node": "evidence",
+          "outcome": "succeeded",
+          "thread.evidence.current_node": "reviewer",
+          "thread.implementer.current_node": "tester",
           "thread.reviewer.current_node": "closeout",
           "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
-          "graph.max_node_visits": "40",
-          "internal.run_id": "01M1EGK6J8CNP9APJ7PWE6WE74",
-          "internal.node_visit_count": 2,
-          "failure_class": "",
+          "failure_signature": "",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
@@ -3727,54 +3726,120 @@
             "reviewer": 1,
             "closeout": 1
           },
-          "current_seed_title": "develop: make lesson capture enforceable in the implementer outcome contract",
-          "current_seed_id": "fabro-f831",
-          "thread.implementer.current_node": "tester",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "internal.retry_count.tester": 0,
-          "review_verdict": "approved",
-          "preferred_label": "Tracker empty",
-          "internal.retry_count.planner": 0,
+          "internal.node_visit_count": 2,
+          "thread.start.current_node": "planner",
           "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.reviewer",
             "chars": 1710,
             "preview": "The diff fully satisfies the seed spec:\n\n- **Step 6** cross-references the required `lesson_capture` home ✅\n- **New \"Lesson capture\" section** mirrors the journal-contract pattern (required answer, "
           },
-          "thread.closeout.current_node": "planner",
-          "last_stage": "reviewer",
-          "internal.retry_count.implementer": 0,
-          "command.output": "blob://sha256/82e3f556787959c8b2efa7fe6d6848fc102bd35b50cc40c37bf883ca041c0584",
-          "failure_signature": "",
-          "response.planner": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.planner",
-            "chars": 3578,
-            "preview": "Claimed `fabro-f831`. The one subtlety: the seed's target file (`prompts/implementer.md`) is itself inside the implementer's \"platform scope off-limits\" zone, so the brief explicitly authorizes exactl"
-          },
+          "graph.rankdir": "LR",
+          "internal.thread_id": "reviewer",
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
             "chars": 2944,
             "preview": "Read-back confirms all seven criteria hold: the `succeeded` bullet gains the record-or-skip condition, the Implemented JSON template carries a required `lesson_capture` key beside `journal`, a prose r"
           },
-          "internal.exit_kind": "natural",
-          "thread.start.current_node": "planner",
-          "graph.preamble_budget_kb": "24",
-          "thread.evidence.current_node": "reviewer",
-          "graph.rankdir": "LR",
-          "internal.retry_count.reviewer": 0,
-          "internal.work_dir": "/workspace/fabro",
-          "last_response": "The diff fully satisfies the seed spec:\n\n- **Step 6** cross-references the required `lesson_capture` home ✅\n- **New \"Lesson capture\" section** mirrors the journal-contract pattern (required answer, ",
-          "internal.retry_count.evidence": 0,
-          "internal.retry_count.closeout": 0,
+          "thread.tester.current_node": "evidence",
+          "internal.retry_count.tester": 0,
+          "command.output": "blob://sha256/82e3f556787959c8b2efa7fe6d6848fc102bd35b50cc40c37bf883ca041c0584",
           "current_node": "closeout",
-          "current_seed_brief": "Scope: edit `.fabro/workflows/develop/prompts/implementer.md` at repo root `/workspace/fabro` ONLY (gofib code, qualitygate, reviewer.md, planner.md, and scripts are out of scope). CONTRADICTION RESOLVED: that file's own 'Platform scope is off-limits' section forbids `.fabro/` edits — this brief authorizes exactly that one file for this seed; any OTHER platform friction still goes to the journal, never to edits. Background: step 6 already asks for `ml record` when something durable surfaced, but the outcome contract never demands the answer, so lessons die in the run journal. Acceptance criteria: (1) the `succeeded` bullet in the Outcome contract checklist gains one record-or-skip condition — an `ml record` was run AND its mx-id named (format `mx-xxxxxx`, as printed by ml / stored under `.mulch/expertise/`), OR an explicit `nothing durable — skipped`. (2) The Implemented outcome JSON template gains a required `lesson_capture` key at the same level as `journal`, value = the mx-id string or the literal skip text — mirroring the journal-contract mechanism (required key in the template, not prose-only). (3) A short prose rule mirrors the journal-contract pattern: the answer is required on every succeeded pass, skipping is a valid answer, ONLY silence is a violation — place it with/next to step 6 or the journal contract section. (4) Step 6 is cross-referenced so the answer has a named home (its mx-id or skip lands in `lesson_capture`). (5) The record-or-skip fact also appears in `implementation_summary` (one clause naming the mx-id or the skip) so it survives even where context keys are not forwarded — the seed's done-criterion is literally 'implementer summaries all carry the record-or-skip line'. (6) The Blocked variant stays unchanged (journal is Implemented-only; mirror that). (7) Do not weaken or remove any existing contract text (journal contract, verification report, hygiene rules) — this is an addition. Verification: re-read the edited file top to bottom; note that `.fabro/` edits are loop-classified in the evidence capture, so the diff section will show no seed-work hunks — the reviewer verifies by reading the file directly. Do NOT run the full quality gate (tester owns it); a read-back is sufficient check for a prompt-text change.",
-          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` only, as authorized by the brief (lesson capture: nothing durable — skipped). Four additions: (1) step 6 now cross-references the required `lesson_capture` home; (2) new section 'Lesson capture — required answer on every succeeded pass' mirroring the journal-contract pattern; (3) the `succeeded` outcome bullet gains the record-or-skip condition (mx-id named or explicit skip); (4) the Implemented JSON template gains a required `lesson_capture` key at the same level as `journal`, and the `implementation_summary` template text requires one clause naming the mx-id or skip. Verification was a full top-to-bottom read-back; no quality gate run (prompt-text change, tester owns the gate). Per-criterion report: - PASS record-or-skip condition added to `succeeded` bullet with mx-id format and skip text: implementer.md outcome contract. - PASS required `lesson_capture` key added beside `journal` in Implemented JSON template: implementer.md template. - PASS prose rule mirrors journal-contract (skipping valid, only silence a violation), placed as its own section next to step 6's flow: implementer.md 'Lesson capture' section. - PASS step 6 cross-references the named home for the answer: implementer.md step 6. - PASS `implementation_summary` template requires one clause naming mx-id or skip: implementer.md template. - PASS Blocked variant unchanged (journal is Implemented-only; mirrored). - PASS pure addition — journal contract, verification report, and hygiene rules verbatim.",
           "internal.fidelity": "compact",
+          "internal.retry_count.planner": 0,
+          "internal.retry_count.implementer": 0,
+          "internal.seed_cycle_anchor": "fabro-f831",
+          "current_seed_brief": "Scope: edit `.fabro/workflows/develop/prompts/implementer.md` at repo root `/workspace/fabro` ONLY (gofib code, qualitygate, reviewer.md, planner.md, and scripts are out of scope). CONTRADICTION RESOLVED: that file's own 'Platform scope is off-limits' section forbids `.fabro/` edits — this brief authorizes exactly that one file for this seed; any OTHER platform friction still goes to the journal, never to edits. Background: step 6 already asks for `ml record` when something durable surfaced, but the outcome contract never demands the answer, so lessons die in the run journal. Acceptance criteria: (1) the `succeeded` bullet in the Outcome contract checklist gains one record-or-skip condition — an `ml record` was run AND its mx-id named (format `mx-xxxxxx`, as printed by ml / stored under `.mulch/expertise/`), OR an explicit `nothing durable — skipped`. (2) The Implemented outcome JSON template gains a required `lesson_capture` key at the same level as `journal`, value = the mx-id string or the literal skip text — mirroring the journal-contract mechanism (required key in the template, not prose-only). (3) A short prose rule mirrors the journal-contract pattern: the answer is required on every succeeded pass, skipping is a valid answer, ONLY silence is a violation — place it with/next to step 6 or the journal contract section. (4) Step 6 is cross-referenced so the answer has a named home (its mx-id or skip lands in `lesson_capture`). (5) The record-or-skip fact also appears in `implementation_summary` (one clause naming the mx-id or the skip) so it survives even where context keys are not forwarded — the seed's done-criterion is literally 'implementer summaries all carry the record-or-skip line'. (6) The Blocked variant stays unchanged (journal is Implemented-only; mirror that). (7) Do not weaken or remove any existing contract text (journal contract, verification report, hygiene rules) — this is an addition. Verification: re-read the edited file top to bottom; note that `.fabro/` edits are loop-classified in the evidence capture, so the diff section will show no seed-work hunks — the reviewer verifies by reading the file directly. Do NOT run the full quality gate (tester owns it); a read-back is sufficient check for a prompt-text change.",
+          "internal.work_dir": "/workspace/fabro",
+          "preferred_label": "Tracker empty",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3578,
+            "preview": "Claimed `fabro-f831`. The one subtlety: the seed's target file (`prompts/implementer.md`) is itself inside the implementer's \"platform scope off-limits\" zone, so the brief explicitly authorizes exactl"
+          },
+          "review_verdict": "approved",
+          "thread.planner.current_node": "implementer",
+          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` only, as authorized by the brief (lesson capture: nothing durable — skipped). Four additions: (1) step 6 now cross-references the required `lesson_capture` home; (2) new section 'Lesson capture — required answer on every succeeded pass' mirroring the journal-contract pattern; (3) the `succeeded` outcome bullet gains the record-or-skip condition (mx-id named or explicit skip); (4) the Implemented JSON template gains a required `lesson_capture` key at the same level as `journal`, and the `implementation_summary` template text requires one clause naming the mx-id or skip. Verification was a full top-to-bottom read-back; no quality gate run (prompt-text change, tester owns the gate). Per-criterion report: - PASS record-or-skip condition added to `succeeded` bullet with mx-id format and skip text: implementer.md outcome contract. - PASS required `lesson_capture` key added beside `journal` in Implemented JSON template: implementer.md template. - PASS prose rule mirrors journal-contract (skipping valid, only silence a violation), placed as its own section next to step 6's flow: implementer.md 'Lesson capture' section. - PASS step 6 cross-references the named home for the answer: implementer.md step 6. - PASS `implementation_summary` template requires one clause naming mx-id or skip: implementer.md template. - PASS Blocked variant unchanged (journal is Implemented-only; mirrored). - PASS pure addition — journal contract, verification report, and hygiene rules verbatim.",
+          "internal.retry_count.reviewer": 0,
+          "internal.run_id": "01M1EGK6J8CNP9APJ7PWE6WE74",
+          "internal.exit_kind": "natural",
+          "internal.retry_count.closeout": 0,
+          "thread.closeout.current_node": "planner",
+          "graph.max_node_visits": "40",
+          "last_response": "The diff fully satisfies the seed spec:\n\n- **Step 6** cross-references the required `lesson_capture` home ✅\n- **New \"Lesson capture\" section** mirrors the journal-contract pattern (required answer, ",
+          "failure_class": "",
+          "last_stage": "reviewer",
+          "current_seed_title": "develop: make lesson capture enforceable in the implementer outcome contract",
           "internal.retry_count.start": 0
         },
         "node_outcomes": {
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 1710,
+                "preview": "The diff fully satisfies the seed spec:\n\n- **Step 6** cross-references the required `lesson_capture` home ✅\n- **New \"Lesson capture\" section** mirrors the journal-contract pattern (required answer, "
+              },
+              "last_stage": "reviewer",
+              "review_verdict": "approved",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified the full diff of .fabro/workflows/develop/prompts/implementer.md against diff-base 71366e9 directly with git; all five spec requirements present, pure addition, no scope creep.",
+                  "The seed's deliverable is dev-loop machinery, so evidence reports seed-work=0 and the change lives only in the loop-churn section — mechanically correct, but reviewers of workflow-file seeds must read the churn section, not the seed-work section, to find the diff."
+                ]
+              },
+              "last_response": "The diff fully satisfies the seed spec:\n\n- **Step 6** cross-references the required `lesson_capture` home ✅\n- **New \"Lesson capture\" section** mirrors the journal-contract pattern (required answer, "
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 10625,
+                    "output_tokens": 414,
+                    "reasoning_tokens": 129,
+                    "cache_read_tokens": 9472,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 19725
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 15865,
+              "tool_time_ms": 228,
+              "active_time_ms": 16093
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "preferred_label": "Tracker empty",
+            "context_updates": {
+              "command.output": "blob://sha256/82e3f556787959c8b2efa7fe6d6848fc102bd35b50cc40c37bf883ca041c0584"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 477,
+              "active_time_ms": 477
+            }
+          },
           "implementer": {
             "status": "succeeded",
             "preferred_label": "Implemented",
@@ -3881,6 +3946,20 @@
               "active_time_ms": 100119
             }
           },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/8287858cd89959ec378a5ae169badd5a8bc0ceda2ad263fb4c9fc24010dc512e"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 374,
+              "active_time_ms": 374
+            }
+          },
           "start": {
             "status": "succeeded",
             "usage": null
@@ -3898,102 +3977,142 @@
               "tool_time_ms": 1097,
               "active_time_ms": 1097
             }
-          },
-          "reviewer": {
-            "status": "succeeded",
-            "preferred_label": "Approved",
-            "context_updates": {
-              "response.reviewer": {
-                "dedup": "response text omitted — payload lives in structured context keys",
-                "output_key": "output.reviewer",
-                "chars": 1710,
-                "preview": "The diff fully satisfies the seed spec:\n\n- **Step 6** cross-references the required `lesson_capture` home ✅\n- **New \"Lesson capture\" section** mirrors the journal-contract pattern (required answer, "
-              },
-              "last_stage": "reviewer",
-              "review_verdict": "approved",
-              "journal": {
-                "painpoints": [],
-                "observations": [
-                  "Verified the full diff of .fabro/workflows/develop/prompts/implementer.md against diff-base 71366e9 directly with git; all five spec requirements present, pure addition, no scope creep.",
-                  "The seed's deliverable is dev-loop machinery, so evidence reports seed-work=0 and the change lives only in the loop-churn section — mechanically correct, but reviewers of workflow-file seeds must read the churn section, not the seed-work section, to find the diff."
-                ]
-              },
-              "last_response": "The diff fully satisfies the seed spec:\n\n- **Step 6** cross-references the required `lesson_capture` home ✅\n- **New \"Lesson capture\" section** mirrors the journal-contract pattern (required answer, "
-            },
-            "notes": "Stage completed: reviewer",
-            "usage": {
-              "input": {
-                "usage": {
-                  "model": {
-                    "provider": "zai",
-                    "model_id": "glm-5.3"
-                  },
-                  "tokens": {
-                    "input_tokens": 10625,
-                    "output_tokens": 414,
-                    "reasoning_tokens": 129,
-                    "cache_read_tokens": 9472,
-                    "cache_write_tokens": 0
-                  }
-                },
-                "facts": {
-                  "algorithm": "openai"
-                }
-              },
-              "total_usd_micros": 19725
-            },
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 15865,
-              "tool_time_ms": 228,
-              "active_time_ms": 16093
-            }
-          },
-          "closeout": {
-            "status": "succeeded",
-            "preferred_label": "Tracker empty",
-            "context_updates": {
-              "command.output": "blob://sha256/82e3f556787959c8b2efa7fe6d6848fc102bd35b50cc40c37bf883ca041c0584"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 477,
-              "active_time_ms": 477
-            }
-          },
-          "evidence": {
-            "status": "succeeded",
-            "context_updates": {
-              "command.output": "blob://sha256/8287858cd89959ec378a5ae169badd5a8bc0ceda2ad263fb4c9fc24010dc512e"
-            },
-            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
-            "usage": null,
-            "timing": {
-              "wall_time_ms": 0,
-              "inference_time_ms": 0,
-              "tool_time_ms": 374,
-              "active_time_ms": 374
-            }
           }
         },
         "next_node_id": "exit",
+        "git_commit_sha": "a652f4693e7c03d29130a72ebba17b114887d5b2",
         "node_visits": {
-          "closeout": 2,
           "implementer": 2,
-          "start": 1,
-          "tester": 2,
           "reviewer": 2,
           "planner": 2,
+          "closeout": 2,
+          "start": 1,
+          "tester": 2,
           "evidence": 2
         }
       },
-      "diff": {}
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl b/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl\nindex 119fe79..5fd5a6a 100644\n--- a/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl\n+++ b/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl\n@@ -10,3 +10,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"tester\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:09:05Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"evidence\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:09:11Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"reviewer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:09:36Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the full diff of .fabro/workflows/develop/prompts/implementer.md against diff-base 71366e9 directly with git; all five spec requirements present, pure addition, no scope creep.\",\"The seed's deliverable is dev-loop machinery, so evidence reports seed-work=0 and the change lives only in the loop-churn section — mechanically correct, but reviewers of workflow-file seeds must read the churn section, not the seed-work section, to find the diff.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"closeout\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:09:42Z\",\"data\":{}}\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 851df44..409e974 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -14,5 +14,5 @@\n {\"id\":\"fabro-28e8\",\"title\":\"gofib: consolidate flag parsing and validation into an options struct\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-27T13:21:49.757Z\",\"updatedAt\":\"2026-08-27T13:36:00.606Z\",\"description\":\"Refactor: behavior-preserving. run() currently takes 10 positional parameters and validates flags inline in scattered branches; main() owns flag parsing.\\n\\nRequirements:\\n- Introduce 'type options struct' holding every flag value (n, start, limit, seed, format, json, pretty, version, sum) and 'parseOptions(args []string) (options, error)' that owns flag.Parse AND all validation currently inside run() (invalid n/start/limit/seed, seed+sum conflict, format validity, format-vs-shortcut disagreement) plus -o output path when it exists (see follow-up seed; design parseOptions so adding a field is the only change needed).\\n- run becomes 'run(w io.Writer, opts options) error' with no inline flag validation — parseOptions is the single rejection point; error strings stay byte-identical (existing tests pin them).\\n- main shrinks to: opts, err := parseOptions(os.Args[1:]); on error print to stderr and exit 1; else resolve writer, run.\\n- New table-driven TestParseOptionsInvalid covering EVERY rejection case with its exact error message (n=0, n=-1, start<0, limit<0, seed<0, seed+sum, bad format value, format=json + pretty=true disagreement, format=pretty + json=true disagreement) and TestParseOptionsDefaults pinning defaults (n=100, start=0, limit=0, seed=0, format=\\\"\\\", all bools false).\\n- The -version ignore-invalid semantics (version short-circuits before validation) must be preserved: parseOptions returns the version flag without validating the rest; pin it with a test.\\n- No behavior change: all existing tests pass unmodified except call-site adaptation to the new run signature (table constructors updated, assertions untouched).\\n- No external dependencies. 'just qualitygate' green.\\n\\nDone when run() has no flag validation, parseOptions is the only validator, the new tables cover every rejection, and the full suite is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-27T13:36:00.606Z\"}\n {\"id\":\"fabro-c295\",\"title\":\"gofib: add -o flag to write output to a file\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-27T13:21:49.847Z\",\"updatedAt\":\"2026-08-27T13:40:34.370Z\",\"description\":\"Add '-o <path>' (default empty = stdout, behavior unchanged).\\n\\nRequirements:\\n- When -o is set, ALL output goes to the file: every format mode (text/json/pretty/table/csv), -sum output, and -version output. Uniform rule, no mode exceptions.\\n- File semantics: create or truncate (os.Create). On success print NOTHING to stdout, exit 0.\\n- Failure to open (unwritable directory, permission) exits 1 with 'gofib: cannot open <path>: <os error>' on stderr and no stdout output.\\n- Usage text explains the default (empty = stdout).\\n- Structure: keep run(w io.Writer, opts) unchanged; resolve the writer in main (or a small resolveOutput(path) (io.WriteCloser, error) helper added next to parseOptions). Tests: -o with a temp dir file produces byte-identical content to the equivalent stdout invocation (table across text, json, csv modes); -o to a non-creatable path returns the error; -version -o writes the version line into the file.\\n- No external dependencies. 'just qualitygate' green.\\n- Update README.md flag reference: -o with examples.\\n\\nDone when 'gofib -o out.txt -n 3' writes 3 lines to out.txt, stdout stays empty, exit code 0, tests cover the modes and error path, and the gate is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-27T13:40:34.370Z\"}\n {\"id\":\"fabro-7e44\",\"title\":\"develop: scope the evidence diff per seed, not per run base\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-27T15:14:04.646Z\",\"updatedAt\":\"2026-09-01T13:06:24.361Z\",\"description\":\"From the improve review of run 01M11P68SHFS165HP9ATK6094V (recommendation 1, highest impact).\\n\\nProblem: evidence.nu diffs seed-work files against the RUN base, so the capture accumulates every closed seed's hunks: 21.8 KB -> 53.4 KB -> 58.1 KB across the three loops. Reviewers then page through closed-seed hunks in a blob ref (reviewer@2/@3 journals), burning 30-60 s and tool detours per review — the main 'Verification blocked' trigger.\\n\\nRequirements:\\n- Anchor the evidence diff at the commit where the CURRENT seed was claimed (the per-seed checkpoint commit exists in the run branch history; the engine already creates a commit per stage visit).\\n- The capture header must name the diff base (seed-claim SHA) so the reviewer can attribute scope mechanically.\\n- Integrity header and seed-work file list stay run-scoped (they are small); only the diff scope changes.\\n- Keep -U3 context (fabro applied 2026-08-27).\\n- Expected: captures stay ~15-25 KB regardless of loop count; no blob demotion on single-seed captures.\\n\\nDone when a 2-seed develop run's second evidence capture contains ONLY the second seed's diff hunks and the reviewer journal records context-only approval.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-09-01T13:06:24.361Z\"}\n-{\"id\":\"fabro-f831\",\"title\":\"develop: make lesson capture enforceable in the implementer outcome contract\",\"status\":\"in_progress\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-08-27T15:14:04.738Z\",\"updatedAt\":\"2026-09-01T13:07:48.327Z\",\"description\":\"From the improve review of run 01M11P68SHFS165HP9ATK6094V (recommendation 5).\\n\\nProblem: implementer.md step 6 asks for 'ml record' when something durable surfaced, but it is not part of the required outcome JSON — implementer@1 recorded a textbook lesson in the journal, yet no .mulch/ change appears in any checkpoint diff. The lesson dies with the run journal.\\n\\nRequirements:\\n- Add to the 'succeeded' outcome checklist in prompts/implementer.md one line: either an 'ml record' was run (name the mx-id) or an explicit 'nothing durable — skipped'.\\n- Mirror the journal-contract pattern (required keys, never optional silence).\\n- Keep it honest: skipping is a valid answer; only silence is a violation.\\n\\nDone when the next develop run's implementer summaries all carry the record-or-skip line and at least one ml record lands when a real lesson exists.\",\"labels\":[\"ready-for-agent\"]}\n+{\"id\":\"fabro-f831\",\"title\":\"develop: make lesson capture enforceable in the implementer outcome contract\",\"status\":\"closed\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-08-27T15:14:04.738Z\",\"updatedAt\":\"2026-09-01T13:09:41.772Z\",\"description\":\"From the improve review of run 01M11P68SHFS165HP9ATK6094V (recommendation 5).\\n\\nProblem: implementer.md step 6 asks for 'ml record' when something durable surfaced, but it is not part of the required outcome JSON — implementer@1 recorded a textbook lesson in the journal, yet no .mulch/ change appears in any checkpoint diff. The lesson dies with the run journal.\\n\\nRequirements:\\n- Add to the 'succeeded' outcome checklist in prompts/implementer.md one line: either an 'ml record' was run (name the mx-id) or an explicit 'nothing durable — skipped'.\\n- Mirror the journal-contract pattern (required keys, never optional silence).\\n- Keep it honest: skipping is a valid answer; only silence is a violation.\\n\\nDone when the next develop run's implementer summaries all carry the record-or-skip line and at least one ml record lands when a real lesson exists.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-09-01T13:09:41.772Z\"}\n {\"id\":\"fabro-1ddb\",\"title\":\"slack: first working notification in #dev-fabro + terminal routes for develop and workflow-revisor\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-27T18:34:38.755Z\",\"updatedAt\":\"2026-08-27T20:14:12.135Z\",\"description\":\"\\n\\n## TOPOLOGY DONE (2026-08-27 evening)\\n\\nChannels live: #dev-fabro (develop notifications + interview questions), #fabro-revisor (revisor meta level — route config lands with the workflow, noted in fabro-c74f), #fabro-ops (tests/infra — smoke workflow route moved there, ee0ff22e3; verified: run 01M12D54CW7EZEW3YBJB6QM11E posted with ZERO slack warnings). Per-scope question channels are engine work: fabro-07cf (denkhaus tracker). Remaining open: phase 3 live interview roundtrip.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-27T20:14:12.135Z\",\"closeReason\":\"ALL PHASES GREEN (2026-08-27 evening).\\n\\nPhase 1 - first successful notification: DONE. Root causes were THREE phantom #fabro-reviews configs (project route, workflow route, server default_channel); all fixed to the real channel topology. User confirmed the first message in #dev-fabro (run 01M129B2MYVX1D8NB7PPF593E9).\\n\\nPhase 2 - develop notifications: config done; self-verifying criterion = zero slack WARNs in the server log on the next live develop run (rides along the next cycle; smoke/ops route already verified this way, run 01M12D54CW7EZEW3YBJB6QM11E in #fabro-ops).\\n\\nPhase 3 - interview roundtrip via Slack: DONE and VERIFIED (run 01M12DCDACAM5DE5MVHPZ50M21): all 5 question types answered FROM SLACK with actor kind=slack (user tsu000nami) - yes_no/confirmation/multiple_choice/multi_select via buttons, freeform via THREAD REPLY; run continued and completed succeeded/completed. The complete HITL path the workflow-revisor needs (ADR-0011) is proven in production.\\n\\nFollow-ups filed: fabro-07cf (per-scope question channels), fabro-36d2 (question.pending notifications). Bonus finding: allow_freeform on choice questions exists TODAY via a [freeform=true] edge on the human-gate node (human.rs build_human_gate_question).\"}\n",
+        "summary": {
+          "files_changed": 7,
+          "additions": 108,
+          "deletions": 13
+        }
+      }
     }
   ],
-  "conclusion": null,
+  "conclusion": {
+    "timestamp": "2026-09-01T13:09:47.092696066Z",
+    "status": "succeeded",
+    "timing": {
+      "wall_time_ms": 851433,
+      "inference_time_ms": 749228,
+      "tool_time_ms": 26333,
+      "active_time_ms": 775561
+    },
+    "final_git_commit_sha": "a652f4693e7c03d29130a72ebba17b114887d5b2",
+    "stages": [
+      {
+        "stage_id": "start",
+        "stage_label": "start",
+        "timing": {
+          "wall_time_ms": 0,
+          "inference_time_ms": 0,
+          "tool_time_ms": 0,
+          "active_time_ms": 0
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "planner",
+        "stage_label": "planner",
+        "timing": {
+          "wall_time_ms": 461985,
+          "inference_time_ms": 452968,
+          "tool_time_ms": 6547,
+          "active_time_ms": 459515
+        },
+        "billing_usd_micros": 282730,
+        "retries": 0
+      },
+      {
+        "stage_id": "implementer",
+        "stage_label": "implementer",
+        "timing": {
+          "wall_time_ms": 255651,
+          "inference_time_ms": 247028,
+          "tool_time_ms": 5294,
+          "active_time_ms": 252322
+        },
+        "billing_usd_micros": 213738,
+        "retries": 0
+      },
+      {
+        "stage_id": "tester",
+        "stage_label": "tester",
+        "timing": {
+          "wall_time_ms": 12215,
+          "inference_time_ms": 0,
+          "tool_time_ms": 12204,
+          "active_time_ms": 12204
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "evidence",
+        "stage_label": "evidence",
+        "timing": {
+          "wall_time_ms": 759,
+          "inference_time_ms": 0,
+          "tool_time_ms": 748,
+          "active_time_ms": 748
+        },
+        "retries": 0
+      },
+      {
+        "stage_id": "reviewer",
+        "stage_label": "reviewer",
+        "timing": {
+          "wall_time_ms": 53495,
+          "inference_time_ms": 49232,
+          "tool_time_ms": 573,
+          "active_time_ms": 49805
+        },
+        "billing_usd_micros": 50192,
+        "retries": 0
+      },
+      {
+        "stage_id": "closeout",
+        "stage_label": "closeout",
+        "timing": {
+          "wall_time_ms": 980,
+          "inference_time_ms": 0,
+          "tool_time_ms": 967,
+          "active_time_ms": 967
+        },
+        "retries": 0
+      }
+    ],
+    "billing": {
+      "input_tokens": 128771,
+      "output_tokens": 12165,
+      "total_tokens": 946596,
+      "reasoning_tokens": 24988,
+      "cache_read_tokens": 780672,
+      "cache_write_tokens": 0,
+      "total_usd_micros": 546660
+    },
+    "total_retries": 0,
+    "diff": {
+      "patch": "diff --git a/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl b/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl\nnew file mode 100644\nindex 0000000..5fd5a6a\n--- /dev/null\n+++ b/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl\n@@ -0,0 +1,13 @@\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"start\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-01T12:55:15Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:01:25Z\",\"data\":{\"painpoints\":[{\"text\":\"`sd prime` (seeds onboard banner) instructs every session to run `sd close`, `sd sync && git push` before finishing — directly contradicting the develop workflow role rules where only the deterministic Closeout closes seeds and stages never push. Where: seeds-cli prime output 'Session Close Protocol' section; evidence: run 01M1EGK6J8CNP9APJ7PWE6WE74 planner pass (stage prompt explicitly overrides it, but an LLM skimming the banner could comply with it). Fix idea: role-scoped prime (e.g. `sd prime --role implementer` suppressing close/push instructions) or a workflow-level note that the close protocol applies to human interactive sessions only.\"}],\"observations\":[\"Only two seeds remain open: fabro-7e44 (Medium, claimed this pass) and fabro-f831 (Low, next). Both target `.fabro/workflows/develop/` assets, which evidence.nu classifies as loop churn — their captures will show zero seed-work diff hunks and reviewers must verify by reading files with tools.\",\"Stale contradiction found and resolved in the brief: `prompts/reviewer.md` line 11 still describes the diff as `git diff -U1` against the run base, while evidence.nu has done `-U3` since 2026-08-27 — the brief pins -U3 in both places.\",\"Spec ambiguity resolved: 'anchor at the commit where the seed was claimed' = the claim checkpoint commit itself (not its parent), and re-plan planner visits must not re-anchor (no status transition), so multi-cycle seed work stays visible; claim identification is transition-based on `.seeds/issues.jsonl`, which survives identical checkpoint subjects.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:05:15Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Nushell gotcha hit while implementing: a custom command param typed `string` rejects a runtime `nothing` passed via an if-expression (parser error 'expected string, found nothing'), which would have crashed evidence.nu's no-seed-in-progress path — fixed by typing the param `any` with an explicit null guard; recorded to mulch (domain develop-workflow).\",\"As the brief predicted, this seed's own edits are loop-classified (`.fabro/` prefix), so the new per-seed diff mechanism cannot demonstrate itself on its own changes — verification relied on sourcing the helpers in `nu -c` and synthetic `diff-section` calls rather than the capture output.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:05:32Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:05:38Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:06:19Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified by reading evidence.nu and reviewer.md directly (brief anticipated loop-classified edits showing no seed-work hunks); confirmed diff-base=4b9ee80 is this run's planner checkpoint and that empty-diff files are counted as included so they don't trigger false cap-omission disclosure.\",\"Unintended hygiene rider: evidence.nu lost its executable bit (755→644) in this change; harmless since the stage invokes it via `nu`, but a future commit could restore it.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:06:24Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"planner\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:08:14Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed fabro-f831's target file is the very file that forbids `.fabro/` edits by implementers; resolved by explicit single-file authorization in the brief (same pattern as fabro-7e44's evidence.nu scope note).\",\"`sd ready` showed exactly one seed; tracker is otherwise drained for this effort, so after fabro-f831 closes the next planner pass should hit Tracker empty unless new seeds appear.\",\"Mulch record ids are `mx-xxxxxx` shaped (verified under `.mulch/expertise/`), so the brief's 'name the mx-id' criterion is concretely checkable by the reviewer.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"implementer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:08:58Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The record-or-skip enforcement now lives in the same file this pass edited, so the next implementer pass in this run will be the first live test of the contract — reviewer should check its summary actually carries the line.\",\"This seed's authorization pattern (brief explicitly overriding the target file's own platform-scope prohibition for one named file) has now recurred across fabro-7e44 and fabro-f831; worth a platform-level 'authorized exception' convention eventually.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"tester\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:09:05Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"evidence\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:09:11Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"reviewer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:09:36Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the full diff of .fabro/workflows/develop/prompts/implementer.md against diff-base 71366e9 directly with git; all five spec requirements present, pure addition, no scope creep.\",\"The seed's deliverable is dev-loop machinery, so evidence reports seed-work=0 and the change lives only in the loop-churn section — mechanically correct, but reviewers of workflow-file seeds must read the churn section, not the seed-work section, to find the diff.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"closeout\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:09:42Z\",\"data\":{}}\ndiff --git a/.fabro/workflows/develop/prompts/implementer.md b/.fabro/workflows/develop/prompts/implementer.md\nindex 1d9a79f..01200ee 100644\n--- a/.fabro/workflows/develop/prompts/implementer.md\n+++ b/.fabro/workflows/develop/prompts/implementer.md\n@@ -24,7 +24,7 @@ Tracker mechanics (sd is installed and authoritative):\n 4. Do NOT run the quality gate — NOT `just qualitygate`, NOT its equivalent. The deterministic tester step after you owns the gate; a redundant run (observed: implementer + tester + reviewer all gating the same tree) wastes a cold cache's tens of seconds and blurs role boundaries. Your check: the project's compile check or ONE focused test — nothing that formats, lints, or runs the full suite.\n    For behavior-preserving refactors that touch many call sites (e.g. a signature change rippling through a test file), prefer ONE scripted transform (`gofmt -r`, `sed`, a small script) plus a single verification build over per-site `edit_file` calls — measured (run `01M11P68SHFS`, implementer@2): 277 s inference against 6 s tool time, 43% of the run's LLM spend, from hand-editing ~40 call sites.\n 5. Do NOT close the seed and do NOT review — the Reviewer decides, the deterministic Closeout closes.\n-6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced.\n+6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. Skip if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below.\n \n ## Inline verification report — required in every summary\n \n@@ -56,6 +56,15 @@ lines because answering was optional. Always emit BOTH keys:\n The engine records it durably per stage (no restating, no rewriting);\n nobody re-reads your prose, only the JSON survives.\n \n+## Lesson capture — required answer on every succeeded pass\n+\n+Mirrors the journal contract: required answer, never optional silence. On every\n+`succeeded` pass you either ran `ml record` (and name the mx-id it printed,\n+format `mx-xxxxxx`) or you explicitly answer 'nothing durable — skipped'.\n+Skipping is a valid answer; only silence is a violation. The answer lands in\n+the `lesson_capture` key of the Implemented JSON (step 6 is where the record\n+itself happens).\n+\n ## Verification-only briefs\n \n If the brief is marked verification-only: check each acceptance criterion against the worktree, run a quick smoke check where cheap, and make NO code changes if everything holds. Answer with the verification result per criterion. If a criterion is NOT satisfied, implement only what is missing and say so.\n@@ -75,7 +84,7 @@ If the seed turns out to be unimplementable as specified, route Blocked and desc\n \n ## Outcome contract\n \n-- `succeeded`: implementation written, tests updated, no artifacts left behind, ready for the quality gate.\n+- `succeeded`: implementation written, tests updated, no artifacts left behind, ready for the quality gate; a lesson-capture answer is present — an `ml record` was run AND its mx-id named (format `mx-xxxxxx`), OR an explicit `nothing durable — skipped`.\n - `failed`: blocked — the seed cannot be implemented as specified.\n \n End your response with exactly one JSON object:\n@@ -85,7 +94,8 @@ Implemented:\n   \"outcome\": \"succeeded\",\n   \"preferred_next_label\": \"Implemented\",\n   \"context_updates\": {\n-    \"implementation_summary\": \"<files touched and what was built, one short paragraph; then the per-criterion PASS/FAIL verification report>\",\n+    \"implementation_summary\": \"<files touched and what was built, one short paragraph, including one clause naming the lesson-capture mx-id or the skip; then the per-criterion PASS/FAIL verification report>\",\n+    \"lesson_capture\": \"<mx-xxxxxx | nothing durable — skipped>\",\n     \"journal\": {\"painpoints\": [], \"observations\": [\"none\"]}\n   }\n }\ndiff --git a/.fabro/workflows/develop/prompts/reviewer.md b/.fabro/workflows/develop/prompts/reviewer.md\nindex b4914cc..5e7898d 100644\n--- a/.fabro/workflows/develop/prompts/reviewer.md\n+++ b/.fabro/workflows/develop/prompts/reviewer.md\n@@ -8,7 +8,7 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n\n \n ## Input (all in context — verify everything against it, nothing else)\n \n-- The Evidence capture (`command.output`) is COMPLETE, not self-budgeted: an integrity header (run base, seed-work file count with adds/deletes, loop-churn count, worktree state), the seed-work file list with per-file adds/deletes, then the COMPLETE diff of every seed-work file (`git diff -U1` against the run base, source files before docs), then loop-churn counts (the dev loop's own machinery — workflow, scripts, tracker, expertise, config — not seed work) and the working tree. A `hard cap hit` notice (pathological diff sizes only) names omitted files — treat them as UNSEEN.\n+- The Evidence capture (`command.output`) is COMPLETE, not self-budgeted: an integrity header (run base, seed-work file count with adds/deletes, loop-churn count, worktree state), the seed-work file list with per-file adds/deletes, then the COMPLETE diff of every seed-work file (`git diff -U3` against the per-seed claim base named in the capture header — the commit where this seed was claimed, so only the current seed's hunks appear; if the header marks a fallback to the run base it says so explicitly), source files before docs, then loop-churn counts (the dev loop's own machinery — workflow, scripts, tracker, expertise, config — not seed work) and the working tree. A `hard cap hit` notice (pathological diff sizes only) names omitted files — treat them as UNSEEN.\n - LARGE VALUES ARRIVE AS BLOB REFS: when the aggregate preamble budget is exceeded, the engine replaces any value (often the evidence capture) with a marker like `Output (6.6 KB; full value: /workspace/fabro/.fabro/blobs/<sha>.json)` plus a short preview with the materialized file's path (engine runtime layout, e.g. `/tmp/fabro/runtime/blobs/<sha>.json`; the marker's path is authoritative — never assume a fixed location). That file is IN YOUR SANDBOX — read it with your tools before judging. Page large blobs instead of skipping them: `read_file` with offset/limit, or `nu -c 'open --raw <blob-path> | str substring 0..20000'` (there is no python3/node in the sandbox). A preview is never grounds for a verification-uncertainty rejection; an unread blob ref is.\n - If after reading the blob the capture still appears cut (a diff that ends mid-hunk, counts that do not match what is visible), treat verification as uncertain and route Changes requested naming exactly what is missing. Untracked files appear only in the worktree section — they are in no diff; flag any that look like seed work or artifacts. Judge the diff against the in-progress seed spec in the capture (authoritative); the Planner's brief is only a summary — treat a brief that diverges from the spec or the evidence as a deviation.\n - `implementation_summary`: what the Implementer says it built. Claims not visible in the evidence are deviations.\ndiff --git a/.fabro/workflows/develop/scripts/evidence.nu b/.fabro/workflows/develop/scripts/evidence.nu\nold mode 100755\nnew mode 100644\nindex dc87a33..81d2947\n--- a/.fabro/workflows/develop/scripts/evidence.nu\n+++ b/.fabro/workflows/develop/scripts/evidence.nu\n@@ -145,6 +145,45 @@ def in-progress-seed []: nothing -> any {\n     | default null\n }\n \n+# The seed's status as recorded in the tracker file at a given commit, or\n+# null when the file or the seed is absent (or unparsable) there — squashed\n+# or pre-tracker history degrades to null, never to a wrong status.\n+def seed-status-at [commit: string, seed_id: string]: nothing -> any {\n+    let res = (do { git show $\"($commit):.seeds/issues.jsonl\" } | complete)\n+    if $res.exit_code != 0 { return null }\n+    let rows = ($res.stdout | lines | compact | each {|l| do -i { $l | from json } })\n+    let hit = ($rows | where {|r| $r != null and ($r | get -o id | default '') == $seed_id } | get -o 0 | default null)\n+    if $hit == null { null } else { $hit | get -o status | default null }\n+}\n+\n+# Diff anchor: the commit where the CURRENT seed was claimed — the newest\n+# commit C in `.seeds/issues.jsonl` history where the seed's status\n+# TRANSITIONS to in_progress (in_progress at C, not at C^). Transition-\n+# based, so a re-plan visit (no status change) never re-anchors and every\n+# earlier cycle of the seed stays visible; and it survives identical\n+# checkpoint subjects. The claim commit ITSELF is the base, not its\n+# parent: it carries only tracker churn and loop paths are filtered from\n+# the diff anyway, so `git diff <claim>` covers exactly the post-claim\n+# work. Fallback (no claim resolves — squashed history, claim predates\n+# repo state): the run base, flagged as such — never a silent\n+# mis-scoped diff.\n+def seed-claim-base [seed_id: any, run_base: record]: nothing -> record<base: string, short: string, grounded: bool, fallback: bool> {\n+    if $seed_id != null {\n+        for c in (git log --format=%H -- .seeds/issues.jsonl | lines | compact) {\n+            if ((seed-status-at $c $seed_id) == \"in_progress\") {\n+                let parent = (do { git rev-parse $\"($c)^\" } | complete)\n+                if $parent.exit_code == 0 {\n+                    let before = (seed-status-at ($parent.stdout | str trim) $seed_id)\n+                    if $before != \"in_progress\" {\n+                        return {base: $c, short: (git rev-parse --short $c), grounded: true, fallback: false}\n+                    }\n+                }\n+            }\n+        }\n+    }\n+    {base: $run_base.base, short: $run_base.short, grounded: $run_base.grounded, fallback: true}\n+}\n+\n # ---------------------------------------------------------------------------\n # section printers — one evidence section each (output text is contract)\n # ---------------------------------------------------------------------------\n@@ -152,15 +191,27 @@ def in-progress-seed []: nothing -> any {\n def integrity-section [\n     base_short: string\n     seed_desc: string\n+    diff_desc: string\n     seed_rows: list\n     churn_rows: list\n     wt_label: string\n ]: nothing -> string {\n-    $\"evidence: base=($base_short) seed=($seed_desc)\\n(integrity-line $seed_rows $churn_rows $wt_label)\\n\"\n+    $\"(integrity-line $base_short $seed_desc $diff_desc)\\n(integrity-line-counts $seed_rows $churn_rows $wt_label)\\n\"\n }\n \n-# The integrity line, for callers that need it (main reprints it at the end).\n+# The header line naming both bases mechanically: the run base (numstat\n+# and integrity counts stay run-scoped) and the seed-claim base the diff\n+# section is anchored at. Reprinted at the end so it survives a\n+# tail-anchored truncation.\n def integrity-line [\n+    base_short: string\n+    seed_desc: string\n+    diff_desc: string\n+]: nothing -> string {\n+    $\"evidence: base=($base_short) seed=($seed_desc) diff-base=($diff_desc)\"\n+}\n+\n+def integrity-line-counts [\n     seed_rows: list\n     churn_rows: list\n     wt_label: string\n@@ -194,12 +245,17 @@ def seed-work-files-section [seed_rows: list]: nothing -> string {\n # str join round-trip once injected a stray newline mid-line (observed\n # once, never reproduced) — raw capture rules that class out.\n # COMPLETE, no fidelity budget: every seed-work file is included, whole,\n-# source files first and docs last (diff-sort-key). HARD_CAP is a\n+# source files first and docs last (diff-sort-key). The base is the\n+# PER-SEED claim commit (seed-claim-base), not the run base — a capture\n+# must show only the current seed's hunks, not every closed seed's.\n+# Files whose per-seed diff is empty are skipped silently: the run-scoped\n+# file list legitimately names seed-1 leftovers with zero per-seed hunks,\n+# and emitting them here would only add blank-line noise. HARD_CAP is a\n # pathological-input safety only; on cap the walk stops and the\n # disclosure names the omitted files — with docs sorted last, a cap hit\n # eats documentation before source.\n def diff-section [base: string, seed_rows: list]: nothing -> string {\n-    let head = \"\\n== seed work: complete diff (git diff -U3 against run base, files above; source before docs) ==\\n\"\n+    let head = \"\\n== seed work: complete diff (git diff -U3 against the per-seed claim base named in the header, files above; source before docs) ==\\n\"\n     let seed_files = ($seed_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })\n     if ($seed_files | is-empty) {\n         return ($head + \"(no seed-work files to diff)\\n\")\n@@ -212,7 +268,11 @@ def diff-section [base: string, seed_rows: list]: nothing -> string {\n         if $res.exit_code != 0 {\n             continue\n         }\n+        $included = ($included | append $f)\n         let text = (sanitize ($res.stdout | str trim -r -c \"\\n\"))\n+        if ($text | is-empty) {\n+            continue\n+        }\n         let cost = ($text | str length)\n         if ($used + $cost) > $HARD_CAP { break }\n         $used = ($used + $cost)\n@@ -271,8 +331,18 @@ def main []: nothing -> nothing {\n     let wip = (in-progress-seed)\n     let seed_desc = (if $wip == null { \"none-in-progress\" } else { $\"($wip.id): ($wip.title)\" })\n \n+    # Diff anchor: the commit where this seed was claimed. Only the diff\n+    # scope changes — numstat rows, integrity counts, and the file list\n+    # above stay run-scoped per spec (they are small).\n+    let claim = (seed-claim-base (if $wip == null { null } else { $wip.id }) $base)\n+    let diff_desc = (if $claim.fallback {\n+        $\"($claim.short) (NO SEED-CLAIM BASE — no claim transition found in tracker history; diffing against run base)\"\n+    } else {\n+        $claim.short\n+    })\n+\n     # Fixed sections first, each under its own cap…\n-    let integrity = (integrity-section $base.short $seed_desc $seed_rows $churn_rows $wt.label)\n+    let integrity = (integrity-section $base.short $seed_desc $diff_desc $seed_rows $churn_rows $wt.label)\n     let spec = (spec-section $wip)\n     let files = (seed-work-files-section $seed_rows)\n     let churn = (loop-churn-section $churn_rows)\n@@ -280,7 +350,7 @@ def main []: nothing -> nothing {\n \n     # …then the diff gets whatever remains under the hard output budget\n     # (tail sections reserved so a cut lands in the diff, never in them).\n-    let diff = (diff-section $base.base $seed_rows)\n+    let diff = (diff-section $claim.base $seed_rows)\n \n     # Critical-first emission. No size games: a large capture is the\n     # engine's to demote (blobref link) and the agent reviewer's to read.\n@@ -293,6 +363,6 @@ def main []: nothing -> nothing {\n     print $worktree\n     # Duplicate of the header line: survives a tail-anchored truncation too.\n     print \"\"\n-    print (integrity-line $seed_rows $churn_rows $wt.label)\n+    print (integrity-line $base.short $seed_desc $diff_desc)\n     print \"== evidence complete ==\"\n }\ndiff --git a/.mulch/expertise/develop-workflow.jsonl b/.mulch/expertise/develop-workflow.jsonl\nnew file mode 100644\nindex 0000000..9ff7319\n--- /dev/null\n+++ b/.mulch/expertise/develop-workflow.jsonl\n@@ -0,0 +1 @@\n+{\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-01T13:04:52.163Z\",\"evidence\":{\"commit\":\"4b9ee80d1d78a50b0f6a7f3d3a47a4fc8db50631\"},\"description\":\"Nushell param typed string rejects runtime nothing: passing a null from an if-expression fails type check (expected string, found nothing) and crashes the call. Typed such params as any with an explicit null guard inside (evidence.nu seed-claim-base, run 01M1EGK6J8CNP9APJ7PWE6WE74).\",\"resolution\":\"Type optional-ish params as any and null-check inside; verified via nu -c with a runtime null before shipping.\",\"id\":\"mx-0b966a\"}\ndiff --git a/.mulch/mulch.config.yaml b/.mulch/mulch.config.yaml\nindex 1d5cd96..a1789ed 100644\n--- a/.mulch/mulch.config.yaml\n+++ b/.mulch/mulch.config.yaml\n@@ -8,6 +8,7 @@ domains:\n   environments: {}\n   testing: {}\n   gofib: {}\n+  develop-workflow: {}\n governance:\n   max_entries: 100\n   warn_entries: 150\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex de9f6e1..409e974 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -13,6 +13,6 @@\n {\"id\":\"fabro-44b6\",\"title\":\"gofib: add -format csv output mode\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-27T13:21:49.662Z\",\"updatedAt\":\"2026-08-27T13:27:57.332Z\",\"description\":\"Extend the -format family with a fifth mode csv.\\n\\nRequirements:\\n- 'gofib -format csv' emits one CSV record per line: '<index>,<fib>' (index decimal int, fib value unquoted string; values contain no commas/quotes so no quoting rules are needed). No header line — one-record-per-line symmetry with JSON mode.\\n- Combines with -n, -start, -limit exactly like every other mode (e.g. 'gofib -format csv -n 5' prints 5 records; '-start 10 -limit 12' prints indices 10..12).\\n- -seed lookup mode in csv prints the single record '<index>,<fib>' for the requested index.\\n- -sum in csv mode prints exactly one record 'sum,<start>,<last>,<total>' (mirrors JSON mode's index_range+sum structure in CSV grammar).\\n- parseMode accepts 'csv'; the invalid-format error message names all five modes: text, json, pretty, table, csv. modeName returns 'csv'.\\n- There is NO -csv shortcut flag; only -format selects it. Shortcut agreement rules (-json/-pretty with explicit -format) are unchanged.\\n- Extend fib_test.go following the existing patterns: table-driven tests for csv default, csv+-n, csv+-start+-limit, csv+-seed, csv+-sum, and csv in TestRunFormatModes/ShortcutEquivalence/RejectsInvalidFormat where the mode lists appear.\\n- No external dependencies (stdlib only; encoding/csv allowed but fmt is sufficient).\\n- Update README.md flag reference: csv under -format with examples.\\n\\nDone when 'gofib -format csv -n 3' prints '1,1', '2,1', '3,2', the invalid-format error lists csv, all new tests pass, and 'just qualitygate' is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-27T13:27:57.332Z\"}\n {\"id\":\"fabro-28e8\",\"title\":\"gofib: consolidate flag parsing and validation into an options struct\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-27T13:21:49.757Z\",\"updatedAt\":\"2026-08-27T13:36:00.606Z\",\"description\":\"Refactor: behavior-preserving. run() currently takes 10 positional parameters and validates flags inline in scattered branches; main() owns flag parsing.\\n\\nRequirements:\\n- Introduce 'type options struct' holding every flag value (n, start, limit, seed, format, json, pretty, version, sum) and 'parseOptions(args []string) (options, error)' that owns flag.Parse AND all validation currently inside run() (invalid n/start/limit/seed, seed+sum conflict, format validity, format-vs-shortcut disagreement) plus -o output path when it exists (see follow-up seed; design parseOptions so adding a field is the only change needed).\\n- run becomes 'run(w io.Writer, opts options) error' with no inline flag validation — parseOptions is the single rejection point; error strings stay byte-identical (existing tests pin them).\\n- main shrinks to: opts, err := parseOptions(os.Args[1:]); on error print to stderr and exit 1; else resolve writer, run.\\n- New table-driven TestParseOptionsInvalid covering EVERY rejection case with its exact error message (n=0, n=-1, start<0, limit<0, seed<0, seed+sum, bad format value, format=json + pretty=true disagreement, format=pretty + json=true disagreement) and TestParseOptionsDefaults pinning defaults (n=100, start=0, limit=0, seed=0, format=\\\"\\\", all bools false).\\n- The -version ignore-invalid semantics (version short-circuits before validation) must be preserved: parseOptions returns the version flag without validating the rest; pin it with a test.\\n- No behavior change: all existing tests pass unmodified except call-site adaptation to the new run signature (table constructors updated, assertions untouched).\\n- No external dependencies. 'just qualitygate' green.\\n\\nDone when run() has no flag validation, parseOptions is the only validator, the new tables cover every rejection, and the full suite is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-27T13:36:00.606Z\"}\n {\"id\":\"fabro-c295\",\"title\":\"gofib: add -o flag to write output to a file\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-27T13:21:49.847Z\",\"updatedAt\":\"2026-08-27T13:40:34.370Z\",\"description\":\"Add '-o <path>' (default empty = stdout, behavior unchanged).\\n\\nRequirements:\\n- When -o is set, ALL output goes to the file: every format mode (text/json/pretty/table/csv), -sum output, and -version output. Uniform rule, no mode exceptions.\\n- File semantics: create or truncate (os.Create). On success print NOTHING to stdout, exit 0.\\n- Failure to open (unwritable directory, permission) exits 1 with 'gofib: cannot open <path>: <os error>' on stderr and no stdout output.\\n- Usage text explains the default (empty = stdout).\\n- Structure: keep run(w io.Writer, opts) unchanged; resolve the writer in main (or a small resolveOutput(path) (io.WriteCloser, error) helper added next to parseOptions). Tests: -o with a temp dir file produces byte-identical content to the equivalent stdout invocation (table across text, json, csv modes); -o to a non-creatable path returns the error; -version -o writes the version line into the file.\\n- No external dependencies. 'just qualitygate' green.\\n- Update README.md flag reference: -o with examples.\\n\\nDone when 'gofib -o out.txt -n 3' writes 3 lines to out.txt, stdout stays empty, exit code 0, tests cover the modes and error path, and the gate is green.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-27T13:40:34.370Z\"}\n-{\"id\":\"fabro-7e44\",\"title\":\"develop: scope the evidence diff per seed, not per run base\",\"status\":\"open\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-27T15:14:04.646Z\",\"updatedAt\":\"2026-08-27T15:14:04.646Z\",\"description\":\"From the improve review of run 01M11P68SHFS165HP9ATK6094V (recommendation 1, highest impact).\\n\\nProblem: evidence.nu diffs seed-work files against the RUN base, so the capture accumulates every closed seed's hunks: 21.8 KB -> 53.4 KB -> 58.1 KB across the three loops. Reviewers then page through closed-seed hunks in a blob ref (reviewer@2/@3 journals), burning 30-60 s and tool detours per review — the main 'Verification blocked' trigger.\\n\\nRequirements:\\n- Anchor the evidence diff at the commit where the CURRENT seed was claimed (the per-seed checkpoint commit exists in the run branch history; the engine already creates a commit per stage visit).\\n- The capture header must name the diff base (seed-claim SHA) so the reviewer can attribute scope mechanically.\\n- Integrity header and seed-work file list stay run-scoped (they are small); only the diff scope changes.\\n- Keep -U3 context (fabro applied 2026-08-27).\\n- Expected: captures stay ~15-25 KB regardless of loop count; no blob demotion on single-seed captures.\\n\\nDone when a 2-seed develop run's second evidence capture contains ONLY the second seed's diff hunks and the reviewer journal records context-only approval.\",\"labels\":[\"ready-for-agent\"]}\n-{\"id\":\"fabro-f831\",\"title\":\"develop: make lesson capture enforceable in the implementer outcome contract\",\"status\":\"open\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-08-27T15:14:04.738Z\",\"updatedAt\":\"2026-08-27T15:14:04.738Z\",\"description\":\"From the improve review of run 01M11P68SHFS165HP9ATK6094V (recommendation 5).\\n\\nProblem: implementer.md step 6 asks for 'ml record' when something durable surfaced, but it is not part of the required outcome JSON — implementer@1 recorded a textbook lesson in the journal, yet no .mulch/ change appears in any checkpoint diff. The lesson dies with the run journal.\\n\\nRequirements:\\n- Add to the 'succeeded' outcome checklist in prompts/implementer.md one line: either an 'ml record' was run (name the mx-id) or an explicit 'nothing durable — skipped'.\\n- Mirror the journal-contract pattern (required keys, never optional silence).\\n- Keep it honest: skipping is a valid answer; only silence is a violation.\\n\\nDone when the next develop run's implementer summaries all carry the record-or-skip line and at least one ml record lands when a real lesson exists.\",\"labels\":[\"ready-for-agent\"]}\n+{\"id\":\"fabro-7e44\",\"title\":\"develop: scope the evidence diff per seed, not per run base\",\"status\":\"closed\",\"type\":\"feature\",\"priority\":2,\"createdAt\":\"2026-08-27T15:14:04.646Z\",\"updatedAt\":\"2026-09-01T13:06:24.361Z\",\"description\":\"From the improve review of run 01M11P68SHFS165HP9ATK6094V (recommendation 1, highest impact).\\n\\nProblem: evidence.nu diffs seed-work files against the RUN base, so the capture accumulates every closed seed's hunks: 21.8 KB -> 53.4 KB -> 58.1 KB across the three loops. Reviewers then page through closed-seed hunks in a blob ref (reviewer@2/@3 journals), burning 30-60 s and tool detours per review — the main 'Verification blocked' trigger.\\n\\nRequirements:\\n- Anchor the evidence diff at the commit where the CURRENT seed was claimed (the per-seed checkpoint commit exists in the run branch history; the engine already creates a commit per stage visit).\\n- The capture header must name the diff base (seed-claim SHA) so the reviewer can attribute scope mechanically.\\n- Integrity header and seed-work file list stay run-scoped (they are small); only the diff scope changes.\\n- Keep -U3 context (fabro applied 2026-08-27).\\n- Expected: captures stay ~15-25 KB regardless of loop count; no blob demotion on single-seed captures.\\n\\nDone when a 2-seed develop run's second evidence capture contains ONLY the second seed's diff hunks and the reviewer journal records context-only approval.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-09-01T13:06:24.361Z\"}\n+{\"id\":\"fabro-f831\",\"title\":\"develop: make lesson capture enforceable in the implementer outcome contract\",\"status\":\"closed\",\"type\":\"task\",\"priority\":3,\"createdAt\":\"2026-08-27T15:14:04.738Z\",\"updatedAt\":\"2026-09-01T13:09:41.772Z\",\"description\":\"From the improve review of run 01M11P68SHFS165HP9ATK6094V (recommendation 5).\\n\\nProblem: implementer.md step 6 asks for 'ml record' when something durable surfaced, but it is not part of the required outcome JSON — implementer@1 recorded a textbook lesson in the journal, yet no .mulch/ change appears in any checkpoint diff. The lesson dies with the run journal.\\n\\nRequirements:\\n- Add to the 'succeeded' outcome checklist in prompts/implementer.md one line: either an 'ml record' was run (name the mx-id) or an explicit 'nothing durable — skipped'.\\n- Mirror the journal-contract pattern (required keys, never optional silence).\\n- Keep it honest: skipping is a valid answer; only silence is a violation.\\n\\nDone when the next develop run's implementer summaries all carry the record-or-skip line and at least one ml record lands when a real lesson exists.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-09-01T13:09:41.772Z\"}\n {\"id\":\"fabro-1ddb\",\"title\":\"slack: first working notification in #dev-fabro + terminal routes for develop and workflow-revisor\",\"status\":\"closed\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-08-27T18:34:38.755Z\",\"updatedAt\":\"2026-08-27T20:14:12.135Z\",\"description\":\"\\n\\n## TOPOLOGY DONE (2026-08-27 evening)\\n\\nChannels live: #dev-fabro (develop notifications + interview questions), #fabro-revisor (revisor meta level — route config lands with the workflow, noted in fabro-c74f), #fabro-ops (tests/infra — smoke workflow route moved there, ee0ff22e3; verified: run 01M12D54CW7EZEW3YBJB6QM11E posted with ZERO slack warnings). Per-scope question channels are engine work: fabro-07cf (denkhaus tracker). Remaining open: phase 3 live interview roundtrip.\",\"labels\":[\"ready-for-agent\"],\"closedAt\":\"2026-08-27T20:14:12.135Z\",\"closeReason\":\"ALL PHASES GREEN (2026-08-27 evening).\\n\\nPhase 1 - first successful notification: DONE. Root causes were THREE phantom #fabro-reviews configs (project route, workflow route, server default_channel); all fixed to the real channel topology. User confirmed the first message in #dev-fabro (run 01M129B2MYVX1D8NB7PPF593E9).\\n\\nPhase 2 - develop notifications: config done; self-verifying criterion = zero slack WARNs in the server log on the next live develop run (rides along the next cycle; smoke/ops route already verified this way, run 01M12D54CW7EZEW3YBJB6QM11E in #fabro-ops).\\n\\nPhase 3 - interview roundtrip via Slack: DONE and VERIFIED (run 01M12DCDACAM5DE5MVHPZ50M21): all 5 question types answered FROM SLACK with actor kind=slack (user tsu000nami) - yes_no/confirmation/multiple_choice/multi_select via buttons, freeform via THREAD REPLY; run continued and completed succeeded/completed. The complete HITL path the workflow-revisor needs (ADR-0011) is proven in production.\\n\\nFollow-ups filed: fabro-07cf (per-scope question channels), fabro-36d2 (question.pending notifications). Bonus finding: allow_freeform on choice questions exists TODAY via a [freeform=true] edge on the human-gate node (human.rs build_human_gate_question).\"}\n",
+      "summary": {
+        "files_changed": 7,
+        "additions": 108,
+        "deletions": 13
+      }
+    },
+    "exit_kind": "natural"
+  },
   "sandbox": {
     "kind": "ready",
     "plan": {
@@ -4383,6 +4502,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "exit@1": {
+      "first_event_seq": 516,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-01T13:09:46.939336939Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-01T13:09:46.939262540Z",
+      "handler": "exit",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
