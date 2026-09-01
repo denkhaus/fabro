@@ -12,8 +12,10 @@ use insta::assert_snapshot;
 use serde_json::json;
 
 use super::support::{
-    created_run_id, fixture, output_stderr, output_stdout, remote_run_summary_json, resolve_run,
-    run_count_for_test_case, run_state,
+    created_run_id, environment_json, fixture, mock_environment,
+    mock_workflow_version_registrations, mock_workflow_version_registrations_recording,
+    output_stderr, output_stdout, remote_run_summary_json, resolve_run, run_count_for_test_case,
+    run_git, run_state,
 };
 use crate::support::unique_run_id;
 
@@ -34,56 +36,6 @@ fn run_status_response(run_id: &str, status: &str) -> serde_json::Value {
         &status,
         "2026-04-05T12:00:00Z",
     )
-}
-
-fn environment_json(id: &str, provider: &str) -> serde_json::Value {
-    json!({
-        "id": id,
-        "revision": "0".repeat(64),
-        "provider": provider,
-        "image": { "docker": null, "dockerfile": null },
-        "resources": { "cpu": null, "memory": null, "disk": null },
-        "network": { "mode": "allow_all", "allow": [] },
-        "lifecycle": {
-            "preserve": false,
-            "stop_on_terminal": true,
-            "auto_stop": null
-        },
-        "labels": {},
-        "env": {}
-    })
-}
-
-fn mock_environment<'a>(server: &'a MockServer, id: &str, provider: &str) -> Mock<'a> {
-    server.mock(|when, then| {
-        when.method("GET")
-            .path(format!("/api/v1/environments/{id}"));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(environment_json(id, provider));
-    })
-}
-
-fn mock_workflow_version_registrations(server: &MockServer) -> Mock<'_> {
-    server.mock(|when, then| {
-        when.method("POST").path("/api/v1/workflow-versions");
-        then.respond_with(|request| {
-            let version: fabro_types::WorkflowVersion = serde_json::from_slice(request.body_ref())
-                .expect("workflow-version request body should be valid JSON");
-            HttpMockResponse::builder()
-                .status(201)
-                .header("content-type", "application/json")
-                .body(
-                    json!({
-                        "workflow_version_id": version
-                            .id()
-                            .expect("mocked workflow version should have a valid ID")
-                    })
-                    .to_string(),
-                )
-                .build()
-        });
-    })
 }
 
 fn mock_intent_create<'a>(
@@ -124,31 +76,6 @@ fn write_workflow(root: &std::path::Path, directory: &str, graph_name: &str) -> 
     )
     .expect("workflow fixture graph should be written");
     directory.join("workflow.toml")
-}
-
-#[expect(
-    clippy::disallowed_methods,
-    reason = "the integration fixture needs a real local Git checkout"
-)]
-fn run_git(path: &std::path::Path, args: &[&str]) -> String {
-    let output = std::process::Command::new("git")
-        .args(args)
-        .current_dir(path)
-        .output()
-        .expect("Git fixture command should execute");
-    assert!(
-        output.status.success(),
-        "git {args:?} failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8(output.stdout)
-        .expect("Git fixture output should be UTF-8")
-        .trim()
-        .to_string()
-}
-
-fn init_git_repository(path: &std::path::Path) {
-    run_git(path, &["init", "--quiet"]);
 }
 
 #[test]
@@ -235,23 +162,8 @@ fn create_defers_provider_validation_to_the_server() {
     let run_id = unique_run_id();
     let environment_mock = mock_environment(&server, "default", "docker");
     let registered_versions = Arc::new(Mutex::new(Vec::new()));
-    let registered_versions_for_mock = Arc::clone(&registered_versions);
-    let version_mock = server.mock(|when, then| {
-        when.method("POST").path("/api/v1/workflow-versions");
-        then.respond_with(move |request| {
-            let version: fabro_types::WorkflowVersion =
-                serde_json::from_slice(request.body_ref()).unwrap();
-            registered_versions_for_mock
-                .lock()
-                .unwrap()
-                .push(serde_json::from_slice::<serde_json::Value>(request.body_ref()).unwrap());
-            HttpMockResponse::builder()
-                .status(201)
-                .header("content-type", "application/json")
-                .body(json!({ "workflow_version_id": version.id().unwrap() }).to_string())
-                .build()
-        });
-    });
+    let version_mock =
+        mock_workflow_version_registrations_recording(&server, Arc::clone(&registered_versions));
     let mock = server.mock(|when, then| {
         when.method("POST").path("/api/v1/runs");
         then.status(201)
@@ -617,7 +529,7 @@ fn create_preserves_named_user_other_checkout_and_loose_file_selection() {
     let project = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
     let other_checkout = tempfile::tempdir().unwrap();
-    init_git_repository(project.path());
+    run_git(project.path(), &["init", "--quiet"]);
     let project_workflow = write_workflow(project.path(), ".fabro/workflows/hello", "ProjectHello");
     let user_root = context.home_dir.join(".fabro/workflows");
     let user_workflow = write_workflow(&user_root, "hello", "UserHello");
@@ -969,23 +881,8 @@ fn create_registers_dependencies_before_the_root_and_then_creates_once() {
     let run_id = unique_run_id();
     let environment_mock = mock_environment(&server, "local", "local");
     let registrations = Arc::new(Mutex::new(Vec::new()));
-    let registrations_for_mock = Arc::clone(&registrations);
-    let version_mock = server.mock(|when, then| {
-        when.method("POST").path("/api/v1/workflow-versions");
-        then.respond_with(move |request| {
-            let version: fabro_types::WorkflowVersion =
-                serde_json::from_slice(request.body_ref()).unwrap();
-            registrations_for_mock
-                .lock()
-                .unwrap()
-                .push(version.entrypoint().as_str().to_string());
-            HttpMockResponse::builder()
-                .status(201)
-                .header("content-type", "application/json")
-                .body(json!({ "workflow_version_id": version.id().unwrap() }).to_string())
-                .build()
-        });
-    });
+    let version_mock =
+        mock_workflow_version_registrations_recording(&server, Arc::clone(&registrations));
     let requests = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
     let requests_for_mock = Arc::clone(&requests);
     let registrations_for_create = Arc::clone(&registrations);
@@ -1010,7 +907,7 @@ fn create_registers_dependencies_before_the_root_and_then_creates_once() {
         });
     });
     let project = tempfile::tempdir().unwrap();
-    init_git_repository(project.path());
+    run_git(project.path(), &["init", "--quiet"]);
     write_workflow(project.path(), ".fabro/workflows/root", "Root");
     write_workflow(project.path(), ".fabro/workflows/child", "Child");
     std::fs::write(
@@ -1047,7 +944,13 @@ fn create_registers_dependencies_before_the_root_and_then_creates_once() {
     environment_mock.assert();
     version_mock.assert_calls(2);
     create_mock.assert_calls(1);
-    assert_eq!(registrations.lock().unwrap().as_slice(), [
+    let registered_entrypoints: Vec<String> = registrations
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|version| version["entrypoint"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(registered_entrypoints, [
         ".fabro/workflows/child/workflow.fabro",
         ".fabro/workflows/root/workflow.fabro",
     ]);

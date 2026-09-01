@@ -1,24 +1,6 @@
 use fabro_api::types;
 
 use crate::args::PreflightArgs;
-#[cfg(test)]
-use crate::args::RunArgs;
-
-#[cfg(test)]
-pub(crate) fn run_manifest_args(args: &RunArgs) -> Option<types::ManifestArgs> {
-    let payload = types::ManifestArgs {
-        auto_approve:     args.auto_approve.then_some(true),
-        dry_run:          args.dry_run.then_some(true),
-        label:            args.label.clone(),
-        model:            args.model.clone(),
-        preserve_sandbox: args.preserve_sandbox.then_some(true),
-        provider:         args.provider.clone(),
-        environment:      args.environment.clone(),
-        input:            args.inputs.values.clone(),
-        verbose:          args.verbose.then_some(true),
-    };
-    (!fabro_manifest::manifest_args_is_empty(&payload)).then_some(payload)
-}
 
 pub(crate) fn preflight_manifest_args(args: &PreflightArgs) -> Option<types::ManifestArgs> {
     let payload = types::ManifestArgs {

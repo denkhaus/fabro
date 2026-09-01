@@ -25,7 +25,7 @@ use fabro_types::{Graph, RunId, WorkflowSettings, test_support};
 use httpmock::Method::{GET, POST};
 use httpmock::MockServer;
 
-use super::support::{mock_resolved_run, remote_run_summary_json};
+use super::support::{mock_resolved_run, remote_run_summary_json, run_git};
 use crate::support::{
     RealAuthHarness, TEST_DEV_TOKEN, run_projection_json, seed_dev_token_auth, unique_run_id,
 };

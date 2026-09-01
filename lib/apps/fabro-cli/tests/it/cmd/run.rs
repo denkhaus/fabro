@@ -6,11 +6,12 @@
 use fabro_config::Storage;
 use fabro_test::{fabro_json_snapshot, fabro_snapshot, test_context};
 use fabro_vault::{SecretType, Vault};
-use httpmock::{HttpMockResponse, Mock, MockServer};
+use httpmock::MockServer;
 use serde_json::Value;
 
 use super::support::{
-    created_run_id, output_stderr, remote_run_summary_json, run_state, wait_for_event_names,
+    created_run_id, mock_environment, mock_workflow_version_registrations, output_stderr,
+    remote_run_summary_json, run_state, wait_for_event_names,
 };
 use crate::support::{LightweightCli, run_output_filters, run_projection_json, unique_run_id};
 
@@ -29,52 +30,6 @@ fn run_status_response(run_id: &str, status: &str) -> serde_json::Value {
         &status,
         "2026-04-05T12:00:00Z",
     )
-}
-
-fn mock_environment<'a>(server: &'a MockServer, id: &str, provider: &str) -> Mock<'a> {
-    server.mock(|when, then| {
-        when.method("GET")
-            .path(format!("/api/v1/environments/{id}"));
-        then.status(200)
-            .header("content-type", "application/json")
-            .json_body(serde_json::json!({
-                "id": id,
-                "revision": "0".repeat(64),
-                "provider": provider,
-                "image": { "docker": null, "dockerfile": null },
-                "resources": { "cpu": null, "memory": null, "disk": null },
-                "network": { "mode": "allow_all", "allow": [] },
-                "lifecycle": {
-                    "preserve": false,
-                    "stop_on_terminal": true,
-                    "auto_stop": null
-                },
-                "labels": {},
-                "env": {}
-            }));
-    })
-}
-
-fn mock_workflow_version_registrations(server: &MockServer) -> Mock<'_> {
-    server.mock(|when, then| {
-        when.method("POST").path("/api/v1/workflow-versions");
-        then.respond_with(|request| {
-            let version: fabro_types::WorkflowVersion = serde_json::from_slice(request.body_ref())
-                .expect("workflow-version request body should be valid JSON");
-            HttpMockResponse::builder()
-                .status(201)
-                .header("content-type", "application/json")
-                .body(
-                    serde_json::json!({
-                        "workflow_version_id": version
-                            .id()
-                            .expect("mocked workflow version should have a valid ID")
-                    })
-                    .to_string(),
-                )
-                .build()
-        });
-    })
 }
 
 fn remote_run_state_response(run_id: &str) -> serde_json::Value {

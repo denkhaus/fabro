@@ -2,6 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context as _, anyhow, bail};
 use fabro_config::project;
+use fabro_environment::DEFAULT_ENVIRONMENT_ID;
 use fabro_server::manifest_validation;
 use fabro_types::settings::run::EnvironmentProvider;
 use fabro_types::{DirtyStatus, RunId, RunIntent, RunTarget};
@@ -18,10 +19,10 @@ pub(crate) struct CreatedRun {
     pub(crate) run_id: RunId,
 }
 
-/// Create a workflow run: allocate run directory, persist RunSpec, return
-/// (run_id, run_dir).
+/// Register the local workflow version closure with the server and create a
+/// run from an immutable workflow intent, leaving it in the submitted state.
 ///
-/// This does NOT execute the workflow — it only prepares the run directory.
+/// This does NOT start the workflow — starting is a separate request.
 pub(crate) async fn create_run(
     ctx: &CommandContext,
     args: &RunArgs,
@@ -43,8 +44,7 @@ pub(crate) async fn create_run(
         workflow_path,
         &canonical_cwd,
         Some(&user_workflows_root),
-    )
-    .map_err(anyhow::Error::new)?;
+    )?;
     let prepared = prepare_intent_overrides(args, &canonical_cwd)?;
     let validation = manifest_validation::validate_collected_workflow(
         package.closure(),
@@ -80,17 +80,35 @@ pub(crate) async fn create_run(
     }
 
     let client = ctx.server().await?;
-    let parent_id = match args.parent.as_deref() {
-        Some(parent_selector) => Some(resolve_run_id(client.as_ref(), parent_selector).await?),
-        None => None,
-    };
-    let environment_id = args.environment.as_deref().unwrap_or("default");
-    let environment = client
-        .retrieve_environment(environment_id)
-        .await
-        .with_context(|| format!("could not retrieve environment `{environment_id}`"))?;
-    let target =
-        run_target_for_environment(environment.settings.provider, &canonical_cwd, ctx, styles)?;
+    let environment_id = args
+        .environment
+        .as_deref()
+        .unwrap_or(DEFAULT_ENVIRONMENT_ID);
+    let (parent_id, environment) = tokio::try_join!(
+        async {
+            match args.parent.as_deref() {
+                Some(parent_selector) => Ok(Some(
+                    resolve_run_id(client.as_ref(), parent_selector).await?,
+                )),
+                None => Ok(None),
+            }
+        },
+        async {
+            client
+                .retrieve_environment(environment_id)
+                .await
+                .with_context(|| format!("could not retrieve environment `{environment_id}`"))
+        },
+    )?;
+    let (target, dirty_worktree) =
+        run_target_for_environment(environment.settings.provider, &canonical_cwd)?;
+    if dirty_worktree {
+        fabro_util::printerr!(
+            ctx.printer(),
+            "{} the caller Git working tree is dirty; uncommitted changes are not included in the run target.",
+            styles.yellow.apply_to("Warning:"),
+        );
+    }
     let workflow_version_id = package.closure().root_id();
     client
         .register_workflow_versions(
@@ -138,42 +156,33 @@ fn warn_untransmitted_settings(
     );
 }
 
+/// Derives the run target from the caller directory for the environment's
+/// provider. Returns the target plus whether a clone-based observation found a
+/// dirty Git worktree, so the caller can warn about it.
 fn run_target_for_environment(
     provider: EnvironmentProvider,
     canonical_cwd: &Path,
-    ctx: &CommandContext,
-    styles: &Styles,
-) -> anyhow::Result<RunTarget> {
-    match provider {
-        EnvironmentProvider::Local => {
-            let path = canonical_cwd.to_str().ok_or_else(|| {
-                anyhow!(
-                    "caller working directory is not valid UTF-8: {}",
-                    canonical_cwd.display()
-                )
-            })?;
-            Ok(RunTarget::Folder {
+) -> anyhow::Result<(RunTarget, bool)> {
+    if !provider.is_clone_based() {
+        let path = canonical_cwd.to_str().ok_or_else(|| {
+            anyhow!(
+                "caller working directory is not valid UTF-8: {}",
+                canonical_cwd.display()
+            )
+        })?;
+        return Ok((
+            RunTarget::Folder {
                 path: path.to_string(),
-            })
-        }
-        EnvironmentProvider::Docker | EnvironmentProvider::Daytona => {
-            let Some(observation) = fabro_manifest::observe_git_run_target(canonical_cwd, None)
-            else {
-                return Ok(RunTarget::None {});
-            };
-            if observation.legacy_git_context.dirty == DirtyStatus::Dirty {
-                fabro_util::printerr!(
-                    ctx.printer(),
-                    "{} the caller Git working tree is dirty; uncommitted changes are not included in the run target.",
-                    styles.yellow.apply_to("Warning:"),
-                );
-            }
-            let target = observation.run_target.ok_or_else(|| {
-                anyhow!(
-                    "the caller Git checkout cannot be represented as a canonical GitHub run target"
-                )
-            })?;
-            Ok(RunTarget::Git(target))
-        }
+            },
+            false,
+        ));
     }
+    let Some(observation) = fabro_manifest::observe_git_run_target(canonical_cwd, None) else {
+        return Ok((RunTarget::None {}, false));
+    };
+    let dirty = observation.legacy_git_context.dirty == DirtyStatus::Dirty;
+    let target = observation.run_target.ok_or_else(|| {
+        anyhow!("the caller Git checkout cannot be represented as a canonical GitHub run target")
+    })?;
+    Ok((RunTarget::Git(target), dirty))
 }

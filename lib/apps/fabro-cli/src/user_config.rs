@@ -91,21 +91,14 @@ pub(crate) fn load_resolved_settings(
 pub(crate) fn read_project_run_settings_key_presence(
     path: &Path,
 ) -> anyhow::Result<RunSettingsKeyPresence> {
+    let parse_error =
+        |source| fabro_config::Error::parse_file("Failed to parse settings file", path, source);
     let source = std::fs::read_to_string(path)
         .map_err(|source| fabro_config::Error::read_file(path, source))?;
-    let document: toml::Value = toml::from_str(&source).map_err(|source| {
-        fabro_config::Error::parse_file(
-            "Failed to parse settings file",
-            path,
-            ParseError::Toml(source.to_string()),
-        )
-    })?;
-    let layer = source.parse::<SettingsLayer>().map_err(|source| {
-        fabro_config::Error::parse_file("Failed to parse settings file", path, source)
-    })?;
-    validate_settings_source(&layer, SettingsSource::Project).map_err(|source| {
-        fabro_config::Error::parse_file("Failed to parse settings file", path, source)
-    })?;
+    let document: toml::Value = toml::from_str(&source)
+        .map_err(|source| parse_error(ParseError::Toml(source.to_string())))?;
+    let layer = source.parse::<SettingsLayer>().map_err(parse_error)?;
+    validate_settings_source(&layer, SettingsSource::Project).map_err(parse_error)?;
     Ok(RunSettingsKeyPresence::from_document(&document))
 }
 

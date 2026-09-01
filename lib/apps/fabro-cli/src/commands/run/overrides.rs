@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context as _, Result, anyhow, bail};
+use anyhow::{Context as _, Result, anyhow};
 use fabro_config::{
     CliLayer, CliOutputLayer, RunGoalLayer, RunLayer, parse_input_overrides, parse_labels,
 };
@@ -84,39 +84,23 @@ pub(super) fn prepare_intent_overrides(
     args: &RunArgs,
     cwd: &Path,
 ) -> Result<PreparedIntentOverrides> {
-    let goal = match (args.goal.as_deref(), args.goal_file.as_deref()) {
-        (Some(_), Some(_)) => {
-            bail!("--goal and --goal-file are mutually exclusive; use exactly one")
-        }
-        (Some(goal), None) => Some(goal.to_string()),
-        (None, Some(path)) => {
-            let absolute = if path.is_absolute() {
-                path.to_path_buf()
-            } else {
-                cwd.join(path)
-            };
+    let goal = match goal_layer_from_args(args.goal.as_deref(), args.goal_file.as_deref(), cwd)? {
+        None => None,
+        Some(RunGoalLayer::Inline(goal)) => Some(goal.as_source()),
+        Some(RunGoalLayer::File { file }) => {
+            let path = PathBuf::from(file.as_source());
             Some(
-                std::fs::read_to_string(&absolute)
-                    .with_context(|| format!("failed to read goal file {}", absolute.display()))?,
+                std::fs::read_to_string(&path)
+                    .with_context(|| format!("failed to read goal file {}", path.display()))?,
             )
         }
-        (None, None) => None,
     };
     let input_overrides = parse_input_overrides(&args.inputs.values)?;
     let inputs = input_overrides
         .iter()
         .map(|(key, value)| {
-            let value = match value {
-                toml::Value::String(value) => serde_json::Value::String(value.clone()),
-                toml::Value::Integer(value) => serde_json::Value::Number((*value).into()),
-                toml::Value::Float(value) => serde_json::Number::from_f64(*value)
-                    .map(serde_json::Value::Number)
-                    .ok_or_else(|| anyhow!("input override `{key}` must be a finite float"))?,
-                toml::Value::Boolean(value) => serde_json::Value::Bool(*value),
-                toml::Value::Datetime(_) | toml::Value::Array(_) | toml::Value::Table(_) => {
-                    bail!("input override `{key}` must be a scalar value")
-                }
-            };
+            let value = fabro_types::toml_scalar_to_json_value(value)
+                .map_err(|error| anyhow!("input override `{key}` {error}"))?;
             Ok((key.clone(), value))
         })
         .collect::<Result<HashMap<_, _>>>()?;
