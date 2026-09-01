@@ -399,7 +399,10 @@ impl Node {
 
     /// Node ids whose stage-history sections this node's prompt preamble
     /// omits (comma-separated deny-list, render-only). Split and trimmed;
-    /// empty entries are dropped. See the workflow docs for semantics.
+    /// empty entries are dropped. The lone entry `*` omits every stage
+    /// section (seed fabro-e47c) — the coarse complement to
+    /// `preamble_allow_keys` for role nodes with a pure key contract. See
+    /// the workflow docs for semantics.
     #[must_use]
     pub fn preamble_stages_ignore(&self) -> Vec<&str> {
         self.str_attr("preamble_stages_ignore")
@@ -439,6 +442,22 @@ impl Node {
     #[must_use]
     pub fn context_allow_keys(&self) -> Option<Vec<&str>> {
         self.str_attr("context_allow_keys").map(split_key_list)
+    }
+
+    /// Node-level `preamble_allow_keys`: the comma-separated allowlist of
+    /// context keys this node's prompt preamble renders in its `## Context`
+    /// section (seed fabro-e47c, ADR-0009 stage envelope). `None` (attribute
+    /// unset) means every key renders — the default-open posture, identical
+    /// to `context_allow_keys` on the write side. `Some(list)` scopes the
+    /// read side: the list is the node's input contract, keys outside it are
+    /// omitted from the preamble (render-only; the context store, routing,
+    /// and `response.*` consumers are untouched). The entry `*` alone means
+    /// every key renders, like the unset default. Preamble-hidden engine
+    /// keys (`internal.*`, `response.*`, ...) never render regardless and
+    /// stay alive for engine plumbing.
+    #[must_use]
+    pub fn preamble_allow_keys(&self) -> Option<Vec<&str>> {
+        self.str_attr("preamble_allow_keys").map(split_key_list)
     }
 
     /// Node-level `context_append_keys`: context keys the engine merges as
@@ -562,10 +581,18 @@ impl Node {
     }
 }
 
+/// The lone wildcard entry valid in stage-envelope list attributes:
+/// `preamble_allow_keys` (`*` = every key renders, like the unset default)
+/// and `preamble_stages_ignore` (`*` = omit every stage section). Shared so
+/// the validators, the render filter, and future consumers cannot drift on
+/// its spelling.
+pub const ATTR_LIST_WILDCARD: &str = "*";
+
 /// Split a comma-separated node-attribute list into trimmed, non-empty
 /// entries. Shared by the stage-envelope key attributes
-/// (`preamble_stages_ignore`, `context_allow_keys`, `context_append_keys`)
-/// so all three parse identically: trimmed entries, empty entries dropped.
+/// (`preamble_stages_ignore`, `context_allow_keys`, `context_append_keys`,
+/// `preamble_allow_keys`) so all four parse identically: trimmed entries,
+/// empty entries dropped.
 fn split_key_list(list: &str) -> Vec<&str> {
     list.split(',')
         .map(str::trim)

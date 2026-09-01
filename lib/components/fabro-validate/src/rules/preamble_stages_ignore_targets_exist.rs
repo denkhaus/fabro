@@ -8,6 +8,8 @@ pub(super) fn rule() -> Box<dyn LintRule> {
 
 struct Rule;
 
+use fabro_types::graph::ATTR_LIST_WILDCARD as WILDCARD;
+
 impl LintRule for Rule {
     fn name(&self) -> &'static str {
         "preamble_stages_ignore_targets_exist"
@@ -16,7 +18,33 @@ impl LintRule for Rule {
     fn apply(&self, graph: &Graph) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         for node in graph.nodes.values() {
-            for target in node.preamble_stages_ignore() {
+            let targets = node.preamble_stages_ignore();
+            if targets.is_empty() {
+                continue;
+            }
+
+            if targets.contains(&WILDCARD) {
+                if targets.len() > 1 {
+                    diagnostics.push(Diagnostic {
+                        rule: self.name().to_string(),
+                        severity: Severity::Warning,
+                        message: format!(
+                            "Node '{}' mixes '*' with named stages in preamble_stages_ignore; '*' alone already ignores every stage",
+                            node.id
+                        ),
+                        node_id: Some(node.id.clone()),
+                        edge: None,
+                        fix: Some(format!(
+                            "Use either '*' alone or the explicit stage list for node '{}'",
+                            node.id
+                        )),
+                        ..Diagnostic::default()
+                    });
+                }
+                continue;
+            }
+
+            for target in targets {
                 if !graph.nodes.contains_key(target) {
                     diagnostics.push(Diagnostic {
                         rule: self.name().to_string(),
@@ -97,5 +125,39 @@ mod tests {
         let g = minimal_graph();
         let rule = Rule;
         assert!(rule.apply(&g).is_empty());
+    }
+
+    #[test]
+    fn wildcard_alone_passes_without_stage_existence() {
+        let mut g = minimal_graph();
+        let mut node = Node::new("reviewer");
+        node.attrs.insert(
+            "preamble_stages_ignore".to_string(),
+            AttrValue::String("*".to_string()),
+        );
+        g.nodes.insert("reviewer".to_string(), node);
+        let rule = Rule;
+        assert!(rule.apply(&g).is_empty());
+    }
+
+    #[test]
+    fn warns_on_wildcard_mixed_with_named_stages() {
+        let mut g = minimal_graph();
+        let mut planner = Node::new("planner");
+        planner
+            .attrs
+            .insert("prompt".to_string(), AttrValue::String("plan".to_string()));
+        let mut node = Node::new("reviewer");
+        node.attrs.insert(
+            "preamble_stages_ignore".to_string(),
+            AttrValue::String("*, planner".to_string()),
+        );
+        g.nodes.insert("planner".to_string(), planner);
+        g.nodes.insert("reviewer".to_string(), node);
+        let rule = Rule;
+        let d = rule.apply(&g);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].severity, Severity::Warning);
+        assert!(d[0].message.contains("'*' alone"), "{}", d[0].message);
     }
 }

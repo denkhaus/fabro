@@ -8,6 +8,7 @@ pub mod blob_ref;
 pub mod checkpoint;
 pub mod command_output;
 pub mod conclusion;
+pub mod context_keys;
 pub mod dense;
 pub mod diff;
 pub mod event_envelope;

@@ -9,6 +9,8 @@ use fabro_core::graph::NodeSpec;
 use fabro_core::lifecycle::{EdgeContext, EdgeDecision, NodeDecision, RunLifecycle};
 use fabro_core::state::ExecutionState;
 use fabro_graphviz::graph::types::{Edge as GvEdge, Graph as GvGraph, Node as GvNode};
+use fabro_types::graph::ATTR_LIST_WILDCARD;
+use tracing::warn;
 
 use crate::artifact;
 use crate::context::{Context, ParallelBranchPreamble, keys};
@@ -201,6 +203,30 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
             !matches!(fidelity, keys::Fidelity::Full | keys::Fidelity::Truncate)
                 || gv_node.handler_type() == Some("parallel");
         if preamble_renders_values {
+            // Per-node key scoping (allowlist): restrict the rendered
+            // `## Context` section to the declared keys (fabro-e47c).
+            // Render-only like the stage deny-list below — the context
+            // store, routing, and `response.*` consumers are untouched.
+            // Preamble-hidden engine keys always pass: they never render,
+            // but engine plumbing (run id, parent preamble) reads them from
+            // this resolved copy. The lone entry `*` keeps the default-open
+            // rendering of every key.
+            if let Some(allow) = gv_node.preamble_allow_keys() {
+                if !allow.contains(&ATTR_LIST_WILDCARD) {
+                    for key in &allow {
+                        if !resolved_values.contains_key(*key) {
+                            warn!(
+                                node = %node.id(),
+                                key = %key,
+                                "preamble_allow_keys entry absent from context"
+                            );
+                        }
+                    }
+                    resolved_values.retain(|k, _| {
+                        keys::is_preamble_hidden_key(k) || allow.contains(&k.as_str())
+                    });
+                }
+            }
             let budget = self
                 .graph
                 .preamble_budget_kb()
@@ -226,13 +252,18 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
         // sections from THIS node's preamble. Render-only — the context
         // store, routing, and `response.*` keys stay untouched, and the
         // ignored stages' context updates still render in the Context
-        // section of the preamble.
+        // section of the preamble. The lone entry `*` omits every stage
+        // section (coarse mode, fabro-e47c): the complement to
+        // `preamble_allow_keys` for role nodes with a pure key contract.
         let ignored_stages: std::collections::HashSet<&str> =
             gv_node.preamble_stages_ignore().into_iter().collect();
         let scoped: (Vec<String>, HashMap<String, Outcome>);
         let (completed_nodes, node_outcomes): (&[String], &HashMap<String, Outcome>) =
             if ignored_stages.is_empty() {
                 (&state.completed_nodes, &resolved_outcomes)
+            } else if ignored_stages.contains(ATTR_LIST_WILDCARD) {
+                scoped = (Vec::new(), HashMap::new());
+                (&scoped.0, &scoped.1)
             } else {
                 scoped = (
                     state
@@ -710,6 +741,293 @@ mod tests {
         assert!(
             preamble.contains("seed_brief"),
             "non-response updates stay visible via Context section: {preamble}"
+        );
+    }
+
+    #[tokio::test]
+    async fn preamble_allow_keys_absent_keeps_every_key() {
+        // Default-open posture: a node without the attribute renders every
+        // context key exactly as before the attribute existed. Context::set
+        // uses interior mutability, so `state` itself stays immutable here.
+        let mut graph = Graph::new("unscoped");
+        let mut start = Node::new("start");
+        start
+            .attrs
+            .insert("shape".to_string(), str_attr("Mdiamond"));
+        let mut reviewer = Node::new("reviewer");
+        reviewer
+            .attrs
+            .insert("prompt".to_string(), str_attr("review it"));
+        reviewer
+            .attrs
+            .insert("fidelity".to_string(), str_attr("summary:high"));
+
+        graph.nodes.insert(start.id.clone(), start);
+        graph.nodes.insert(reviewer.id.clone(), reviewer);
+        graph.edges.push(Edge::new("start", "reviewer"));
+        let workflow_graph = WorkflowGraph(Arc::new(graph));
+
+        let run_dir = tempfile::tempdir().unwrap();
+        let lifecycle = test_lifecycle(&workflow_graph, run_dir.path()).await;
+        let state: WfRunState = ExecutionState::new(&workflow_graph).unwrap();
+
+        state
+            .context
+            .set("current_seed_brief", serde_json::json!("the brief"));
+        state
+            .context
+            .set("review_feedback", serde_json::json!("still visible"));
+
+        let reviewer_node = workflow_graph.get_node("reviewer").unwrap();
+        lifecycle.before_node(&reviewer_node, &state).await.unwrap();
+
+        let preamble = state.context.get_string(keys::CURRENT_PREAMBLE, "");
+        assert!(
+            preamble.contains("current_seed_brief") && preamble.contains("review_feedback"),
+            "without the attribute every key must render: {preamble}"
+        );
+    }
+
+    #[tokio::test]
+    async fn preamble_allow_keys_scopes_context_section_render_only() {
+        // Allow-list scoping (fabro-e47c): the reviewer's ## Context section
+        // renders only the declared input contract. The context store keeps
+        // every key, and engine plumbing (run id) survives the filter even
+        // though it is never listed.
+        let mut graph = Graph::new("scoped-keys");
+        let mut start = Node::new("start");
+        start
+            .attrs
+            .insert("shape".to_string(), str_attr("Mdiamond"));
+        let mut planner = Node::new("planner");
+        planner
+            .attrs
+            .insert("prompt".to_string(), str_attr("plan it"));
+        planner
+            .attrs
+            .insert("fidelity".to_string(), str_attr("summary:high"));
+        let mut reviewer = Node::new("reviewer");
+        reviewer
+            .attrs
+            .insert("prompt".to_string(), str_attr("review it"));
+        reviewer.attrs.insert(
+            "preamble_allow_keys".to_string(),
+            str_attr("current_seed_brief"),
+        );
+
+        graph.nodes.insert(start.id.clone(), start);
+        graph.nodes.insert(planner.id.clone(), planner);
+        graph.nodes.insert(reviewer.id.clone(), reviewer);
+        graph.edges.push(Edge::new("start", "planner"));
+        graph.edges.push(Edge::new("planner", "reviewer"));
+        let workflow_graph = WorkflowGraph(Arc::new(graph));
+
+        let run_dir = tempfile::tempdir().unwrap();
+        let lifecycle = test_lifecycle(&workflow_graph, run_dir.path()).await;
+        let mut state: WfRunState = ExecutionState::new(&workflow_graph).unwrap();
+
+        state
+            .context
+            .set("current_seed_brief", serde_json::json!("the brief"));
+        state
+            .context
+            .set("review_feedback", serde_json::json!("redundant noise"));
+        let mut planner_outcome = Outcome::default();
+        planner_outcome.context_updates.insert(
+            "current_seed_brief".to_string(),
+            serde_json::json!("the brief"),
+        );
+        state
+            .node_outcomes
+            .insert("planner".to_string(), planner_outcome);
+        state.completed_nodes.push("planner".to_string());
+
+        let reviewer_node = workflow_graph.get_node("reviewer").unwrap();
+        lifecycle.before_node(&reviewer_node, &state).await.unwrap();
+
+        let preamble = state.context.get_string(keys::CURRENT_PREAMBLE, "");
+        assert!(
+            preamble.contains("current_seed_brief"),
+            "allowlisted key must render: {preamble}"
+        );
+        assert!(
+            !preamble.contains("review_feedback"),
+            "non-allowlisted key must be omitted: {preamble}"
+        );
+        assert!(
+            !preamble.contains("Run ID: unknown"),
+            "engine run-id plumbing must survive the key filter: {preamble}"
+        );
+        // Render-only: the context store keeps the unlisted key.
+        assert_eq!(
+            state.context.get("review_feedback"),
+            Some(serde_json::json!("redundant noise")),
+            "context store must stay untouched by the allowlist"
+        );
+    }
+
+    #[tokio::test]
+    async fn preamble_stages_ignore_wildcard_omits_every_stage_section() {
+        // Coarse mode (fabro-e47c): preamble_stages_ignore="*" drops every
+        // stage-history section while the Context section still renders and
+        // the store keeps all outcomes.
+        let mut graph = Graph::new("wildcard");
+        let mut start = Node::new("start");
+        start
+            .attrs
+            .insert("shape".to_string(), str_attr("Mdiamond"));
+        let mut planner = Node::new("planner");
+        planner
+            .attrs
+            .insert("prompt".to_string(), str_attr("plan it"));
+        planner
+            .attrs
+            .insert("fidelity".to_string(), str_attr("summary:high"));
+        let mut reviewer = Node::new("reviewer");
+        reviewer
+            .attrs
+            .insert("prompt".to_string(), str_attr("review it"));
+        reviewer
+            .attrs
+            .insert("preamble_stages_ignore".to_string(), str_attr("*"));
+
+        graph.nodes.insert(start.id.clone(), start);
+        graph.nodes.insert(planner.id.clone(), planner);
+        graph.nodes.insert(reviewer.id.clone(), reviewer);
+        graph.edges.push(Edge::new("start", "planner"));
+        graph.edges.push(Edge::new("planner", "reviewer"));
+        let workflow_graph = WorkflowGraph(Arc::new(graph));
+
+        let run_dir = tempfile::tempdir().unwrap();
+        let lifecycle = test_lifecycle(&workflow_graph, run_dir.path()).await;
+        let mut state: WfRunState = ExecutionState::new(&workflow_graph).unwrap();
+
+        state
+            .context
+            .set("current_seed_brief", serde_json::json!("the brief"));
+        let mut planner_outcome = Outcome::default();
+        planner_outcome.context_updates.insert(
+            keys::response_key("planner"),
+            serde_json::json!("verbose planner response text"),
+        );
+        planner_outcome.context_updates.insert(
+            "current_seed_brief".to_string(),
+            serde_json::json!("the brief"),
+        );
+        state
+            .node_outcomes
+            .insert("planner".to_string(), planner_outcome);
+        state.completed_nodes.push("planner".to_string());
+
+        let reviewer_node = workflow_graph.get_node("reviewer").unwrap();
+        lifecycle.before_node(&reviewer_node, &state).await.unwrap();
+
+        let preamble = state.context.get_string(keys::CURRENT_PREAMBLE, "");
+        assert!(
+            !preamble.contains("## Stage: planner"),
+            "wildcard must omit every stage section: {preamble}"
+        );
+        assert!(
+            !preamble.contains("verbose planner response"),
+            "stage responses must not render via stage sections: {preamble}"
+        );
+        assert!(
+            preamble.contains("current_seed_brief"),
+            "Context section must keep rendering: {preamble}"
+        );
+        assert!(
+            state.node_outcomes.contains_key("planner"),
+            "outcomes must stay in the store"
+        );
+    }
+
+    #[tokio::test]
+    async fn scoped_preamble_stays_constant_across_loop_cycles() {
+        // Seed acceptance (fabro-e47c): a role node with a full scoping
+        // contract (allowlist + wildcard stage ignore) renders the same
+        // preamble on every loop visit while the run context grows.
+        let mut graph = Graph::new("loop");
+        let mut start = Node::new("start");
+        start
+            .attrs
+            .insert("shape".to_string(), str_attr("Mdiamond"));
+        let worker = Node::new("worker");
+        let mut reviewer = Node::new("reviewer");
+        reviewer
+            .attrs
+            .insert("prompt".to_string(), str_attr("review it"));
+        reviewer
+            .attrs
+            .insert("fidelity".to_string(), str_attr("summary:high"));
+        reviewer.attrs.insert(
+            "preamble_allow_keys".to_string(),
+            str_attr("current_seed_brief, command.output"),
+        );
+        reviewer
+            .attrs
+            .insert("preamble_stages_ignore".to_string(), str_attr("*"));
+
+        graph.nodes.insert(start.id.clone(), start);
+        graph.nodes.insert(worker.id.clone(), worker);
+        graph.nodes.insert(reviewer.id.clone(), reviewer);
+        graph.edges.push(Edge::new("start", "worker"));
+        graph.edges.push(Edge::new("worker", "reviewer"));
+        graph.edges.push(Edge::new("reviewer", "worker"));
+        let workflow_graph = WorkflowGraph(Arc::new(graph));
+
+        let run_dir = tempfile::tempdir().unwrap();
+        let lifecycle = test_lifecycle(&workflow_graph, run_dir.path()).await;
+        let mut state: WfRunState = ExecutionState::new(&workflow_graph).unwrap();
+
+        state
+            .context
+            .set("current_seed_brief", serde_json::json!("the brief"));
+        state
+            .context
+            .set(keys::COMMAND_OUTPUT, serde_json::json!("evidence capture"));
+
+        let reviewer_node = workflow_graph.get_node("reviewer").unwrap();
+        let mut preambles = Vec::new();
+        for cycle in 1..=3 {
+            // Each cycle grows the run: noise context keys and completed
+            // stages with verbose responses that an unscoped reviewer would
+            // re-read every visit.
+            state.context.set(
+                format!("cycle_{cycle}_noise"),
+                serde_json::json!(format!("noise {cycle}")),
+            );
+            for stage in ["worker", "reviewer"] {
+                let mut outcome = Outcome::default();
+                outcome.context_updates.insert(
+                    keys::response_key(stage),
+                    serde_json::json!(format!("verbose {stage} response, cycle {cycle}")),
+                );
+                state.node_outcomes.insert(stage.to_string(), outcome);
+                if !state.completed_nodes.contains(&stage.to_string()) {
+                    state.completed_nodes.push(stage.to_string());
+                }
+            }
+
+            lifecycle.before_node(&reviewer_node, &state).await.unwrap();
+            preambles.push(state.context.get_string(keys::CURRENT_PREAMBLE, ""));
+        }
+
+        assert!(
+            preambles.iter().all(|p| p == &preambles[0]),
+            "scoped preamble must stay constant across loop cycles: {preambles:#?}"
+        );
+        let preamble = &preambles[0];
+        assert!(
+            preamble.contains("current_seed_brief") && preamble.contains("command.output"),
+            "contract keys must render: {preamble}"
+        );
+        assert!(
+            !preamble.contains("noise"),
+            "unlisted keys must stay omitted: {preamble}"
+        );
+        assert!(
+            !preamble.contains("verbose worker response"),
+            "stage-history responses must stay omitted: {preamble}"
         );
     }
 

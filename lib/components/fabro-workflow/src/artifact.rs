@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use fabro_agent::Sandbox;
 use fabro_config::RunScratch;
+use fabro_types::context_keys::TRANSIENT_CONTEXT_KEYS;
 use fabro_types::graph::{DEFAULT_PREAMBLE_BUDGET_KB, DEFAULT_PREAMBLE_INLINE_MAX_KB};
 use fabro_types::{
     BlobHash, ParallelBranchResult, format_blob_ref, parse_blob_ref, parse_managed_blob_file_ref,
@@ -585,7 +586,7 @@ pub fn durable_context_snapshot(context: &Context) -> HashMap<String, Value> {
 
 /// Remove runtime-only keys that must never reach durable storage.
 pub(crate) fn strip_transient_keys(values: &mut HashMap<String, Value>) {
-    for key in context::keys::TRANSIENT_CONTEXT_KEYS {
+    for key in TRANSIENT_CONTEXT_KEYS {
         values.remove(*key);
     }
 }

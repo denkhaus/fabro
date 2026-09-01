@@ -299,9 +299,41 @@ reviewer [
 
 The filter is render-only: the context store, routing, and `response.{node_id}` keys are untouched, and the ignored stages' context updates (their working material) still render in the `## Context` section. A role that only needs freshly produced evidence can therefore stop re-reading verbose upstream responses as review loops accumulate cycles.
 
-Referencing a node id that does not exist produces a validation warning (the run proceeds; the entry simply never matches).
+The lone entry `*` omits **every** stage section — the coarse complement to `preamble_allow_keys` below:
+
+```dot
+reviewer [ preamble_stages_ignore="*" ]
+```
+
+Referencing a node id that does not exist produces a validation warning (the run proceeds; the entry simply never matches), as does mixing `*` with named ids (redundant — `*` alone already ignores every stage).
 
 **Limitation — parallel branch targets:** branch preambles are pre-rendered from the parent `parallel` node, so `preamble_stages_ignore` set on a *branch target* node is silently ignored. Set it on the **parent parallel node** to scope all branch preambles; prompt-carrying fan-in nodes and all sequential nodes honor their own attribute as usual.
+
+### Key scoping (allow-list)
+
+`preamble_stages_ignore` filters the *stage-history* axis. The `preamble_allow_keys` attribute filters the *context-value* axis: it restricts which context keys render in the node's `## Context` section — the read-side counterpart to [`context_allow_keys`](#ownership-and-accumulation) on the write side.
+
+```dot
+reviewer [
+    prompt="@prompts/review.md",
+    preamble_allow_keys="current_seed_brief,command.output",
+    preamble_stages_ignore="*"
+]
+```
+
+Semantics:
+
+- **Unset = every key renders** (the default-open posture, identical to the write side). The lone entry `*` means the same thing explicitly.
+- **Strict contract:** the list *is* the node's input contract. Keys outside the list are omitted from the preamble — including engine-written ones like `failure_class` if they are not listed.
+- **Render-only:** the context store, routing, and `response.{node_id}` keys are untouched; other consumers of the same keys are unaffected.
+- **Engine plumbing survives:** preamble-hidden keys (`internal.*`, `response.*`, `outcome`, ...) never render anyway, so the allowlist only governs keys that could appear in the `## Context` section. Run-id and parent-workflow plumbing keeps working.
+- **Orthogonal to fidelity:** fidelity controls the *detail level* of what is selected (including demotion of large values); `preamble_allow_keys` controls *what* is selected.
+
+Validation warns (the run proceeds) when a listed key is engine-hidden (it never renders), when `*` is mixed with named keys, or when no node declares producing the key via `context_allow_keys` and the engine cannot write it either — a probable typo. At render time, a listed key absent from the context logs a WARN once per visit.
+
+Together with `preamble_stages_ignore="*"`, a role node gets a deterministic, constant-size input contract across review-loop cycles: only the goal header and the declared keys, no matter how many stages and context keys the run accumulates.
+
+The same parallel-branch limitation as `preamble_stages_ignore` applies: set `preamble_allow_keys` on the **parent parallel node** to scope all branch preambles.
 
 ### Ownership and accumulation
 

@@ -20,6 +20,7 @@ mod on_failure_valid;
 mod orphan_custom_outcome;
 mod parallel_branch;
 mod parallel_branch_inert_attribute;
+mod preamble_allow_keys_exist;
 mod preamble_inline_max_within_budget;
 mod preamble_stages_ignore_targets_exist;
 mod prompt_on_llm_nodes;
@@ -62,6 +63,7 @@ pub fn built_in_rules() -> Vec<Box<dyn LintRule>> {
         backend_valid::rule(),
         fidelity_valid::rule(),
         preamble_stages_ignore_targets_exist::rule(),
+        preamble_allow_keys_exist::rule(),
         preamble_inline_max_within_budget::rule(),
         context_append_keys_within_allow::rule(),
         retry_target_exists::rule(),

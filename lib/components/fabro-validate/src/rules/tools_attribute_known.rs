@@ -63,9 +63,17 @@ mod tests {
 
         let diagnostics = rule().apply(&graph);
         let messages: Vec<&str> = diagnostics.iter().map(|d| d.message.as_str()).collect();
+        // Node iteration order over the graph's node map is not stable, so
+        // assert membership instead of index positions.
         assert_eq!(messages.len(), 2, "{messages:?}");
-        assert!(messages[0].contains("made_up_tool"), "{messages:?}");
-        assert!(messages[1].contains("fabro_wrong_name"), "{messages:?}");
+        assert!(
+            messages.iter().any(|m| m.contains("made_up_tool")),
+            "{messages:?}"
+        );
+        assert!(
+            messages.iter().any(|m| m.contains("fabro_wrong_name")),
+            "{messages:?}"
+        );
     }
 
     #[test]
