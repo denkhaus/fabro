@@ -105,6 +105,16 @@ decision, not an accident - it needs the user plus an ADR.
   docs): reviewers load `workflows/code-review-refactor.md` and the
   guideline pages covering the diff. Guide findings are findings, not
   opinions.
+- Verify a reviewer's FACTUAL premise in code before fixing (e804
+  lesson, 2026-09-02): the spec axis claimed raw blob:// refs reach the
+  tool; the dispatch path had already resolved them to file:// pointers.
+  The premise was wrong, but it exposed an adjacent hardening gap that
+  WAS real. Read the call path first, then fix what is actually true.
+- Clippy failures on UNTOUCHED files after mixing stable builds with the
+  pinned nightly can be stale-cache artifacts (e804): snapshot the diff
+  (including untracked files - stash ^3 parent carries them) BEFORE a
+  clean-tree control, and re-run the lint on the clean tree before
+  believing the failure.
 - E2E-test verification (2026-08-31 lesson, fabro-47b5): a green
   `--profile e2e` run can be a NO-OP for twin-only tests
   (NEXTEST_PROFILE=e2e => TestMode::Strict => e2e_test(twin) prints
