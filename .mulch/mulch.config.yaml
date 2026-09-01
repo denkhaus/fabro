@@ -13,6 +13,7 @@ domains:
   server: {}
   engine: {}
   platform: {}
+  store: {}
 governance:
   max_entries: 100
   warn_entries: 150
