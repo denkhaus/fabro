@@ -78,6 +78,15 @@ decision, not an accident - it needs the user plus an ADR.
   duplicated a ~300-line test region in fabro-4556 and only the compiler
   caught it; counting `fn <name>` occurrences is cheaper than
   checkout-restore-and-reapply.
+- Adding a struct field across a crate: do NOT regex-sweep struct-literal
+  sites by grep — run the test compile (`cargo nextest ... --no-run`) and
+  use the compiler's missing-field list as the worklist. A ba96 regex pass
+  mis-injected into `impl` blocks and `-> Type {` return positions and
+  needed three fix rounds; the compiler enumerates exactly the value
+  positions. Same class: when generating Rust string fixtures from Python
+  heredocs, print/verify the written literal (or test-compile it) before
+  building — escape handling silently produced invalid patch fixtures and
+  space-run diagnostics (ba96, 2026-09-03).
 
 ## Phase 3 - Review
 
