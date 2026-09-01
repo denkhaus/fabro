@@ -78,6 +78,16 @@ decision, not an accident - it needs the user plus an ADR.
 
 - Run a code-review skill session on the diff since the base point
   (standards axis + spec axis). Fix findings before continuing.
+- Review the FROZEN diff: snapshot `git diff HEAD` (plus untracked files)
+  to a patch file and point both subagents at it. Do not start applying
+  one axis's findings while the other axis still reviews the live tree —
+  a drifting tree makes the spec axis report phantom breakage (e47c
+  lesson, 2026-09-02).
+- Clean-tree control experiments (stash to prove a failure pre-exists):
+  snapshot the working diff to a file FIRST, run the control, then verify
+  restoration by comparing `git status` before/after. Never suppress
+  `git stash pop` output — a silently dropped pop can lose fixes and
+  surface only at final verification (e47c lesson, 2026-09-02).
 - PROOF OF WORK (user directive 2026-08-27, after the fabro_run_logs
   cycle skipped the guide): the cycle report NAMES the guideline pages
   loaded for the diff and the verification commands actually run
