@@ -3,12 +3,10 @@ use std::path::Path;
 use anyhow::{Context as _, anyhow, bail};
 use fabro_config::project;
 use fabro_environment::DEFAULT_ENVIRONMENT_ID;
-use fabro_server::manifest_validation;
 use fabro_types::settings::run::EnvironmentProvider;
 use fabro_types::{DirtyStatus, RunId, RunIntent, RunTarget};
 use fabro_util::terminal::Styles;
 
-use super::output::print_workflow_summary;
 use super::overrides::prepare_intent_overrides;
 use crate::args::RunArgs;
 use crate::command_context::CommandContext;
@@ -27,7 +25,6 @@ pub(crate) async fn create_run(
     ctx: &CommandContext,
     args: &RunArgs,
     styles: &Styles,
-    quiet: bool,
 ) -> anyhow::Result<CreatedRun> {
     let workflow_path = args
         .workflow
@@ -46,22 +43,6 @@ pub(crate) async fn create_run(
         Some(&user_workflows_root),
     )?;
     let prepared = prepare_intent_overrides(args, &canonical_cwd)?;
-    let validation = manifest_validation::validate_collected_workflow(
-        package.closure(),
-        Some(&prepared.run_layer),
-        &prepared.input_overrides,
-    )?;
-    if !quiet {
-        print_workflow_summary(
-            &validation.workflow,
-            Some(&package.workflow_location().graph),
-            styles,
-            ctx.printer(),
-        );
-    }
-    if !validation.ok {
-        bail!("Validation failed");
-    }
 
     warn_untransmitted_settings(
         ctx,
@@ -184,5 +165,10 @@ fn run_target_for_environment(
     let target = observation.run_target.ok_or_else(|| {
         anyhow!("the caller Git checkout cannot be represented as a canonical GitHub run target")
     })?;
+    if target.sha.is_none() {
+        bail!(
+            "the exact local Git commit could not be made available from the canonical GitHub origin; push the commit and try again"
+        );
+    }
     Ok((RunTarget::Git(target), dirty))
 }

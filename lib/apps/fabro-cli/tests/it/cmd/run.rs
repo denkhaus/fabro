@@ -669,14 +669,16 @@ fn remote_foreground_run_consumes_paginated_events_and_prints_server_backed_summ
 }
 
 #[test]
-fn run_rejects_unbound_template_inputs_before_creating_remote_run() {
+fn run_surfaces_server_rejection_for_unbound_template_inputs() {
     let context = test_context!();
     let server = MockServer::start();
+    let environment_mock = mock_environment(&server, "default", "docker");
+    let version_mock = mock_workflow_version_registrations(&server);
     let create = server.mock(|when, then| {
         when.method("POST").path("/api/v1/runs");
-        then.status(500)
-            .header("Content-Type", "application/json")
-            .body(serde_json::json!({ "error": "run should not be created" }).to_string());
+        then.status(422)
+            .header("Content-Type", "text/plain")
+            .body("server-authoritative unbound-input rejection");
     });
 
     let workflow = context.install_fixture("templated_unbound.fabro");
@@ -696,32 +698,29 @@ fn run_rejects_unbound_template_inputs_before_creating_remote_run() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    create.assert_calls(0);
+    environment_mock.assert();
+    version_mock.assert();
+    create.assert();
 
     let stderr = output_stderr(&output);
+    assert!(stderr.contains("could not create run"), "{stderr}");
     assert!(
-        stderr.contains("inputs.app_dir"),
-        "stderr should name the unbound variable: {stderr}"
-    );
-    assert!(
-        stderr.contains("templated_unbound.fabro"),
-        "stderr should name the workflow source: {stderr}"
-    );
-    assert!(
-        !stderr.contains("<string>"),
-        "stderr should not expose MiniJinja's generic source name: {stderr}"
+        stderr.contains("server-authoritative unbound-input rejection"),
+        "{stderr}"
     );
 }
 
 #[test]
-fn foreground_run_rejects_invalid_workflow_before_creating_remote_run() {
+fn foreground_run_surfaces_server_rejection_for_invalid_workflow() {
     let context = test_context!();
     let server = MockServer::start();
+    let environment_mock = mock_environment(&server, "default", "docker");
+    let version_mock = mock_workflow_version_registrations(&server);
     let create = server.mock(|when, then| {
         when.method("POST").path("/api/v1/runs");
-        then.status(500)
-            .header("Content-Type", "application/json")
-            .body(serde_json::json!({ "error": "run should not be created" }).to_string());
+        then.status(422)
+            .header("Content-Type", "text/plain")
+            .body("server-authoritative invalid-workflow rejection");
     });
 
     let workflow = context.install_fixture("invalid.fabro");
@@ -741,15 +740,16 @@ fn foreground_run_rejects_invalid_workflow_before_creating_remote_run() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    create.assert_calls(0);
+    environment_mock.assert();
+    version_mock.assert();
+    create.assert();
 
     let stderr = output_stderr(&output);
-    assert!(stderr.contains("Workflow: Invalid"), "{stderr}");
+    assert!(stderr.contains("could not create run"), "{stderr}");
     assert!(
-        stderr.contains("Pipeline must have exactly one start node"),
+        stderr.contains("server-authoritative invalid-workflow rejection"),
         "{stderr}"
     );
-    assert!(stderr.contains("Validation failed"), "{stderr}");
 }
 
 #[test]
@@ -827,10 +827,6 @@ fn dry_run_simple() {
     exit_code: 0
     ----- stdout -----
     ----- stderr -----
-    Workflow: Simple (4 nodes, 3 edges)
-    Graph: [GRAPH_PATH]
-    Goal: Run tests and report results
-
         Run: [ULID]
         Web UI: http://localhost:3000/runs/[ULID]
         Sandbox: local (ready in [TIME])
@@ -852,8 +848,8 @@ fn dry_run_simple() {
 #[test]
 fn dry_run_with_goal_file_reads_contents_into_goal() {
     // Regression test for the `--goal-file` flag that was previously
-    // being silently ignored in the v2 path. The file content must end
-    // up in the effective goal displayed in the workflow summary.
+    // being silently ignored in the v2 path. The file content must reach
+    // the server-authoritative run specification.
     let context = test_context!();
 
     let goal_dir = tempfile::tempdir().unwrap();
@@ -872,10 +868,10 @@ fn dry_run_with_goal_file_reads_contents_into_goal() {
         "run should succeed:\nstderr:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("Ship the rate-limiting feature end to end."),
-        "goal file content should appear in workflow summary, got:\n{stderr}"
+    assert_eq!(
+        run_state(&context.single_run_dir()).spec.graph.goal(),
+        "Ship the rate-limiting feature end to end.\n",
+        "goal file content should reach the admitted run"
     );
 }
 

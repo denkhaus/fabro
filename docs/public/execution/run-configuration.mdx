@@ -12,11 +12,14 @@ workflow-owned settings. Instead of passing a dozen CLI flags, check
 fabro run run.toml
 ```
 
-`fabro run` and `fabro create` resolve the workflow locally, validate it,
+`fabro run` and `fabro create` resolve and package the workflow locally,
 register its immutable workflow version and dependencies, and then ask the
-server to create a run from that version. `fabro create` stops with the run in
-the submitted state; `fabro run` performs the same create operation and then
-starts the run separately.
+server to admit the intent and create a run from that version. Source parsing
+or packaging failures stop locally before registration; full effective-intent
+validation is authoritative at server admission. Use `fabro preflight` for
+explicit local validation without creating a run. `fabro create` stops with
+the run in the submitted state; `fabro run` performs the same create operation
+and then starts the run separately.
 
 The workflow can be selected by name from the current project or user workflow
 storage, by a path in another local checkout, or as a loose local file. Its

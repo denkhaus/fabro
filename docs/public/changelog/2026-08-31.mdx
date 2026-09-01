@@ -3,10 +3,13 @@ title: "Immutable workflow versions for CLI runs"
 date: "2026-08-31"
 ---
 
-`fabro run` and `fabro create` now validate local workflows, register their
-immutable workflow versions and dependencies, and create runs by intent.
-`fabro create` leaves the run submitted; `fabro run` starts it with a separate
-request.
+`fabro run` and `fabro create` now resolve and package local workflows,
+register their immutable workflow versions and dependencies, and create runs
+by intent. Source parsing or packaging failures remain local and stop before
+registration, while full effective-intent validation is authoritative at
+server admission. Use `fabro preflight` for explicit local validation without
+creating a run. `fabro create` leaves the run submitted; `fabro run` starts it
+with a separate request.
 
 Workflows can still be selected by project name, from user workflow storage,
 from another local checkout, or as loose local files. The workflow source is

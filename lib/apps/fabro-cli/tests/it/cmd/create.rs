@@ -631,7 +631,7 @@ fn create_preserves_named_user_other_checkout_and_loose_file_selection() {
 }
 
 #[test]
-fn create_maps_clone_providers_to_shared_git_observations() {
+fn create_clone_targets_require_exact_git_observations() {
     let context = test_context!();
     let server = MockServer::start();
     let run_id = unique_run_id();
@@ -762,11 +762,16 @@ fn create_maps_clone_providers_to_shared_git_observations() {
         ])
         .output()
         .unwrap();
+    assert!(!branch_output.status.success());
+    let branch_stderr = output_stderr(&branch_output);
     assert!(
-        branch_output.status.success(),
-        "{}",
-        output_stderr(&branch_output)
+        branch_stderr.contains(
+            "the exact local Git commit could not be made available from the canonical GitHub origin"
+        ),
+        "{branch_stderr}"
     );
+    assert!(!branch_stderr.contains("file://"));
+    assert!(!branch_stderr.contains("No such file or directory"));
 
     let no_repository = tempfile::tempdir().unwrap();
     let none_output = context
@@ -786,8 +791,8 @@ fn create_maps_clone_providers_to_shared_git_observations() {
     );
 
     environment_mock.assert_calls(3);
-    version_mock.assert_calls(3);
-    create_mock.assert_calls(3);
+    version_mock.assert_calls(2);
+    create_mock.assert_calls(2);
     let requests = requests.lock().unwrap();
     assert_eq!(requests[0]["args"]["dry_run"], true);
     assert_eq!(
@@ -799,15 +804,7 @@ fn create_maps_clone_providers_to_shared_git_observations() {
             "sha": run_git(exact.path(), &["rev-parse", "HEAD"]),
         })
     );
-    assert_eq!(
-        requests[1]["target"],
-        json!({
-            "kind": "git",
-            "repo": "acme/missing",
-            "branch": "topic",
-        })
-    );
-    assert_eq!(requests[2]["target"], json!({ "kind": "none" }));
+    assert_eq!(requests[1]["target"], json!({ "kind": "none" }));
 }
 
 #[test]
@@ -1266,17 +1263,20 @@ fn create_json_does_not_imply_auto_approve() {
 #[test]
 fn create_invalid_workflow_fails_without_creating_run() {
     let context = test_context!();
+    let caller = tempfile::tempdir().unwrap();
     let workflow = fixture("invalid.fabro");
     let initial_run_count = run_count_for_test_case(&context);
     let mut cmd = context.create_cmd();
-    cmd.arg(workflow.to_str().unwrap());
+    cmd.current_dir(caller.path())
+        .args(["--quiet", workflow.to_str().unwrap()]);
 
     fabro_snapshot!(context.filters(), cmd, @"
     success: false
     exit_code: 1
     ----- stdout -----
     ----- stderr -----
-      × Validation failed
+      × could not create run
+      ╰─▶ run intent could not be compiled: Validation failed
     ");
 
     let run_count = run_count_for_test_case(&context);
@@ -1289,17 +1289,20 @@ fn create_invalid_workflow_fails_without_creating_run() {
 #[test]
 fn create_rejects_unbound_template_inputs_without_creating_run() {
     let context = test_context!();
+    let caller = tempfile::tempdir().unwrap();
     let workflow = fixture("templated_unbound.fabro");
     let initial_run_count = run_count_for_test_case(&context);
     let mut cmd = context.create_cmd();
-    cmd.arg(workflow.to_str().unwrap());
+    cmd.current_dir(caller.path())
+        .args(["--quiet", workflow.to_str().unwrap()]);
 
     fabro_snapshot!(context.filters(), cmd, @"
     success: false
     exit_code: 1
     ----- stdout -----
     ----- stderr -----
-      × Validation failed
+      × could not create run
+      ╰─▶ run intent could not be compiled: Validation failed
     ");
 
     let run_count = run_count_for_test_case(&context);
@@ -1310,56 +1313,51 @@ fn create_rejects_unbound_template_inputs_without_creating_run() {
 }
 
 #[test]
-fn create_validates_before_any_remote_request_and_accepts_matching_typed_input() {
+fn create_registers_package_before_surfacing_server_admission_rejection() {
     let context = test_context!();
     let server = MockServer::start();
-    let mut any_request = server.mock(|when, then| {
-        when.any_request();
-        then.status(500).body("server must remain untouched");
-    });
-    let invalid = context
-        .create_cmd()
-        .args([
-            "--server",
-            &format!("{}/api/v1", server.base_url()),
-            "--parent",
-            "must-not-resolve",
-            fixture("templated_unbound.fabro").to_str().unwrap(),
-        ])
-        .output()
-        .unwrap();
-    assert!(!invalid.status.success());
-    any_request.assert_calls(0);
-
-    any_request.delete();
     let environment_mock = mock_environment(&server, "local", "local");
-    let version_mock = mock_workflow_version_registrations(&server);
-    let run_id = unique_run_id();
-    let requests = Arc::new(Mutex::new(Vec::new()));
-    let create_mock = mock_intent_create(&server, &run_id, Arc::clone(&requests));
-    let valid = context
+    let registered_versions = Arc::new(Mutex::new(Vec::new()));
+    let version_mock =
+        mock_workflow_version_registrations_recording(&server, Arc::clone(&registered_versions));
+    let registered_versions_for_create = Arc::clone(&registered_versions);
+    let create_mock = server.mock(|when, then| {
+        when.method("POST").path("/api/v1/runs");
+        then.respond_with(move |_| {
+            assert_eq!(
+                registered_versions_for_create.lock().unwrap().len(),
+                1,
+                "the workflow version must be registered before server admission"
+            );
+            HttpMockResponse::builder()
+                .status(422)
+                .header("content-type", "text/plain")
+                .body("server-authoritative workflow rejection")
+                .build()
+        });
+    });
+    let output = context
         .create_cmd()
         .args([
             "--server",
             &format!("{}/api/v1", server.base_url()),
             "--environment",
             "local",
-            "--input",
-            "app_dir=42",
             fixture("templated_unbound.fabro").to_str().unwrap(),
         ])
         .output()
         .unwrap();
-    assert!(
-        valid.status.success(),
-        "matching input should validate:\n{}",
-        output_stderr(&valid)
-    );
-    assert!(!output_stderr(&valid).contains("inputs.app_dir"));
+    assert!(!output.status.success());
     environment_mock.assert();
     version_mock.assert();
     create_mock.assert();
-    assert_eq!(requests.lock().unwrap()[0]["args"]["inputs"]["app_dir"], 42);
+    let stderr = output_stderr(&output);
+    assert!(stderr.contains("could not create run"), "{stderr}");
+    assert!(
+        stderr.contains("server-authoritative workflow rejection"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("Validation failed"), "{stderr}");
 }
 
 #[test]

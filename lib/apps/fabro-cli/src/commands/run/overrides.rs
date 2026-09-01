@@ -21,10 +21,8 @@ pub(crate) struct ManifestSettingsOverrides {
 
 #[derive(Debug)]
 pub(super) struct PreparedIntentOverrides {
-    pub(super) run_layer:       RunLayer,
-    pub(super) input_overrides: HashMap<String, toml::Value>,
-    pub(super) intent_args:     RunIntentArgs,
-    pub(super) goal:            Option<String>,
+    pub(super) intent_args: RunIntentArgs,
+    pub(super) goal:        Option<String>,
 }
 
 fn sparse_flag(value: bool) -> Option<bool> {
@@ -100,7 +98,8 @@ pub(super) fn prepare_intent_overrides(
         .iter()
         .map(|(key, value)| {
             let value = fabro_types::toml_scalar_to_json_value(value)
-                .map_err(|error| anyhow!("input override `{key}` {error}"))?;
+                .map_err(anyhow::Error::new)
+                .with_context(|| format!("failed to convert input override `{key}`"))?;
             Ok((key.clone(), value))
         })
         .collect::<Result<HashMap<_, _>>>()?;
@@ -108,20 +107,7 @@ pub(super) fn prepare_intent_overrides(
     let dry_run = sparse_flag(args.dry_run);
     let auto_approve = sparse_flag(args.auto_approve);
     let preserve_sandbox = sparse_flag(args.preserve_sandbox);
-    let run_layer = build_run_overrides(RunOverrideInput {
-        goal: goal.as_deref(),
-        model: args.model.as_deref(),
-        provider: args.provider.as_deref(),
-        environment: args.environment.as_deref(),
-        preserve_sandbox,
-        dry_run,
-        auto_approve,
-        labels: labels.clone(),
-    });
-
     Ok(PreparedIntentOverrides {
-        run_layer,
-        input_overrides,
         intent_args: RunIntentArgs {
             model: args.model.clone(),
             provider: args.provider.clone(),
@@ -205,11 +191,12 @@ mod tests {
         args.preserve_sandbox = true;
         args.verbose = true;
 
-        let prepared = prepare_intent_overrides(&args, Path::new("/caller")).unwrap();
+        let PreparedIntentOverrides { intent_args, goal } =
+            prepare_intent_overrides(&args, Path::new("/caller")).unwrap();
 
-        assert_eq!(prepared.goal.as_deref(), Some("Ship it"));
+        assert_eq!(goal.as_deref(), Some("Ship it"));
         assert_eq!(
-            prepared.intent_args.inputs,
+            intent_args.inputs,
             HashMap::from([
                 ("string".to_string(), serde_json::json!("hello")),
                 ("boolean".to_string(), serde_json::json!(true)),
@@ -217,38 +204,19 @@ mod tests {
                 ("float".to_string(), serde_json::json!(1.25)),
             ])
         );
-        assert_eq!(prepared.intent_args.model.as_deref(), Some("gpt-5"));
-        assert_eq!(prepared.intent_args.provider.as_deref(), Some("openai"));
-        assert_eq!(
-            prepared.intent_args.labels.get("team"),
-            Some(&"cli".to_string())
-        );
-        assert_eq!(prepared.intent_args.dry_run, Some(true));
-        assert_eq!(prepared.intent_args.auto_approve, Some(true));
-        assert_eq!(prepared.intent_args.preserve_sandbox, Some(true));
+        assert_eq!(intent_args.model.as_deref(), Some("gpt-5"));
+        assert_eq!(intent_args.provider.as_deref(), Some("openai"));
+        assert_eq!(intent_args.labels.get("team"), Some(&"cli".to_string()));
+        assert_eq!(intent_args.dry_run, Some(true));
+        assert_eq!(intent_args.auto_approve, Some(true));
+        assert_eq!(intent_args.preserve_sandbox, Some(true));
         assert!(
-            !serde_json::to_value(&prepared.intent_args)
+            !serde_json::to_value(&intent_args)
                 .unwrap()
                 .as_object()
                 .unwrap()
                 .contains_key("verbose")
         );
-        assert_eq!(
-            prepared.input_overrides,
-            HashMap::from([
-                (
-                    "string".to_string(),
-                    toml::Value::String("hello".to_string())
-                ),
-                ("boolean".to_string(), toml::Value::Boolean(true)),
-                ("integer".to_string(), toml::Value::Integer(42)),
-                ("float".to_string(), toml::Value::Float(1.25)),
-            ])
-        );
-        let RunGoalLayer::Inline(goal) = prepared.run_layer.goal.unwrap() else {
-            panic!("prepared run layer should use an inline goal");
-        };
-        assert_eq!(goal.as_source(), "Ship it");
     }
 
     #[test]
@@ -270,13 +238,12 @@ mod tests {
         for goal_file in [relative, dir.path().join("goals/task.md")] {
             let mut args = run_args();
             args.goal_file = Some(goal_file);
-            let prepared = prepare_intent_overrides(&args, dir.path()).unwrap();
+            let PreparedIntentOverrides {
+                intent_args: _,
+                goal,
+            } = prepare_intent_overrides(&args, dir.path()).unwrap();
 
-            assert_eq!(prepared.goal.as_deref(), Some("Goal from file"));
-            let RunGoalLayer::Inline(goal) = prepared.run_layer.goal.unwrap() else {
-                panic!("goal-file content should become an inline validation override");
-            };
-            assert_eq!(goal.as_source(), "Goal from file");
+            assert_eq!(goal.as_deref(), Some("Goal from file"));
         }
     }
 
@@ -307,7 +274,12 @@ mod tests {
 
         let error = prepare_intent_overrides(&args, Path::new("/caller")).unwrap_err();
         assert!(error.to_string().contains("temperature"));
-        assert!(error.to_string().contains("finite"));
+        assert!(format!("{error:#}").contains("finite"));
+        assert!(error.chain().any(|cause| {
+            cause
+                .downcast_ref::<fabro_types::TomlScalarToJsonError>()
+                .is_some()
+        }));
     }
 
     #[test]
