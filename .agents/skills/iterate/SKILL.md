@@ -73,6 +73,11 @@ decision, not an accident - it needs the user plus an ADR.
   in the same change.
 - English everywhere written; no inline shell logic in the justfile
   (scripts/*.nu only); shell_quote for sandbox command strings.
+- After programmatic (slice/regex) edits to large files, verify uniqueness
+  of the touched definitions before building: a mis-anchored slice
+  duplicated a ~300-line test region in fabro-4556 and only the compiler
+  caught it; counting `fn <name>` occurrences is cheaper than
+  checkout-restore-and-reapply.
 
 ## Phase 3 - Review
 
