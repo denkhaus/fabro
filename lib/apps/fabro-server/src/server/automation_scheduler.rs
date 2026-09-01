@@ -394,7 +394,6 @@ mod tests {
         AutomationDraft, AutomationGitWorkflowSource, AutomationTrigger, ScheduleTrigger,
     };
     use fabro_static::EnvVars;
-    use fabro_store::ListRunsQuery;
     use fabro_types::{GitRunTarget, ResolvedAutomationGitWorkflowSource, RunStatus, RunTarget};
 
     use super::*;
@@ -488,16 +487,13 @@ mod tests {
             .build()
     }
 
-    async fn cached_runs(state: &AppState) -> Vec<fabro_types::Run> {
+    async fn stored_runs(state: &AppState) -> Vec<fabro_types::Run> {
         state
             .stores
-            .runs
-            .list_cached_runs(&ListRunsQuery::default(), Utc::now())
+            .run_summaries
+            .list_all(Utc::now())
             .await
-            .expect("cached runs should list")
-            .into_iter()
-            .map(|entry| entry.summary)
-            .collect()
+            .expect("stored runs should list")
     }
 
     fn prime_time() -> DateTime<Utc> {
@@ -651,7 +647,7 @@ mod tests {
         run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
         run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
 
-        let runs = cached_runs(state.as_ref()).await;
+        let runs = stored_runs(state.as_ref()).await;
         assert_eq!(runs.len(), 1);
         assert_eq!(
             state
@@ -714,7 +710,7 @@ mod tests {
         run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
         run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
 
-        assert_eq!(cached_runs(state.as_ref()).await.len(), 1);
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 1);
     }
 
     #[tokio::test]
@@ -743,7 +739,7 @@ mod tests {
         let captured = materializer.captured_inputs();
         assert_eq!(captured.len(), 1);
         assert_eq!(captured[0].workflow_source, Some(workflow_source.clone()));
-        let runs = cached_runs(state.as_ref()).await;
+        let runs = stored_runs(state.as_ref()).await;
         assert_eq!(runs.len(), 1);
         assert_eq!(
             runs[0]
@@ -775,7 +771,7 @@ mod tests {
         run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
         run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
 
-        assert!(cached_runs(state.as_ref()).await.is_empty());
+        assert!(stored_runs(state.as_ref()).await.is_empty());
     }
 
     #[tokio::test]
@@ -792,7 +788,7 @@ mod tests {
         run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
         run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
 
-        let mut trigger_ids = cached_runs(state.as_ref())
+        let mut trigger_ids = stored_runs(state.as_ref())
             .await
             .into_iter()
             .map(|run| run.automation.unwrap().trigger_id.unwrap())
@@ -813,7 +809,7 @@ mod tests {
 
         run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
         run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
-        assert_eq!(cached_runs(state.as_ref()).await.len(), 1);
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 1);
         assert!(
             state
                 .runs
@@ -825,7 +821,7 @@ mod tests {
 
         run_due_schedules_once(Arc::clone(&state), &mut planner, second_due_time()).await;
 
-        assert_eq!(cached_runs(state.as_ref()).await.len(), 2);
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 2);
     }
 
     #[tokio::test]
@@ -842,7 +838,7 @@ mod tests {
         run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
         run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
 
-        assert!(cached_runs(state.as_ref()).await.is_empty());
+        assert!(stored_runs(state.as_ref()).await.is_empty());
         assert_eq!(materializer.captured_inputs().len(), 1);
         assert!(
             state
@@ -857,7 +853,7 @@ mod tests {
 
         run_due_schedules_once(Arc::clone(&state), &mut planner, second_due_time()).await;
 
-        assert!(cached_runs(state.as_ref()).await.is_empty());
+        assert!(stored_runs(state.as_ref()).await.is_empty());
         assert_eq!(materializer.captured_inputs().len(), 2);
     }
 
@@ -883,7 +879,7 @@ mod tests {
         run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
         run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
 
-        assert!(cached_runs(state.as_ref()).await.is_empty());
+        assert!(stored_runs(state.as_ref()).await.is_empty());
         assert_eq!(materializer.captured_inputs().len(), 1);
     }
 }

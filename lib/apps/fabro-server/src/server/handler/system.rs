@@ -300,12 +300,7 @@ async fn get_system_df(
     Query(params): Query<DfParams>,
 ) -> Response {
     let storage_dir = state.server_storage_dir();
-    let summaries = match state
-        .stores
-        .runs
-        .list_runs(&fabro_store::ListRunsQuery::default(), Utc::now())
-        .await
-    {
+    let summaries = match state.stores.run_summaries.list_all(Utc::now()).await {
         Ok(summaries) => summaries,
         Err(err) => {
             return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
@@ -366,12 +361,7 @@ async fn prune_runs(
     Json(body): Json<PruneRunsRequest>,
 ) -> Response {
     let storage_dir = state.server_storage_dir();
-    let summaries = match state
-        .stores
-        .runs
-        .list_runs(&fabro_store::ListRunsQuery::default(), Utc::now())
-        .await
-    {
+    let summaries = match state.stores.run_summaries.list_all(Utc::now()).await {
         Ok(summaries) => summaries,
         Err(err) => {
             return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())

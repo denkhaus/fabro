@@ -3397,8 +3397,8 @@ async fn create_run_with_explicit_title_skips_generated_title_work() {
     assert_eq!(
         state
             .stores
-            .runs
-            .get_cached_summary(&run_id, Utc::now())
+            .run_summaries
+            .get(&run_id, Utc::now())
             .await
             .unwrap()
             .unwrap()
@@ -3467,8 +3467,8 @@ async fn generated_title_failure_leaves_deterministic_title_unchanged() {
     assert_eq!(
         state
             .stores
-            .runs
-            .get_cached_summary(&run_id, Utc::now())
+            .run_summaries
+            .get(&run_id, Utc::now())
             .await
             .unwrap()
             .unwrap()
@@ -3516,8 +3516,8 @@ async fn generated_title_does_not_overwrite_user_title_edit() {
     assert_eq!(
         state
             .stores
-            .runs
-            .get_cached_summary(&run_id, Utc::now())
+            .run_summaries
+            .get(&run_id, Utc::now())
             .await
             .unwrap()
             .unwrap()
@@ -4526,8 +4526,8 @@ async fn post_runs_create_regression_keeps_api_behavior_without_automation_metad
     assert_eq!(body["lifecycle"]["status"]["kind"], "submitted");
     let summary = state
         .stores
-        .runs
-        .get_cached_summary(&run_id, Utc::now())
+        .run_summaries
+        .get(&run_id, Utc::now())
         .await
         .unwrap()
         .unwrap();
@@ -4566,8 +4566,8 @@ async fn create_run_from_manifest_helper_persists_without_automation_metadata() 
     assert!(body["automation"].is_null());
     let summary = state
         .stores
-        .runs
-        .get_cached_summary(&run_id, Utc::now())
+        .run_summaries
+        .get(&run_id, Utc::now())
         .await
         .unwrap()
         .unwrap();
@@ -4627,8 +4627,8 @@ async fn create_run_from_manifest_helper_persists_automation_metadata_and_exact_
     );
     let summary = state
         .stores
-        .runs
-        .get_cached_summary(&run_id, Utc::now())
+        .run_summaries
+        .get(&run_id, Utc::now())
         .await
         .unwrap()
         .unwrap();
@@ -4684,8 +4684,8 @@ async fn create_run_from_intent_helper_persists_automation_version_and_exact_tar
     assert_eq!(body["automation"]["id"], automation.id);
     let summary = state
         .stores
-        .runs
-        .get_cached_summary(&run_id, Utc::now())
+        .run_summaries
+        .get(&run_id, Utc::now())
         .await
         .unwrap()
         .unwrap();
@@ -5133,8 +5133,8 @@ async fn wait_for_run_title(state: &AppState, run_id: RunId, expected: &str) {
     for _ in 0..50 {
         let title = state
             .stores
-            .runs
-            .get_cached_summary(&run_id, Utc::now())
+            .run_summaries
+            .get(&run_id, Utc::now())
             .await
             .unwrap()
             .unwrap()
@@ -10839,7 +10839,7 @@ async fn get_run_pull_request_returns_stored_github_association_when_github_pr_i
 }
 
 #[tokio::test]
-async fn create_run_pull_request_creates_and_persists_record() {
+async fn pull_request_creation_recovers_durable_request_after_crash_gap() {
     let github = MockServer::start();
     let branch_mock = github.mock(|when, then| {
         when.method("GET")
@@ -10942,9 +10942,11 @@ async fn create_run_pull_request_creates_and_persists_record() {
 
     assert_eq!(body["status"], "pending");
     assert_eq!(body["model"], "gpt-5.4");
+    assert_eq!(state.pull_request_creation_queue_len(), 1);
 
     // Starting the supervisor after the request simulates server recovery:
     // the durable pending event is enough to resume the operation.
+    let _ = state.drain_pull_request_creation_queue();
     let supervisor = spawn_pull_request_creation_supervisor(Arc::clone(&state));
 
     let creation_body = wait_for_pull_request_creation(&app, run_id).await;
@@ -10982,7 +10984,7 @@ async fn create_run_pull_request_creates_and_persists_record() {
 }
 
 #[tokio::test]
-async fn create_run_pull_request_returns_the_active_durable_request() {
+async fn pull_request_creation_returns_the_active_durable_request() {
     let github = MockServer::start();
     let (state, app, run_id) = Box::pin(pr_test_app_with_completed_run(
         Some("ghu_test"),
@@ -11031,6 +11033,7 @@ async fn create_run_pull_request_returns_the_active_durable_request() {
 
     assert_eq!(first_body["id"], second_body["id"]);
     assert_eq!(first_body["model"], expected_default_model);
+    assert_eq!(state.pull_request_creation_queue_len(), 1);
     let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
     let events = run_store.list_events().await.unwrap();
     assert_eq!(
@@ -11043,7 +11046,76 @@ async fn create_run_pull_request_returns_the_active_durable_request() {
 }
 
 #[tokio::test]
-async fn create_run_pull_request_persists_generation_failure() {
+async fn pull_request_creation_queue_overflow_recovers_from_indexed_scan() {
+    let state = test_app_state();
+    let mut creation_ids = HashMap::new();
+    for _ in 0..17 {
+        let run_id = RunId::new();
+        let creation_id = fabro_types::PullRequestCreationId::new();
+        creation_ids.insert(run_id, creation_id);
+        create_durable_run_with_events(&state, run_id, &[
+            workflow_event::Event::PullRequestCreationRequested {
+                creation_id,
+                model: "test-model".to_string(),
+                force: false,
+            },
+        ])
+        .await;
+    }
+
+    pull_request_supervisor::recover_pending_pull_request_creations(
+        state.as_ref(),
+        &HashMap::new(),
+        &HashMap::new(),
+    )
+    .await
+    .unwrap();
+    let first_batch = state.drain_pull_request_creation_queue();
+    assert_eq!(first_batch.len(), 16);
+
+    for run_id in first_batch {
+        let run_store = state.stores.runs.open_run(&run_id).await.unwrap();
+        workflow_event::append_event(
+            &run_store,
+            &run_id,
+            &workflow_event::Event::PullRequestFailed {
+                creation_id: creation_ids.get(&run_id).copied(),
+                error:       "test failure".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    pull_request_supervisor::recover_pending_pull_request_creations(
+        state.as_ref(),
+        &HashMap::new(),
+        &HashMap::new(),
+    )
+    .await
+    .unwrap();
+    let recovered = state.drain_pull_request_creation_queue();
+    assert_eq!(recovered.len(), 1);
+    let recovered_id = recovered[0];
+    let projection = state
+        .stores
+        .runs
+        .open_run_reader(&recovered_id)
+        .await
+        .unwrap()
+        .state()
+        .await
+        .unwrap();
+    assert!(
+        projection
+            .pull_request_creation
+            .as_ref()
+            .is_some_and(fabro_types::PullRequestCreation::is_pending)
+    );
+}
+
+#[tokio::test]
+async fn pull_request_creation_persists_generation_failure() {
     let github = MockServer::start();
     let branch_mock = github.mock(|when, then| {
         when.method("GET")
@@ -11145,8 +11217,8 @@ async fn create_run_pull_request_returns_conflict_when_record_exists() {
 }
 
 #[tokio::test]
-async fn create_run_pull_request_rejects_missing_repo_origin() {
-    let (_state, app, run_id) = Box::pin(pr_test_app_with_completed_run(None, None, None)).await;
+async fn pull_request_creation_rejects_missing_repo_origin_without_enqueue() {
+    let (state, app, run_id) = Box::pin(pr_test_app_with_completed_run(None, None, None)).await;
 
     let response = app
         .oneshot(
@@ -11168,11 +11240,12 @@ async fn create_run_pull_request_rejects_missing_repo_origin() {
     let body = response_json!(response, StatusCode::BAD_REQUEST).await;
 
     assert_eq!(body["errors"][0]["code"], "missing_repo_origin");
+    assert_eq!(state.pull_request_creation_queue_len(), 0);
 }
 
 #[tokio::test]
-async fn create_run_pull_request_returns_service_unavailable_without_github_credentials() {
-    let (_state, app, run_id) = Box::pin(pr_test_app_with_completed_run(
+async fn pull_request_creation_rejects_missing_credentials_without_enqueue() {
+    let (state, app, run_id) = Box::pin(pr_test_app_with_completed_run(
         None,
         None,
         Some("https://github.com/acme/widgets.git"),
@@ -11197,6 +11270,8 @@ async fn create_run_pull_request_returns_service_unavailable_without_github_cred
         .await
         .unwrap();
     let body = response_json!(response, StatusCode::SERVICE_UNAVAILABLE).await;
+
+    assert_eq!(state.pull_request_creation_queue_len(), 0);
 
     assert_eq!(body["errors"][0]["code"], "integration_unavailable");
 }
@@ -12904,16 +12979,13 @@ async fn run_tool_worker_token_can_use_client_backend_routes_across_runs() {
     let cached = state
         .stores
         .runs
-        .get_cached_run(&created_child)
+        .get_cached_projection(&created_child)
         .await
         .unwrap()
         .expect("created run should be cached");
-    assert_eq!(
-        cached.projection.spec.provenance.subject,
-        Principal::Worker {
-            run_id: parent_run_id,
-        },
-    );
+    assert_eq!(cached.spec.provenance.subject, Principal::Worker {
+        run_id: parent_run_id,
+    },);
 
     let response = app
         .clone()
@@ -16653,9 +16725,8 @@ async fn cancel_run_overwrites_pending_pause_request() {
 
     let summary = state
         .stores
-        .runs
-        .runs()
-        .find(&run_id)
+        .run_summaries
+        .get(&run_id, Utc::now())
         .await
         .unwrap()
         .unwrap();
@@ -16995,9 +17066,8 @@ async fn pause_run_rejects_when_control_is_already_pending() {
 
     let summary = state
         .stores
-        .runs
-        .runs()
-        .find(&run_id)
+        .run_summaries
+        .get(&run_id, Utc::now())
         .await
         .unwrap()
         .unwrap();
@@ -17124,9 +17194,8 @@ async fn pause_run_immediately_pauses_blocked_run() {
 
     let summary = state
         .stores
-        .runs
-        .runs()
-        .find(&run_id)
+        .run_summaries
+        .get(&run_id, Utc::now())
         .await
         .unwrap()
         .unwrap();
@@ -17164,9 +17233,8 @@ async fn unpause_run_sets_pending_control() {
 
     let summary = state
         .stores
-        .runs
-        .runs()
-        .find(&run_id)
+        .run_summaries
+        .get(&run_id, Utc::now())
         .await
         .unwrap()
         .unwrap();
@@ -17249,9 +17317,8 @@ async fn unpause_run_returns_blocked_when_human_gate_is_still_unresolved() {
 
     let summary = state
         .stores
-        .runs
-        .runs()
-        .find(&run_id)
+        .run_summaries
+        .get(&run_id, Utc::now())
         .await
         .unwrap()
         .unwrap();
@@ -17262,7 +17329,7 @@ async fn unpause_run_returns_blocked_when_human_gate_is_still_unresolved() {
 }
 
 #[tokio::test]
-async fn startup_reconciliation_marks_inflight_runs_terminal() {
+async fn reconcile_incomplete_runs_marks_inflight_runs_terminal() {
     let state = test_app_state();
 
     create_durable_run_with_events(&state, fixtures::RUN_1, &[

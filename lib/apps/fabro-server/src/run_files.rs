@@ -1195,7 +1195,7 @@ async fn load_projection(
     state: &Arc<AppState>,
     run_id: &RunId,
 ) -> std::result::Result<Arc<fabro_store::RunProjection>, ApiError> {
-    Ok(state.cached_run(run_id).await?.projection)
+    state.cached_run_projection(run_id).await
 }
 
 async fn reconnect_run_sandbox(

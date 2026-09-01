@@ -946,7 +946,7 @@ async fn run_events_schema_query_plans_use_candidate_indexes_including_session_o
             "run_events_by_session_owner",
         ),
         (
-            "EXPLAIN QUERY PLAN SELECT * FROM run_events WHERE event_name = 'pull_request.creation_requested' ORDER BY run_id, seq",
+            "EXPLAIN QUERY PLAN SELECT DISTINCT run_id FROM run_events WHERE event_name = 'pull_request.creation_requested'",
             "run_events_by_pull_request_creation_request",
         ),
     ] {
