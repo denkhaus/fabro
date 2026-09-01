@@ -659,7 +659,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-01T12:55:11.836318910Z",
-  "last_event_at": "2026-09-01T13:09:36.388909877Z",
+  "last_event_at": "2026-09-01T13:09:41.984659390Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -3362,9 +3362,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 503,
       "checkpoint": {
-        "timestamp": "2026-09-01T13:09:36.617886797Z",
+        "timestamp": "2026-09-01T13:09:41.325642538Z",
         "current_node": "reviewer",
         "completed_nodes": [
           "start",
@@ -3382,9 +3382,328 @@
         ],
         "node_retries": {},
         "context_values": {
+          "internal.run_id": "01M1EGK6J8CNP9APJ7PWE6WE74",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_id": "fabro-f831",
+          "thread.reviewer.current_node": "closeout",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 2944,
+            "preview": "Read-back confirms all seven criteria hold: the `succeeded` bullet gains the record-or-skip condition, the Implemented JSON template carries a required `lesson_capture` key beside `journal`, a prose r"
+          },
+          "last_response": "The diff fully satisfies the seed spec:\n\n- **Step 6** cross-references the required `lesson_capture` home ✅\n- **New \"Lesson capture\" section** mirrors the journal-contract pattern (required answer, ",
+          "graph.rankdir": "LR",
+          "internal.seed_cycle_anchor": "fabro-f831",
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "internal.work_dir": "/workspace/fabro",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3578,
+            "preview": "Claimed `fabro-f831`. The one subtlety: the seed's target file (`prompts/implementer.md`) is itself inside the implementer's \"platform scope off-limits\" zone, so the brief explicitly authorizes exactl"
+          },
+          "current_seed_brief": "Scope: edit `.fabro/workflows/develop/prompts/implementer.md` at repo root `/workspace/fabro` ONLY (gofib code, qualitygate, reviewer.md, planner.md, and scripts are out of scope). CONTRADICTION RESOLVED: that file's own 'Platform scope is off-limits' section forbids `.fabro/` edits — this brief authorizes exactly that one file for this seed; any OTHER platform friction still goes to the journal, never to edits. Background: step 6 already asks for `ml record` when something durable surfaced, but the outcome contract never demands the answer, so lessons die in the run journal. Acceptance criteria: (1) the `succeeded` bullet in the Outcome contract checklist gains one record-or-skip condition — an `ml record` was run AND its mx-id named (format `mx-xxxxxx`, as printed by ml / stored under `.mulch/expertise/`), OR an explicit `nothing durable — skipped`. (2) The Implemented outcome JSON template gains a required `lesson_capture` key at the same level as `journal`, value = the mx-id string or the literal skip text — mirroring the journal-contract mechanism (required key in the template, not prose-only). (3) A short prose rule mirrors the journal-contract pattern: the answer is required on every succeeded pass, skipping is a valid answer, ONLY silence is a violation — place it with/next to step 6 or the journal contract section. (4) Step 6 is cross-referenced so the answer has a named home (its mx-id or skip lands in `lesson_capture`). (5) The record-or-skip fact also appears in `implementation_summary` (one clause naming the mx-id or the skip) so it survives even where context keys are not forwarded — the seed's done-criterion is literally 'implementer summaries all carry the record-or-skip line'. (6) The Blocked variant stays unchanged (journal is Implemented-only; mirror that). (7) Do not weaken or remove any existing contract text (journal contract, verification report, hygiene rules) — this is an addition. Verification: re-read the edited file top to bottom; note that `.fabro/` edits are loop-classified in the evidence capture, so the diff section will show no seed-work hunks — the reviewer verifies by reading the file directly. Do NOT run the full quality gate (tester owns it); a read-back is sufficient check for a prompt-text change.",
+          "thread.planner.current_node": "implementer",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 1710,
+            "preview": "The diff fully satisfies the seed spec:\n\n- **Step 6** cross-references the required `lesson_capture` home ✅\n- **New \"Lesson capture\" section** mirrors the journal-contract pattern (required answer, "
+          },
+          "thread.evidence.current_node": "reviewer",
+          "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` only, as authorized by the brief (lesson capture: nothing durable — skipped). Four additions: (1) step 6 now cross-references the required `lesson_capture` home; (2) new section 'Lesson capture — required answer on every succeeded pass' mirroring the journal-contract pattern; (3) the `succeeded` outcome bullet gains the record-or-skip condition (mx-id named or explicit skip); (4) the Implemented JSON template gains a required `lesson_capture` key at the same level as `journal`, and the `implementation_summary` template text requires one clause naming the mx-id or skip. Verification was a full top-to-bottom read-back; no quality gate run (prompt-text change, tester owns the gate). Per-criterion report: - PASS record-or-skip condition added to `succeeded` bullet with mx-id format and skip text: implementer.md outcome contract. - PASS required `lesson_capture` key added beside `journal` in Implemented JSON template: implementer.md template. - PASS prose rule mirrors journal-contract (skipping valid, only silence a violation), placed as its own section next to step 6's flow: implementer.md 'Lesson capture' section. - PASS step 6 cross-references the named home for the answer: implementer.md step 6. - PASS `implementation_summary` template requires one clause naming mx-id or skip: implementer.md template. - PASS Blocked variant unchanged (journal is Implemented-only; mirrored). - PASS pure addition — journal contract, verification report, and hygiene rules verbatim.",
+          "internal.node_visit_count": 2,
+          "review_verdict": "approved",
+          "thread.tester.current_node": "evidence",
+          "failure_signature": "",
+          "internal.retry_count.planner": 0,
+          "internal.thread_id": "evidence",
+          "internal.retry_count.closeout": 0,
+          "command.output": "blob://sha256/8287858cd89959ec378a5ae169badd5a8bc0ceda2ad263fb4c9fc24010dc512e",
+          "internal.retry_count.evidence": 0,
+          "internal.retry_count.tester": 0,
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Verified the full diff of .fabro/workflows/develop/prompts/implementer.md against diff-base 71366e9 directly with git; all five spec requirements present, pure addition, no scope creep.",
+              "The seed's deliverable is dev-loop machinery, so evidence reports seed-work=0 and the change lives only in the loop-churn section — mechanically correct, but reviewers of workflow-file seeds must read the churn section, not the seed-work section, to find the diff."
+            ]
+          },
+          "graph.max_node_visits": "40",
+          "preferred_label": "Approved",
+          "internal.retry_count.implementer": 0,
+          "internal.retry_count.reviewer": 0,
+          "current_node": "reviewer",
+          "thread.implementer.current_node": "tester",
+          "thread.start.current_node": "planner",
+          "graph.goal": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "failure_class": "",
+          "current_seed_title": "develop: make lesson capture enforceable in the implementer outcome contract",
+          "graph.preamble_budget_kb": "24",
+          "last_stage": "reviewer",
+          "thread.closeout.current_node": "planner",
+          "internal.fidelity": "summary:high"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/c0987f6fc2ff303e0bfc8d07711d6cd6584a0012b27076bda5d468ec0c611d1e"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1097,
+              "active_time_ms": 1097
+            }
+          },
+          "closeout": {
+            "status": "succeeded",
+            "preferred_label": "More seeds",
+            "context_updates": {
+              "command.output": "blob://sha256/8e23ff27a160f86e36fd1c9d28469c889fa16da293c668fd17aed6c8a3308d44"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 490,
+              "active_time_ms": 490
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/8287858cd89959ec378a5ae169badd5a8bc0ceda2ad263fb4c9fc24010dc512e"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 374,
+              "active_time_ms": 374
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3578,
+                "preview": "Claimed `fabro-f831`. The one subtlety: the seed's target file (`prompts/implementer.md`) is itself inside the implementer's \"platform scope off-limits\" zone, so the brief explicitly authorizes exactl"
+              },
+              "last_stage": "planner",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-f831's target file is the very file that forbids `.fabro/` edits by implementers; resolved by explicit single-file authorization in the brief (same pattern as fabro-7e44's evidence.nu scope note).",
+                  "`sd ready` showed exactly one seed; tracker is otherwise drained for this effort, so after fabro-f831 closes the next planner pass should hit Tracker empty unless new seeds appear.",
+                  "Mulch record ids are `mx-xxxxxx` shaped (verified under `.mulch/expertise/`), so the brief's 'name the mx-id' criterion is concretely checkable by the reviewer."
+                ]
+              },
+              "last_response": "Claimed `fabro-f831`. The one subtlety: the seed's target file (`prompts/implementer.md`) is itself inside the implementer's \"platform scope off-limits\" zone, so the brief explicitly authorizes exactl",
+              "current_seed_title": "develop: make lesson capture enforceable in the implementer outcome contract",
+              "current_seed_brief": "Scope: edit `.fabro/workflows/develop/prompts/implementer.md` at repo root `/workspace/fabro` ONLY (gofib code, qualitygate, reviewer.md, planner.md, and scripts are out of scope). CONTRADICTION RESOLVED: that file's own 'Platform scope is off-limits' section forbids `.fabro/` edits — this brief authorizes exactly that one file for this seed; any OTHER platform friction still goes to the journal, never to edits. Background: step 6 already asks for `ml record` when something durable surfaced, but the outcome contract never demands the answer, so lessons die in the run journal. Acceptance criteria: (1) the `succeeded` bullet in the Outcome contract checklist gains one record-or-skip condition — an `ml record` was run AND its mx-id named (format `mx-xxxxxx`, as printed by ml / stored under `.mulch/expertise/`), OR an explicit `nothing durable — skipped`. (2) The Implemented outcome JSON template gains a required `lesson_capture` key at the same level as `journal`, value = the mx-id string or the literal skip text — mirroring the journal-contract mechanism (required key in the template, not prose-only). (3) A short prose rule mirrors the journal-contract pattern: the answer is required on every succeeded pass, skipping is a valid answer, ONLY silence is a violation — place it with/next to step 6 or the journal contract section. (4) Step 6 is cross-referenced so the answer has a named home (its mx-id or skip lands in `lesson_capture`). (5) The record-or-skip fact also appears in `implementation_summary` (one clause naming the mx-id or the skip) so it survives even where context keys are not forwarded — the seed's done-criterion is literally 'implementer summaries all carry the record-or-skip line'. (6) The Blocked variant stays unchanged (journal is Implemented-only; mirror that). (7) Do not weaken or remove any existing contract text (journal contract, verification report, hygiene rules) — this is an addition. Verification: re-read the edited file top to bottom; note that `.fabro/` edits are loop-classified in the evidence capture, so the diff section will show no seed-work hunks — the reviewer verifies by reading the file directly. Do NOT run the full quality gate (tester owns it); a read-back is sufficient check for a prompt-text change.",
+              "current_seed_id": "fabro-f831"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15278,
+                    "output_tokens": 1217,
+                    "reasoning_tokens": 3859,
+                    "cache_read_tokens": 78720,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 64178
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 98282,
+              "tool_time_ms": 1837,
+              "active_time_ms": 100119
+            }
+          },
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 1710,
+                "preview": "The diff fully satisfies the seed spec:\n\n- **Step 6** cross-references the required `lesson_capture` home ✅\n- **New \"Lesson capture\" section** mirrors the journal-contract pattern (required answer, "
+              },
+              "last_stage": "reviewer",
+              "review_verdict": "approved",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified the full diff of .fabro/workflows/develop/prompts/implementer.md against diff-base 71366e9 directly with git; all five spec requirements present, pure addition, no scope creep.",
+                  "The seed's deliverable is dev-loop machinery, so evidence reports seed-work=0 and the change lives only in the loop-churn section — mechanically correct, but reviewers of workflow-file seeds must read the churn section, not the seed-work section, to find the diff."
+                ]
+              },
+              "last_response": "The diff fully satisfies the seed spec:\n\n- **Step 6** cross-references the required `lesson_capture` home ✅\n- **New \"Lesson capture\" section** mirrors the journal-contract pattern (required answer, "
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 10625,
+                    "output_tokens": 414,
+                    "reasoning_tokens": 129,
+                    "cache_read_tokens": 9472,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 19725
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 15865,
+              "tool_time_ms": 228,
+              "active_time_ms": 16093
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "The record-or-skip enforcement now lives in the same file this pass edited, so the next implementer pass in this run will be the first live test of the contract — reviewer should check its summary actually carries the line.",
+                  "This seed's authorization pattern (brief explicitly overriding the target file's own platform-scope prohibition for one named file) has now recurred across fabro-7e44 and fabro-f831; worth a platform-level 'authorized exception' convention eventually."
+                ]
+              },
+              "last_response": "Read-back confirms all seven criteria hold: the `succeeded` bullet gains the record-or-skip condition, the Implemented JSON template carries a required `lesson_capture` key beside `journal`, a prose r",
+              "last_stage": "implementer",
+              "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` only, as authorized by the brief (lesson capture: nothing durable — skipped). Four additions: (1) step 6 now cross-references the required `lesson_capture` home; (2) new section 'Lesson capture — required answer on every succeeded pass' mirroring the journal-contract pattern; (3) the `succeeded` outcome bullet gains the record-or-skip condition (mx-id named or explicit skip); (4) the Implemented JSON template gains a required `lesson_capture` key at the same level as `journal`, and the `implementation_summary` template text requires one clause naming the mx-id or skip. Verification was a full top-to-bottom read-back; no quality gate run (prompt-text change, tester owns the gate). Per-criterion report: - PASS record-or-skip condition added to `succeeded` bullet with mx-id format and skip text: implementer.md outcome contract. - PASS required `lesson_capture` key added beside `journal` in Implemented JSON template: implementer.md template. - PASS prose rule mirrors journal-contract (skipping valid, only silence a violation), placed as its own section next to step 6's flow: implementer.md 'Lesson capture' section. - PASS step 6 cross-references the named home for the answer: implementer.md step 6. - PASS `implementation_summary` template requires one clause naming mx-id or skip: implementer.md template. - PASS Blocked variant unchanged (journal is Implemented-only; mirrored). - PASS pure addition — journal contract, verification report, and hygiene rules verbatim.",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 2944,
+                "preview": "Read-back confirms all seven criteria hold: the `succeeded` bullet gains the record-or-skip condition, the Implemented JSON template carries a required `lesson_capture` key beside `journal`, a prose r"
+              }
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14504,
+                    "output_tokens": 1347,
+                    "reasoning_tokens": 359,
+                    "cache_read_tokens": 44416,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 39354
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/workflows/develop/prompts/implementer.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 35988,
+              "tool_time_ms": 826,
+              "active_time_ms": 36814
+            }
+          }
+        },
+        "next_node_id": "closeout",
+        "git_commit_sha": "9514e44d9b531ee8a7da56fd7c26f3a1cc55ec3d",
+        "node_visits": {
+          "implementer": 2,
+          "reviewer": 2,
+          "tester": 2,
+          "planner": 2,
+          "evidence": 2,
+          "closeout": 1,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl b/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl\nindex 629206f..119fe79 100644\n--- a/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl\n+++ b/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl\n@@ -9,3 +9,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"implementer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:08:58Z\",\"data\":{\"painpoints\":[],\"observations\":[\"The record-or-skip enforcement now lives in the same file this pass edited, so the next implementer pass in this run will be the first live test of the contract — reviewer should check its summary actually carries the line.\",\"This seed's authorization pattern (brief explicitly overriding the target file's own platform-scope prohibition for one named file) has now recurred across fabro-7e44 and fabro-f831; worth a platform-level 'authorized exception' convention eventually.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"tester\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:09:05Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"evidence\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:09:11Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1EGK6J8CNP9APJ7PWE6WE74\",\"node\":\"reviewer\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-01T13:09:36Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the full diff of .fabro/workflows/develop/prompts/implementer.md against diff-base 71366e9 directly with git; all five spec requirements present, pure addition, no scope creep.\",\"The seed's deliverable is dev-loop machinery, so evidence reports seed-work=0 and the change lives only in the loop-churn section — mechanically correct, but reviewers of workflow-file seeds must read the churn section, not the seed-work section, to find the diff.\"]}}\n",
+        "summary": {
+          "files_changed": 7,
+          "additions": 107,
+          "deletions": 13
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-01T13:09:42.200117346Z",
+        "current_node": "closeout",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout"
+        ],
+        "node_retries": {},
+        "context_values": {
           "outcome": "succeeded",
           "internal.seed_cycle_anchor": "fabro-f831",
-          "internal.thread_id": "evidence",
+          "internal.thread_id": "reviewer",
           "journal": {
             "painpoints": [],
             "observations": [
@@ -3405,7 +3724,8 @@
             "implementer": 1,
             "tester": 1,
             "evidence": 1,
-            "reviewer": 1
+            "reviewer": 1,
+            "closeout": 1
           },
           "current_seed_title": "develop: make lesson capture enforceable in the implementer outcome contract",
           "current_seed_id": "fabro-f831",
@@ -3413,7 +3733,7 @@
           "graph.cycle_counter_reset_key": "current_seed_id",
           "internal.retry_count.tester": 0,
           "review_verdict": "approved",
-          "preferred_label": "Approved",
+          "preferred_label": "Tracker empty",
           "internal.retry_count.planner": 0,
           "response.reviewer": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -3424,7 +3744,7 @@
           "thread.closeout.current_node": "planner",
           "last_stage": "reviewer",
           "internal.retry_count.implementer": 0,
-          "command.output": "blob://sha256/8287858cd89959ec378a5ae169badd5a8bc0ceda2ad263fb4c9fc24010dc512e",
+          "command.output": "blob://sha256/82e3f556787959c8b2efa7fe6d6848fc102bd35b50cc40c37bf883ca041c0584",
           "failure_signature": "",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
@@ -3438,6 +3758,7 @@
             "chars": 2944,
             "preview": "Read-back confirms all seven criteria hold: the `succeeded` bullet gains the record-or-skip condition, the Implemented JSON template carries a required `lesson_capture` key beside `journal`, a prose r"
           },
+          "internal.exit_kind": "natural",
           "thread.start.current_node": "planner",
           "graph.preamble_budget_kb": "24",
           "thread.evidence.current_node": "reviewer",
@@ -3447,10 +3768,10 @@
           "last_response": "The diff fully satisfies the seed spec:\n\n- **Step 6** cross-references the required `lesson_capture` home ✅\n- **New \"Lesson capture\" section** mirrors the journal-contract pattern (required answer, ",
           "internal.retry_count.evidence": 0,
           "internal.retry_count.closeout": 0,
-          "current_node": "reviewer",
+          "current_node": "closeout",
           "current_seed_brief": "Scope: edit `.fabro/workflows/develop/prompts/implementer.md` at repo root `/workspace/fabro` ONLY (gofib code, qualitygate, reviewer.md, planner.md, and scripts are out of scope). CONTRADICTION RESOLVED: that file's own 'Platform scope is off-limits' section forbids `.fabro/` edits — this brief authorizes exactly that one file for this seed; any OTHER platform friction still goes to the journal, never to edits. Background: step 6 already asks for `ml record` when something durable surfaced, but the outcome contract never demands the answer, so lessons die in the run journal. Acceptance criteria: (1) the `succeeded` bullet in the Outcome contract checklist gains one record-or-skip condition — an `ml record` was run AND its mx-id named (format `mx-xxxxxx`, as printed by ml / stored under `.mulch/expertise/`), OR an explicit `nothing durable — skipped`. (2) The Implemented outcome JSON template gains a required `lesson_capture` key at the same level as `journal`, value = the mx-id string or the literal skip text — mirroring the journal-contract mechanism (required key in the template, not prose-only). (3) A short prose rule mirrors the journal-contract pattern: the answer is required on every succeeded pass, skipping is a valid answer, ONLY silence is a violation — place it with/next to step 6 or the journal contract section. (4) Step 6 is cross-referenced so the answer has a named home (its mx-id or skip lands in `lesson_capture`). (5) The record-or-skip fact also appears in `implementation_summary` (one clause naming the mx-id or the skip) so it survives even where context keys are not forwarded — the seed's done-criterion is literally 'implementer summaries all carry the record-or-skip line'. (6) The Blocked variant stays unchanged (journal is Implemented-only; mirror that). (7) Do not weaken or remove any existing contract text (journal contract, verification report, hygiene rules) — this is an addition. Verification: re-read the edited file top to bottom; note that `.fabro/` edits are loop-classified in the evidence capture, so the diff section will show no seed-work hunks — the reviewer verifies by reading the file directly. Do NOT run the full quality gate (tester owns it); a read-back is sufficient check for a prompt-text change.",
           "implementation_summary": "Edited `.fabro/workflows/develop/prompts/implementer.md` only, as authorized by the brief (lesson capture: nothing durable — skipped). Four additions: (1) step 6 now cross-references the required `lesson_capture` home; (2) new section 'Lesson capture — required answer on every succeeded pass' mirroring the journal-contract pattern; (3) the `succeeded` outcome bullet gains the record-or-skip condition (mx-id named or explicit skip); (4) the Implemented JSON template gains a required `lesson_capture` key at the same level as `journal`, and the `implementation_summary` template text requires one clause naming the mx-id or skip. Verification was a full top-to-bottom read-back; no quality gate run (prompt-text change, tester owns the gate). Per-criterion report: - PASS record-or-skip condition added to `succeeded` bullet with mx-id format and skip text: implementer.md outcome contract. - PASS required `lesson_capture` key added beside `journal` in Implemented JSON template: implementer.md template. - PASS prose rule mirrors journal-contract (skipping valid, only silence a violation), placed as its own section next to step 6's flow: implementer.md 'Lesson capture' section. - PASS step 6 cross-references the named home for the answer: implementer.md step 6. - PASS `implementation_summary` template requires one clause naming mx-id or skip: implementer.md template. - PASS Blocked variant unchanged (journal is Implemented-only; mirrored). - PASS pure addition — journal contract, verification report, and hygiene rules verbatim.",
-          "internal.fidelity": "summary:high",
+          "internal.fidelity": "compact",
           "internal.retry_count.start": 0
         },
         "node_outcomes": {
@@ -3630,17 +3951,17 @@
           },
           "closeout": {
             "status": "succeeded",
-            "preferred_label": "More seeds",
+            "preferred_label": "Tracker empty",
             "context_updates": {
-              "command.output": "blob://sha256/8e23ff27a160f86e36fd1c9d28469c889fa16da293c668fd17aed6c8a3308d44"
+              "command.output": "blob://sha256/82e3f556787959c8b2efa7fe6d6848fc102bd35b50cc40c37bf883ca041c0584"
             },
             "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 490,
-              "active_time_ms": 490
+              "tool_time_ms": 477,
+              "active_time_ms": 477
             }
           },
           "evidence": {
@@ -3658,9 +3979,9 @@
             }
           }
         },
-        "next_node_id": "closeout",
+        "next_node_id": "exit",
         "node_visits": {
-          "closeout": 1,
+          "closeout": 2,
           "implementer": 2,
           "start": 1,
           "tester": 2,
@@ -4798,6 +5119,57 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "closeout@2": {
+      "first_event_seq": 506,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+        "failure_reason": null,
+        "timestamp": "2026-09-01T13:09:41.984659390Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "nu .fabro/workflows/develop/scripts/closeout.nu",
+        "command": "exec 2>&1\nnu .fabro/workflows/develop/scripts/closeout.nu",
+        "language": "shell",
+        "timeout_ms": 60000
+      },
+      "script_timing": {
+        "output": "blob://sha256/82e3f556787959c8b2efa7fe6d6848fc102bd35b50cc40c37bf883ca041c0584",
+        "exit_code": 0,
+        "duration_ms": 477,
+        "termination": "exited",
+        "output_bytes": 69,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 69,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-01T13:09:41.487398165Z",
+      "handler": "command",
+      "graph_visit": 2,
+      "timing": {
+        "wall_time_ms": 483,
+        "inference_time_ms": 0,
+        "tool_time_ms": 477,
+        "active_time_ms": 477
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"

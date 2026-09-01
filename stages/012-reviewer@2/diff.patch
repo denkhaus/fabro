@@ -1,0 +1,9 @@
+diff --git a/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl b/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl
+index 629206f..119fe79 100644
+--- a/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl
++++ b/.fabro/journal/01M1EGK6J8CNP9APJ7PWE6WE74.jsonl
+@@ -9,3 +9,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1EGK6J8CNP9APJ7PWE6WE74","node":"implementer","visit":2,"status":"succeeded","ts":"2026-09-01T13:08:58Z","data":{"painpoints":[],"observations":["The record-or-skip enforcement now lives in the same file this pass edited, so the next implementer pass in this run will be the first live test of the contract — reviewer should check its summary actually carries the line.","This seed's authorization pattern (brief explicitly overriding the target file's own platform-scope prohibition for one named file) has now recurred across fabro-7e44 and fabro-f831; worth a platform-level 'authorized exception' convention eventually."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1EGK6J8CNP9APJ7PWE6WE74","node":"tester","visit":2,"status":"succeeded","ts":"2026-09-01T13:09:05Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1EGK6J8CNP9APJ7PWE6WE74","node":"evidence","visit":2,"status":"succeeded","ts":"2026-09-01T13:09:11Z","data":{}}
++{"$schema":"fabro-journal-v1","run_id":"01M1EGK6J8CNP9APJ7PWE6WE74","node":"reviewer","visit":2,"status":"succeeded","ts":"2026-09-01T13:09:36Z","data":{"painpoints":[],"observations":["Verified the full diff of .fabro/workflows/develop/prompts/implementer.md against diff-base 71366e9 directly with git; all five spec requirements present, pure addition, no scope creep.","The seed's deliverable is dev-loop machinery, so evidence reports seed-work=0 and the change lives only in the loop-churn section — mechanically correct, but reviewers of workflow-file seeds must read the churn section, not the seed-work section, to find the diff."]}}
