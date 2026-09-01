@@ -665,8 +665,12 @@ pub(crate) fn sandbox_provider_policy_error(
     })
 }
 
+pub(crate) fn configured_sandbox_provider(settings: &RunNamespace) -> SandboxProviderKind {
+    SandboxProviderKind::from(settings.environment.provider)
+}
+
 pub(crate) fn effective_sandbox_provider(settings: &RunNamespace) -> SandboxProviderKind {
-    SandboxProviderKind::from(settings.environment.provider).effective_for(settings.execution.mode)
+    configured_sandbox_provider(settings).effective_for(settings.execution.mode)
 }
 
 fn resolve_daytona_config(settings: &RunNamespace) -> DaytonaConfig {

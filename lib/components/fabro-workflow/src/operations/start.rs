@@ -403,7 +403,14 @@ impl RunSession {
             .state()
             .await
             .map_err(|err| Error::engine(err.to_string()))?;
-        let git = git_checkpoint_options_from_start(settings, &record.run_id, state.start);
+        let dry_run_clone_target = settings.run.execution.mode == RunMode::DryRun
+            && matches!(
+                record.target.as_ref(),
+                Some(RunTarget::Git(_) | RunTarget::None {})
+            );
+        let git = (!dry_run_clone_target)
+            .then(|| git_checkpoint_options_from_start(settings, &record.run_id, state.start))
+            .flatten();
         let definition_blob = state.spec.definition_blob;
         let accepted_definition = match definition_blob {
             Some(blob_hash) => {
@@ -418,9 +425,19 @@ impl RunSession {
             accepted_definition.map(|definition| Arc::new(definition.workflow_bundle()));
 
         let resolved = &settings.run;
-        let sandbox_provider =
-            resolve_sandbox_provider(resolved).effective_for(resolved.execution.mode);
-        let clone_source = clone_source_for_run(record)?;
+        let configured_sandbox_provider = resolve_sandbox_provider(resolved);
+        let sandbox_provider = configured_sandbox_provider.effective_for(resolved.execution.mode);
+        let clone_source = if dry_run_clone_target {
+            CloneSourceForRun {
+                origin_url: None,
+                branch:     None,
+                tag:        None,
+                commit_sha: None,
+                skip_clone: true,
+            }
+        } else {
+            clone_source_for_run(record)?
+        };
         // An empty-workspace run has no repository for PR creation or the
         // sandbox environment, regardless of any persisted Git metadata.
         let runtime_origin_url = (!clone_source.skip_clone)
@@ -463,14 +480,26 @@ impl RunSession {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        if sandbox_provider != SandboxProviderKind::Local
+        if configured_sandbox_provider != SandboxProviderKind::Local
             && matches!(record.target, Some(RunTarget::Folder { .. }))
         {
             return Err(Error::engine(
                 "persisted folder run targets require the Local sandbox provider",
             ));
         }
+        if configured_sandbox_provider == SandboxProviderKind::Local {
+            if let Some(target @ (RunTarget::Git(_) | RunTarget::None {})) = record.target.as_ref()
+            {
+                return Err(Error::engine(format!(
+                    "persisted {} run targets require a clone-based sandbox provider",
+                    target.kind_name()
+                )));
+            }
+        }
         let sandbox = match sandbox_provider {
+            SandboxProviderKind::Local if dry_run_clone_target => SandboxSpec::Local {
+                working_directory: dry_run_workspace_for_target(persisted).await?,
+            },
             SandboxProviderKind::Local => match record.target.as_ref() {
                 Some(target @ (RunTarget::Git(_) | RunTarget::None {})) => {
                     return Err(Error::engine(format!(
@@ -650,6 +679,16 @@ async fn folder_working_directory_from_record(
     }
 
     Ok(canonical)
+}
+
+async fn dry_run_workspace_for_target(persisted: &Persisted) -> Result<PathBuf, Error> {
+    let workspace = persisted.run_dir().join("dry-run-workspace");
+    fs::create_dir_all(&workspace).await.map_err(|source| {
+        Error::engine_with_source("failed to create dry-run target workspace", source)
+    })?;
+    fs::canonicalize(&workspace).await.map_err(|source| {
+        Error::engine_with_source("failed to canonicalize dry-run target workspace", source)
+    })
 }
 
 fn clone_source_for_run(record: &RunSpec) -> Result<CloneSourceForRun, Error> {
@@ -2014,6 +2053,124 @@ reasoning = false
         };
 
         assert!(error.to_string().contains("none run targets require"));
+    }
+
+    #[tokio::test]
+    async fn run_session_new_dry_run_clone_targets_use_isolated_local_workspace() {
+        for target in [
+            RunTarget::None {},
+            RunTarget::Git(GitRunTarget {
+                repo:   "fabro-sh/fabro".to_string(),
+                branch: "main".to_string(),
+                tag:    None,
+                sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+            }),
+        ] {
+            let temp = tempfile::tempdir().unwrap();
+            let (storage_root, run_dir) = storage_root_and_run_dir(&temp);
+            let mut settings = settings_from_run_layer(RunLayer {
+                execution: Some(RunExecutionLayer {
+                    mode: Some(RunMode::DryRun),
+                    ..RunExecutionLayer::default()
+                }),
+                ..RunLayer::default()
+            });
+            settings.run.environment.provider = EnvironmentProvider::Docker;
+            settings.run.environment.image.docker = Some("buildpack-deps:noble".to_string());
+            let (persisted, store) = persisted_workflow_with_settings_and_target(
+                MINIMAL_DOT,
+                &storage_root,
+                settings,
+                Some(target.clone()),
+            )
+            .await;
+            assert_eq!(persisted.run_spec().target, Some(target.clone()));
+            let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+            let registry = Arc::new(test_registry());
+
+            let session = RunSession::new(
+                &persisted,
+                test_start_services(&store, &storage_root, emitter, registry).await,
+            )
+            .await
+            .unwrap();
+
+            let SandboxSpec::Local { working_directory } = session.sandbox else {
+                panic!("clone target dry-run should execute in a Local scratch sandbox");
+            };
+            assert_eq!(
+                working_directory,
+                run_dir.join("dry-run-workspace").canonicalize().unwrap()
+            );
+            assert_eq!(session.sandbox_env.origin_url, None);
+            assert_eq!(session.pr_origin_url, None);
+            assert!(session.git.is_none());
+            assert_eq!(persisted.run_spec().target, Some(target));
+        }
+    }
+
+    #[tokio::test]
+    async fn run_session_new_dry_run_rejects_configured_target_mismatches() {
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
+        let mut local_settings = settings_from_run_layer(RunLayer {
+            execution: Some(RunExecutionLayer {
+                mode: Some(RunMode::DryRun),
+                ..RunExecutionLayer::default()
+            }),
+            ..RunLayer::default()
+        });
+        local_settings.run.environment.provider = EnvironmentProvider::Local;
+        let (persisted, store) = persisted_workflow_with_settings_and_target(
+            MINIMAL_DOT,
+            &storage_root,
+            local_settings,
+            Some(RunTarget::None {}),
+        )
+        .await;
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+        let Err(error) = RunSession::new(
+            &persisted,
+            test_start_services(&store, &storage_root, emitter, registry).await,
+        )
+        .await
+        else {
+            panic!("Local configured provider must reject none even in dry-run");
+        };
+        assert!(error.to_string().contains("none run targets require"));
+
+        let temp = tempfile::tempdir().unwrap();
+        let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
+        let (_, canonical_text) = canonical_folder(&temp);
+        let mut docker_settings = settings_from_run_layer(RunLayer {
+            execution: Some(RunExecutionLayer {
+                mode: Some(RunMode::DryRun),
+                ..RunExecutionLayer::default()
+            }),
+            ..RunLayer::default()
+        });
+        docker_settings.run.environment.provider = EnvironmentProvider::Docker;
+        let (persisted, store) =
+            persisted_workflow_with_settings(MINIMAL_DOT, &storage_root, docker_settings).await;
+        let persisted = persisted_with_target_projection(
+            persisted,
+            RunTarget::Folder {
+                path: canonical_text.clone(),
+            },
+            Some(canonical_text),
+        );
+        let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
+        let registry = Arc::new(test_registry());
+        let Err(error) = RunSession::new(
+            &persisted,
+            test_start_services(&store, &storage_root, emitter, registry).await,
+        )
+        .await
+        else {
+            panic!("Docker configured provider must reject folder even in dry-run");
+        };
+        assert!(error.to_string().contains("folder run targets require"));
     }
 
     #[tokio::test]
