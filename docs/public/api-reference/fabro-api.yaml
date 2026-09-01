@@ -9352,6 +9352,21 @@ components:
           type: object
           additionalProperties:
             type: string
+        dry_run:
+          type: boolean
+          description: >-
+            Overrides `run.execution.mode`: true selects `dry_run`, false
+            selects `normal`, and omission inherits the lower-precedence setting.
+        auto_approve:
+          type: boolean
+          description: >-
+            Overrides `run.execution.approval`: true selects `auto`, false
+            selects `prompt`, and omission inherits the lower-precedence setting.
+        preserve_sandbox:
+          type: boolean
+          description: >-
+            Overrides `run.environment.lifecycle.preserve`; omission inherits
+            the lower-precedence setting.
 
     RunTarget:
       description: Workspace content and location requested for a run.

@@ -21,19 +21,48 @@ fn intent() -> RunIntent {
             sha:    Some("ABCDEF0123456789ABCDEF0123456789ABCDEF01".to_string()),
         }),
         args:                RunIntentArgs {
-            model:    Some("gpt-5.6".to_string()),
-            provider: Some("openai".to_string()),
-            inputs:   HashMap::from([
+            model:            Some("gpt-5.6".to_string()),
+            provider:         Some("openai".to_string()),
+            inputs:           HashMap::from([
                 ("attempts".to_string(), json!(3)),
                 ("enabled".to_string(), json!(true)),
             ]),
-            labels:   HashMap::from([("team".to_string(), "platform".to_string())]),
+            labels:           HashMap::from([("team".to_string(), "platform".to_string())]),
+            dry_run:          Some(false),
+            auto_approve:     Some(true),
+            preserve_sandbox: None,
         },
         environment_id:      Some("production".to_string()),
         parent_id:           None,
         title:               Some("Add RunIntent".to_string()),
         goal:                Some("Implement the endpoint".to_string()),
     }
+}
+
+#[test]
+fn run_intent_args_preserve_tri_state_wire_semantics() {
+    let omitted = serde_json::to_value(RunIntentArgs::default()).expect("args should serialize");
+    assert_eq!(omitted, json!({}));
+
+    let args = RunIntentArgs {
+        dry_run: Some(false),
+        auto_approve: Some(true),
+        preserve_sandbox: Some(false),
+        ..RunIntentArgs::default()
+    };
+    let value = serde_json::to_value(&args).expect("args should serialize");
+
+    assert_eq!(value["dry_run"], false);
+    assert_eq!(value["auto_approve"], true);
+    assert_eq!(value["preserve_sandbox"], false);
+    assert_eq!(
+        serde_json::from_value::<RunIntentArgs>(value).expect("args should deserialize"),
+        args
+    );
+    assert!(
+        serde_json::from_value::<RunIntentArgs>(json!({ "unexpected": true })).is_err(),
+        "unknown args fields must remain rejected"
+    );
 }
 
 #[test]

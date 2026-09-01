@@ -18,10 +18,11 @@ use fabro_api::types::{
     BoardColumn, ManifestConfigType, ManifestGoalType, RunIntent, RunManifest, SubmitAnswerRequest,
     UpdateRunParentRequest, UpdateRunRequest,
 };
-use fabro_config::{CliLayer, ReplaceMap, RunEnvironmentLayer, RunLayer, RunModelLayer, Storage};
+use fabro_config::{CliLayer, RunLayer, Storage};
 use fabro_environment::{DEFAULT_ENVIRONMENT_ID, EnvironmentId};
 use fabro_interview::AnswerSubmission;
 use fabro_llm::client::Client as LlmClient;
+use fabro_manifest::RunOverrideInput;
 use fabro_static::EnvVars;
 use fabro_store::{
     RunSummaryListQuery, RunSummarySort, RunSummarySortDirection, RunSummaryVisibility,
@@ -727,21 +728,16 @@ pub(crate) async fn create_run_from_intent(
         };
         input_overrides.insert(name.clone(), value);
     }
-    let mut run_overrides = RunLayer {
-        environment: Some(RunEnvironmentLayer {
-            id: Some(environment_id.to_string()),
-            ..RunEnvironmentLayer::default()
-        }),
-        metadata: ReplaceMap::from(intent.args.labels),
-        ..RunLayer::default()
-    };
-    if intent.args.model.is_some() || intent.args.provider.is_some() {
-        run_overrides.model = Some(RunModelLayer {
-            name: intent.args.model,
-            provider: intent.args.provider,
-            ..RunModelLayer::default()
-        });
-    }
+    let run_overrides = fabro_manifest::build_run_overrides(RunOverrideInput {
+        goal:             None,
+        model:            intent.args.model.as_deref(),
+        provider:         intent.args.provider.as_deref(),
+        environment:      Some(environment_id.as_str()),
+        preserve_sandbox: intent.args.preserve_sandbox,
+        dry_run:          intent.args.dry_run,
+        auto_approve:     intent.args.auto_approve,
+        labels:           intent.args.labels,
+    });
 
     let entrypoint = lowered.entrypoint.clone();
     let raw_compiler_input = RawRunCompilerInput {

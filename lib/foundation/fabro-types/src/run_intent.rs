@@ -27,13 +27,19 @@ pub struct RunIntent {
 #[serde(deny_unknown_fields)]
 pub struct RunIntentArgs {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model:    Option<String>,
+    pub model:            Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider: Option<String>,
+    pub provider:         Option<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub inputs:   HashMap<String, Value>,
+    pub inputs:           HashMap<String, Value>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub labels:   HashMap<String, String>,
+    pub labels:           HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dry_run:          Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_approve:     Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preserve_sandbox: Option<bool>,
 }
 
 /// Requested workspace content, independent of sandbox placement.

@@ -24,7 +24,7 @@ use fabro_llm::types::{Message as LlmMessage, Request as LlmRequest, TokenCounts
 use fabro_model::catalog::LlmCatalogSettings;
 use fabro_model::{Catalog, ModelRef, ProviderId, ReasoningEffort, Speed};
 use fabro_types::settings::ServerAuthMethod;
-use fabro_types::settings::run::EnvironmentProvider;
+use fabro_types::settings::run::{ApprovalMode, EnvironmentProvider};
 use fabro_types::{
     AgentBackend, AttrValue, AuthMethod, BlobHash, CommandTermination, FailureCategory,
     FailureDetail, GitRunTarget, Graph, InterviewQuestionRecord, Node, Outcome, ParallelBranchId,
@@ -3267,17 +3267,16 @@ url = "http://127.0.0.1:32276"
 }
 
 #[tokio::test]
-async fn system_repair_runs_lists_catalog_entries_without_projection() {
+async fn system_repair_runs_lists_sql_rows_without_readable_history() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = RunId::new();
+    let run_store = state.stores.runs.create_run(&run_id).await.unwrap();
+    append_default_run_created(&run_store, run_id).await;
     state
         .stores
-        .runs
-        .catalog_index()
-        .await
-        .unwrap()
-        .add(&run_id)
+        .run_summaries
+        .test_delete_run_events(&run_id)
         .await
         .unwrap();
 
@@ -3305,7 +3304,7 @@ async fn system_repair_runs_lists_catalog_entries_without_projection() {
         body["runs"][0]["error"]
             .as_str()
             .unwrap()
-            .contains("no events"),
+            .contains("head mismatch"),
         "got: {}",
         body["runs"][0]["error"]
     );
@@ -3777,6 +3776,141 @@ async fn post_runs_run_intent_creates_submitted_none_target_without_git_projecti
     assert!(projection.spec.settings.run.clone.enabled);
     assert_eq!(projection.spec.manifest_blob, None);
     assert!(projection.spec.definition_blob.is_some());
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_args_true_override_resolved_settings_without_starting() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    let state = TestAppStateBuilder::new()
+        .default_environment_provider(Some(EnvironmentProvider::Local))
+        .env_lookup(|_| None)
+        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .build();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let body = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": { "kind": "folder", "path": &workspace },
+            "args": {
+                "dry_run": true,
+                "auto_approve": true,
+                "preserve_sandbox": true
+            }
+        }),
+    )
+    .await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    assert_eq!(body["lifecycle"]["status"]["kind"], "submitted");
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    let projection = run_store.state().await.unwrap();
+    assert_eq!(projection.spec.settings.run.execution.mode, RunMode::DryRun);
+    assert_eq!(
+        projection.spec.settings.run.execution.approval,
+        ApprovalMode::Auto
+    );
+    assert!(projection.spec.settings.run.environment.lifecycle.preserve);
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_args_false_are_distinct_from_omitted_overrides() {
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    let state = TestAppStateBuilder::new()
+        .runtime_settings(
+            default_test_server_settings(),
+            manifest_run_defaults_from_toml(
+                r#"
+[run.execution]
+mode = "dry_run"
+approval = "auto"
+
+[run.environment.lifecycle]
+preserve = true
+"#,
+            ),
+        )
+        .default_environment_provider(Some(EnvironmentProvider::Local))
+        .env_lookup(|_| None)
+        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .build();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+
+    let explicit_false = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": { "kind": "folder", "path": &workspace },
+            "args": {
+                "dry_run": false,
+                "auto_approve": false,
+                "preserve_sandbox": false
+            }
+        }),
+    )
+    .await;
+    let omitted = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": { "kind": "folder", "path": &workspace },
+            "args": {}
+        }),
+    )
+    .await;
+
+    assert_eq!(explicit_false["lifecycle"]["status"]["kind"], "submitted");
+    assert_eq!(omitted["lifecycle"]["status"]["kind"], "submitted");
+    let explicit_false_id = explicit_false["id"]
+        .as_str()
+        .unwrap()
+        .parse::<RunId>()
+        .unwrap();
+    let omitted_id = omitted["id"].as_str().unwrap().parse::<RunId>().unwrap();
+    let explicit_false_store = state
+        .stores
+        .runs
+        .open_run_reader(&explicit_false_id)
+        .await
+        .unwrap();
+    let explicit_false = explicit_false_store.state().await.unwrap();
+    let omitted_store = state
+        .stores
+        .runs
+        .open_run_reader(&omitted_id)
+        .await
+        .unwrap();
+    let omitted = omitted_store.state().await.unwrap();
+
+    assert_eq!(
+        explicit_false.spec.settings.run.execution.mode,
+        RunMode::Normal
+    );
+    assert_eq!(
+        explicit_false.spec.settings.run.execution.approval,
+        ApprovalMode::Prompt
+    );
+    assert!(
+        !explicit_false
+            .spec
+            .settings
+            .run
+            .environment
+            .lifecycle
+            .preserve
+    );
+    assert_eq!(omitted.spec.settings.run.execution.mode, RunMode::DryRun);
+    assert_eq!(
+        omitted.spec.settings.run.execution.approval,
+        ApprovalMode::Auto
+    );
+    assert!(omitted.spec.settings.run.environment.lifecycle.preserve);
 }
 
 #[tokio::test]
@@ -7966,10 +8100,8 @@ async fn create_unreadable_durable_run(state: &Arc<AppState>, run_id: RunId) {
     )
     .await
     .unwrap();
-    let err = run_store
-        .state()
-        .await
-        .expect_err("poison event should make the run projection unreadable");
+    let unreadable = state.stores.runs.open_run_reader(&run_id).await;
+    let err = unreadable.expect_err("poison event should make the run projection unreadable");
     assert!(
         err.to_string().contains("invalid completed stage status"),
         "unexpected projection error: {err}"
@@ -17359,7 +17491,7 @@ level = "debug"
         "goal should be persisted from the manifest"
     );
     assert!(
-        resolved_run.execution.mode == fabro_types::settings::run::RunMode::DryRun,
+        resolved_run.execution.mode == RunMode::DryRun,
         "run execution mode should inherit from server settings"
     );
     assert_eq!(
@@ -17499,7 +17631,6 @@ async fn cancel_run_requests_worker_runtime_stop_when_control_unavailable() {
         .parse::<RunId>()
         .unwrap();
     let worker_ref = test_worker_ref(u32::MAX);
-    tokio::time::pause();
 
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -17519,6 +17650,7 @@ async fn cancel_run_requests_worker_runtime_stop_when_control_unavailable() {
 
     assert_eq!(runtime.requested_refs(), vec![worker_ref.clone()]);
 
+    tokio::time::pause();
     advance_past_worker_cancel_grace().await;
     runtime.wait_for_forced_ref(&worker_ref).await;
 
@@ -17540,7 +17672,6 @@ async fn cancel_run_force_stops_worker_when_delivered_control_does_not_converge(
         .unwrap();
     let worker_ref = test_worker_ref(u32::MAX);
     let (answer_transport, _receiver) = worker_transport_with_receiver(run_id).await;
-    tokio::time::pause();
 
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -17561,6 +17692,7 @@ async fn cancel_run_force_stops_worker_when_delivered_control_does_not_converge(
     assert!(runtime.requested_refs().is_empty());
     assert!(runtime.forced_refs().is_empty());
 
+    tokio::time::pause();
     advance_past_worker_cancel_grace().await;
     runtime.wait_for_forced_ref(&worker_ref).await;
 
@@ -17583,7 +17715,6 @@ async fn cancel_run_watchdog_does_not_stop_replacement_worker() {
     let cancelled_worker_ref = test_worker_ref(u32::MAX - 1);
     let replacement_worker_ref = test_worker_ref(u32::MAX);
     let (answer_transport, _receiver) = worker_transport_with_receiver(run_id).await;
-    tokio::time::pause();
 
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -17601,6 +17732,7 @@ async fn cancel_run_watchdog_does_not_stop_replacement_worker() {
     let response = app.oneshot(req).await.unwrap();
     assert_status!(response, StatusCode::ACCEPTED).await;
 
+    tokio::time::pause();
     tokio::task::yield_now().await;
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -17627,7 +17759,6 @@ async fn cancel_run_watchdog_does_not_stop_worker_after_live_ref_clears() {
         .unwrap();
     let worker_ref = test_worker_ref(u32::MAX);
     let (answer_transport, _receiver) = worker_transport_with_receiver(run_id).await;
-    tokio::time::pause();
 
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -17645,6 +17776,7 @@ async fn cancel_run_watchdog_does_not_stop_worker_after_live_ref_clears() {
     let response = app.oneshot(req).await.unwrap();
     assert_status!(response, StatusCode::ACCEPTED).await;
 
+    tokio::time::pause();
     tokio::task::yield_now().await;
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -17671,7 +17803,6 @@ async fn repeated_cancel_request_arms_one_watchdog_and_persists_one_intent() {
         .unwrap();
     let worker_ref = test_worker_ref(u32::MAX);
     let (answer_transport, _receiver) = worker_transport_with_receiver(run_id).await;
-    tokio::time::pause();
 
     {
         let mut runs = state.runs.lock().expect("runs lock poisoned");
@@ -17708,6 +17839,7 @@ async fn repeated_cancel_request_arms_one_watchdog_and_persists_one_intent() {
         .count();
     assert_eq!(request_count, 1);
 
+    tokio::time::pause();
     advance_past_worker_cancel_grace().await;
     runtime.wait_for_forced_ref(&worker_ref).await;
 

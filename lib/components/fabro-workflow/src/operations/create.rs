@@ -13,7 +13,7 @@ use std::sync::Arc;
 use fabro_config::Storage;
 use fabro_graphviz::graph::{AttrValue, Graph};
 use fabro_model::{Catalog, ProviderId};
-use fabro_store::{Database, RunDatabase};
+use fabro_store::{BlobStore, Database};
 use fabro_template::TemplateContext;
 use fabro_types::{
     AutomationRef, BlobHash, ForkSourceRef, GitContext, ManifestPath, RunId, RunProvenance,
@@ -24,7 +24,7 @@ use tokio::task::spawn_blocking;
 
 use super::source::{ResolveWorkflowInput, WorkflowInput, resolve_workflow};
 use crate::error::Error;
-use crate::event::{Event, append_event, to_run_event_at};
+use crate::event::{self, Event, append_event};
 use crate::pipeline::types::PersistOptions;
 use crate::pipeline::{self, Persisted, TransformOptions, Validated};
 use crate::records::RunSpec;
@@ -539,69 +539,57 @@ async fn persist_created_run(
     web_url: Option<String>,
 ) -> Result<(), Error> {
     let record = persisted.run_spec();
-    let run_store = store
-        .create_run(&record.run_id)
-        .await
-        .map_err(|err| Error::engine_with_source("failed to create run store", err))?;
     let definition_bytes = accepted_definition
         .map(serde_json::to_vec)
         .transpose()
         .map_err(|err| Error::engine_with_source("failed to serialize run definition", err))?;
     let spec_bytes = serde_json::to_vec(record)
         .map_err(|err| Error::engine_with_source("failed to serialize run spec", err))?;
+    let blob_store = store.blobs();
     let (manifest_blob, definition_blob, spec_blob) = tokio::try_join!(
-        write_optional_blob(&run_store, submitted_manifest_bytes),
-        write_optional_blob(&run_store, definition_bytes.as_deref()),
-        async { run_store.write_blob(&spec_bytes).await.map_err(store_error) },
+        write_optional_blob(&blob_store, submitted_manifest_bytes),
+        write_optional_blob(&blob_store, definition_bytes.as_deref()),
+        async { blob_store.write(&spec_bytes).await.map_err(store_error) },
     )?;
 
     let title = explicit_title.unwrap_or_else(|| fabro_types::infer_run_title(record.graph.goal()));
-    let stored = to_run_event_at(
+    let first_event = Event::RunCreated {
+        run_id: record.run_id,
+        title: Some(title),
+        settings: normalize_json_value(
+            serde_json::to_value(&record.settings).map_err(|err| Error::engine(err.to_string()))?,
+        ),
+        graph: normalize_json_value(
+            serde_json::to_value(&record.graph).map_err(|err| Error::engine(err.to_string()))?,
+        ),
+        workflow_source: (!workflow_source.is_empty()).then(|| workflow_source.to_string()),
+        labels: record
+            .labels
+            .clone()
+            .into_iter()
+            .collect::<BTreeMap<_, _>>(),
+        source_directory: record.source_directory.clone(),
+        workflow_slug: record.workflow_slug.clone(),
+        workflow_version_id: record.workflow_version_id,
+        target: record.target.clone(),
+        automation: record.automation.clone(),
+        provenance: record.provenance.clone(),
+        manifest_blob,
+        spec_blob: Some(spec_blob),
+        git: record.git.clone(),
+        fork_source_ref: record.fork_source_ref.clone(),
+        retried_from: None,
+        parent_id,
+        web_url,
+    };
+    let run_store = event::create_run(
+        store,
         &record.run_id,
-        &Event::RunCreated {
-            run_id: record.run_id,
-            title: Some(title),
-            settings: normalize_json_value(
-                serde_json::to_value(&record.settings)
-                    .map_err(|err| Error::engine(err.to_string()))?,
-            ),
-            graph: normalize_json_value(
-                serde_json::to_value(&record.graph)
-                    .map_err(|err| Error::engine(err.to_string()))?,
-            ),
-            workflow_source: (!workflow_source.is_empty()).then(|| workflow_source.to_string()),
-            labels: record
-                .labels
-                .clone()
-                .into_iter()
-                .collect::<BTreeMap<_, _>>(),
-            source_directory: record.source_directory.clone(),
-            workflow_slug: record.workflow_slug.clone(),
-            workflow_version_id: record.workflow_version_id,
-            target: record.target.clone(),
-            automation: record.automation.clone(),
-            provenance: record.provenance.clone(),
-            manifest_blob,
-            spec_blob: Some(spec_blob),
-            git: record.git.clone(),
-            fork_source_ref: record.fork_source_ref.clone(),
-            retried_from: None,
-            parent_id,
-            web_url,
-        },
+        &first_event,
         record.run_id.created_at(),
-        None,
-    );
-    let payload = fabro_store::EventPayload::new(
-        serde_json::to_value(&stored).map_err(|err| Error::engine(err.to_string()))?,
-        &record.run_id,
     )
-    .map_err(store_error)?;
-    run_store
-        .append_event(&payload)
-        .await
-        .map(|_| ())
-        .map_err(store_error)?;
+    .await
+    .map_err(|err| Error::engine_with_source("failed to create run store", err))?;
     append_event(&run_store, &record.run_id, &Event::RunSubmitted {
         definition_blob,
     })
@@ -610,15 +598,11 @@ async fn persist_created_run(
 }
 
 async fn write_optional_blob(
-    run_store: &RunDatabase,
+    blob_store: &BlobStore,
     bytes: Option<&[u8]>,
 ) -> Result<Option<BlobHash>, Error> {
     match bytes {
-        Some(bytes) => run_store
-            .write_blob(bytes)
-            .await
-            .map(Some)
-            .map_err(store_error),
+        Some(bytes) => blob_store.write(bytes).await.map(Some).map_err(store_error),
         None => Ok(None),
     }
 }

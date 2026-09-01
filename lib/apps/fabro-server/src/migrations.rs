@@ -7,12 +7,17 @@ use fabro_vault::SecretStore;
 mod legacy_vault_entries;
 #[path = "../migrations/2026052501_optional_server_env_secrets_to_vault.rs"]
 mod optional_server_env_secrets_to_vault;
+#[path = "../migrations/sqlite_activation_backup.rs"]
+mod sqlite_activation_backup;
 #[path = "../migrations/2026082301_sqlite_blob_activation.rs"]
 mod sqlite_blob_activation;
+#[path = "../migrations/2026082801_sqlite_run_history_activation.rs"]
+mod sqlite_run_history_activation;
 
 pub(crate) use legacy_vault_entries::REMOVAL_DEADLINE as LEGACY_VAULT_REMOVAL_DEADLINE;
 pub(crate) use optional_server_env_secrets_to_vault::REMOVAL_DEADLINE as OPTIONAL_SERVER_ENV_SECRETS_REMOVAL_DEADLINE;
 pub(crate) use sqlite_blob_activation::activate_blob_storage;
+pub(crate) use sqlite_run_history_activation::activate_run_history;
 
 pub(crate) type LegacyVaultMigrationReport = legacy_vault_entries::LegacyVaultMigrationReport;
 pub(crate) type OptionalServerEnvSecretsMigrationReport =

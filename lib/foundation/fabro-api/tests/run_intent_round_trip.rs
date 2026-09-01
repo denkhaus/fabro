@@ -24,13 +24,16 @@ fn run_intent_round_trips_the_openapi_shape() {
             sha:    Some("abcdef0123456789abcdef0123456789abcdef01".to_string()),
         }),
         args:                RunIntentArgs {
-            model:    Some("gpt-5.6-sol".to_string()),
-            provider: Some("openai".to_string()),
-            inputs:   HashMap::from([
+            model:            Some("gpt-5.6-sol".to_string()),
+            provider:         Some("openai".to_string()),
+            inputs:           HashMap::from([
                 ("attempts".to_string(), json!(3)),
                 ("ship".to_string(), json!(true)),
             ]),
-            labels:   HashMap::from([("team".to_string(), "platform".to_string())]),
+            labels:           HashMap::from([("team".to_string(), "platform".to_string())]),
+            dry_run:          Some(false),
+            auto_approve:     Some(true),
+            preserve_sandbox: Some(false),
         },
         environment_id:      Some("default".to_string()),
         parent_id:           None,
@@ -41,6 +44,9 @@ fn run_intent_round_trips_the_openapi_shape() {
     let value = serde_json::to_value(&intent).unwrap();
     let api: ApiRunIntent = serde_json::from_value(value.clone()).unwrap();
 
+    assert_eq!(value["args"]["dry_run"], false);
+    assert_eq!(value["args"]["auto_approve"], true);
+    assert_eq!(value["args"]["preserve_sandbox"], false);
     assert_eq!(serde_json::to_value(api).unwrap(), value);
 }
 

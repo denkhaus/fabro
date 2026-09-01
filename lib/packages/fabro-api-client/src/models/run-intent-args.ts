@@ -28,4 +28,16 @@ export interface RunIntentArgs {
     'provider'?: string;
     'inputs'?: { [key: string]: RunIntentArgsInputsValue; };
     'labels'?: { [key: string]: string; };
+    /**
+     * Overrides `run.execution.mode`: true selects `dry_run`, false selects `normal`, and omission inherits the lower-precedence setting.
+     */
+    'dry_run'?: boolean;
+    /**
+     * Overrides `run.execution.approval`: true selects `auto`, false selects `prompt`, and omission inherits the lower-precedence setting.
+     */
+    'auto_approve'?: boolean;
+    /**
+     * Overrides `run.environment.lifecycle.preserve`; omission inherits the lower-precedence setting.
+     */
+    'preserve_sandbox'?: boolean;
 }

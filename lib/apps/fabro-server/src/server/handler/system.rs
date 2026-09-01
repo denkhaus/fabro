@@ -89,7 +89,7 @@ async fn get_system_info(_auth: RequiredUser, State(state): State<Arc<AppState>>
         profile:          option_env!("FABRO_BUILD_PROFILE").map(str::to_string),
         os:               Some(std::env::consts::OS.to_string()),
         arch:             Some(std::env::consts::ARCH.to_string()),
-        storage_engine:   Some("slatedb".to_string()),
+        storage_engine:   Some("sqlite".to_string()),
         storage_dir:      Some(state.server_storage_dir().display().to_string()),
         uptime_secs:      Some(to_i64(state.started_at.elapsed().as_secs())),
         runs:             Some(SystemRunCounts {

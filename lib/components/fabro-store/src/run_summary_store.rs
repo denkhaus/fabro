@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::sync::LazyLock;
 
@@ -7,9 +6,10 @@ use fabro_types::{
     BilledTokenCounts, EventEnvelope, Run, RunEvent, RunId, RunSize, RunStatusKind, RunTiming,
     SessionId, StageId, timing,
 };
+use sqlx::pool::PoolConnection;
 use sqlx::query::Query;
 use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
-use sqlx::{QueryBuilder, Row as _, Sqlite, SqlitePool};
+use sqlx::{Connection as _, QueryBuilder, Row as _, Sqlite, SqlitePool, Transaction};
 use strum::VariantArray as _;
 
 use crate::run_state::projected_billing;
@@ -28,6 +28,7 @@ INSERT INTO runs (
 )
 ";
 
+#[cfg(test)]
 const UPSERT_RUN_SQL: &str = r"
 INSERT INTO runs (
     id, source_last_seq, created_at_ms, started_at_ms, last_event_at_ms, completed_at_ms,
@@ -205,19 +206,104 @@ impl RunSummaryStore {
         Self { pool }
     }
 
-    pub(crate) async fn upsert_projection(&self, entry: &CachedRunProjection) -> Result<()> {
-        let record = PreparedRunSummary::from_entry(entry);
-        let mut connection = self.pool.acquire().await?;
-        upsert_run_on_connection(&mut connection, &record).await?;
-        Ok(())
-    }
-
     #[cfg(test)]
     pub(crate) async fn close_pool(&self) {
         self.pool.close().await;
     }
 
+    /// Corrupts one fixture history while preserving its current row so
+    /// cross-crate repair-endpoint tests can exercise unreadable SQL runs.
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn test_delete_run_events(&self, run_id: &RunId) -> Result<()> {
+        sqlx::query("DELETE FROM run_events WHERE run_id = ?")
+            .bind(run_id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Inserts a fixture event without reducing it into the current row.
+    ///
+    /// This deliberately creates an unreadable history for cross-crate repair
+    /// endpoint tests. It is never linked into production builds.
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn test_insert_unvalidated_event(
+        &self,
+        run_id: &RunId,
+        seq: u32,
+        payload: &serde_json::Value,
+    ) -> Result<()> {
+        let payload = EventPayload::new(payload.clone(), run_id)?;
+        let event = RunEvent::try_from(&payload)?;
+        let envelope = EventEnvelope { seq, event };
+        let event_json = serde_json::to_string(&payload)?;
+        let mut transaction = self.pool.begin().await?;
+        insert_event_json_on_connection(&mut transaction, run_id, &envelope, &event_json).await?;
+        let updated = sqlx::query("UPDATE runs SET source_last_seq = ? WHERE id = ?")
+            .bind(i64::from(seq))
+            .bind(run_id.to_string())
+            .execute(&mut *transaction)
+            .await?;
+        if updated.rows_affected() != 1 {
+            return Err(Error::RunNotFound(run_id.to_string()));
+        }
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_mark_run_history_activated(&self) -> Result<()> {
+        sqlx::query(
+            r"
+INSERT INTO legacy_run_history_activation (
+    singleton, source_fingerprint, source_runs, source_events, activated_at_ms
+) VALUES (1, zeroblob(32), 0, 0, 1)
+ON CONFLICT(singleton) DO NOTHING
+",
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_is_run_history_tombstoned(&self, run_id: &RunId) -> Result<bool> {
+        Ok(sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM legacy_run_history_deletions WHERE run_id = ?)",
+        )
+        .bind(run_id.to_string())
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
+    pub(crate) async fn acquire(&self) -> Result<PoolConnection<Sqlite>> {
+        Ok(self.pool.acquire().await?)
+    }
+
+    pub(crate) async fn begin(&self) -> Result<Transaction<'static, Sqlite>> {
+        Ok(self.pool.begin().await?)
+    }
+
+    pub(crate) async fn contains(&self, run_id: &RunId) -> Result<bool> {
+        Ok(
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?)")
+                .bind(run_id.to_string())
+                .fetch_one(&self.pool)
+                .await?,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn upsert_projection(&self, entry: &CachedRunProjection) -> Result<()> {
+        let record = PreparedRunSummary::from_entry(entry);
+        let mut connection = self.pool.acquire().await?;
+        upsert_run_on_connection(&mut connection, &record).await
+    }
+
+    #[cfg(test)]
     pub(crate) async fn reconcile(&self, entries: &[CachedRunProjection]) -> Result<()> {
+        use std::collections::{HashMap, HashSet};
+
         let mut transaction = self.pool.begin().await?;
         let stored_seqs: HashMap<String, i64> =
             sqlx::query_as::<_, (String, i64)>("SELECT id, source_last_seq FROM runs")
@@ -253,6 +339,137 @@ impl RunSummaryStore {
             delete.push(")");
             delete.build().execute(&mut *transaction).await?;
         }
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn list_run_ids(&self) -> Result<Vec<RunId>> {
+        sqlx::query_scalar::<_, String>("SELECT id FROM runs ORDER BY id ASC")
+            .fetch_all(&self.pool)
+            .await?
+            .into_iter()
+            .map(|stored_id| {
+                stored_id
+                    .parse::<RunId>()
+                    .map_err(|_| Error::RunSummaryMismatch {
+                        run_id: stored_id,
+                        field:  "id",
+                    })
+            })
+            .collect()
+    }
+
+    pub(crate) async fn head(&self, run_id: &RunId) -> Result<Option<u32>> {
+        let mut connection = self.acquire().await?;
+        select_run_head(&mut connection, run_id).await
+    }
+
+    pub(crate) async fn list_events_for_run(&self, run_id: &RunId) -> Result<Vec<EventEnvelope>> {
+        let mut connection = self.acquire().await?;
+        Self::list_events_on_connection(&mut connection, run_id).await
+    }
+
+    pub(crate) async fn list_events_from_with_limit(
+        &self,
+        run_id: &RunId,
+        start_seq: u32,
+        limit: usize,
+    ) -> Result<Vec<EventEnvelope>> {
+        let mut connection = self.acquire().await?;
+        Self::list_events_from_with_limit_on_connection(&mut connection, run_id, start_seq, limit)
+            .await
+    }
+
+    pub(crate) async fn list_events_before_with_limit(
+        &self,
+        run_id: &RunId,
+        before_seq: Option<u32>,
+        limit: usize,
+    ) -> Result<Vec<EventEnvelope>> {
+        let mut connection = self.acquire().await?;
+        Self::list_events_before_with_limit_on_connection(
+            &mut connection,
+            run_id,
+            before_seq,
+            limit,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_event_for_run(
+        &self,
+        run_id: &RunId,
+        seq: u32,
+    ) -> Result<Option<EventEnvelope>> {
+        let mut connection = self.acquire().await?;
+        Self::get_event_on_connection(&mut connection, run_id, seq).await
+    }
+
+    pub(crate) async fn list_events_for_stage_from_with_limit(
+        &self,
+        run_id: &RunId,
+        stage_id: &StageId,
+        start_seq: u32,
+        limit: usize,
+    ) -> Result<Vec<EventEnvelope>> {
+        let mut connection = self.acquire().await?;
+        Self::list_events_for_stage_from_with_limit_on_connection(
+            &mut connection,
+            run_id,
+            stage_id,
+            start_seq,
+            limit,
+        )
+        .await
+    }
+
+    pub(crate) async fn list_events_for_session_from_with_limit(
+        &self,
+        run_id: &RunId,
+        session_id: &SessionId,
+        start_seq: u32,
+        limit: usize,
+    ) -> Result<Vec<EventEnvelope>> {
+        let mut connection = self.acquire().await?;
+        Self::list_events_for_session_from_with_limit_on_connection(
+            &mut connection,
+            run_id,
+            session_id,
+            start_seq,
+            limit,
+        )
+        .await
+    }
+
+    pub(crate) async fn delete_canonical(&self, run_id: &RunId, deleted_at_ms: i64) -> Result<()> {
+        // This transaction reads the activation marker before it writes the
+        // tombstone and run deletion. A deferred SQLite transaction can fail
+        // immediately when that read transaction is upgraded while another
+        // writer is active, bypassing the configured busy timeout. Reserve
+        // the write lock up front so concurrent deletes wait normally.
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let activated: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM legacy_run_history_activation WHERE singleton = 1)",
+        )
+        .fetch_one(&mut *transaction)
+        .await?;
+        if activated {
+            sqlx::query(
+                r"
+INSERT INTO legacy_run_history_deletions (run_id, deleted_at_ms)
+VALUES (?, ?)
+ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
+",
+            )
+            .bind(run_id.to_string())
+            .bind(deleted_at_ms)
+            .execute(&mut *transaction)
+            .await?;
+        }
+        sqlx::query("DELETE FROM runs WHERE id = ?")
+            .bind(run_id.to_string())
+            .execute(&mut *transaction)
+            .await?;
         transaction.commit().await?;
         Ok(())
     }
@@ -333,23 +550,8 @@ FROM runs",
             has_more: consumed < total,
         })
     }
-
-    pub async fn delete(&self, run_id: &RunId) -> Result<()> {
-        sqlx::query("DELETE FROM runs WHERE id = ?")
-            .bind(run_id.to_string())
-            .execute(&self.pool)
-            .await?;
-        Ok(())
-    }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the atomic SQL run path stays inactive until the authority cutover"
-    )
-)]
 impl RunSummaryStore {
     pub(crate) async fn insert_first_event_on_connection(
         connection: &mut SqliteConnection,
@@ -400,6 +602,26 @@ impl RunSummaryStore {
     }
 
     pub(crate) async fn list_events_with_json_on_connection(
+        connection: &mut SqliteConnection,
+        run_id: &RunId,
+    ) -> Result<Vec<(EventEnvelope, String)>> {
+        // The current-row head and event rows must come from one snapshot.
+        // Otherwise a concurrent append between the two SELECTs looks like
+        // durable corruption even though both versions are individually valid.
+        let mut transaction = connection.begin().await?;
+        let events = Self::list_events_with_json_in_transaction(&mut transaction, run_id).await?;
+        transaction.commit().await?;
+        Ok(events)
+    }
+
+    pub(crate) async fn list_events_with_json_in_transaction(
+        transaction: &mut Transaction<'_, Sqlite>,
+        run_id: &RunId,
+    ) -> Result<Vec<(EventEnvelope, String)>> {
+        Self::list_events_with_json_in_snapshot(&mut *transaction, run_id).await
+    }
+
+    async fn list_events_with_json_in_snapshot(
         connection: &mut SqliteConnection,
         run_id: &RunId,
     ) -> Result<Vec<(EventEnvelope, String)>> {
@@ -806,7 +1028,7 @@ fn sql_limit(limit: usize) -> i64 {
     i64::try_from(limit.saturating_add(1)).unwrap_or(i64::MAX)
 }
 
-fn next_event_seq_after(last_seq: u32) -> Result<u32> {
+pub(crate) fn next_event_seq_after(last_seq: u32) -> Result<u32> {
     last_seq
         .checked_add(1)
         .filter(|seq| *seq <= keys::MAX_EVENT_SEQ)
@@ -836,11 +1058,7 @@ fn decode_event_rows_with_json(
 ) -> Result<Vec<(EventEnvelope, String)>> {
     let run_id_text = run_id.to_string();
     rows.iter()
-        .map(|row| {
-            let event_json: String = row.try_get("event_json")?;
-            let envelope = decode_event_row(row, run_id, &run_id_text)?;
-            Ok((envelope, event_json))
-        })
+        .map(|row| decode_event_row_with_json(row, run_id, &run_id_text))
         .collect()
 }
 
@@ -876,6 +1094,17 @@ fn decode_event_row(
     expected_run_id: &RunId,
     expected_run_id_text: &str,
 ) -> Result<EventEnvelope> {
+    decode_event_row_with_json(row, expected_run_id, expected_run_id_text)
+        .map(|(envelope, _event_json)| envelope)
+}
+
+/// Decodes one event row and returns the raw `event_json` alongside it so
+/// callers that need both do not fetch the column twice.
+fn decode_event_row_with_json(
+    row: &SqliteRow,
+    expected_run_id: &RunId,
+    expected_run_id_text: &str,
+) -> Result<(EventEnvelope, String)> {
     let stored_run_id: String = row.try_get("run_id")?;
     let raw_seq: i64 = row.try_get("seq")?;
     let seq = stored_seq(raw_seq).ok_or_else(|| run_event_mismatch(expected_run_id, 0, "seq"))?;
@@ -917,7 +1146,7 @@ fn decode_event_row(
         return Err(run_event_mismatch(expected_run_id, seq, "session_id"));
     }
 
-    Ok(EventEnvelope { seq, event })
+    Ok((EventEnvelope { seq, event }, event_json))
 }
 
 async fn select_run_head(connection: &mut SqliteConnection, run_id: &RunId) -> Result<Option<u32>> {
@@ -959,6 +1188,7 @@ fn normalize_billing_for_read_model(mut billing: BilledTokenCounts) -> BilledTok
     billing
 }
 
+#[cfg(test)]
 async fn upsert_run_on_connection(
     connection: &mut SqliteConnection,
     record: &PreparedRunSummary,
@@ -1210,6 +1440,7 @@ fn overlay_live_wall_time(run: &mut Run, now: DateTime<Utc>) {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::time::Duration;
 
     use chrono::{DateTime, Utc};
     use fabro_types::{
@@ -1219,6 +1450,7 @@ mod tests {
         WorkflowSettings, test_support,
     };
     use strum::VariantArray as _;
+    use tokio::time;
     use ulid::Ulid;
 
     use super::{
@@ -1588,6 +1820,38 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(sequences, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn canonical_delete_waits_for_a_concurrent_writer() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 5);
+        let first = entry(projection(id, "created", created_at), 1);
+        let mut transaction = store.pool.begin().await.unwrap();
+        RunSummaryStore::insert_first_event_on_connection(
+            &mut transaction,
+            &first,
+            &created_payload(&id),
+        )
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+        store.test_mark_run_history_activated().await.unwrap();
+
+        let blocker = store.pool.begin_with("BEGIN IMMEDIATE").await.unwrap();
+        let contender = store.clone();
+        let delete = tokio::spawn(async move { contender.delete_canonical(&id, 2).await });
+        time::sleep(Duration::from_millis(25)).await;
+        assert!(
+            !delete.is_finished(),
+            "delete should wait for the existing writer"
+        );
+
+        blocker.commit().await.unwrap();
+        delete.await.unwrap().unwrap();
+        assert!(!store.contains(&id).await.unwrap());
+        assert!(store.test_is_run_history_tombstoned(&id).await.unwrap());
     }
 
     #[tokio::test]

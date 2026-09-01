@@ -32,6 +32,7 @@ pub fn test_run_summary_store() -> Arc<RunSummaryStore> {
     Arc::new(RunSummaryStore::new(lazy_in_memory_pool(&[
         fabro_db::RUNS_MIGRATION_SQL,
         fabro_db::RUN_EVENTS_MIGRATION_SQL,
+        fabro_db::RUN_HISTORY_ACTIVATION_MIGRATION_SQL,
     ])))
 }
 
@@ -68,6 +69,13 @@ pub fn test_blob_store_path(store_dir: &Path) -> PathBuf {
     fabro_db::append_to_path(store_dir, "-blobs.sqlite3")
 }
 
+/// Returns the SQLite file backing [`test_run_summary_store_at`] for
+/// `store_dir`.
+#[must_use]
+pub fn test_run_summary_store_path(store_dir: &Path) -> PathBuf {
+    fabro_db::append_to_path(store_dir, "-runs.sqlite3")
+}
+
 /// Returns a durable SQLite blob authority stored beside `store_dir`.
 ///
 /// Handles created for the same directory share one blob database file, so
@@ -77,32 +85,88 @@ pub fn test_blob_store_path(store_dir: &Path) -> PathBuf {
 /// siblings) when they reset the directory itself.
 #[must_use]
 pub fn test_blob_store_at(store_dir: &Path) -> Arc<BlobStore> {
+    Arc::new(BlobStore::new(lazy_file_pool(
+        test_blob_store_path(store_dir),
+        "blobs",
+        &[fabro_db::BLOBS_MIGRATION_SQL],
+    )))
+}
+
+/// Returns a durable SQLite run-history authority stored beside `store_dir`.
+///
+/// Handles created for the same directory share one database file, which lets
+/// reopen-style tests model the process-wide SQLite authority used in
+/// production.
+#[must_use]
+pub fn test_run_summary_store_at(store_dir: &Path) -> Arc<RunSummaryStore> {
+    Arc::new(RunSummaryStore::new(lazy_file_pool(
+        test_run_summary_store_path(store_dir),
+        "runs",
+        &[
+            fabro_db::RUNS_MIGRATION_SQL,
+            fabro_db::RUN_EVENTS_MIGRATION_SQL,
+            fabro_db::RUN_HISTORY_ACTIVATION_MIGRATION_SQL,
+        ],
+    )))
+}
+
+/// Builds a single-connection file-backed SQLite pool that installs
+/// `migrations` the first time it opens a database without `probe_table`.
+///
+/// Like [`lazy_in_memory_pool`], the pool connects lazily so synchronous
+/// fixture builders stay synchronous, and the file persists across handles so
+/// reopen-style tests share one authority.
+fn lazy_file_pool(
+    path: PathBuf,
+    probe_table: &'static str,
+    migrations: &'static [&'static str],
+) -> sqlx::SqlitePool {
     let options = SqliteConnectOptions::new()
-        .filename(test_blob_store_path(store_dir))
+        .filename(path)
         .create_if_missing(true)
         .foreign_keys(true);
-    let pool = SqlitePoolOptions::new()
+    SqlitePoolOptions::new()
         .max_connections(1)
         .max_lifetime(None)
         .idle_timeout(None)
-        .after_connect(|connection, _metadata| {
+        .after_connect(move |connection, _metadata| {
             Box::pin(async move {
                 let installed: bool = sqlx::query_scalar(
                     "SELECT EXISTS(SELECT 1 FROM sqlite_master \
-                     WHERE type = 'table' AND name = 'blobs')",
+                     WHERE type = 'table' AND name = ?)",
                 )
+                .bind(probe_table)
                 .fetch_one(&mut *connection)
                 .await?;
                 if !installed {
-                    sqlx::query(fabro_db::BLOBS_MIGRATION_SQL)
-                        .execute(&mut *connection)
-                        .await?;
+                    for migration in migrations {
+                        sqlx::raw_sql(*migration).execute(&mut *connection).await?;
+                    }
                 }
                 Ok(())
             })
         })
-        .connect_lazy_with(options);
-    Arc::new(BlobStore::new(pool))
+        .connect_lazy_with(options)
+}
+
+/// Builds a test database whose SQLite blob and run-history authorities are
+/// durable beside `store_dir` and shared by reopen-style handles.
+#[must_use]
+pub fn test_database_at(
+    object_store: Arc<dyn ObjectStore>,
+    base_prefix: impl Into<String>,
+    flush_interval: Duration,
+    cache_path: Option<PathBuf>,
+    store_dir: &Path,
+) -> Database {
+    test_database_with_stores(
+        object_store,
+        base_prefix,
+        flush_interval,
+        cache_path,
+        test_blob_store_at(store_dir),
+        test_run_summary_store_at(store_dir),
+    )
 }
 
 /// Builds a Slate-backed run database with its own isolated blob authority.
@@ -189,6 +253,18 @@ pub async fn put_unvalidated_run_event(
 ) -> Result<()> {
     database
         .put_unvalidated_run_event(run_id, seq, payload)
+        .await
+}
+
+/// Seeds one event in the retired Slate run-history keyspace.
+pub async fn put_legacy_run_event(
+    database: &Database,
+    run_id: &RunId,
+    seq: u32,
+    payload: &serde_json::Value,
+) -> Result<()> {
+    database
+        .put_unvalidated_legacy_run_event(run_id, seq, payload)
         .await
 }
 

@@ -1,9 +1,8 @@
 use std::collections::{BTreeSet, HashMap};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use chrono::{DateTime, Utc};
 use fabro_types::{Run, RunId, RunProjection};
-use tokio::sync::Mutex;
 
 use crate::ListRunsQuery;
 use crate::run_state::build_summary;
@@ -30,6 +29,9 @@ impl CachedRunProjection {
 
 #[derive(Debug, Default)]
 pub(crate) struct RunProjectionCache {
+    // Cache operations are bounded in-memory work and never await. Keeping
+    // this lock synchronous lets a committed event update both projection
+    // caches without introducing a cancellation point.
     state: Mutex<RunProjectionCacheState>,
 }
 
@@ -109,21 +111,27 @@ fn apply_read_overlays(entry: &mut CachedRunProjection, now: DateTime<Utc>) {
 }
 
 impl RunProjectionCache {
-    pub(crate) async fn replace_all(&self, entries: Vec<CachedRunProjection>) {
-        self.state.lock().await.replace_all(entries);
+    fn lock(&self) -> MutexGuard<'_, RunProjectionCacheState> {
+        self.state.lock().expect(
+            "run projection cache mutex is never poisoned: no code panics while holding this lock",
+        )
     }
 
-    pub(crate) async fn replace(&self, entry: CachedRunProjection) {
-        self.state.lock().await.insert(entry);
+    pub(crate) fn replace_all(&self, entries: Vec<CachedRunProjection>) {
+        self.lock().replace_all(entries);
     }
 
-    pub(crate) async fn list(
+    pub(crate) fn replace(&self, entry: CachedRunProjection) {
+        self.lock().insert(entry);
+    }
+
+    pub(crate) fn list(
         &self,
         query: &ListRunsQuery,
         now: DateTime<Utc>,
     ) -> Vec<CachedRunProjection> {
         let entries = {
-            let state = self.state.lock().await;
+            let state = self.lock();
             let raw = match query.parent_id {
                 Some(parent_id) => state
                     .children_by_parent
@@ -166,8 +174,8 @@ impl RunProjectionCache {
         entries
     }
 
-    pub(crate) async fn get(&self, run_id: &RunId) -> Option<CachedRunProjection> {
-        let state = self.state.lock().await;
+    pub(crate) fn get(&self, run_id: &RunId) -> Option<CachedRunProjection> {
+        let state = self.lock();
         state
             .entries
             .get(run_id)
@@ -177,13 +185,8 @@ impl RunProjectionCache {
 
     /// Projection and last sequence for `run_id`, without the summary clone
     /// and children count that `get` computes under the cache mutex.
-    pub(crate) async fn projection_snapshot(
-        &self,
-        run_id: &RunId,
-    ) -> Option<(Arc<RunProjection>, u32)> {
-        self.state
-            .lock()
-            .await
+    pub(crate) fn projection_snapshot(&self, run_id: &RunId) -> Option<(Arc<RunProjection>, u32)> {
+        self.lock()
             .entries
             .get(run_id)
             .map(|entry| (Arc::clone(&entry.projection), entry.last_seq))
@@ -192,11 +195,9 @@ impl RunProjectionCache {
     /// Run ids whose latest explicit pull request creation is still pending,
     /// oldest request first. Clones only ids and timestamps, so callers can
     /// poll on an interval without materializing run summaries.
-    pub(crate) async fn pending_pull_request_creations(&self) -> Vec<RunId> {
+    pub(crate) fn pending_pull_request_creations(&self) -> Vec<RunId> {
         let mut pending = self
-            .state
             .lock()
-            .await
             .entries
             .values()
             .filter_map(|entry| {
@@ -210,9 +211,9 @@ impl RunProjectionCache {
         pending.into_iter().map(|(_, run_id)| run_id).collect()
     }
 
-    pub(crate) async fn get_summary(&self, run_id: &RunId, now: DateTime<Utc>) -> Option<Run> {
+    pub(crate) fn get_summary(&self, run_id: &RunId, now: DateTime<Utc>) -> Option<Run> {
         let mut entry = {
-            let state = self.state.lock().await;
+            let state = self.lock();
             state
                 .entries
                 .get(run_id)
@@ -223,7 +224,7 @@ impl RunProjectionCache {
         Some(entry.summary)
     }
 
-    pub(crate) async fn remove(&self, run_id: &RunId) {
-        self.state.lock().await.remove(run_id);
+    pub(crate) fn remove(&self, run_id: &RunId) {
+        self.lock().remove(run_id);
     }
 }
