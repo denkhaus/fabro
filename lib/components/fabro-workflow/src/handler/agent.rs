@@ -9,6 +9,7 @@ pub(crate) use structured_output::extract_status_fields;
 use tokio_util::sync::CancellationToken;
 
 use super::llm::api::EffectiveRequestControls;
+use super::llm::context_read::ContextReadServices;
 use super::structured_output::{
     self, OutputSchemaKind, StructuredOutputError, ValidatedStructuredOutput,
 };
@@ -43,6 +44,10 @@ pub struct CodergenRunRequest<'a> {
     pub node:               &'a Node,
     pub prompt:             &'a str,
     pub context:            &'a Context,
+    /// Stage view served by the `context_read` tool (fabro-e804); built
+    /// from the resolved per-node context, the node's envelope attributes,
+    /// and the run-scoped materialization inputs.
+    pub context_read:       ContextReadServices,
     pub thread_id:          Option<&'a str>,
     pub emitter:            &'a Arc<Emitter>,
     pub sandbox:            &'a Arc<dyn Sandbox>,
@@ -251,7 +256,7 @@ impl Handler for AgentHandler {
         node: &Node,
         context: &Context,
         graph: &Graph,
-        _run_dir: &Path,
+        run_dir: &Path,
         services: &EngineServices,
     ) -> Result<Outcome, Error> {
         // 1. Build prompt (prepend fidelity preamble if present)
@@ -302,11 +307,20 @@ impl Handler for AgentHandler {
             });
         let (response_text, stage_usage, backend_files_touched, last_file_touched, timing) =
             if let Some(backend) = &self.backend {
+                let context_read = ContextReadServices::new(
+                    context,
+                    node,
+                    graph,
+                    services.run.run_store.clone(),
+                    Arc::clone(&services.run.sandbox),
+                    run_dir.to_path_buf(),
+                );
                 let result = backend
                     .run(CodergenRunRequest {
                         node,
                         prompt: &prompt,
                         context,
+                        context_read,
                         thread_id: thread_id.as_deref(),
                         emitter: &services.run.emitter,
                         sandbox: &services.run.sandbox,

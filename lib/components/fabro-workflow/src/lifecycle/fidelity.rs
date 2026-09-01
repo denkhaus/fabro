@@ -231,10 +231,7 @@ impl RunLifecycle<WorkflowGraph> for FidelityLifecycle {
                 .graph
                 .preamble_budget_kb()
                 .map_or(artifact::DEFAULT_PREAMBLE_VALUE_BUDGET, |kb| kb * 1024);
-            let inline_max = gv_node
-                .preamble_inline_max_kb()
-                .or_else(|| self.graph.preamble_inline_max_kb())
-                .map_or(artifact::PROMPT_INLINE_VALUE_MAX, |kb| kb * 1024);
+            let inline_max = artifact::resolve_inline_max_bytes(gv_node, &self.graph);
             artifact::demote_large_values_for_prompt(
                 &mut resolved_values,
                 &mut resolved_outcomes,

@@ -662,6 +662,7 @@ mod tests {
     use crate::context::Context;
     use crate::event::Emitter;
     use crate::handler::agent::{CodergenBackend, CodergenResult, CodergenRunRequest};
+    use crate::handler::llm::context_read::ContextReadServices;
     use crate::steering_hub::SteeringHub;
 
     #[test]
@@ -1048,6 +1049,7 @@ mod tests {
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -1096,6 +1098,7 @@ mod tests {
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -1166,6 +1169,7 @@ mod tests {
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -1214,6 +1218,7 @@ mod tests {
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -1253,6 +1258,7 @@ mod tests {
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox_dyn,
@@ -1303,6 +1309,7 @@ mod tests {
                 node:               &node,
                 prompt:             "cancel",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -1357,6 +1364,7 @@ mod tests {
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -1399,6 +1407,7 @@ mod tests {
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox_dyn,
@@ -1452,6 +1461,7 @@ mod tests {
                 node:               &node,
                 prompt:             "write hello",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox_dyn,

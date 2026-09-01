@@ -69,3 +69,38 @@ Also settled in the same session:
   overrides the run-wide `agent.fabro_tools` flag; unset keeps the run
   default. A default-denied opt-in family — the opposite posture of
   the default-open native registry.
+
+
+## Amendment 2026-09-02 (fabro-e804 design grilling): the pull axis
+
+`context_read` (e804) settles the fourth piece. Six grill decisions,
+user-agreed:
+
+1. **Name:** `context_read` (public contract, snake_case registry
+   vocabulary).
+2. **Posture:** default-registered in every agent stage — the family's
+   default-open posture. Exclusion is the existing `tools=` allowlist;
+   prompt nodes (tool-less) are unaffected.
+3. **One window:** the readable set is non-engine keys ∩
+   `preamble_allow_keys` (if set). This EXTENDS e47c's documented
+   "render-only" semantics: the list is now the node's whole window on
+   the context, inline AND on demand. Engine keys
+   (`is_preamble_hidden_key` class incl. `response.*`, `outcome`) are
+   never readable and cannot be re-admitted.
+4. **Bounded results:** values over the stage's inline budget return the
+   demote marker (preview+path); the tool reuses a85b's materialization
+   and threshold resolution (node > graph > 8 KB) — no new knob.
+5. **Key-only input in v1:** `read_file` owns files; path input is an
+   additive follow-up only if `context_read`-only nodes must open
+   demoted files.
+6. **Deterministic view:** the served set is snapshotted from the node's
+   resolved context at stage start (parallel-branch updates landing
+   mid-run are not visible); a reused full-fidelity thread refreshes the
+   view per node.
+
+Implementation notes: `ContextReadServices` flows through the stage
+request (resolved context + node envelope attrs + run-scoped run-store/
+sandbox/run-dir); the registered executor closes over a shared,
+per-node-refreshable state, so spawned subagent helpers serve the same
+view. fabro-validate catalogs the name
+(`KNOWN_WORKFLOW_TOOL_NAMES`, cross-checked against the workflow crate).

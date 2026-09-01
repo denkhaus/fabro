@@ -39,6 +39,11 @@ pub(crate) const KNOWN_NATIVE_TOOL_NAMES: &[&str] = &[
     "write_file",
 ];
 
+/// Canonical names of stage tools the workflow engine registers beyond
+/// fabro-agent's native set (fabro-e804). These are advertiseable in a
+/// node `tools` allowlist like any native tool.
+pub(crate) const KNOWN_WORKFLOW_TOOL_NAMES: &[&str] = &["context_read"];
+
 /// Names of the static `fabro_run_*` tool catalog.
 pub(crate) const KNOWN_FABRO_RUN_TOOL_NAMES: &[&str] = &[
     "fabro_ask",
@@ -63,6 +68,6 @@ pub(crate) fn is_known_tool_name(name: &str, fabro_run_list: bool) -> bool {
     if fabro_run_list {
         KNOWN_FABRO_RUN_TOOL_NAMES.contains(&name)
     } else {
-        KNOWN_NATIVE_TOOL_NAMES.contains(&name)
+        KNOWN_NATIVE_TOOL_NAMES.contains(&name) || KNOWN_WORKFLOW_TOOL_NAMES.contains(&name)
     }
 }

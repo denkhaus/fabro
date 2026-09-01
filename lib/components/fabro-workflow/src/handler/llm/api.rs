@@ -36,6 +36,7 @@ use super::super::agent::{
 };
 use super::super::structured_output;
 use super::activation_lease::{ActivationLease, ActivationLeaseOptions};
+use super::context_read::{self, ContextReadServices, ContextReadState};
 use super::routing;
 use super::routing::ProviderContext;
 use crate::context::WorkflowContext;
@@ -702,6 +703,9 @@ pub struct AgentApiBackend {
 struct CachedAgentSession {
     session:       Session,
     fallback_plan: FallbackPlan,
+    /// Shared state of the registered `context_read` tool; `None` only in
+    /// direct test constructions that bypass session creation.
+    context_read:  Option<Arc<ContextReadState>>,
 }
 
 #[derive(Clone, Debug)]
@@ -780,6 +784,10 @@ struct LiveAgentInvocation {
     lease:              Option<Arc<ActivationLease>>,
     event_forwarder:    EventForwarder,
     file_tracking:      Arc<Mutex<FileTracking>>,
+    /// Handle of the tool state owned by the CURRENT `session`; a mid-run
+    /// failover swaps both together so the reuse cache never pairs a
+    /// replacement session with the original session's tool state.
+    context_read:       Option<Arc<ContextReadState>>,
     total_usage:        TokenCounts,
     total_cost:         Option<UsdMicros>,
     inference_duration: Duration,
@@ -1050,6 +1058,7 @@ impl AgentApiBackend {
         node: &Node,
         sandbox: &Arc<dyn Sandbox>,
         tool_hooks: Option<Arc<dyn fabro_agent::ToolHookCallback>>,
+        context_read: &ContextReadServices,
     ) -> Result<(CachedAgentSession, Vec<ModelFallbackNotice>), Error> {
         let model = node.model().unwrap_or(&self.model);
         let provider = routing::resolve_node_provider_context(
@@ -1065,7 +1074,7 @@ impl AgentApiBackend {
             route.target.model.as_str(),
             Some(route.target.provider.as_str()),
         )?;
-        let session = Self::create_session_for(
+        let (session, context_read_state) = Self::create_session_for(
             route.target.model.as_str(),
             route_provider,
             route.controls,
@@ -1078,12 +1087,14 @@ impl AgentApiBackend {
             self.mcp_servers.clone(),
             self.tool_secrets.clone(),
             self.fabro_run_tools.clone(),
+            context_read,
         )
         .await?;
         Ok((
             CachedAgentSession {
                 session,
                 fallback_plan,
+                context_read: Some(context_read_state),
             },
             notices,
         ))
@@ -1102,7 +1113,8 @@ impl AgentApiBackend {
         mcp_servers: Vec<McpServerSettings>,
         tool_secrets: ToolSecrets,
         fabro_run_tools: Option<FabroRunToolServices>,
-    ) -> Result<Session, Error> {
+        context_read: &ContextReadServices,
+    ) -> Result<(Session, Arc<ContextReadState>), Error> {
         let client = Client::from_source(source, Arc::clone(&catalog))
             .await
             .map_err(|e| Error::handler_with_source("Failed to create LLM client", e))?;
@@ -1173,6 +1185,11 @@ impl AgentApiBackend {
         let factory_permission_level = config.permission_level;
         let factory_tool_hooks = config.tool_hooks.clone();
         let factory_tool_access_policy = config.tool_access_policy.clone();
+        // Stage context pull (fabro-e804): the shared state is created once
+        // per session and captured by the parent registry and the subagent
+        // factory alike, so spawned helpers serve the same per-node view.
+        let context_read_state = Arc::new(ContextReadState::new(context_read.clone()));
+        let factory_context_read_state = Arc::clone(&context_read_state);
         let factory: SessionFactory = Arc::new(move || {
             let mut child_profile = factory_profile_builder.build();
             if let Some(services) = factory_fabro_run_tools.clone() {
@@ -1190,6 +1207,11 @@ impl AgentApiBackend {
                     );
                 }
             }
+            child_profile
+                .tool_registry_mut()
+                .register(context_read::context_read_tool(Arc::clone(
+                    &factory_context_read_state,
+                )));
             let child_profile: Arc<dyn AgentProfile> = Arc::from(child_profile);
             let mut session = Session::new(
                 factory_client.clone(),
@@ -1226,6 +1248,16 @@ impl AgentApiBackend {
         } else if let Some(services) = fabro_run_tools {
             register_fabro_run_tools(profile.tool_registry_mut(), &services);
         }
+
+        // Stage context pull (fabro-e804): default-registered for every
+        // agent stage; a node `tools` allowlist excludes it like any other
+        // tool. The shared state refreshes per node execution, so reused
+        // full-fidelity sessions serve the current node's view.
+        profile
+            .tool_registry_mut()
+            .register(context_read::context_read_tool(Arc::clone(
+                &context_read_state,
+            )));
         let profile: Arc<dyn AgentProfile> = Arc::from(profile);
 
         let mut session = Session::new(
@@ -1242,7 +1274,7 @@ impl AgentApiBackend {
         // Wire subagent event callback to parent session's emitter
         supervisor.set_event_callback(session.sub_agent_event_callback());
 
-        Ok(session)
+        Ok((session, context_read_state))
     }
 
     /// Activate `session` with the steering hub under `stage_id` and wire up
@@ -1333,13 +1365,17 @@ impl AgentApiBackend {
                 self.mcp_servers.clone(),
                 self.tool_secrets.clone(),
                 self.fabro_run_tools.clone(),
+                &request.context_read,
             )
             .await;
             if request.cancel_token.is_cancelled() {
                 return Err(Error::Cancelled);
             }
             live.session = match new_session {
-                Ok(session) => session,
+                Ok((session, context_read_state)) => {
+                    live.context_read = Some(context_read_state);
+                    session
+                }
                 Err(error) => {
                     last_error = error;
                     continue;
@@ -1676,16 +1712,27 @@ impl CodergenBackend for AgentApiBackend {
             (cached, Vec::new())
         } else {
             let created = self
-                .create_session_with_plan(node, request.sandbox, request.tool_hooks.clone())
+                .create_session_with_plan(
+                    node,
+                    request.sandbox,
+                    request.tool_hooks.clone(),
+                    &request.context_read,
+                )
                 .await;
             if request.cancel_token.is_cancelled() {
                 return Err(Error::Cancelled);
             }
             created?
         };
+        // A reused full-fidelity session still serves the CURRENT node's
+        // view: swap the tool's served values before the stage runs.
+        if let Some(state) = &cached.context_read {
+            state.update(&request.context_read);
+        }
         let CachedAgentSession {
             session,
             mut fallback_plan,
+            context_read,
         } = cached;
         if request.cancel_token.is_cancelled() {
             return Err(Error::Cancelled);
@@ -1729,6 +1776,7 @@ impl CodergenBackend for AgentApiBackend {
             lease: None,
             event_forwarder,
             file_tracking,
+            context_read,
             total_usage: TokenCounts::default(),
             total_cost: None,
             inference_duration: Duration::ZERO,
@@ -1894,6 +1942,7 @@ impl CodergenBackend for AgentApiBackend {
             session,
             event_forwarder,
             file_tracking,
+            context_read,
             inference_duration,
             tool_duration,
             ..
@@ -1906,6 +1955,7 @@ impl CodergenBackend for AgentApiBackend {
                 .insert(key, CachedAgentSession {
                     session,
                     fallback_plan,
+                    context_read,
                 });
         } else {
             let mut session = session;
@@ -3394,7 +3444,12 @@ reasoning = false
             Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
 
         let mut session = backend
-            .create_session_with_plan(&node, &sandbox, Some(hooks))
+            .create_session_with_plan(
+                &node,
+                &sandbox,
+                Some(hooks),
+                &ContextReadServices::for_tests(),
+            )
             .await
             .unwrap()
             .0
@@ -4065,6 +4120,7 @@ enabled = true
                 node:               &node,
                 prompt:             "Audit the result",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -4137,6 +4193,7 @@ enabled = true
                 node:               &node,
                 prompt:             "Audit the result",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -4208,6 +4265,7 @@ enabled = true
                 node:               &node,
                 prompt:             "Audit the result",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -4282,6 +4340,7 @@ enabled = true
                 node:               &node,
                 prompt:             "Search the web",
                 context:            &context,
+                context_read:       ContextReadServices::for_tests(),
                 thread_id:          None,
                 emitter:            &emitter,
                 sandbox:            &sandbox,
@@ -4359,6 +4418,7 @@ enabled = true
             .insert("thread-1".to_string(), CachedAgentSession {
                 session,
                 fallback_plan,
+                context_read: None,
             });
 
         backend.shutdown(&emitter).await;
@@ -4706,5 +4766,89 @@ enabled = true
             }
             _ => panic!("expected Terminal(Error::Precondition) for ToolExecution"),
         }
+    }
+    #[tokio::test]
+    async fn context_read_is_advertised_and_excludable_via_tools_policy() {
+        let server = MockServer::start();
+        let backend = mock_api_backend(&server);
+        let workspace = tempfile::tempdir().unwrap();
+        let sandbox: Arc<dyn fabro_agent::Sandbox> =
+            Arc::new(LocalSandbox::new(workspace.path().to_path_buf()));
+
+        // Default-open posture: every agent stage advertises context_read.
+        let open_node = Node::new("researcher");
+        let (cached, _notices) = backend
+            .create_session_with_plan(
+                &open_node,
+                &sandbox,
+                None,
+                &ContextReadServices::for_tests(),
+            )
+            .await
+            .unwrap();
+        let advertised: Vec<String> = cached
+            .session
+            .effective_tools()
+            .iter()
+            .map(|tool| tool.definition.name.clone())
+            .collect();
+        assert!(
+            advertised.iter().any(|name| name == "context_read"),
+            "context_read must be advertised by default, got: {advertised:?}"
+        );
+
+        // A node `tools` allowlist that omits context_read excludes it.
+        let mut narrow_node = Node::new("narrow");
+        narrow_node.attrs.insert(
+            "tools".to_string(),
+            AttrValue::String("read_file".to_string()),
+        );
+        let (narrow_cached, _notices) = backend
+            .create_session_with_plan(
+                &narrow_node,
+                &sandbox,
+                None,
+                &ContextReadServices::for_tests(),
+            )
+            .await
+            .unwrap();
+        let narrow_advertised: Vec<String> = narrow_cached
+            .session
+            .effective_tools()
+            .iter()
+            .map(|tool| tool.definition.name.clone())
+            .collect();
+        assert!(
+            !narrow_advertised.iter().any(|name| name == "context_read"),
+            "a tools= allowlist excluding context_read must hide it, got: {narrow_advertised:?}"
+        );
+
+        // A node that names ONLY context_read gets exactly it (and the
+        // always-on question tools of the profile).
+        let mut pull_only = Node::new("pull_only");
+        pull_only.attrs.insert(
+            "tools".to_string(),
+            AttrValue::String("context_read".to_string()),
+        );
+        let (pull_cached, _notices) = backend
+            .create_session_with_plan(
+                &pull_only,
+                &sandbox,
+                None,
+                &ContextReadServices::for_tests(),
+            )
+            .await
+            .unwrap();
+        let pull_advertised: Vec<String> = pull_cached
+            .session
+            .effective_tools()
+            .iter()
+            .map(|tool| tool.definition.name.clone())
+            .collect();
+        assert!(pull_advertised.iter().any(|name| name == "context_read"));
+        assert!(
+            !pull_advertised.iter().any(|name| name == "shell"),
+            "shell must be excluded by the context_read-only policy"
+        );
     }
 }

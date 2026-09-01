@@ -325,7 +325,7 @@ Semantics:
 
 - **Unset = every key renders** (the default-open posture, identical to the write side). The lone entry `*` means the same thing explicitly.
 - **Strict contract:** the list *is* the node's input contract. Keys outside the list are omitted from the preamble — including engine-written ones like `failure_class` if they are not listed.
-- **Render-only:** the context store, routing, and `response.{node_id}` keys are untouched; other consumers of the same keys are unaffected.
+- **Store untouched, reads gated:** the context store, routing, and `response.{node_id}` keys are untouched; other consumers of the same keys are unaffected. Since the `context_read` tool (below), the list also gates *pull* access: one list defines the node's whole window on the context, inline and on demand.
 - **Engine plumbing survives:** preamble-hidden keys (`internal.*`, `response.*`, `outcome`, ...) never render anyway, so the allowlist only governs keys that could appear in the `## Context` section. Run-id and parent-workflow plumbing keeps working.
 - **Orthogonal to fidelity:** fidelity controls the *detail level* of what is selected (including demotion of large values); `preamble_allow_keys` controls *what* is selected.
 
@@ -334,6 +334,27 @@ Validation warns (the run proceeds) when a listed key is engine-hidden (it never
 Together with `preamble_stages_ignore="*"`, a role node gets a deterministic, constant-size input contract across review-loop cycles: only the goal header and the declared keys, no matter how many stages and context keys the run accumulates.
 
 The same parallel-branch limitation as `preamble_stages_ignore` applies: set `preamble_allow_keys` on the **parent parallel node** to scope all branch preambles.
+
+### Pull access — the `context_read` tool
+
+Preamble rendering is *push*: the engine decides which values a node sees. The `context_read` tool is the *pull* counterpart: an agent stage can read one context value by key on demand.
+
+```dot
+analyst [
+    prompt="@prompts/analyze.md",
+    fidelity="truncate"
+]
+```
+
+Semantics:
+
+- **Default-open registration:** every agent stage on the built-in agent backend gets the tool; a node `tools` allowlist that omits `context_read` excludes it like any other tool. Tool-less prompt nodes are unaffected, and stages with an external `acp` backend manage their own toolset (the tool is not injected there).
+- **One window:** the readable set is exactly what `preamble_allow_keys` admits (default: every non-engine key). Engine plumbing keys (`internal.*`, `response.*`, `outcome`, ...) are never readable and cannot be re-admitted by an allowlist entry.
+- **Key-only input:** the tool takes a `key` argument. Reading files — including demoted-value markers' paths — remains `read_file`'s job.
+- **Bounded results:** values over the stage's inline budget (`preamble_inline_max_kb`, node > graph > 8 KB default) return the same preview-plus-path marker the preamble demote pass produces; the full value is materialized as a content-addressed sandbox file.
+- **Deterministic view:** the served set is snapshotted from the node's resolved context at stage start, so parallel-branch updates landing mid-run are not visible. A reused full-fidelity thread serves each node its own view.
+
+The main beneficiaries are nodes whose preambles render no context values at all — `truncate` and `summary:low` fidelity — and narrow tool policies that want context without the full filesystem.
 
 ### Ownership and accumulation
 

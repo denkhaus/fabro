@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use fabro_agent::Sandbox;
 use fabro_config::RunScratch;
+use fabro_graphviz::graph::{Graph, Node};
 use fabro_types::context_keys::TRANSIENT_CONTEXT_KEYS;
 use fabro_types::graph::{DEFAULT_PREAMBLE_BUDGET_KB, DEFAULT_PREAMBLE_INLINE_MAX_KB};
 use fabro_types::{
@@ -27,6 +28,17 @@ const BLOB_OFFLOAD_THRESHOLD: usize = 100 * 1024;
 /// Default ceiling; nodes and graphs raise it via `preamble_inline_max_kb`
 /// (see [`demote_large_values_for_prompt`]).
 pub const PROMPT_INLINE_VALUE_MAX: usize = DEFAULT_PREAMBLE_INLINE_MAX_KB * 1024;
+
+/// Resolve the per-value inline ceiling one node's prompt-facing values
+/// demote at: node override, graph ceiling, engine default. The preamble
+/// demote pass and the `context_read` tool (fabro-e804) share this so push
+/// and pull demote at the same threshold.
+#[must_use]
+pub(crate) fn resolve_inline_max_bytes(node: &Node, graph: &Graph) -> usize {
+    node.preamble_inline_max_kb()
+        .or_else(|| graph.preamble_inline_max_kb())
+        .map_or(PROMPT_INLINE_VALUE_MAX, |kb| kb * 1024)
+}
 
 /// Default aggregate budget: total serialized bytes all preamble values may
 /// contribute before the aggregate pass starts demoting. The per-value pass
@@ -409,7 +421,7 @@ pub async fn demote_large_items_for_prompt(
 /// The full value is persisted as a content-addressed blob and materialized
 /// as a real file in the sandbox, so the marker's `path` is readable by the
 /// agent that receives the prompt.
-async fn demote_value_for_prompt(
+pub(crate) async fn demote_value_for_prompt(
     value: &mut Value,
     max_inline_bytes: usize,
     run_store: &RunStoreHandle,
@@ -1008,7 +1020,7 @@ async fn resolve_explicit_file_ref(value: &str, env: &dyn Sandbox) -> Result<Str
 /// directory are invariant across a pass, so the (possibly remote) probe is
 /// paid at most once instead of once per blob reference.
 #[derive(Default)]
-struct SandboxLocality {
+pub(crate) struct SandboxLocality {
     cached: Option<bool>,
 }
 

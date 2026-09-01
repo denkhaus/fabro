@@ -48,7 +48,9 @@ impl LintRule for Rule {
 #[cfg(test)]
 mod tests {
     use super::super::test_support;
-    use super::super::tool_catalog::{KNOWN_FABRO_RUN_TOOL_NAMES, KNOWN_NATIVE_TOOL_NAMES};
+    use super::super::tool_catalog::{
+        KNOWN_FABRO_RUN_TOOL_NAMES, KNOWN_NATIVE_TOOL_NAMES, KNOWN_WORKFLOW_TOOL_NAMES,
+    };
     use super::*;
 
     #[test]
@@ -73,6 +75,18 @@ mod tests {
         assert!(
             messages.iter().any(|m| m.contains("fabro_wrong_name")),
             "{messages:?}"
+        );
+    }
+    #[test]
+    fn accepts_workflow_stage_tools_in_the_tools_list() {
+        let graph = test_support::graph_with_nodes([test_support::node_with_attrs("puller", &[(
+            "tools",
+            "context_read",
+        )])]);
+        let diagnostics = Rule.apply(&graph);
+        assert!(
+            diagnostics.is_empty(),
+            "context_read must validate clean in a tools= list: {diagnostics:?}"
         );
     }
 
@@ -119,6 +133,7 @@ mod tests {
     /// must track fabro-agent's NativeTool and fabro-tool's catalog.
     #[test]
     fn static_catalogs_match_live_crates() {
+        use fabro_workflow::handler::llm::context_read::workflow_tool_names;
         use strum::VariantArray as _;
 
         let mut native: Vec<&str> = KNOWN_NATIVE_TOOL_NAMES.to_vec();
@@ -131,6 +146,18 @@ mod tests {
         assert_eq!(
             native, live_native,
             "KNOWN_NATIVE_TOOL_NAMES drifted from fabro-agent NativeTool"
+        );
+
+        let mut workflow: Vec<&str> = KNOWN_WORKFLOW_TOOL_NAMES.to_vec();
+        let mut live_workflow: Vec<String> = workflow_tool_names()
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect();
+        workflow.sort_unstable();
+        live_workflow.sort_unstable();
+        assert_eq!(
+            workflow, live_workflow,
+            "KNOWN_WORKFLOW_TOOL_NAMES drifted from fabro-workflow stage tools"
         );
 
         let mut fabro_run: Vec<&str> = KNOWN_FABRO_RUN_TOOL_NAMES.to_vec();
