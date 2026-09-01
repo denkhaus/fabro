@@ -47,7 +47,12 @@ digraph Develop {
         goal_gate=true,
         retry_policy="standard",
         reasoning_effort="high",
-        preamble_stages_ignore="planner,implementer,evidence"
+        preamble_stages_ignore="planner,implementer,evidence",
+        // fabro-900e (envelope write side): the planner's context_updates
+        // contract is stable — declare it so the preamble_allow_keys lint
+        // (fabro-e47c) can prove producers, and drift (an undocumented new
+        // key) drops visibly with a notice instead of leaking silently.
+        context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal"
     ]
 
     // Implementer: builds exactly what the claimed seed specifies.
@@ -71,7 +76,9 @@ digraph Develop {
         fidelity="summary:high",
         reasoning_effort="low",
         retry_policy="standard",
-        preamble_stages_ignore="planner,reviewer,implementer"
+        preamble_stages_ignore="planner,reviewer,implementer",
+        // fabro-900e: stable context_updates contract (see planner).
+        context_allow_keys="implementation_summary,journal"
     ]
 
     // Tester: deterministic quality gate, no agent. The host project defines
@@ -142,6 +149,17 @@ digraph Develop {
         fidelity="summary:high",
         reasoning_effort="low",
         preamble_stages_ignore="planner,implementer,reviewer",
+        // fabro-e47c (read side): the ## Context section is a strict input
+        // contract — exactly the keys the prompt names as inputs. Seed trio
+        // + implementation_summary + the evidence capture (command.output;
+        // deduped into the evidence stage section when that renders it).
+        // Deliberately OUT: seed_cycles (planner/gate input), review_verdict
+        // and review_feedback (the reviewer's own stale verdicts), and any
+        // future key another node starts writing — the section stays
+        // deterministic no matter how the graph grows.
+        preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,implementation_summary,command.output",
+        // fabro-900e: stable context_updates contract (see planner).
+        context_allow_keys="review_verdict,review_feedback,journal",
         // fabro-9467: the reviewer is a prompt node (no tools) — a demoted
         // evidence value (8KB default ceiling) is a preview it can never
         // open. Evidence captures reach ~14KB (first auto-merge run), so
