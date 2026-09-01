@@ -60,6 +60,7 @@ models/auth-session-user.ts
 models/auth-session.ts
 models/auth-sessions-response.ts
 models/automation-api-trigger.ts
+models/automation-git-workflow-source.ts
 models/automation-list-meta.ts
 models/automation-list-response.ts
 models/automation-ref.ts
@@ -335,6 +336,7 @@ models/replace-mcp-server-request.ts
 models/repo-check-response-permissions.ts
 models/repo-check-response.ts
 models/repository-ref.ts
+models/resolved-automation-git-workflow-source.ts
 models/review-target-kind.ts
 models/review-target.ts
 models/rewind-request.ts

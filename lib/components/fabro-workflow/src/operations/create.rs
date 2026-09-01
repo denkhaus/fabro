@@ -1644,9 +1644,10 @@ reasoning = false
         let dir = tempfile::tempdir().unwrap();
         let storage_root = dir.path().join("storage");
         let automation = AutomationRef {
-            id:         "nightly".to_string(),
-            name:       Some("Nightly".to_string()),
-            trigger_id: Some("schedule_1".to_string()),
+            id:              "nightly".to_string(),
+            name:            Some("Nightly".to_string()),
+            trigger_id:      Some("schedule_1".to_string()),
+            workflow_source: None,
         };
         let request = CreateRunInput {
             workflow: WorkflowInput::DotSource {
@@ -1790,9 +1791,10 @@ reasoning = false
         let compiled_source = MINIMAL_DOT.replace("Build feature", "Compiled goal");
         std::fs::write(&dot_path, &compiled_source).unwrap();
         let automation = AutomationRef {
-            id:         "nightly".to_string(),
-            name:       Some("Nightly".to_string()),
-            trigger_id: Some("schedule_1".to_string()),
+            id:              "nightly".to_string(),
+            name:            Some("Nightly".to_string()),
+            trigger_id:      Some("schedule_1".to_string()),
+            workflow_source: None,
         };
         let request = CreateRunInput {
             workflow: WorkflowInput::Path(dot_path.clone()),
@@ -2493,9 +2495,10 @@ reasoning = false
             None,
         ));
         let automation = fabro_types::AutomationRef {
-            id:         "nightly".to_string(),
-            name:       Some("Nightly".to_string()),
-            trigger_id: Some("schedule_1".to_string()),
+            id:              "nightly".to_string(),
+            name:            Some("Nightly".to_string()),
+            trigger_id:      Some("schedule_1".to_string()),
+            workflow_source: None,
         };
         let created = create(
             store.as_ref(),

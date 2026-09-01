@@ -104,7 +104,8 @@ impl GitRepoCache {
             .join(format!("{}.git", repo.repo()))
     }
 
-    /// Prepare a worktree containing the requested ref of `repo` at
+    /// Prepare a worktree containing the requested ref of `repo`, fetched from
+    /// `clone_url`, at
     /// `worktree_dir`. Returns the resolved commit SHA.
     ///
     /// First call for a repo: a `--bare --depth 1` clone is created at
@@ -115,14 +116,6 @@ impl GitRepoCache {
     /// crashed prior calls block the add, the cache prunes those entries and
     /// retries once.
     pub(crate) async fn prepare_worktree(
-        &self,
-        args: WorktreePrepareInput<'_>,
-    ) -> Result<String, GitCheckoutError> {
-        let clone_url = github_clone_url(args.repo);
-        self.prepare_worktree_with_clone_url(args, &clone_url).await
-    }
-
-    async fn prepare_worktree_with_clone_url(
         &self,
         args: WorktreePrepareInput<'_>,
         clone_url: &str,
@@ -179,7 +172,7 @@ impl GitRepoCache {
                 .map_err(|source| GitCheckoutError::Clone { source })?;
         }
 
-        let fetch_target = GitFetchTarget::from(args.target);
+        let fetch_target = args.selector;
         run_git_plan(build_bare_fetch_plan(
             bare_dir,
             clone_url,
@@ -202,18 +195,19 @@ impl GitRepoCache {
 
 pub(crate) struct WorktreePrepareInput<'a> {
     pub repo:         &'a GitHubRepositorySlug,
-    pub target:       &'a GitRunTarget,
+    pub selector:     GitCheckoutSelector<'a>,
     pub auth:         Option<&'a GitAuthConfig>,
     pub worktree_dir: &'a Path,
 }
 
-enum GitFetchTarget<'a> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GitCheckoutSelector<'a> {
     Branch(&'a str),
     Tag(&'a str),
     Commit(&'a str),
 }
 
-impl<'a> From<&'a GitRunTarget> for GitFetchTarget<'a> {
+impl<'a> From<&'a GitRunTarget> for GitCheckoutSelector<'a> {
     fn from(target: &'a GitRunTarget) -> Self {
         if let Some(sha) = target.sha.as_deref() {
             Self::Commit(sha)
@@ -225,7 +219,7 @@ impl<'a> From<&'a GitRunTarget> for GitFetchTarget<'a> {
     }
 }
 
-impl GitFetchTarget<'_> {
+impl GitCheckoutSelector<'_> {
     fn selector(&self) -> Cow<'_, str> {
         match self {
             Self::Branch(selector) | Self::Commit(selector) => Cow::Borrowed(selector),
@@ -268,7 +262,7 @@ async fn bare_clone_may_be_corrupt(bare_dir: &Path) -> bool {
     }
 }
 
-fn github_clone_url(repo: &GitHubRepositorySlug) -> String {
+pub(crate) fn github_clone_url(repo: &GitHubRepositorySlug) -> String {
     let mut url = repo.https_url();
     url.push_str(".git");
     url
@@ -276,40 +270,36 @@ fn github_clone_url(repo: &GitHubRepositorySlug) -> String {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct GitAuthConfig {
-    extraheader:      Option<String>,
+    extraheader:      String,
     sensitive_values: Vec<String>,
 }
 
 impl GitAuthConfig {
-    fn new(username: Option<String>, password: Option<String>) -> Self {
-        let Some(password) = password.filter(|value| !value.is_empty()) else {
-            return Self {
-                extraheader:      None,
-                sensitive_values: Vec::new(),
-            };
-        };
-        let username = username
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| "x-access-token".to_string());
+    pub(crate) fn new(credentials: &fabro_github::GitCloneCredentials) -> Self {
+        Self::from_parts(credentials.username(), credentials.password())
+    }
+
+    pub(crate) fn from_parts(username: &str, password: &str) -> Self {
         let encoded_credentials = BASE64_STANDARD.encode(format!("{username}:{password}"));
         let extraheader = basic_auth_header_from_encoded(&encoded_credentials);
         Self {
-            sensitive_values: vec![password, encoded_credentials, extraheader.clone()],
-            extraheader:      Some(extraheader),
+            sensitive_values: vec![
+                password.to_string(),
+                encoded_credentials,
+                extraheader.clone(),
+            ],
+            extraheader,
         }
     }
 
     fn git_env(&self, clone_url: &str) -> Vec<(String, String)> {
-        let Some(extraheader) = self.extraheader.as_ref() else {
-            return Vec::new();
-        };
         vec![
             ("GIT_CONFIG_COUNT".to_string(), "1".to_string()),
             (
                 "GIT_CONFIG_KEY_0".to_string(),
                 format!("http.{clone_url}.extraheader"),
             ),
-            ("GIT_CONFIG_VALUE_0".to_string(), extraheader.clone()),
+            ("GIT_CONFIG_VALUE_0".to_string(), self.extraheader.clone()),
         ]
     }
 
@@ -318,7 +308,7 @@ impl GitAuthConfig {
     }
 }
 
-pub(crate) async fn resolve_git_auth_config(
+pub(crate) async fn resolve_git_read_auth_config(
     credentials: Option<&fabro_github::GitHubCredentials>,
     repo: &GitHubRepositorySlug,
     github_api_base_url: &str,
@@ -333,9 +323,10 @@ pub(crate) async fn resolve_git_auth_config(
         }
         None => fabro_github::GitHubContext::new(credentials, github_api_base_url),
     };
-    let (username, password) =
-        fabro_github::resolve_clone_credentials(&context, repo.owner(), repo.repo()).await?;
-    Ok(Some(GitAuthConfig::new(username, password)))
+    let credentials =
+        fabro_github::resolve_read_only_clone_credentials(&context, repo.owner(), repo.repo())
+            .await?;
+    Ok(Some(GitAuthConfig::new(&credentials)))
 }
 
 #[cfg(test)]
@@ -575,6 +566,69 @@ mod tests {
         }
     }
 
+    fn workflow_source(branch: &str, tag: Option<&str>, sha: Option<&str>) -> GitRunTarget {
+        GitRunTarget {
+            repo:   "fabro-sh/workflows".to_string(),
+            branch: branch.to_string(),
+            tag:    tag.map(str::to_string),
+            sha:    sha.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn checkout_selectors_use_sha_then_tag_then_branch_precedence() {
+        let target = git_target(
+            "main",
+            Some("v1"),
+            Some("abcdef0123456789abcdef0123456789abcdef01"),
+        );
+        assert_eq!(
+            GitCheckoutSelector::from(&target),
+            GitCheckoutSelector::Commit("abcdef0123456789abcdef0123456789abcdef01")
+        );
+
+        for (source, expected) in [
+            (
+                workflow_source("main", None, None),
+                GitCheckoutSelector::Branch("main"),
+            ),
+            (
+                workflow_source("main", Some("v1"), None),
+                GitCheckoutSelector::Tag("v1"),
+            ),
+            (
+                workflow_source(
+                    "unrelated-context",
+                    Some("v1"),
+                    Some("abcdef0123456789abcdef0123456789abcdef01"),
+                ),
+                GitCheckoutSelector::Commit("abcdef0123456789abcdef0123456789abcdef01"),
+            ),
+        ] {
+            assert_eq!(GitCheckoutSelector::from(&source), expected);
+        }
+    }
+
+    #[test]
+    fn checkout_reuse_identity_folds_only_repository_case() {
+        assert_eq!(
+            repository_slug("Fabro-Sh/Workflows"),
+            repository_slug("fabro-sh/workflows")
+        );
+        assert_ne!(
+            GitCheckoutSelector::Branch("Main"),
+            GitCheckoutSelector::Branch("main")
+        );
+        assert_ne!(
+            GitCheckoutSelector::Branch("v1"),
+            GitCheckoutSelector::Tag("v1")
+        );
+        assert_eq!(
+            GitCheckoutSelector::Commit("abcdef0123456789abcdef0123456789abcdef01"),
+            GitCheckoutSelector::Commit("abcdef0123456789abcdef0123456789abcdef01")
+        );
+    }
+
     #[test]
     fn target_repository_urls_are_github_metadata_urls_without_credentials() {
         let repo = repository_slug("fabro-sh/fabro");
@@ -690,10 +744,7 @@ mod tests {
     fn credential_config_env_keeps_clone_url_uncredentialed() {
         let repo = repository_slug("fabro-sh/fabro");
         let clone_url = github_clone_url(&repo);
-        let auth = GitAuthConfig::new(
-            Some("x-access-token".to_string()),
-            Some("ghu_secret".to_string()),
-        );
+        let auth = GitAuthConfig::from_parts("x-access-token", "ghu_secret");
         let plan = build_bare_clone_plan(&clone_url, Path::new("/tmp/fabro-checkout"), Some(&auth));
 
         assert!(
@@ -807,10 +858,10 @@ mod tests {
 
         let worktree_a = temp.path().join("wt-a");
         let sha_a = cache
-            .prepare_worktree_with_clone_url(
+            .prepare_worktree(
                 WorktreePrepareInput {
                     repo:         &repo,
-                    target:       &target,
+                    selector:     GitCheckoutSelector::from(&target),
                     auth:         None,
                     worktree_dir: &worktree_a,
                 },
@@ -829,10 +880,10 @@ mod tests {
 
         let worktree_b = temp.path().join("wt-b");
         let sha_b = cache
-            .prepare_worktree_with_clone_url(
+            .prepare_worktree(
                 WorktreePrepareInput {
                     repo:         &repo,
-                    target:       &target,
+                    selector:     GitCheckoutSelector::from(&target),
                     auth:         None,
                     worktree_dir: &worktree_b,
                 },
@@ -860,10 +911,10 @@ mod tests {
 
         let worktree_a = temp.path().join("wt-a");
         cache
-            .prepare_worktree_with_clone_url(
+            .prepare_worktree(
                 WorktreePrepareInput {
                     repo:         &repo,
-                    target:       &target,
+                    selector:     GitCheckoutSelector::from(&target),
                     auth:         None,
                     worktree_dir: &worktree_a,
                 },
@@ -878,10 +929,10 @@ mod tests {
 
         let worktree_b = temp.path().join("wt-b");
         let sha = cache
-            .prepare_worktree_with_clone_url(
+            .prepare_worktree(
                 WorktreePrepareInput {
                     repo:         &repo,
-                    target:       &target,
+                    selector:     GitCheckoutSelector::from(&target),
                     auth:         None,
                     worktree_dir: &worktree_b,
                 },
@@ -916,10 +967,10 @@ mod tests {
             ("commit", git_target("main", None, Some(&expected_sha))),
         ] {
             let sha = cache
-                .prepare_worktree_with_clone_url(
+                .prepare_worktree(
                     WorktreePrepareInput {
                         repo:         &repo,
-                        target:       &target,
+                        selector:     GitCheckoutSelector::from(&target),
                         auth:         None,
                         worktree_dir: &temp.path().join(name),
                     },
@@ -944,10 +995,10 @@ mod tests {
         let unavailable_commit = git_target("main", None, Some(unavailable_sha));
 
         let tag_error = cache
-            .prepare_worktree_with_clone_url(
+            .prepare_worktree(
                 WorktreePrepareInput {
                     repo:         &repo,
-                    target:       &missing_tag,
+                    selector:     GitCheckoutSelector::from(&missing_tag),
                     auth:         None,
                     worktree_dir: &temp.path().join("missing-tag"),
                 },
@@ -961,10 +1012,10 @@ mod tests {
         ));
 
         let commit_error = cache
-            .prepare_worktree_with_clone_url(
+            .prepare_worktree(
                 WorktreePrepareInput {
                     repo:         &repo,
-                    target:       &unavailable_commit,
+                    selector:     GitCheckoutSelector::from(&unavailable_commit),
                     auth:         None,
                     worktree_dir: &temp.path().join("missing-commit"),
                 },

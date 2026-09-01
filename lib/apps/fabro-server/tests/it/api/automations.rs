@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
+use fabro_automation::AutomationGitWorkflowSource;
 use fabro_config::Storage;
 use fabro_server::server::build_router;
 use fabro_server::test_support::{
@@ -1035,6 +1036,47 @@ async fn incomplete_legacy_automation_fails_before_materialization() {
 }
 
 #[tokio::test]
+async fn api_triggered_run_passes_saved_workflow_source_to_materialization() {
+    let materializer = TestAutomationRunMaterializer::succeed(GitRunTarget {
+        repo:   "fabro-sh/fabro".to_string(),
+        branch: "main".to_string(),
+        tag:    None,
+        sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+    });
+    let (app, _temp_dir, _automation_dir) = automation_app_with_materializer(materializer.clone());
+    let mut body = automation_body("nightly", "Nightly");
+    body["workflow_source"] = json!({
+        "repo": "fabro-sh/workflows",
+        "branch": "main",
+        "tag": "release-v1"
+    });
+    create_automation_with_body(&app, &body).await;
+
+    let created = create_automation_run(&app, "nightly", StatusCode::CREATED).await;
+
+    let captured = materializer.captured_workflow_sources();
+    assert_eq!(captured.len(), 1);
+    assert_eq!(
+        captured[0],
+        Some(AutomationGitWorkflowSource {
+            repo:   "fabro-sh/workflows".to_string(),
+            branch: "main".to_string(),
+            tag:    Some("release-v1".to_string()),
+            sha:    None,
+        })
+    );
+    assert_eq!(
+        created["automation"]["workflow_source"],
+        json!({
+            "repo": "fabro-sh/workflows",
+            "branch": "main",
+            "tag": "release-v1",
+            "resolved_sha": "ffffffffffffffffffffffffffffffffffffffff"
+        })
+    );
+}
+
+#[tokio::test]
 async fn api_triggered_automation_with_missing_version_does_not_create_or_start_a_run() {
     let materializer = TestAutomationRunMaterializer::return_unstored_version(GitRunTarget {
         repo:   "fabro-sh/fabro".to_string(),
@@ -1048,6 +1090,29 @@ async fn api_triggered_automation_with_missing_version_does_not_create_or_start_
     let error = create_automation_run(&app, "nightly", StatusCode::NOT_FOUND).await;
 
     assert_eq!(error["errors"][0]["code"], "workflow_version_not_found");
+    let runs = list_automation_runs(&app, "/automations/nightly/runs").await;
+    assert_eq!(runs["meta"]["total"], 0);
+    assert_eq!(runs["data"], json!([]));
+}
+
+#[tokio::test]
+async fn api_workflow_source_failure_does_not_create_or_start_a_run() {
+    let materializer = TestAutomationRunMaterializer::fail_invalid_workflow_source();
+    let (app, _temp_dir, _automation_dir) = automation_app_with_materializer(materializer);
+    let mut body = automation_body("nightly", "Nightly");
+    body["workflow_source"] = json!({
+        "repo": "fabro-sh/workflows",
+        "branch": "main"
+    });
+    create_automation_with_body(&app, &body).await;
+
+    let error = create_automation_run(&app, "nightly", StatusCode::UNPROCESSABLE_ENTITY).await;
+
+    assert!(
+        error["errors"][0]["detail"]
+            .as_str()
+            .is_some_and(|detail| detail.contains("workflow source"))
+    );
     let runs = list_automation_runs(&app, "/automations/nightly/runs").await;
     assert_eq!(runs["meta"]["total"], 0);
     assert_eq!(runs["data"], json!([]));

@@ -6,11 +6,13 @@
 use std::path::Path;
 
 use fabro_automation::{
-    ApiTrigger, AutomationDraft, AutomationId, AutomationReplace, AutomationRevision,
-    AutomationStore, AutomationStoreError, AutomationTrigger, AutomationTriggerId, ScheduleTrigger,
+    ApiTrigger, AutomationDraft, AutomationGitWorkflowSource, AutomationId, AutomationReplace,
+    AutomationRevision, AutomationStore, AutomationStoreError, AutomationTrigger,
+    AutomationTriggerId, ScheduleTrigger,
 };
 use fabro_db::Database;
 use fabro_types::{GitRunTarget, RunTarget};
+use sqlx::Row as _;
 use tokio::fs;
 
 async fn test_database() -> (tempfile::TempDir, Database) {
@@ -40,15 +42,29 @@ fn schedule(id: &str, expression: &str, enabled: bool) -> AutomationTrigger {
     })
 }
 
+fn workflow_source(
+    branch: &str,
+    tag: Option<&str>,
+    sha: Option<&str>,
+) -> AutomationGitWorkflowSource {
+    AutomationGitWorkflowSource {
+        repo:   "fabro-sh/workflows".to_string(),
+        branch: branch.to_string(),
+        tag:    tag.map(str::to_string),
+        sha:    sha.map(str::to_string),
+    }
+}
+
 fn draft(id: &str, api_enabled: bool) -> AutomationDraft {
     AutomationDraft {
-        id:             AutomationId::new(id).unwrap(),
-        name:           "Nightly".to_string(),
-        description:    Some("Runs every night".to_string()),
-        environment_id: Some("default".to_string()),
-        target:         target(),
-        workflow:       "release".to_string(),
-        triggers:       vec![
+        id:              AutomationId::new(id).unwrap(),
+        name:            "Nightly".to_string(),
+        description:     Some("Runs every night".to_string()),
+        environment_id:  Some("default".to_string()),
+        target:          target(),
+        workflow:        "release".to_string(),
+        workflow_source: None,
+        triggers:        vec![
             schedule("z-last", "0 2 * * *", false),
             AutomationTrigger::Api(ApiTrigger {
                 id:      AutomationTriggerId::new("custom-api-id").unwrap(),
@@ -61,12 +77,13 @@ fn draft(id: &str, api_enabled: bool) -> AutomationDraft {
 
 fn replacement(name: &str, expression: &str) -> AutomationReplace {
     AutomationReplace {
-        name:           name.to_string(),
-        description:    None,
-        environment_id: Some("default".to_string()),
-        target:         target(),
-        workflow:       "release".to_string(),
-        triggers:       vec![
+        name:            name.to_string(),
+        description:     None,
+        environment_id:  Some("default".to_string()),
+        target:          target(),
+        workflow:        "release".to_string(),
+        workflow_source: None,
+        triggers:        vec![
             schedule("nightly", expression, true),
             AutomationTrigger::Api(ApiTrigger {
                 id:      AutomationTriggerId::new("api").unwrap(),
@@ -269,6 +286,113 @@ async fn insert_environment(pool: &fabro_db::DbPool, id: &str, provider: &str) {
 }
 
 #[tokio::test]
+async fn crud_round_trips_workflow_source_selectors_and_clears_to_omission() {
+    let (_dir, database) = test_database().await;
+    let store = AutomationStore::new(database.clone_pool());
+
+    for (index, source) in [
+        workflow_source("main", None, None),
+        workflow_source("main", Some("release/v1"), None),
+        workflow_source(
+            "context-only",
+            Some("release/v1"),
+            Some("ABCDEF0123456789ABCDEF0123456789ABCDEF01"),
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let id = format!("source-{index}");
+        let mut value = draft(&id, true);
+        value.workflow_source = Some(source);
+        let created = store.create(value).await.unwrap();
+        assert_eq!(
+            created
+                .workflow_source
+                .as_ref()
+                .and_then(|source| source.sha.as_deref()),
+            (index == 2).then_some("abcdef0123456789abcdef0123456789abcdef01")
+        );
+        assert_eq!(store.get(&created.id).await.unwrap(), Some(created.clone()));
+
+        let mut cleared = replacement("Cleared", "30 4 * * *");
+        cleared.workflow_source = None;
+        let replaced = store
+            .replace(&created.id, &created.revision, cleared)
+            .await
+            .unwrap();
+        assert_eq!(replaced.workflow_source, None);
+        let columns = sqlx::query(
+            "SELECT workflow_source_repository, workflow_source_branch, workflow_source_tag, \
+             workflow_source_sha \
+             FROM automations WHERE id = ?",
+        )
+        .bind(created.id.as_str())
+        .fetch_one(database.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            columns.get::<Option<String>, _>("workflow_source_repository"),
+            None
+        );
+        assert_eq!(
+            columns.get::<Option<String>, _>("workflow_source_branch"),
+            None
+        );
+        assert_eq!(
+            columns.get::<Option<String>, _>("workflow_source_tag"),
+            None
+        );
+        assert_eq!(
+            columns.get::<Option<String>, _>("workflow_source_sha"),
+            None
+        );
+    }
+
+    assert_eq!(store.list().await.unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn corrupt_workflow_source_rows_are_rejected_as_stored_shape_errors() {
+    let (_dir, database) = test_database().await;
+    let store = AutomationStore::new(database.clone_pool());
+    let partial = store.create(draft("partial", true)).await.unwrap();
+    let orphan = store.create(draft("orphan", true)).await.unwrap();
+
+    let mut connection = database.pool().acquire().await.unwrap();
+    sqlx::query("DROP TRIGGER automation_workflow_source_all_or_none_update")
+        .execute(&mut *connection)
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA ignore_check_constraints = ON")
+        .execute(&mut *connection)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE automations SET workflow_source_repository = 'fabro-sh/workflows' WHERE id = ?",
+    )
+    .bind(partial.id.as_str())
+    .execute(&mut *connection)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE automations SET workflow_source_tag = 'v1' WHERE id = ?")
+        .bind(orphan.id.as_str())
+        .execute(&mut *connection)
+        .await
+        .unwrap();
+    drop(connection);
+
+    assert!(matches!(
+        store.get(&partial.id).await.unwrap_err(),
+        AutomationStoreError::StoredWorkflowSourceShape { .. }
+    ));
+    assert!(matches!(
+        store.get(&orphan.id).await.unwrap_err(),
+        AutomationStoreError::StoredWorkflowSourceShape { .. }
+    ));
+}
+
+#[tokio::test]
 async fn disabled_api_trigger_normalizes_to_absent() {
     let (_dir, database) = test_database().await;
     let store = AutomationStore::new(database.clone_pool());
@@ -375,12 +499,13 @@ async fn failed_schedule_insert_rolls_back_parent_replace() {
     .await
     .unwrap();
     let replacement = AutomationReplace {
-        name:           "Should roll back".to_string(),
-        description:    None,
-        environment_id: Some("default".to_string()),
-        target:         target(),
-        workflow:       "release".to_string(),
-        triggers:       vec![schedule("blocked", "0 7 * * *", true)],
+        name:            "Should roll back".to_string(),
+        description:     None,
+        environment_id:  Some("default".to_string()),
+        target:          target(),
+        workflow:        "release".to_string(),
+        workflow_source: None,
+        triggers:        vec![schedule("blocked", "0 7 * * *", true)],
     };
 
     let err = store
@@ -449,6 +574,7 @@ async fn legacy_import_is_transactional_and_sql_wins() {
     assert_eq!(imported.name, "Imported");
     assert_eq!(imported.revision, expected_revision);
     assert_eq!(imported.workflow, "release");
+    assert_eq!(imported.workflow_source, None);
     assert!(matches!(
         imported.target,
         RunTarget::Git(GitRunTarget {

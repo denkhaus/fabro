@@ -12,7 +12,7 @@ pub use migrations::{
     import_legacy_directory_once,
 };
 pub use model::{
-    ApiTrigger, Automation, AutomationDraft, AutomationReplace, AutomationTrigger, ScheduleTrigger,
-    parse_schedule_expression,
+    ApiTrigger, Automation, AutomationDraft, AutomationGitWorkflowSource, AutomationReplace,
+    AutomationTrigger, ScheduleTrigger, parse_schedule_expression, validate_workflow_source,
 };
 pub use store::AutomationStore;

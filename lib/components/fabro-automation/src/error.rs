@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use croner::errors::CronError;
-use fabro_types::TargetValidationError;
+use fabro_types::{GitCoordinateValidationError, TargetValidationError};
 use toml::de::Error as TomlDeError;
 use toml::ser::Error as TomlSerError;
 
@@ -23,6 +23,11 @@ pub enum AutomationValidationError {
     InvalidTarget {
         #[source]
         source: TargetValidationError,
+    },
+    #[error("automation workflow source is invalid")]
+    InvalidWorkflowSource {
+        #[source]
+        source: GitCoordinateValidationError,
     },
     #[error("workflow selector {value:?} is not safe")]
     InvalidWorkflowSelector { value: String },
@@ -77,6 +82,8 @@ pub enum AutomationStoreError {
     },
     #[error("stored automation {id} has an invalid trigger row")]
     StoredTriggerShape { id: AutomationId },
+    #[error("stored automation {id} has a partial workflow source coordinate")]
+    StoredWorkflowSourceShape { id: AutomationId },
     #[error("stored automation {id} has an invalid revision")]
     InvalidRevision {
         id:     AutomationId,
@@ -163,6 +170,7 @@ impl AutomationStoreError {
             Self::StoredValidation { .. } => "stored_validation",
             Self::StoredId { .. } => "stored_id",
             Self::StoredTriggerShape { .. } => "stored_trigger_shape",
+            Self::StoredWorkflowSourceShape { .. } => "stored_workflow_source_shape",
             Self::InvalidRevision { .. } => "invalid_revision",
             Self::Db { .. } => "db",
             Self::InvalidFilename { .. } => "invalid_filename",

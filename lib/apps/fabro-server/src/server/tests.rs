@@ -4586,9 +4586,10 @@ async fn create_run_from_manifest_helper_persists_automation_metadata_and_exact_
     let submitted_manifest_bytes = serde_json::to_vec(&manifest).unwrap();
     let run_id = RunId::new();
     let automation = fabro_types::AutomationRef {
-        id:         "nightly".to_string(),
-        name:       Some("Nightly".to_string()),
-        trigger_id: Some("schedule".to_string()),
+        id:              "nightly".to_string(),
+        name:            Some("Nightly".to_string()),
+        trigger_id:      Some("schedule".to_string()),
+        workflow_source: None,
     };
     let target = RunTarget::Git(GitRunTarget {
         repo:   "fabro-sh/fabro".to_string(),
@@ -4645,9 +4646,10 @@ async fn create_run_from_intent_helper_persists_automation_version_and_exact_tar
     let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
     let run_id = RunId::new();
     let automation = fabro_types::AutomationRef {
-        id:         "nightly".to_string(),
-        name:       Some("Nightly".to_string()),
-        trigger_id: Some("schedule".to_string()),
+        id:              "nightly".to_string(),
+        name:            Some("Nightly".to_string()),
+        trigger_id:      Some("schedule".to_string()),
+        workflow_source: None,
     };
     let target = RunTarget::Git(GitRunTarget {
         repo:   "fabro-sh/fabro".to_string(),
@@ -5083,6 +5085,7 @@ async fn fake_automation_materializer_injection_captures_input_and_returns_versi
         .materialize_automation_run(AutomationRunMaterializeInput {
             automation_id: AutomationId::new("nightly").unwrap(),
             target: target.clone(),
+            workflow_source: None,
             workflow: "demo".to_string(),
             run_id,
             temp_root: temp_root.clone(),

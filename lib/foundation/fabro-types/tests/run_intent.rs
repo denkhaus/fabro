@@ -218,6 +218,25 @@ fn target_validation_normalizes_sha_without_network_resolution() {
 }
 
 #[test]
+fn git_target_validation_carries_the_parsed_repository_proof() {
+    let validated = GitRunTarget {
+        repo:   "Fabro-Sh/Fabro".to_string(),
+        branch: "feature/run-intent".to_string(),
+        tag:    None,
+        sha:    Some("ABCDEF0123456789ABCDEF0123456789ABCDEF01".to_string()),
+    }
+    .validate()
+    .unwrap();
+
+    assert_eq!(validated.repository().owner(), "Fabro-Sh");
+    assert_eq!(validated.repository().repo(), "Fabro");
+    assert_eq!(
+        validated.target().sha.as_deref(),
+        Some("abcdef0123456789abcdef0123456789abcdef01")
+    );
+}
+
+#[test]
 fn run_intent_none_target_validates_without_a_git_projection() {
     let validated = RunTarget::None {}.validate().unwrap();
     assert_eq!(validated.target, RunTarget::None {});

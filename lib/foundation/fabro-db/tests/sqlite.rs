@@ -388,6 +388,41 @@ async fn automations_schema_enforces_aggregate_constraints() -> anyhow::Result<(
         .await
         .is_err()
     );
+    for (repository, branch, tag, sha) in [
+        (Some("fabro-sh/workflows"), None, None, None),
+        (None, Some("main"), None, None),
+        (None, None, Some("v1"), None),
+        (
+            Some("fabro-sh/workflows"),
+            Some("main"),
+            None,
+            Some("short"),
+        ),
+    ] {
+        let result = sqlx::query(
+            "UPDATE automations SET workflow_source_repository = ?, \
+             workflow_source_branch = ?, workflow_source_tag = ?, workflow_source_sha = ? \
+             WHERE id = 'valid'",
+        )
+        .bind(repository)
+        .bind(branch)
+        .bind(tag)
+        .bind(sha)
+        .execute(database.pool())
+        .await;
+        assert!(
+            result.is_err(),
+            "invalid workflow source row should be rejected"
+        );
+    }
+
+    sqlx::query(
+        "UPDATE automations SET workflow_source_repository = 'fabro-sh/workflows', \
+         workflow_source_branch = 'main', workflow_source_tag = 'v1', \
+         workflow_source_sha = '0123456789abcdef0123456789abcdef01234567' WHERE id = 'valid'",
+    )
+    .execute(database.pool())
+    .await?;
     assert!(
         sqlx::query(
             "INSERT INTO automation_triggers (automation_id, id, enabled, expression) \
@@ -428,6 +463,92 @@ async fn automations_schema_enforces_aggregate_constraints() -> anyhow::Result<(
             .await?;
     assert_eq!(trigger_count, 0);
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn automation_workflow_sources_migrate_without_rewriting_existing_rows() -> anyhow::Result<()>
+{
+    let dir = tempfile::tempdir()?;
+    let db_path = dir.path().join("fabro.sqlite3");
+    let database = fabro_db::Database::connect(&db_path).await?;
+    database.migrate().await?;
+    rewind_automation_workflow_source_migration(&database).await?;
+
+    insert_minimal_automation(database.pool(), "preserved", 1).await?;
+    sqlx::query(
+        "INSERT INTO automation_triggers (automation_id, id, enabled, expression) \
+         VALUES ('preserved', 'nightly', 1, '0 3 * * *')",
+    )
+    .execute(database.pool())
+    .await?;
+
+    database.migrate().await?;
+
+    let row = sqlx::query(
+        "SELECT id, revision, target_repository, target_branch, target_tag, target_sha, \
+         target_workflow, workflow_source_repository, workflow_source_branch, \
+         workflow_source_tag, workflow_source_sha \
+         FROM automations WHERE id = 'preserved'",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(row.get::<String, _>("id"), "preserved");
+    assert_eq!(row.get::<String, _>("revision"), "a".repeat(64));
+    assert_eq!(row.get::<String, _>("target_repository"), "fabro-sh/fabro");
+    assert_eq!(row.get::<String, _>("target_branch"), "main");
+    assert_eq!(row.get::<Option<String>, _>("target_tag"), None);
+    assert_eq!(row.get::<Option<String>, _>("target_sha"), None);
+    assert_eq!(row.get::<String, _>("target_workflow"), "release");
+    assert_eq!(
+        row.get::<Option<String>, _>("workflow_source_repository"),
+        None
+    );
+    assert_eq!(row.get::<Option<String>, _>("workflow_source_branch"), None);
+    assert_eq!(row.get::<Option<String>, _>("workflow_source_tag"), None);
+    assert_eq!(row.get::<Option<String>, _>("workflow_source_sha"), None);
+    let trigger_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM automation_triggers WHERE automation_id = 'preserved'",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(trigger_count, 1);
+    assert!(fabro_db::pre_migration_snapshot_path(&db_path).exists());
+
+    database.migrate().await?;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM automations WHERE id = 'preserved'")
+            .fetch_one(database.pool())
+            .await?,
+        1
+    );
+    Ok(())
+}
+
+async fn rewind_automation_workflow_source_migration(
+    database: &fabro_db::Database,
+) -> anyhow::Result<()> {
+    sqlx::query("DROP TRIGGER automation_workflow_source_all_or_none_update")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DROP TRIGGER automation_workflow_source_all_or_none_insert")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_sha")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_tag")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_branch")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_repository")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 2026082803")
+        .execute(database.pool())
+        .await?;
     Ok(())
 }
 

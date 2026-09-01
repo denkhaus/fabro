@@ -263,7 +263,8 @@ async fn fire_scheduled_automation_run(
         .materialize_automation_run(AutomationRunMaterializeInput {
             automation_id: automation_id.clone(),
             target,
-            workflow: automation.workflow.clone(),
+            workflow_source: automation.workflow_source,
+            workflow: automation.workflow,
             run_id,
             temp_root: state.automation_temp_root(),
         })
@@ -286,9 +287,10 @@ async fn fire_scheduled_automation_run(
         system_kind: SystemActorKind::Engine,
     };
     let automation_ref = AutomationRef {
-        id:         automation_id.to_string(),
-        name:       Some(automation.name.clone()),
-        trigger_id: Some(trigger_id.to_string()),
+        id:              automation_id.to_string(),
+        name:            Some(automation.name.clone()),
+        trigger_id:      Some(trigger_id.to_string()),
+        workflow_source: materialized.workflow_source.clone(),
     };
     // RunIntent admission produces a large future; box it to keep our
     // stack frame small (matches handler/automations.rs).
@@ -388,10 +390,12 @@ fn run_due_schedules_once<'a>(
 
 #[cfg(test)]
 mod tests {
-    use fabro_automation::{AutomationDraft, AutomationTrigger, ScheduleTrigger};
+    use fabro_automation::{
+        AutomationDraft, AutomationGitWorkflowSource, AutomationTrigger, ScheduleTrigger,
+    };
     use fabro_static::EnvVars;
     use fabro_store::ListRunsQuery;
-    use fabro_types::{GitRunTarget, RunStatus, RunTarget};
+    use fabro_types::{GitRunTarget, ResolvedAutomationGitWorkflowSource, RunStatus, RunTarget};
 
     use super::*;
     use crate::test_support::{TestAppStateBuilder, TestAutomationRunMaterializer};
@@ -432,6 +436,7 @@ mod tests {
             environment_id: Some("default".to_string()),
             last_error: None,
             target: target(),
+            workflow_source: None,
             workflow: "workflow.fabro".to_string(),
             triggers,
         }
@@ -443,6 +448,16 @@ mod tests {
         name: &str,
         triggers: Vec<AutomationTrigger>,
     ) -> Automation {
+        create_automation_with_source(state, id, name, None, triggers).await
+    }
+
+    async fn create_automation_with_source(
+        state: &AppState,
+        id: &str,
+        name: &str,
+        workflow_source: Option<AutomationGitWorkflowSource>,
+        triggers: Vec<AutomationTrigger>,
+    ) -> Automation {
         state
             .automation_store()
             .create(AutomationDraft {
@@ -451,6 +466,7 @@ mod tests {
                 description: None,
                 environment_id: Some("default".to_string()),
                 target: target(),
+                workflow_source,
                 workflow: "workflow.fabro".to_string(),
                 triggers,
             })
@@ -702,6 +718,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scheduled_run_passes_saved_workflow_source_to_materialization() {
+        let materializer = succeeding_materializer();
+        let state = test_state_with_materializer(materializer.clone());
+        let workflow_source = AutomationGitWorkflowSource {
+            repo:   "fabro-sh/workflows".to_string(),
+            branch: "context-only".to_string(),
+            tag:    Some("v1".to_string()),
+            sha:    Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+        };
+        create_automation_with_source(
+            state.as_ref(),
+            "scheduled-source",
+            "scheduled-source",
+            Some(workflow_source.clone()),
+            vec![schedule_trigger("schedule", "* * * * *", true)],
+        )
+        .await;
+        let mut planner = AutomationSchedulePlanner::default();
+
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
+
+        let captured = materializer.captured_inputs();
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].workflow_source, Some(workflow_source.clone()));
+        let runs = cached_runs(state.as_ref()).await;
+        assert_eq!(runs.len(), 1);
+        assert_eq!(
+            runs[0]
+                .automation
+                .as_ref()
+                .and_then(|automation| automation.workflow_source.clone()),
+            Some(Box::new(
+                ResolvedAutomationGitWorkflowSource::from_requested(
+                    workflow_source,
+                    "ffffffffffffffffffffffffffffffffffffffff".to_string(),
+                )
+            ))
+        );
+    }
+
+    #[tokio::test]
     async fn disabled_schedule_trigger_does_not_create_run() {
         let materializer = succeeding_materializer();
         let state = test_state_with_materializer(materializer);
@@ -801,5 +859,31 @@ mod tests {
 
         assert!(cached_runs(state.as_ref()).await.is_empty());
         assert_eq!(materializer.captured_inputs().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn workflow_source_failure_creates_and_starts_no_scheduled_run() {
+        let materializer = TestAutomationRunMaterializer::fail_invalid_workflow_source();
+        let state = test_state_with_materializer(materializer.clone());
+        create_automation_with_source(
+            state.as_ref(),
+            "failing-source",
+            "failing-source",
+            Some(AutomationGitWorkflowSource {
+                repo:   "fabro-sh/workflows".to_string(),
+                branch: "main".to_string(),
+                tag:    None,
+                sha:    None,
+            }),
+            vec![schedule_trigger("schedule", "* * * * *", true)],
+        )
+        .await;
+        let mut planner = AutomationSchedulePlanner::default();
+
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
+
+        assert!(cached_runs(state.as_ref()).await.is_empty());
+        assert_eq!(materializer.captured_inputs().len(), 1);
     }
 }
