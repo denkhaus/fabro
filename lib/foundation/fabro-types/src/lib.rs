@@ -115,7 +115,8 @@ pub use pull_request::{
 };
 pub use reasoning::ReasoningOutput;
 pub use repository::{
-    GitHubRepositorySlug, RepositoryProvider, RepositoryRef, normalize_git_commit_sha,
+    GitHubRepositorySlug, GitHubRepositorySlugError, RepositoryProvider, RepositoryRef,
+    is_valid_git_branch_name, is_valid_git_tag_name, normalize_git_commit_sha,
 };
 pub use run::{
     DirtyStatus, ForkSourceRef, GitContext, RunClientProvenance, RunProvenance,
@@ -132,7 +133,8 @@ pub use run_event::{
 pub use run_failure::RunFailure;
 pub use run_id::{RunId, fixtures};
 pub use run_intent::{
-    GitRunTarget, RunIntent, RunIntentArgs, RunTarget, TargetValidationError, ValidatedRunTarget,
+    GitCoordinateValidationError, GitRunTarget, RunIntent, RunIntentArgs, RunTarget,
+    TargetValidationError, ValidatedGitRunTarget, ValidatedRunTarget,
 };
 pub use run_projection::{
     ActivatedSkill, AgentControlState, CheckpointRecord, McpServerProjection, McpServerStatus,
@@ -147,9 +149,9 @@ pub use run_sandbox::{
     RunSandboxRuntime,
 };
 pub use run_summary::{
-    AskFabro, AskFabroUnavailableReason, AutomationRef, Run, RunApproval, RunApprovalState,
-    RunBillingSummary, RunError, RunLifecycle, RunLinks, RunModel, RunOrigin, RunOriginKind,
-    RunSize, RunTimestamps, WorkflowRef,
+    AskFabro, AskFabroUnavailableReason, AutomationRef, ResolvedAutomationGitWorkflowSource, Run,
+    RunApproval, RunApprovalState, RunBillingSummary, RunError, RunLifecycle, RunLinks, RunModel,
+    RunOrigin, RunOriginKind, RunSize, RunTimestamps, WorkflowRef,
 };
 pub use run_title::{
     MAX_RUN_TITLE_CHARS, RunTitleError, infer_run_title, normalize_explicit_run_title,

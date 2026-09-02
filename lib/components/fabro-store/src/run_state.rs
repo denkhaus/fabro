@@ -2475,9 +2475,10 @@ mod tests {
     #[test]
     fn run_created_projects_automation_into_spec_and_summary() {
         let automation = AutomationRef {
-            id:         "nightly".to_string(),
-            name:       Some("Nightly".to_string()),
-            trigger_id: Some("schedule_1".to_string()),
+            id:              "nightly".to_string(),
+            name:            Some("Nightly".to_string()),
+            trigger_id:      Some("schedule_1".to_string()),
+            workflow_source: None,
         };
         let event = test_raw_event(
             1,

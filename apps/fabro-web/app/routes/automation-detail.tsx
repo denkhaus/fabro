@@ -24,6 +24,7 @@ import {
   findApiTrigger,
   findScheduleTrigger,
   gitTarget,
+  workflowSourceLabel,
 } from "../lib/automation";
 import { useAutomation, useAutomationRuns } from "../lib/queries";
 import { queryKeys } from "../lib/query-keys";
@@ -146,7 +147,7 @@ function AutomationHeader({ automation }: { automation: Automation }) {
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
             <Chip icon={FolderIcon}>
-              {target?.repo ?? UNSUPPORTED_TARGET_LABEL}
+              Run target · {target?.repo ?? UNSUPPORTED_TARGET_LABEL}
               {target ? (
                 <span className="text-fg-muted/70">
                   {" · "}{target.branch}
@@ -155,7 +156,9 @@ function AutomationHeader({ automation }: { automation: Automation }) {
                 </span>
               ) : null}
             </Chip>
-            <Chip icon={RectangleStackIcon}>{automation.workflow}</Chip>
+            <Chip icon={RectangleStackIcon}>
+              Workflow · {automation.workflow} · {workflowSourceLabel(automation.workflow_source)}
+            </Chip>
             <Chip icon={CubeTransparentIcon}>
               {automation.environment_id ?? (
                 <span className="text-coral">Environment required</span>

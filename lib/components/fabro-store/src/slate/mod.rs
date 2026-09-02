@@ -7,9 +7,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use fabro_types::{Run, RunId, SessionId};
+use fabro_types::{RunId, SessionId};
 use object_store::ObjectStore;
-pub use projection_cache::CachedRunProjection;
+pub(crate) use projection_cache::CachedRunProjection;
 use projection_cache::RunProjectionCache;
 pub use run_store::RunDatabase;
 use run_store::RunDatabaseInner;
@@ -17,20 +17,13 @@ use slatedb::config::{CompressionCodec, Settings};
 use tokio::sync::{Mutex, MutexGuard, OnceCell};
 use tracing::warn;
 
-use crate::{
-    BlobStore, Error, EventPayload, ListRunsQuery, Result, RunProjection, RunSummaryStore, keys,
-};
+use crate::{BlobStore, Error, EventPayload, Result, RunProjection, RunSummaryStore, keys};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnreadableRun {
     pub run_id:     RunId,
     pub created_at: DateTime<Utc>,
     pub error:      String,
-}
-
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-struct SessionRunIndexEntry {
-    run_id: RunId,
 }
 
 #[derive(Clone)]
@@ -226,28 +219,6 @@ impl Database {
         self.open_run_database(run_id, true).await
     }
 
-    pub async fn list_runs(&self, query: &ListRunsQuery, now: DateTime<Utc>) -> Result<Vec<Run>> {
-        Ok(self
-            .list_cached_runs(query, now)
-            .await?
-            .into_iter()
-            .map(|entry| entry.summary)
-            .collect())
-    }
-
-    pub async fn list_runs_with_projection(
-        &self,
-        query: &ListRunsQuery,
-        now: DateTime<Utc>,
-    ) -> Result<Vec<(Run, RunProjection)>> {
-        Ok(self
-            .list_cached_runs(query, now)
-            .await?
-            .into_iter()
-            .map(|entry| (entry.summary, (*entry.projection).clone()))
-            .collect())
-    }
-
     pub async fn warm_projection_cache(&self) -> Result<()> {
         self.projection_cache_warmed
             .get_or_try_init(|| async {
@@ -273,15 +244,6 @@ impl Database {
             })
             .await?;
         Ok(())
-    }
-
-    pub async fn list_cached_runs(
-        &self,
-        query: &ListRunsQuery,
-        now: DateTime<Utc>,
-    ) -> Result<Vec<CachedRunProjection>> {
-        self.warm_projection_cache().await?;
-        Ok(self.projection_cache.list(query, now))
     }
 
     pub async fn list_unreadable_runs(&self) -> Result<Vec<UnreadableRun>> {
@@ -342,11 +304,6 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_cached_run(&self, run_id: &RunId) -> Result<Option<CachedRunProjection>> {
-        self.warm_projection_cache().await?;
-        Ok(self.projection_cache.get(run_id))
-    }
-
     pub async fn get_cached_projection(
         &self,
         run_id: &RunId,
@@ -358,43 +315,10 @@ impl Database {
             .map(|(projection, _)| projection))
     }
 
-    pub async fn get_cached_summary(
-        &self,
-        run_id: &RunId,
-        now: DateTime<Utc>,
-    ) -> Result<Option<Run>> {
-        self.warm_projection_cache().await?;
-        Ok(self.projection_cache.get_summary(run_id, now))
-    }
-
-    /// Run ids whose latest explicit pull request creation is still pending,
-    /// oldest request first.
-    pub async fn pending_pull_request_creation_run_ids(&self) -> Result<Vec<RunId>> {
-        self.warm_projection_cache().await?;
-        Ok(self.projection_cache.pending_pull_request_creations())
-    }
-
-    pub async fn put_session_run_index(
-        &self,
-        session_id: &SessionId,
-        run_id: &RunId,
-    ) -> Result<()> {
-        let db = self.open_db().await?;
-        db.put(
-            keys::session_by_id_key(session_id),
-            serde_json::to_vec(&SessionRunIndexEntry { run_id: *run_id })?,
-        )
-        .await?;
-        Ok(())
-    }
-
-    pub async fn get_session_run_id(&self, session_id: &SessionId) -> Result<Option<RunId>> {
-        let db = self.open_db().await?;
-        if let Some(bytes) = db.get(keys::session_by_id_key(session_id)).await? {
-            let entry: SessionRunIndexEntry = serde_json::from_slice(&bytes)?;
-            return Ok(Some(entry.run_id));
-        }
-        Ok(None)
+    /// Resolves the run that owns `session_id` from the canonical typed
+    /// creation event stored in SQLite.
+    pub async fn find_session_owner(&self, session_id: &SessionId) -> Result<Option<RunId>> {
+        self.run_summary_store.find_session_owner(session_id).await
     }
 
     pub(crate) fn remove_cached_run(&self, run_id: &RunId) {
@@ -413,31 +337,6 @@ impl Database {
             .await?;
         active_runs.remove(run_id);
         self.remove_cached_run(run_id);
-        if let Err(err) = self.delete_session_indexes_for_run(run_id).await {
-            warn!(
-                run_id = %run_id,
-                error = %err,
-                "Failed to remove retired session reverse indexes after deleting run"
-            );
-        }
-        Ok(())
-    }
-
-    async fn delete_session_indexes_for_run(&self, run_id: &RunId) -> Result<()> {
-        let db = self.open_db().await?;
-        let mut keys_to_delete = Vec::new();
-        let mut iter = db.scan_prefix(keys::sessions_by_id_prefix()).await?;
-        while let Some(entry) = iter.next().await? {
-            let index: SessionRunIndexEntry = serde_json::from_slice(&entry.value)?;
-            if index.run_id == *run_id {
-                keys_to_delete.push(String::from_utf8(entry.key.to_vec()).map_err(|err| {
-                    Error::Other(format!("stored key is not valid UTF-8: {err}"))
-                })?);
-            }
-        }
-        for key in keys_to_delete {
-            db.delete(key).await?;
-        }
         Ok(())
     }
 
@@ -467,30 +366,6 @@ impl Database {
             db.write(batch).await?;
         }
         Ok(deletes)
-    }
-
-    #[must_use]
-    pub fn runs(&self) -> Runs {
-        Runs { db: self.clone() }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Runs {
-    db: Database,
-}
-
-impl Runs {
-    pub async fn get(&self, run_id: &RunId) -> Result<RunDatabase> {
-        self.db.open_run(run_id).await
-    }
-
-    pub async fn find(&self, run_id: &RunId) -> Result<Option<Run>> {
-        self.db.run_summary_store.get(run_id, Utc::now()).await
-    }
-
-    pub async fn list(&self, query: &ListRunsQuery) -> Result<Vec<Run>> {
-        self.db.list_runs(query, Utc::now()).await
     }
 }
 
@@ -695,6 +570,21 @@ mod tests {
         .unwrap()
     }
 
+    fn session_created_payload(label: &str, session_id: &SessionId) -> EventPayload {
+        EventPayload::new(
+            serde_json::json!({
+                "id": format!("evt-{label}-session-created"),
+                "ts": "2026-03-27T12:00:05Z",
+                "run_id": test_run_id(label).to_string(),
+                "event": "run.session.created",
+                "session_id": session_id,
+                "properties": { "title": "Owned session" },
+            }),
+            &test_run_id(label),
+        )
+        .unwrap()
+    }
+
     async fn append_created(run: &RunDatabase, label: &str, created_at: DateTime<Utc>) {
         let run_spec = sample_run_spec(label);
         run.append_event(&event_payload(
@@ -850,7 +740,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_open_list_and_delete_full_lifecycle_in_shared_db() {
+    async fn create_open_list_and_delete_full_lifecycle_without_legacy_slate_writes() {
         let (object_store, store) = make_store();
         let run_1 = store.create_run(&test_run_id("run-1")).await.unwrap();
         let run_2 = store.create_run(&test_run_id("run-2")).await.unwrap();
@@ -858,7 +748,8 @@ mod tests {
         append_created(&run_2, "run-2", dt("2026-03-27T12:00:10Z")).await;
 
         let summary = store
-            .list_runs(&ListRunsQuery::default(), Utc::now())
+            .run_summary_store()
+            .list_all(Utc::now())
             .await
             .unwrap();
         assert_eq!(summary.len(), 2);
@@ -878,12 +769,106 @@ mod tests {
         store.delete_run(&test_run_id("run-1")).await.unwrap();
         assert!(store.open_run(&test_run_id("run-1")).await.is_err());
         let remaining = store
-            .list_runs(&ListRunsQuery::default(), Utc::now())
+            .run_summary_store()
+            .list_all(Utc::now())
             .await
             .unwrap();
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].id, test_run_id("run-2"));
-        assert!(!list_paths(object_store, "runs/").await.is_empty());
+        assert!(
+            list_paths(object_store, "runs/").await.is_empty(),
+            "canonical run lifecycle must not open SlateDB solely for retired session indexes"
+        );
+    }
+
+    #[tokio::test]
+    async fn session_owner_claims_are_atomic_durable_and_ignore_legacy_reverse_rows() {
+        let directory = tempfile::tempdir().unwrap();
+        let object_store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let store = store_test_support::test_database_at(
+            Arc::clone(&object_store),
+            "session-owner",
+            Duration::from_millis(1),
+            None,
+            directory.path(),
+        );
+        let first_id = test_run_id("run-1");
+        let second_id = test_run_id("run-2");
+        let first = store.create_run(&first_id).await.unwrap();
+        let second = store.create_run(&second_id).await.unwrap();
+        append_created(&first, "run-1", dt("2026-03-27T12:00:00Z")).await;
+        append_created(&second, "run-2", dt("2026-03-27T12:00:10Z")).await;
+
+        let session_id = SessionId::new();
+        assert_eq!(
+            first
+                .append_event(&session_created_payload("run-1", &session_id))
+                .await
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            store.find_session_owner(&session_id).await.unwrap(),
+            Some(first_id)
+        );
+
+        let legacy_key = keys::session_by_id_key(&session_id).as_ref().to_vec();
+        let legacy = store.open_db().await.unwrap();
+        assert!(legacy.get(&legacy_key).await.unwrap().is_none());
+        legacy
+            .put(
+                &legacy_key,
+                serde_json::to_vec(&serde_json::json!({ "run_id": second_id })).unwrap(),
+            )
+            .await
+            .unwrap();
+        legacy.flush().await.unwrap();
+        assert_eq!(
+            store.find_session_owner(&session_id).await.unwrap(),
+            Some(first_id),
+            "legacy reverse rows must not influence ownership"
+        );
+
+        assert!(
+            first
+                .append_event(&session_created_payload("run-1", &session_id))
+                .await
+                .is_err()
+        );
+        assert_eq!(first.last_event_seq().await.unwrap(), Some(2));
+        assert!(
+            second
+                .append_event(&session_created_payload("run-2", &session_id))
+                .await
+                .is_err()
+        );
+        assert_eq!(second.last_event_seq().await.unwrap(), Some(1));
+        assert_eq!(
+            store.find_session_owner(&session_id).await.unwrap(),
+            Some(first_id)
+        );
+
+        let reopened = store_test_support::test_database_at(
+            object_store,
+            "session-owner",
+            Duration::from_millis(1),
+            None,
+            directory.path(),
+        );
+        assert_eq!(
+            reopened.find_session_owner(&session_id).await.unwrap(),
+            Some(first_id)
+        );
+
+        reopened.delete_run(&first_id).await.unwrap();
+        assert_eq!(
+            reopened.find_session_owner(&session_id).await.unwrap(),
+            None
+        );
+        assert!(
+            legacy.get(&legacy_key).await.unwrap().is_some(),
+            "legacy reverse rows remain diagnostic-only during the support window"
+        );
     }
 
     #[tokio::test]
@@ -1058,9 +1043,9 @@ mod tests {
         ));
         assert_eq!(run.list_events().await.unwrap(), events_before);
         assert_eq!(run.state().await.unwrap().status, RunStatus::Runnable);
-        let cached = store.get_cached_run(&run_id).await.unwrap().unwrap();
-        assert_eq!(cached.last_seq, 4);
-        assert_eq!(cached.projection.status, RunStatus::Runnable);
+        let (projection, last_seq) = store.projection_cache.projection_snapshot(&run_id).unwrap();
+        assert_eq!(last_seq, 4);
+        assert_eq!(projection.status, RunStatus::Runnable);
     }
 
     #[tokio::test]
@@ -1077,10 +1062,12 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, Error::EventRejected { .. }));
 
-        let entries = store
-            .list_cached_runs(&ListRunsQuery::default(), Utc::now())
-            .await
-            .unwrap();
+        let (projection, last_seq) = store.projection_cache.projection_snapshot(&run_id).unwrap();
+        let entries = [CachedRunProjection::from_projection(
+            run_id,
+            Arc::unwrap_or_clone(projection),
+            last_seq,
+        )];
         summaries.reconcile(&entries).await.unwrap();
         let summary = summaries.get(&run_id, Utc::now()).await.unwrap().unwrap();
         assert_eq!(summary.lifecycle.status, RunStatus::Runnable);
@@ -1093,7 +1080,7 @@ mod tests {
         let run_id = test_run_id("run-1");
         let run = store.create_run(&run_id).await.unwrap();
         append_created(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
-        let cached_before = store.get_cached_run(&run_id).await.unwrap().unwrap();
+        let cached_before = store.projection_cache.projection_snapshot(&run_id).unwrap();
         summaries.close_pool().await;
 
         let result = run
@@ -1109,9 +1096,9 @@ mod tests {
             result,
             Err(Error::Sqlite(sqlx::Error::PoolClosed))
         ));
-        let cached = store.get_cached_run(&run_id).await.unwrap().unwrap();
-        assert_eq!(cached.last_seq, cached_before.last_seq);
-        assert_eq!(cached.summary.title, cached_before.summary.title);
+        let cached = store.projection_cache.projection_snapshot(&run_id).unwrap();
+        assert_eq!(cached.1, cached_before.1);
+        assert_eq!(cached.0.title, cached_before.0.title);
     }
 
     #[tokio::test]
@@ -1180,7 +1167,8 @@ mod tests {
         .unwrap();
 
         let summary = store
-            .list_runs(&ListRunsQuery::default(), Utc::now())
+            .run_summary_store()
+            .list_all(Utc::now())
             .await
             .unwrap();
         assert_eq!(summary.len(), 1);
@@ -1214,7 +1202,8 @@ mod tests {
         );
         assert_eq!(
             store
-                .get_cached_summary(&test_run_id("run-3"), Utc::now())
+                .run_summary_store()
+                .get(&test_run_id("run-3"), Utc::now())
                 .await
                 .unwrap()
                 .unwrap()
@@ -1236,43 +1225,14 @@ mod tests {
             .unwrap();
         assert_eq!(
             store
-                .get_cached_summary(&test_run_id("run-3"), Utc::now())
+                .run_summary_store()
+                .get(&test_run_id("run-3"), Utc::now())
                 .await
                 .unwrap()
                 .unwrap()
                 .parent_id,
             Some(test_run_id("run-2"))
         );
-        assert!(
-            store
-                .list_runs(
-                    &ListRunsQuery {
-                        parent_id: Some(test_run_id("run-1")),
-                        ..ListRunsQuery::default()
-                    },
-                    Utc::now()
-                )
-                .await
-                .unwrap()
-                .is_empty()
-        );
-        assert_eq!(
-            store
-                .list_runs(
-                    &ListRunsQuery {
-                        parent_id: Some(test_run_id("run-2")),
-                        ..ListRunsQuery::default()
-                    },
-                    Utc::now()
-                )
-                .await
-                .unwrap()
-                .into_iter()
-                .map(|summary| summary.id)
-                .collect::<Vec<_>>(),
-            vec![test_run_id("run-3")]
-        );
-
         child
             .append_event(&event_payload(
                 "run-3",
@@ -1286,58 +1246,14 @@ mod tests {
             .unwrap();
         assert_eq!(
             store
-                .get_cached_summary(&test_run_id("run-3"), Utc::now())
+                .run_summary_store()
+                .get(&test_run_id("run-3"), Utc::now())
                 .await
                 .unwrap()
                 .unwrap()
                 .parent_id,
             None
         );
-        assert!(
-            store
-                .list_runs(
-                    &ListRunsQuery {
-                        parent_id: Some(test_run_id("run-2")),
-                        ..ListRunsQuery::default()
-                    },
-                    Utc::now()
-                )
-                .await
-                .unwrap()
-                .is_empty()
-        );
-    }
-
-    #[tokio::test]
-    async fn list_runs_filters_by_parent_id() {
-        let (_object_store, store) = make_store();
-        let parent = store.create_run(&test_run_id("run-1")).await.unwrap();
-        let child = store.create_run(&test_run_id("run-2")).await.unwrap();
-        let unrelated = store.create_run(&test_run_id("run-3")).await.unwrap();
-        append_created(&parent, "run-1", dt("2026-03-27T12:00:00Z")).await;
-        append_created_with_parent(
-            &child,
-            "run-2",
-            dt("2026-03-27T12:00:10Z"),
-            test_run_id("run-1"),
-        )
-        .await;
-        append_created(&unrelated, "run-3", dt("2026-03-27T12:00:20Z")).await;
-
-        let summaries = store
-            .list_runs(
-                &ListRunsQuery {
-                    parent_id: Some(test_run_id("run-1")),
-                    ..ListRunsQuery::default()
-                },
-                Utc::now(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(summaries.len(), 1);
-        assert_eq!(summaries[0].id, test_run_id("run-2"));
-        assert_eq!(summaries[0].parent_id, Some(test_run_id("run-1")));
     }
 
     #[tokio::test]
@@ -1365,7 +1281,8 @@ mod tests {
         append_created(&unrelated, "run-4", dt("2026-03-27T12:00:30Z")).await;
 
         let summaries = store
-            .list_runs(&ListRunsQuery::default(), Utc::now())
+            .run_summary_store()
+            .list_all(Utc::now())
             .await
             .unwrap();
 
@@ -1386,44 +1303,6 @@ mod tests {
             .find(|r| r.id == test_run_id("run-4"))
             .expect("unrelated summary should be present");
         assert_eq!(unrelated_summary.children_count, 0);
-    }
-
-    #[tokio::test]
-    async fn cached_summary_overlays_live_timing_without_mutating_cached_snapshot() {
-        let (_object_store, store) = make_store();
-        let run = store.create_run(&test_run_id("run-1")).await.unwrap();
-        append_created(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
-        run.append_event(&event_payload(
-            "run-1",
-            "2026-03-27T12:00:01Z",
-            "run.started",
-            &serde_json::json!({ "name": "Test run" }),
-        ))
-        .await
-        .unwrap();
-
-        let now = dt("2026-03-27T12:00:06Z");
-        let expected = Some(fabro_types::RunTiming::wall_only(5_000));
-
-        let summary = store
-            .get_cached_summary(&test_run_id("run-1"), now)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(summary.timing, expected);
-
-        let listed = store
-            .list_cached_runs(&ListRunsQuery::default(), now)
-            .await
-            .unwrap();
-        assert_eq!(listed[0].summary.timing, expected);
-
-        let cached = store
-            .get_cached_run(&test_run_id("run-1"))
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(cached.summary.timing, None);
     }
 
     #[tokio::test]
@@ -1491,7 +1370,8 @@ mod tests {
         .unwrap();
 
         let summary = store
-            .list_runs(&ListRunsQuery::default(), Utc::now())
+            .run_summary_store()
+            .list_all(Utc::now())
             .await
             .unwrap();
         assert_eq!(summary.len(), 1);
@@ -1571,7 +1451,8 @@ mod tests {
             summaries,
         );
         let summary = reopened
-            .list_runs(&ListRunsQuery::default(), Utc::now())
+            .run_summary_store()
+            .list_all(Utc::now())
             .await
             .unwrap();
         assert_eq!(summary.len(), 1);
@@ -1582,7 +1463,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn projection_cache_warmup_lists_newest_first_and_applies_date_filters() {
+    async fn projection_cache_warmup_rebuilds_full_projections() {
         let (_directory, summaries) = make_run_summary_store().await;
         let (object_store, store) = make_store_with_run_summaries(Arc::clone(&summaries));
         let run_1 = store.create_run(&test_run_id("run-1")).await.unwrap();
@@ -1600,42 +1481,20 @@ mod tests {
         );
         reopened.warm_projection_cache().await.unwrap();
 
-        let entries = reopened
-            .list_cached_runs(&ListRunsQuery::default(), Utc::now())
-            .await
+        let (run_1_projection, run_1_last_seq) = reopened
+            .projection_cache
+            .projection_snapshot(&test_run_id("run-1"))
             .unwrap();
-        assert_eq!(
-            entries.iter().map(|entry| entry.run_id).collect::<Vec<_>>(),
-            vec![test_run_id("run-2"), test_run_id("run-1")]
-        );
-        assert_eq!(entries[0].summary.lifecycle.status, RunStatus::Running);
-        assert_eq!(entries[0].projection.spec().run_id, test_run_id("run-2"));
-        assert_eq!(entries[0].last_seq, 4);
-
-        let filtered = reopened
-            .list_cached_runs(
-                &ListRunsQuery {
-                    start:     Some(test_run_id("run-2").created_at()),
-                    end:       Some(
-                        test_run_id("run-2").created_at() + chrono::Duration::seconds(1),
-                    ),
-                    parent_id: None,
-                },
-                Utc::now(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].run_id, test_run_id("run-2"));
-
-        let cached = reopened
-            .get_cached_run(&test_run_id("run-1"))
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(cached.summary.lifecycle.status, RunStatus::Succeeded {
+        assert_eq!(run_1_projection.status, RunStatus::Succeeded {
             reason: SuccessReason::Completed,
         });
+        assert_eq!(run_1_last_seq, 5);
+        let (run_2_projection, run_2_last_seq) = reopened
+            .projection_cache
+            .projection_snapshot(&test_run_id("run-2"))
+            .unwrap();
+        assert_eq!(run_2_projection.status, RunStatus::Running);
+        assert_eq!(run_2_last_seq, 4);
     }
 
     #[tokio::test]
@@ -1724,28 +1583,25 @@ mod tests {
         .await
         .unwrap();
 
-        let cached = store
-            .get_cached_run(&test_run_id("run-1"))
-            .await
-            .unwrap()
+        let (projection, last_seq) = store
+            .projection_cache
+            .projection_snapshot(&test_run_id("run-1"))
             .unwrap();
-        assert_eq!(cached.summary.lifecycle.status, RunStatus::Running);
-        assert_eq!(cached.last_seq, 7);
+        assert_eq!(projection.status, RunStatus::Running);
+        assert_eq!(last_seq, 7);
         assert_eq!(
-            cached
-                .projection
+            projection
                 .stage(&StageId::new("review", 1))
                 .unwrap()
                 .effective_state(),
             fabro_types::StageState::Running
         );
         assert_eq!(
-            cached.projection.pending_interviews["q-1"].question.text,
+            projection.pending_interviews["q-1"].question.text,
             "Approve deploy?"
         );
         assert_eq!(
-            cached
-                .projection
+            projection
                 .current_checkpoint()
                 .unwrap()
                 .git_commit_sha
@@ -1753,57 +1609,20 @@ mod tests {
             Some("abc123")
         );
 
-        let cached_summaries = store
-            .list_runs(&ListRunsQuery::default(), Utc::now())
-            .await
-            .unwrap();
-        let projected = store
-            .list_runs_with_projection(&ListRunsQuery::default(), Utc::now())
-            .await
-            .unwrap();
-        assert_eq!(cached_summaries, vec![cached.summary.clone()]);
-        assert_eq!(projected[0].0, cached.summary);
-        assert_eq!(
-            projected[0]
-                .1
-                .current_checkpoint()
-                .unwrap()
-                .git_commit_sha
-                .as_deref(),
-            cached
-                .projection
-                .current_checkpoint()
-                .unwrap()
-                .git_commit_sha
-                .as_deref()
-        );
         let comparison_time = dt("2026-03-27T12:00:10Z");
-        let cache_summary = store
-            .get_cached_summary(&test_run_id("run-1"), comparison_time)
-            .await
-            .unwrap()
-            .unwrap();
         let sql_summary = summaries
             .get(&test_run_id("run-1"), comparison_time)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(sql_summary, cache_summary);
+        assert_eq!(sql_summary.lifecycle.status, RunStatus::Running);
 
         store.delete_run(&test_run_id("run-1")).await.unwrap();
         assert!(
             store
-                .get_cached_run(&test_run_id("run-1"))
-                .await
-                .unwrap()
+                .projection_cache
+                .projection_snapshot(&test_run_id("run-1"))
                 .is_none()
-        );
-        assert!(
-            store
-                .list_cached_runs(&ListRunsQuery::default(), Utc::now())
-                .await
-                .unwrap()
-                .is_empty()
         );
         assert!(
             summaries
@@ -1924,9 +1743,13 @@ mod tests {
             reason: FailureReason::WorkflowError,
         });
 
-        let cached = reopened.get_cached_run(&run_id).await.unwrap().unwrap();
-        assert_eq!(cached.summary.title, "Renamed failed run");
-        assert_eq!(cached.summary.lifecycle.status, RunStatus::Failed {
+        let cached = reopened
+            .get_cached_projection(&run_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(cached.title, "Renamed failed run");
+        assert_eq!(cached.status, RunStatus::Failed {
             reason: FailureReason::WorkflowError,
         });
     }

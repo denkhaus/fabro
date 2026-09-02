@@ -34,19 +34,21 @@ pub fn parse_schedule_expression(expression: &str) -> Result<Cron, CronError> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Automation {
-    pub id:             AutomationId,
-    pub revision:       AutomationRevision,
-    pub name:           String,
-    pub description:    Option<String>,
+    pub id:              AutomationId,
+    pub revision:        AutomationRevision,
+    pub name:            String,
+    pub description:     Option<String>,
     /// Server-managed environment selected when the automation fires. Legacy
     /// rows may be incomplete until an operator selects one.
-    pub environment_id: Option<String>,
+    pub environment_id:  Option<String>,
     /// Most recent scheduler failure. Runtime status is not part of the
     /// optimistic-concurrency revision.
-    pub last_error:     Option<String>,
-    pub target:         RunTarget,
-    pub workflow:       String,
-    pub triggers:       Vec<AutomationTrigger>,
+    pub last_error:      Option<String>,
+    pub target:          RunTarget,
+    pub workflow:        String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_source: Option<AutomationGitWorkflowSource>,
+    pub triggers:        Vec<AutomationTrigger>,
 }
 
 impl Automation {
@@ -140,9 +142,33 @@ impl Automation {
             last_error: None,
             target: replace.target,
             workflow: replace.workflow,
+            workflow_source: replace.workflow_source,
             triggers: replace.triggers,
         }
     }
+}
+
+/// A Git coordinate from which an automation loads workflow files.
+///
+/// This deliberately reuses the run target's branch/tag/SHA model. The branch
+/// is the fallback selector and audit context; it does not constrain an exact
+/// SHA to be reachable from that branch.
+pub type AutomationGitWorkflowSource = GitRunTarget;
+
+/// Validate and canonicalize a saved workflow source without resolving remote
+/// repository state.
+///
+/// # Errors
+///
+/// Returns an error when the repository slug, branch, tag, or exact commit
+/// does not use the canonical Git-coordinate grammar.
+pub fn validate_workflow_source(
+    source: AutomationGitWorkflowSource,
+) -> Result<AutomationGitWorkflowSource, AutomationValidationError> {
+    source
+        .validate()
+        .map(fabro_types::ValidatedGitRunTarget::into_target)
+        .map_err(|source| AutomationValidationError::InvalidWorkflowSource { source })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -200,26 +226,29 @@ pub struct ScheduleTrigger {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AutomationDraft {
-    pub id:             AutomationId,
-    pub name:           String,
+    pub id:              AutomationId,
+    pub name:            String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description:    Option<String>,
+    pub description:     Option<String>,
     #[serde(default)]
-    pub environment_id: Option<String>,
-    pub target:         RunTarget,
-    pub workflow:       String,
-    pub triggers:       Vec<AutomationTrigger>,
+    pub environment_id:  Option<String>,
+    pub target:          RunTarget,
+    pub workflow:        String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_source: Option<AutomationGitWorkflowSource>,
+    pub triggers:        Vec<AutomationTrigger>,
 }
 
 impl From<AutomationDraft> for (AutomationId, AutomationReplace) {
     fn from(value: AutomationDraft) -> Self {
         (value.id, AutomationReplace {
-            name:           value.name,
-            description:    value.description,
-            environment_id: value.environment_id,
-            target:         value.target,
-            workflow:       value.workflow,
-            triggers:       value.triggers,
+            name:            value.name,
+            description:     value.description,
+            environment_id:  value.environment_id,
+            target:          value.target,
+            workflow:        value.workflow,
+            workflow_source: value.workflow_source,
+            triggers:        value.triggers,
         })
     }
 }
@@ -227,39 +256,44 @@ impl From<AutomationDraft> for (AutomationId, AutomationReplace) {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AutomationReplace {
-    pub name:           String,
+    pub name:            String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description:    Option<String>,
+    pub description:     Option<String>,
     #[serde(default)]
-    pub environment_id: Option<String>,
-    pub target:         RunTarget,
-    pub workflow:       String,
-    pub triggers:       Vec<AutomationTrigger>,
+    pub environment_id:  Option<String>,
+    pub target:          RunTarget,
+    pub workflow:        String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_source: Option<AutomationGitWorkflowSource>,
+    pub triggers:        Vec<AutomationTrigger>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PersistedAutomation {
-    name:           String,
+    name:            String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    description:    Option<String>,
+    description:     Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    environment_id: Option<String>,
-    target:         RunTarget,
-    workflow:       String,
+    environment_id:  Option<String>,
+    target:          RunTarget,
+    workflow:        String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    workflow_source: Option<AutomationGitWorkflowSource>,
     #[serde(default)]
-    triggers:       Vec<AutomationTrigger>,
+    triggers:        Vec<AutomationTrigger>,
 }
 
 impl From<AutomationReplace> for PersistedAutomation {
     fn from(value: AutomationReplace) -> Self {
         Self {
-            name:           value.name,
-            description:    value.description,
-            environment_id: value.environment_id,
-            target:         value.target,
-            workflow:       value.workflow,
-            triggers:       value.triggers,
+            name:            value.name,
+            description:     value.description,
+            environment_id:  value.environment_id,
+            target:          value.target,
+            workflow:        value.workflow,
+            workflow_source: value.workflow_source,
+            triggers:        value.triggers,
         }
     }
 }
@@ -267,12 +301,13 @@ impl From<AutomationReplace> for PersistedAutomation {
 impl From<PersistedAutomation> for AutomationReplace {
     fn from(value: PersistedAutomation) -> Self {
         Self {
-            name:           value.name,
-            description:    value.description,
-            environment_id: value.environment_id,
-            target:         value.target,
-            workflow:       value.workflow,
-            triggers:       value.triggers,
+            name:            value.name,
+            description:     value.description,
+            environment_id:  value.environment_id,
+            target:          value.target,
+            workflow:        value.workflow,
+            workflow_source: value.workflow_source,
+            triggers:        value.triggers,
         }
     }
 }
@@ -321,6 +356,10 @@ fn normalize_replace(
         .environment_id
         .map(|environment_id| environment_id.trim().to_string())
         .filter(|environment_id| !environment_id.is_empty());
+    value.workflow_source = value
+        .workflow_source
+        .map(validate_workflow_source)
+        .transpose()?;
     validate_fields(&value, require_environment)?;
 
     let api_enabled = value
@@ -431,11 +470,14 @@ fn validate_triggers(triggers: &[AutomationTrigger]) -> Result<(), AutomationVal
 
 #[cfg(test)]
 mod tests {
-    use fabro_types::{GitRunTarget, RunTarget, TargetValidationError};
+    use fabro_types::{
+        GitCoordinateValidationError, GitRunTarget, RunTarget, TargetValidationError,
+    };
 
     use crate::{
-        ApiTrigger, Automation, AutomationId, AutomationReplace, AutomationTrigger,
-        AutomationTriggerId, AutomationValidationError, ScheduleTrigger,
+        ApiTrigger, Automation, AutomationGitWorkflowSource, AutomationId, AutomationReplace,
+        AutomationStoreError, AutomationTrigger, AutomationTriggerId, AutomationValidationError,
+        ScheduleTrigger,
     };
 
     fn target() -> RunTarget {
@@ -464,6 +506,170 @@ mod tests {
             enabled,
             expression: cron.to_string(),
         })
+    }
+
+    fn workflow_source(
+        branch: &str,
+        tag: Option<&str>,
+        sha: Option<&str>,
+    ) -> AutomationGitWorkflowSource {
+        AutomationGitWorkflowSource {
+            repo:   "fabro-sh/workflows".to_string(),
+            branch: branch.to_string(),
+            tag:    tag.map(str::to_string),
+            sha:    sha.map(str::to_string),
+        }
+    }
+
+    fn replace_with_source(
+        workflow_source: Option<AutomationGitWorkflowSource>,
+    ) -> AutomationReplace {
+        AutomationReplace {
+            name: "Nightly".to_string(),
+            description: None,
+            environment_id: Some("default".to_string()),
+            target: target(),
+            workflow: "release".to_string(),
+            workflow_source,
+            triggers: vec![api_trigger("manual")],
+        }
+    }
+
+    #[test]
+    fn omitted_workflow_source_preserves_canonical_bytes_and_revision() {
+        let expected = concat!(
+            "name = \"Nightly\"\n",
+            "environment_id = \"default\"\n",
+            "workflow = \"release\"\n",
+            "\n",
+            "[target]\n",
+            "kind = \"git\"\n",
+            "repo = \"fabro-sh/fabro\"\n",
+            "branch = \"main\"\n",
+            "\n",
+            "[[triggers]]\n",
+            "type = \"api\"\n",
+            "id = \"manual\"\n",
+            "enabled = true\n",
+        );
+
+        let (automation, bytes) = Automation::from_replace(
+            AutomationId::new("nightly").unwrap(),
+            replace_with_source(None),
+        )
+        .unwrap();
+
+        assert_eq!(automation.workflow_source, None);
+        assert_eq!(bytes, expected.as_bytes());
+        assert_eq!(
+            automation.revision.as_str(),
+            "bc26bacc9ed091f4f171c8fdaf45cd319549a50b4291a5c93205028094abf385"
+        );
+
+        let decoded =
+            Automation::from_toml_bytes(AutomationId::new("nightly").unwrap(), expected.as_bytes())
+                .unwrap();
+        assert_eq!(decoded.workflow_source, None);
+        assert_eq!(
+            serde_json::to_value(decoded)
+                .unwrap()
+                .get("workflow_source"),
+            None
+        );
+    }
+
+    #[test]
+    fn workflow_sources_round_trip_and_shas_are_canonicalized() {
+        for (source, expected_sha) in [
+            (workflow_source("main", None, None), None),
+            (workflow_source("main", Some("release/v1"), None), None),
+            (
+                workflow_source(
+                    "context-only",
+                    Some("release/v1"),
+                    Some("ABCDEF0123456789ABCDEF0123456789ABCDEF01"),
+                ),
+                Some("abcdef0123456789abcdef0123456789abcdef01"),
+            ),
+        ] {
+            let (automation, bytes) = Automation::from_replace(
+                AutomationId::new("nightly").unwrap(),
+                replace_with_source(Some(source)),
+            )
+            .unwrap();
+
+            let source = automation.workflow_source.as_ref().unwrap();
+            assert_eq!(source.sha.as_deref(), expected_sha);
+            assert!(
+                String::from_utf8(bytes.clone())
+                    .unwrap()
+                    .contains("[workflow_source]")
+            );
+
+            let decoded =
+                Automation::from_toml_bytes(AutomationId::new("nightly").unwrap(), &bytes).unwrap();
+            assert_eq!(decoded.workflow_source, automation.workflow_source);
+        }
+    }
+
+    #[test]
+    fn explicit_workflow_source_changes_revision_and_is_never_collapsed() {
+        let (omitted, _) = Automation::from_replace(
+            AutomationId::new("nightly").unwrap(),
+            replace_with_source(None),
+        )
+        .unwrap();
+        let mut explicit_source = workflow_source("main", None, None);
+        explicit_source.repo = "FABRO-SH/FABRO".to_string();
+        let (explicit, _) = Automation::from_replace(
+            AutomationId::new("nightly").unwrap(),
+            replace_with_source(Some(explicit_source.clone())),
+        )
+        .unwrap();
+
+        assert_ne!(explicit.revision, omitted.revision);
+        assert_eq!(explicit.workflow_source, Some(explicit_source));
+    }
+
+    #[test]
+    fn workflow_source_validation_reports_the_invalid_coordinate_part() {
+        let cases = [
+            (
+                workflow_source("main", None, None),
+                GitCoordinateValidationError::Repository,
+            ),
+            (
+                workflow_source("refs/heads/main", None, None),
+                GitCoordinateValidationError::Branch,
+            ),
+            (
+                workflow_source("main", Some("tags/v1"), None),
+                GitCoordinateValidationError::Tag,
+            ),
+            (
+                workflow_source("main", None, Some("short")),
+                GitCoordinateValidationError::Sha,
+            ),
+        ];
+
+        for (mut source, expected) in cases {
+            if expected == GitCoordinateValidationError::Repository {
+                source.repo = "not/a/github/slug".to_string();
+            }
+            let error = Automation::from_replace(
+                AutomationId::new("nightly").unwrap(),
+                replace_with_source(Some(source)),
+            )
+            .unwrap_err();
+            let AutomationStoreError::Validation { source } = error else {
+                panic!("expected validation error");
+            };
+            assert!(matches!(
+                source,
+                AutomationValidationError::InvalidWorkflowSource { source }
+                    if source == expected
+            ));
+        }
     }
 
     #[test]
@@ -530,12 +736,13 @@ enabled = true
     fn enabled_schedule_triggers_returns_only_enabled_schedule_triggers() {
         let (automation, _) =
             Automation::from_replace(AutomationId::new("nightly").unwrap(), AutomationReplace {
-                name:           "Nightly".to_string(),
-                description:    None,
-                environment_id: Some("default".to_string()),
-                target:         target(),
-                workflow:       ".fabro/workflows/test/workflow.toml".to_string(),
-                triggers:       vec![
+                name:            "Nightly".to_string(),
+                description:     None,
+                environment_id:  Some("default".to_string()),
+                target:          target(),
+                workflow:        ".fabro/workflows/test/workflow.toml".to_string(),
+                workflow_source: None,
+                triggers:        vec![
                     api_trigger("manual"),
                     schedule_trigger_with_enabled("nightly", "0 0 * * *", true),
                     schedule_trigger_with_enabled("disabled", "0 1 * * *", false),
@@ -581,81 +788,89 @@ enabled = true
     fn validation_rejects_invalid_inputs() {
         let cases = [
             AutomationReplace {
-                name:           " ".to_string(),
-                description:    None,
-                environment_id: Some("default".to_string()),
-                target:         target(),
-                workflow:       "release".to_string(),
-                triggers:       vec![api_trigger("manual")],
+                name:            " ".to_string(),
+                description:     None,
+                environment_id:  Some("default".to_string()),
+                target:          target(),
+                workflow:        "release".to_string(),
+                workflow_source: None,
+                triggers:        vec![api_trigger("manual")],
             },
             AutomationReplace {
-                name:           "Bad repo".to_string(),
-                description:    None,
-                environment_id: Some("default".to_string()),
-                target:         RunTarget::Git(GitRunTarget {
+                name:            "Bad repo".to_string(),
+                description:     None,
+                environment_id:  Some("default".to_string()),
+                target:          RunTarget::Git(GitRunTarget {
                     repo:   "not/github/slug".to_string(),
                     branch: "main".to_string(),
                     tag:    None,
                     sha:    None,
                 }),
-                workflow:       "release".to_string(),
-                triggers:       vec![api_trigger("manual")],
+                workflow:        "release".to_string(),
+                workflow_source: None,
+                triggers:        vec![api_trigger("manual")],
             },
             AutomationReplace {
-                name:           "Bad ref".to_string(),
-                description:    None,
-                environment_id: Some("default".to_string()),
-                target:         RunTarget::Git(GitRunTarget {
+                name:            "Bad ref".to_string(),
+                description:     None,
+                environment_id:  Some("default".to_string()),
+                target:          RunTarget::Git(GitRunTarget {
                     repo:   "fabro-sh/fabro".to_string(),
                     branch: "main;rm".to_string(),
                     tag:    None,
                     sha:    None,
                 }),
-                workflow:       "release".to_string(),
-                triggers:       vec![api_trigger("manual")],
+                workflow:        "release".to_string(),
+                workflow_source: None,
+                triggers:        vec![api_trigger("manual")],
             },
             AutomationReplace {
-                name:           "Bad workflow".to_string(),
-                description:    None,
-                environment_id: Some("default".to_string()),
-                target:         target(),
-                workflow:       "../release".to_string(),
-                triggers:       vec![api_trigger("manual")],
+                name:            "Bad workflow".to_string(),
+                description:     None,
+                environment_id:  Some("default".to_string()),
+                target:          target(),
+                workflow:        "../release".to_string(),
+                workflow_source: None,
+                triggers:        vec![api_trigger("manual")],
             },
             AutomationReplace {
-                name:           "Duplicate trigger".to_string(),
-                description:    None,
-                environment_id: Some("default".to_string()),
-                target:         target(),
-                workflow:       "release".to_string(),
-                triggers:       vec![
+                name:            "Duplicate trigger".to_string(),
+                description:     None,
+                environment_id:  Some("default".to_string()),
+                target:          target(),
+                workflow:        "release".to_string(),
+                workflow_source: None,
+                triggers:        vec![
                     api_trigger("manual"),
                     schedule_trigger("manual", "0 0 * * *"),
                 ],
             },
             AutomationReplace {
-                name:           "Two API triggers".to_string(),
-                description:    None,
-                environment_id: Some("default".to_string()),
-                target:         target(),
-                workflow:       "release".to_string(),
-                triggers:       vec![api_trigger("one"), api_trigger("two")],
+                name:            "Two API triggers".to_string(),
+                description:     None,
+                environment_id:  Some("default".to_string()),
+                target:          target(),
+                workflow:        "release".to_string(),
+                workflow_source: None,
+                triggers:        vec![api_trigger("one"), api_trigger("two")],
             },
             AutomationReplace {
-                name:           "Six field cron".to_string(),
-                description:    None,
-                environment_id: Some("default".to_string()),
-                target:         target(),
-                workflow:       "release".to_string(),
-                triggers:       vec![schedule_trigger("nightly", "0 0 0 * * *")],
+                name:            "Six field cron".to_string(),
+                description:     None,
+                environment_id:  Some("default".to_string()),
+                target:          target(),
+                workflow:        "release".to_string(),
+                workflow_source: None,
+                triggers:        vec![schedule_trigger("nightly", "0 0 0 * * *")],
             },
             AutomationReplace {
-                name:           "Bad cron".to_string(),
-                description:    None,
-                environment_id: Some("default".to_string()),
-                target:         target(),
-                workflow:       "release".to_string(),
-                triggers:       vec![schedule_trigger("nightly", "99 0 * * *")],
+                name:            "Bad cron".to_string(),
+                description:     None,
+                environment_id:  Some("default".to_string()),
+                target:          target(),
+                workflow:        "release".to_string(),
+                workflow_source: None,
+                triggers:        vec![schedule_trigger("nightly", "99 0 * * *")],
             },
         ];
 

@@ -388,6 +388,41 @@ async fn automations_schema_enforces_aggregate_constraints() -> anyhow::Result<(
         .await
         .is_err()
     );
+    for (repository, branch, tag, sha) in [
+        (Some("fabro-sh/workflows"), None, None, None),
+        (None, Some("main"), None, None),
+        (None, None, Some("v1"), None),
+        (
+            Some("fabro-sh/workflows"),
+            Some("main"),
+            None,
+            Some("short"),
+        ),
+    ] {
+        let result = sqlx::query(
+            "UPDATE automations SET workflow_source_repository = ?, \
+             workflow_source_branch = ?, workflow_source_tag = ?, workflow_source_sha = ? \
+             WHERE id = 'valid'",
+        )
+        .bind(repository)
+        .bind(branch)
+        .bind(tag)
+        .bind(sha)
+        .execute(database.pool())
+        .await;
+        assert!(
+            result.is_err(),
+            "invalid workflow source row should be rejected"
+        );
+    }
+
+    sqlx::query(
+        "UPDATE automations SET workflow_source_repository = 'fabro-sh/workflows', \
+         workflow_source_branch = 'main', workflow_source_tag = 'v1', \
+         workflow_source_sha = '0123456789abcdef0123456789abcdef01234567' WHERE id = 'valid'",
+    )
+    .execute(database.pool())
+    .await?;
     assert!(
         sqlx::query(
             "INSERT INTO automation_triggers (automation_id, id, enabled, expression) \
@@ -428,6 +463,92 @@ async fn automations_schema_enforces_aggregate_constraints() -> anyhow::Result<(
             .await?;
     assert_eq!(trigger_count, 0);
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn automation_workflow_sources_migrate_without_rewriting_existing_rows() -> anyhow::Result<()>
+{
+    let dir = tempfile::tempdir()?;
+    let db_path = dir.path().join("fabro.sqlite3");
+    let database = fabro_db::Database::connect(&db_path).await?;
+    database.migrate().await?;
+    rewind_automation_workflow_source_migration(&database).await?;
+
+    insert_minimal_automation(database.pool(), "preserved", 1).await?;
+    sqlx::query(
+        "INSERT INTO automation_triggers (automation_id, id, enabled, expression) \
+         VALUES ('preserved', 'nightly', 1, '0 3 * * *')",
+    )
+    .execute(database.pool())
+    .await?;
+
+    database.migrate().await?;
+
+    let row = sqlx::query(
+        "SELECT id, revision, target_repository, target_branch, target_tag, target_sha, \
+         target_workflow, workflow_source_repository, workflow_source_branch, \
+         workflow_source_tag, workflow_source_sha \
+         FROM automations WHERE id = 'preserved'",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(row.get::<String, _>("id"), "preserved");
+    assert_eq!(row.get::<String, _>("revision"), "a".repeat(64));
+    assert_eq!(row.get::<String, _>("target_repository"), "fabro-sh/fabro");
+    assert_eq!(row.get::<String, _>("target_branch"), "main");
+    assert_eq!(row.get::<Option<String>, _>("target_tag"), None);
+    assert_eq!(row.get::<Option<String>, _>("target_sha"), None);
+    assert_eq!(row.get::<String, _>("target_workflow"), "release");
+    assert_eq!(
+        row.get::<Option<String>, _>("workflow_source_repository"),
+        None
+    );
+    assert_eq!(row.get::<Option<String>, _>("workflow_source_branch"), None);
+    assert_eq!(row.get::<Option<String>, _>("workflow_source_tag"), None);
+    assert_eq!(row.get::<Option<String>, _>("workflow_source_sha"), None);
+    let trigger_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM automation_triggers WHERE automation_id = 'preserved'",
+    )
+    .fetch_one(database.pool())
+    .await?;
+    assert_eq!(trigger_count, 1);
+    assert!(fabro_db::pre_migration_snapshot_path(&db_path).exists());
+
+    database.migrate().await?;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM automations WHERE id = 'preserved'")
+            .fetch_one(database.pool())
+            .await?,
+        1
+    );
+    Ok(())
+}
+
+async fn rewind_automation_workflow_source_migration(
+    database: &fabro_db::Database,
+) -> anyhow::Result<()> {
+    sqlx::query("DROP TRIGGER automation_workflow_source_all_or_none_update")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DROP TRIGGER automation_workflow_source_all_or_none_insert")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_sha")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_tag")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_branch")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("ALTER TABLE automations DROP COLUMN workflow_source_repository")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 2026082803")
+        .execute(database.pool())
+        .await?;
     Ok(())
 }
 
@@ -664,7 +785,7 @@ async fn runs_schema_creates_indexes_and_rejects_invalid_rows() -> anyhow::Resul
 }
 
 #[tokio::test]
-async fn run_events_schema_has_final_shape_constraints_and_indexes() -> anyhow::Result<()> {
+async fn session_owner_schema_has_final_shape_constraints_and_indexes() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let database = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
     database.migrate().await?;
@@ -726,6 +847,7 @@ async fn run_events_schema_has_final_shape_constraints_and_indexes() -> anyhow::
         })
         .collect::<Vec<_>>();
     assert_eq!(named_indexes, vec![
+        ("run_events_by_session_owner".to_string(), 1, 1),
         (
             "run_events_by_pull_request_creation_request".to_string(),
             0,
@@ -737,6 +859,7 @@ async fn run_events_schema_has_final_shape_constraints_and_indexes() -> anyhow::
     ]);
     assert!(indexes.iter().all(|index| {
         index.get::<i64, _>("unique") == 0
+            || index.get::<String, _>("name") == "run_events_by_session_owner"
             || index.get::<String, _>("name") == "sqlite_autoindex_run_events_1"
     }));
 
@@ -791,7 +914,8 @@ async fn run_events_schema_has_final_shape_constraints_and_indexes() -> anyhow::
 }
 
 #[tokio::test]
-async fn run_events_schema_query_plans_use_candidate_indexes() -> anyhow::Result<()> {
+async fn run_events_schema_query_plans_use_candidate_indexes_including_session_owner()
+-> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
     let database = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
     database.migrate().await?;
@@ -818,7 +942,11 @@ async fn run_events_schema_query_plans_use_candidate_indexes() -> anyhow::Result
             "run_events_by_session",
         ),
         (
-            "EXPLAIN QUERY PLAN SELECT * FROM run_events WHERE event_name = 'pull_request.creation_requested' ORDER BY run_id, seq",
+            "EXPLAIN QUERY PLAN SELECT run_id, seq, event_name, node_id, stage_id, session_id, event_json FROM run_events WHERE session_id = ? AND event_name = 'run.session.created'",
+            "run_events_by_session_owner",
+        ),
+        (
+            "EXPLAIN QUERY PLAN SELECT DISTINCT run_id FROM run_events WHERE event_name = 'pull_request.creation_requested'",
             "run_events_by_pull_request_creation_request",
         ),
     ] {
@@ -865,6 +993,99 @@ async fn run_events_schema_query_plans_use_candidate_indexes() -> anyhow::Result
         );
     }
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn session_owner_migration_preflight_is_count_only_retriable_and_idempotent()
+-> anyhow::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let database = fabro_db::Database::connect(dir.path().join("fabro.sqlite3")).await?;
+    database.migrate().await?;
+
+    sqlx::query("DROP INDEX IF EXISTS run_events_by_session_owner")
+        .execute(database.pool())
+        .await?;
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 2026083101")
+        .execute(database.pool())
+        .await?;
+
+    for run_id in ["first", "second", "third", "fourth"] {
+        insert_run_with_id(database.pool(), run_id, None).await?;
+    }
+    for (run_id, session_id) in [
+        ("first", "collision-alpha"),
+        ("second", "collision-alpha"),
+        ("third", "collision-beta"),
+        ("fourth", "collision-beta"),
+    ] {
+        insert_session_creation_claim(database.pool(), run_id, session_id).await?;
+    }
+
+    let error = database
+        .migrate()
+        .await
+        .expect_err("duplicate session owners must abort migration");
+    let rendered = format!("{error:#}");
+    assert!(rendered.contains("2 duplicate session ownership groups"));
+    assert!(!rendered.contains("collision-alpha"));
+    assert!(!rendered.contains("collision-beta"));
+    assert!(!rendered.contains("sensitive event contents"));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM run_events WHERE event_name = 'run.session.created'"
+        )
+        .fetch_one(database.pool())
+        .await?,
+        4
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'run_events_by_session_owner'"
+        )
+        .fetch_one(database.pool())
+        .await?,
+        0
+    );
+
+    sqlx::query("DELETE FROM run_events WHERE run_id IN ('second', 'fourth')")
+        .execute(database.pool())
+        .await?;
+    database.migrate().await?;
+    database.migrate().await?;
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'run_events_by_session_owner'"
+        )
+        .fetch_one(database.pool())
+        .await?,
+        1
+    );
+    Ok(())
+}
+
+async fn insert_session_creation_claim(
+    pool: &fabro_db::DbPool,
+    run_id: &str,
+    session_id: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r"
+INSERT INTO run_events (run_id, seq, event_name, session_id, event_json)
+VALUES (?, 1, 'run.session.created', ?, json_object(
+    'run_id', ?,
+    'event', 'run.session.created',
+    'session_id', ?,
+    'properties', json_object('note', 'sensitive event contents')
+))
+",
+    )
+    .bind(run_id)
+    .bind(session_id)
+    .bind(run_id)
+    .bind(session_id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

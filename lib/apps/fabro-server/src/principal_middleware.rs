@@ -605,8 +605,8 @@ async fn authorize_cross_run_worker_target(
         }
         let run = state
             .stores
-            .runs
-            .get_cached_summary(&current, Utc::now())
+            .run_summaries
+            .get(&current, Utc::now())
             .await
             .map_err(|err| {
                 ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()

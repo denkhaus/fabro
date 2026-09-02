@@ -201,12 +201,7 @@ async fn link_run_parent(
         }
     };
     let _parent_link_guard = state.parent_link_lock.lock().await;
-    let child = match state
-        .stores
-        .runs
-        .get_cached_summary(&child_id, Utc::now())
-        .await
-    {
+    let child = match state.stores.run_summaries.get(&child_id, Utc::now()).await {
         Ok(Some(summary)) => summary,
         Ok(None) => return ApiError::not_found("Run not found.").into_response(),
         Err(err) => {
@@ -252,12 +247,7 @@ async fn unlink_run_parent(
     State(state): State<Arc<AppState>>,
 ) -> Response {
     let _parent_link_guard = state.parent_link_lock.lock().await;
-    let child = match state
-        .stores
-        .runs
-        .get_cached_summary(&child_id, Utc::now())
-        .await
-    {
+    let child = match state.stores.run_summaries.get(&child_id, Utc::now()).await {
         Ok(Some(summary)) => summary,
         Ok(None) => return ApiError::not_found("Run not found.").into_response(),
         Err(err) => {
@@ -307,8 +297,8 @@ async fn validate_parent_link(
         }
         let summary = state
             .stores
-            .runs
-            .get_cached_summary(&current_id, Utc::now())
+            .run_summaries
+            .get(&current_id, Utc::now())
             .await
             .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
         let Some(summary) = summary else {
@@ -511,7 +501,7 @@ async fn update_run(
         Ok(title) => title,
         Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
     };
-    let current = match state.stores.runs.get_cached_summary(&id, Utc::now()).await {
+    let current = match state.stores.run_summaries.get(&id, Utc::now()).await {
         Ok(Some(summary)) => summary,
         Ok(None) => return ApiError::not_found("Run not found.").into_response(),
         Err(err) => {
@@ -544,7 +534,7 @@ async fn update_run(
         return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
     }
 
-    match state.stores.runs.get_cached_summary(&id, Utc::now()).await {
+    match state.stores.run_summaries.get(&id, Utc::now()).await {
         Ok(Some(summary)) => (
             StatusCode::OK,
             Json(state.decorate_run_summary(summary).await),
@@ -960,8 +950,8 @@ async fn finalize_created_run(
     let created_at = created.run_id.created_at();
     let summary = match state
         .stores
-        .runs
-        .get_cached_summary(&created.run_id, Utc::now())
+        .run_summaries
+        .get(&created.run_id, Utc::now())
         .await
     {
         Ok(Some(summary)) => summary,
@@ -1644,25 +1634,20 @@ async fn get_run_settings(
         Ok(id) => id,
         Err(response) => return response,
     };
-    let cached = match state.cached_run(&id).await {
-        Ok(cached) => cached,
+    let projection = match state.cached_run_projection(&id).await {
+        Ok(projection) => projection,
         Err(err) => return err.into_response(),
     };
-    (
-        StatusCode::OK,
-        Json(cached.projection.spec.settings.clone()),
-    )
-        .into_response()
+    (StatusCode::OK, Json(projection.spec.settings.clone())).into_response()
 }
 
 async fn get_questions(
     RequireRunManagementTarget(id, _actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    match state.cached_run(&id).await {
-        Ok(cached) => {
-            let questions = cached
-                .projection
+    match state.cached_run_projection(&id).await {
+        Ok(projection) => {
+            let questions = projection
                 .pending_interviews
                 .values()
                 .map(api_question_from_pending_interview)
@@ -1701,8 +1686,8 @@ async fn get_run_state(
     RequireRunManagementTarget(id, _actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    match state.cached_run(&id).await {
-        Ok(cached) => Json(&*cached.projection).into_response(),
+    match state.cached_run_projection(&id).await {
+        Ok(projection) => Json(&*projection).into_response(),
         Err(err) => err.into_response(),
     }
 }
@@ -1738,11 +1723,11 @@ async fn get_run_stage_context_window(
         Ok(stage_id) => stage_id,
         Err(response) => return response,
     };
-    let cached = match state.cached_run(&id).await {
-        Ok(cached) => cached,
+    let projection = match state.cached_run_projection(&id).await {
+        Ok(projection) => projection,
         Err(err) => return err.into_response(),
     };
-    let Some(stage) = cached.projection.stage(&stage_id) else {
+    let Some(stage) = projection.stage(&stage_id) else {
         return ApiError::not_found("Stage not found.").into_response();
     };
 
@@ -1794,11 +1779,11 @@ async fn get_run_stage_command_log(
         return ApiError::bad_request("limit must be greater than 0").into_response();
     }
     let limit = query.limit.min(MAX_COMMAND_LOG_LIMIT);
-    let cached = match state.cached_run(&id).await {
-        Ok(cached) => cached,
+    let projection = match state.cached_run_projection(&id).await {
+        Ok(projection) => projection,
         Err(err) => return err.into_response(),
     };
-    let Some(node) = cached.projection.stage(&stage_id) else {
+    let Some(node) = projection.stage(&stage_id) else {
         return ApiError::not_found("Stage not found.").into_response();
     };
 

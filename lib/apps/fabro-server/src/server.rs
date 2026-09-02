@@ -85,8 +85,8 @@ use fabro_slack::threads::ThreadRegistry;
 use fabro_slack::{blocks as slack_blocks, connection as slack_connection};
 use fabro_static::EnvVars;
 use fabro_store::{
-    ArtifactKey, ArtifactStore, AuthCodeStore, AuthSessionStore, CachedRunProjection, Database,
-    EventEnvelope, EventPayload, KeyedMutex, NodeArtifact, PendingInterviewRecord, RunSummaryStore,
+    ArtifactKey, ArtifactStore, AuthCodeStore, AuthSessionStore, Database, EventEnvelope,
+    EventPayload, KeyedMutex, NodeArtifact, PendingInterviewRecord, RunSummaryStore,
     StageArtifactEntry, StageId,
 };
 #[cfg(test)]
@@ -101,7 +101,7 @@ use fabro_types::{
     AgentBackend, AskFabro, AskFabroUnavailableReason, BlobHash, EventBody,
     InterviewQuestionRecord, PairId, PairMessageId, PairTarget, PendingReason, Principal,
     PullRequestLink, QuestionType, RunControlAction, RunEvent, RunId, RunRunnableSource,
-    SandboxProviderKind, ServerSettings, SessionCapability,
+    RunStatusKind, SandboxProviderKind, ServerSettings, SessionCapability,
 };
 use fabro_util::error::{
     SharedError, collect_causes, render_compact_with_causes, render_with_causes,
@@ -793,8 +793,8 @@ impl SlackService {
             return;
         }
         let event_name = event.body.event_name();
-        let projection = match state.stores.runs.get_cached_run(&event.run_id).await {
-            Ok(Some(cached)) => cached.projection,
+        let projection = match state.stores.runs.get_cached_projection(&event.run_id).await {
+            Ok(Some(projection)) => projection,
             Ok(None) => {
                 warn!(
                     run_id = %event.run_id,
@@ -1213,6 +1213,7 @@ pub struct AppState {
     scheduler_notify: Notify,
     automation_scheduler_notify: Notify,
     pull_request_scheduler_notify: Notify,
+    pull_request_creation_queue: Mutex<pull_request_supervisor::PendingPullRequestCreationQueue>,
     global_event_tx: broadcast::Sender<EventEnvelope>,
     /// Per-run coalescing registry for `GET /runs/{id}/files`. Concurrent
     /// callers for the same run share one materialization; different runs
@@ -1295,7 +1296,7 @@ impl AppState {
         let credentials = self
             .github_credentials(&settings.server.integrations.github)
             .await
-            .map_err(|source| RunMaterializeError::Credentials { source })?;
+            .map_err(|source| RunMaterializeError::LoadCredentials { source })?;
         ProductionAutomationRunMaterializer::new(
             credentials,
             self.github_api_base_url.clone(),
@@ -1600,17 +1601,6 @@ impl AppState {
     /// Current cached projection for `run_id`, with the standard HTTP error
     /// mapping: storage failures become 500s and a missing run becomes the
     /// canonical 404.
-    pub(crate) async fn cached_run(&self, run_id: &RunId) -> Result<CachedRunProjection, ApiError> {
-        self.stores
-            .runs
-            .get_cached_run(run_id)
-            .await
-            .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?
-            .ok_or_else(|| ApiError::not_found("Run not found."))
-    }
-
-    /// Like [`Self::cached_run`], but returns only the shared projection —
-    /// no run summary clone or children count under the cache mutex.
     pub(crate) async fn cached_run_projection(
         &self,
         run_id: &RunId,
@@ -2675,6 +2665,9 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         scheduler_notify: Notify::new(),
         automation_scheduler_notify: Notify::new(),
         pull_request_scheduler_notify: Notify::new(),
+        pull_request_creation_queue: Mutex::new(
+            pull_request_supervisor::PendingPullRequestCreationQueue::default(),
+        ),
         global_event_tx,
         files_in_flight: new_files_in_flight(),
         pull_request_create_locks: KeyedMutex::new(),
@@ -2735,7 +2728,7 @@ async fn delete_run_internal(
     };
     let had_managed_run = managed_run.is_some();
     let durable_status = if managed_run.is_some() {
-        load_durable_run_status(state, &id).await
+        durable_run_status(state, id).await.ok().flatten()
     } else {
         None
     };
@@ -2800,11 +2793,6 @@ async fn delete_run_internal(
         SandboxDeleteOutcome::Absent if had_managed_run => Ok(DeleteRunOutcome::Deleted),
         SandboxDeleteOutcome::Absent => Ok(DeleteRunOutcome::AlreadyAbsent),
     }
-}
-
-async fn load_durable_run_status(state: &AppState, id: &RunId) -> Option<RunStatus> {
-    let cached = state.cached_run(id).await.ok()?;
-    Some(cached.projection.status)
 }
 
 async fn delete_run_sandbox_resource(
@@ -2923,7 +2911,7 @@ async fn reject_active_delete_without_force(
         return Ok(());
     }
 
-    match state.stores.runs.runs().find(run_id).await {
+    match state.stores.run_summaries.get(run_id, Utc::now()).await {
         Ok(Some(summary)) if summary.lifecycle.status.requires_force_to_delete() => {
             Err(ApiError::new(
                 StatusCode::CONFLICT,
@@ -3176,32 +3164,24 @@ fn failure_for_incomplete_run(
     }
 }
 
-fn should_reconcile_run_on_startup(status: RunStatus) -> bool {
-    matches!(
-        status,
-        RunStatus::Starting
-            | RunStatus::Running
-            | RunStatus::Blocked { .. }
-            | RunStatus::Paused { .. }
-            | RunStatus::Removing
-    )
-}
-
 pub(crate) async fn reconcile_incomplete_runs_on_startup(
     state: &Arc<AppState>,
 ) -> anyhow::Result<usize> {
+    const RECONCILABLE_STATUSES: &[RunStatusKind] = &[
+        RunStatusKind::Starting,
+        RunStatusKind::Running,
+        RunStatusKind::Blocked,
+        RunStatusKind::Paused,
+        RunStatusKind::Removing,
+    ];
     let summaries = state
         .stores
-        .runs
-        .list_runs(&fabro_store::ListRunsQuery::default(), chrono::Utc::now())
+        .run_summaries
+        .list_by_statuses(RECONCILABLE_STATUSES, chrono::Utc::now())
         .await?;
     let mut reconciled = 0usize;
 
     for summary in summaries {
-        if !should_reconcile_run_on_startup(summary.lifecycle.status) {
-            continue;
-        }
-
         let run_store = state.stores.runs.open_run(&summary.id).await?;
         let (error, reason) = failure_for_incomplete_run(
             summary.lifecycle.pending_control,
@@ -3489,9 +3469,8 @@ async fn load_pending_control(
 ) -> anyhow::Result<Option<RunControlAction>> {
     Ok(state
         .stores
-        .runs
-        .runs()
-        .find(&run_id)
+        .run_summaries
+        .get(&run_id, Utc::now())
         .await?
         .and_then(|summary| summary.lifecycle.pending_control))
 }
@@ -3499,9 +3478,8 @@ async fn load_pending_control(
 async fn durable_run_status(state: &AppState, run_id: RunId) -> anyhow::Result<Option<RunStatus>> {
     Ok(state
         .stores
-        .runs
-        .runs()
-        .find(&run_id)
+        .run_summaries
+        .get(&run_id, Utc::now())
         .await?
         .map(|summary| summary.lifecycle.status))
 }
@@ -3861,11 +3839,11 @@ async fn load_pending_interview(
     run_id: RunId,
     qid: &str,
 ) -> Result<LoadedPendingInterview, Response> {
-    let cached = state
-        .cached_run(&run_id)
+    let projection = state
+        .cached_run_projection(&run_id)
         .await
         .map_err(IntoResponse::into_response)?;
-    let Some(record) = cached.projection.pending_interviews.get(qid) else {
+    let Some(record) = projection.pending_interviews.get(qid) else {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
             "Question no longer exists or was already answered.",
@@ -4671,8 +4649,8 @@ async fn append_control_request(
 /// run is currently archived. Returns `None` otherwise (including when the run
 /// doesn't exist — the caller's own not-found handling will surface that).
 async fn reject_if_archived(state: &AppState, run_id: &RunId) -> Option<Response> {
-    let cached = state.cached_run(run_id).await.ok()?;
-    cached.projection.archived_at.is_some().then(|| {
+    let projection = state.cached_run_projection(run_id).await.ok()?;
+    projection.archived_at.is_some().then(|| {
         ApiError::new(
             StatusCode::CONFLICT,
             operations::archived_rejection_message(run_id),

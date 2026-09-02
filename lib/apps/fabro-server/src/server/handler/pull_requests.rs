@@ -151,8 +151,8 @@ async fn load_pull_request_record(
     state: &Arc<AppState>,
     id: &RunId,
 ) -> Result<PullRequestLink, ApiError> {
-    let cached = state.cached_run(id).await?;
-    cached.projection.pull_request.clone().ok_or_else(|| {
+    let projection = state.cached_run_projection(id).await?;
+    projection.pull_request.clone().ok_or_else(|| {
         ApiError::with_code(
             StatusCode::NOT_FOUND,
             format!("No pull request found in store. Create one first with: fabro pr create {id}"),
@@ -401,6 +401,7 @@ async fn create_run_pull_request(
         )
         .into_response();
     };
+    state.enqueue_pull_request_creation(id, creation.requested_at);
     state.notify_pull_request_scheduler();
     accepted_pull_request_creation_response(&id, creation)
 }

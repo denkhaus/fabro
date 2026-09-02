@@ -6,8 +6,9 @@ use sqlx::sqlite::SqliteRow;
 use sqlx::{Row as _, Sqlite, Transaction};
 
 use crate::{
-    ApiTrigger, Automation, AutomationDraft, AutomationId, AutomationReplace, AutomationRevision,
-    AutomationStoreError, AutomationTrigger, AutomationTriggerId, ScheduleTrigger,
+    ApiTrigger, Automation, AutomationDraft, AutomationGitWorkflowSource, AutomationId,
+    AutomationReplace, AutomationRevision, AutomationStoreError, AutomationTrigger,
+    AutomationTriggerId, ScheduleTrigger,
 };
 
 /// Shared projection for loading automations with their schedule triggers.
@@ -28,6 +29,10 @@ macro_rules! select_automations_sql {
                 a.target_tag,
                 a.target_sha,
                 a.target_workflow,
+                a.workflow_source_repository,
+                a.workflow_source_branch,
+                a.workflow_source_tag,
+                a.workflow_source_sha,
                 t.id AS trigger_id,
                 t.enabled AS trigger_enabled,
                 t.expression AS trigger_expression
@@ -125,6 +130,7 @@ impl AutomationStore {
     ) -> Result<Automation, AutomationStoreError> {
         let (automation, _) = Automation::from_replace(id.clone(), draft)?;
         let target = stored_git_target(&automation);
+        let workflow_source = automation.workflow_source.as_ref();
         let mut transaction = self.pool.begin().await?;
         let result = sqlx::query(
             r"
@@ -139,7 +145,11 @@ impl AutomationStore {
                 target_branch = ?,
                 target_tag = ?,
                 target_sha = ?,
-                target_workflow = ?
+                target_workflow = ?,
+                workflow_source_repository = ?,
+                workflow_source_branch = ?,
+                workflow_source_tag = ?,
+                workflow_source_sha = ?
             WHERE id = ? AND revision = ?
             ",
         )
@@ -153,6 +163,10 @@ impl AutomationStore {
         .bind(target.tag.as_deref())
         .bind(target.sha.as_deref())
         .bind(&automation.workflow)
+        .bind(workflow_source.map(|source| source.repo.as_str()))
+        .bind(workflow_source.map(|source| source.branch.as_str()))
+        .bind(workflow_source.and_then(|source| source.tag.as_deref()))
+        .bind(workflow_source.and_then(|source| source.sha.as_deref()))
         .bind(id.as_str())
         .bind(expected.as_str())
         .execute(&mut *transaction)
@@ -199,6 +213,7 @@ struct StoredAutomation {
     api_enabled:       bool,
     target:            RunTarget,
     workflow:          String,
+    workflow_source:   Option<AutomationGitWorkflowSource>,
     schedule_triggers: Vec<ScheduleTrigger>,
 }
 
@@ -216,6 +231,7 @@ impl StoredAutomation {
                 id: id.clone(),
                 source,
             })?;
+        let workflow_source = stored_workflow_source(row, &id)?;
         Ok(Self {
             id,
             revision,
@@ -231,6 +247,7 @@ impl StoredAutomation {
                 sha:    row.try_get("target_sha")?,
             }),
             workflow: row.try_get("target_workflow")?,
+            workflow_source,
             schedule_triggers: Vec::new(),
         })
     }
@@ -279,6 +296,7 @@ impl StoredAutomation {
                 environment_id: self.environment_id,
                 target: self.target,
                 workflow: self.workflow,
+                workflow_source: self.workflow_source,
                 triggers,
             })
             .map_err(|source| AutomationStoreError::StoredValidation { id, source })?;
@@ -324,6 +342,7 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     automation: &Automation,
 ) -> Result<bool, AutomationStoreError> {
     let target = stored_git_target(automation);
+    let workflow_source = automation.workflow_source.as_ref();
     let result = sqlx::query(
         r"
         INSERT INTO automations (
@@ -337,8 +356,12 @@ pub(crate) async fn insert_automation_ignoring_conflict(
             target_branch,
             target_tag,
             target_sha,
-            target_workflow
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            target_workflow,
+            workflow_source_repository,
+            workflow_source_branch,
+            workflow_source_tag,
+            workflow_source_sha
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO NOTHING
         ",
     )
@@ -353,6 +376,10 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     .bind(target.tag.as_deref())
     .bind(target.sha.as_deref())
     .bind(&automation.workflow)
+    .bind(workflow_source.map(|source| source.repo.as_str()))
+    .bind(workflow_source.map(|source| source.branch.as_str()))
+    .bind(workflow_source.and_then(|source| source.tag.as_deref()))
+    .bind(workflow_source.and_then(|source| source.sha.as_deref()))
     .execute(&mut **transaction)
     .await?;
     if result.rows_affected() == 0 {
@@ -360,6 +387,26 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     }
     insert_schedule_triggers(transaction, automation).await?;
     Ok(true)
+}
+
+fn stored_workflow_source(
+    row: &SqliteRow,
+    id: &AutomationId,
+) -> Result<Option<AutomationGitWorkflowSource>, AutomationStoreError> {
+    let repository = row.try_get::<Option<String>, _>("workflow_source_repository")?;
+    let branch = row.try_get::<Option<String>, _>("workflow_source_branch")?;
+    let tag = row.try_get::<Option<String>, _>("workflow_source_tag")?;
+    let sha = row.try_get::<Option<String>, _>("workflow_source_sha")?;
+    match (repository, branch) {
+        (None, None) if tag.is_none() && sha.is_none() => Ok(None),
+        (Some(repo), Some(branch)) => Ok(Some(AutomationGitWorkflowSource {
+            repo,
+            branch,
+            tag,
+            sha,
+        })),
+        _ => Err(AutomationStoreError::StoredWorkflowSourceShape { id: id.clone() }),
+    }
 }
 
 fn stored_git_target(automation: &Automation) -> &GitRunTarget {

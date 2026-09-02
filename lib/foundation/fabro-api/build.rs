@@ -688,6 +688,11 @@ fn main() {
         ("SandboxTimestamps", "fabro_types::SandboxTimestamps", &[]),
         ("AskFabro", "fabro_types::AskFabro", &[]),
         ("Automation", "fabro_automation::Automation", &[]),
+        (
+            "AutomationGitWorkflowSource",
+            "fabro_types::GitRunTarget",
+            &[],
+        ),
         ("AutomationRef", "fabro_types::AutomationRef", &[]),
         (
             "AutomationTrigger",

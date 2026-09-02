@@ -8,7 +8,8 @@ use fabro_types::settings::InterpString;
 use fabro_types::settings::run::RunGoal;
 use fabro_types::test_support::{test_run_provenance, test_workflow_version_id};
 use fabro_types::{
-    AutomationRef, EventBody, GitRunTarget, RunTarget, TurnId, WorkflowSettings, fixtures,
+    AutomationRef, EventBody, GitRunTarget, ResolvedAutomationGitWorkflowSource, RunTarget, TurnId,
+    WorkflowSettings, fixtures,
 };
 
 fn templated_settings() -> WorkflowSettings {
@@ -35,9 +36,16 @@ fn run_created_props_round_trip_templated_settings() {
             sha:    None,
         })),
         automation:          Some(AutomationRef {
-            id:         "nightly".to_string(),
-            name:       Some("Nightly".to_string()),
-            trigger_id: Some("schedule_1".to_string()),
+            id:              "nightly".to_string(),
+            name:            Some("Nightly".to_string()),
+            trigger_id:      Some("schedule_1".to_string()),
+            workflow_source: Some(Box::new(ResolvedAutomationGitWorkflowSource {
+                repo:         "fabro-sh/workflows".to_string(),
+                branch:       "main".to_string(),
+                tag:          Some("v1".to_string()),
+                sha:          None,
+                resolved_sha: "0123456789abcdef0123456789abcdef01234567".to_string(),
+            })),
         }),
         provenance:          test_run_provenance(),
         manifest_blob:       None,
@@ -78,6 +86,12 @@ fn run_created_props_round_trip_templated_settings() {
     assert_eq!(json["parent_id"], fixtures::RUN_2.to_string());
     assert_eq!(json["automation"]["id"], "nightly");
     assert_eq!(json["automation"]["trigger_id"], "schedule_1");
+    assert_eq!(json["automation"]["workflow_source"]["branch"], "main");
+    assert_eq!(json["automation"]["workflow_source"]["tag"], "v1");
+    assert_eq!(
+        json["automation"]["workflow_source"]["resolved_sha"],
+        "0123456789abcdef0123456789abcdef01234567"
+    );
     assert_eq!(
         json["workflow_version_id"],
         test_workflow_version_id().to_string()

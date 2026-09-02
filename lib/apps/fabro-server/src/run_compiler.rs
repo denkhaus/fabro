@@ -1025,9 +1025,10 @@ include = ["reports/{{ vars.path }}/*.json"]
         let run_id = RunId::new();
         let parent_id = RunId::new();
         let automation = AutomationRef {
-            id:         "nightly".to_string(),
-            name:       Some("Nightly".to_string()),
-            trigger_id: Some("schedule".to_string()),
+            id:              "nightly".to_string(),
+            name:            Some("Nightly".to_string()),
+            trigger_id:      Some("schedule".to_string()),
+            workflow_source: None,
         };
         let submitted = b"submitted manifest".to_vec();
         let workflow_version_id = fabro_types::test_support::test_workflow_version_id();

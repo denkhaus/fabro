@@ -12,7 +12,7 @@ use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
 use sqlx::{Connection as _, QueryBuilder, Row as _, Sqlite, SqlitePool, Transaction};
 use strum::VariantArray as _;
 
-use crate::run_state::projected_billing;
+use crate::run_state::{build_summary, projected_billing};
 use crate::slate::CachedRunProjection;
 use crate::{Error, EventPayload, Result, keys};
 
@@ -348,14 +348,7 @@ ON CONFLICT(singleton) DO NOTHING
             .fetch_all(&self.pool)
             .await?
             .into_iter()
-            .map(|stored_id| {
-                stored_id
-                    .parse::<RunId>()
-                    .map_err(|_| Error::RunSummaryMismatch {
-                        run_id: stored_id,
-                        field:  "id",
-                    })
-            })
+            .map(parse_stored_run_id)
             .collect()
     }
 
@@ -441,6 +434,32 @@ ON CONFLICT(singleton) DO NOTHING
         .await
     }
 
+    pub(crate) async fn find_session_owner(&self, session_id: &SessionId) -> Result<Option<RunId>> {
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_EVENT_COLUMNS);
+        query
+            .push(" WHERE session_id = ")
+            .push_bind(session_id.to_string())
+            .push(" AND event_name = 'run.session.created'");
+        let row = query.build().fetch_optional(&self.pool).await?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+
+        let stored_run_id: String = row.try_get("run_id")?;
+        let run_id = stored_run_id
+            .parse::<RunId>()
+            .map_err(|_| Error::RunEventMismatch {
+                run_id: stored_run_id.clone(),
+                seq:    0,
+                field:  "run_id",
+            })?;
+        // The WHERE clause pins the row's session_id and event_name columns
+        // to the requested values, and decoding verifies the envelope against
+        // every stored column, so a successful decode proves ownership.
+        decode_event_row(&row, &run_id, &stored_run_id)?;
+        Ok(Some(run_id))
+    }
+
     pub(crate) async fn delete_canonical(&self, run_id: &RunId, deleted_at_ms: i64) -> Result<()> {
         // This transaction reads the activation marker before it writes the
         // tombstone and run deletion. A deferred SQLite transaction can fail
@@ -483,6 +502,61 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
         row.map(|row| decode_run_row(&row, now)).transpose()
     }
 
+    /// Every current run row, without the bounded HTTP-list visibility or
+    /// pagination semantics.
+    pub async fn list_all(&self, now: DateTime<Utc>) -> Result<Vec<Run>> {
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
+        push_order(
+            &mut query,
+            RunSummarySort::CreatedAt,
+            RunSummarySortDirection::Desc,
+            now,
+        );
+        let rows = query.build().fetch_all(&self.pool).await?;
+        decode_run_rows(&rows, now)
+    }
+
+    /// Every current run row whose durable status matches one of `statuses`.
+    pub async fn list_by_statuses(
+        &self,
+        statuses: &[RunStatusKind],
+        now: DateTime<Utc>,
+    ) -> Result<Vec<Run>> {
+        if statuses.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
+        query.push(" WHERE status IN (");
+        let mut separated = query.separated(", ");
+        for status in statuses {
+            separated.push_bind(status.to_string());
+        }
+        separated.push_unseparated(")");
+        push_order(
+            &mut query,
+            RunSummarySort::CreatedAt,
+            RunSummarySortDirection::Desc,
+            now,
+        );
+        let rows = query.build().fetch_all(&self.pool).await?;
+        decode_run_rows(&rows, now)
+    }
+
+    /// Run ids that have ever recorded an explicit pull request creation
+    /// request. Callers replay these candidate histories to determine whether
+    /// their latest request is still pending.
+    pub async fn list_pull_request_creation_candidate_run_ids(&self) -> Result<Vec<RunId>> {
+        sqlx::query_scalar::<_, String>(
+            "SELECT DISTINCT run_id FROM run_events \
+             WHERE event_name = 'pull_request.creation_requested'",
+        )
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(parse_stored_run_id)
+        .collect()
+    }
+
     /// Identity fields for every stored run, for selector resolution without
     /// decoding full summaries.
     pub async fn list_identities(&self) -> Result<Vec<RunSummaryIdentity>> {
@@ -498,12 +572,7 @@ FROM runs",
         rows.iter()
             .map(|row| {
                 let stored_id: String = row.try_get("id")?;
-                let id = stored_id
-                    .parse::<RunId>()
-                    .map_err(|_| Error::RunSummaryMismatch {
-                        run_id: stored_id,
-                        field:  "id",
-                    })?;
+                let id = parse_stored_run_id(stored_id)?;
                 Ok(RunSummaryIdentity {
                     id,
                     workflow_slug: row.try_get("workflow_slug")?,
@@ -538,10 +607,7 @@ FROM runs",
         let rows = rows_query.build().fetch_all(&mut *transaction).await?;
         transaction.commit().await?;
 
-        let data = rows
-            .iter()
-            .map(|row| decode_run_row(row, now))
-            .collect::<Result<Vec<_>>>()?;
+        let data = decode_run_rows(&rows, now)?;
         let total = u64::try_from(total).expect("COUNT(*) is non-negative");
         let consumed = u64::from(query.offset).saturating_add(data.len() as u64);
         Ok(RunSummaryPage {
@@ -922,7 +988,7 @@ struct PreparedRunSummary {
 
 impl PreparedRunSummary {
     fn from_entry(entry: &CachedRunProjection) -> Self {
-        let mut run = entry.summary.clone();
+        let mut run = build_summary(&entry.projection, &entry.run_id);
         if run.timing.is_none() {
             let at = run
                 .timestamps
@@ -1403,6 +1469,15 @@ fn push_order(
     builder.push(", id DESC");
 }
 
+fn parse_stored_run_id(stored_id: String) -> Result<RunId> {
+    stored_id
+        .parse::<RunId>()
+        .map_err(|_| Error::RunSummaryMismatch {
+            run_id: stored_id,
+            field:  "id",
+        })
+}
+
 fn decode_run_row(row: &SqliteRow, now: DateTime<Utc>) -> Result<Run> {
     let stored_id: String = row.try_get("id")?;
     let summary_json: String = row.try_get("summary_json")?;
@@ -1420,6 +1495,10 @@ fn decode_run_row(row: &SqliteRow, now: DateTime<Utc>) -> Result<Run> {
     })?;
     overlay_live_wall_time(&mut run, now);
     Ok(run)
+}
+
+fn decode_run_rows(rows: &[SqliteRow], now: DateTime<Utc>) -> Result<Vec<Run>> {
+    rows.iter().map(|row| decode_run_row(row, now)).collect()
 }
 
 fn overlay_live_wall_time(run: &mut Run, now: DateTime<Utc>) {
@@ -1445,9 +1524,9 @@ mod tests {
     use chrono::{DateTime, Utc};
     use fabro_types::{
         AutomationRef, BilledTokenCounts, BlockedReason, Conclusion, DiffSummary, EventEnvelope,
-        FailureReason, Graph, PendingReason, RunDiff, RunId, RunProjection, RunSize, RunSpec,
-        RunStatus, RunStatusKind, RunTiming, SessionId, StageId, StageOutcome, SuccessReason,
-        WorkflowSettings, test_support,
+        FailureReason, Graph, PendingReason, PullRequestCreationId, RunDiff, RunId, RunProjection,
+        RunSize, RunSpec, RunStatus, RunStatusKind, RunTiming, SessionId, StageId, StageOutcome,
+        SuccessReason, WorkflowSettings, test_support,
     };
     use strum::VariantArray as _;
     use tokio::time;
@@ -1548,6 +1627,17 @@ mod tests {
                 "labels": {},
                 "provenance": test_support::test_run_provenance(),
             }),
+        )
+    }
+
+    fn session_created_payload(run_id: &RunId, session_id: &SessionId) -> EventPayload {
+        sql_event_payload(
+            run_id,
+            "run.session.created",
+            None,
+            None,
+            Some(session_id),
+            serde_json::json!({ "title": "Owned session" }),
         )
     }
 
@@ -1820,6 +1910,122 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(sequences, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn session_owner_lookup_resolves_only_typed_creation_events() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 31);
+        store
+            .upsert_projection(&entry(projection(id, "owner", created_at), 3))
+            .await
+            .unwrap();
+
+        let owner_session = SessionId::new();
+        seed_sql_event(
+            &store,
+            &id,
+            2,
+            &session_created_payload(&id, &owner_session),
+        )
+        .await;
+        assert_eq!(
+            store.find_session_owner(&owner_session).await.unwrap(),
+            Some(id)
+        );
+
+        let non_owner_session = SessionId::new();
+        let non_creation = sql_event_payload(
+            &id,
+            "run.session.future",
+            None,
+            None,
+            Some(&non_owner_session),
+            serde_json::json!({ "kind": "future" }),
+        );
+        seed_sql_event(&store, &id, 3, &non_creation).await;
+        assert_eq!(
+            store.find_session_owner(&non_owner_session).await.unwrap(),
+            None
+        );
+        assert_eq!(
+            store.find_session_owner(&SessionId::new()).await.unwrap(),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn session_owner_lookup_rejects_corrupt_selected_events() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 32);
+        let other_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 33);
+        store
+            .upsert_projection(&entry(projection(id, "owner", created_at), 2))
+            .await
+            .unwrap();
+        let session_id = SessionId::new();
+        let payload = session_created_payload(&id, &session_id);
+        seed_sql_event(&store, &id, 2, &payload).await;
+
+        let mut wrong_event_name = payload.as_value().clone();
+        wrong_event_name["event"] = "run.session.future".into();
+        sqlx::query("UPDATE run_events SET event_json = ? WHERE run_id = ? AND seq = 2")
+            .bind(serde_json::to_string(&wrong_event_name).unwrap())
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        assert!(matches!(
+            store.find_session_owner(&session_id).await.unwrap_err(),
+            Error::RunEventMismatch {
+                field: "event_name",
+                ..
+            }
+        ));
+
+        seed_sql_event_restore(&store, &id, 2, &payload).await;
+        let mut wrong_run = payload.as_value().clone();
+        wrong_run["run_id"] = other_id.to_string().into();
+        sqlx::query("UPDATE run_events SET event_json = ? WHERE run_id = ? AND seq = 2")
+            .bind(serde_json::to_string(&wrong_run).unwrap())
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        assert!(matches!(
+            store.find_session_owner(&session_id).await.unwrap_err(),
+            Error::RunEventMismatch {
+                field: "run_id",
+                ..
+            }
+        ));
+
+        seed_sql_event_restore(&store, &id, 2, &payload).await;
+        let mut wrong_session = payload.as_value().clone();
+        wrong_session["session_id"] = SessionId::new().to_string().into();
+        sqlx::query("UPDATE run_events SET event_json = ? WHERE run_id = ? AND seq = 2")
+            .bind(serde_json::to_string(&wrong_session).unwrap())
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        assert!(matches!(
+            store.find_session_owner(&session_id).await.unwrap_err(),
+            Error::RunEventMismatch {
+                field: "session_id",
+                ..
+            }
+        ));
+
+        seed_sql_event_restore(&store, &id, 2, &payload).await;
+        sqlx::query("UPDATE run_events SET event_json = '{}' WHERE run_id = ? AND seq = 2")
+            .bind(id.to_string())
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        assert!(store.find_session_owner(&session_id).await.is_err());
     }
 
     #[tokio::test]
@@ -2143,9 +2349,10 @@ mod tests {
     async fn list_filters_by_workflow_slug_and_created_since() {
         let (_directory, store) = store().await;
         let created_at = dt("2026-07-11T12:00:00Z");
+        let later_created_at = created_at + chrono::Duration::hours(1);
         let develop_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
         let audit_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 2);
-        let later_develop_id = run_id(created_at.timestamp_millis().cast_unsigned() + 2, 3);
+        let later_develop_id = RunId::with_timestamp(later_created_at, 3);
 
         let mut develop = projection(develop_id, "develop old", created_at);
         develop.spec.workflow_slug = Some("develop".to_string());
@@ -2153,13 +2360,12 @@ mod tests {
         audit.spec.workflow_slug = Some("audit".to_string());
         let mut later_develop = projection(later_develop_id, "develop new", created_at);
         later_develop.spec.workflow_slug = Some("develop".to_string());
-        let later_created_at = created_at + chrono::Duration::hours(1);
-        let mut later_entry = entry(later_develop, 1);
-        later_entry.summary.timestamps.created_at = later_created_at;
-        for projected in [develop, audit] {
+        // CachedRunProjection carries the projection (not a summary), and the
+        // SQL created_at_ms column derives from run_id.created_at() — so the
+        // later timestamp must be encoded in the run ID itself.
+        for projected in [develop, audit, later_develop] {
             store.upsert_projection(&entry(projected, 1)).await.unwrap();
         }
-        store.upsert_projection(&later_entry).await.unwrap();
 
         let page = store
             .list(
@@ -2247,15 +2453,17 @@ mod tests {
 
         let mut first = projection(first_id, "bravo", created_at);
         first.spec.automation = Some(AutomationRef {
-            id:         "nightly".to_string(),
-            name:       None,
-            trigger_id: None,
+            id:              "nightly".to_string(),
+            name:            None,
+            trigger_id:      None,
+            workflow_source: None,
         });
         let mut second = projection(second_id, "alpha", created_at);
         second.spec.automation = Some(AutomationRef {
-            id:         "nightly".to_string(),
-            name:       None,
-            trigger_id: None,
+            id:              "nightly".to_string(),
+            name:            None,
+            trigger_id:      None,
+            workflow_source: None,
         });
         let mut archived = projection(archived_id, "charlie", created_at);
         archived.archived_at = Some(created_at);
@@ -2298,15 +2506,185 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_all_is_unbounded_complete_and_newest_first() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-07-11T12:00:00Z");
+        let parent_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
+        let child_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 2);
+        let archived_id = run_id(created_at.timestamp_millis().cast_unsigned() + 2, 3);
+        let removing_id = run_id(created_at.timestamp_millis().cast_unsigned() + 3, 4);
+        let tied_low_id = run_id(created_at.timestamp_millis().cast_unsigned() + 4, 5);
+        let tied_high_id = run_id(created_at.timestamp_millis().cast_unsigned() + 4, 6);
+
+        let mut projections = vec![projection(parent_id, "parent", created_at)];
+        let mut child = projection(
+            child_id,
+            "child",
+            created_at + chrono::Duration::milliseconds(1),
+        );
+        child.parent_id = Some(parent_id);
+        projections.push(child);
+        let mut archived = projection(
+            archived_id,
+            "archived",
+            created_at + chrono::Duration::milliseconds(2),
+        );
+        archived.archived_at = Some(created_at + chrono::Duration::milliseconds(2));
+        projections.push(archived);
+        let mut removing = projection(
+            removing_id,
+            "removing",
+            created_at + chrono::Duration::milliseconds(3),
+        );
+        removing.status = RunStatus::Removing;
+        projections.push(removing);
+        projections.push(projection(
+            tied_low_id,
+            "tied-low",
+            created_at + chrono::Duration::milliseconds(4),
+        ));
+        projections.push(projection(
+            tied_high_id,
+            "tied-high",
+            created_at + chrono::Duration::milliseconds(4),
+        ));
+        for index in 0_u64..101 {
+            let timestamp_ms = created_at.timestamp_millis().cast_unsigned() + 10 + index;
+            projections.push(projection(
+                run_id(timestamp_ms, u128::from(index) + 10),
+                "bulk",
+                DateTime::from_timestamp_millis(timestamp_ms.cast_signed()).unwrap(),
+            ));
+        }
+
+        let mut expected_ids = Vec::new();
+        for projected in projections {
+            expected_ids.push(projected.spec.run_id);
+            store.upsert_projection(&entry(projected, 1)).await.unwrap();
+        }
+        expected_ids.sort_by(|left, right| {
+            right
+                .created_at()
+                .cmp(&left.created_at())
+                .then_with(|| right.cmp(left))
+        });
+
+        let listed = store.list_all(created_at).await.unwrap();
+        assert_eq!(listed.len(), 107);
+        assert_eq!(
+            listed.iter().map(|run| run.id).collect::<Vec<_>>(),
+            expected_ids
+        );
+        assert!(listed.iter().any(|run| run.id == archived_id));
+        assert!(listed.iter().any(|run| run.id == removing_id));
+        assert_eq!(
+            listed
+                .iter()
+                .find(|run| run.id == parent_id)
+                .unwrap()
+                .children_count,
+            1
+        );
+        let tied = listed
+            .iter()
+            .filter(|run| run.id == tied_low_id || run.id == tied_high_id)
+            .map(|run| run.id)
+            .collect::<Vec<_>>();
+        assert_eq!(tied, vec![tied_high_id, tied_low_id]);
+    }
+
+    #[tokio::test]
+    async fn list_by_statuses_is_exact_and_empty_is_empty() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-07-11T12:00:00Z");
+        for (index, kind) in RunStatusKind::VARIANTS.iter().enumerate() {
+            let id = run_id(
+                created_at.timestamp_millis().cast_unsigned() + u64::try_from(index).unwrap(),
+                u128::try_from(index).unwrap() + 1,
+            );
+            let mut projected = projection(id, &kind.to_string(), id.created_at());
+            projected.status = sample_status(*kind);
+            store.upsert_projection(&entry(projected, 1)).await.unwrap();
+        }
+
+        let startup_statuses = [
+            RunStatusKind::Starting,
+            RunStatusKind::Running,
+            RunStatusKind::Blocked,
+            RunStatusKind::Paused,
+            RunStatusKind::Removing,
+        ];
+        let listed = store
+            .list_by_statuses(&startup_statuses, created_at)
+            .await
+            .unwrap();
+        assert_eq!(
+            listed
+                .iter()
+                .map(|run| run.lifecycle.status.kind())
+                .collect::<std::collections::HashSet<_>>(),
+            startup_statuses.into_iter().collect()
+        );
+        assert_eq!(listed.len(), startup_statuses.len());
+        assert!(
+            store
+                .list_by_statuses(&[], created_at)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn pull_request_creation_candidates_are_distinct_and_indexed_by_event_name() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let first_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
+        let second_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 2);
+        let unrelated_id = run_id(created_at.timestamp_millis().cast_unsigned() + 2, 3);
+        for id in [first_id, second_id, unrelated_id] {
+            store
+                .upsert_projection(&entry(projection(id, "candidate", id.created_at()), 3))
+                .await
+                .unwrap();
+        }
+        for (run_id, seq) in [(first_id, 2), (first_id, 3), (second_id, 2)] {
+            let request = sql_event_payload(
+                &run_id,
+                "pull_request.creation_requested",
+                None,
+                None,
+                None,
+                serde_json::json!({
+                    "creation_id": PullRequestCreationId::new(),
+                    "model": "test-model",
+                    "force": false,
+                }),
+            );
+            seed_sql_event(&store, &run_id, seq, &request).await;
+        }
+
+        let mut candidates = store
+            .list_pull_request_creation_candidate_run_ids()
+            .await
+            .unwrap();
+        candidates.sort_unstable();
+        let mut expected = vec![first_id, second_id];
+        expected.sort_unstable();
+        assert_eq!(candidates, expected);
+    }
+
+    #[tokio::test]
     async fn projection_persists_billing_diff_and_derived_size() {
         let (_directory, store) = store().await;
         let created_at = dt("2026-07-11T12:00:00Z");
         let run_id = run_id(created_at.timestamp_millis().cast_unsigned(), 1);
         let mut projection = projection(run_id, "billed", created_at);
         projection.spec.automation = Some(AutomationRef {
-            id:         "nightly".to_string(),
-            name:       None,
-            trigger_id: None,
+            id:              "nightly".to_string(),
+            name:            None,
+            trigger_id:      None,
+            workflow_source: None,
         });
         projection.status = RunStatus::Succeeded {
             reason: SuccessReason::Completed,

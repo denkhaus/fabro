@@ -82,27 +82,23 @@ fn load_run_checkpoint(run_dir: &Path) -> Result<Checkpoint, Box<dyn std::error:
                 let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()?;
-                let run_id =
-                    if uses_shared_store {
-                        run_dir
-                            .file_name()
-                            .ok_or("run dir should have file name")?
-                            .to_string_lossy()
-                            .rsplit('-')
-                            .next()
-                            .ok_or("run dir should contain run id suffix")?
-                            .parse()?
-                    } else {
-                        runtime
-                            .block_on(store.list_runs(
-                                &fabro_store::ListRunsQuery::default(),
-                                chrono::Utc::now(),
-                            ))?
-                            .into_iter()
-                            .next()
-                            .ok_or("test store should contain one run")?
-                            .id
-                    };
+                let run_id = if uses_shared_store {
+                    run_dir
+                        .file_name()
+                        .ok_or("run dir should have file name")?
+                        .to_string_lossy()
+                        .rsplit('-')
+                        .next()
+                        .ok_or("run dir should contain run id suffix")?
+                        .parse()?
+                } else {
+                    runtime
+                        .block_on(store.run_summary_store().list_all(chrono::Utc::now()))?
+                        .into_iter()
+                        .next()
+                        .ok_or("test store should contain one run")?
+                        .id
+                };
                 let run = runtime.block_on(store.open_run_reader(&run_id))?;
                 let state = runtime.block_on(async {
                     for attempt in 0..20 {
@@ -135,9 +131,7 @@ fn load_run_checkpoint(run_dir: &Path) -> Result<Checkpoint, Box<dyn std::error:
                 .parse()?
         } else {
             runtime
-                .block_on(
-                    store.list_runs(&fabro_store::ListRunsQuery::default(), chrono::Utc::now()),
-                )?
+                .block_on(store.run_summary_store().list_all(chrono::Utc::now()))?
                 .into_iter()
                 .next()
                 .ok_or("test store should contain one run")?
@@ -1198,7 +1192,7 @@ async fn daytona_clone_public_repo_gets_credentials() {
 
     // Directly test resolve_clone_credentials against a repo in an org where the
     // app is installed
-    let (username, password) = fabro_github::resolve_clone_credentials(
+    let credentials = fabro_github::resolve_clone_credentials(
         &fabro_github::GitHubContext::new(&creds, &fabro_github::github_api_base_url()),
         "fabro-sh",
         "fabro",
@@ -1207,12 +1201,12 @@ async fn daytona_clone_public_repo_gets_credentials() {
     .unwrap();
 
     assert_eq!(
-        username.as_deref(),
-        Some("x-access-token"),
+        credentials.username(),
+        "x-access-token",
         "installed org repo should get credentials for pushing"
     );
     assert!(
-        password.is_some(),
+        !credentials.password().is_empty(),
         "installed org repo should get a token for pushing"
     );
 }

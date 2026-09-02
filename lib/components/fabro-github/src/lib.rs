@@ -9,6 +9,8 @@ use fabro_types::settings::run::MergeStrategy;
 use serde::Deserialize;
 use tokio::process::Command;
 
+use crate::token_source::SecretString;
+
 pub mod access;
 pub mod token_source;
 
@@ -1353,42 +1355,119 @@ pub async fn update_app_webhook_config(
     Ok(())
 }
 
-/// Resolve git clone credentials for a GitHub repository.
+/// Required credentials for an authenticated GitHub HTTPS clone.
 ///
-/// Returns `(username, password)` for authenticated cloning and pushing.
-/// Always generates a token regardless of repo visibility, since the token
-/// is needed for pushing from the sandbox.
+/// The password is redacted from `Debug` output and should only be exposed at
+/// the point where it is passed to Git.
+#[derive(Clone, Debug)]
+pub struct GitCloneCredentials {
+    username: String,
+    password: SecretString,
+}
+
+impl GitCloneCredentials {
+    fn from_token(token: String) -> anyhow::Result<Self> {
+        if token.is_empty() {
+            bail!("GitHub clone credential token is empty");
+        }
+        Ok(Self {
+            username: "x-access-token".to_string(),
+            password: SecretString::new(token),
+        })
+    }
+
+    /// The username passed to Git's HTTPS basic authentication.
+    #[must_use]
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+
+    /// The secret passed to Git's HTTPS basic authentication.
+    ///
+    /// Callers must not log or persist the returned value.
+    #[must_use]
+    pub fn password(&self) -> &str {
+        self.password.expose()
+    }
+}
+
+/// Resolve Git clone credentials for a GitHub repository.
+///
+/// Always generates credentials regardless of repository visibility because
+/// the token is needed for pushing from the sandbox.
+///
+/// # Errors
+///
+/// Returns an error when an installation token is expired, a GitHub App token
+/// cannot be minted, the HTTP client cannot be created, or the resolved token
+/// is empty.
 pub async fn resolve_clone_credentials(
     ctx: &GitHubContext<'_>,
     owner: &str,
     repo: &str,
-) -> anyhow::Result<(Option<String>, Option<String>)> {
+) -> anyhow::Result<GitCloneCredentials> {
     let token = match ctx.creds {
         GitHubCredentials::Pat(token) => token.clone(),
         GitHubCredentials::Installation(token) => token.valid_token()?.to_string(),
         GitHubCredentials::App(_) => {
             let client = ctx.http_client()?;
-            mint_git_contents_write_token(&client, ctx, owner, repo).await?
+            mint_git_token(
+                &client,
+                ctx,
+                owner,
+                repo,
+                serde_json::json!({ "contents": "write" }),
+            )
+            .await?
         }
     };
-    Ok((Some("x-access-token".to_string()), Some(token)))
+    GitCloneCredentials::from_token(token)
 }
 
-/// Mint an installation token scoped to repository contents writes.
-async fn mint_git_contents_write_token(
+/// Resolve credentials for fetching repository contents without granting a
+/// GitHub App token permission to push.
+///
+/// Static PATs and pre-minted installation tokens retain their configured
+/// permissions. App credentials mint a repository-scoped token with
+/// `contents: read`.
+///
+/// # Errors
+///
+/// Returns an error when an installation token is expired, a GitHub App token
+/// cannot be minted, the HTTP client cannot be created, or the resolved token
+/// is empty.
+pub async fn resolve_read_only_clone_credentials(
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+) -> anyhow::Result<GitCloneCredentials> {
+    let token = match ctx.creds {
+        GitHubCredentials::Pat(token) => token.clone(),
+        GitHubCredentials::Installation(token) => token.valid_token()?.to_string(),
+        GitHubCredentials::App(_) => {
+            let client = ctx.http_client()?;
+            mint_git_token(
+                &client,
+                ctx,
+                owner,
+                repo,
+                serde_json::json!({ "contents": "read" }),
+            )
+            .await?
+        }
+    };
+    GitCloneCredentials::from_token(token)
+}
+
+async fn mint_git_token(
     client: &impl HttpClient,
     ctx: &GitHubContext<'_>,
     owner: &str,
     repo: &str,
+    permissions: serde_json::Value,
 ) -> anyhow::Result<String> {
     ctx.creds
-        .resolve_bearer_token(
-            client,
-            owner,
-            repo,
-            ctx.base_url,
-            serde_json::json!({ "contents": "write" }),
-        )
+        .resolve_bearer_token(client, owner, repo, ctx.base_url, permissions)
         .await
 }
 
@@ -1417,11 +1496,8 @@ pub async fn resolve_authenticated_url(
     url: &str,
 ) -> anyhow::Result<DisplaySafeUrl> {
     let (owner, repo) = parse_github_owner_repo(url)?;
-    let (_username, password) = resolve_clone_credentials(ctx, &owner, &repo).await?;
-    match password {
-        Some(token) => embed_token_in_url(url, &token),
-        None => DisplaySafeUrl::parse(url).context("Failed to parse GitHub HTTPS URL"),
-    }
+    let credentials = resolve_clone_credentials(ctx, &owner, &repo).await?;
+    embed_token_in_url(url, credentials.password())
 }
 
 /// Fetch detailed information about a pull request.
@@ -2758,13 +2834,22 @@ mod tests {
                 .await
                 .unwrap();
 
-        assert_eq!(
-            credentials,
-            (
-                Some("x-access-token".to_string()),
-                Some("ghu_test".to_string())
-            )
-        );
+        assert_eq!(credentials.username(), "x-access-token");
+        assert_eq!(credentials.password(), "ghu_test");
+        assert!(!format!("{credentials:?}").contains("ghu_test"));
+    }
+
+    #[tokio::test]
+    async fn resolve_read_only_clone_credentials_returns_static_token_unchanged() {
+        let creds = GitHubCredentials::Pat("ghu_test".to_string());
+
+        let credentials =
+            resolve_read_only_clone_credentials(&GitHubContext::new(&creds, ""), "owner", "repo")
+                .await
+                .unwrap();
+
+        assert_eq!(credentials.username(), "x-access-token");
+        assert_eq!(credentials.password(), "ghu_test");
     }
 
     #[tokio::test]
@@ -2789,9 +2874,50 @@ mod tests {
             slug:            None,
         });
         let context = GitHubContext::new(&credentials, "");
-        let token = mint_git_contents_write_token(&mock, &context, "owner", "repo")
-            .await
-            .unwrap();
+        let token = mint_git_token(
+            &mock,
+            &context,
+            "owner",
+            "repo",
+            serde_json::json!({ "contents": "write" }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(token, "ghs_xxx");
+    }
+
+    #[tokio::test]
+    async fn read_only_clone_token_requests_only_contents_read() {
+        let mock = MockHttpClient::new()
+            .on(
+                HttpMethod::Get,
+                "/repos/owner/repo/installation",
+                200,
+                r#"{"id": 123}"#,
+            )
+            .on(
+                HttpMethod::Post,
+                "/app/installations/123/access_tokens",
+                201,
+                r#"{"token": "ghs_xxx", "expires_at": "2099-01-01T00:00:00Z"}"#,
+            )
+            .with_req_body(r#"{"permissions":{"contents":"read"},"repositories":["repo"]}"#);
+        let credentials = GitHubCredentials::App(GitHubAppCredentials {
+            app_id:          "test".to_string(),
+            private_key_pem: test_rsa_key().to_string(),
+            slug:            None,
+        });
+        let context = GitHubContext::new(&credentials, "");
+        let token = mint_git_token(
+            &mock,
+            &context,
+            "owner",
+            "repo",
+            serde_json::json!({ "contents": "read" }),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(token, "ghs_xxx");
     }

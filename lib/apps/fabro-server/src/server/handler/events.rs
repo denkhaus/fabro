@@ -218,9 +218,9 @@ async fn append_run_event(
     if event.run_id != id {
         return ApiError::bad_request("Event run_id does not match path run ID.").into_response();
     }
-    if let Some(denied) = denied_lifecycle_event_name(&event.body) {
+    if let Some(denied) = denied_dedicated_operation_event_name(&event.body) {
         return ApiError::bad_request(format!(
-            "{denied} is a lifecycle event; clients must call the corresponding operation endpoint instead of injecting it via append_run_event"
+            "{denied} must be performed through its dedicated operation endpoint instead of injecting it via append_run_event"
         ))
         .into_response();
     }
@@ -576,7 +576,7 @@ async fn attach_run_events(
 /// (e.g. "archive only from terminal") that a direct event append would
 /// bypass. Other run-lifecycle events flow through this endpoint legitimately:
 /// the worker subprocess emits state transitions during execution.
-fn denied_lifecycle_event_name(body: &EventBody) -> Option<&str> {
+fn denied_dedicated_operation_event_name(body: &EventBody) -> Option<&str> {
     match body {
         EventBody::RunArchived(_)
         | EventBody::RunUnarchived(_)
@@ -585,7 +585,8 @@ fn denied_lifecycle_event_name(body: &EventBody) -> Option<&str> {
         | EventBody::RunPauseRequested(_)
         | EventBody::RunUnpauseRequested(_)
         | EventBody::PullRequestLinked(_)
-        | EventBody::PullRequestUnlinked(_) => Some(body.event_name()),
+        | EventBody::PullRequestUnlinked(_)
+        | EventBody::RunSessionCreated(_) => Some(body.event_name()),
         _ => None,
     }
 }

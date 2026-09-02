@@ -15,6 +15,9 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
+import type { AutomationGitWorkflowSource } from './automation-git-workflow-source';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { AutomationTrigger } from './automation-trigger';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -32,8 +35,9 @@ export interface ReplaceAutomationRequest {
     'environment_id': string;
     'target': RunTarget;
     /**
-     * Workflow slug or path resolved in the selected repository checkout.
+     * Workflow slug or path resolved in the run-target checkout when `workflow_source` is omitted, or in the explicit workflow-source checkout when present.
      */
     'workflow': string;
+    'workflow_source'?: AutomationGitWorkflowSource;
     'triggers': Array<AutomationTrigger>;
 }

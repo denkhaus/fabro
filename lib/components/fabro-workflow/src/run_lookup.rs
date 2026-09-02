@@ -234,7 +234,8 @@ fn scan_orphan_runs(base: &Path) -> Result<Vec<RunInfo>> {
 
 pub async fn scan_runs_combined(store: &Database, base: &Path) -> Result<Vec<RunInfo>> {
     let store_runs = store
-        .list_runs(&fabro_store::ListRunsQuery::default(), Utc::now())
+        .run_summary_store()
+        .list_all(Utc::now())
         .await
         .unwrap_or_default();
     scan_runs_with_summaries(&store_runs, base)
