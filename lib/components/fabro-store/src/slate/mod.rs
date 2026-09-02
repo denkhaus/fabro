@@ -8,7 +8,6 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use fabro_types::{RunId, SessionId};
 use object_store::ObjectStore;
-pub(crate) use run_store::ProjectedRun;
 pub use run_store::RunDatabase;
 use run_store::RunDatabaseInner;
 use slatedb::config::{CompressionCodec, Settings};
@@ -129,7 +128,7 @@ impl Database {
     ) -> Result<RunDatabase> {
         let (mut active_runs, run_store) = self.reserve_new_run(run_id).await?;
         let (envelope, projected) = run_store.commit_first_event(payload).await?;
-        run_store.install_in_memory_state(&projected);
+        run_store.install_in_memory_state(projected);
         Self::cache_active_run(&mut active_runs, &run_store);
         run_store.publish(&envelope);
         Ok(run_store)
@@ -186,18 +185,12 @@ impl Database {
         let run_ids = self.run_summary_store.list_run_ids().await?;
         let mut unreadable = Vec::new();
         for run_id in run_ids {
-            match self.run_summary_store.load_projection(&run_id).await {
-                Ok(Some(_)) => {}
-                Ok(None) => unreadable.push(UnreadableRun {
-                    run_id,
-                    created_at: run_id.created_at(),
-                    error: "run has no events".to_string(),
-                }),
-                Err(err) => unreadable.push(UnreadableRun {
+            if let Err(err) = self.run_summary_store.load_projection(&run_id).await {
+                unreadable.push(UnreadableRun {
                     run_id,
                     created_at: run_id.created_at(),
                     error: err.to_string(),
-                }),
+                });
             }
         }
         unreadable.sort_by(|left, right| {
@@ -243,11 +236,11 @@ impl Database {
         if let Some(active) = self.get_active_run(run_id).await {
             return active.projection_snapshot().await.map(Some);
         }
-        Ok(self
-            .run_summary_store
-            .load_projection(run_id)
-            .await?
-            .map(|projected| projected.projection))
+        match self.run_summary_store.load_projection(run_id).await {
+            Ok(projected) => Ok(Some(projected.projection)),
+            Err(Error::RunNotFound(_)) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     /// Resolves the run that owns `session_id` from the canonical typed
@@ -332,6 +325,7 @@ mod tests {
     use object_store::path::Path;
 
     use super::*;
+    use crate::run_state::ProjectedRun;
     use crate::{EventPayload, keys, test_support as store_test_support};
 
     fn dt(value: &str) -> DateTime<Utc> {
@@ -1025,11 +1019,7 @@ mod tests {
 
         let projection = store.load_run_projection(&run_id).await.unwrap().unwrap();
         let last_seq = run.last_event_seq().await.unwrap().unwrap();
-        let entries = [ProjectedRun::new(
-            run_id,
-            Arc::unwrap_or_clone(projection),
-            last_seq,
-        )];
+        let entries = [ProjectedRun::new(run_id, projection, last_seq)];
         summaries.reconcile(&entries).await.unwrap();
         let summary = summaries.get(&run_id, Utc::now()).await.unwrap().unwrap();
         assert_eq!(summary.lifecycle.status, RunStatus::Runnable);

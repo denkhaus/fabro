@@ -6,7 +6,7 @@ use futures::Stream;
 use tokio::sync::{Mutex as AsyncMutex, broadcast, mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-use crate::run_state::{EventProjectionCache, RunProjectionReducer};
+use crate::run_state::{EventProjectionCache, ProjectedRun, RunProjectionReducer};
 use crate::{
     BlobStore, Error, EventEnvelope, EventPayload, Result, RunProjection, RunSummaryStore, StageId,
     run_summary_store,
@@ -15,35 +15,6 @@ use crate::{
 /// Broadcast capacity for live event subscribers; a lagging subscriber refills
 /// from SQLite.
 const EVENT_BROADCAST_CAPACITY: usize = 1024;
-
-/// A run's projection as of its last committed event. Produced by replaying
-/// SQLite history or by applying a newly committed event, and consumed by
-/// `RunSummaryStore` writes that must stay in step with the event log.
-#[derive(Debug, Clone)]
-pub(crate) struct ProjectedRun {
-    pub(crate) run_id:     RunId,
-    pub(crate) projection: Arc<RunProjection>,
-    pub(crate) last_seq:   u32,
-}
-
-impl ProjectedRun {
-    pub(crate) fn new(run_id: RunId, projection: RunProjection, last_seq: u32) -> Self {
-        Self {
-            run_id,
-            projection: Arc::new(projection),
-            last_seq,
-        }
-    }
-}
-
-impl From<ProjectedRun> for EventProjectionCache {
-    fn from(projected: ProjectedRun) -> Self {
-        Self {
-            last_seq: projected.last_seq,
-            state:    Some(projected.projection),
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct RunDatabase {
@@ -85,10 +56,7 @@ impl RunDatabase {
         blob_store: Arc<BlobStore>,
         run_summary_store: Arc<RunSummaryStore>,
     ) -> Result<Self> {
-        let projected = run_summary_store
-            .load_projection(&run_id)
-            .await?
-            .ok_or_else(|| Error::RunNotFound(run_id.to_string()))?;
+        let projected = run_summary_store.load_projection(&run_id).await?;
         Ok(Self::from_event_projection_cache(
             run_id,
             read_only,
@@ -177,10 +145,8 @@ impl RunDatabase {
             })
     }
 
-    pub(crate) fn install_in_memory_state(&self, projected: &ProjectedRun) {
-        let mut projection_cache = self.inner.lock_projection_cache();
-        projection_cache.state = Some(Arc::clone(&projected.projection));
-        projection_cache.last_seq = projected.last_seq;
+    pub(crate) fn install_in_memory_state(&self, projected: ProjectedRun) {
+        *self.inner.lock_projection_cache() = projected.into();
     }
 
     pub(crate) fn publish(&self, event: &EventEnvelope) {
@@ -254,7 +220,7 @@ impl RunDatabase {
         let (envelope, projected) = self.commit_event_locked(payload, event).await?;
         // Keep post-commit propagation await-free: cancellation after SQLite
         // commits must not leave in-memory state stale or omit the broadcast.
-        self.install_in_memory_state(&projected);
+        self.install_in_memory_state(projected);
         self.publish(&envelope);
         Ok(envelope)
     }
@@ -273,11 +239,7 @@ impl RunDatabase {
         apply_cached_projection_event(&mut next_state, &prospective).map_err(event_rejected)?;
         let next_projection =
             next_state.expect("applying a valid event should always produce a projection");
-        let projected = ProjectedRun::new(
-            self.inner.run_id,
-            Arc::unwrap_or_clone(next_projection),
-            seq,
-        );
+        let projected = ProjectedRun::new(self.inner.run_id, next_projection, seq);
 
         let mut transaction = self.inner.run_summary_store.begin().await?;
         let envelope = if expected_last_seq == 0 {

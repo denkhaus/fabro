@@ -3,8 +3,8 @@ use std::sync::LazyLock;
 
 use chrono::{DateTime, Utc};
 use fabro_types::{
-    BilledTokenCounts, EventEnvelope, Run, RunEvent, RunId, RunProjection, RunSize, RunStatusKind,
-    RunTiming, SessionId, StageId, timing,
+    BilledTokenCounts, EventEnvelope, Run, RunEvent, RunId, RunSize, RunStatusKind, RunTiming,
+    SessionId, StageId, timing,
 };
 use sqlx::pool::PoolConnection;
 use sqlx::query::Query;
@@ -12,8 +12,7 @@ use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
 use sqlx::{Connection as _, QueryBuilder, Row as _, Sqlite, SqlitePool, Transaction};
 use strum::VariantArray as _;
 
-use crate::run_state::{RunProjectionReducer, build_summary, projected_billing};
-use crate::slate::ProjectedRun;
+use crate::run_state::{ProjectedRun, build_summary, projected_billing};
 use crate::{Error, EventPayload, Result, keys};
 
 const INSERT_RUN_SQL: &str = r"
@@ -351,20 +350,11 @@ ON CONFLICT(singleton) DO NOTHING
         select_run_head(&mut connection, run_id).await
     }
 
-    /// Replays one run's canonical history from one validated SQLite snapshot,
-    /// returning `None` when the run does not exist.
-    pub(crate) async fn load_projection(&self, run_id: &RunId) -> Result<Option<ProjectedRun>> {
-        let events = match self.list_events_for_run(run_id).await {
-            Ok(events) => events,
-            Err(Error::RunNotFound(_)) => return Ok(None),
-            Err(error) => return Err(error),
-        };
-        let last_seq = events
-            .last()
-            .map(|event| event.seq)
-            .ok_or_else(|| Error::InvalidEvent(format!("run {run_id} has no run.created event")))?;
-        let projection = RunProjection::apply_events(&events)?;
-        Ok(Some(ProjectedRun::new(*run_id, projection, last_seq)))
+    /// Replays one run's canonical history from one validated SQLite snapshot.
+    /// Fails with `RunNotFound` when the run does not exist.
+    pub(crate) async fn load_projection(&self, run_id: &RunId) -> Result<ProjectedRun> {
+        let events = self.list_events_for_run(run_id).await?;
+        ProjectedRun::replay(*run_id, &events)
     }
 
     pub(crate) async fn list_events_for_run(&self, run_id: &RunId) -> Result<Vec<EventEnvelope>> {
@@ -1543,6 +1533,7 @@ fn overlay_live_wall_time(run: &mut Run, now: DateTime<Utc>) {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::sync::Arc;
     use std::time::Duration;
 
     use chrono::{DateTime, Utc};
@@ -1560,7 +1551,7 @@ mod tests {
         INSERT_EVENT_SQL, RunSummaryListQuery, RunSummarySort, RunSummarySortDirection,
         RunSummaryStore, RunSummaryVisibility, decode_event_row,
     };
-    use crate::slate::ProjectedRun;
+    use crate::run_state::ProjectedRun;
     use crate::{Error, EventPayload, RunProjectionReducer, test_support as store_test_support};
 
     fn dt(value: &str) -> DateTime<Utc> {
@@ -1597,7 +1588,7 @@ mod tests {
     }
 
     fn entry(projection: RunProjection, last_seq: u32) -> ProjectedRun {
-        ProjectedRun::new(projection.spec.run_id, projection, last_seq)
+        ProjectedRun::new(projection.spec.run_id, Arc::new(projection), last_seq)
     }
 
     async fn store() -> (tempfile::TempDir, RunSummaryStore) {
@@ -1976,7 +1967,7 @@ mod tests {
 
         let expected = RunProjection::apply_events(&[first_envelope, second_envelope]).unwrap();
 
-        let loaded = store.load_projection(&id).await.unwrap().unwrap();
+        let loaded = store.load_projection(&id).await.unwrap();
         assert_eq!(loaded.run_id, id);
         assert_eq!(loaded.last_seq, 2);
         assert_eq!(
@@ -1985,43 +1976,37 @@ mod tests {
         );
 
         let missing = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 32);
-        assert!(store.load_projection(&missing).await.unwrap().is_none());
+        assert!(matches!(
+            store.load_projection(&missing).await,
+            Err(Error::RunNotFound(text)) if text == missing.to_string()
+        ));
     }
 
     #[tokio::test]
-    async fn load_projection_reports_removed_events_without_poisoning_following_reads() {
+    async fn load_projection_reports_removed_events() {
         let (_directory, store) = store().await;
         let created_at = dt("2026-08-27T12:00:00Z");
-        let broken_id = run_id(created_at.timestamp_millis().cast_unsigned(), 33);
-        let healthy_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 34);
-
-        for id in [broken_id, healthy_id] {
-            let current = entry(projection(id, "created", created_at), 1);
-            let mut transaction = store.pool.begin().await.unwrap();
-            RunSummaryStore::insert_first_event_on_connection(
-                &mut transaction,
-                &current,
-                &created_payload(&id),
-            )
-            .await
-            .unwrap();
-            transaction.commit().await.unwrap();
-        }
-        store.test_delete_run_events(&broken_id).await.unwrap();
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 33);
+        let current = entry(projection(id, "created", created_at), 1);
+        let mut transaction = store.pool.begin().await.unwrap();
+        RunSummaryStore::insert_first_event_on_connection(
+            &mut transaction,
+            &current,
+            &created_payload(&id),
+        )
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+        store.test_delete_run_events(&id).await.unwrap();
 
         assert!(matches!(
-            store.load_projection(&broken_id).await,
+            store.load_projection(&id).await,
             Err(Error::RunHeadMismatch {
                 expected_last_seq: 1,
                 actual_last_seq: None,
                 ..
             })
         ));
-
-        let loaded = store.load_projection(&healthy_id).await.unwrap().unwrap();
-        assert_eq!(loaded.run_id, healthy_id);
-        assert_eq!(loaded.last_seq, 1);
-        assert_eq!(loaded.projection.title, "created");
     }
 
     #[tokio::test]
