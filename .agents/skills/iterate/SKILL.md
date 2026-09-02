@@ -71,6 +71,12 @@ decision, not an accident - it needs the user plus an ADR.
   workflow (`just run <workflow> ...`); quality gates run inside the run.
 - ADR-0008: change graph, prompts, scripts, and settings as ONE unit
   in the same change.
+- Inserting an item BEFORE a struct via an anchor on the struct's own
+  line detaches the struct's derive/attribute block onto the NEW item
+  (fabro-09ea, 2026-09-02: the enum landed between `#[derive(...)]` and
+  `pub struct Automation` — duplicate-impl and missing-derive errors).
+  When the anchor is an item's declaration line, check the lines ABOVE
+  the anchor belong to it, and include or explicitly re-attach them.
 - Apply file edits as single-flow assert->write cells (fabro-8d30a,
   2026-09-02): a Python edit cell whose write_text sits in an early-exit
   branch silently drops the edit — the OpenAPI path block and a struct
