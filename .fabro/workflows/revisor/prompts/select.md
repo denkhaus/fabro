@@ -8,10 +8,13 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 ## Selection procedure
 
-1. Call `fabro_runs_list` with `{"workflow": "develop"}`. The result lists runs with id, status, created/started/completed timestamps, and goal. Terminal statuses (succeeded, failed, or any terminal classification) qualify; a run that is still running, waiting, or scheduled does NOT — skip it. Derive the wall time from started_at..completed_at when both are present; otherwise "unknown".
-2. A run is ALREADY REVISED when a marker file `.fabro/revisions/<run-id>.md` exists in the worktree (list the directory with your file tools; markers arrive merged from previous revisor passes).
-3. Among unrevised terminal runs, pick the OLDEST by creation time — evidence ages fastest, and oldest-first keeps the marker set growing monotonically.
-4. Exactly ONE run per pass. Do not batch.
+1. Call `fabro_runs_list` with `{"workflow": "develop"}`. The result lists runs with id, status, created/started/completed timestamps, goal, and `sandbox_available`. Terminal statuses (succeeded, failed, or any terminal classification) qualify; a run that is still running, waiting, or scheduled does NOT — skip it. Derive the wall time from started_at..completed_at when both are present; otherwise "unknown".
+2. HARD PRECONDITION — sandbox (fabro-8d30a): only a run with `sandbox_available == true` is selectable. `false` (sandbox removed) and ABSENT (no live view) both disqualify — never select, never ask anyway "to try". Count disqualified runs for the journal observation; they stay unrevised until the engine provisions fresh analyst sandboxes.
+3. A run is ALREADY REVISED when a marker file `.fabro/revisions/<run-id>.md` exists in the worktree (list the directory with your file tools; markers arrive merged from previous revisor passes).
+4. Among unrevised terminal runs WITH a live sandbox, pick the OLDEST by creation time — evidence ages fastest, and oldest-first keeps the marker set growing monotonically.
+5. Exactly ONE run per pass. Do not batch.
+
+If runs remain unrevised but NONE is selectable (all lack a live sandbox), route "Nothing to revise" and say so explicitly in the observation — "N runs blocked, no live sandbox" — so the backlog stays visible instead of silently shrinking.
 
 ## Hygiene — hard rule
 
