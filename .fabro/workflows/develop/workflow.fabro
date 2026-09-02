@@ -121,13 +121,16 @@ digraph Develop {
         max_retries=1
     ]
 
-    // Reviewer: AGENT node — read-only BY POLICY, not by capability.
+    // Reviewer: AGENT node — read-only by capability (empty fs_write,
+    // fabro-1dae) and policy (the prompt line governs the shell escape
+    // hatch).
     // Run 01M0SS23MJ measured shape=tab (prompt handler): tool_time_ms 0
     // on both visits while the prompt promised tools — blob-ref'd evidence
     // and seed spec were UNREADABLE, and reviewer@1 rejected green work as
     // "verification could not be completed". As an agent node the tools
     // exist: reading blob refs, read-only git, re-running the gate are
-    // real fallbacks; modification stays forbidden by policy.
+    // real fallbacks; modification stays denied (capability for file
+    // tools, policy for shell).
     //
     // fidelity="summary:high" is the evidence pipe: the default `compact`
     // preamble truncates a command node's output to roughly the first 300

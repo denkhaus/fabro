@@ -96,15 +96,26 @@ def check-go-build []: nothing -> bool {
     true
 }
 
-# a9bb step 2 — deterministic run-scope rule: run diffs must not touch
-# the workflow assets (.fabro/workflows/). Platform work happens via
-# platform-namespace PRs, never run merge-backs. Journal
-# (.fabro/journal/) and tracker (.seeds/) writes are legitimate
-# run-branch content and deliberately stay out of the rule.
 def current-branch []: nothing -> string {
     git branch --show-current | str trim
 }
 
+# One candidate world ref -> its merge-base with HEAD, or '' when the ref
+# does not resolve. External failures must not abort the script: `do -i`
+# does NOT swallow non-zero external exits on Nu 0.115, so status goes
+# through `complete` like the sibling checks (standards review 2026-09-02).
+def world-merge-base [ref: string]: nothing -> string {
+    let res = (do { git merge-base HEAD $ref } | complete)
+    if $res.exit_code == 0 { $res.stdout | str trim } else { '' }
+}
+
+# a9bb step 2 — deterministic run-scope rule: run diffs must not touch
+# the workflow assets (.fabro/workflows/). Platform work happens via
+# platform-namespace PRs, never run merge-backs. Journal
+# (.fabro/journal/) and tracker (.seeds/) writes are legitimate
+# run-branch content and deliberately stay out of the rule. FAILS
+# CLOSED: a run branch whose world base cannot be resolved is red, not
+# silently skipped — the a9bb posture is deterministic gates.
 def check-run-scope []: nothing -> bool {
     print "== run scope (workflow assets untouchable from runs) =="
     let branch = (current-branch)
@@ -112,31 +123,46 @@ def check-run-scope []: nothing -> bool {
         print $"skip: '($branch)' is not a run branch"
         return true
     }
-    # The world the run was cut from. Run workspaces carry the local
-    # world branch plus its origin ref (verified in a real run sandbox);
-    # prefer the local branch — it names exactly the commit the run
-    # started from.
+    # Candidate worlds: every non-run LOCAL branch first (run workspaces
+    # keep the local world branch the run was cut from), then origin
+    # remotes. The world is deliberately NOT hardcoded — any world branch
+    # works, like sync-check derives its counterpart dynamically.
+    let worlds = (
+        [(git for-each-ref --format='%(refname:short)' refs/heads/ | lines | compact
+            | where {|b| not ($b | str starts-with "fabro/run/")})
+          (git for-each-ref --format='%(refname:short)' refs/remotes/ | lines | compact)]
+        | flatten
+        | uniq
+    )
     let bases = (
-        ["denkhaus-lab" "origin/denkhaus-lab"]
-        | each {|ref| do -i { git merge-base HEAD $ref } | default '' | str trim }
-        | compact
+        $worlds
+        | each {|w| {ref: $w, base: (world-merge-base $w)}}
+        | where {|r| $r.base != ''}
     )
     if ($bases | is-empty) {
-        print "skip: no world-branch merge base resolvable in this workspace"
-        return true
+        print "no world base resolvable — cannot verify run scope (fails closed, a9bb step 2)"
+        return false
     }
-    let base = ($bases | first)
+    # Newest merge-base wins: the world the run actually started from.
+    let base = (
+        $bases
+        | each {|r| $r | merge {ts: (git log -1 --format=%cI $r.base | str trim)}}
+        | sort-by ts
+        | last
+        | get base
+    )
     # base -> working tree (staged + unstaged) is the real run diff;
     # untracked files need git status (git diff cannot see them).
     let touched = (
         [(git diff --name-only $base -- .fabro/workflows/ | lines | compact)
-         (git status --porcelain -- .fabro/workflows/ | lines | compact | each {|l| $l | str substring 3..})]
+         (git status --porcelain -- .fabro/workflows/ | lines | compact
+            | each {|line| $line | str substring 3..})]
         | flatten
         | uniq
     )
     if ($touched | is-not-empty) {
         print "run diff touches workflow assets — platform work belongs in platform-namespace PRs (a9bb step 2):"
-        $touched | each {|p| print $"  ($p)"}
+        $touched | each {|path| print $"  ($path)"}
         return false
     }
     let short = ($base | str substring 0..7)
