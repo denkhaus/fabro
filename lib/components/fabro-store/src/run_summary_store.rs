@@ -545,6 +545,36 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
     /// Run ids that have ever recorded an explicit pull request creation
     /// request. Callers replay these candidate histories to determine whether
     /// their latest request is still pending.
+    /// Newest non-terminal run created by the given automation, if any
+    /// (fabro-09ea overlap guard). Terminal statuses are exactly the
+    /// immutable kinds: succeeded, failed, dead.
+    pub async fn active_run_for_automation(&self, automation_id: &str) -> Result<Option<RunId>> {
+        let stored: Option<String> = sqlx::query_scalar(
+            r"
+SELECT id
+FROM runs
+WHERE automation_id = ?
+  AND status NOT IN ('succeeded', 'failed', 'dead')
+ORDER BY created_at_ms DESC
+LIMIT 1
+",
+        )
+        .bind(automation_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        stored
+            .map(|stored| {
+                stored
+                    .parse::<RunId>()
+                    .map_err(|_| Error::RunEventMismatch {
+                        run_id: stored,
+                        seq:    0,
+                        field:  "run_id",
+                    })
+            })
+            .transpose()
+    }
+
     pub async fn list_pull_request_creation_candidate_run_ids(&self) -> Result<Vec<RunId>> {
         sqlx::query_scalar::<_, String>(
             "SELECT DISTINCT run_id FROM run_events \

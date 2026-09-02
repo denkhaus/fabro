@@ -112,3 +112,17 @@ The boundary is pinned by
 `run_tool_worker_cross_run_routes_require_inspects_scope` plus the pair
 boundary tests; `require_run_management_actor` (no-target routes such as
 create) is unchanged.
+
+## Amendment (2026-09-02): gates wait indefinitely; overlap prevention replaces timeouts
+
+User decision: the approval gate has NO default timeout — a human gate may
+wait indefinitely, including on unattended (cron) runs. The existing
+per-node `timeout` attribute remains the case-by-case opt-in for gates
+that genuinely need a deadline (timeout then routes fail-closed through
+the explicit `outcome=failed` edge; `human.default_choice` exists for
+designated defaults). Unattended pile-up is prevented NOT by timeouts but
+by the automation overlap policy (fabro-09ea): `on_overlap = "skip"`
+suppresses a scheduled fire while a previous run of the same automation
+is non-terminal — a gate-blocked revisor run therefore holds the slot
+until a human answers, and the next tick resumes afterwards. The revisor
+cron configuration will set `on_overlap = "skip"`.

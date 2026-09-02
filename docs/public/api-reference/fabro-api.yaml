@@ -6920,6 +6920,15 @@ components:
           example: dependency-update
         workflow_source:
           $ref: "#/components/schemas/AutomationGitWorkflowSource"
+        on_overlap:
+          type: string
+          enum: [fire, skip]
+          description: >-
+            Overlap policy for scheduled fires (fabro-09ea). `skip`
+            suppresses a scheduled fire while a previous run of this
+            automation is still non-terminal (running, queued, or blocked at
+            a gate that may wait indefinitely); the next tick retries.
+            Omitted or `fire` keeps the default behavior.
         triggers:
           type: array
           items:
@@ -7020,6 +7029,15 @@ components:
           example: dependency-update
         workflow_source:
           $ref: "#/components/schemas/AutomationGitWorkflowSource"
+        on_overlap:
+          type: string
+          enum: [fire, skip]
+          description: >-
+            Overlap policy for scheduled fires (fabro-09ea). `skip`
+            suppresses a scheduled fire while a previous run of this
+            automation is still non-terminal (running, queued, or blocked at
+            a gate that may wait indefinitely); the next tick retries.
+            Omitted or `fire` keeps the default behavior.
         triggers:
           type: array
           items:
@@ -7057,6 +7075,15 @@ components:
           example: dependency-update
         workflow_source:
           $ref: "#/components/schemas/AutomationGitWorkflowSource"
+        on_overlap:
+          type: string
+          enum: [fire, skip]
+          description: >-
+            Overlap policy for scheduled fires (fabro-09ea). `skip`
+            suppresses a scheduled fire while a previous run of this
+            automation is still non-terminal (running, queued, or blocked at
+            a gate that may wait indefinitely); the next tick retries.
+            Omitted or `fire` keeps the default behavior.
         triggers:
           type: array
           items:

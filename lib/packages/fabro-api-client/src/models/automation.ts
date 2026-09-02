@@ -48,5 +48,16 @@ export interface Automation {
      */
     'workflow': string;
     'workflow_source'?: AutomationGitWorkflowSource;
+    /**
+     * Overlap policy for scheduled fires (fabro-09ea). `skip` suppresses a scheduled fire while a previous run of this automation is still non-terminal (running, queued, or blocked at a gate that may wait indefinitely); the next tick retries. Omitted or `fire` keeps the default behavior.
+     */
+    'on_overlap'?: AutomationOnOverlapEnum;
     'triggers': Array<AutomationTrigger>;
 }
+
+export const AutomationOnOverlapEnum = {
+    FIRE: 'fire',
+    SKIP: 'skip'
+} as const;
+
+export type AutomationOnOverlapEnum = typeof AutomationOnOverlapEnum[keyof typeof AutomationOnOverlapEnum];

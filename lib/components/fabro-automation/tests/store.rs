@@ -5,10 +5,11 @@
 
 use std::path::Path;
 
+use anyhow::Result;
 use fabro_automation::{
-    ApiTrigger, AutomationDraft, AutomationGitWorkflowSource, AutomationId, AutomationReplace,
-    AutomationRevision, AutomationStore, AutomationStoreError, AutomationTrigger,
-    AutomationTriggerId, ScheduleTrigger,
+    ApiTrigger, AutomationDraft, AutomationGitWorkflowSource, AutomationId,
+    AutomationOverlapPolicy, AutomationReplace, AutomationRevision, AutomationStore,
+    AutomationStoreError, AutomationTrigger, AutomationTriggerId, ScheduleTrigger,
 };
 use fabro_db::Database;
 use fabro_types::{GitRunTarget, RunTarget};
@@ -57,6 +58,7 @@ fn workflow_source(
 
 fn draft(id: &str, api_enabled: bool) -> AutomationDraft {
     AutomationDraft {
+        on_overlap:      None,
         id:              AutomationId::new(id).unwrap(),
         name:            "Nightly".to_string(),
         description:     Some("Runs every night".to_string()),
@@ -77,6 +79,7 @@ fn draft(id: &str, api_enabled: bool) -> AutomationDraft {
 
 fn replacement(name: &str, expression: &str) -> AutomationReplace {
     AutomationReplace {
+        on_overlap:      None,
         name:            name.to_string(),
         description:     None,
         environment_id:  Some("default".to_string()),
@@ -499,6 +502,7 @@ async fn failed_schedule_insert_rolls_back_parent_replace() {
     .await
     .unwrap();
     let replacement = AutomationReplace {
+        on_overlap:      None,
         name:            "Should roll back".to_string(),
         description:     None,
         environment_id:  Some("default".to_string()),
@@ -693,4 +697,53 @@ expression = "0 3 * * *"
 "#
     )
     .into_bytes()
+}
+
+#[tokio::test]
+async fn on_overlap_round_trips_through_the_column() -> Result<()> {
+    let (_directory, database) = test_database().await;
+    let store = AutomationStore::new(database.pool().clone());
+
+    let skip = store
+        .create(AutomationDraft {
+            on_overlap:      Some(AutomationOverlapPolicy::Skip),
+            id:              AutomationId::new("overlap-skip").unwrap(),
+            name:            "Overlap skip".to_string(),
+            description:     None,
+            environment_id:  Some("default".to_string()),
+            target:          target(),
+            workflow_source: None,
+            workflow:        "release".to_string(),
+            triggers:        vec![AutomationTrigger::Schedule(ScheduleTrigger {
+                id:         AutomationTriggerId::new("schedule").unwrap(),
+                enabled:    true,
+                expression: "0 4 * * *".to_string(),
+            })],
+        })
+        .await?;
+    assert_eq!(
+        store.get(&skip.id).await?.unwrap().on_overlap,
+        Some(AutomationOverlapPolicy::Skip)
+    );
+
+    // Replace clears the policy back to the default (None = fire).
+    let cleared = store
+        .replace(&skip.id, &skip.revision, AutomationReplace {
+            on_overlap:      None,
+            name:            "Overlap skip".to_string(),
+            description:     None,
+            environment_id:  Some("default".to_string()),
+            target:          target(),
+            workflow_source: None,
+            workflow:        "release".to_string(),
+            triggers:        vec![AutomationTrigger::Schedule(ScheduleTrigger {
+                id:         AutomationTriggerId::new("schedule").unwrap(),
+                enabled:    true,
+                expression: "0 4 * * *".to_string(),
+            })],
+        })
+        .await?;
+    assert_eq!(store.get(&cleared.id).await?.unwrap().on_overlap, None);
+
+    Ok(())
 }

@@ -121,6 +121,19 @@ Automations created before environment selection was introduced are backfilled c
 
 When a trigger fires, Fabro resolves the run target and selected workflow checkout, packages the workflow, and creates and starts the run. The created run records the exact checked-out target commit in its canonical target, so later inspection and automation creation preserve the target revision that actually ran. Repositories are cached server-side as bare clones, so repeat fires fetch only what changed.
 
+## Overlap policy
+
+By default every scheduled fire creates a run regardless of what earlier
+fires created. Automations that must not pile up — for example a revisor
+whose runs can wait indefinitely at a human approval gate — can set
+`"on_overlap": "skip"`: a scheduled fire is suppressed while a previous
+run of the same automation is still non-terminal (running, queued, or
+blocked at a gate). Suppressed fires are healthy behavior: the scheduler
+logs an INFO line and creates nothing; the next tick retries. Manual API
+triggers always fire — an explicit human action is not an overlap. A
+previous run that is already terminal does not block, even if its pull
+request is still merging.
+
 ## Triggers
 
 Each trigger has an `id` and its own `enabled` flag. Trigger-level `enabled` is the sole activation control — there is no automation-level master switch.
