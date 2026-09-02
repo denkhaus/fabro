@@ -42,7 +42,7 @@ pub(crate) async fn create_run(
         &canonical_cwd,
         Some(&user_workflows_root),
     )?;
-    let prepared = prepare_intent_overrides(args, &canonical_cwd)?;
+    let prepared = prepare_intent_overrides(args, &canonical_cwd).await?;
 
     warn_untransmitted_settings(
         ctx,
@@ -56,7 +56,7 @@ pub(crate) async fn create_run(
             ctx,
             styles,
             path,
-            read_project_run_settings_key_presence(path)?,
+            read_project_run_settings_key_presence(path).await?,
         );
     }
 

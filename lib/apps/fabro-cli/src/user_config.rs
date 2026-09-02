@@ -17,6 +17,7 @@ use fabro_types::settings::server::LogDestination;
 use fabro_types::{ServerSettings, UserSettings};
 use fabro_util::error::SharedError;
 use fabro_util::version::FABRO_VERSION;
+use tokio::fs;
 use toml_edit::{DocumentMut, Item, Table, value};
 use tracing::debug;
 
@@ -84,16 +85,13 @@ pub(crate) fn load_resolved_settings(
     })
 }
 
-#[expect(
-    clippy::disallowed_methods,
-    reason = "sync project settings inspection during CLI command preparation"
-)]
-pub(crate) fn read_project_run_settings_key_presence(
+pub(crate) async fn read_project_run_settings_key_presence(
     path: &Path,
 ) -> anyhow::Result<RunSettingsKeyPresence> {
     let parse_error =
         |source| fabro_config::Error::parse_file("Failed to parse settings file", path, source);
-    let source = std::fs::read_to_string(path)
+    let source = fs::read_to_string(path)
+        .await
         .map_err(|source| fabro_config::Error::read_file(path, source))?;
     let document: toml::Value = toml::from_str(&source)
         .map_err(|source| parse_error(ParseError::Toml(source.to_string())))?;
@@ -468,30 +466,31 @@ mod tests {
         );
     }
 
-    #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "unit test writes a temporary project settings fixture with sync std::fs"
-    )]
-    fn project_run_settings_key_presence_validates_the_same_source() {
+    #[tokio::test]
+    async fn project_run_settings_key_presence_validates_the_same_source() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("project.toml");
-        std::fs::write(&path, "_version = 1\n\n[run]\n\n[environments]\n").unwrap();
+        fs::write(&path, "_version = 1\n\n[run]\n\n[environments]\n")
+            .await
+            .unwrap();
 
         assert_eq!(
-            read_project_run_settings_key_presence(&path).unwrap(),
+            read_project_run_settings_key_presence(&path).await.unwrap(),
             RunSettingsKeyPresence {
                 run:          true,
                 environments: true,
             }
         );
 
-        std::fs::write(
+        fs::write(
             &path,
             "_version = 1\n\n[environments.cloud]\ncwd = \"/tmp\"\n",
         )
+        .await
         .unwrap();
-        let error = read_project_run_settings_key_presence(&path).unwrap_err();
+        let error = read_project_run_settings_key_presence(&path)
+            .await
+            .unwrap_err();
         assert!(error.to_string().contains(&path.display().to_string()));
         assert!(error.source().is_some());
     }

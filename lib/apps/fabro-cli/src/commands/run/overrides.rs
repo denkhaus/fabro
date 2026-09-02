@@ -9,6 +9,7 @@ use fabro_manifest::{RunOverrideInput, build_run_overrides};
 use fabro_types::RunIntentArgs;
 use fabro_types::settings::cli::OutputVerbosity;
 use fabro_types::settings::interp::InterpString;
+use tokio::fs;
 
 use crate::args::{PreflightArgs, RunArgs};
 
@@ -74,25 +75,35 @@ fn current_dir_or_dot() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
-#[expect(
-    clippy::disallowed_methods,
-    reason = "CLI argument preparation synchronously reads one local goal file before submission"
-)]
-pub(super) fn prepare_intent_overrides(
+async fn intent_goal_from_args(
+    goal: Option<&str>,
+    goal_file: Option<&Path>,
+    cwd: &Path,
+) -> Result<Option<String>> {
+    match (goal, goal_file) {
+        (Some(_), Some(_)) => Err(anyhow!(
+            "--goal and --goal-file are mutually exclusive; use exactly one"
+        )),
+        (Some(text), None) => Ok(Some(text.to_owned())),
+        (None, Some(path)) => {
+            let absolute = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                cwd.join(path)
+            };
+            Ok(Some(fs::read_to_string(&absolute).await.with_context(
+                || format!("failed to read goal file {}", absolute.display()),
+            )?))
+        }
+        (None, None) => Ok(None),
+    }
+}
+
+pub(super) async fn prepare_intent_overrides(
     args: &RunArgs,
     cwd: &Path,
 ) -> Result<PreparedIntentOverrides> {
-    let goal = match goal_layer_from_args(args.goal.as_deref(), args.goal_file.as_deref(), cwd)? {
-        None => None,
-        Some(RunGoalLayer::Inline(goal)) => Some(goal.as_source()),
-        Some(RunGoalLayer::File { file }) => {
-            let path = PathBuf::from(file.as_source());
-            Some(
-                std::fs::read_to_string(&path)
-                    .with_context(|| format!("failed to read goal file {}", path.display()))?,
-            )
-        }
-    };
+    let goal = intent_goal_from_args(args.goal.as_deref(), args.goal_file.as_deref(), cwd).await?;
     let input_overrides = parse_input_overrides(&args.inputs.values)?;
     let inputs = input_overrides
         .iter()
@@ -172,8 +183,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn intent_overrides_preserve_typed_values_and_sparse_flags() {
+    #[tokio::test]
+    async fn intent_overrides_preserve_typed_values_and_sparse_flags() {
         let mut args = run_args();
         args.inputs.values = vec![
             "string=hello".to_string(),
@@ -192,7 +203,9 @@ mod tests {
         args.verbose = true;
 
         let PreparedIntentOverrides { intent_args, goal } =
-            prepare_intent_overrides(&args, Path::new("/caller")).unwrap();
+            prepare_intent_overrides(&args, Path::new("/caller"))
+                .await
+                .unwrap();
 
         assert_eq!(goal.as_deref(), Some("Ship it"));
         assert_eq!(
@@ -219,21 +232,25 @@ mod tests {
         );
     }
 
-    #[test]
-    fn intent_overrides_leave_false_flags_absent() {
-        let prepared = prepare_intent_overrides(&run_args(), Path::new("/caller")).unwrap();
+    #[tokio::test]
+    async fn intent_overrides_leave_false_flags_absent() {
+        let prepared = prepare_intent_overrides(&run_args(), Path::new("/caller"))
+            .await
+            .unwrap();
 
         assert_eq!(prepared.intent_args.dry_run, None);
         assert_eq!(prepared.intent_args.auto_approve, None);
         assert_eq!(prepared.intent_args.preserve_sandbox, None);
     }
 
-    #[test]
-    fn intent_goal_files_are_read_by_value_from_relative_and_absolute_paths() {
+    #[tokio::test]
+    async fn intent_goal_files_are_read_by_value_from_relative_and_absolute_paths() {
         let dir = tempfile::tempdir().unwrap();
         let relative = PathBuf::from("goals/task.md");
-        std::fs::create_dir_all(dir.path().join("goals")).unwrap();
-        std::fs::write(dir.path().join(&relative), "Goal from file").unwrap();
+        fs::create_dir_all(dir.path().join("goals")).await.unwrap();
+        fs::write(dir.path().join(&relative), "Goal from file")
+            .await
+            .unwrap();
 
         for goal_file in [relative, dir.path().join("goals/task.md")] {
             let mut args = run_args();
@@ -241,38 +258,44 @@ mod tests {
             let PreparedIntentOverrides {
                 intent_args: _,
                 goal,
-            } = prepare_intent_overrides(&args, dir.path()).unwrap();
+            } = prepare_intent_overrides(&args, dir.path()).await.unwrap();
 
             assert_eq!(goal.as_deref(), Some("Goal from file"));
         }
     }
 
-    #[test]
-    fn intent_goal_file_read_errors_preserve_the_resolved_path_and_source() {
+    #[tokio::test]
+    async fn intent_goal_file_read_errors_preserve_the_resolved_path_and_source() {
         let mut args = run_args();
         args.goal_file = Some(PathBuf::from("missing.md"));
 
-        let error = prepare_intent_overrides(&args, Path::new("/caller")).unwrap_err();
+        let error = prepare_intent_overrides(&args, Path::new("/caller"))
+            .await
+            .unwrap_err();
         assert!(error.to_string().contains("/caller/missing.md"));
         assert!(error.source().is_some());
     }
 
-    #[test]
-    fn intent_goal_and_goal_file_together_are_rejected_defensively() {
+    #[tokio::test]
+    async fn intent_goal_and_goal_file_together_are_rejected_defensively() {
         let mut args = run_args();
         args.goal = Some("inline".to_string());
         args.goal_file = Some(PathBuf::from("goal.md"));
 
-        let error = prepare_intent_overrides(&args, Path::new("/caller")).unwrap_err();
+        let error = prepare_intent_overrides(&args, Path::new("/caller"))
+            .await
+            .unwrap_err();
         assert!(error.to_string().contains("mutually exclusive"));
     }
 
-    #[test]
-    fn intent_overrides_reject_non_finite_float_with_input_key() {
+    #[tokio::test]
+    async fn intent_overrides_reject_non_finite_float_with_input_key() {
         let mut args = run_args();
         args.inputs.values = vec!["temperature=nan".to_string()];
 
-        let error = prepare_intent_overrides(&args, Path::new("/caller")).unwrap_err();
+        let error = prepare_intent_overrides(&args, Path::new("/caller"))
+            .await
+            .unwrap_err();
         assert!(error.to_string().contains("temperature"));
         assert!(format!("{error:#}").contains("finite"));
         assert!(error.chain().any(|cause| {
