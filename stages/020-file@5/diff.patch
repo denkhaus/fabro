@@ -1,0 +1,64 @@
+diff --git a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
+index 212b5f2..cc8f5b9 100644
+--- a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
++++ b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
+@@ -17,3 +17,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"approve","visit":4,"status":"succeeded","ts":"2026-09-02T19:15:27Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"select","visit":5,"status":"succeeded","ts":"2026-09-02T19:15:45Z","data":{"painpoints":[],"observations":["Selected oldest unrevised terminal run with live sandbox; 14 older terminal runs are blocked with sandbox_available=false and 1 run is still in submitted status, leaving a sizable non-selectable backlog until fresh analyst sandboxes are provisioned"]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"analyze","visit":5,"status":"succeeded","ts":"2026-09-02T19:18:57Z","data":{"painpoints":[],"observations":["Run 01M0SS23MJM8972CBJD0SP7T4Q failed only at publish despite a fully successful loop (seed `fabro-e6df` closed, tracker empty, 13 commits pushed) — when judging develop-run health, check tracker/loop evidence before the terminal status","Root failure chain distilled into three high-priority seeds: 12KB preamble budget overflow → blind reviewer rejection/approval, linear per-cycle preamble growth, and 403-on-PR marking achieved work failed; the ten findings are ordered by expected impact in `.fabro/reviews/develop/01M0SS23MJM8972CBJD0SP7T4Q.md"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"file","visit":5,"status":"succeeded","ts":"2026-09-02T19:19:52Z","data":{"painpoints":[],"observations":["Three of ten findings were near-duplicates of already-open seeds (fabro-83f9 preamble budget, fabro-886e evidence verdict, fabro-a54c/fabro-80ec mise toolchain, fabro-2c81 skill discovery) — the analyst does not see the current seed list, so pre-filing duplicate checks fall entirely on the bookkeeper"]}}
+diff --git a/.fabro/revisions/01M0SS23MJM8972CBJD0SP7T4Q.md b/.fabro/revisions/01M0SS23MJM8972CBJD0SP7T4Q.md
+new file mode 100644
+index 0000000..6740d2f
+--- /dev/null
++++ b/.fabro/revisions/01M0SS23MJM8972CBJD0SP7T4Q.md
+@@ -0,0 +1,34 @@
++# Revision — run 01M0SS23MJM8972CBJD0SP7T4Q
++
++- status reviewed: failed
++- review: .fabro/reviews/develop/01M0SS23MJM8972CBJD0SP7T4Q.md
++- seeds filed:
++  - fabro-d97b — Convert reviewer to agent node with read-only tools
++  - fabro-699f — Stop re-rendering every past cycle in preambles
++  - fabro-6a77 — Treat branch-pushed-PR-failed as completed-with-publish-warning
++  - fabro-fac9 — Cap evidence flowing through context updates in planner and implementer prompts
++  - fabro-8354 — Bake ripgrep into the runner image
++  - fabro-850f — Write only non-empty stage journals
++  - fabro-c2ca — Skip metadata snapshots on non-agent stages
++
++## Findings
++
++1. Fix reviewer evidence pipe — filed as fabro-d97b (agent-node half; the preamble-budget half is duplicate-of fabro-83f9). Convert the reviewer to an agent node with read-only tools so blob-ref'd evidence is readable; expected effect: no more blind rejections/approvals — the workaround cycle in this run cost $0.112 of $0.257 (43%) for zero code change.
++
++2. Stop re-rendering every past cycle in preambles — filed as fabro-699f. Render only the latest visit of command stages and clear consumed context keys after the planner handles them; expected effect: preamble growth stops at cycle 3+ instead of blowing the 12KB budget before max_visits=20.
++
++3. Treat branch-pushed-PR-failed as completed-with-publish-warning — filed as fabro-6a77. Pre-run PR-scope credential check in prepare plus a retryable publish-warning downgrade and fixed PR-body JSON contract; expected effect: run status reflects loop outcome — this run closed seed `fabro-e6df` and pushed 13 commits yet reads as failed.
++
++4. Add Evidence-unreadable reviewer verdict — duplicate-of fabro-886e (Add Evidence retry verdict to reviewer); no new seed filed.
++
++5. Align runner dockerfile mise versions — duplicate-of fabro-a54c and fabro-80ec; no new seed filed.
++
++6. Cap evidence in context updates — filed as fabro-fac9. Cap summaries at ~500 chars and drop the inline-report workaround once the evidence pipe is fixed; expected effect: stops the 2.6KB inlined `implementation_summary` that itself blob-offloaded.
++
++7. Bake ripgrep into the runner image — filed as fabro-8354. One dockerfile line; expected effect: removes ~5 wasted exploration calls per planner pass caused by missing `rg`.
++
++8. Write only non-empty stage journals — filed as fabro-850f. Populate or skip empty `data` in `scripts/stage-journal.nu`; expected effect: stops 13 identical `{\"data\": {}}` files per run from inflating checkpoint churn.
++
++9. Skip metadata snapshots on non-agent stages — filed as fabro-c2ca. Skip snapshots for tester/evidence stages; expected effect: ~25s wall-time saving per run with no evidence loss.
++
++10. Scope skill discovery off — duplicate-of fabro-2c81 (Scope skill discovery to workflow skills dir); no new seed filed.
+diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl
+index 3d6b98b..c6ef86b 100644
+--- a/.seeds/issues.jsonl
++++ b/.seeds/issues.jsonl
+@@ -36,3 +36,10 @@
+ {"id":"fabro-9f97","title":"Skip PR creation when the run diff is journal-only","status":"open","type":"task","priority":1,"createdAt":"2026-09-02T19:13:26.609Z","updatedAt":"2026-09-02T19:13:26.609Z","description":"In .fabro/project.toml [run.pull_request], skip PR creation when the diff excluding .fabro/journal/ is empty. Run 01M0SFEYVC9TD6MP816RHEBFQY verified its goal (6 of 6 seeds closed, 'Tracker empty' exit) with an 18-line journal-only diff, yet attempted a PR with auto_merge = true, hit a deterministic 403, and flipped to failed(publish_failed) — same 403 noted in the 01M0T9B7T6 review at project.toml line 74. Effect: no-op runs report success instead of failed, and no squash-merged journal churn into the base branch."}
+ {"id":"fabro-696c","title":"Fix PR publishing: provision a PR-capable credential or disable PRs","status":"open","type":"task","priority":1,"createdAt":"2026-09-02T19:13:30.865Z","updatedAt":"2026-09-02T19:13:30.865Z","description":"Two git.push events succeeded with token_provenance: static, then PR creation returned 403 (deterministic, retry-proof), while .fabro/project.toml line 59 states PR creation requires the GitHub App integration the static token lacks (run 01M0SFEYVC9TD6MP816RHEBFQY). Provision that credential or set enabled = false under [run.pull_request] until it exists. Effect: publish stops being the sole cause of failed runs; with a preflight the failure would surface in seconds instead of after the full 2m41s workflow."}
+ {"id":"fabro-a54d","title":"Make the baked mise toolchain a no-op in run containers","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:13:36.182Z","updatedAt":"2026-09-02T19:13:36.182Z","description":"Run 01M0SFEYVC9TD6MP816RHEBFQY: mise install took 95.5s (61% of end-to-end) re-installing tool versions Dockerfile.mise already bakes, likely because MISE_DATA_DIR=/mise is not honored in the run container; .mise.toml's header also still claims 'no baked-in tools', contradicting project.toml. Fix env propagation in .fabro/Dockerfile.mise and [run.prepare] in .fabro/project.toml, add mise ls output to the prepare log when install exceeds a few seconds, and update the stale .mise.toml header. Related to fabro-80ec (pre-install toolset in runner image) but targets env propagation and stale docs. Effect: ~95s saved on every run; setup stops dominating run time."}
++{"id":"fabro-d97b","title":"Convert reviewer to agent node with read-only tools","status":"open","type":"task","priority":1,"createdAt":"2026-09-02T19:19:26.874Z","updatedAt":"2026-09-02T19:19:26.874Z","description":"In .fabro/workflows/develop/workflow.fabro, convert the reviewer from a prompt node to an agent node with read-only tools (read/glob/grep) so blob-ref'd evidence captures are readable. Complements the preamble-budget raise in fabro-83f9. Evidence: run 01M0SS23MJM8972CBJD0SP7T4Q reviewer@1 rejected green gate-passed work it could not read and reviewer@2 approved blind; the workaround cycle burned $0.112 of $0.257 (43%) for zero code change."}
++{"id":"fabro-699f","title":"Stop re-rendering every past cycle in preambles","status":"open","type":"task","priority":1,"createdAt":"2026-09-02T19:19:26.994Z","updatedAt":"2026-09-02T19:19:26.994Z","description":"In .fabro/workflows/develop/workflow.fabro, render only the latest visit of command stages in reviewer/implementer preambles and clear consumed context keys (review_feedback, review_verdict, stale implementation_summary) after the planner handles them. Run 01M0SS23MJM8972CBJD0SP7T4Q preambles grew 12.4KB to 21.9KB across cycles, blowing the 12KB budget; with max_visits=20 cycle 5+ would be unreadable."}
++{"id":"fabro-6a77","title":"Treat branch-pushed-PR-failed as completed-with-publish-warning","status":"open","type":"task","priority":1,"createdAt":"2026-09-02T19:19:27.131Z","updatedAt":"2026-09-02T19:19:27.131Z","description":"In the publish step of .fabro/workflows/develop/workflow.fabro, add a pre-run PR-scope credential check in prepare and downgrade 'branch pushed, PR creation failed' (403 after PR-body JSON parse failure in run 01M0SS23MJM8972CBJD0SP7T4Q) to a retryable publish-warning instead of failed(publish_failed). Also fix the PR-body JSON contract for glm-5.3 that the deterministic fallback masked. Effect: run status reflects loop outcome — that run closed seed fabro-e6df and pushed 13 commits yet reads as failed."}
++{"id":"fabro-fac9","title":"Cap evidence flowing through context updates in planner and implementer prompts","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:19:27.279Z","updatedAt":"2026-09-02T19:19:27.279Z","description":"In .fabro/workflows/develop/prompts/planner.md and implementer.md, cap context-update summaries (~500 chars; evidence belongs in the capture or repo, never in context_updates) and remove the inline-report workaround instruction once the reviewer evidence pipe is fixed. In run 01M0SS23MJM8972CBJD0SP7T4Q the inlined implementation_summary grew to 2.6KB and itself blob-offloaded, worsening the preamble budget problem."}
++{"id":"fabro-8354","title":"Bake ripgrep into the runner image","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:19:27.407Z","updatedAt":"2026-09-02T19:19:27.407Z","description":"Add ripgrep to the runner dockerfile toolset (one apt-get/mise line in settings.environment.image.dockerfile). In run 01M0SS23MJM8972CBJD0SP7T4Q planner@1 hit 'command not found' for rg, got empty native grep results on main.go twice, and fell back to find/head — about 5 wasted exploration calls per planner pass."}
++{"id":"fabro-850f","title":"Write only non-empty stage journals","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:19:27.546Z","updatedAt":"2026-09-02T19:19:27.546Z","description":"In .fabro/workflows/develop/scripts/stage-journal.nu, either populate data (e.g., with the stage painpoints) or skip writing when empty. In run 01M0SS23MJM8972CBJD0SP7T4Q the stage-journal hook wrote 13 identical {\"data\": {}} files into every checkpoint diff, inflating the loop churn the evidence script reports (10 files +82/-1)."}
++{"id":"fabro-c2ca","title":"Skip metadata snapshots on non-agent stages","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:19:27.690Z","updatedAt":"2026-09-02T19:19:27.690Z","description":"Skip checkpoint metadata snapshots for non-agent command stages (tester/evidence) in the checkpoint hook configuration of .fabro/workflows/develop/workflow.fabro. In run 01M0SS23MJM8972CBJD0SP7T4Q snapshots ran ~1.8-2.3s at all 13 checkpoints (~25s total) — free wall-time trim with no evidence loss on those stages."}
