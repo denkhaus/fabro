@@ -120,3 +120,27 @@ Upstream directions that may supersede our work — re-evaluate per merge:
 - ManifestRepoInfo split origin/push origins (see conflict-policy 2026-09-01):
   our insteadOf canonicalization rides origin_url; push identity compares raw
   config bytes (upstream semantics).
+
+## 2026-09-02 (v0.344.0-nightly.0, merge 3f6681b26)
+
+- SQLite read-model consolidation COMPLETE: run queries, PR recovery, and
+  session ownership all read SQLite now (PR #830/#829); SlateDB shrinks to
+  event log + warm projection cache. Any fork read path builds on
+  RunSummaryStore::get / Database::get_cached_projection.
+- Session ownership: unique partial index on run_events(session_id) WHERE
+  event_name='run.session.created', fail-closed legacy preflight, snapshot
+  before new migrations. sessions handlers (attach/adopt) ride
+  find_session_owner — fabro-204e (attach replay UX) unchanged, still open.
+- Automations: independent git workflow sources (repo+branch+optional
+  tag/sha aligned with run targets, PR #825); materializer exposes a
+  GitRemote resolver seam (git_checkout.rs resolve-then-prepare, credential
+  reuse) — reuse it for any fork feature needing a credentialed checkout
+  (revisor line) instead of new clone plumbing.
+- fabro-b7c4: upstream STILL lacks the 5-segment by-start catalog fix;
+  local fix 31809f2ad survived the merge untouched; PR offer still valid.
+- Push race (environmental): a background watcher pushes origin/denkhaus
+  within ~30s of any local commit — `git merge upstream/main` auto-commits
+  and can get pushed BEFORE the proper merge message/adaptations land.
+  Merge with `--no-commit`, finish fixes + message, then commit and push
+  once. If raced anyway: `--force-with-lease` over the default-message
+  merge is safe when nothing built on it (check origin/denkhaus parents).

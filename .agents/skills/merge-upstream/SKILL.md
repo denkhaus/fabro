@@ -49,7 +49,10 @@ release build cache lives in the `fabro-docker-cargo-target-<arch>` volume
 
 ## Merge phase
 
-Run `git merge upstream/main`. On conflicts, apply the resolution policy
+Run `git merge upstream/main --no-commit` (a background watcher on this
+host auto-pushes new commits within ~30s; `--no-commit` prevents it from
+publishing a default-message merge before adaptations and the real
+message exist). On conflicts, apply the resolution policy
 from `references/conflict-policy.md` (core rule: our features AND upstream
 changes both survive; adapt our call sites to upstream's new signatures
 instead of reverting either side). Conflict classes seen so far and their

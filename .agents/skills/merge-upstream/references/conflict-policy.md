@@ -78,6 +78,29 @@ upstream's new signatures; never revert upstream, never drop our features.
   `just up` = read activation logs from `docker logs` + inspect the SQLite
   volume read-only before touching anything; the import is idempotent.
 
+## 2026-09-02 (v0.344.0-nightly.0, merge 3f6681b26)
+
+- Zero-conflict merge with API-REMOVAL fallout (new class): upstream moved
+  all run reads to the SQLite read model and deleted
+  Database::get_cached_summary / Database::get_cached_run /
+  AppState::cached_run. Auto-merge keeps OUR call sites (E0599) plus
+  cascading E0308s from unknown scrutinee types (matches! on
+  `&run.created_by` binds by value when `run` is an error type — fix the
+  E0599 first, the E0308s vanish). Adaptations: ancestry walk ->
+  `state.stores.run_summaries.get(&id, Utc::now())`; sandbox inspection ->
+  `AppState::cached_run_projection()`; tests -> `Database::
+  get_cached_projection()`.
+- Test-shape break (E0609): CachedRunProjection now wraps
+  `Arc<RunProjection>` (field `summary` -> `projection`), and the SQL
+  created_at_ms derives from `run_id.created_at()` via build_summary.
+  Don't mutate entries after wrapping — encode later timestamps in the
+  RunId itself (`RunId::with_timestamp(later, seq)`).
+- Deploy-time: the production preflight query for the session-owner
+  unique index can be run READ-ONLY before `just up` (helper container,
+  `sqlite3 file:...?mode=ro`); 0 collision groups on 44533 events here.
+  Migration log evidence: `fabro_db: Snapshotted SQLite database...` then
+  versions 2026082803/2026083101 in `_sqlx_migrations`.
+
 ## 2026-08-31 (v0.339.0-nightly.1)
 
 - Import-block widening: our fork widened cfg gates (`any(docker, daytona)`)
