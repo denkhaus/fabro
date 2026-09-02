@@ -40,7 +40,11 @@ digraph Revisor {
         fs_hide="src/**,docs/**,.seeds/**",
         fs_write="",
         fabro_tools="fabro_runs_list",
-        context_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,journal"
+        // Read window (e47c pattern): selection re-derives from the run
+        // list every pass — stale target keys from the previous cycle
+        // must not render. journal carries the prior pass's observations.
+        preamble_allow_keys="journal",
+        context_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revisor_target_wall,journal"
     ]
 
     // Analyze: the intellectual core. ONE fabro_ask call with the proven
@@ -62,6 +66,10 @@ digraph Revisor {
         fs_hide="src/**,docs/**,.seeds/**",
         fs_write=".fabro/reviews/**",
         fabro_tools="fabro_ask",
+        // Read window: the CURRENT target trio (+wall) and journal;
+        // revision_findings stays out — a previous cycle's findings are
+        // stale, analyze re-emits fresh ones.
+        preamble_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revisor_target_wall,journal",
         context_allow_keys="revision_findings,journal"
     ]
 
@@ -81,9 +89,15 @@ digraph Revisor {
         retry_policy="standard",
         reasoning_effort="low",
         preamble_stages_ignore="select,analyze,file",
-        fs_hide="src/**,docs/**",
+        // .seeds hidden from FILE tools too: sd create/list and the git
+        // commit run via shell (the documented escape hatch), so the
+        // write-allowlist stays the artifact trees only.
+        fs_hide="src/**,docs/**,.seeds/**",
         fs_write=".fabro/revisions/**",
         fabro_tools="",
+        // Read window: current target + current findings + journal; the
+        // node's own filed_seed_ids never render back (stale on loops).
+        preamble_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revision_findings,journal",
         context_allow_keys="filed_seed_ids,journal"
     ]
 
@@ -102,7 +116,10 @@ digraph Revisor {
     // Tracker-clean analog of develop's "Tracker empty": a plain natural
     // completion, not an error.
     select -> exit [label="Nothing to revise", condition="preferred_label=\"Nothing to revise\""]
-    select -> exit [label="Selector failed", condition="outcome=failed"]
+    // Selector tool failure is transient (server/tool hiccup): soft exit,
+    // the pass retries next invocation. Same convention as the analyze/file
+    // failure edges (reviewer spec finding 3, 2026-09-02).
+    select -> exit [kind="soft", label="Selector failed (next pass retries)", condition="outcome=failed"]
     select -> analyze [label="Run selected"]
 
     // A zero-finding analysis is a legitimate outcome: file writes the
@@ -116,7 +133,15 @@ digraph Revisor {
     // Bookkeeping failure (sd/git error): nothing staged, nothing merged.
     file -> exit [kind="soft", label="Bookkeeping failed (nothing merged)"]
 
-    approve -> exit [label="[A] Approved"]
+    // The loop (fork 2, fabro-7461): approval closes THIS revision and
+    // re-enters selection — one revisor invocation walks the backlog with
+    // a human gate per revision; the run ends naturally when select finds
+    // nothing left. Artifacts accumulate as one commit per cycle on this
+    // run branch; the host-side integrate merges once at the end. A
+    // rejection deadlocks the WHOLE branch (including earlier approved
+    // cycles) for a human decision — known ramp edge: the human may merge
+    // the branch manually to salvage approved cycles.
+    approve -> select [label="[A] Approved"]
     approve -> exit [kind="deadlock", label="[R] Rejected (run stays unmerged, human decides)"]
     // Unanswered gate: fail-closed, nothing merges, next pass re-enters.
     approve -> exit [condition="outcome=failed", label="Unanswered (fail-closed)"]

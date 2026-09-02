@@ -42,7 +42,9 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 ## Journal — every pass answers
 
-{"journal": {"painpoints": [], "observations": ["at least one; 'none' valid"]}}
+Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:
+
+{"journal": {"painpoints": [{"text": "<what hurt, where, evidence, fix idea>"}], "observations": ["<what the next bookkeeper should know; 'none' is valid when unremarkable>"]}}
 
 ## Outcome contract
 
