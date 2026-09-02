@@ -511,7 +511,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-02T18:43:54.277708860Z",
-  "last_event_at": "2026-09-02T18:48:11.340722253Z",
+  "last_event_at": "2026-09-02T18:49:28.666999619Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -2082,9 +2082,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 252,
       "checkpoint": {
-        "timestamp": "2026-09-02T18:48:11.585262225Z",
+        "timestamp": "2026-09-02T18:48:16.341779102Z",
         "current_node": "analyze",
         "completed_nodes": [
           "start",
@@ -2094,6 +2094,397 @@
           "approve",
           "select",
           "analyze"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.thread_id": "select",
+          "internal.run_id": "01M1HKRE686W833SE86D8WD319",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 6045,
+            "preview": "Review persisted verbatim to `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`. Distilling the eight evidence-grounded recommendations into seed candidates (two high-impact: the preamble budget s"
+          },
+          "graph.inspects": "develop",
+          "current_node": "analyze",
+          "graph.rankdir": "LR",
+          "human.gate.approve.question": "Approve filing + merge",
+          "internal.retry_count.approve": 0,
+          "revision_findings": [
+            {
+              "title": "Raise reviewer preamble budget from 12KB to 20–24KB",
+              "description": "In `.fabro/workflows/develop/workflow.fabro` line 6, raise `preamble_budget_kb` from 12 to 20–24, and correct the now-false \"carries the evidence capture in full\" claims at workflow.fabro lines 79–84 and `prompts/reviewer.md` line 11. In this run two ~6.4KB evidence captures exceeded the 12KB budget and spilled to ~400-char previews, so reviewer@2 approved without ever seeing the diff; the resulting no-op rework cycle cost $0.209 and ~5 min (32% of the run).",
+              "priority": 1
+            },
+            {
+              "title": "Add planner→refiner Blocked edge and output variant",
+              "description": "In `.fabro/workflows/develop/workflow.fabro`, add a `planner -> refiner [label=\"Blocked\"]` edge (planner exits are lines 127–129; Blocked exists only on implementer→planner at line 132) and add a Blocked output variant (`outcome: succeeded`, label `Blocked`, `failure_reason` in context) to the outcome contract in `prompts/planner.md`. In this run planner@4 routed `preferred_next_label=\"Blocked\"`, the missing edge tripped the goal gate, and the run concluded `workflow_error` despite seed fabro-8d26 being implemented, gated green, and approved.",
+              "priority": 1
+            },
+            {
+              "title": "Mark seed fabro-d810 blocked-external with infeasibility facts",
+              "description": "In the seed tracker, fix seed `fabro-d810` (in `.seeds/issues.jsonl` via `sd`): add the dependency on the denkhaus fabro-29f7 rebuild sequence or drop its priority below implementable seeds and label it `blocked-external`, and paste the infeasibility facts (`which fabro` not found, no run-event store under `.fabro/`, no meta world) into the seed description. In this run planner@1 and planner@4 re-derived the known-dead state (~$0.26, ~7 min, 35% of the run) while `sd ready` still lists it priority-1 with zero blockers.",
+              "priority": 2
+            },
+            {
+              "title": "Add Evidence retry verdict to reviewer",
+              "description": "Add a third route (\"Evidence retry\": `outcome: succeeded`, `preferred_next_label: \"Evidence retry\"`) to `prompts/reviewer.md` (lines 30–60 offer only Approved and Changes requested) plus a `reviewer -> evidence [label=\"Evidence retry\"]` edge in `.fabro/workflows/develop/workflow.fabro`. In this run reviewer@1 explicitly wanted only an evidence re-run but had to route `changes_requested`, forcing a full no-op pipeline cycle ($0.21, ~5 min) over a byte-identical diff.",
+              "priority": 2
+            },
+            {
+              "title": "Remove tool-less contradiction from reviewer prompt",
+              "description": "In `.fabro/workflows/develop/prompts/reviewer.md` line 13, delete the \"re-run `just qualitygate` yourself — you have tools\" clause and state instead that gate results are visible only via the tester stage section; the node is `shape=tab` (tool-less) and the reviewer's own painpoint in this run flags exactly this contradiction.",
+              "priority": 2
+            },
+            {
+              "title": "Restrict verification-only briefs to smoke-level commands",
+              "description": "Add one sentence to `prompts/planner.md` verification-only guidance: \"list smoke-level commands only (`go build`, `go test`, `go run` smokes); the gate belongs to the tester stage.\" In this run planner@2 and planner@3 briefs mandated `just qualitygate` under Required verification commands while implementer.md rule 4 forbids running the full gate, forcing implementer@3 to resolve the contradiction itself (painpoint #3 in `.fabro/run-painpoints.jsonl`).",
+              "priority": 2
+            },
+            {
+              "title": "Require English responses in implementer prompt",
+              "description": "Add \"Always respond in English\" to `.fabro/workflows/develop/prompts/implementer.md`. In this run implementer@2 replied in German (\"Verstanden — ich beende den Run…\") to a German stop steer, and that reply leaked into later stages' context.",
+              "priority": 2
+            },
+            {
+              "title": "Stop restating the full painpoint list in every prompt",
+              "description": "Change the painpoint sections in `prompts/planner.md`, `prompts/implementer.md`, and `prompts/reviewer.md` to emit only NEW entries appended directly to the append-only `.fabro/run-painpoints.jsonl` (which `refiner.nu` already delivers from), dropping the restate-the-full-accumulated-list instruction. In this run ~2.8KB was mirrored into three prompts per pass and the reviewer received the list truncated — accumulation lossy at exactly the node told to restate it; also frees preamble budget to compound with the budget raise.",
+              "priority": 2
+            }
+          ],
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1
+          },
+          "thread.analyze.current_node": "file",
+          "thread.select.current_node": "analyze",
+          "revisor_target_run_id": "01M0QJ5FNE9XZJ72YN31K3X451",
+          "thread.start.current_node": "select",
+          "human.gate.approve.label": "[A] Approved",
+          "failure_class": "",
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "thread.approve.current_node": "select",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "User-abort and infra death are classified as deterministic failures and routed Blocked→planner instead of halting the run: in run `01M0QJ5FNE9XZJ72YN31K3X451` implementer@2 received a stop steer plus Docker 409 mid-verification, returned `outcome=failed` (category `deterministic`), bounced to planner, spawned a full extra cycle, and its phantom signature now sits in `loop_failure_signatures`. Platform-side fix: classify user-stop and container-death as cancel or transient and halt the run."
+              }
+            ],
+            "observations": [
+              "Review written verbatim to `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`; the run failed solely on the missing planner Blocked edge (goal gate unsatisfied, no retry target) while seed fabro-8d26 was implemented, gated green, and approved — totals 19m29s, $0.658, 15 stage executions.",
+              "Cross-world blocker seed fabro-d810 still appears priority-1 ready in `sd ready`; without a tracker fix every future planner re-derives its infeasibility (~$0.26 deadweight per run) until the denkhaus fabro-29f7 rebuild lands."
+            ]
+          },
+          "graph.max_node_visits": "30",
+          "last_response": "Review persisted verbatim to `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`. Distilling the eight evidence-grounded recommendations into seed candidates (two high-impact: the preamble budget s",
+          "thread.file.current_node": "approve",
+          "internal.node_visit_count": 2,
+          "internal.retry_count.file": 0,
+          "preferred_label": "Findings ready",
+          "internal.retry_count.analyze": 0,
+          "revisor_target_wall": "21.2 min",
+          "human.gate.label": "[A] Approved",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 1004,
+            "preview": "All 7 findings filed as seeds (fabro-b158, fabro-cbca, fabro-e7e5, fabro-0230, fabro-2c81, fabro-5632, fabro-80ec), the revision marker written to `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md`, and"
+          },
+          "human.gate.selected": "A",
+          "internal.work_dir": "/workspace/fabro",
+          "internal.retry_count.select": 0,
+          "internal.seed_cycle_anchor": "01M0QJ5FNE9XZJ72YN31K3X451",
+          "revisor_target_title": "Develop the project seed-by-seed (generic develop goal)",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 981,
+            "preview": "Eligible runs: terminal, unrevised (only `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md` exists), sandbox available. Oldest qualifying is `01M0QJ5FNE9XZJ72YN31K3X451` (failed, 2026-08-23, ~21.2 min)."
+          },
+          "filed_seed_ids": [
+            "fabro-b158",
+            "fabro-cbca",
+            "fabro-e7e5",
+            "fabro-0230",
+            "fabro-2c81",
+            "fabro-5632",
+            "fabro-80ec"
+          ],
+          "revisor_target_status": "failed",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+          "failure_signature": "",
+          "graph.preamble_budget_kb": "24",
+          "last_stage": "analyze",
+          "human.gate.approve.answer": "A",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.fidelity": "compact"
+        },
+        "node_outcomes": {
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "last_response": "Review persisted verbatim to `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`. Distilling the eight evidence-grounded recommendations into seed candidates (two high-impact: the preamble budget s",
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 6045,
+                "preview": "Review persisted verbatim to `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`. Distilling the eight evidence-grounded recommendations into seed candidates (two high-impact: the preamble budget s"
+              },
+              "revision_findings": [
+                {
+                  "title": "Raise reviewer preamble budget from 12KB to 20–24KB",
+                  "description": "In `.fabro/workflows/develop/workflow.fabro` line 6, raise `preamble_budget_kb` from 12 to 20–24, and correct the now-false \"carries the evidence capture in full\" claims at workflow.fabro lines 79–84 and `prompts/reviewer.md` line 11. In this run two ~6.4KB evidence captures exceeded the 12KB budget and spilled to ~400-char previews, so reviewer@2 approved without ever seeing the diff; the resulting no-op rework cycle cost $0.209 and ~5 min (32% of the run).",
+                  "priority": 1
+                },
+                {
+                  "title": "Add planner→refiner Blocked edge and output variant",
+                  "description": "In `.fabro/workflows/develop/workflow.fabro`, add a `planner -> refiner [label=\"Blocked\"]` edge (planner exits are lines 127–129; Blocked exists only on implementer→planner at line 132) and add a Blocked output variant (`outcome: succeeded`, label `Blocked`, `failure_reason` in context) to the outcome contract in `prompts/planner.md`. In this run planner@4 routed `preferred_next_label=\"Blocked\"`, the missing edge tripped the goal gate, and the run concluded `workflow_error` despite seed fabro-8d26 being implemented, gated green, and approved.",
+                  "priority": 1
+                },
+                {
+                  "title": "Mark seed fabro-d810 blocked-external with infeasibility facts",
+                  "description": "In the seed tracker, fix seed `fabro-d810` (in `.seeds/issues.jsonl` via `sd`): add the dependency on the denkhaus fabro-29f7 rebuild sequence or drop its priority below implementable seeds and label it `blocked-external`, and paste the infeasibility facts (`which fabro` not found, no run-event store under `.fabro/`, no meta world) into the seed description. In this run planner@1 and planner@4 re-derived the known-dead state (~$0.26, ~7 min, 35% of the run) while `sd ready` still lists it priority-1 with zero blockers.",
+                  "priority": 2
+                },
+                {
+                  "title": "Add Evidence retry verdict to reviewer",
+                  "description": "Add a third route (\"Evidence retry\": `outcome: succeeded`, `preferred_next_label: \"Evidence retry\"`) to `prompts/reviewer.md` (lines 30–60 offer only Approved and Changes requested) plus a `reviewer -> evidence [label=\"Evidence retry\"]` edge in `.fabro/workflows/develop/workflow.fabro`. In this run reviewer@1 explicitly wanted only an evidence re-run but had to route `changes_requested`, forcing a full no-op pipeline cycle ($0.21, ~5 min) over a byte-identical diff.",
+                  "priority": 2
+                },
+                {
+                  "title": "Remove tool-less contradiction from reviewer prompt",
+                  "description": "In `.fabro/workflows/develop/prompts/reviewer.md` line 13, delete the \"re-run `just qualitygate` yourself — you have tools\" clause and state instead that gate results are visible only via the tester stage section; the node is `shape=tab` (tool-less) and the reviewer's own painpoint in this run flags exactly this contradiction.",
+                  "priority": 2
+                },
+                {
+                  "title": "Restrict verification-only briefs to smoke-level commands",
+                  "description": "Add one sentence to `prompts/planner.md` verification-only guidance: \"list smoke-level commands only (`go build`, `go test`, `go run` smokes); the gate belongs to the tester stage.\" In this run planner@2 and planner@3 briefs mandated `just qualitygate` under Required verification commands while implementer.md rule 4 forbids running the full gate, forcing implementer@3 to resolve the contradiction itself (painpoint #3 in `.fabro/run-painpoints.jsonl`).",
+                  "priority": 2
+                },
+                {
+                  "title": "Require English responses in implementer prompt",
+                  "description": "Add \"Always respond in English\" to `.fabro/workflows/develop/prompts/implementer.md`. In this run implementer@2 replied in German (\"Verstanden — ich beende den Run…\") to a German stop steer, and that reply leaked into later stages' context.",
+                  "priority": 2
+                },
+                {
+                  "title": "Stop restating the full painpoint list in every prompt",
+                  "description": "Change the painpoint sections in `prompts/planner.md`, `prompts/implementer.md`, and `prompts/reviewer.md` to emit only NEW entries appended directly to the append-only `.fabro/run-painpoints.jsonl` (which `refiner.nu` already delivers from), dropping the restate-the-full-accumulated-list instruction. In this run ~2.8KB was mirrored into three prompts per pass and the reviewer received the list truncated — accumulation lossy at exactly the node told to restate it; also frees preamble budget to compound with the budget raise.",
+                  "priority": 2
+                }
+              ],
+              "last_stage": "analyze",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "User-abort and infra death are classified as deterministic failures and routed Blocked→planner instead of halting the run: in run `01M0QJ5FNE9XZJ72YN31K3X451` implementer@2 received a stop steer plus Docker 409 mid-verification, returned `outcome=failed` (category `deterministic`), bounced to planner, spawned a full extra cycle, and its phantom signature now sits in `loop_failure_signatures`. Platform-side fix: classify user-stop and container-death as cancel or transient and halt the run."
+                  }
+                ],
+                "observations": [
+                  "Review written verbatim to `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`; the run failed solely on the missing planner Blocked edge (goal gate unsatisfied, no retry target) while seed fabro-8d26 was implemented, gated green, and approved — totals 19m29s, $0.658, 15 stage executions.",
+                  "Cross-world blocker seed fabro-d810 still appears priority-1 ready in `sd ready`; without a tracker fix every future planner re-derives its infeasibility (~$0.26 deadweight per run) until the denkhaus fabro-29f7 rebuild lands."
+                ]
+              }
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 13102,
+                    "output_tokens": 3920,
+                    "reasoning_tokens": 2579,
+                    "cache_read_tokens": 27136,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 53988
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 63416,
+              "tool_time_ms": 147844,
+              "active_time_ms": 211260
+            }
+          },
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "sd list --format compact returned empty output with exit 0 — duplicate check passed on empty tracker; next bookkeeper should re-verify with sd list if seeds were expected to exist",
+                  "Review file .fabro/reviews/develop/01M0QJ01P9E6EKX8S6TQN91G8E.md was already committed by the analyst pass, so this bookkeeper commit contains only the revision marker and .seeds/issues.jsonl"
+                ]
+              },
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 1004,
+                "preview": "All 7 findings filed as seeds (fabro-b158, fabro-cbca, fabro-e7e5, fabro-0230, fabro-2c81, fabro-5632, fabro-80ec), the revision marker written to `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md`, and"
+              },
+              "last_response": "All 7 findings filed as seeds (fabro-b158, fabro-cbca, fabro-e7e5, fabro-0230, fabro-2c81, fabro-5632, fabro-80ec), the revision marker written to `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md`, and",
+              "last_stage": "file",
+              "filed_seed_ids": [
+                "fabro-b158",
+                "fabro-cbca",
+                "fabro-e7e5",
+                "fabro-0230",
+                "fabro-2c81",
+                "fabro-5632",
+                "fabro-80ec"
+              ]
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14222,
+                    "output_tokens": 2613,
+                    "reasoning_tokens": 97,
+                    "cache_read_tokens": 129920,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 65596
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 57821,
+              "tool_time_ms": 2878,
+              "active_time_ms": 60699
+            }
+          },
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "revisor_target_run_id": "01M0QJ5FNE9XZJ72YN31K3X451",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 981,
+                "preview": "Eligible runs: terminal, unrevised (only `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md` exists), sandbox available. Oldest qualifying is `01M0QJ5FNE9XZJ72YN31K3X451` (failed, 2026-08-23, ~21.2 min)."
+              },
+              "last_stage": "select",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "12 terminal unrevised runs blocked, no live sandbox (engine must provision fresh analyst sandboxes before they can be revised); 1 non-terminal run (01M0QTMF0NZNFH72VEVZNB8XFY, submitted) skipped; oldest sandboxed unrevised run selected"
+                ]
+              },
+              "revisor_target_wall": "21.2 min",
+              "last_response": "Eligible runs: terminal, unrevised (only `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md` exists), sandbox available. Oldest qualifying is `01M0QJ5FNE9XZJ72YN31K3X451` (failed, 2026-08-23, ~21.2 min).",
+              "revisor_target_status": "failed",
+              "revisor_target_title": "Develop the project seed-by-seed (generic develop goal)"
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14870,
+                    "output_tokens": 350,
+                    "reasoning_tokens": 232,
+                    "cache_read_tokens": 7040,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 25207
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 10907,
+              "tool_time_ms": 1118,
+              "active_time_ms": 12025
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "approve": {
+            "status": "succeeded",
+            "preferred_label": "[A] Approved",
+            "suggested_next_ids": [
+              "select"
+            ],
+            "context_updates": {
+              "human.gate.approve.label": "[A] Approved",
+              "human.gate.selected": "A",
+              "human.gate.label": "[A] Approved",
+              "human.gate.approve.answer": "A",
+              "human.gate.approve.question": "Approve filing + merge"
+            },
+            "usage": null
+          }
+        },
+        "next_node_id": "file",
+        "git_commit_sha": "2d07a75e402a458a79c1b6ddd0083323db6e444b",
+        "node_visits": {
+          "file": 1,
+          "analyze": 2,
+          "select": 2,
+          "start": 1,
+          "approve": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\nindex 9d55cbb..7db2231 100644\n--- a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\n+++ b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\n@@ -4,3 +4,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"file\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-02T17:53:59Z\",\"data\":{\"painpoints\":[],\"observations\":[\"sd list --format compact returned empty output with exit 0 — duplicate check passed on empty tracker; next bookkeeper should re-verify with sd list if seeds were expected to exist\",\"Review file .fabro/reviews/develop/01M0QJ01P9E6EKX8S6TQN91G8E.md was already committed by the analyst pass, so this bookkeeper commit contains only the revision marker and .seeds/issues.jsonl\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"approve\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-02T18:43:54Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"select\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-02T18:44:15Z\",\"data\":{\"painpoints\":[],\"observations\":[\"12 terminal unrevised runs blocked, no live sandbox (engine must provision fresh analyst sandboxes before they can be revised); 1 non-terminal run (01M0QTMF0NZNFH72VEVZNB8XFY, submitted) skipped; oldest sandboxed unrevised run selected\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"analyze\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-02T18:48:11Z\",\"data\":{\"painpoints\":[{\"text\":\"User-abort and infra death are classified as deterministic failures and routed Blocked→planner instead of halting the run: in run `01M0QJ5FNE9XZJ72YN31K3X451` implementer@2 received a stop steer plus Docker 409 mid-verification, returned `outcome=failed` (category `deterministic`), bounced to planner, spawned a full extra cycle, and its phantom signature now sits in `loop_failure_signatures`. Platform-side fix: classify user-stop and container-death as cancel or transient and halt the run.\"}],\"observations\":[\"Review written verbatim to `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`; the run failed solely on the missing planner Blocked edge (goal gate unsatisfied, no retry target) while seed fabro-8d26 was implemented, gated green, and approved — totals 19m29s, $0.658, 15 stage executions.\",\"Cross-world blocker seed fabro-d810 still appears priority-1 ready in `sd ready`; without a tracker fix every future planner re-derives its infeasibility (~$0.26 deadweight per run) until the denkhaus fabro-29f7 rebuild lands.\"]}}\ndiff --git a/.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md b/.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md\nnew file mode 100644\nindex 0000000..d23cceb\n--- /dev/null\n+++ b/.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md\n@@ -0,0 +1,54 @@\n+# Improve review — run 01M0QJ5FNE9XZJ72YN31K3X451\n+\n+- workflow: develop\n+- branch integrated: this revisor pass (unmerged until approved)\n+- status: failed (21.2 min, revisor pass — reason and cost in run detail)\n+- generated: 2026-09-02 18:47+0000 by revisor `fabro_ask`\n+\n+---\n+\n+All evidence is verified against run events, the workspace copies of `.fabro/workflows/develop/workflow.fabro` / `prompts/*.md` / `scripts/evidence.nu`, and `.fabro/run-painpoints.jsonl`. Run totals for context (from the run's conclusion event): 19m29s wall, $0.658, 936.8k tokens (736.8k cache-read), 15 stage executions, final status `failed(workflow_error)` — despite one seed (`fabro-8d26`) being implemented, gated green, and approved.\n+\n+## Recommendations, ordered by expected impact\n+\n+**1. The 12KB preamble budget is smaller than what the reviewer must read — raise it.**\n+- **What happened:** `evidence.nu` emitted a 6,378-byte capture (both cycles, byte-identical blob `3794…`). The reviewer keeps tester+evidence history (`preamble_stages_ignore=\"planner,implementer,reviewer\"`), so by cycle 2 its preamble held two ~6.4KB captures — over `preamble_budget_kb=12` before anything else. The renderer spilled both to ~400-char previews + blob paths the tool-less reviewer can't open. reviewer@1 correctly held (\"verification-uncertainty\"); reviewer@2 then **approved without ever seeing the diff**, judging on \"convergent secondary signals\" (its own painpoint). The no-op rework cycle this caused (planner@3 + implementer@3 + tester@2 + evidence@2 + reviewer@2) cost **$0.209 and ~5 min — 32% of the run**.\n+- **Change:** `.fabro/workflows/develop/workflow.fabro` line 6: `preamble_budget_kb=12` → `20`–`24`. The seed `fabro-d810` itself said \"adjust AFTER first measurement if 12KB cuts real evidence (evidence node outputs can legitimately be 6-7k)\" — this run is that measurement. Also correct the now-false claims at workflow.fabro lines 79–84 and `prompts/reviewer.md` line 11 that `summary:high` \"carries the evidence capture in full\" — the budget spill overrides fidelity, as this run proved.\n+- **Effect:** review verdicts grounded in the actual diff; eliminates the ~$0.21/5-min verification-hold cycle and the silent rigor loss of ungrounded approvals.\n+\n+**2. Add a planner→refiner \"Blocked\" edge — this single missing edge is why the run is red.**\n+- **What happened:** planner@4 routed `preferred_next_label=\"Blocked\"` on the fabro-d810 deadlock; the graph has no such edge (planner exits are lines 127–129; \"Blocked\" exists only on implementer→planner, line 132). The hold rode `outcome=failed`, tripped `goal_gate=true` on planner, and the run concluded `workflow_error: \"goal gate unsatisfied for node planner and no retry target\"` — despite fabro-8d26 being closed successfully minutes earlier.\n+- **Change:** add `planner -> refiner [label=\"Blocked\", condition=\"preferred_label=\\\"Blocked\\\"\"]` after line 128, and add a Blocked output variant (`outcome: \"succeeded\"`, label `Blocked`, `failure_reason` carried in context) to `prompts/planner.md`'s outcome contract so the goal gate stays satisfied.\n+- **Effect:** deliberate human-escalation stops failing runs; the ledger distinguishes \"blocked for a human\" from genuine planner errors.\n+\n+**3. Model the cross-world blocker on seed fabro-d810 — 35% of this run re-derived a known-dead state.**\n+- **What happened:** planner@1 spent ~2.5 min proving the seed infeasible (`which fabro` → not found, no run-event store under `.fabro/`, no meta world; events seq 74–91); planner@4 spent 263s/$0.148 with 12,756 reasoning tokens re-deriving the same conclusion plus \"Validated: 4 well-formed entries\". `sd ready` still lists fabro-d810 as priority-1, zero blockers.\n+- **Change:** in the tracker (seed `fabro-d810` in `.seeds/issues.jsonl` via `sd`): add the `sd dep` on the denkhaus fabro-29f7 rebuild sequence (or drop its priority below implementable seeds / label it `blocked-external`), and paste the infeasibility facts into the seed description so the next planner reads them instead of re-proving them.\n+- **Effect:** saves ~$0.26 and ~7 min of deadweight planner reasoning per run until the denkhaus rebuild lands; also prevents a naive planner from claiming it and deadlocking the implementer.\n+\n+**4. Add an \"Evidence retry\" verdict so a delivery failure doesn't re-run the whole pipeline.**\n+- **What happened:** reviewer@1's feedback explicitly said \"No code change is implied … re-run the evidence stage or relay the full capture (blob 3794…)\", but `prompts/reviewer.md` (lines 30–60) offers only Approved / Changes requested, and `changes_requested` forces planner→implementer→tester→evidence→reviewer. The diff was byte-identical across both cycles — implementer@3 ($0.075, 105s) verified an unchanged worktree.\n+- **Change:** third route in `prompts/reviewer.md` (\"Evidence retry\": `outcome: succeeded`, `preferred_next_label: \"Evidence retry\"`) plus edge `reviewer -> evidence [label=\"Evidence retry\"]` in workflow.fabro.\n+- **Effect:** a re-delivery costs 0.3s (evidence script) + one review call (~$0.03) instead of ~$0.21 and 5 minutes.\n+\n+**5. Stop reviewer.md from telling the reviewer it has tools.**\n+- **What happened:** `prompts/reviewer.md` line 13 says \"re-run `just qualitygate` yourself — you have tools\", while line 1 of the same file (and the node's `shape=tab`) declares it tool-less. The reviewer's own painpoint flags exactly this contradiction.\n+- **Change:** delete the \"you have tools\" clause; state the gate result is visible only via the tester stage section.\n+- **Effect:** free correctness fix in the same file you're editing for #4; removes a hedge the model can't act on.\n+\n+**6. Verification-only briefs must not mandate the gate the implementer is forbidden to run.**\n+- **What happened:** planner@2/@3 briefs listed `just qualitygate` under \"Required verification commands\"; implementer.md rule 4 forbids running the full gate. implementer@3 had to resolve the contradiction itself and filed painpoint #3 (present in `.fabro/run-painpoints.jsonl`).\n+- **Change:** one sentence in `prompts/planner.md`'s verification-only guidance: \"list smoke-level commands only (`go build`, `go test`, `go run` smokes); the gate belongs to the tester stage.\"\n+- **Effect:** removes an unsatisfiable checklist item that could route a healthy seed to Blocked.\n+\n+**7. Treat user-abort/infra death as cancellation, not a deterministic Blocked bounce.**\n+- **What happened:** implementer@2 received the German steer \"beende den run\" plus Docker 409 mid-verification; it returned `outcome=failed` (category `deterministic`), bounced to planner, and spawned a full extra cycle. Its failure signature sits in `loop_failure_signatures` as deterministic, and its German reply (\"Verstanden — ich beende den Run…\") leaked into later stages' context.\n+- **Change:** (a) one line in `prompts/implementer.md`: \"Always respond in English\"; (b) platform-side painpoint (already implicit in the ledger): classify user-stop/container-death as cancel/transient and halt the run instead of routing Blocked→planner.\n+- **Effect:** a stop request actually stops; no phantom deterministic-failure signature pollutes the next run's preamble.\n+\n+**8. Stop echoing the full painpoint list through every agent.**\n+- **What happened:** all three prompts require \"restate the full accumulated list\" (last-writer-wins). By planner@4 that's 4 entries ≈ 2.8KB mirrored into three prompts per pass, part of its 263s went to \"Validating: 4 well-formed entries\", and the reviewer received the list itself truncated — accumulation is lossy at exactly the node told to restate it.\n+- **Change:** since `refiner.nu` already delivers from the append-only `.fabro/run-painpoints.jsonl`, change the painpoint sections in all three prompts to \"emit only NEW entries\" and have the planner append them directly to the file; drop the restate-the-world instruction.\n+- **Effect:** frees ~3KB of the 12KB preamble budget (compounds with #1), removes the lossy restatement loop, trims planner reasoning overhead.\n+\n+**Not worth changing** (checked, no filler): tester timeout `10m` for a 1.0s gate is harmless; `output_retries=2` never fired (0 retries in the conclusion event); cache behavior is healthy (79% cache-read); the evidence script's 6.8KB internal budget and whole-file diff cuts worked exactly as designed — the failure was downstream of it, in the render budget (#1).\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 148,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-02T18:49:28.918886661Z",
+        "current_node": "file",
+        "completed_nodes": [
+          "start",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file"
         ],
         "node_retries": {},
         "context_values": {
@@ -2163,21 +2554,16 @@
           "failure_signature": "",
           "internal.work_dir": "/workspace/fabro",
           "journal": {
-            "painpoints": [
-              {
-                "text": "User-abort and infra death are classified as deterministic failures and routed Blocked→planner instead of halting the run: in run `01M0QJ5FNE9XZJ72YN31K3X451` implementer@2 received a stop steer plus Docker 409 mid-verification, returned `outcome=failed` (category `deterministic`), bounced to planner, spawned a full extra cycle, and its phantom signature now sits in `loop_failure_signatures`. Platform-side fix: classify user-stop and container-death as cancel or transient and halt the run."
-              }
-            ],
+            "painpoints": [],
             "observations": [
-              "Review written verbatim to `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`; the run failed solely on the missing planner Blocked edge (goal gate unsatisfied, no retry target) while seed fabro-8d26 was implemented, gated green, and approved — totals 19m29s, $0.658, 15 stage executions.",
-              "Cross-world blocker seed fabro-d810 still appears priority-1 ready in `sd ready`; without a tracker fix every future planner re-derives its infeasibility (~$0.26 deadweight per run) until the denkhaus fabro-29f7 rebuild lands."
+              "Marker and seeds committed in fe18e4d; tree clean. Two findings reference seed fabro-d810 which no longer appears in sd list — possibly already closed/archived; fabro-a285 still valid as tracker-hygiene guidance if it resurfaces. Preamble-budget raise (fabro-83f9) and painpoint-restate removal (fabro-46a4) compound — implement together."
             ]
           },
-          "last_response": "Review persisted verbatim to `.fabro/reviews/develop/01M0QJ5FNE9XZJ72YN31K3X451.md`. Distilling the eight evidence-grounded recommendations into seed candidates (two high-impact: the preamble budget s",
+          "last_response": "All eight findings were novel, filed as seeds `fabro-83f9`, `fabro-53d3`, `fabro-a285`, `fabro-886e`, `fabro-a67c`, `fabro-578a`, `fabro-eaa0`, `fabro-46a4`; the revision marker was written to `/works",
           "revisor_target_wall": "21.2 min",
           "thread.start.current_node": "select",
-          "internal.thread_id": "select",
-          "current_node": "analyze",
+          "internal.thread_id": "analyze",
+          "current_node": "file",
           "graph.rankdir": "LR",
           "internal.fidelity": "compact",
           "internal.node_visit_count": 2,
@@ -2190,33 +2576,35 @@
             "preview": "Eligible runs: terminal, unrevised (only `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md` exists), sandbox available. Oldest qualifying is `01M0QJ5FNE9XZJ72YN31K3X451` (failed, 2026-08-23, ~21.2 min)."
           },
           "revisor_target_title": "Develop the project seed-by-seed (generic develop goal)",
-          "preferred_label": "Findings ready",
+          "preferred_label": "Staged",
           "graph.preamble_budget_kb": "24",
-          "last_stage": "analyze",
+          "last_stage": "file",
           "internal.retry_count.analyze": 0,
           "thread.analyze.current_node": "file",
           "graph.max_node_visits": "30",
           "seed_cycles": {
             "select": 1,
-            "analyze": 1
+            "analyze": 1,
+            "file": 1
           },
           "thread.select.current_node": "analyze",
           "filed_seed_ids": [
-            "fabro-b158",
-            "fabro-cbca",
-            "fabro-e7e5",
-            "fabro-0230",
-            "fabro-2c81",
-            "fabro-5632",
-            "fabro-80ec"
+            "fabro-83f9",
+            "fabro-53d3",
+            "fabro-a285",
+            "fabro-886e",
+            "fabro-a67c",
+            "fabro-578a",
+            "fabro-eaa0",
+            "fabro-46a4"
           ],
           "failure_class": "",
           "revisor_target_run_id": "01M0QJ5FNE9XZJ72YN31K3X451",
           "response.file": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.file",
-            "chars": 1004,
-            "preview": "All 7 findings filed as seeds (fabro-b158, fabro-cbca, fabro-e7e5, fabro-0230, fabro-2c81, fabro-5632, fabro-80ec), the revision marker written to `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md`, and"
+            "chars": 998,
+            "preview": "All eight findings were novel, filed as seeds `fabro-83f9`, `fabro-53d3`, `fabro-a285`, `fabro-886e`, `fabro-a67c`, `fabro-578a`, `fabro-eaa0`, `fabro-46a4`; the revision marker was written to `/works"
           },
           "internal.retry_count.file": 0
         },
@@ -2229,30 +2617,30 @@
             "status": "succeeded",
             "preferred_label": "Staged",
             "context_updates": {
+              "filed_seed_ids": [
+                "fabro-83f9",
+                "fabro-53d3",
+                "fabro-a285",
+                "fabro-886e",
+                "fabro-a67c",
+                "fabro-578a",
+                "fabro-eaa0",
+                "fabro-46a4"
+              ],
+              "last_stage": "file",
+              "last_response": "All eight findings were novel, filed as seeds `fabro-83f9`, `fabro-53d3`, `fabro-a285`, `fabro-886e`, `fabro-a67c`, `fabro-578a`, `fabro-eaa0`, `fabro-46a4`; the revision marker was written to `/works",
               "journal": {
                 "painpoints": [],
                 "observations": [
-                  "sd list --format compact returned empty output with exit 0 — duplicate check passed on empty tracker; next bookkeeper should re-verify with sd list if seeds were expected to exist",
-                  "Review file .fabro/reviews/develop/01M0QJ01P9E6EKX8S6TQN91G8E.md was already committed by the analyst pass, so this bookkeeper commit contains only the revision marker and .seeds/issues.jsonl"
+                  "Marker and seeds committed in fe18e4d; tree clean. Two findings reference seed fabro-d810 which no longer appears in sd list — possibly already closed/archived; fabro-a285 still valid as tracker-hygiene guidance if it resurfaces. Preamble-budget raise (fabro-83f9) and painpoint-restate removal (fabro-46a4) compound — implement together."
                 ]
               },
               "response.file": {
                 "dedup": "response text omitted — payload lives in structured context keys",
                 "output_key": "output.file",
-                "chars": 1004,
-                "preview": "All 7 findings filed as seeds (fabro-b158, fabro-cbca, fabro-e7e5, fabro-0230, fabro-2c81, fabro-5632, fabro-80ec), the revision marker written to `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md`, and"
-              },
-              "last_response": "All 7 findings filed as seeds (fabro-b158, fabro-cbca, fabro-e7e5, fabro-0230, fabro-2c81, fabro-5632, fabro-80ec), the revision marker written to `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md`, and",
-              "last_stage": "file",
-              "filed_seed_ids": [
-                "fabro-b158",
-                "fabro-cbca",
-                "fabro-e7e5",
-                "fabro-0230",
-                "fabro-2c81",
-                "fabro-5632",
-                "fabro-80ec"
-              ]
+                "chars": 998,
+                "preview": "All eight findings were novel, filed as seeds `fabro-83f9`, `fabro-53d3`, `fabro-a285`, `fabro-886e`, `fabro-a67c`, `fabro-578a`, `fabro-eaa0`, `fabro-46a4`; the revision marker was written to `/works"
+              }
             },
             "notes": "Stage completed: file",
             "usage": {
@@ -2263,10 +2651,10 @@
                     "model_id": "glm-5.3"
                   },
                   "tokens": {
-                    "input_tokens": 14222,
-                    "output_tokens": 2613,
-                    "reasoning_tokens": 97,
-                    "cache_read_tokens": 129920,
+                    "input_tokens": 14426,
+                    "output_tokens": 2541,
+                    "reasoning_tokens": 42,
+                    "cache_read_tokens": 145728,
                     "cache_write_tokens": 0
                   }
                 },
@@ -2274,16 +2662,16 @@
                   "algorithm": "openai"
                 }
               },
-              "total_usd_micros": 65596
+              "total_usd_micros": 69433
             },
             "files_touched": [
-              "/workspace/fabro/.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md"
+              "/workspace/fabro/.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md"
             ],
             "timing": {
               "wall_time_ms": 0,
-              "inference_time_ms": 57821,
-              "tool_time_ms": 2878,
-              "active_time_ms": 60699
+              "inference_time_ms": 62522,
+              "tool_time_ms": 2984,
+              "active_time_ms": 65506
             }
           },
           "analyze": {
@@ -2452,13 +2840,13 @@
             }
           }
         },
-        "next_node_id": "file",
+        "next_node_id": "approve",
         "node_visits": {
           "start": 1,
           "analyze": 2,
           "select": 2,
           "approve": 1,
-          "file": 1
+          "file": 2
         }
       },
       "diff": {}
@@ -2490,6 +2878,976 @@
   "superseded_by": null,
   "pending_interviews": {},
   "stages": {
+    "file@1": {
+      "first_event_seq": 92,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: file",
+        "failure_reason": null,
+        "timestamp": "2026-09-02T17:53:59.260529832Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T17:52:52.316796315Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 61993,
+        "inference_time_ms": 57821,
+        "tool_time_ms": 2878,
+        "active_time_ms": 60699
+      },
+      "usage": {
+        "input_tokens": 14222,
+        "output_tokens": 2613,
+        "total_tokens": 146852,
+        "reasoning_tokens": 97,
+        "cache_read_tokens": 129920,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 65596
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "ask-matt",
+            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
+          },
+          {
+            "name": "claude-handoff",
+            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
+          },
+          {
+            "name": "code-review",
+            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
+          },
+          {
+            "name": "codebase-design",
+            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
+          },
+          {
+            "name": "diagnosing-bugs",
+            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
+          },
+          {
+            "name": "domain-modeling",
+            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
+          },
+          {
+            "name": "git-guardrails-claude-code",
+            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
+          },
+          {
+            "name": "grill-me",
+            "description": "A relentless interview to sharpen a plan or design."
+          },
+          {
+            "name": "grill-with-docs",
+            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
+          },
+          {
+            "name": "grilling",
+            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
+          },
+          {
+            "name": "handoff",
+            "description": "Compact the current conversation into a handoff document for another agent to pick up."
+          },
+          {
+            "name": "implement",
+            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
+          },
+          {
+            "name": "implement-spec",
+            "description": "\"Implement a specification in code.\""
+          },
+          {
+            "name": "improve-codebase-architecture",
+            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
+          },
+          {
+            "name": "loop-me",
+            "description": "Grill me about specs for the workflows I want to build, within this workspace."
+          },
+          {
+            "name": "migrate-to-shoehorn",
+            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
+          },
+          {
+            "name": "prototype",
+            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
+          },
+          {
+            "name": "research",
+            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
+          },
+          {
+            "name": "resolving-merge-conflicts",
+            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
+          },
+          {
+            "name": "scaffold-exercises",
+            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
+          },
+          {
+            "name": "setup-matt-pocock-skills",
+            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
+          },
+          {
+            "name": "setup-pre-commit",
+            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
+          },
+          {
+            "name": "setup-ts-deep-modules",
+            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
+          },
+          {
+            "name": "tdd",
+            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
+          },
+          {
+            "name": "teach",
+            "description": "Teach the user a new skill or concept, within this workspace."
+          },
+          {
+            "name": "to-questionnaire",
+            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
+          },
+          {
+            "name": "to-spec",
+            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
+          },
+          {
+            "name": "to-tickets",
+            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
+          },
+          {
+            "name": "triage",
+            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
+          },
+          {
+            "name": "wait-what",
+            "description": "\"Stop. That last message did not land: re-pitch it.\""
+          },
+          {
+            "name": "wayfinder",
+            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
+          },
+          {
+            "name": "wizard",
+            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
+          },
+          {
+            "name": "writing-beats",
+            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
+          },
+          {
+            "name": "writing-for-agents",
+            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
+          },
+          {
+            "name": "writing-fragments",
+            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
+          },
+          {
+            "name": "writing-shape",
+            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_ask",
+          "description": "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. Requires the target run's workflow to be declared in this graph's inspects attribute.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_create",
+          "description": "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_events",
+          "description": "List, inspect, or search stored events for a Fabro workflow run.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_gather",
+          "description": "Wait for Fabro runs to reach terminal states, returning current state on timeout.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_get",
+          "description": "Read-only inspection of a Fabro run: returns its summary, projection, and pending questions without mutating state.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_interact",
+          "description": "Control a Fabro run: start, approve, deny, message, interrupt, cancel, archive, unarchive, link or unlink a parent, inspect or answer questions. Use fabro_run_get for read-only inspection.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_logs",
+          "description": "Read the persisted worker tracing log of a Fabro run, filtered by severity (warn and error by default). Lines are redacted; diagnostics only, never a mutation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_pair",
+          "description": "Inspect, start, message, end, or read transcript for a live Fabro run pairing session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_search",
+          "description": "Search Fabro workflow runs by id, parent, workflow, labels, status, archival state, and creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 13769,
+        "usage_percent": 1.3131141662597656,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-02T17:53:59.237953340Z",
+        "event_seq": 168,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1047,
+            "usage_percent": 0.09984970092773438
+          },
+          {
+            "category": "tools",
+            "tokens": 3620,
+            "usage_percent": 0.3452301025390625
+          },
+          {
+            "category": "skills",
+            "tokens": 1385,
+            "usage_percent": 0.13208389282226562
+          },
+          {
+            "category": "memory",
+            "tokens": 1126,
+            "usage_percent": 0.10738372802734375
+          },
+          {
+            "category": "conversation",
+            "tokens": 6585,
+            "usage_percent": 0.6279945373535156
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "file@2": {
+      "first_event_seq": 255,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: file",
+        "failure_reason": null,
+        "timestamp": "2026-09-02T18:49:28.666999619Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T18:48:16.362293784Z",
+      "handler": "agent",
+      "graph_visit": 2,
+      "timing": {
+        "wall_time_ms": 66740,
+        "inference_time_ms": 62522,
+        "tool_time_ms": 2984,
+        "active_time_ms": 65506
+      },
+      "usage": {
+        "input_tokens": 14426,
+        "output_tokens": 2541,
+        "total_tokens": 162737,
+        "reasoning_tokens": 42,
+        "cache_read_tokens": 145728,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 69433
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "ask-matt",
+            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
+          },
+          {
+            "name": "claude-handoff",
+            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
+          },
+          {
+            "name": "code-review",
+            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
+          },
+          {
+            "name": "codebase-design",
+            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
+          },
+          {
+            "name": "diagnosing-bugs",
+            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
+          },
+          {
+            "name": "domain-modeling",
+            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
+          },
+          {
+            "name": "git-guardrails-claude-code",
+            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
+          },
+          {
+            "name": "grill-me",
+            "description": "A relentless interview to sharpen a plan or design."
+          },
+          {
+            "name": "grill-with-docs",
+            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
+          },
+          {
+            "name": "grilling",
+            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
+          },
+          {
+            "name": "handoff",
+            "description": "Compact the current conversation into a handoff document for another agent to pick up."
+          },
+          {
+            "name": "implement",
+            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
+          },
+          {
+            "name": "implement-spec",
+            "description": "\"Implement a specification in code.\""
+          },
+          {
+            "name": "improve-codebase-architecture",
+            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
+          },
+          {
+            "name": "loop-me",
+            "description": "Grill me about specs for the workflows I want to build, within this workspace."
+          },
+          {
+            "name": "migrate-to-shoehorn",
+            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
+          },
+          {
+            "name": "prototype",
+            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
+          },
+          {
+            "name": "research",
+            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
+          },
+          {
+            "name": "resolving-merge-conflicts",
+            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
+          },
+          {
+            "name": "scaffold-exercises",
+            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
+          },
+          {
+            "name": "setup-matt-pocock-skills",
+            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
+          },
+          {
+            "name": "setup-pre-commit",
+            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
+          },
+          {
+            "name": "setup-ts-deep-modules",
+            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
+          },
+          {
+            "name": "tdd",
+            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
+          },
+          {
+            "name": "teach",
+            "description": "Teach the user a new skill or concept, within this workspace."
+          },
+          {
+            "name": "to-questionnaire",
+            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
+          },
+          {
+            "name": "to-spec",
+            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
+          },
+          {
+            "name": "to-tickets",
+            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
+          },
+          {
+            "name": "triage",
+            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
+          },
+          {
+            "name": "wait-what",
+            "description": "\"Stop. That last message did not land: re-pitch it.\""
+          },
+          {
+            "name": "wayfinder",
+            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
+          },
+          {
+            "name": "wizard",
+            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
+          },
+          {
+            "name": "writing-beats",
+            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
+          },
+          {
+            "name": "writing-for-agents",
+            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
+          },
+          {
+            "name": "writing-fragments",
+            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
+          },
+          {
+            "name": "writing-shape",
+            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_ask",
+          "description": "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. Requires the target run's workflow to be declared in this graph's inspects attribute.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_create",
+          "description": "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_events",
+          "description": "List, inspect, or search stored events for a Fabro workflow run.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_gather",
+          "description": "Wait for Fabro runs to reach terminal states, returning current state on timeout.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_get",
+          "description": "Read-only inspection of a Fabro run: returns its summary, projection, and pending questions without mutating state.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_interact",
+          "description": "Control a Fabro run: start, approve, deny, message, interrupt, cancel, archive, unarchive, link or unlink a parent, inspect or answer questions. Use fabro_run_get for read-only inspection.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_logs",
+          "description": "Read the persisted worker tracing log of a Fabro run, filtered by severity (warn and error by default). Lines are redacted; diagnostics only, never a mutation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_pair",
+          "description": "Inspect, start, message, end, or read transcript for a live Fabro run pairing session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_search",
+          "description": "Search Fabro workflow runs by id, parent, workflow, labels, status, archival state, and creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 14031,
+        "usage_percent": 1.3381004333496094,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-02T18:49:28.640949012Z",
+        "event_seq": 336,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1031,
+            "usage_percent": 0.09832382202148438
+          },
+          {
+            "category": "tools",
+            "tokens": 3650,
+            "usage_percent": 0.34809112548828125
+          },
+          {
+            "category": "skills",
+            "tokens": 1396,
+            "usage_percent": 0.1331329345703125
+          },
+          {
+            "category": "memory",
+            "tokens": 1136,
+            "usage_percent": 0.10833740234375
+          },
+          {
+            "category": "conversation",
+            "tokens": 6811,
+            "usage_percent": 0.6495475769042969
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 23,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-02T17:48:13.353427440Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T17:48:13.339232354Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
     "analyze@1": {
       "first_event_seq": 55,
       "prompt": null,
@@ -3680,509 +5038,6 @@
           }
         ],
         "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "file@1": {
-      "first_event_seq": 92,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Stage completed: file",
-        "failure_reason": null,
-        "timestamp": "2026-09-02T17:53:59.260529832Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-02T17:52:52.316796315Z",
-      "handler": "agent",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 61993,
-        "inference_time_ms": 57821,
-        "tool_time_ms": 2878,
-        "active_time_ms": 60699
-      },
-      "usage": {
-        "input_tokens": 14222,
-        "output_tokens": 2613,
-        "total_tokens": 146852,
-        "reasoning_tokens": 97,
-        "cache_read_tokens": 129920,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 65596
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "skills": {
-        "available": [
-          {
-            "name": "ask-matt",
-            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
-          },
-          {
-            "name": "claude-handoff",
-            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
-          },
-          {
-            "name": "code-review",
-            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
-          },
-          {
-            "name": "codebase-design",
-            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
-          },
-          {
-            "name": "diagnosing-bugs",
-            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
-          },
-          {
-            "name": "domain-modeling",
-            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
-          },
-          {
-            "name": "git-guardrails-claude-code",
-            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
-          },
-          {
-            "name": "grill-me",
-            "description": "A relentless interview to sharpen a plan or design."
-          },
-          {
-            "name": "grill-with-docs",
-            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
-          },
-          {
-            "name": "grilling",
-            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
-          },
-          {
-            "name": "handoff",
-            "description": "Compact the current conversation into a handoff document for another agent to pick up."
-          },
-          {
-            "name": "implement",
-            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
-          },
-          {
-            "name": "implement-spec",
-            "description": "\"Implement a specification in code.\""
-          },
-          {
-            "name": "improve-codebase-architecture",
-            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
-          },
-          {
-            "name": "loop-me",
-            "description": "Grill me about specs for the workflows I want to build, within this workspace."
-          },
-          {
-            "name": "migrate-to-shoehorn",
-            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
-          },
-          {
-            "name": "prototype",
-            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
-          },
-          {
-            "name": "research",
-            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
-          },
-          {
-            "name": "resolving-merge-conflicts",
-            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
-          },
-          {
-            "name": "scaffold-exercises",
-            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
-          },
-          {
-            "name": "setup-matt-pocock-skills",
-            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
-          },
-          {
-            "name": "setup-pre-commit",
-            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
-          },
-          {
-            "name": "setup-ts-deep-modules",
-            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
-          },
-          {
-            "name": "tdd",
-            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
-          },
-          {
-            "name": "teach",
-            "description": "Teach the user a new skill or concept, within this workspace."
-          },
-          {
-            "name": "to-questionnaire",
-            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
-          },
-          {
-            "name": "to-spec",
-            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
-          },
-          {
-            "name": "to-tickets",
-            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
-          },
-          {
-            "name": "triage",
-            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
-          },
-          {
-            "name": "wait-what",
-            "description": "\"Stop. That last message did not land: re-pitch it.\""
-          },
-          {
-            "name": "wayfinder",
-            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
-          },
-          {
-            "name": "wizard",
-            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
-          },
-          {
-            "name": "writing-beats",
-            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
-          },
-          {
-            "name": "writing-for-agents",
-            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
-          },
-          {
-            "name": "writing-fragments",
-            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
-          },
-          {
-            "name": "writing-shape",
-            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
-          }
-        ],
-        "activated": []
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "fabro_ask",
-          "description": "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. Requires the target run's workflow to be declared in this graph's inspects attribute.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_create",
-          "description": "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_events",
-          "description": "List, inspect, or search stored events for a Fabro workflow run.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_gather",
-          "description": "Wait for Fabro runs to reach terminal states, returning current state on timeout.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_get",
-          "description": "Read-only inspection of a Fabro run: returns its summary, projection, and pending questions without mutating state.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_interact",
-          "description": "Control a Fabro run: start, approve, deny, message, interrupt, cancel, archive, unarchive, link or unlink a parent, inspect or answer questions. Use fabro_run_get for read-only inspection.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_logs",
-          "description": "Read the persisted worker tracing log of a Fabro run, filtered by severity (warn and error by default). Lines are redacted; diagnostics only, never a mutation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_pair",
-          "description": "Inspect, start, message, end, or read transcript for a live Fabro run pairing session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_search",
-          "description": "Search Fabro workflow runs by id, parent, workflow, labels, status, archival state, and creation time.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_runs_list",
-          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "use_skill",
-          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
-          "source": {
-            "kind": "skill"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": true
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 13769,
-        "usage_percent": 1.3131141662597656,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-02T17:53:59.237953340Z",
-        "event_seq": 168,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1047,
-            "usage_percent": 0.09984970092773438
-          },
-          {
-            "category": "tools",
-            "tokens": 3620,
-            "usage_percent": 0.3452301025390625
-          },
-          {
-            "category": "skills",
-            "tokens": 1385,
-            "usage_percent": 0.13208389282226562
-          },
-          {
-            "category": "memory",
-            "tokens": 1126,
-            "usage_percent": 0.10738372802734375
-          },
-          {
-            "category": "conversation",
-            "tokens": 6585,
-            "usage_percent": 0.6279945373535156
-          },
-          {
-            "category": "other",
-            "tokens": 6,
-            "usage_percent": 0.00057220458984375
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "start@1": {
-      "first_event_seq": 23,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-02T17:48:13.353427440Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-02T17:48:13.339232354Z",
-      "handler": "start",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
