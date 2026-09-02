@@ -510,8 +510,8 @@
   "status": {
     "kind": "running"
   },
-  "status_updated_at": "2026-09-02T19:25:08.993244899Z",
-  "last_event_at": "2026-09-02T19:30:30.635288901Z",
+  "status_updated_at": "2026-09-02T19:46:23.388887895Z",
+  "last_event_at": "2026-09-02T19:46:23.406937737Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -9974,9 +9974,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 1097,
       "checkpoint": {
-        "timestamp": "2026-09-02T19:30:30.883861028Z",
+        "timestamp": "2026-09-02T19:30:35.839309301Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -10007,6 +10007,389 @@
           "select",
           "analyze",
           "file"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "internal.thread_id": "analyze",
+          "graph.max_node_visits": "30",
+          "human.gate.approve.label": "[A] Approved",
+          "graph.inspects": "develop",
+          "human.gate.label": "[A] Approved",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Preamble-budget finding was a near-duplicate of existing fabro-83f9 and was skipped as duplicate-of; fabro-a67f partially overlaps fabro-578a and fabro-3814 but covers the whitelist plus brief-authority fix, so it was filed separately."
+            ]
+          },
+          "last_response": "All five seeds exist and the working tree is clean — the seeds persist git-natively (their storage changes were included in the commit or are tracked outside the staged paths), the marker is committ",
+          "failure_class": "",
+          "human.gate.approve.answer": "A",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1046,
+            "preview": "Six terminal runs already have markers in `.fabro/revisions/`; among unrevised terminal runs with a live sandbox, the oldest is `01M0TKB7H7DCWCR8TZY6SZPXD2` (created 2026-08-24T19:18:21Z, succeeded, ~"
+          },
+          "revision_findings": [
+            {
+              "title": "Cap reviewer re-verification to capture-only judging",
+              "description": "In `.fabro/workflows/develop/prompts/reviewer.md` add a verification-economy clause: judge from the evidence capture; use tools only for claims the capture cannot show; never re-run a check whose exact assertion already appears in the diff. In this run reviewer@1 spent 61.0s of 62.2s active time re-running build, `go test`, `go vet` and README reproduction already pinned by exact-string test assertions and a green tester stage, finding zero discrepancies. Expected effect: review cycle ~62s down to ~35–40s, ~$0.02 saved per seed.",
+              "priority": 1
+            },
+            {
+              "title": "Whitelist implementer smoke checks and make spec re-fetch conditional",
+              "description": "In `.fabro/workflows/develop/prompts/implementer.md` (a) replace 'a quick smoke check is fine' with a hard whitelist (build + affected test package only; never `just qualitygate`) and (b) make the step-1 `sd show` fetch conditional on a thin or ambiguous brief. In this run implementer@1 was 48% of run cost, ran the full gate plus live CLI checks later re-verified by tester@1, and its first tool call re-fetched the spec the planner had just distilled because step 1 mandates it while the Input section declares the brief authoritative. Expected effect: ~25–40% off implementer inference (~30–45s, ~$0.03 per seed) and the brief-versus-spec authority ambiguity disappears.",
+              "priority": 1
+            },
+            {
+              "title": "Raise preamble_budget_kb from 12 to 24",
+              "description": "Set `preamble_budget_kb=24` on the develop graph in `.fabro/workflows/develop/workflow.fabro`. At 12KB all three reviewer inputs (evidence capture 14.3KB, `current_seed_brief` 1.5KB, `implementation_summary` 2.0KB) arrived as blob refs in this run's reviewer@1 prompt, forcing sandbox `read_file` round-trips before any analysis; actual inline need is about 18KB against a 1M-token window. Expected effect: brief, summary and capture render inline, saving 2–3 tool round-trips per review.",
+              "priority": 2
+            },
+            {
+              "title": "Give the evidence node its own output context key",
+              "description": "Key the evidence command node to `evidence.output` instead of `command.output`, via command-node keying in `.fabro/workflows/develop/workflow.fabro` and `scripts/evidence.nu`. In this run tester wrote the gate log (checkpoint seq 199) and evidence silently overwrote it (seq 209) because both nodes share one key; the reviewer prompt already papers over the clobber, so it only failed to bite because everything was green. Expected effect: no last-writer-wins overwrite; on a red-gate bounce the gate result stays readable from context.",
+              "priority": 2
+            },
+            {
+              "title": "Add a review_notes channel for non-blocking findings",
+              "description": "In `.fabro/workflows/develop/prompts/reviewer.md` and `.fabro/workflows/develop/prompts/planner.md`: Approved JSON gains optional `context_updates.review_notes`; the planner folds them into a future brief or parks them as a low-priority polish seed. In this run the reviewer's only substantive observation (pretty branch calls `Fib(seed)` twice; a local var would suffice) was lost at approval because it was explicitly not a deviation and the painpoint channel covers loop friction only. Expected effect: non-blocking hygiene findings accumulate into one tractable cleanup seed instead of evaporating.",
+              "priority": 2
+            },
+            {
+              "title": "Forbid brief duplication and empty-tracker double checks in planner",
+              "description": "In `.fabro/workflows/develop/prompts/planner.md` make the closing rule absolute (prose must not repeat the brief; routing rationale only) and move the sd-list restriction into the decision order (`sd ready` empty with nothing in progress means route Tracker empty; do not run `sd list`). In this run planner@1 emitted the full 1.5KB brief twice, carried through every checkpoint, and planner@2 ran `sd list --format json` after `sd ready` had already returned nothing. Expected effect: about 1.5KB less carried context per cycle and one turn (~5s) off every terminal planner pass.",
+              "priority": 2
+            }
+          ],
+          "thread.file.current_node": "approve",
+          "internal.retry_count.file": 0,
+          "current_node": "file",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.approve": 0,
+          "failure_signature": "",
+          "graph.rankdir": "LR",
+          "revisor_target_status": "succeeded",
+          "preferred_label": "Staged",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 996,
+            "preview": "All five seeds exist and the working tree is clean — the seeds persist git-natively (their storage changes were included in the commit or are tracked outside the staged paths), the marker is committ"
+          },
+          "filed_seed_ids": [
+            "fabro-50c9",
+            "fabro-a67f",
+            "fabro-9ef9",
+            "fabro-89dd",
+            "fabro-b382"
+          ],
+          "internal.node_visit_count": 7,
+          "internal.run_id": "01M1HKRE686W833SE86D8WD319",
+          "thread.select.current_node": "analyze",
+          "thread.start.current_node": "select",
+          "last_stage": "file",
+          "human.gate.approve.question": "Approve filing + merge",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "revisor_target_wall": "5.8 min",
+          "thread.approve.current_node": "select",
+          "human.gate.selected": "A",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "internal.fidelity": "compact",
+          "internal.retry_count.analyze": 0,
+          "internal.seed_cycle_anchor": "01M0TKB7H7DCWCR8TZY6SZPXD2",
+          "revisor_target_run_id": "01M0TKB7H7DCWCR8TZY6SZPXD2",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 5939,
+            "preview": "Review persisted to `.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md`. Distilled six actionable candidates (reviewer verification economy, implementer gate whitelist, preamble budget, evidence ou"
+          },
+          "thread.analyze.current_node": "file",
+          "internal.retry_count.start": 0,
+          "internal.work_dir": "/workspace/fabro",
+          "outcome": "succeeded",
+          "internal.retry_count.select": 0,
+          "revisor_target_title": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains"
+        },
+        "node_outcomes": {
+          "approve": {
+            "status": "succeeded",
+            "preferred_label": "[A] Approved",
+            "suggested_next_ids": [
+              "select"
+            ],
+            "context_updates": {
+              "human.gate.label": "[A] Approved",
+              "human.gate.selected": "A",
+              "human.gate.approve.label": "[A] Approved",
+              "human.gate.approve.question": "Approve filing + merge",
+              "human.gate.approve.answer": "A"
+            },
+            "usage": null
+          },
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 5939,
+                "preview": "Review persisted to `.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md`. Distilled six actionable candidates (reviewer verification economy, implementer gate whitelist, preamble budget, evidence ou"
+              },
+              "last_response": "Review persisted to `.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md`. Distilled six actionable candidates (reviewer verification economy, implementer gate whitelist, preamble budget, evidence ou",
+              "last_stage": "analyze",
+              "revision_findings": [
+                {
+                  "title": "Cap reviewer re-verification to capture-only judging",
+                  "description": "In `.fabro/workflows/develop/prompts/reviewer.md` add a verification-economy clause: judge from the evidence capture; use tools only for claims the capture cannot show; never re-run a check whose exact assertion already appears in the diff. In this run reviewer@1 spent 61.0s of 62.2s active time re-running build, `go test`, `go vet` and README reproduction already pinned by exact-string test assertions and a green tester stage, finding zero discrepancies. Expected effect: review cycle ~62s down to ~35–40s, ~$0.02 saved per seed.",
+                  "priority": 1
+                },
+                {
+                  "title": "Whitelist implementer smoke checks and make spec re-fetch conditional",
+                  "description": "In `.fabro/workflows/develop/prompts/implementer.md` (a) replace 'a quick smoke check is fine' with a hard whitelist (build + affected test package only; never `just qualitygate`) and (b) make the step-1 `sd show` fetch conditional on a thin or ambiguous brief. In this run implementer@1 was 48% of run cost, ran the full gate plus live CLI checks later re-verified by tester@1, and its first tool call re-fetched the spec the planner had just distilled because step 1 mandates it while the Input section declares the brief authoritative. Expected effect: ~25–40% off implementer inference (~30–45s, ~$0.03 per seed) and the brief-versus-spec authority ambiguity disappears.",
+                  "priority": 1
+                },
+                {
+                  "title": "Raise preamble_budget_kb from 12 to 24",
+                  "description": "Set `preamble_budget_kb=24` on the develop graph in `.fabro/workflows/develop/workflow.fabro`. At 12KB all three reviewer inputs (evidence capture 14.3KB, `current_seed_brief` 1.5KB, `implementation_summary` 2.0KB) arrived as blob refs in this run's reviewer@1 prompt, forcing sandbox `read_file` round-trips before any analysis; actual inline need is about 18KB against a 1M-token window. Expected effect: brief, summary and capture render inline, saving 2–3 tool round-trips per review.",
+                  "priority": 2
+                },
+                {
+                  "title": "Give the evidence node its own output context key",
+                  "description": "Key the evidence command node to `evidence.output` instead of `command.output`, via command-node keying in `.fabro/workflows/develop/workflow.fabro` and `scripts/evidence.nu`. In this run tester wrote the gate log (checkpoint seq 199) and evidence silently overwrote it (seq 209) because both nodes share one key; the reviewer prompt already papers over the clobber, so it only failed to bite because everything was green. Expected effect: no last-writer-wins overwrite; on a red-gate bounce the gate result stays readable from context.",
+                  "priority": 2
+                },
+                {
+                  "title": "Add a review_notes channel for non-blocking findings",
+                  "description": "In `.fabro/workflows/develop/prompts/reviewer.md` and `.fabro/workflows/develop/prompts/planner.md`: Approved JSON gains optional `context_updates.review_notes`; the planner folds them into a future brief or parks them as a low-priority polish seed. In this run the reviewer's only substantive observation (pretty branch calls `Fib(seed)` twice; a local var would suffice) was lost at approval because it was explicitly not a deviation and the painpoint channel covers loop friction only. Expected effect: non-blocking hygiene findings accumulate into one tractable cleanup seed instead of evaporating.",
+                  "priority": 2
+                },
+                {
+                  "title": "Forbid brief duplication and empty-tracker double checks in planner",
+                  "description": "In `.fabro/workflows/develop/prompts/planner.md` make the closing rule absolute (prose must not repeat the brief; routing rationale only) and move the sd-list restriction into the decision order (`sd ready` empty with nothing in progress means route Tracker empty; do not run `sd list`). In this run planner@1 emitted the full 1.5KB brief twice, carried through every checkpoint, and planner@2 ran `sd list --format json` after `sd ready` had already returned nothing. Expected effect: about 1.5KB less carried context per cycle and one turn (~5s) off every terminal planner pass.",
+                  "priority": 2
+                }
+              ],
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Engine run projection reports progress as stage completions over node count, so this finished run displayed '6 of 5 non-meta stages completed' (>100%) because planner completes twice per seed (claim, then close). Fix: count distinct nodes in the denominator or render completions and nodes separately. Platform criticism — route via painpoint channel, not workflow asset edits."
+                  }
+                ],
+                "observations": [
+                  "Review of run 01M0TKB7H7DCWCR8TZY6SZPXD2 persisted verbatim to `.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md`; 6 seed candidates distilled. Cost concentrated in implementer + reviewer (73% of active time, 74% of cost); keep-as-is per analyst: file-based prompts (82% token cache hit), PASS/FAIL per-criterion summary, implementer reasoning_effort=low.",
+                  "No failure path was exercised in this run (0 retries, one review verdict, gate green first try), so Blocked edges, the once-per-seed 'Verification blocked' re-capture, and red-gate bounce behavior remain unvalidated; prioritize revising a future run that exercises them."
+                ]
+              }
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 11181,
+                    "output_tokens": 3420,
+                    "reasoning_tokens": 2483,
+                    "cache_read_tokens": 25664,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 48294
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 59187,
+              "tool_time_ms": 148842,
+              "active_time_ms": 208029
+            }
+          },
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "last_stage": "select",
+              "revisor_target_status": "succeeded",
+              "revisor_target_wall": "5.8 min",
+              "revisor_target_run_id": "01M0TKB7H7DCWCR8TZY6SZPXD2",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 1046,
+                "preview": "Six terminal runs already have markers in `.fabro/revisions/`; among unrevised terminal runs with a live sandbox, the oldest is `01M0TKB7H7DCWCR8TZY6SZPXD2` (created 2026-08-24T19:18:21Z, succeeded, ~"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Selected oldest unrevised terminal run with live sandbox; 6 runs already revised via `.fabro/revisions/<run-id>.md` markers; 19 older terminal runs remain unrevised but blocked, no live sandbox; 1 non-terminal run skipped."
+                ]
+              },
+              "last_response": "Six terminal runs already have markers in `.fabro/revisions/`; among unrevised terminal runs with a live sandbox, the oldest is `01M0TKB7H7DCWCR8TZY6SZPXD2` (created 2026-08-24T19:18:21Z, succeeded, ~",
+              "revisor_target_title": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains"
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14973,
+                    "output_tokens": 339,
+                    "reasoning_tokens": 258,
+                    "cache_read_tokens": 7168,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 25450
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 11714,
+              "tool_time_ms": 592,
+              "active_time_ms": 12306
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "last_stage": "file",
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 996,
+                "preview": "All five seeds exist and the working tree is clean — the seeds persist git-natively (their storage changes were included in the commit or are tracked outside the staged paths), the marker is committ"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Preamble-budget finding was a near-duplicate of existing fabro-83f9 and was skipped as duplicate-of; fabro-a67f partially overlaps fabro-578a and fabro-3814 but covers the whitelist plus brief-authority fix, so it was filed separately."
+                ]
+              },
+              "filed_seed_ids": [
+                "fabro-50c9",
+                "fabro-a67f",
+                "fabro-9ef9",
+                "fabro-89dd",
+                "fabro-b382"
+              ],
+              "last_response": "All five seeds exist and the working tree is clean — the seeds persist git-natively (their storage changes were included in the commit or are tracked outside the staged paths), the marker is committ"
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14383,
+                    "output_tokens": 2095,
+                    "reasoning_tokens": 398,
+                    "cache_read_tokens": 99584,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 56983
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 49878,
+              "tool_time_ms": 2223,
+              "active_time_ms": 52101
+            }
+          }
+        },
+        "next_node_id": "approve",
+        "git_commit_sha": "c1d30d0b8e718de0350901847accb89f9a4cb1af",
+        "node_visits": {
+          "select": 7,
+          "approve": 6,
+          "file": 7,
+          "analyze": 7,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\nindex 4ecc566..cb84b76 100644\n--- a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\n+++ b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\n@@ -25,3 +25,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"approve\",\"visit\":6,\"status\":\"succeeded\",\"ts\":\"2026-09-02T19:25:09Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"select\",\"visit\":7,\"status\":\"succeeded\",\"ts\":\"2026-09-02T19:25:31Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected oldest unrevised terminal run with live sandbox; 6 runs already revised via `.fabro/revisions/<run-id>.md` markers; 19 older terminal runs remain unrevised but blocked, no live sandbox; 1 non-terminal run skipped.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"analyze\",\"visit\":7,\"status\":\"succeeded\",\"ts\":\"2026-09-02T19:29:25Z\",\"data\":{\"painpoints\":[{\"text\":\"Engine run projection reports progress as stage completions over node count, so this finished run displayed '6 of 5 non-meta stages completed' (>100%) because planner completes twice per seed (claim, then close). Fix: count distinct nodes in the denominator or render completions and nodes separately. Platform criticism — route via painpoint channel, not workflow asset edits.\"}],\"observations\":[\"Review of run 01M0TKB7H7DCWCR8TZY6SZPXD2 persisted verbatim to `.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md`; 6 seed candidates distilled. Cost concentrated in implementer + reviewer (73% of active time, 74% of cost); keep-as-is per analyst: file-based prompts (82% token cache hit), PASS/FAIL per-criterion summary, implementer reasoning_effort=low.\",\"No failure path was exercised in this run (0 retries, one review verdict, gate green first try), so Blocked edges, the once-per-seed 'Verification blocked' re-capture, and red-gate bounce behavior remain unvalidated; prioritize revising a future run that exercises them.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"file\",\"visit\":7,\"status\":\"succeeded\",\"ts\":\"2026-09-02T19:30:30Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Preamble-budget finding was a near-duplicate of existing fabro-83f9 and was skipped as duplicate-of; fabro-a67f partially overlaps fabro-578a and fabro-3814 but covers the whitelist plus brief-authority fix, so it was filed separately.\"]}}\ndiff --git a/.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md b/.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md\nnew file mode 100644\nindex 0000000..959137e\n--- /dev/null\n+++ b/.fabro/revisions/01M0TKB7H7DCWCR8TZY6SZPXD2.md\n@@ -0,0 +1,30 @@\n+# Revision — run 01M0TKB7H7DCWCR8TZY6SZPXD2\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md\n+- seeds filed: fabro-50c9 Cap reviewer re-verification to capture-only judging; fabro-a67f Whitelist implementer smoke checks and make spec re-fetch conditional; fabro-9ef9 Give the evidence node its own output context key; fabro-89dd Add a review_notes channel for non-blocking findings; fabro-b382 Forbid brief duplication and empty-tracker double checks in planner\n+\n+## Findings\n+\n+### Cap reviewer re-verification to capture-only judging\n+- filed: fabro-50c9 (priority 1)\n+- Change: add a verification-economy clause to `.fabro/workflows/develop/prompts/reviewer.md` — judge from the evidence capture; tools only for claims the capture cannot show; never re-run a check already pinned in the diff. Expected effect: review cycle ~62s → ~35–40s, ~$0.02/seed.\n+\n+### Whitelist implementer smoke checks and make spec re-fetch conditional\n+- filed: fabro-a67f (priority 1; partially overlaps fabro-578a smoke-level commands and fabro-3814 sd-prime skip, but covers the whitelist plus the brief-authority fix)\n+- Change: hard whitelist (build + affected test package, never `just qualitygate`) and conditional step-1 `sd show` in `.fabro/workflows/develop/prompts/implementer.md`. Expected effect: ~25–40% off implementer inference (~30���45s, ~$0.03/seed); brief-vs-spec authority ambiguity removed.\n+\n+### Raise preamble_budget_kb from 12 to 24\n+- filed: none — duplicate of existing fabro-83f9 (\"Raise reviewer preamble budget from 12KB to 20-24KB\")\n+\n+### Give the evidence node its own output context key\n+- filed: fabro-9ef9 (priority 2)\n+- Change: key evidence node to `evidence.output` via command-node keying in `.fabro/workflows/develop/workflow.fabro` and `scripts/evidence.nu`. Expected effect: no last-writer-wins gate-log clobber; gate result survives a red-gate bounce.\n+\n+### Add a review_notes channel for non-blocking findings\n+- filed: fabro-89dd (priority 2)\n+- Change: optional `context_updates.review_notes` in Approved JSON; planner folds into a brief or parks a polish seed. Expected effect: hygiene findings accumulate instead of evaporating at approval.\n+\n+### Forbid brief duplication and empty-tracker double checks in planner\n+- filed: fabro-b382 (priority 2)\n+- Change: absolute no-brief-repetition closing rule plus decision-order placement for the `sd list` restriction in `.fabro/workflows/develop/prompts/planner.md`. Expected effect: ~1.5KB less carried context per cycle, one turn off terminal planner passes.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex a1d073f..3079ec0 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -47,3 +47,8 @@\n {\"id\":\"fabro-46f3\",\"title\":\"Honor configured PR model and retry before deterministic fallback\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:24:32.932Z\",\"updatedAt\":\"2026-09-02T19:24:32.932Z\",\"description\":\"In PR content generation, honor pull_request.model from the run spec and retry once without strict-JSON output before falling back. Evidence: worker log at 14:34:25 of run 01M0T2GW0PTNF3CHNQKHER1271 shows generation used glm-5.3 despite configured zai:glm-4.7 and failed with 'Failed to parse response as JSON'. Effect: meaningful PR titles/bodies once publishing works; removes a silent config override.\"}\n {\"id\":\"fabro-7773\",\"title\":\"Lint develop seeds for spec contradictions before tracker entry\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:24:32.950Z\",\"updatedAt\":\"2026-09-02T19:24:32.950Z\",\"description\":\"Add a contradiction check at seed creation (where fabro-4f3e-style seeds are authored) comparing the spec's examples against pinned behavior in README/CONTEXT.md. Evidence: seed text said -start 'Default 0' while gofib's 1-based indexing is pinned by README/CONTEXT/tests; planner@1 burned 102.5 s inference and /bin/bash.067 deliberating it (~40% of planner time). Effect: ~1.5 min and ~/bin/bash.05 saved per ambiguous seed, one less source of reviewer ping-pong.\"}\n {\"id\":\"fabro-45bf\",\"title\":\"Compute pipeline progress from unique completed nodes\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:24:33.063Z\",\"updatedAt\":\"2026-09-02T19:24:33.063Z\",\"description\":\"In the engine's progress projection, compute progress as unique completed non-meta nodes / total instead of cumulative stage completions against a fixed node denominator. Evidence: run 01M0T2GW0PTNF3CHNQKHER1271 implementer prompt read '0 of 5 stages completed' after the planner had completed; final projection said '6 of 5' because planner ran twice. Effect: honest, interpretable mid-loop progress numbers.\"}\n+{\"id\":\"fabro-50c9\",\"title\":\"Cap reviewer re-verification to capture-only judging\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T19:29:45.220Z\",\"updatedAt\":\"2026-09-02T19:29:45.220Z\",\"description\":\"In .fabro/workflows/develop/prompts/reviewer.md add a verification-economy clause: judge from the evidence capture; use tools only for claims the capture cannot show; never re-run a check whose exact assertion already appears in the diff. In the analyzed run reviewer@1 spent 61.0s of 62.2s active time re-running build, go test, go vet and README reproduction already pinned by exact-string test assertions and a green tester stage, finding zero discrepancies. Expected effect: review cycle ~62s down to ~35-40s, ~$0.02 saved per seed.\"}\n+{\"id\":\"fabro-a67f\",\"title\":\"Whitelist implementer smoke checks and make spec re-fetch conditional\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T19:29:49.466Z\",\"updatedAt\":\"2026-09-02T19:29:49.466Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md (a) replace 'a quick smoke check is fine' with a hard whitelist (build + affected test package only; never just qualitygate) and (b) make the step-1 sd show fetch conditional on a thin or ambiguous brief. In the analyzed run implementer@1 was 48% of run cost, ran the full gate plus live CLI checks later re-verified by tester@1, and its first tool call re-fetched the spec the planner had just distilled because step 1 mandates it while the Input section declares the brief authoritative. Expected effect: ~25-40% off implementer inference (~30-45s, ~$0.03 per seed) and the brief-versus-spec authority ambiguity disappears.\"}\n+{\"id\":\"fabro-9ef9\",\"title\":\"Give the evidence node its own output context key\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:29:52.387Z\",\"updatedAt\":\"2026-09-02T19:29:52.387Z\",\"description\":\"Key the evidence command node to evidence.output instead of command.output, via command-node keying in .fabro/workflows/develop/workflow.fabro and scripts/evidence.nu. In the analyzed run tester wrote the gate log (checkpoint seq 199) and evidence silently overwrote it (seq 209) because both nodes share one key; the reviewer prompt already papers over the clobber, so it only failed to bite because everything was green. Expected effect: no last-writer-wins overwrite; on a red-gate bounce the gate result stays readable from context.\"}\n+{\"id\":\"fabro-89dd\",\"title\":\"Add a review_notes channel for non-blocking findings\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:29:52.496Z\",\"updatedAt\":\"2026-09-02T19:29:52.496Z\",\"description\":\"In .fabro/workflows/develop/prompts/reviewer.md and planner.md: Approved JSON gains optional context_updates.review_notes; the planner folds them into a future brief or parks them as a low-priority polish seed. In the analyzed run the reviewer's only substantive observation (pretty branch calls Fib(seed) twice; a local var would suffice) was lost at approval because it was explicitly not a deviation and the painpoint channel covers loop friction only. Expected effect: non-blocking hygiene findings accumulate into one tractable cleanup seed instead of evaporating.\"}\n+{\"id\":\"fabro-b382\",\"title\":\"Forbid brief duplication and empty-tracker double checks in planner\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:29:57.030Z\",\"updatedAt\":\"2026-09-02T19:29:57.030Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md make the closing rule absolute (prose must not repeat the brief; routing rationale only) and move the sd-list restriction into the decision order (sd ready empty with nothing in progress means route Tracker empty; do not run sd list). In the analyzed run planner@1 emitted the full 1.5KB brief twice, carried through every checkpoint, and planner@2 ran sd list --format json after sd ready had already returned nothing. Expected effect: about 1.5KB less carried context per cycle and one turn (~5s) off every terminal planner pass.\"}\n",
+        "summary": {
+          "files_changed": 16,
+          "additions": 623,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-02T19:46:23.663791782Z",
+        "current_node": "approve",
+        "completed_nodes": [
+          "start",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve"
         ],
         "node_retries": {},
         "context_values": {
@@ -10074,8 +10457,8 @@
           "last_response": "All five seeds exist and the working tree is clean — the seeds persist git-natively (their storage changes were included in the commit or are tracked outside the staged paths), the marker is committ",
           "revisor_target_wall": "5.8 min",
           "thread.start.current_node": "select",
-          "internal.thread_id": "analyze",
-          "current_node": "file",
+          "internal.thread_id": "file",
+          "current_node": "approve",
           "graph.rankdir": "LR",
           "internal.fidelity": "compact",
           "internal.node_visit_count": 7,
@@ -10088,7 +10471,7 @@
             "preview": "Six terminal runs already have markers in `.fabro/revisions/`; among unrevised terminal runs with a live sandbox, the oldest is `01M0TKB7H7DCWCR8TZY6SZPXD2` (created 2026-08-24T19:18:21Z, succeeded, ~"
           },
           "revisor_target_title": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
-          "preferred_label": "Staged",
+          "preferred_label": "[A] Approved",
           "graph.preamble_budget_kb": "24",
           "last_stage": "file",
           "internal.retry_count.analyze": 0,
@@ -10097,7 +10480,8 @@
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
-            "file": 1
+            "file": 1,
+            "approve": 1
           },
           "thread.select.current_node": "analyze",
           "filed_seed_ids": [
@@ -10275,9 +10659,9 @@
               "select"
             ],
             "context_updates": {
+              "human.gate.approve.label": "[A] Approved",
               "human.gate.label": "[A] Approved",
               "human.gate.selected": "A",
-              "human.gate.approve.label": "[A] Approved",
               "human.gate.approve.question": "Approve filing + merge",
               "human.gate.approve.answer": "A"
             },
@@ -10336,12 +10720,12 @@
             }
           }
         },
-        "next_node_id": "approve",
+        "next_node_id": "select",
         "node_visits": {
           "start": 1,
           "analyze": 7,
           "select": 7,
-          "approve": 6,
+          "approve": 7,
           "file": 7
         }
       },
@@ -11613,473 +11997,6 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "file@1": {
-      "first_event_seq": 92,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Stage completed: file",
-        "failure_reason": null,
-        "timestamp": "2026-09-02T17:53:59.260529832Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-02T17:52:52.316796315Z",
-      "handler": "agent",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 61993,
-        "inference_time_ms": 57821,
-        "tool_time_ms": 2878,
-        "active_time_ms": 60699
-      },
-      "usage": {
-        "input_tokens": 14222,
-        "output_tokens": 2613,
-        "total_tokens": 146852,
-        "reasoning_tokens": 97,
-        "cache_read_tokens": 129920,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 65596
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "skills": {
-        "available": [
-          {
-            "name": "ask-matt",
-            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
-          },
-          {
-            "name": "claude-handoff",
-            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
-          },
-          {
-            "name": "code-review",
-            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
-          },
-          {
-            "name": "codebase-design",
-            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
-          },
-          {
-            "name": "diagnosing-bugs",
-            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
-          },
-          {
-            "name": "domain-modeling",
-            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
-          },
-          {
-            "name": "git-guardrails-claude-code",
-            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
-          },
-          {
-            "name": "grill-me",
-            "description": "A relentless interview to sharpen a plan or design."
-          },
-          {
-            "name": "grill-with-docs",
-            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
-          },
-          {
-            "name": "grilling",
-            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
-          },
-          {
-            "name": "handoff",
-            "description": "Compact the current conversation into a handoff document for another agent to pick up."
-          },
-          {
-            "name": "implement",
-            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
-          },
-          {
-            "name": "implement-spec",
-            "description": "\"Implement a specification in code.\""
-          },
-          {
-            "name": "improve-codebase-architecture",
-            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
-          },
-          {
-            "name": "loop-me",
-            "description": "Grill me about specs for the workflows I want to build, within this workspace."
-          },
-          {
-            "name": "migrate-to-shoehorn",
-            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
-          },
-          {
-            "name": "prototype",
-            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
-          },
-          {
-            "name": "research",
-            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
-          },
-          {
-            "name": "resolving-merge-conflicts",
-            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
-          },
-          {
-            "name": "scaffold-exercises",
-            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
-          },
-          {
-            "name": "setup-matt-pocock-skills",
-            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
-          },
-          {
-            "name": "setup-pre-commit",
-            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
-          },
-          {
-            "name": "setup-ts-deep-modules",
-            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
-          },
-          {
-            "name": "tdd",
-            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
-          },
-          {
-            "name": "teach",
-            "description": "Teach the user a new skill or concept, within this workspace."
-          },
-          {
-            "name": "to-questionnaire",
-            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
-          },
-          {
-            "name": "to-spec",
-            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
-          },
-          {
-            "name": "to-tickets",
-            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
-          },
-          {
-            "name": "triage",
-            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
-          },
-          {
-            "name": "wait-what",
-            "description": "\"Stop. That last message did not land: re-pitch it.\""
-          },
-          {
-            "name": "wayfinder",
-            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
-          },
-          {
-            "name": "wizard",
-            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
-          },
-          {
-            "name": "writing-beats",
-            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
-          },
-          {
-            "name": "writing-for-agents",
-            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
-          },
-          {
-            "name": "writing-fragments",
-            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
-          },
-          {
-            "name": "writing-shape",
-            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
-          }
-        ],
-        "activated": []
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "fabro_ask",
-          "description": "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. Requires the target run's workflow to be declared in this graph's inspects attribute.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_create",
-          "description": "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_events",
-          "description": "List, inspect, or search stored events for a Fabro workflow run.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_gather",
-          "description": "Wait for Fabro runs to reach terminal states, returning current state on timeout.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_get",
-          "description": "Read-only inspection of a Fabro run: returns its summary, projection, and pending questions without mutating state.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_interact",
-          "description": "Control a Fabro run: start, approve, deny, message, interrupt, cancel, archive, unarchive, link or unlink a parent, inspect or answer questions. Use fabro_run_get for read-only inspection.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_logs",
-          "description": "Read the persisted worker tracing log of a Fabro run, filtered by severity (warn and error by default). Lines are redacted; diagnostics only, never a mutation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_pair",
-          "description": "Inspect, start, message, end, or read transcript for a live Fabro run pairing session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_run_search",
-          "description": "Search Fabro workflow runs by id, parent, workflow, labels, status, archival state, and creation time.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "fabro_runs_list",
-          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "use_skill",
-          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
-          "source": {
-            "kind": "skill"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": true
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 13769,
-        "usage_percent": 1.3131141662597656,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-02T17:53:59.237953340Z",
-        "event_seq": 168,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1047,
-            "usage_percent": 0.09984970092773438
-          },
-          {
-            "category": "tools",
-            "tokens": 3620,
-            "usage_percent": 0.3452301025390625
-          },
-          {
-            "category": "skills",
-            "tokens": 1385,
-            "usage_percent": 0.13208389282226562
-          },
-          {
-            "category": "memory",
-            "tokens": 1126,
-            "usage_percent": 0.10738372802734375
-          },
-          {
-            "category": "conversation",
-            "tokens": 6585,
-            "usage_percent": 0.6279945373535156
-          },
-          {
-            "category": "other",
-            "tokens": 6,
-            "usage_percent": 0.00057220458984375
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "file@2": {
       "first_event_seq": 255,
       "prompt": null,
@@ -12933,42 +12850,6 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "approve@3": {
-      "first_event_seq": 530,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-02T19:07:31.713323169Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-02T18:55:45.938541963Z",
-      "handler": "human",
-      "graph_visit": 3,
-      "timing": {
-        "wall_time_ms": 648097,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "approve@1": {
       "first_event_seq": 178,
       "prompt": null,
@@ -13005,388 +12886,38 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "select@2": {
-      "first_event_seq": 190,
+    "approve@4": {
+      "first_event_seq": 686,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
-        "notes": "Stage completed: select",
+        "notes": null,
         "failure_reason": null,
-        "timestamp": "2026-09-02T18:44:15.113587538Z"
+        "timestamp": "2026-09-02T19:15:27.333314176Z"
       },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
+      "provider_used": null,
       "diff": null,
       "script_invocation": null,
       "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-09-02T18:43:59.032859982Z",
-      "handler": "agent",
-      "graph_visit": 2,
+      "started_at": "2026-09-02T19:14:03.328535081Z",
+      "handler": "human",
+      "graph_visit": 4,
       "timing": {
-        "wall_time_ms": 13398,
-        "inference_time_ms": 10907,
-        "tool_time_ms": 1118,
-        "active_time_ms": 12025
+        "wall_time_ms": 75349,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
       },
       "usage": {
-        "input_tokens": 14870,
-        "output_tokens": 350,
-        "total_tokens": 22492,
-        "reasoning_tokens": 232,
-        "cache_read_tokens": 7040,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 25207
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "skills": {
-        "available": [
-          {
-            "name": "ask-matt",
-            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
-          },
-          {
-            "name": "claude-handoff",
-            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
-          },
-          {
-            "name": "code-review",
-            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
-          },
-          {
-            "name": "codebase-design",
-            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
-          },
-          {
-            "name": "diagnosing-bugs",
-            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
-          },
-          {
-            "name": "domain-modeling",
-            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
-          },
-          {
-            "name": "git-guardrails-claude-code",
-            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
-          },
-          {
-            "name": "grill-me",
-            "description": "A relentless interview to sharpen a plan or design."
-          },
-          {
-            "name": "grill-with-docs",
-            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
-          },
-          {
-            "name": "grilling",
-            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
-          },
-          {
-            "name": "handoff",
-            "description": "Compact the current conversation into a handoff document for another agent to pick up."
-          },
-          {
-            "name": "implement",
-            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
-          },
-          {
-            "name": "implement-spec",
-            "description": "\"Implement a specification in code.\""
-          },
-          {
-            "name": "improve-codebase-architecture",
-            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
-          },
-          {
-            "name": "loop-me",
-            "description": "Grill me about specs for the workflows I want to build, within this workspace."
-          },
-          {
-            "name": "migrate-to-shoehorn",
-            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
-          },
-          {
-            "name": "prototype",
-            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
-          },
-          {
-            "name": "research",
-            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
-          },
-          {
-            "name": "resolving-merge-conflicts",
-            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
-          },
-          {
-            "name": "scaffold-exercises",
-            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
-          },
-          {
-            "name": "setup-matt-pocock-skills",
-            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
-          },
-          {
-            "name": "setup-pre-commit",
-            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
-          },
-          {
-            "name": "setup-ts-deep-modules",
-            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
-          },
-          {
-            "name": "tdd",
-            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
-          },
-          {
-            "name": "teach",
-            "description": "Teach the user a new skill or concept, within this workspace."
-          },
-          {
-            "name": "to-questionnaire",
-            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
-          },
-          {
-            "name": "to-spec",
-            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
-          },
-          {
-            "name": "to-tickets",
-            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
-          },
-          {
-            "name": "triage",
-            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
-          },
-          {
-            "name": "wait-what",
-            "description": "\"Stop. That last message did not land: re-pitch it.\""
-          },
-          {
-            "name": "wayfinder",
-            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
-          },
-          {
-            "name": "wizard",
-            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
-          },
-          {
-            "name": "writing-beats",
-            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
-          },
-          {
-            "name": "writing-for-agents",
-            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
-          },
-          {
-            "name": "writing-fragments",
-            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
-          },
-          {
-            "name": "writing-shape",
-            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
-          }
-        ],
-        "activated": []
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "fabro_runs_list",
-          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": true
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": true
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": false
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "use_skill",
-          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
-          "source": {
-            "kind": "skill"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 14847,
-        "usage_percent": 1.4159202575683594,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-02T18:44:15.093720509Z",
-        "event_seq": 208,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1293,
-            "usage_percent": 0.12331008911132812
-          },
-          {
-            "category": "tools",
-            "tokens": 1963,
-            "usage_percent": 0.18720626831054688
-          },
-          {
-            "category": "skills",
-            "tokens": 1731,
-            "usage_percent": 0.16508102416992188
-          },
-          {
-            "category": "memory",
-            "tokens": 1409,
-            "usage_percent": 0.13437271118164062
-          },
-          {
-            "category": "conversation",
-            "tokens": 8443,
-            "usage_percent": 0.8051872253417969
-          },
-          {
-            "category": "other",
-            "tokens": 8,
-            "usage_percent": 0.000762939453125
-          }
-        ],
-        "warnings": []
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
@@ -13773,42 +13304,6 @@
           }
         ],
         "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "approve@4": {
-      "first_event_seq": 686,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-02T19:15:27.333314176Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-02T19:14:03.328535081Z",
-      "handler": "human",
-      "graph_visit": 4,
-      "timing": {
-        "wall_time_ms": 75349,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
@@ -16058,78 +15553,6 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "approve@6": {
-      "first_event_seq": 955,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-02T19:25:09.013515223Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-02T19:24:56.622772350Z",
-      "handler": "human",
-      "graph_visit": 6,
-      "timing": {
-        "wall_time_ms": 12370,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "start@1": {
-      "first_event_seq": 23,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": null,
-        "failure_reason": null,
-        "timestamp": "2026-09-02T17:48:13.353427440Z"
-      },
-      "provider_used": null,
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-02T17:48:13.339232354Z",
-      "handler": "start",
-      "graph_visit": 1,
-      "timing": {
-        "wall_time_ms": 0,
-        "inference_time_ms": 0,
-        "tool_time_ms": 0,
-        "active_time_ms": 0
-      },
-      "usage": {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "reasoning_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_write_tokens": 0
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
     "analyze@1": {
       "first_event_seq": 55,
       "prompt": null,
@@ -16516,15 +15939,15 @@
       "agent_control": "running",
       "state": "succeeded"
     },
-    "analyze@2": {
-      "first_event_seq": 218,
+    "analyze@7": {
+      "first_event_seq": 995,
       "prompt": null,
       "response": null,
       "completion": {
         "outcome": "succeeded",
         "notes": "Stage completed: analyze",
         "failure_reason": null,
-        "timestamp": "2026-09-02T18:48:11.340722253Z"
+        "timestamp": "2026-09-02T19:29:25.214709069Z"
       },
       "provider_used": {
         "mode": "agent",
@@ -16537,23 +15960,23 @@
       "script_timing": null,
       "parallel_results": null,
       "output": null,
-      "started_at": "2026-09-02T18:44:20.090577358Z",
+      "started_at": "2026-09-02T19:25:35.807822525Z",
       "handler": "agent",
-      "graph_visit": 2,
+      "graph_visit": 7,
       "timing": {
-        "wall_time_ms": 212476,
-        "inference_time_ms": 63416,
-        "tool_time_ms": 147844,
-        "active_time_ms": 211260
+        "wall_time_ms": 209600,
+        "inference_time_ms": 59187,
+        "tool_time_ms": 148842,
+        "active_time_ms": 208029
       },
       "usage": {
-        "input_tokens": 13102,
-        "output_tokens": 3920,
-        "total_tokens": 46737,
-        "reasoning_tokens": 2579,
-        "cache_read_tokens": 27136,
+        "input_tokens": 11181,
+        "output_tokens": 3420,
+        "total_tokens": 42748,
+        "reasoning_tokens": 2483,
+        "cache_read_tokens": 25664,
         "cache_write_tokens": 0,
-        "total_usd_micros": 53988
+        "total_usd_micros": 48294
       },
       "model": {
         "provider": "zai",
@@ -16859,42 +16282,42 @@
         "provider": "zai",
         "model": "glm-5.3",
         "context_window_tokens": 1048576,
-        "input_tokens": 13006,
-        "usage_percent": 1.2403488159179688,
+        "input_tokens": 11236,
+        "usage_percent": 1.0715484619140625,
         "count_method": "response_usage_scaled_breakdown",
         "staleness": "live",
-        "generated_at": "2026-09-02T18:48:11.320740558Z",
-        "event_seq": 245,
+        "generated_at": "2026-09-02T19:29:25.194554792Z",
+        "event_seq": 1022,
         "breakdown": [
           {
             "category": "system_prompt",
-            "tokens": 999,
-            "usage_percent": 0.09527206420898438
+            "tokens": 965,
+            "usage_percent": 0.09202957153320312
           },
           {
             "category": "tools",
-            "tokens": 1531,
-            "usage_percent": 0.14600753784179688
+            "tokens": 1514,
+            "usage_percent": 0.14438629150390625
           },
           {
             "category": "skills",
-            "tokens": 1351,
-            "usage_percent": 0.12884140014648438
+            "tokens": 1337,
+            "usage_percent": 0.12750625610351562
           },
           {
             "category": "memory",
-            "tokens": 1099,
-            "usage_percent": 0.10480880737304688
+            "tokens": 1088,
+            "usage_percent": 0.103759765625
           },
           {
             "category": "conversation",
-            "tokens": 8019,
-            "usage_percent": 0.7647514343261719
+            "tokens": 6326,
+            "usage_percent": 0.6032943725585938
           },
           {
             "category": "other",
-            "tokens": 7,
-            "usage_percent": 0.000667572021484375
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
           }
         ],
         "warnings": []
@@ -17276,6 +16699,1775 @@
             "category": "conversation",
             "tokens": 8569,
             "usage_percent": 0.8172035217285156
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "approve@7": {
+      "first_event_seq": 1100,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-02T19:46:23.406937737Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T19:30:35.863425761Z",
+      "handler": "human",
+      "graph_visit": 7,
+      "timing": {
+        "wall_time_ms": 863972,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "select@4": {
+      "first_event_seq": 542,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: select",
+        "failure_reason": null,
+        "timestamp": "2026-09-02T19:07:51.428790035Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T19:07:36.382114852Z",
+      "handler": "agent",
+      "graph_visit": 4,
+      "timing": {
+        "wall_time_ms": 12300,
+        "inference_time_ms": 10562,
+        "tool_time_ms": 508,
+        "active_time_ms": 11070
+      },
+      "usage": {
+        "input_tokens": 14812,
+        "output_tokens": 212,
+        "total_tokens": 22425,
+        "reasoning_tokens": 297,
+        "cache_read_tokens": 7104,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 24821
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "ask-matt",
+            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
+          },
+          {
+            "name": "claude-handoff",
+            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
+          },
+          {
+            "name": "code-review",
+            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
+          },
+          {
+            "name": "codebase-design",
+            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
+          },
+          {
+            "name": "diagnosing-bugs",
+            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
+          },
+          {
+            "name": "domain-modeling",
+            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
+          },
+          {
+            "name": "git-guardrails-claude-code",
+            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
+          },
+          {
+            "name": "grill-me",
+            "description": "A relentless interview to sharpen a plan or design."
+          },
+          {
+            "name": "grill-with-docs",
+            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
+          },
+          {
+            "name": "grilling",
+            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
+          },
+          {
+            "name": "handoff",
+            "description": "Compact the current conversation into a handoff document for another agent to pick up."
+          },
+          {
+            "name": "implement",
+            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
+          },
+          {
+            "name": "implement-spec",
+            "description": "\"Implement a specification in code.\""
+          },
+          {
+            "name": "improve-codebase-architecture",
+            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
+          },
+          {
+            "name": "loop-me",
+            "description": "Grill me about specs for the workflows I want to build, within this workspace."
+          },
+          {
+            "name": "migrate-to-shoehorn",
+            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
+          },
+          {
+            "name": "prototype",
+            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
+          },
+          {
+            "name": "research",
+            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
+          },
+          {
+            "name": "resolving-merge-conflicts",
+            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
+          },
+          {
+            "name": "scaffold-exercises",
+            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
+          },
+          {
+            "name": "setup-matt-pocock-skills",
+            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
+          },
+          {
+            "name": "setup-pre-commit",
+            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
+          },
+          {
+            "name": "setup-ts-deep-modules",
+            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
+          },
+          {
+            "name": "tdd",
+            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
+          },
+          {
+            "name": "teach",
+            "description": "Teach the user a new skill or concept, within this workspace."
+          },
+          {
+            "name": "to-questionnaire",
+            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
+          },
+          {
+            "name": "to-spec",
+            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
+          },
+          {
+            "name": "to-tickets",
+            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
+          },
+          {
+            "name": "triage",
+            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
+          },
+          {
+            "name": "wait-what",
+            "description": "\"Stop. That last message did not land: re-pitch it.\""
+          },
+          {
+            "name": "wayfinder",
+            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
+          },
+          {
+            "name": "wizard",
+            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
+          },
+          {
+            "name": "writing-beats",
+            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
+          },
+          {
+            "name": "writing-for-agents",
+            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
+          },
+          {
+            "name": "writing-fragments",
+            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
+          },
+          {
+            "name": "writing-shape",
+            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": false
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 14881,
+        "usage_percent": 1.4191627502441406,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-02T19:07:51.411913157Z",
+        "event_seq": 560,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1256,
+            "usage_percent": 0.119781494140625
+          },
+          {
+            "category": "tools",
+            "tokens": 1971,
+            "usage_percent": 0.18796920776367188
+          },
+          {
+            "category": "skills",
+            "tokens": 1739,
+            "usage_percent": 0.16584396362304688
+          },
+          {
+            "category": "memory",
+            "tokens": 1415,
+            "usage_percent": 0.13494491577148438
+          },
+          {
+            "category": "conversation",
+            "tokens": 8493,
+            "usage_percent": 0.8099555969238281
+          },
+          {
+            "category": "other",
+            "tokens": 7,
+            "usage_percent": 0.000667572021484375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "file@1": {
+      "first_event_seq": 92,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: file",
+        "failure_reason": null,
+        "timestamp": "2026-09-02T17:53:59.260529832Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T17:52:52.316796315Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 61993,
+        "inference_time_ms": 57821,
+        "tool_time_ms": 2878,
+        "active_time_ms": 60699
+      },
+      "usage": {
+        "input_tokens": 14222,
+        "output_tokens": 2613,
+        "total_tokens": 146852,
+        "reasoning_tokens": 97,
+        "cache_read_tokens": 129920,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 65596
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "ask-matt",
+            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
+          },
+          {
+            "name": "claude-handoff",
+            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
+          },
+          {
+            "name": "code-review",
+            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
+          },
+          {
+            "name": "codebase-design",
+            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
+          },
+          {
+            "name": "diagnosing-bugs",
+            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
+          },
+          {
+            "name": "domain-modeling",
+            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
+          },
+          {
+            "name": "git-guardrails-claude-code",
+            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
+          },
+          {
+            "name": "grill-me",
+            "description": "A relentless interview to sharpen a plan or design."
+          },
+          {
+            "name": "grill-with-docs",
+            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
+          },
+          {
+            "name": "grilling",
+            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
+          },
+          {
+            "name": "handoff",
+            "description": "Compact the current conversation into a handoff document for another agent to pick up."
+          },
+          {
+            "name": "implement",
+            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
+          },
+          {
+            "name": "implement-spec",
+            "description": "\"Implement a specification in code.\""
+          },
+          {
+            "name": "improve-codebase-architecture",
+            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
+          },
+          {
+            "name": "loop-me",
+            "description": "Grill me about specs for the workflows I want to build, within this workspace."
+          },
+          {
+            "name": "migrate-to-shoehorn",
+            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
+          },
+          {
+            "name": "prototype",
+            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
+          },
+          {
+            "name": "research",
+            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
+          },
+          {
+            "name": "resolving-merge-conflicts",
+            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
+          },
+          {
+            "name": "scaffold-exercises",
+            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
+          },
+          {
+            "name": "setup-matt-pocock-skills",
+            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
+          },
+          {
+            "name": "setup-pre-commit",
+            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
+          },
+          {
+            "name": "setup-ts-deep-modules",
+            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
+          },
+          {
+            "name": "tdd",
+            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
+          },
+          {
+            "name": "teach",
+            "description": "Teach the user a new skill or concept, within this workspace."
+          },
+          {
+            "name": "to-questionnaire",
+            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
+          },
+          {
+            "name": "to-spec",
+            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
+          },
+          {
+            "name": "to-tickets",
+            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
+          },
+          {
+            "name": "triage",
+            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
+          },
+          {
+            "name": "wait-what",
+            "description": "\"Stop. That last message did not land: re-pitch it.\""
+          },
+          {
+            "name": "wayfinder",
+            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
+          },
+          {
+            "name": "wizard",
+            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
+          },
+          {
+            "name": "writing-beats",
+            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
+          },
+          {
+            "name": "writing-for-agents",
+            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
+          },
+          {
+            "name": "writing-fragments",
+            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
+          },
+          {
+            "name": "writing-shape",
+            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_ask",
+          "description": "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. Requires the target run's workflow to be declared in this graph's inspects attribute.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_create",
+          "description": "Create one or more Fabro workflow runs, optionally under a parent run, starting them by default.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_events",
+          "description": "List, inspect, or search stored events for a Fabro workflow run.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_gather",
+          "description": "Wait for Fabro runs to reach terminal states, returning current state on timeout.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_get",
+          "description": "Read-only inspection of a Fabro run: returns its summary, projection, and pending questions without mutating state.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_interact",
+          "description": "Control a Fabro run: start, approve, deny, message, interrupt, cancel, archive, unarchive, link or unlink a parent, inspect or answer questions. Use fabro_run_get for read-only inspection.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_logs",
+          "description": "Read the persisted worker tracing log of a Fabro run, filtered by severity (warn and error by default). Lines are redacted; diagnostics only, never a mutation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_pair",
+          "description": "Inspect, start, message, end, or read transcript for a live Fabro run pairing session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_run_search",
+          "description": "Search Fabro workflow runs by id, parent, workflow, labels, status, archival state, and creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 13769,
+        "usage_percent": 1.3131141662597656,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-02T17:53:59.237953340Z",
+        "event_seq": 168,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1047,
+            "usage_percent": 0.09984970092773438
+          },
+          {
+            "category": "tools",
+            "tokens": 3620,
+            "usage_percent": 0.3452301025390625
+          },
+          {
+            "category": "skills",
+            "tokens": 1385,
+            "usage_percent": 0.13208389282226562
+          },
+          {
+            "category": "memory",
+            "tokens": 1126,
+            "usage_percent": 0.10738372802734375
+          },
+          {
+            "category": "conversation",
+            "tokens": 6585,
+            "usage_percent": 0.6279945373535156
+          },
+          {
+            "category": "other",
+            "tokens": 6,
+            "usage_percent": 0.00057220458984375
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "approve@3": {
+      "first_event_seq": 530,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-02T19:07:31.713323169Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T18:55:45.938541963Z",
+      "handler": "human",
+      "graph_visit": 3,
+      "timing": {
+        "wall_time_ms": 648097,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "select@2": {
+      "first_event_seq": 190,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: select",
+        "failure_reason": null,
+        "timestamp": "2026-09-02T18:44:15.113587538Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T18:43:59.032859982Z",
+      "handler": "agent",
+      "graph_visit": 2,
+      "timing": {
+        "wall_time_ms": 13398,
+        "inference_time_ms": 10907,
+        "tool_time_ms": 1118,
+        "active_time_ms": 12025
+      },
+      "usage": {
+        "input_tokens": 14870,
+        "output_tokens": 350,
+        "total_tokens": 22492,
+        "reasoning_tokens": 232,
+        "cache_read_tokens": 7040,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 25207
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "ask-matt",
+            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
+          },
+          {
+            "name": "claude-handoff",
+            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
+          },
+          {
+            "name": "code-review",
+            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
+          },
+          {
+            "name": "codebase-design",
+            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
+          },
+          {
+            "name": "diagnosing-bugs",
+            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
+          },
+          {
+            "name": "domain-modeling",
+            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
+          },
+          {
+            "name": "git-guardrails-claude-code",
+            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
+          },
+          {
+            "name": "grill-me",
+            "description": "A relentless interview to sharpen a plan or design."
+          },
+          {
+            "name": "grill-with-docs",
+            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
+          },
+          {
+            "name": "grilling",
+            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
+          },
+          {
+            "name": "handoff",
+            "description": "Compact the current conversation into a handoff document for another agent to pick up."
+          },
+          {
+            "name": "implement",
+            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
+          },
+          {
+            "name": "implement-spec",
+            "description": "\"Implement a specification in code.\""
+          },
+          {
+            "name": "improve-codebase-architecture",
+            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
+          },
+          {
+            "name": "loop-me",
+            "description": "Grill me about specs for the workflows I want to build, within this workspace."
+          },
+          {
+            "name": "migrate-to-shoehorn",
+            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
+          },
+          {
+            "name": "prototype",
+            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
+          },
+          {
+            "name": "research",
+            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
+          },
+          {
+            "name": "resolving-merge-conflicts",
+            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
+          },
+          {
+            "name": "scaffold-exercises",
+            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
+          },
+          {
+            "name": "setup-matt-pocock-skills",
+            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
+          },
+          {
+            "name": "setup-pre-commit",
+            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
+          },
+          {
+            "name": "setup-ts-deep-modules",
+            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
+          },
+          {
+            "name": "tdd",
+            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
+          },
+          {
+            "name": "teach",
+            "description": "Teach the user a new skill or concept, within this workspace."
+          },
+          {
+            "name": "to-questionnaire",
+            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
+          },
+          {
+            "name": "to-spec",
+            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
+          },
+          {
+            "name": "to-tickets",
+            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
+          },
+          {
+            "name": "triage",
+            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
+          },
+          {
+            "name": "wait-what",
+            "description": "\"Stop. That last message did not land: re-pitch it.\""
+          },
+          {
+            "name": "wayfinder",
+            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
+          },
+          {
+            "name": "wizard",
+            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
+          },
+          {
+            "name": "writing-beats",
+            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
+          },
+          {
+            "name": "writing-for-agents",
+            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
+          },
+          {
+            "name": "writing-fragments",
+            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
+          },
+          {
+            "name": "writing-shape",
+            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_runs_list",
+          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": false
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 14847,
+        "usage_percent": 1.4159202575683594,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-02T18:44:15.093720509Z",
+        "event_seq": 208,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1293,
+            "usage_percent": 0.12331008911132812
+          },
+          {
+            "category": "tools",
+            "tokens": 1963,
+            "usage_percent": 0.18720626831054688
+          },
+          {
+            "category": "skills",
+            "tokens": 1731,
+            "usage_percent": 0.16508102416992188
+          },
+          {
+            "category": "memory",
+            "tokens": 1409,
+            "usage_percent": 0.13437271118164062
+          },
+          {
+            "category": "conversation",
+            "tokens": 8443,
+            "usage_percent": 0.8051872253417969
+          },
+          {
+            "category": "other",
+            "tokens": 8,
+            "usage_percent": 0.000762939453125
+          }
+        ],
+        "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "approve@6": {
+      "first_event_seq": 955,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-02T19:25:09.013515223Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T19:24:56.622772350Z",
+      "handler": "human",
+      "graph_visit": 6,
+      "timing": {
+        "wall_time_ms": 12370,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "start@1": {
+      "first_event_seq": 23,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-02T17:48:13.353427440Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T17:48:13.339232354Z",
+      "handler": "start",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 0,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "analyze@2": {
+      "first_event_seq": 218,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: analyze",
+        "failure_reason": null,
+        "timestamp": "2026-09-02T18:48:11.340722253Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "high"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T18:44:20.090577358Z",
+      "handler": "agent",
+      "graph_visit": 2,
+      "timing": {
+        "wall_time_ms": 212476,
+        "inference_time_ms": 63416,
+        "tool_time_ms": 147844,
+        "active_time_ms": 211260
+      },
+      "usage": {
+        "input_tokens": 13102,
+        "output_tokens": 3920,
+        "total_tokens": 46737,
+        "reasoning_tokens": 2579,
+        "cache_read_tokens": 27136,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 53988
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "ask-matt",
+            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
+          },
+          {
+            "name": "claude-handoff",
+            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
+          },
+          {
+            "name": "code-review",
+            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
+          },
+          {
+            "name": "codebase-design",
+            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
+          },
+          {
+            "name": "diagnosing-bugs",
+            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
+          },
+          {
+            "name": "domain-modeling",
+            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
+          },
+          {
+            "name": "git-guardrails-claude-code",
+            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
+          },
+          {
+            "name": "grill-me",
+            "description": "A relentless interview to sharpen a plan or design."
+          },
+          {
+            "name": "grill-with-docs",
+            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
+          },
+          {
+            "name": "grilling",
+            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
+          },
+          {
+            "name": "handoff",
+            "description": "Compact the current conversation into a handoff document for another agent to pick up."
+          },
+          {
+            "name": "implement",
+            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
+          },
+          {
+            "name": "implement-spec",
+            "description": "\"Implement a specification in code.\""
+          },
+          {
+            "name": "improve-codebase-architecture",
+            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
+          },
+          {
+            "name": "loop-me",
+            "description": "Grill me about specs for the workflows I want to build, within this workspace."
+          },
+          {
+            "name": "migrate-to-shoehorn",
+            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
+          },
+          {
+            "name": "prototype",
+            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
+          },
+          {
+            "name": "research",
+            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
+          },
+          {
+            "name": "resolving-merge-conflicts",
+            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
+          },
+          {
+            "name": "scaffold-exercises",
+            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
+          },
+          {
+            "name": "setup-matt-pocock-skills",
+            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
+          },
+          {
+            "name": "setup-pre-commit",
+            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
+          },
+          {
+            "name": "setup-ts-deep-modules",
+            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
+          },
+          {
+            "name": "tdd",
+            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
+          },
+          {
+            "name": "teach",
+            "description": "Teach the user a new skill or concept, within this workspace."
+          },
+          {
+            "name": "to-questionnaire",
+            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
+          },
+          {
+            "name": "to-spec",
+            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
+          },
+          {
+            "name": "to-tickets",
+            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
+          },
+          {
+            "name": "triage",
+            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
+          },
+          {
+            "name": "wait-what",
+            "description": "\"Stop. That last message did not land: re-pitch it.\""
+          },
+          {
+            "name": "wayfinder",
+            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
+          },
+          {
+            "name": "wizard",
+            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
+          },
+          {
+            "name": "writing-beats",
+            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
+          },
+          {
+            "name": "writing-for-agents",
+            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
+          },
+          {
+            "name": "writing-fragments",
+            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
+          },
+          {
+            "name": "writing-shape",
+            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "fabro_ask",
+          "description": "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. Requires the target run's workflow to be declared in this graph's inspects attribute.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": true
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": true
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 13006,
+        "usage_percent": 1.2403488159179688,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-02T18:48:11.320740558Z",
+        "event_seq": 245,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 999,
+            "usage_percent": 0.09527206420898438
+          },
+          {
+            "category": "tools",
+            "tokens": 1531,
+            "usage_percent": 0.14600753784179688
+          },
+          {
+            "category": "skills",
+            "tokens": 1351,
+            "usage_percent": 0.12884140014648438
+          },
+          {
+            "category": "memory",
+            "tokens": 1099,
+            "usage_percent": 0.10480880737304688
+          },
+          {
+            "category": "conversation",
+            "tokens": 8019,
+            "usage_percent": 0.7647514343261719
           },
           {
             "category": "other",
@@ -18515,778 +19707,6 @@
             "category": "conversation",
             "tokens": 8629,
             "usage_percent": 0.8229255676269531
-          },
-          {
-            "category": "other",
-            "tokens": 7,
-            "usage_percent": 0.000667572021484375
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "analyze@7": {
-      "first_event_seq": 995,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Stage completed: analyze",
-        "failure_reason": null,
-        "timestamp": "2026-09-02T19:29:25.214709069Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "high"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-02T19:25:35.807822525Z",
-      "handler": "agent",
-      "graph_visit": 7,
-      "timing": {
-        "wall_time_ms": 209600,
-        "inference_time_ms": 59187,
-        "tool_time_ms": 148842,
-        "active_time_ms": 208029
-      },
-      "usage": {
-        "input_tokens": 11181,
-        "output_tokens": 3420,
-        "total_tokens": 42748,
-        "reasoning_tokens": 2483,
-        "cache_read_tokens": 25664,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 48294
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "skills": {
-        "available": [
-          {
-            "name": "ask-matt",
-            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
-          },
-          {
-            "name": "claude-handoff",
-            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
-          },
-          {
-            "name": "code-review",
-            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
-          },
-          {
-            "name": "codebase-design",
-            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
-          },
-          {
-            "name": "diagnosing-bugs",
-            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
-          },
-          {
-            "name": "domain-modeling",
-            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
-          },
-          {
-            "name": "git-guardrails-claude-code",
-            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
-          },
-          {
-            "name": "grill-me",
-            "description": "A relentless interview to sharpen a plan or design."
-          },
-          {
-            "name": "grill-with-docs",
-            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
-          },
-          {
-            "name": "grilling",
-            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
-          },
-          {
-            "name": "handoff",
-            "description": "Compact the current conversation into a handoff document for another agent to pick up."
-          },
-          {
-            "name": "implement",
-            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
-          },
-          {
-            "name": "implement-spec",
-            "description": "\"Implement a specification in code.\""
-          },
-          {
-            "name": "improve-codebase-architecture",
-            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
-          },
-          {
-            "name": "loop-me",
-            "description": "Grill me about specs for the workflows I want to build, within this workspace."
-          },
-          {
-            "name": "migrate-to-shoehorn",
-            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
-          },
-          {
-            "name": "prototype",
-            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
-          },
-          {
-            "name": "research",
-            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
-          },
-          {
-            "name": "resolving-merge-conflicts",
-            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
-          },
-          {
-            "name": "scaffold-exercises",
-            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
-          },
-          {
-            "name": "setup-matt-pocock-skills",
-            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
-          },
-          {
-            "name": "setup-pre-commit",
-            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
-          },
-          {
-            "name": "setup-ts-deep-modules",
-            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
-          },
-          {
-            "name": "tdd",
-            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
-          },
-          {
-            "name": "teach",
-            "description": "Teach the user a new skill or concept, within this workspace."
-          },
-          {
-            "name": "to-questionnaire",
-            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
-          },
-          {
-            "name": "to-spec",
-            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
-          },
-          {
-            "name": "to-tickets",
-            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
-          },
-          {
-            "name": "triage",
-            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
-          },
-          {
-            "name": "wait-what",
-            "description": "\"Stop. That last message did not land: re-pitch it.\""
-          },
-          {
-            "name": "wayfinder",
-            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
-          },
-          {
-            "name": "wizard",
-            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
-          },
-          {
-            "name": "writing-beats",
-            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
-          },
-          {
-            "name": "writing-for-agents",
-            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
-          },
-          {
-            "name": "writing-fragments",
-            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
-          },
-          {
-            "name": "writing-shape",
-            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
-          }
-        ],
-        "activated": []
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "fabro_ask",
-          "description": "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. Requires the target run's workflow to be declared in this graph's inspects attribute.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": true
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": true
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "use_skill",
-          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
-          "source": {
-            "kind": "skill"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": true
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 11236,
-        "usage_percent": 1.0715484619140625,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-02T19:29:25.194554792Z",
-        "event_seq": 1022,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 965,
-            "usage_percent": 0.09202957153320312
-          },
-          {
-            "category": "tools",
-            "tokens": 1514,
-            "usage_percent": 0.14438629150390625
-          },
-          {
-            "category": "skills",
-            "tokens": 1337,
-            "usage_percent": 0.12750625610351562
-          },
-          {
-            "category": "memory",
-            "tokens": 1088,
-            "usage_percent": 0.103759765625
-          },
-          {
-            "category": "conversation",
-            "tokens": 6326,
-            "usage_percent": 0.6032943725585938
-          },
-          {
-            "category": "other",
-            "tokens": 6,
-            "usage_percent": 0.00057220458984375
-          }
-        ],
-        "warnings": []
-      },
-      "agent_control": "running",
-      "state": "succeeded"
-    },
-    "select@4": {
-      "first_event_seq": 542,
-      "prompt": null,
-      "response": null,
-      "completion": {
-        "outcome": "succeeded",
-        "notes": "Stage completed: select",
-        "failure_reason": null,
-        "timestamp": "2026-09-02T19:07:51.428790035Z"
-      },
-      "provider_used": {
-        "mode": "agent",
-        "provider": "zai",
-        "model": "glm-5.3",
-        "reasoning_effort": "low"
-      },
-      "diff": null,
-      "script_invocation": null,
-      "script_timing": null,
-      "parallel_results": null,
-      "output": null,
-      "started_at": "2026-09-02T19:07:36.382114852Z",
-      "handler": "agent",
-      "graph_visit": 4,
-      "timing": {
-        "wall_time_ms": 12300,
-        "inference_time_ms": 10562,
-        "tool_time_ms": 508,
-        "active_time_ms": 11070
-      },
-      "usage": {
-        "input_tokens": 14812,
-        "output_tokens": 212,
-        "total_tokens": 22425,
-        "reasoning_tokens": 297,
-        "cache_read_tokens": 7104,
-        "cache_write_tokens": 0,
-        "total_usd_micros": 24821
-      },
-      "model": {
-        "provider": "zai",
-        "model_id": "glm-5.3"
-      },
-      "skills": {
-        "available": [
-          {
-            "name": "ask-matt",
-            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
-          },
-          {
-            "name": "claude-handoff",
-            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
-          },
-          {
-            "name": "code-review",
-            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
-          },
-          {
-            "name": "codebase-design",
-            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
-          },
-          {
-            "name": "diagnosing-bugs",
-            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
-          },
-          {
-            "name": "domain-modeling",
-            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
-          },
-          {
-            "name": "git-guardrails-claude-code",
-            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
-          },
-          {
-            "name": "grill-me",
-            "description": "A relentless interview to sharpen a plan or design."
-          },
-          {
-            "name": "grill-with-docs",
-            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
-          },
-          {
-            "name": "grilling",
-            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
-          },
-          {
-            "name": "handoff",
-            "description": "Compact the current conversation into a handoff document for another agent to pick up."
-          },
-          {
-            "name": "implement",
-            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
-          },
-          {
-            "name": "implement-spec",
-            "description": "\"Implement a specification in code.\""
-          },
-          {
-            "name": "improve-codebase-architecture",
-            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
-          },
-          {
-            "name": "loop-me",
-            "description": "Grill me about specs for the workflows I want to build, within this workspace."
-          },
-          {
-            "name": "migrate-to-shoehorn",
-            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
-          },
-          {
-            "name": "prototype",
-            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
-          },
-          {
-            "name": "research",
-            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
-          },
-          {
-            "name": "resolving-merge-conflicts",
-            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
-          },
-          {
-            "name": "scaffold-exercises",
-            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
-          },
-          {
-            "name": "setup-matt-pocock-skills",
-            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
-          },
-          {
-            "name": "setup-pre-commit",
-            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
-          },
-          {
-            "name": "setup-ts-deep-modules",
-            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
-          },
-          {
-            "name": "tdd",
-            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
-          },
-          {
-            "name": "teach",
-            "description": "Teach the user a new skill or concept, within this workspace."
-          },
-          {
-            "name": "to-questionnaire",
-            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
-          },
-          {
-            "name": "to-spec",
-            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
-          },
-          {
-            "name": "to-tickets",
-            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
-          },
-          {
-            "name": "triage",
-            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
-          },
-          {
-            "name": "wait-what",
-            "description": "\"Stop. That last message did not land: re-pitch it.\""
-          },
-          {
-            "name": "wayfinder",
-            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
-          },
-          {
-            "name": "wizard",
-            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
-          },
-          {
-            "name": "writing-beats",
-            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
-          },
-          {
-            "name": "writing-for-agents",
-            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
-          },
-          {
-            "name": "writing-fragments",
-            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
-          },
-          {
-            "name": "writing-shape",
-            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
-          }
-        ],
-        "activated": []
-      },
-      "permission_level": "full",
-      "agent_tools": [
-        {
-          "name": "close_agent",
-          "description": "Close a running or completed subagent that is no longer needed.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "context_read",
-          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "edit_file",
-          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        },
-        {
-          "name": "fabro_runs_list",
-          "description": "Enumerate runs of one workflow for revisor bookkeeping. The workflow must be declared in this graph's inspects attribute; created_since optionally bounds creation time.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": true
-        },
-        {
-          "name": "glob",
-          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": true
-        },
-        {
-          "name": "grep",
-          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "read_file",
-          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "read",
-          "invoked": false
-        },
-        {
-          "name": "request_user_input",
-          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "send_input",
-          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "shell",
-          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "shell",
-          "invoked": false
-        },
-        {
-          "name": "spawn_agent",
-          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "update_plan",
-          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "use_skill",
-          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
-          "source": {
-            "kind": "skill"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "wait",
-          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "subagent",
-          "invoked": false
-        },
-        {
-          "name": "web_fetch",
-          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "other",
-          "invoked": false
-        },
-        {
-          "name": "write_file",
-          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
-          "source": {
-            "kind": "native"
-          },
-          "category": "write",
-          "invoked": false
-        }
-      ],
-      "context_window": {
-        "provider": "zai",
-        "model": "glm-5.3",
-        "context_window_tokens": 1048576,
-        "input_tokens": 14881,
-        "usage_percent": 1.4191627502441406,
-        "count_method": "response_usage_scaled_breakdown",
-        "staleness": "live",
-        "generated_at": "2026-09-02T19:07:51.411913157Z",
-        "event_seq": 560,
-        "breakdown": [
-          {
-            "category": "system_prompt",
-            "tokens": 1256,
-            "usage_percent": 0.119781494140625
-          },
-          {
-            "category": "tools",
-            "tokens": 1971,
-            "usage_percent": 0.18796920776367188
-          },
-          {
-            "category": "skills",
-            "tokens": 1739,
-            "usage_percent": 0.16584396362304688
-          },
-          {
-            "category": "memory",
-            "tokens": 1415,
-            "usage_percent": 0.13494491577148438
-          },
-          {
-            "category": "conversation",
-            "tokens": 8493,
-            "usage_percent": 0.8099555969238281
           },
           {
             "category": "other",
