@@ -510,8 +510,8 @@
   "status": {
     "kind": "running"
   },
-  "status_updated_at": "2026-09-02T19:55:25.110019362Z",
-  "last_event_at": "2026-09-02T19:59:48.120164526Z",
+  "status_updated_at": "2026-09-02T20:07:20.755510623Z",
+  "last_event_at": "2026-09-02T20:07:20.772703921Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -13105,9 +13105,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 1376,
       "checkpoint": {
-        "timestamp": "2026-09-02T19:59:48.372016117Z",
+        "timestamp": "2026-09-02T19:59:53.166384965Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -13149,9 +13149,69 @@
         ],
         "node_retries": {},
         "context_values": {
-          "thread.file.current_node": "approve",
-          "internal.run_id": "01M1HKRE686W833SE86D8WD319",
+          "internal.retry_count.analyze": 0,
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 6398,
+            "preview": "Review persisted to `.fabro/reviews/develop/01M0TXPX09279433MGWSWPVVP4.md`. The analyst returned 8 run-grounded recommendations (evidence capture compounding per seed, preamble history duplication, st"
+          },
+          "thread.approve.current_node": "select",
+          "revisor_target_status": "succeeded",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
           "graph.inspects": "develop",
+          "revisor_target_run_id": "01M0TXPX09279433MGWSWPVVP4",
+          "failure_class": "",
+          "internal.thread_id": "analyze",
+          "revisor_target_title": "Develop seed-by-seed from tracker until no open seed remains",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.select.current_node": "analyze",
+          "preferred_label": "Staged",
+          "thread.start.current_node": "select",
+          "internal.run_id": "01M1HKRE686W833SE86D8WD319",
+          "current_node": "file",
+          "graph.rankdir": "LR",
+          "human.gate.approve.label": "[A] Approved",
+          "filed_seed_ids": [
+            "fabro-1e9f",
+            "fabro-5870",
+            "fabro-2e66",
+            "fabro-b809",
+            "fabro-ad1b",
+            "fabro-1d94",
+            "fabro-e4fa"
+          ],
+          "human.gate.label": "[A] Approved",
+          "internal.fidelity": "compact",
+          "failure_signature": "",
+          "internal.retry_count.start": 0,
+          "internal.seed_cycle_anchor": "01M0TXPX09279433MGWSWPVVP4",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Finding 'Keep only the latest visit per non-ignored stage in preambles' was deduped into existing open seed fabro-699f; next analyst for develop runs can expect overlap merges as reviews corroborate patterns."
+            ]
+          },
+          "last_stage": "file",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "thread.analyze.current_node": "file",
+          "thread.file.current_node": "approve",
+          "revisor_target_wall": "11.4 min",
+          "human.gate.selected": "A",
+          "human.gate.approve.answer": "A",
+          "internal.retry_count.file": 0,
+          "last_response": "All 7 new seeds filed (one finding deduped against open fabro-699f), revision marker written to `.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md`, and exactly the allowed paths committed in 95a089b.\n\n{",
+          "internal.retry_count.approve": 0,
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 677,
+            "preview": "All 7 new seeds filed (one finding deduped against open fabro-699f), revision marker written to `.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md`, and exactly the allowed paths committed in 95a089b.\n\n{"
+          },
           "revision_findings": [
             {
               "title": "Diff evidence against the last seed boundary, not the run base",
@@ -13194,79 +13254,19 @@
               "priority": 2
             }
           ],
-          "human.gate.approve.label": "[A] Approved",
-          "human.gate.label": "[A] Approved",
-          "human.gate.approve.answer": "A",
-          "internal.retry_count.approve": 0,
-          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
-          "graph.cycle_counter_reset_key": "revisor_target_run_id",
-          "internal.retry_count.select": 0,
-          "human.gate.selected": "A",
-          "response.analyze": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.analyze",
-            "chars": 6398,
-            "preview": "Review persisted to `.fabro/reviews/develop/01M0TXPX09279433MGWSWPVVP4.md`. The analyst returned 8 run-grounded recommendations (evidence capture compounding per seed, preamble history duplication, st"
-          },
-          "internal.seed_cycle_anchor": "01M0TXPX09279433MGWSWPVVP4",
-          "revisor_target_status": "succeeded",
-          "human.gate.approve.question": "Approve filing + merge",
-          "thread.approve.current_node": "select",
-          "failure_signature": "",
-          "internal.work_dir": "/workspace/fabro",
-          "journal": {
-            "painpoints": [],
-            "observations": [
-              "Finding 'Keep only the latest visit per non-ignored stage in preambles' was deduped into existing open seed fabro-699f; next analyst for develop runs can expect overlap merges as reviews corroborate patterns."
-            ]
-          },
-          "last_response": "All 7 new seeds filed (one finding deduped against open fabro-699f), revision marker written to `.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md`, and exactly the allowed paths committed in 95a089b.\n\n{",
-          "revisor_target_wall": "11.4 min",
-          "thread.start.current_node": "select",
-          "internal.thread_id": "analyze",
-          "current_node": "file",
-          "graph.rankdir": "LR",
-          "internal.fidelity": "compact",
           "internal.node_visit_count": 9,
-          "internal.retry_count.start": 0,
+          "graph.preamble_budget_kb": "24",
+          "human.gate.approve.question": "Approve filing + merge",
           "outcome": "succeeded",
+          "internal.retry_count.select": 0,
           "response.select": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.select",
             "chars": 955,
             "preview": "Three terminal runs with a live sandbox are still unrevised (`01M1EGK6J8CNP9APJ7PWE6WE74`, `01M11P68SHFS165HP9ATK6094V`, `01M0WWKAQCWZC0Q0JK019H0ZC7`, `01M0TXPX09279433MGWSWPVVP4`); markers cover all "
           },
-          "revisor_target_title": "Develop seed-by-seed from tracker until no open seed remains",
-          "preferred_label": "Staged",
-          "graph.preamble_budget_kb": "24",
-          "last_stage": "file",
-          "internal.retry_count.analyze": 0,
-          "thread.analyze.current_node": "file",
-          "graph.max_node_visits": "30",
-          "seed_cycles": {
-            "select": 1,
-            "analyze": 1,
-            "file": 1
-          },
-          "thread.select.current_node": "analyze",
-          "filed_seed_ids": [
-            "fabro-1e9f",
-            "fabro-5870",
-            "fabro-2e66",
-            "fabro-b809",
-            "fabro-ad1b",
-            "fabro-1d94",
-            "fabro-e4fa"
-          ],
-          "failure_class": "",
-          "revisor_target_run_id": "01M0TXPX09279433MGWSWPVVP4",
-          "response.file": {
-            "dedup": "response text omitted — payload lives in structured context keys",
-            "output_key": "output.file",
-            "chars": 677,
-            "preview": "All 7 new seeds filed (one finding deduped against open fabro-699f), revision marker written to `.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md`, and exactly the allowed paths committed in 95a089b.\n\n{"
-          },
-          "internal.retry_count.file": 0
+          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+          "graph.max_node_visits": "30"
         },
         "node_outcomes": {
           "start": {
@@ -13499,11 +13499,426 @@
           }
         },
         "next_node_id": "approve",
+        "git_commit_sha": "33f4885e7df661e8e1758be469086290e03c81b5",
+        "node_visits": {
+          "file": 9,
+          "start": 1,
+          "analyze": 9,
+          "approve": 8,
+          "select": 9
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\nindex 5384ab6..7ae7d14 100644\n--- a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\n+++ b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\n@@ -33,3 +33,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"approve\",\"visit\":8,\"status\":\"succeeded\",\"ts\":\"2026-09-02T19:55:25Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"select\",\"visit\":9,\"status\":\"succeeded\",\"ts\":\"2026-09-02T19:55:43Z\",\"data\":{\"painpoints\":[],\"observations\":[\"19 of 32 runs remain unrevised but only 4 are sandbox-live (01M0TXPX09279433MGWSWPVVP4 selected, then 01M0WWKAQCWZC0Q0JK019H0ZC7, 01M11P68SHFS165HP9ATK6094V, 01M1EGK6J8CNP9APJ7PWE6WE74); 15 unrevised runs blocked, no live sandbox.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"analyze\",\"visit\":9,\"status\":\"succeeded\",\"ts\":\"2026-09-02T19:58:57Z\",\"data\":{\"painpoints\":[{\"text\":\"Develop stages never emit painpoints even when performing real friction (both reviewers in run 01M0TXPX09279433MGWSWPVVP4 did the evidence-blob detour yet logged zero painpoints), so the revisor loop is the only channel capturing it; fix by making `painpoints` a mandatory key in stage outcome JSON in `.fabro/workflows/develop/prompts/`.\"}],\"observations\":[\"Run 01M0TXPX09279433MGWSWPVVP4 review written to `.fabro/reviews/develop/01M0TXPX09279433MGWSWPVVP4.md`; 8 findings distilled (2 high priority: per-seed evidence diff base, latest-visit-only preamble history); the blob-detour and duplicated-preamble patterns corroborate what other develop run reviews show, so expect overlap merges at filing time.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"file\",\"visit\":9,\"status\":\"succeeded\",\"ts\":\"2026-09-02T19:59:48Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Finding 'Keep only the latest visit per non-ignored stage in preambles' was deduped into existing open seed fabro-699f; next analyst for develop runs can expect overlap merges as reviews corroborate patterns.\"]}}\ndiff --git a/.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md b/.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md\nnew file mode 100644\nindex 0000000..c137c95\n--- /dev/null\n+++ b/.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md\n@@ -0,0 +1,52 @@\n+# Revision — run 01M0TXPX09279433MGWSWPVVP4\n+\n+- status reviewed: succeeded\n+- review: `.fabro/reviews/develop/01M0TXPX09279433MGWSWPVVP4.md`\n+- seeds filed:\n+  - fabro-1e9f — Diff evidence against the last seed boundary, not the run base\n+  - fabro-5870 — Clear transient context keys in closeout\n+  - fabro-2e66 — Surface PR pipeline degradation instead of succeeding silently\n+  - fabro-b809 — Make the painpoint channel mandatory-output\n+  - fabro-ad1b — Cite acceptance bullets in implementer verification, don't restate them\n+  - fabro-1d94 — Enforce one edit per file path per tool batch\n+  - fabro-e4fa — Tighten planner sd call economy\n+\n+## Findings\n+\n+### Diff evidence against the last seed boundary, not the run base\n+- filed: fabro-1e9f (priority 1)\n+- Change: diff against the commit the previous `closeout` produced in `.fabro/workflows/develop/scripts/evidence.nu`, record that SHA as the per-seed base, raise `preamble_budget_kb` in `.fabro/workflows/develop/workflow.fabro` to ~48.\n+- Expected effect: constant ~18 KB per-seed captures judged inline, zero blob detours, structurally removing preview-only review.\n+\n+### Keep only the latest visit per non-ignored stage in preambles\n+- filed: none — duplicate of open seed fabro-699f (\"Stop re-rendering every past cycle in preambles\"), which covers the same per-cycle preamble growth (input 14,735 → 25,693 tokens, +75% cost from $0.030 to $0.051).\n+\n+### Clear transient context keys in closeout\n+- filed: fabro-5870 (priority 2)\n+- Change: reset `review_verdict`, `review_feedback`, `implementation_summary` via context updates in `.fabro/workflows/develop/scripts/closeout.nu`; delete the stale-verdict compensation paragraph from `.fabro/workflows/develop/prompts/planner.md`.\n+- Expected effect: stale-verdict ambiguity (seed 1's `approved` surviving into seed-2 stages) eliminated structurally instead of by prose guard.\n+\n+### Surface PR pipeline degradation instead of succeeding silently\n+- filed: fabro-2e66 (priority 2)\n+- Change: force JSON output for PR title/body generation with one repair retry; preflight auto-merge when `auto_merge=true`; degrade terminal report to `succeeded with degraded delivery`.\n+- Expected effect: no silent gap between run success and an unmerged skeleton PR.\n+\n+### Make the painpoint channel mandatory-output\n+- filed: fabro-b809 (priority 2)\n+- Change: require a `painpoints` array (possibly empty) in outcome JSON of `.fabro/workflows/develop/prompts/planner.md`, `implementer.md`, and `reviewer.md`.\n+- Expected effect: friction lands in `.fabro/journal/` on the run where it happened, feeding the improve loop with evidence.\n+\n+### Cite acceptance bullets in implementer verification, don't restate them\n+- filed: fabro-ad1b (priority 2)\n+- Change: require `PASS (n)` bullet references instead of quoted criteria, cap prose before JSON at 3 sentences in `.fabro/workflows/develop/prompts/implementer.md`.\n+- Expected effect: ~1.5–2.5k fewer output tokens per pass, ~$0.05–0.08 and 30–60 s saved per seed, smaller reviewer preambles.\n+\n+### Enforce one edit per file path per tool batch\n+- filed: fabro-1d94 (priority 2)\n+- Change: one line in `.fabro/workflows/develop/prompts/implementer.md` — at most one edit per file path per tool batch; sequence dependent edits across batches.\n+- Expected effect: eliminates 3 observed concurrent-write serialization warnings and the silent-ordering hazard they signal.\n+\n+### Tighten planner sd call economy\n+- filed: fabro-e4fa (priority 2)\n+- Change: conditional `sd list` rule and `sd ready --format json` in the command table of `.fabro/workflows/develop/prompts/planner.md`.\n+- Expected effect: one fewer redundant tracker call (byte-identical ~3.3 KB payloads observed) and ~10 s less deliberation per cycle.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex c4b9013..afba9d6 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -58,3 +58,10 @@\n {\"id\":\"fabro-35ab\",\"title\":\"Raise develop preamble budget to 20 KB\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:50:41.043Z\",\"updatedAt\":\"2026-09-02T19:50:41.043Z\",\"description\":\"In .fabro/workflows/develop/workflow.fabro, raise graph attr preamble_budget_kb from 12 to about 20 (input shrinkage from the implementer-output fix helps for free). Worker logs for run 01M0T9B7T6XNM1D7JNY35Y6H8K show the preamble budget exceeded even after demotion at four consecutive prompts (up to 18,053 bytes vs 12,288 budget), firing blob-ref demotion every cycle. Expected effect: fewer blob-ref round-trips (each costs a reviewer tool call plus turn) and no per-cycle budget warnings. Related to existing seed fabro-83f9 (reviewer node scope); this one covers the graph-wide budget.\"}\n {\"id\":\"fabro-1399\",\"title\":\"Add sd syntax cheat-sheet and call-order rule to planner prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:50:46.516Z\",\"updatedAt\":\"2026-09-02T19:50:46.516Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md, document exact write syntax (sd update <id> --status in_progress, sd close <id>, no --format on writes) and instruct sd ready first with sd list only when ready is empty or blockers matter. In run 01M0T9B7T6XNM1D7JNY35Y6H8K planner@1 wasted a call on sd update --format json (unknown option error, event seq 62-63) and ran redundant parallel sd ready and sd list on a one-seed tracker. Expected effect: 1-2 fewer tool calls and one fewer LLM round-trip per planning visit.\"}\n {\"id\":\"fabro-4881\",\"title\":\"Gate implementer sd show re-fetch on brief quality\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:50:46.712Z\",\"updatedAt\":\"2026-09-02T19:50:46.712Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md, make the sd show re-read conditional: only when the brief is thin, ambiguous, or verification-only. In run 01M0T9B7T6XNM1D7JNY35Y6H8K the prompt called the brief authoritative yet numbered step 1 ordered re-reading the seed, and the implementer obeyed (event seq 94-98), risking re-import of ambiguity the planner had settled (raw seed Default: no limit vs the brief's pinned 0-sentinel). Expected effect: one fewer call and turn per cycle, planner's resolved reading stays authoritative. Overlaps partially with fabro-a67f (spec re-fetch conditional) but targets the sd seed re-read specifically.\"}\n+{\"id\":\"fabro-1e9f\",\"title\":\"Diff evidence against the last seed boundary, not the run base\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T19:59:23.001Z\",\"updatedAt\":\"2026-09-02T19:59:23.001Z\",\"description\":\"In .fabro/workflows/develop/scripts/evidence.nu, diff against the commit the previous closeout produced (record that SHA as the per-seed base) and raise preamble_budget_kb in .fabro/workflows/develop/workflow.fabro to ~48. Evidence captures compounded from 18.1 KB to 38.5 KB in run 01M0TXPX09279433MGWSWPVVP4 because they diffed against run base de65cd6, forcing reviewers into a blob detour to read the full diff. Expected effect: constant ~18 KB per-seed captures judged inline, zero blob detours, structurally removing preview-only review.\"}\n+{\"id\":\"fabro-5870\",\"title\":\"Clear transient context keys in closeout\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.164Z\",\"updatedAt\":\"2026-09-02T19:59:23.164Z\",\"description\":\"In .fabro/workflows/develop/scripts/closeout.nu, after closing the seed emit context updates resetting review_verdict, review_feedback, and implementation_summary to empty string; then delete the stale-verdict compensation paragraph from .fabro/workflows/develop/prompts/planner.md. In run 01M0TXPX09279433MGWSWPVVP4, seed 1 review_verdict approved survived into planner@2, implementer@2, reviewer@2, and the exit checkpoint. Expected effect: stale-verdict ambiguity eliminated structurally instead of by prose guard.\"}\n+{\"id\":\"fabro-2e66\",\"title\":\"Surface PR pipeline degradation instead of succeeding silently\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.328Z\",\"updatedAt\":\"2026-09-02T19:59:23.328Z\",\"description\":\"In the PR pipeline: force JSON output for title/body generation (tool-call/schema mode) with one repair retry, and preflight the repo auto-merge setting when auto_merge=true, degrading the terminal report to succeeded with degraded delivery when the PR could not auto-merge. In run 01M0TXPX09279433MGWSWPVVP4, PR content generation fell back to a skeleton body and auto-merge was rejected, yet the run reported plain success. Expected effect: no silent gap between run success and unmerged skeleton PR.\"}\n+{\"id\":\"fabro-b809\",\"title\":\"Make the painpoint channel mandatory-output\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.551Z\",\"updatedAt\":\"2026-09-02T19:59:23.551Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md, implementer.md, and reviewer.md, require a painpoints array (possibly empty) in every outcome JSON. In run 01M0TXPX09279433MGWSWPVVP4 both reviewers performed the exact friction the channel exists to capture (the blob detour) yet emitted zero painpoints, so the improve loop got no data from a run with real friction. Expected effect: friction lands in .fabro/journal/ on the run where it happened, feeding the improve loop with evidence.\"}\n+{\"id\":\"fabro-ad1b\",\"title\":\"Cite acceptance bullets in implementer verification, don't restate them\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.652Z\",\"updatedAt\":\"2026-09-02T19:59:23.652Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md, require each PASS line to reference the brief bullet number (e.g. PASS (3)) instead of quoting the criterion, and cap prose before the JSON at 3 sentences. In run 01M0TXPX09279433MGWSWPVVP4, implementer@2 restated all 10 acceptance criteria in full, driving 186 s inference and 0.281 USD (47 percent of run cost). Expected effect: roughly 1.5-2.5k fewer output tokens per pass plus smaller reviewer preambles.\"}\n+{\"id\":\"fabro-1d94\",\"title\":\"Enforce one edit per file path per tool batch\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.761Z\",\"updatedAt\":\"2026-09-02T19:59:23.761Z\",\"description\":\"Add one line to .fabro/workflows/develop/prompts/implementer.md: at most one edit per file path per tool batch; sequence dependent edits across batches. In run 01M0TXPX09279433MGWSWPVVP4 the worker log showed 3 concurrent-write-to-same-file-in-one-batch serializing warnings for main.go, README.md, and fib_test.go. Expected effect: eliminates the write-lock warnings and the silent-ordering hazard they signal, at zero cost.\"}\n+{\"id\":\"fabro-e4fa\",\"title\":\"Tighten planner sd call economy\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.883Z\",\"updatedAt\":\"2026-09-02T19:59:23.883Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md, make the rule conditional and checkable (sd list only if sd ready output is truncated or lacks needed blocker info) and add sd ready --format json to the command table. In run 01M0TXPX09279433MGWSWPVVP4 planner@1 ran sd ready then sd list with byte-identical ~3.3 KB payloads, and used a --format flag on ready not listed in the table. Expected effect: one fewer tracker call and ~10 s less deliberation per cycle while keeping the no-invented-flags rule credible.\"}\n",
+        "summary": {
+          "files_changed": 20,
+          "additions": 837,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-02T20:07:21.019032011Z",
+        "current_node": "approve",
+        "completed_nodes": [
+          "start",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "thread.file.current_node": "approve",
+          "internal.run_id": "01M1HKRE686W833SE86D8WD319",
+          "graph.inspects": "develop",
+          "revision_findings": [
+            {
+              "title": "Diff evidence against the last seed boundary, not the run base",
+              "description": "In `.fabro/workflows/develop/scripts/evidence.nu`, diff against the commit the previous `closeout` produced (record that SHA as the per-seed base) and raise `preamble_budget_kb` in `.fabro/workflows/develop/workflow.fabro` to ~48. In this run evidence captures compounded 18.1 KB → 38.5 KB because they diffed against run base `de65cd6`, forcing both reviewers into a blob detour to read the full diff. Expected effect: constant ~18 KB per-seed captures judged inline, zero blob detours, structurally removing preview-only review.",
+              "priority": 1
+            },
+            {
+              "title": "Keep only the latest visit per non-ignored stage in preambles",
+              "description": "In the `reviewer` and `planner` nodes of `.fabro/workflows/develop/workflow.fabro`, keep only the most recent visit per kept stage or reset kept history when `current_seed_id` changes (reuse the `cycle_counter_reset_key` mechanism). In this run reviewer@2's prompt contained seed-1 and seed-2 `tester`/`evidence` sections twice, growing input 14,735 → 25,693 tokens (+75%) and cost $0.030 → $0.051. Expected effect: constant per-cycle preambles, ~40% cheaper reviews from seed 3 on, less cross-seed confusion.",
+              "priority": 1
+            },
+            {
+              "title": "Clear transient context keys in closeout",
+              "description": "In `.fabro/workflows/develop/scripts/closeout.nu`, after closing the seed emit context updates resetting `review_verdict`, `review_feedback`, and `implementation_summary` to empty string; then delete the stale-verdict compensation paragraph from `.fabro/workflows/develop/prompts/planner.md`. In this run seed 1's `review_verdict: approved` survived into planner@2, implementer@2, reviewer@2, and the exit checkpoint. Expected effect: stale-verdict ambiguity eliminated structurally instead of by prose guard.",
+              "priority": 2
+            },
+            {
+              "title": "Surface PR pipeline degradation instead of succeeding silently",
+              "description": "In the PR pipeline: force JSON output for title/body generation (tool-call/schema mode) with one repair retry, and preflight the repo's auto-merge setting when `auto_merge=true`, degrading the terminal report to `succeeded with degraded delivery` when the PR could not auto-merge. In this run PR content generation fell back to a skeleton body and auto-merge was rejected, yet the run reported plain success. Expected effect: no silent gap between run success and unmerged skeleton PR.",
+              "priority": 2
+            },
+            {
+              "title": "Make the painpoint channel mandatory-output",
+              "description": "In `.fabro/workflows/develop/prompts/planner.md`, `implementer.md`, and `reviewer.md`, require a `painpoints` array (possibly empty) in every outcome JSON. In this run both reviewers performed the exact friction the channel exists to capture (the blob detour) yet emitted zero painpoints, so the improve loop got no data from a run with real friction. Expected effect: friction lands in `.fabro/journal/` on the run where it happened, feeding the improve loop with evidence.",
+              "priority": 2
+            },
+            {
+              "title": "Cite acceptance bullets in implementer verification, don't restate them",
+              "description": "In `.fabro/workflows/develop/prompts/implementer.md`, require each PASS line to reference the brief's bullet number (e.g. `PASS (3)`) instead of quoting the criterion, and cap prose before the JSON at 3 sentences. In this run implementer@2 restated all 10 acceptance criteria in full, driving 186 s inference and $0.281 (47% of run cost). Expected effect: ~1.5–2.5k fewer output tokens per pass (~$0.05–0.08 and 30–60 s per seed) plus smaller reviewer preambles.",
+              "priority": 2
+            },
+            {
+              "title": "Enforce one edit per file path per tool batch",
+              "description": "Add one line to `.fabro/workflows/develop/prompts/implementer.md`: at most one edit per file path per tool batch; sequence dependent edits across batches. In this run the worker log showed 3 `concurrent write to the same file in one batch; serializing` warnings for `main.go`, `README.md`, and `fib_test.go`. Expected effect: eliminates the write-lock warnings and the silent-ordering hazard they signal, at zero cost.",
+              "priority": 2
+            },
+            {
+              "title": "Tighten planner sd call economy",
+              "description": "In `.fabro/workflows/develop/prompts/planner.md`, make the rule conditional and checkable (`sd list` only if `sd ready` output is truncated or lacks needed blocker info) and add `sd ready --format json` to the command table. In this run planner@1 ran `sd ready` then `sd list` with byte-identical ~3.3 KB payloads, and used a `--format` flag on `ready` not listed in the table. Expected effect: one fewer tracker call and ~10 s less deliberation per cycle while keeping the no-invented-flags rule credible.",
+              "priority": 2
+            }
+          ],
+          "human.gate.approve.label": "[A] Approved",
+          "human.gate.label": "[A] Approved",
+          "human.gate.approve.answer": "A",
+          "internal.retry_count.approve": 0,
+          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.retry_count.select": 0,
+          "human.gate.selected": "A",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 6398,
+            "preview": "Review persisted to `.fabro/reviews/develop/01M0TXPX09279433MGWSWPVVP4.md`. The analyst returned 8 run-grounded recommendations (evidence capture compounding per seed, preamble history duplication, st"
+          },
+          "internal.seed_cycle_anchor": "01M0TXPX09279433MGWSWPVVP4",
+          "revisor_target_status": "succeeded",
+          "human.gate.approve.question": "Approve filing + merge",
+          "thread.approve.current_node": "select",
+          "failure_signature": "",
+          "internal.work_dir": "/workspace/fabro",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Finding 'Keep only the latest visit per non-ignored stage in preambles' was deduped into existing open seed fabro-699f; next analyst for develop runs can expect overlap merges as reviews corroborate patterns."
+            ]
+          },
+          "last_response": "All 7 new seeds filed (one finding deduped against open fabro-699f), revision marker written to `.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md`, and exactly the allowed paths committed in 95a089b.\n\n{",
+          "revisor_target_wall": "11.4 min",
+          "thread.start.current_node": "select",
+          "internal.thread_id": "file",
+          "current_node": "approve",
+          "graph.rankdir": "LR",
+          "internal.fidelity": "compact",
+          "internal.node_visit_count": 9,
+          "internal.retry_count.start": 0,
+          "outcome": "succeeded",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 955,
+            "preview": "Three terminal runs with a live sandbox are still unrevised (`01M1EGK6J8CNP9APJ7PWE6WE74`, `01M11P68SHFS165HP9ATK6094V`, `01M0WWKAQCWZC0Q0JK019H0ZC7`, `01M0TXPX09279433MGWSWPVVP4`); markers cover all "
+          },
+          "revisor_target_title": "Develop seed-by-seed from tracker until no open seed remains",
+          "preferred_label": "[A] Approved",
+          "graph.preamble_budget_kb": "24",
+          "last_stage": "file",
+          "internal.retry_count.analyze": 0,
+          "thread.analyze.current_node": "file",
+          "graph.max_node_visits": "30",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1,
+            "approve": 1
+          },
+          "thread.select.current_node": "analyze",
+          "filed_seed_ids": [
+            "fabro-1e9f",
+            "fabro-5870",
+            "fabro-2e66",
+            "fabro-b809",
+            "fabro-ad1b",
+            "fabro-1d94",
+            "fabro-e4fa"
+          ],
+          "failure_class": "",
+          "revisor_target_run_id": "01M0TXPX09279433MGWSWPVVP4",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 677,
+            "preview": "All 7 new seeds filed (one finding deduped against open fabro-699f), revision marker written to `.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md`, and exactly the allowed paths committed in 95a089b.\n\n{"
+          },
+          "internal.retry_count.file": 0
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "last_stage": "file",
+              "filed_seed_ids": [
+                "fabro-1e9f",
+                "fabro-5870",
+                "fabro-2e66",
+                "fabro-b809",
+                "fabro-ad1b",
+                "fabro-1d94",
+                "fabro-e4fa"
+              ],
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 677,
+                "preview": "All 7 new seeds filed (one finding deduped against open fabro-699f), revision marker written to `.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md`, and exactly the allowed paths committed in 95a089b.\n\n{"
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Finding 'Keep only the latest visit per non-ignored stage in preambles' was deduped into existing open seed fabro-699f; next analyst for develop runs can expect overlap merges as reviews corroborate patterns."
+                ]
+              },
+              "last_response": "All 7 new seeds filed (one finding deduped against open fabro-699f), revision marker written to `.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md`, and exactly the allowed paths committed in 95a089b.\n\n{"
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15059,
+                    "output_tokens": 2449,
+                    "reasoning_tokens": 362,
+                    "cache_read_tokens": 65024,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 50352
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 37269,
+              "tool_time_ms": 1903,
+              "active_time_ms": 39172
+            }
+          },
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "last_stage": "analyze",
+              "last_response": "Review persisted to `.fabro/reviews/develop/01M0TXPX09279433MGWSWPVVP4.md`. The analyst returned 8 run-grounded recommendations (evidence capture compounding per seed, preamble history duplication, st",
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 6398,
+                "preview": "Review persisted to `.fabro/reviews/develop/01M0TXPX09279433MGWSWPVVP4.md`. The analyst returned 8 run-grounded recommendations (evidence capture compounding per seed, preamble history duplication, st"
+              },
+              "revision_findings": [
+                {
+                  "title": "Diff evidence against the last seed boundary, not the run base",
+                  "description": "In `.fabro/workflows/develop/scripts/evidence.nu`, diff against the commit the previous `closeout` produced (record that SHA as the per-seed base) and raise `preamble_budget_kb` in `.fabro/workflows/develop/workflow.fabro` to ~48. In this run evidence captures compounded 18.1 KB → 38.5 KB because they diffed against run base `de65cd6`, forcing both reviewers into a blob detour to read the full diff. Expected effect: constant ~18 KB per-seed captures judged inline, zero blob detours, structurally removing preview-only review.",
+                  "priority": 1
+                },
+                {
+                  "title": "Keep only the latest visit per non-ignored stage in preambles",
+                  "description": "In the `reviewer` and `planner` nodes of `.fabro/workflows/develop/workflow.fabro`, keep only the most recent visit per kept stage or reset kept history when `current_seed_id` changes (reuse the `cycle_counter_reset_key` mechanism). In this run reviewer@2's prompt contained seed-1 and seed-2 `tester`/`evidence` sections twice, growing input 14,735 → 25,693 tokens (+75%) and cost $0.030 → $0.051. Expected effect: constant per-cycle preambles, ~40% cheaper reviews from seed 3 on, less cross-seed confusion.",
+                  "priority": 1
+                },
+                {
+                  "title": "Clear transient context keys in closeout",
+                  "description": "In `.fabro/workflows/develop/scripts/closeout.nu`, after closing the seed emit context updates resetting `review_verdict`, `review_feedback`, and `implementation_summary` to empty string; then delete the stale-verdict compensation paragraph from `.fabro/workflows/develop/prompts/planner.md`. In this run seed 1's `review_verdict: approved` survived into planner@2, implementer@2, reviewer@2, and the exit checkpoint. Expected effect: stale-verdict ambiguity eliminated structurally instead of by prose guard.",
+                  "priority": 2
+                },
+                {
+                  "title": "Surface PR pipeline degradation instead of succeeding silently",
+                  "description": "In the PR pipeline: force JSON output for title/body generation (tool-call/schema mode) with one repair retry, and preflight the repo's auto-merge setting when `auto_merge=true`, degrading the terminal report to `succeeded with degraded delivery` when the PR could not auto-merge. In this run PR content generation fell back to a skeleton body and auto-merge was rejected, yet the run reported plain success. Expected effect: no silent gap between run success and unmerged skeleton PR.",
+                  "priority": 2
+                },
+                {
+                  "title": "Make the painpoint channel mandatory-output",
+                  "description": "In `.fabro/workflows/develop/prompts/planner.md`, `implementer.md`, and `reviewer.md`, require a `painpoints` array (possibly empty) in every outcome JSON. In this run both reviewers performed the exact friction the channel exists to capture (the blob detour) yet emitted zero painpoints, so the improve loop got no data from a run with real friction. Expected effect: friction lands in `.fabro/journal/` on the run where it happened, feeding the improve loop with evidence.",
+                  "priority": 2
+                },
+                {
+                  "title": "Cite acceptance bullets in implementer verification, don't restate them",
+                  "description": "In `.fabro/workflows/develop/prompts/implementer.md`, require each PASS line to reference the brief's bullet number (e.g. `PASS (3)`) instead of quoting the criterion, and cap prose before the JSON at 3 sentences. In this run implementer@2 restated all 10 acceptance criteria in full, driving 186 s inference and $0.281 (47% of run cost). Expected effect: ~1.5–2.5k fewer output tokens per pass (~$0.05–0.08 and 30–60 s per seed) plus smaller reviewer preambles.",
+                  "priority": 2
+                },
+                {
+                  "title": "Enforce one edit per file path per tool batch",
+                  "description": "Add one line to `.fabro/workflows/develop/prompts/implementer.md`: at most one edit per file path per tool batch; sequence dependent edits across batches. In this run the worker log showed 3 `concurrent write to the same file in one batch; serializing` warnings for `main.go`, `README.md`, and `fib_test.go`. Expected effect: eliminates the write-lock warnings and the silent-ordering hazard they signal, at zero cost.",
+                  "priority": 2
+                },
+                {
+                  "title": "Tighten planner sd call economy",
+                  "description": "In `.fabro/workflows/develop/prompts/planner.md`, make the rule conditional and checkable (`sd list` only if `sd ready` output is truncated or lacks needed blocker info) and add `sd ready --format json` to the command table. In this run planner@1 ran `sd ready` then `sd list` with byte-identical ~3.3 KB payloads, and used a `--format` flag on `ready` not listed in the table. Expected effect: one fewer tracker call and ~10 s less deliberation per cycle while keeping the no-invented-flags rule credible.",
+                  "priority": 2
+                }
+              ],
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Develop stages never emit painpoints even when performing real friction (both reviewers in run 01M0TXPX09279433MGWSWPVVP4 did the evidence-blob detour yet logged zero painpoints), so the revisor loop is the only channel capturing it; fix by making `painpoints` a mandatory key in stage outcome JSON in `.fabro/workflows/develop/prompts/`."
+                  }
+                ],
+                "observations": [
+                  "Run 01M0TXPX09279433MGWSWPVVP4 review written to `.fabro/reviews/develop/01M0TXPX09279433MGWSWPVVP4.md`; 8 findings distilled (2 high priority: per-seed evidence diff base, latest-visit-only preamble history); the blob-detour and duplicated-preamble patterns corroborate what other develop run reviews show, so expect overlap merges at filing time."
+                ]
+              }
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 12321,
+                    "output_tokens": 3832,
+                    "reasoning_tokens": 1109,
+                    "cache_read_tokens": 26880,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 45973
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M0TXPX09279433MGWSWPVVP4.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 50464,
+              "tool_time_ms": 120497,
+              "active_time_ms": 170961
+            }
+          },
+          "approve": {
+            "status": "succeeded",
+            "preferred_label": "[A] Approved",
+            "suggested_next_ids": [
+              "select"
+            ],
+            "context_updates": {
+              "human.gate.approve.answer": "A",
+              "human.gate.label": "[A] Approved",
+              "human.gate.selected": "A",
+              "human.gate.approve.question": "Approve filing + merge",
+              "human.gate.approve.label": "[A] Approved"
+            },
+            "usage": null
+          },
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "19 of 32 runs remain unrevised but only 4 are sandbox-live (01M0TXPX09279433MGWSWPVVP4 selected, then 01M0WWKAQCWZC0Q0JK019H0ZC7, 01M11P68SHFS165HP9ATK6094V, 01M1EGK6J8CNP9APJ7PWE6WE74); 15 unrevised runs blocked, no live sandbox."
+                ]
+              },
+              "last_stage": "select",
+              "revisor_target_run_id": "01M0TXPX09279433MGWSWPVVP4",
+              "revisor_target_wall": "11.4 min",
+              "last_response": "Three terminal runs with a live sandbox are still unrevised (`01M1EGK6J8CNP9APJ7PWE6WE74`, `01M11P68SHFS165HP9ATK6094V`, `01M0WWKAQCWZC0Q0JK019H0ZC7`, `01M0TXPX09279433MGWSWPVVP4`); markers cover all ",
+              "revisor_target_title": "Develop seed-by-seed from tracker until no open seed remains",
+              "revisor_target_status": "succeeded",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 955,
+                "preview": "Three terminal runs with a live sandbox are still unrevised (`01M1EGK6J8CNP9APJ7PWE6WE74`, `01M11P68SHFS165HP9ATK6094V`, `01M0WWKAQCWZC0Q0JK019H0ZC7`, `01M0TXPX09279433MGWSWPVVP4`); markers cover all "
+              }
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 15132,
+                    "output_tokens": 409,
+                    "reasoning_tokens": 174,
+                    "cache_read_tokens": 7040,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 25579
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 11080,
+              "tool_time_ms": 547,
+              "active_time_ms": 11627
+            }
+          }
+        },
+        "next_node_id": "select",
         "node_visits": {
           "start": 1,
           "analyze": 9,
           "select": 9,
-          "approve": 8,
+          "approve": 9,
           "file": 9
         }
       },
@@ -25007,6 +25422,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "approve@9": {
+      "first_event_seq": 1379,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-02T20:07:20.772703921Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T19:59:53.184897890Z",
+      "handler": "human",
+      "graph_visit": 9,
+      "timing": {
+        "wall_time_ms": 410251,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
