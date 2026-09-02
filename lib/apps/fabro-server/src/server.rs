@@ -794,7 +794,7 @@ impl SlackService {
             return;
         };
         let event_name = event.body.event_name();
-        let projection = match state.stores.runs.get_cached_projection(&event.run_id).await {
+        let projection = match state.stores.runs.load_run_projection(&event.run_id).await {
             Ok(Some(projection)) => projection,
             Ok(None) => {
                 warn!(
@@ -1508,16 +1508,16 @@ impl AppState {
         &self.stores.runs
     }
 
-    /// Current cached projection for `run_id`, with the standard HTTP error
+    /// Loads the current projection for `run_id`, with the standard HTTP error
     /// mapping: storage failures become 500s and a missing run becomes the
     /// canonical 404.
-    pub(crate) async fn cached_run_projection(
+    pub(crate) async fn load_run_projection(
         &self,
         run_id: &RunId,
     ) -> Result<Arc<fabro_store::RunProjection>, ApiError> {
         self.stores
             .runs
-            .get_cached_projection(run_id)
+            .load_run_projection(run_id)
             .await
             .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?
             .ok_or_else(|| ApiError::not_found("Run not found."))
@@ -3744,7 +3744,7 @@ async fn load_pending_interview(
     qid: &str,
 ) -> Result<LoadedPendingInterview, Response> {
     let projection = state
-        .cached_run_projection(&run_id)
+        .load_run_projection(&run_id)
         .await
         .map_err(IntoResponse::into_response)?;
     let Some(record) = projection.pending_interviews.get(qid) else {
@@ -4534,8 +4534,14 @@ async fn append_control_request(
 /// run is currently archived. Returns `None` otherwise (including when the run
 /// doesn't exist — the caller's own not-found handling will surface that).
 async fn reject_if_archived(state: &AppState, run_id: &RunId) -> Option<Response> {
-    let projection = state.cached_run_projection(run_id).await.ok()?;
-    projection.archived_at.is_some().then(|| {
+    let summary = state
+        .stores
+        .run_summaries
+        .get(run_id, Utc::now())
+        .await
+        .ok()
+        .flatten()?;
+    summary.lifecycle.archived_at.is_some().then(|| {
         ApiError::new(
             StatusCode::CONFLICT,
             operations::archived_rejection_message(run_id),

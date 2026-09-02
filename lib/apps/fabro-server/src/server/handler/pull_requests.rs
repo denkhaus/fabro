@@ -151,7 +151,7 @@ async fn load_pull_request_record(
     state: &Arc<AppState>,
     id: &RunId,
 ) -> Result<PullRequestLink, ApiError> {
-    let projection = state.cached_run_projection(id).await?;
+    let projection = state.load_run_projection(id).await?;
     projection.pull_request.clone().ok_or_else(|| {
         ApiError::with_code(
             StatusCode::NOT_FOUND,
@@ -319,7 +319,7 @@ async fn create_run_pull_request(
     let Ok(run_store) = state.stores.runs.open_run(&id).await else {
         return ApiError::not_found("Run not found.").into_response();
     };
-    let run_state = match state.cached_run_projection(&id).await {
+    let run_state = match state.load_run_projection(&id).await {
         Ok(run_state) => run_state,
         Err(err) => return err.into_response(),
     };
@@ -372,7 +372,7 @@ async fn create_run_pull_request(
         }
     };
 
-    let run_state = match state.cached_run_projection(&id).await {
+    let run_state = match state.load_run_projection(&id).await {
         Ok(run_state) => run_state,
         Err(err) => return err.into_response(),
     };
@@ -427,7 +427,7 @@ async fn get_run_pull_request_creation(
     RequireRunScoped(id): RequireRunScoped,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    let run_state = match state.cached_run_projection(&id).await {
+    let run_state = match state.load_run_projection(&id).await {
         Ok(run_state) => run_state,
         Err(err) => return err.into_response(),
     };
@@ -473,7 +473,7 @@ async fn unlink_run_pull_request(
     let Ok(run_store) = state.stores.runs.open_run(&id).await else {
         return ApiError::not_found("Run not found.").into_response();
     };
-    let run_state = match state.cached_run_projection(&id).await {
+    let run_state = match state.load_run_projection(&id).await {
         Ok(run_state) => run_state,
         Err(err) => return err.into_response(),
     };

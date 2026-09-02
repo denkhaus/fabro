@@ -1,4 +1,3 @@
-mod projection_cache;
 mod run_store;
 
 use std::collections::HashMap;
@@ -9,13 +8,11 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use fabro_types::{RunId, SessionId};
 use object_store::ObjectStore;
-pub(crate) use projection_cache::CachedRunProjection;
-use projection_cache::RunProjectionCache;
+pub(crate) use run_store::CachedRunProjection;
 pub use run_store::RunDatabase;
 use run_store::RunDatabaseInner;
 use slatedb::config::{CompressionCodec, Settings};
 use tokio::sync::{Mutex, MutexGuard, OnceCell};
-use tracing::warn;
 
 use crate::{BlobStore, Error, EventPayload, Result, RunProjection, RunSummaryStore, keys};
 
@@ -28,15 +25,13 @@ pub struct UnreadableRun {
 
 #[derive(Clone)]
 pub struct Database {
-    object_store: Arc<dyn ObjectStore>,
-    base_prefix: String,
-    flush_interval: Duration,
-    cache_path: Option<PathBuf>,
-    db: Arc<OnceCell<slatedb::Db>>,
-    active_runs: Arc<Mutex<HashMap<RunId, Arc<RunDatabaseInner>>>>,
-    blobs: Arc<BlobStore>,
-    projection_cache: Arc<RunProjectionCache>,
-    projection_cache_warmed: Arc<OnceCell<()>>,
+    object_store:      Arc<dyn ObjectStore>,
+    base_prefix:       String,
+    flush_interval:    Duration,
+    cache_path:        Option<PathBuf>,
+    db:                Arc<OnceCell<slatedb::Db>>,
+    active_runs:       Arc<Mutex<HashMap<RunId, Arc<RunDatabaseInner>>>>,
+    blobs:             Arc<BlobStore>,
     run_summary_store: Arc<RunSummaryStore>,
 }
 
@@ -67,8 +62,6 @@ impl Database {
             db: Arc::new(OnceCell::new()),
             active_runs: Arc::new(Mutex::new(HashMap::new())),
             blobs,
-            projection_cache: Arc::new(RunProjectionCache::default()),
-            projection_cache_warmed: Arc::new(OnceCell::new()),
             run_summary_store,
         }
     }
@@ -126,14 +119,7 @@ impl Database {
 
     /// Builds a run handle wired to the Database-owned shared stores.
     async fn open_run_database(&self, run_id: &RunId, read_only: bool) -> Result<RunDatabase> {
-        RunDatabase::build(
-            *run_id,
-            read_only,
-            self.blobs(),
-            Arc::clone(&self.projection_cache),
-            self.run_summary_store(),
-        )
-        .await
+        RunDatabase::build(*run_id, read_only, self.blobs(), self.run_summary_store()).await
     }
 
     pub async fn create_run_with_first_event(
@@ -143,7 +129,7 @@ impl Database {
     ) -> Result<RunDatabase> {
         let (mut active_runs, run_store) = self.reserve_new_run(run_id).await?;
         let (envelope, cached) = run_store.commit_first_event(payload).await?;
-        run_store.install_in_memory_state(&envelope, &cached);
+        run_store.install_in_memory_state(&cached);
         Self::cache_active_run(&mut active_runs, &run_store);
         run_store.publish(&envelope);
         Ok(run_store)
@@ -168,32 +154,20 @@ impl Database {
         MutexGuard<'_, HashMap<RunId, Arc<RunDatabaseInner>>>,
         RunDatabase,
     )> {
-        self.warm_projection_cache().await?;
         let active_runs = self.active_runs.lock().await;
         if active_runs.contains_key(run_id) || self.run_summary_store.contains(run_id).await? {
             return Err(Error::RunAlreadyExists(run_id.to_string()));
         }
-        let run_store = RunDatabase::build_empty(
-            *run_id,
-            self.blobs(),
-            Arc::clone(&self.projection_cache),
-            self.run_summary_store(),
-        );
+        let run_store = RunDatabase::build_empty(*run_id, self.blobs(), self.run_summary_store());
         Ok((active_runs, run_store))
     }
 
     pub async fn open_run(&self, run_id: &RunId) -> Result<RunDatabase> {
-        self.warm_projection_cache().await?;
         // Keep the active-writer miss and insert atomic. Otherwise concurrent
         // callers can create independent writers with the same recovered seq.
         let mut active_runs = self.active_runs.lock().await;
 
         if let Some(active) = active_run_from(&active_runs, run_id) {
-            if !active.matches_run(run_id) {
-                return Err(Error::Other(format!(
-                    "active run cache mismatch for run_id {run_id:?}"
-                )));
-            }
             return Ok(active);
         }
         if !self.run_summary_store.contains(run_id).await? {
@@ -206,11 +180,6 @@ impl Database {
 
     pub async fn open_run_reader(&self, run_id: &RunId) -> Result<RunDatabase> {
         if let Some(active) = self.get_active_run(run_id).await {
-            if !active.matches_run(run_id) {
-                return Err(Error::Other(format!(
-                    "active run cache mismatch for run_id {run_id:?}"
-                )));
-            }
             return Ok(active.read_only_clone());
         }
         if !self.run_summary_store.contains(run_id).await? {
@@ -219,38 +188,11 @@ impl Database {
         self.open_run_database(run_id, true).await
     }
 
-    pub async fn warm_projection_cache(&self) -> Result<()> {
-        self.projection_cache_warmed
-            .get_or_try_init(|| async {
-                let run_ids = self.run_summary_store.list_run_ids().await?;
-                let mut entries = Vec::new();
-                for run_id in run_ids {
-                    match RunDatabase::build_cached_projection(&self.run_summary_store, &run_id)
-                        .await
-                    {
-                        Ok(Some(entry)) => entries.push(entry),
-                        Ok(None) => {}
-                        Err(err) => {
-                            warn!(
-                                run_id = %run_id,
-                                error = %err,
-                                "Skipping run during projection cache warmup"
-                            );
-                        }
-                    }
-                }
-                self.projection_cache.replace_all(entries);
-                Ok::<_, Error>(())
-            })
-            .await?;
-        Ok(())
-    }
-
     pub async fn list_unreadable_runs(&self) -> Result<Vec<UnreadableRun>> {
         let run_ids = self.run_summary_store.list_run_ids().await?;
         let mut unreadable = Vec::new();
         for run_id in run_ids {
-            match RunDatabase::build_cached_projection(&self.run_summary_store, &run_id).await {
+            match RunDatabase::build_projection(&self.run_summary_store, &run_id).await {
                 Ok(Some(_)) => {}
                 Ok(None) => unreadable.push(UnreadableRun {
                     run_id,
@@ -284,7 +226,6 @@ impl Database {
             .test_insert_unvalidated_event(run_id, seq, payload)
             .await?;
         self.active_runs.lock().await.remove(run_id);
-        self.projection_cache.remove(run_id);
         Ok(())
     }
 
@@ -304,25 +245,21 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_cached_projection(
-        &self,
-        run_id: &RunId,
-    ) -> Result<Option<Arc<RunProjection>>> {
-        self.warm_projection_cache().await?;
-        Ok(self
-            .projection_cache
-            .projection_snapshot(run_id)
-            .map(|(projection, _)| projection))
+    pub async fn load_run_projection(&self, run_id: &RunId) -> Result<Option<Arc<RunProjection>>> {
+        if let Some(active) = self.get_active_run(run_id).await {
+            return active.projection_snapshot().await.map(Some);
+        }
+        Ok(
+            RunDatabase::build_projection(&self.run_summary_store, run_id)
+                .await?
+                .map(|entry| entry.projection),
+        )
     }
 
     /// Resolves the run that owns `session_id` from the canonical typed
     /// creation event stored in SQLite.
     pub async fn find_session_owner(&self, session_id: &SessionId) -> Result<Option<RunId>> {
         self.run_summary_store.find_session_owner(session_id).await
-    }
-
-    pub(crate) fn remove_cached_run(&self, run_id: &RunId) {
-        self.projection_cache.remove(run_id);
     }
 
     pub async fn delete_run(&self, run_id: &RunId) -> Result<()> {
@@ -336,7 +273,6 @@ impl Database {
             .delete_canonical(run_id, Utc::now().timestamp_millis())
             .await?;
         active_runs.remove(run_id);
-        self.remove_cached_run(run_id);
         Ok(())
     }
 
@@ -463,6 +399,22 @@ mod tests {
             run_summaries,
         );
         (object_store, store)
+    }
+
+    /// Reopens a `Database` over an existing object store and SQLite summary
+    /// store, simulating a process restart with no active run handles.
+    fn reopen_store(
+        object_store: Arc<dyn ObjectStore>,
+        run_summaries: Arc<RunSummaryStore>,
+    ) -> Database {
+        store_test_support::test_database_with_stores(
+            object_store,
+            "runs",
+            Duration::from_millis(1),
+            None,
+            store_test_support::test_blob_store(),
+            run_summaries,
+        )
     }
 
     #[tokio::test]
@@ -1017,7 +969,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejected_transition_writes_nothing_and_preserves_projection_cache() {
+    async fn rejected_transition_writes_nothing_and_preserves_projection_state() {
         let (_object_store, store) = make_store();
         let run_id = test_run_id("run-1");
         let run = store.create_run(&run_id).await.unwrap();
@@ -1043,8 +995,8 @@ mod tests {
         ));
         assert_eq!(run.list_events().await.unwrap(), events_before);
         assert_eq!(run.state().await.unwrap().status, RunStatus::Runnable);
-        let (projection, last_seq) = store.projection_cache.projection_snapshot(&run_id).unwrap();
-        assert_eq!(last_seq, 4);
+        let projection = store.load_run_projection(&run_id).await.unwrap().unwrap();
+        assert_eq!(run.last_event_seq().await.unwrap(), Some(4));
         assert_eq!(projection.status, RunStatus::Runnable);
     }
 
@@ -1062,7 +1014,8 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, Error::EventRejected { .. }));
 
-        let (projection, last_seq) = store.projection_cache.projection_snapshot(&run_id).unwrap();
+        let projection = store.load_run_projection(&run_id).await.unwrap().unwrap();
+        let last_seq = run.last_event_seq().await.unwrap().unwrap();
         let entries = [CachedRunProjection::from_projection(
             run_id,
             Arc::unwrap_or_clone(projection),
@@ -1080,7 +1033,7 @@ mod tests {
         let run_id = test_run_id("run-1");
         let run = store.create_run(&run_id).await.unwrap();
         append_created(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
-        let cached_before = store.projection_cache.projection_snapshot(&run_id).unwrap();
+        let projection_before = store.load_run_projection(&run_id).await.unwrap().unwrap();
         summaries.close_pool().await;
 
         let result = run
@@ -1096,9 +1049,8 @@ mod tests {
             result,
             Err(Error::Sqlite(sqlx::Error::PoolClosed))
         ));
-        let cached = store.projection_cache.projection_snapshot(&run_id).unwrap();
-        assert_eq!(cached.1, cached_before.1);
-        assert_eq!(cached.0.title, cached_before.0.title);
+        let projection_after = store.load_run_projection(&run_id).await.unwrap().unwrap();
+        assert!(Arc::ptr_eq(&projection_before, &projection_after));
     }
 
     #[tokio::test]
@@ -1442,14 +1394,7 @@ mod tests {
         let run = store.create_run(&test_run_id("run-1")).await.unwrap();
         append_completed(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
 
-        let reopened = store_test_support::test_database_with_stores(
-            object_store,
-            "runs",
-            Duration::from_millis(1),
-            None,
-            store_test_support::test_blob_store(),
-            summaries,
-        );
+        let reopened = reopen_store(object_store, summaries);
         let summary = reopened
             .run_summary_store()
             .list_all(Utc::now())
@@ -1463,48 +1408,138 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn projection_cache_warmup_rebuilds_full_projections() {
+    async fn inactive_projection_loads_on_demand_without_registering_run() {
         let (_directory, summaries) = make_run_summary_store().await;
         let (object_store, store) = make_store_with_run_summaries(Arc::clone(&summaries));
         let run_1 = store.create_run(&test_run_id("run-1")).await.unwrap();
         let run_2 = store.create_run(&test_run_id("run-2")).await.unwrap();
+        let run_3 = store.create_run(&test_run_id("run-3")).await.unwrap();
         append_completed(&run_1, "run-1", dt("2026-03-27T12:00:00Z")).await;
-        append_running(&run_2, "run-2", dt("2026-03-27T12:00:10Z")).await;
+        append_completed(&run_2, "run-2", dt("2026-03-27T12:00:10Z")).await;
+        append_completed(&run_3, "run-3", dt("2026-03-27T12:00:20Z")).await;
 
-        let reopened = store_test_support::test_database_with_stores(
-            object_store,
-            "runs",
-            Duration::from_millis(1),
-            None,
-            store_test_support::test_blob_store(),
-            summaries,
-        );
-        reopened.warm_projection_cache().await.unwrap();
+        let reopened = reopen_store(object_store, summaries);
+        assert!(reopened.active_runs.lock().await.is_empty());
 
-        let (run_1_projection, run_1_last_seq) = reopened
-            .projection_cache
-            .projection_snapshot(&test_run_id("run-1"))
+        let projection = reopened
+            .load_run_projection(&test_run_id("run-2"))
+            .await
+            .unwrap()
             .unwrap();
-        assert_eq!(run_1_projection.status, RunStatus::Succeeded {
+
+        assert_eq!(projection.spec.run_id, test_run_id("run-2"));
+        assert_eq!(projection.status, RunStatus::Succeeded {
             reason: SuccessReason::Completed,
         });
-        assert_eq!(run_1_last_seq, 5);
-        let (run_2_projection, run_2_last_seq) = reopened
-            .projection_cache
-            .projection_snapshot(&test_run_id("run-2"))
-            .unwrap();
-        assert_eq!(run_2_projection.status, RunStatus::Running);
-        assert_eq!(run_2_last_seq, 4);
+        assert!(
+            reopened.active_runs.lock().await.is_empty(),
+            "inactive detail reads must stay request-local"
+        );
     }
 
     #[tokio::test]
-    async fn required_run_summary_append_refreshes_cache_and_delete_removes_rows() {
+    async fn active_projection_reads_are_coherent_immutable_snapshots() {
+        let (_object_store, store) = make_store();
+        let run_id = test_run_id("run-1");
+        let run = store.create_run(&run_id).await.unwrap();
+        append_created(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
+
+        let first = store.load_run_projection(&run_id).await.unwrap().unwrap();
+        let second = store.load_run_projection(&run_id).await.unwrap().unwrap();
+        assert!(Arc::ptr_eq(&first, &second));
+        let original_title = first.title.clone();
+
+        run.append_event(&event_payload(
+            "run-1",
+            "2026-03-27T12:00:01Z",
+            "run.title.updated",
+            &serde_json::json!({ "title": "New title" }),
+        ))
+        .await
+        .unwrap();
+
+        let updated = store.load_run_projection(&run_id).await.unwrap().unwrap();
+        assert!(!Arc::ptr_eq(&first, &updated));
+        assert_eq!(first.title, original_title);
+        assert_eq!(updated.title, "New title");
+    }
+
+    #[tokio::test]
+    async fn inactive_projection_replay_accepts_sequence_gaps_and_failures_do_not_poison_reads() {
+        let (_directory, summaries) = make_run_summary_store().await;
+        let (object_store, store) = make_store_with_run_summaries(Arc::clone(&summaries));
+        let healthy_id = test_run_id("run-1");
+        let broken_id = test_run_id("run-2");
+        let healthy = store.create_run(&healthy_id).await.unwrap();
+        let broken = store.create_run(&broken_id).await.unwrap();
+        append_created(&healthy, "run-1", dt("2026-03-27T12:00:00Z")).await;
+        append_created(&broken, "run-2", dt("2026-03-27T12:00:10Z")).await;
+        store.remove_active_run(&healthy_id).await;
+        store.remove_active_run(&broken_id).await;
+        store
+            .put_unvalidated_run_event(
+                &healthy_id,
+                3,
+                event_payload(
+                    "run-1",
+                    "2026-03-27T12:00:02Z",
+                    "run.title.updated",
+                    &serde_json::json!({ "title": "Imported gap" }),
+                )
+                .as_value(),
+            )
+            .await
+            .unwrap();
+        summaries.test_delete_run_events(&broken_id).await.unwrap();
+
+        let reopened = reopen_store(object_store, summaries);
+        assert!(matches!(
+            reopened.load_run_projection(&broken_id).await,
+            Err(Error::RunHeadMismatch { .. })
+        ));
+
+        let projection = reopened
+            .load_run_projection(&healthy_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(projection.title, "Imported gap");
+        assert!(reopened.active_runs.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn inactive_projection_read_concurrent_with_append_is_one_coherent_snapshot() {
+        let (_directory, summaries) = make_run_summary_store().await;
+        let (object_store, writer_store) = make_store_with_run_summaries(Arc::clone(&summaries));
+        let run_id = test_run_id("run-1");
+        let writer = writer_store.create_run(&run_id).await.unwrap();
+        append_created(&writer, "run-1", dt("2026-03-27T12:00:00Z")).await;
+        let reader_store = reopen_store(object_store, summaries);
+        let original_title = writer.state().await.unwrap().title;
+        let update = event_payload(
+            "run-1",
+            "2026-03-27T12:00:01Z",
+            "run.title.updated",
+            &serde_json::json!({ "title": "Concurrent title" }),
+        );
+
+        let (loaded, appended) = tokio::join!(
+            reader_store.load_run_projection(&run_id),
+            writer.append_event(&update)
+        );
+
+        appended.unwrap();
+        let loaded = loaded.unwrap().unwrap();
+        assert!(loaded.title == original_title || loaded.title == "Concurrent title");
+        assert!(reader_store.active_runs.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn required_run_summary_append_refreshes_active_projection_and_delete_removes_rows() {
         let (_directory, summaries) = make_run_summary_store().await;
         let (_object_store, store) = make_store_with_run_summaries(Arc::clone(&summaries));
         let run = store.create_run(&test_run_id("run-1")).await.unwrap();
         append_created(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
-        store.warm_projection_cache().await.unwrap();
-
         run.append_event(&event_payload(
             "run-1",
             "2026-03-27T12:00:01Z",
@@ -1583,12 +1618,13 @@ mod tests {
         .await
         .unwrap();
 
-        let (projection, last_seq) = store
-            .projection_cache
-            .projection_snapshot(&test_run_id("run-1"))
+        let projection = store
+            .load_run_projection(&test_run_id("run-1"))
+            .await
+            .unwrap()
             .unwrap();
         assert_eq!(projection.status, RunStatus::Running);
-        assert_eq!(last_seq, 7);
+        assert_eq!(run.last_event_seq().await.unwrap(), Some(7));
         assert_eq!(
             projection
                 .stage(&StageId::new("review", 1))
@@ -1620,8 +1656,9 @@ mod tests {
         store.delete_run(&test_run_id("run-1")).await.unwrap();
         assert!(
             store
-                .projection_cache
-                .projection_snapshot(&test_run_id("run-1"))
+                .load_run_projection(&test_run_id("run-1"))
+                .await
+                .unwrap()
                 .is_none()
         );
         assert!(
@@ -1641,19 +1678,9 @@ mod tests {
         let run = store.create_run(&run_id).await.unwrap();
         append_completed(&run, "run-1", dt("2026-03-27T12:00:00Z")).await;
 
-        let reopened = store_test_support::test_database_with_stores(
-            object_store,
-            "runs",
-            Duration::from_millis(1),
-            None,
-            store_test_support::test_blob_store(),
-            summaries,
-        );
-        reopened.warm_projection_cache().await.unwrap();
-
-        // If opening or projecting the run starts at the beginning, this
-        // unreadable old key makes the operation fail. A hydrated run starts
-        // after the shared projection's last sequence instead.
+        let reopened = reopen_store(object_store, summaries);
+        // Opening and projecting from canonical SQLite must not inspect an
+        // unreadable key in the retained legacy event history.
         let mut unreadable_old_key = keys::run_event_seq_prefix(&run_id, 2).as_ref().to_vec();
         unreadable_old_key.push(0xff);
         reopened
@@ -1743,13 +1770,13 @@ mod tests {
             reason: FailureReason::WorkflowError,
         });
 
-        let cached = reopened
-            .get_cached_projection(&run_id)
+        let projection = reopened
+            .load_run_projection(&run_id)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(cached.title, "Renamed failed run");
-        assert_eq!(cached.status, RunStatus::Failed {
+        assert_eq!(projection.title, "Renamed failed run");
+        assert_eq!(projection.status, RunStatus::Failed {
             reason: FailureReason::WorkflowError,
         });
     }

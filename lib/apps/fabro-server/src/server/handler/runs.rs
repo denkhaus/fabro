@@ -330,7 +330,7 @@ async fn run_summary_at(
         return Ok(None);
     };
     if summary.timestamps.completed_at.is_none() {
-        let projection = state.stores.runs.get_cached_projection(run_id).await?;
+        let projection = state.stores.runs.load_run_projection(run_id).await?;
         if let Some(timing) = projection.and_then(|projection| projection.live_run_timing(now)) {
             summary.timing = Some(timing);
         }
@@ -1608,7 +1608,7 @@ async fn get_run_settings(
         Ok(id) => id,
         Err(response) => return response,
     };
-    let projection = match state.cached_run_projection(&id).await {
+    let projection = match state.load_run_projection(&id).await {
         Ok(projection) => projection,
         Err(err) => return err.into_response(),
     };
@@ -1619,7 +1619,7 @@ async fn get_questions(
     RequireRunManagementTarget(id, _actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    match state.cached_run_projection(&id).await {
+    match state.load_run_projection(&id).await {
         Ok(projection) => {
             let questions = projection
                 .pending_interviews
@@ -1660,7 +1660,7 @@ async fn get_run_state(
     RequireRunManagementTarget(id, _actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    match state.cached_run_projection(&id).await {
+    match state.load_run_projection(&id).await {
         Ok(projection) => Json(&*projection).into_response(),
         Err(err) => err.into_response(),
     }
@@ -1697,7 +1697,7 @@ async fn get_run_stage_context_window(
         Ok(stage_id) => stage_id,
         Err(response) => return response,
     };
-    let projection = match state.cached_run_projection(&id).await {
+    let projection = match state.load_run_projection(&id).await {
         Ok(projection) => projection,
         Err(err) => return err.into_response(),
     };
@@ -1753,7 +1753,7 @@ async fn get_run_stage_command_log(
         return ApiError::bad_request("limit must be greater than 0").into_response();
     }
     let limit = query.limit.min(MAX_COMMAND_LOG_LIMIT);
-    let projection = match state.cached_run_projection(&id).await {
+    let projection = match state.load_run_projection(&id).await {
         Ok(projection) => projection,
         Err(err) => return err.into_response(),
     };

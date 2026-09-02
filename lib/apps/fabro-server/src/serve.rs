@@ -833,12 +833,6 @@ where
         #[cfg(any(test, feature = "test-support"))]
         automation_materializer_override: None,
     })?;
-    state
-        .stores
-        .runs
-        .warm_projection_cache()
-        .await
-        .context("warming run projection cache from SQLite")?;
     let reconciled = reconcile_incomplete_runs_on_startup(&state).await?;
     if reconciled > 0 {
         info!(
