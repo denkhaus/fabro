@@ -1,0 +1,94 @@
+diff --git a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
+index 1a858ad..9f60738 100644
+--- a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
++++ b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
+@@ -36,3 +36,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"file","visit":9,"status":"succeeded","ts":"2026-09-02T19:59:48Z","data":{"painpoints":[],"observations":["Finding 'Keep only the latest visit per non-ignored stage in preambles' was deduped into existing open seed fabro-699f; next analyst for develop runs can expect overlap merges as reviews corroborate patterns."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"approve","visit":9,"status":"succeeded","ts":"2026-09-02T20:07:20Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"select","visit":10,"status":"succeeded","ts":"2026-09-02T20:07:42Z","data":{"painpoints":[],"observations":["19 unrevised terminal runs blocked, no live sandbox (fabro-8d30a); 9 runs revised via `.fabro/revisions/` markers; 1 run non-terminal (submitted) skipped."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"analyze","visit":10,"status":"succeeded","ts":"2026-09-02T20:15:35Z","data":{"painpoints":[{"text":"Run 01M0WWKAQCWZC0Q0JK019H0ZC7 already had a review file at `.fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md` from the old manual pipeline (2026-08-25, header 'branch integrated: denkhaus-lab') despite having no revision marker — confusing state between the two review sources. Selector correctly keyed on `.fabro/revisions/` markers; this revisor pass overwrote the stale file per template. Fix idea: none needed beyond the overwrite, but consumers must never treat a review file alone as evidence of revision."}],"observations":["Findings deduped against the open seed tracker: skill-discovery scoping dropped (duplicate of open fabro-2c81) and the implementer gate-rule promotion dropped (substance covered by open fabro-a67f); the preamble-budget candidate supersedes the stale targets of open fabro-83f9/fabro-35ab, so the filer should amend those rather than create a third."]}}
+diff --git a/.fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md b/.fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md
+index 2ae6db1..cd509c5 100644
+--- a/.fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md
++++ b/.fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md
+@@ -1,42 +1,54 @@
+ # Improve review — run 01M0WWKAQCWZC0Q0JK019H0ZC7
+ 
+ - workflow: develop
+-- branch integrated: denkhaus-lab
+-- status: succeeded (completed), 4.9 min, $0.271162
+-- generated: 2026-08-25 19:41+0200 by `fabro ask` with `scripts/prompts/improve.md`
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (6.0 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-02 20:13+0000 by revisor `fabro_ask`
+ 
+ ---
+ 
+-# Recommendations — Develop workflow, run 01M0WWKAQCWZC0Q0JK019H0ZC7
++# Recommendations for the Develop workflow — run 01M0WWKAQCWZC0Q0JK019H0ZC7
+ 
+-Baseline (from run events and conclusion): clean 6/6 success, 293s wall / 248s active, $0.271, 0 retries, 488k of 566k tokens cache-read. The workflow is healthy; the items below are the seams this run actually exposed.
++Baseline (from run events, `run.completed` seq 259): 293s wall, 230s of it model inference, 18s tools, $0.271 total. Stage actives: planner 76.6s, implementer 149.5s, tester 1.0s, evidence 0.4s, reviewer 20.2s, closeout 0.5s. Zero retries, 6/6 green — so every recommendation below targets latency, cost, and latent risk, not failures.
+ 
+-## 1. Evidence diff context: `-U1` → `-U3` in `evidence.nu`
+-The reviewer's journal (`.fabro/journal/01M0WWKAQCWZC0Q0JK019H0ZC7.jsonl`, reviewer@1) records: "The -U1 diff context omits where start/last are computed in run(); trusted the green gate plus the pinning tests rather than re-deriving the range math." That is an approval granted on trust at exactly the seam review exists to cover. Change the one `git diff -U1` in `.fabro/workflows/develop/scripts/evidence.nu` to `-U3`; the capture is blob-ref'd anyway (22.9 KB), so size is not binding. Expected effect: range/validation logic becomes verifiable in-diff, removing the "trusted the tests" class of approval.
++## 1. Fix the PR postlude — it burns ~53s after the graph is done and fails twice every run
++**What happened:** exit completed at 16:43:46 (seq 254); `run.completed` at 16:44:39. The 53s in between was PR creation whose **LLM body generation failed** ("PR content generation failed… `No object generated: Failed to parse response as JSON`", worker log 16:44:33) and fell back to a skeleton, followed by an **auto-merge attempt the repo forbids** ("Auto merge is not allowed for this repository", worker log 16:44:35) even though `pull_request.auto_merge=true` is set in the run spec. Net: 18% of wall time spent producing a fallback PR body and a guaranteed-failing GraphQL call.
++**Change:** run settings `pull_request` block (run spec; `workflow.toml` doesn't override it): set `auto_merge=false` (or enable auto-merge in the GitHub repo), and either fix or disable the PR-body model call — the deterministic fallback is what ships anyway.
++**Effect:** run reaches `completed` ~50s sooner; two warn-level failures disappear from every run.
+ 
+-## 2. Kill the recurring evidence blob-detour: raise `preamble_budget_kb` 24 → 32 (or make it per-value)
+-The graph comment in `workflow.fabro` says the 12→24 raise was specifically to stop the capture being blob-ref'd — yet in this run the reviewer's preamble still showed `Output (22.9 KB; full value: …/blobs/3aedadc…json)` (from run events, reviewer stage prompt), because the budget is aggregate and 22.9 KB + tester output + context keys exceeded 24 KB. Here it cost only one tool round trip (~100 ms), but run 01M0SS23MJ turned the same detour into a wrongful rejection. Context usage peaked at 1.6% of the 1M window — the window is not the constraint. Expected effect: evidence arrives inline; the Verification-blocked-on-blob failure mode disappears.
++## 2. Implementer: ban placeholder appends and require `timeout_ms` on compile/test shells
++**What happened:** the implementer appended a knowingly-mangled placeholder test via `cat >>` heredoc (seq 138, its own next message: "That placeholder was sloppy"), tried to remove it with `head -n -28` and cut the wrong lines leaving a dangling comment (seq 144–158, two extra inspection rounds), then chained the real append + `gofmt; go vet && go test ./...` in one shell call **without `timeout_ms`** — it died at the default 10s timeout with zero output (seq 163–164, `is_error`, 10,345ms), forcing a blind re-run (seq 168). That churn window (16:41:33→16:42:21) is ~48s, 6 wasted tool calls, ~5 wasted LLM turns — a third of the implementer stage.
++**Change:** `.fabro/workflows/develop/prompts/implementer.md`, "Your job this pass": add a hard rule — "write the final code block in one edit; never append placeholder code to fix later" and "any shell call that compiles or tests MUST pass `timeout_ms ≥ 60000` — the default 10s kills a cold `go vet` (observed: append+gofmt+vet+test timed out at 10.3s with no output, this run)."
++**Effect:** implementer pass ~100s instead of 150s; eliminates the silent-timeout failure class.
+ 
+-## 3. Resolve the "gate green" contradiction between planner brief and implementer rules
+-The planner's brief (run events, planner@1 context) ends with acceptance bullet "gate green: gofmt, go vet, go build, go test", while the implementer prompt (rule 4) forbids running anything that "formats, lints, or runs the full suite." Result: the implementer ran `gofmt -l; go vet && go test` twice plus a full build (run events seq 162–183) so it could report PASS on that bullet — a direct rule violation forced by the brief. It was benign here (it warmed the cache; the tester then ran in 1.0 s with `ok gofib (cached)`), but the workflow's own design note says this "wastes a cold cache's tens of seconds." One change, pick one: drop the "gate green" bullet from planner-authored briefs (the tester owns it), or add an explicit PASS-verdict of `DEFERRED (tester owns gate)` to the implementer's per-criterion report contract. Expected effect: the violation stops recurring and the gate runs exactly once on cold caches.
++## 3. Enforce the existing "no full gate" rule — the implementer ran the gate three times anyway
++**What happened:** the prompt's item 4 says "compile or ONE focused test — nothing that formats, lints, or runs the full suite." The implementer ran `gofmt -l; go vet && go test .` twice plus `go build` + binary smoke runs (seq 162, 168, 181). The tester then re-ran the identical gate in 1.02s (cached). The forbidden chain is also exactly what timed out in rec 2.
++**Change:** same file, promote item 4 from a numbered-list sentence to its own **"Hard rules"** block (like Artifact hygiene), stating the tester owns it and a cached gate re-run proves nothing.
++**Effect:** fewer long shell chains (fewer timeouts), no triple-gating of one tree, cleaner role boundary.
+ 
+-## 4. Delete the stale "planner closes seeds" lines from both prompts
+-From run events, planner prompt line 1: "You own the tracker: **you close approved seeds**…" and reviewer Approved bullet: "**The Planner will close the seed** and pick the next one" — both contradict the deterministic-Closeout design the same prompts state three paragraphs later (`sd close <id>` is "NEVER yours"). The planner complied with the newer text this run, but the opening sentence is what a skimming model weights highest. Edit `@prompts/planner.md` and `@prompts/reviewer.md` to the closeout phrasing. Expected effect: protects the one invariant (only closeout closes) from prompt-weight drift.
++## 4. Raise `preamble_budget_kb` 24 → 32 — the blob detour it was meant to kill is back
++**What happened:** the graph bumped the budget 12→24 specifically so a ~14KB capture would render inline ("the blob detour is [the constraint]", `workflow.fabro` graph comment). This run's capture is 22.1KB (evidence `output_bytes`, seq 209) and rendered as "Output (22.9 KB; full value: …/blobs/3aedadc…)" in the reviewer prompt (seq 218) — 22.9KB + tester section + context keys (~28KB aggregate) exceeds 24KB, so the evidence was demoted again. The reviewer recovered via one `read_file` of the blob (seq 228, 102ms) and approved — but every review now walks the "unread blob ref" tightrope that produced the false rejection in run 01M0SS23MJ.
++**Change:** `workflow.fabro` line 10: `preamble_budget_kb=32` (32,768 > ~28KB observed aggregate, ~5KB headroom).
++**Effect:** reviewer reads the capture directly in the preamble; −1 tool round-trip per review; removes the preview-misread failure mode.
+ 
+-## 5. Mandate `timeout_ms` on shell build/test calls (or raise the default)
+-Run events seq 162–164: the implementer's chained `cat >> … ; gofmt -l .; go vet ./... && go test` was killed at 10,345 ms (`Termination: timed_out`) on the cold vet; the retry with `timeout_ms: 120000` ran in 716 ms. One wasted call plus a partially-executed heredoc. Add to the implementer prompt's tool guidance: "always pass `timeout_ms ≥ 120000` for build/test commands," or raise the shell default. Expected effect: no more 10 s casualties on first-of-run compiles.
++## 5. Make the implementer journal report tool failures — the timeout above shipped as `"none"`
++**What happened:** the implementer's journal was `{"painpoints":[],"observations":["none"]}` (seq 187) despite a timed-out shell call, an `is_error` grep, and a signature change that forced edits at ~28 test call-sites — all literal "surprise/near-miss" material per its own prompt. The stage-journal hook is the only durable channel to the improve workflow; this signal was lost (only this analysis recovered it).
++**Change:** `prompts/implementer.md`, Journal section: "a tool call that errored or timed out ALWAYS goes in `observations`, even if you recovered — name the call, the timeout, and the workaround."
++**Effect:** the loop self-reports friction like rec 2's timeout, so prompt fixes get discovered by the journal pipeline instead of by archaeology.
+ 
+-## 6. Prune skill-discovery noise from agent turns
+-Every planner/implementer/reviewer turn injected ~1.6k tokens listing 35 skills (`agent.skills.discovered`, run events) — including TypeScript courses ("migrate-to-shoehorn", "scaffold-exercises") in a Go repo — and `activated: []` in all three stages. That is ~4–5k tokens of pure noise per session across 16+ implementer turns, diluting the prompt for no use. Scope discovery to `.fabro/skills` (the workflow's own dir) or prune `/storage/.home/skills`. Expected effect: small direct token/cost cut, larger effect on instruction-following density in the implementer's many turns.
++## 6. Planner fast-path when the goal names the seed
++**What happened:** the goal names `fabro-f74b`; `sd ready` returned exactly that one seed (seq 39). The planner still ran `sd list --format json` purely to double-check the count for its journal observation (its reasoning trace at seq 67 says so), after `sd show` + `sd update` + two globs + a full 10.4KB read of `main.go` — 7 tool calls and 75s inference for a single-candidate claim. The 30s ambiguity deliberation itself was valuable (it resolved both spec ambiguities the reviewer later verified); the waste is the redundant tracker call and the ready/list double-read.
++**Change:** `prompts/planner.md`, step 1: "If the goal names a seed id, `sd show <id>` directly; run `sd ready` only when it doesn't, and never run `sd list` to re-confirm a count `sd ready` already printed."
++**Effect:** −2 shell calls and one LLM turn (~5s + tokens) on named-seed runs, which is the common case for this workflow's goals.
+ 
+-## 7. Shorten or parallelize the post-exit tail (~53 s, 18% of wall time)
+-From run events: exit stage completed 16:43:46; branch pushed 16:43:48; `pull_request.created` only at 16:44:35 (47 s later — PR body generation via `zai:glm-4.7`); run.completed 16:44:39. The run looks "done" for ~53 s while the UI still shows it running. Create the PR at the "Tracker empty" edge in parallel with the final metadata snapshot, or emit an interim event so the user sees "creating PR…". Expected effect: perceived latency drops by ~15–18% for zero workflow change.
++## 7. Derive `files_touched` from the stage git diff, not from write-tool calls
++**What happened:** the implementer stage metadata reports `files_touched: [README.md, main.go]` (seq 190) while the actual stage diff — and the evidence capture — shows `fib_test.go +159/-28`, the **largest** product change of the run. It's missing because `fib_test.go` was edited through shell (`perl`, `head`, `cat >>`), invisible to write-tool instrumentation. Any consumer keying on `files_touched` under-reports the implementer's real footprint.
++**Change:** engine-side — compute `files_touched` from the stage checkpoint's git diff (the data already exists per checkpoint, seq 194).
++**Effect:** accurate per-stage attribution; no silently missing files in stage metadata.
+ 
+-## 8. Derive `files_touched` from git, not write-tool interception
+-Run events, implementer@1 `files_touched`: `[README.md, main.go]` — but the stage diff clearly includes `fib_test.go` (edited via `perl -pi` / `cat >>` through the shell tool, which the tracker doesn't see). Anything downstream consuming `files_touched` (reviewer tooling, dashboards, cost attribution) under-counts. Capture `git status --porcelain` at stage end instead. Expected effect: reliable per-stage change attribution.
++## 8. Scope skill discovery per role
++**What happened:** all three agent stages loaded 41 irrelevant skills (~1.6–1.9k tokens each: `ask-matt`, `claude-handoff`, `scaffold-exercises`… from `/storage/.home/skills`, visible in every `context_window.breakdown` "skills" category). None was activated; the read-only reviewer needs none of them.
++**Change:** per-node skill allowlist (or drop the global skills dir for `reviewer`/`planner`) in the agent/runner config.
++**Effect:** ~5k tokens less boilerplate across the run and lower risk of an irrelevant `use_skill` misfire — the "bare slash-word" crash rule exists because of exactly this surface.
+ 
+-## 9. Two small journal/prompt nits
+-- The implementer journaled `observations: ["none"]` despite hitting real friction (the 10 s timeout, the placeholder-append-then-strip churn that cost ~4 calls / ~40 s of its 150 s). Add "self-inflicted tool misfires count as painpoints" to the journal section — that timeout signal was lost precisely where the improve-loop looks for it.
+-- The planner ran both `sd ready` and `sd list` (seq 38, 68): `sd ready` can't see blocked-but-open seeds, so "tracker empty" is undecidable from it alone. Amend the planner's sd table: "to confirm Tracker empty, `sd list`'s count is authoritative; `sd ready` misses blocked open seeds." Saves a guilt-edged extra call per terminal pass.
+-
+-What I could not inspect: the blob contents of the tester/gate output beyond its 290-byte preview, and the PR-body generation step (no per-call events between push and `pull_request.created`), so recommendation 7's root cause is inferred from the 47 s gap rather than observed directly.
++**Not inspected:** the internals of the PR-body generation failure (only the worker-log warn line and the fallback PR #3 are visible), and whether GitHub repo settings could enable auto-merge instead of disabling the flag — both are outside this run's event stream.
