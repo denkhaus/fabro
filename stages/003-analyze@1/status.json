@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "fabro_ask errored for run 01M0N5AVYXR7K8PPMGCQRZF90X: 'run sandbox is unavailable for Ask Fabro: Failed to reconnect Docker sandbox'. Per hard rules (one ask per pass, no retry), routing failure; no review file written.",
+  "timestamp": "2026-09-02T16:17:22.639602113Z"
+}
