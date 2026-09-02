@@ -510,8 +510,8 @@
   "status": {
     "kind": "running"
   },
-  "status_updated_at": "2026-09-02T19:07:31.694204813Z",
-  "last_event_at": "2026-09-02T19:13:58.243127188Z",
+  "status_updated_at": "2026-09-02T19:15:27.313469936Z",
+  "last_event_at": "2026-09-02T19:15:27.333314176Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -5306,9 +5306,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 683,
       "checkpoint": {
-        "timestamp": "2026-09-02T19:13:58.553181515Z",
+        "timestamp": "2026-09-02T19:14:03.309882293Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -5327,6 +5327,355 @@
           "select",
           "analyze",
           "file"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "filed_seed_ids": [
+            "fabro-9f97",
+            "fabro-696c",
+            "fabro-a54d"
+          ],
+          "human.gate.approve.question": "Approve filing + merge",
+          "revisor_target_wall": "0.9 min",
+          "graph.inspects": "develop",
+          "failure_class": "",
+          "graph.max_node_visits": "30",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.file": 0,
+          "last_response": "All three seeds were filed (`fabro-9f97`, `fabro-696c`, `fabro-a54d`), the marker was written to `/workspace/fabro/.fabro/revisions/01M0SFEYVC9TD6MP816RHEBFQY.md`, and the exact artifact paths were co",
+          "failure_signature": "",
+          "revisor_target_title": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+          "human.gate.approve.label": "[A] Approved",
+          "internal.node_visit_count": 4,
+          "internal.seed_cycle_anchor": "01M0SFEYVC9TD6MP816RHEBFQY",
+          "internal.thread_id": "analyze",
+          "last_stage": "file",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 812,
+            "preview": "All three seeds were filed (`fabro-9f97`, `fabro-696c`, `fabro-a54d`), the marker was written to `/workspace/fabro/.fabro/revisions/01M0SFEYVC9TD6MP816RHEBFQY.md`, and the exact artifact paths were co"
+          },
+          "graph.rankdir": "LR",
+          "internal.work_dir": "/workspace/fabro",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Seed fabro-a54d overlaps in theme with existing fabro-80ec but targets MISE_DATA_DIR env propagation and stale .mise.toml docs rather than image baking; noted as related in the seed description and revision marker at /workspace/fabro/.fabro/revisions/01M0SFEYVC9TD6MP816RHEBFQY.md"
+            ]
+          },
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 5735,
+            "preview": "The review is persisted and grounded: the config targets (`[run.pull_request]`, `[run.prepare]`, `Dockerfile.mise`) are product-world, while the `workflow.fabro` node changes, prompt edits, and engine"
+          },
+          "revisor_target_status": "failed",
+          "revisor_target_run_id": "01M0SFEYVC9TD6MP816RHEBFQY",
+          "human.gate.label": "[A] Approved",
+          "thread.start.current_node": "select",
+          "human.gate.selected": "A",
+          "thread.approve.current_node": "select",
+          "internal.retry_count.select": 0,
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 631,
+            "preview": "Run selected:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Run selected\",\n  \"context_updates\": {\n    \"revisor_target_run_id\": \"01M0SFEYVC9TD6MP816RHEBFQY\",\n    \"revisor_target_title\": \"Devel"
+          },
+          "internal.retry_count.start": 0,
+          "human.gate.approve.answer": "A",
+          "outcome": "succeeded",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "thread.analyze.current_node": "file",
+          "internal.retry_count.approve": 0,
+          "internal.run_id": "01M1HKRE686W833SE86D8WD319",
+          "thread.select.current_node": "analyze",
+          "internal.fidelity": "compact",
+          "internal.retry_count.analyze": 0,
+          "thread.file.current_node": "approve",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "current_node": "file",
+          "preferred_label": "Staged",
+          "revision_findings": [
+            {
+              "title": "Skip PR creation when the run diff is journal-only",
+              "description": "In `.fabro/project.toml` `[run.pull_request]`, skip PR creation when the diff excluding `.fabro/journal/` is empty. This run verified its goal (6 of 6 seeds closed, 'Tracker empty' exit) with an 18-line journal-only diff, yet attempted a PR with `auto_merge = true`, hit a deterministic 403, and flipped to `failed(publish_failed)` — the same 403 already noted in the run `01M0T9B7T6` review comment at project.toml line 74. Effect: no-op runs report success instead of failed, and no squash-merged journal churn into the base branch.",
+              "priority": 1
+            },
+            {
+              "title": "Fix PR publishing: provision a PR-capable credential or disable PRs",
+              "description": "Two `git.push` events succeeded with `token_provenance: static`, then PR creation returned 403 (deterministic, retry-proof), while `.fabro/project.toml` line 59 states PR creation requires the GitHub App integration the static token lacks. Provision that credential or set `enabled = false` under `[run.pull_request]` until it exists. Effect: publish stops being the sole cause of failed runs; with a preflight the failure would surface in seconds instead of after the full 2m41s workflow.",
+              "priority": 1
+            },
+            {
+              "title": "Make the baked mise toolchain a no-op in run containers",
+              "description": "`mise install` took 95.5s (61% of end-to-end time) re-installing tool versions `Dockerfile.mise` already bakes, likely because `MISE_DATA_DIR=/mise` is not honored in the run container; `.mise.toml`'s header also still claims 'no baked-in tools', contradicting project.toml. Fix env propagation in `.fabro/Dockerfile.mise` and `[run.prepare]` in `.fabro/project.toml`, add `mise ls` output to the prepare log when install exceeds a few seconds, and update the stale `.mise.toml` header. Effect: ~95s saved on every run; setup stops dominating run time.",
+              "priority": 2
+            }
+          ]
+        },
+        "node_outcomes": {
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Engine run-status handling demotes goal-complete runs: run `01M0SFEYVC9TD6MP816RHEBFQY` achieved its goal (planner verified all seeds closed, took 'Tracker empty' exit) but a publish 403 marked it `failed(publish_failed)`. Platform fix: demote publish_failed on an otherwise-green run to a warning, not terminal failure (engine run-status logic)."
+                  },
+                  {
+                    "text": "Develop graph spends an agent call on a deterministic check: the planner's 27.7s / $0.019 stage (with ~1.5k tokens of irrelevant skills and ~1.2k of memory in context) concluded what `sd ready --format json` answered in 323ms (count: 0). Platform fix: insert a `preflight` script node between `start` and `planner` in workflow.fabro with a 'Tracker empty' edge to `exit` when count is 0 and no seed is in progress."
+                  },
+                  {
+                    "text": "Planner prompt lacks the sd flag vocabulary: this run wasted one LLM round-trip (~7.3s) on `sd list --status all` (invalid; valid values are open, in_progress, closed) before the correct call. Platform fix: add one line to the tracker-mechanics section of the develop planner prompt: 'sd list --status accepts only open|in_progress|closed'."
+                  },
+                  {
+                    "text": "Engine publish path asks the LLM for free-form JSON without output_schema enforcement: worker WARN at 08:53:53 showed unparseable PR-content JSON saved only by the deterministic fallback. Platform fix: in `pipeline::pull_request`, use the same schema-enforced output tooling as agent nodes, or skip LLM generation for journal-only diffs (removes a guaranteed warning and ~5-10s finalize latency)."
+                  },
+                  {
+                    "text": "Run projection misreports terminal-edge skips: the snapshot read '1 of 5 non-meta stages completed' although start, planner, and exit completed and implement, test, evidence, and review were correctly skipped by the 'Tracker empty' edge. Platform fix: mark nodes downstream of a taken terminal edge as 'skipped (goal complete)' instead of uncompleted."
+                  }
+                ],
+                "observations": [
+                  "Analyst answer for run `01M0SFEYVC9TD6MP816RHEBFQY` persisted verbatim at `/workspace/fabro/.fabro/reviews/develop/01M0SFEYVC9TD6MP816RHEBFQY.md`; the graph itself worked (correct tracker-empty exit in 27.7s planner stage), and the failure was entirely in the publish epilogue, so the cheapest wins are around the loop (setup, no-op detection, publish), not inside it.",
+                  "Workflow assets (workflow.fabro, develop prompts) and engine code are synced from the platform world per AGENTS.md, so recommendations targeting them were routed to painpoints; only product-world config seeds (`project.toml`, `Dockerfile.mise`, `.mise.toml`) went into revision_findings."
+                ]
+              },
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 5735,
+                "preview": "The review is persisted and grounded: the config targets (`[run.pull_request]`, `[run.prepare]`, `Dockerfile.mise`) are product-world, while the `workflow.fabro` node changes, prompt edits, and engine"
+              },
+              "last_stage": "analyze",
+              "last_response": "The review is persisted and grounded: the config targets (`[run.pull_request]`, `[run.prepare]`, `Dockerfile.mise`) are product-world, while the `workflow.fabro` node changes, prompt edits, and engine",
+              "revision_findings": [
+                {
+                  "title": "Skip PR creation when the run diff is journal-only",
+                  "description": "In `.fabro/project.toml` `[run.pull_request]`, skip PR creation when the diff excluding `.fabro/journal/` is empty. This run verified its goal (6 of 6 seeds closed, 'Tracker empty' exit) with an 18-line journal-only diff, yet attempted a PR with `auto_merge = true`, hit a deterministic 403, and flipped to `failed(publish_failed)` — the same 403 already noted in the run `01M0T9B7T6` review comment at project.toml line 74. Effect: no-op runs report success instead of failed, and no squash-merged journal churn into the base branch.",
+                  "priority": 1
+                },
+                {
+                  "title": "Fix PR publishing: provision a PR-capable credential or disable PRs",
+                  "description": "Two `git.push` events succeeded with `token_provenance: static`, then PR creation returned 403 (deterministic, retry-proof), while `.fabro/project.toml` line 59 states PR creation requires the GitHub App integration the static token lacks. Provision that credential or set `enabled = false` under `[run.pull_request]` until it exists. Effect: publish stops being the sole cause of failed runs; with a preflight the failure would surface in seconds instead of after the full 2m41s workflow.",
+                  "priority": 1
+                },
+                {
+                  "title": "Make the baked mise toolchain a no-op in run containers",
+                  "description": "`mise install` took 95.5s (61% of end-to-end time) re-installing tool versions `Dockerfile.mise` already bakes, likely because `MISE_DATA_DIR=/mise` is not honored in the run container; `.mise.toml`'s header also still claims 'no baked-in tools', contradicting project.toml. Fix env propagation in `.fabro/Dockerfile.mise` and `[run.prepare]` in `.fabro/project.toml`, add `mise ls` output to the prepare log when install exceeds a few seconds, and update the stale `.mise.toml` header. Effect: ~95s saved on every run; setup stops dominating run time.",
+                  "priority": 2
+                }
+              ]
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 17584,
+                    "output_tokens": 3596,
+                    "reasoning_tokens": 6497,
+                    "cache_read_tokens": 52032,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 82548
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M0SFEYVC9TD6MP816RHEBFQY.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 118105,
+              "tool_time_ms": 164062,
+              "active_time_ms": 282167
+            }
+          },
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "filed_seed_ids": [
+                "fabro-9f97",
+                "fabro-696c",
+                "fabro-a54d"
+              ],
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Seed fabro-a54d overlaps in theme with existing fabro-80ec but targets MISE_DATA_DIR env propagation and stale .mise.toml docs rather than image baking; noted as related in the seed description and revision marker at /workspace/fabro/.fabro/revisions/01M0SFEYVC9TD6MP816RHEBFQY.md"
+                ]
+              },
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 812,
+                "preview": "All three seeds were filed (`fabro-9f97`, `fabro-696c`, `fabro-a54d`), the marker was written to `/workspace/fabro/.fabro/revisions/01M0SFEYVC9TD6MP816RHEBFQY.md`, and the exact artifact paths were co"
+              },
+              "last_stage": "file",
+              "last_response": "All three seeds were filed (`fabro-9f97`, `fabro-696c`, `fabro-a54d`), the marker was written to `/workspace/fabro/.fabro/revisions/01M0SFEYVC9TD6MP816RHEBFQY.md`, and the exact artifact paths were co"
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 13097,
+                    "output_tokens": 1555,
+                    "reasoning_tokens": 173,
+                    "cache_read_tokens": 95744,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 50820
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M0SFEYVC9TD6MP816RHEBFQY.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 37868,
+              "tool_time_ms": 2194,
+              "active_time_ms": 40062
+            }
+          },
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "revisor_target_run_id": "01M0SFEYVC9TD6MP816RHEBFQY",
+              "revisor_target_title": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
+              "revisor_target_status": "failed",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "19 unrevised terminal runs blocked, no live sandbox; 1 non-terminal run (01M0QTMF0NZNFH72VEVZNB8XFY, submitted) skipped; selected oldest unrevised terminal run with a live sandbox."
+                ]
+              },
+              "revisor_target_wall": "0.9 min",
+              "last_stage": "select",
+              "last_response": "Run selected:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Run selected\",\n  \"context_updates\": {\n    \"revisor_target_run_id\": \"01M0SFEYVC9TD6MP816RHEBFQY\",\n    \"revisor_target_title\": \"Devel",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 631,
+                "preview": "Run selected:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Run selected\",\n  \"context_updates\": {\n    \"revisor_target_run_id\": \"01M0SFEYVC9TD6MP816RHEBFQY\",\n    \"revisor_target_title\": \"Devel"
+              }
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14812,
+                    "output_tokens": 212,
+                    "reasoning_tokens": 297,
+                    "cache_read_tokens": 7104,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 24821
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 10562,
+              "tool_time_ms": 508,
+              "active_time_ms": 11070
+            }
+          },
+          "approve": {
+            "status": "succeeded",
+            "preferred_label": "[A] Approved",
+            "suggested_next_ids": [
+              "select"
+            ],
+            "context_updates": {
+              "human.gate.approve.label": "[A] Approved",
+              "human.gate.approve.answer": "A",
+              "human.gate.label": "[A] Approved",
+              "human.gate.approve.question": "Approve filing + merge",
+              "human.gate.selected": "A"
+            },
+            "usage": null
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          }
+        },
+        "next_node_id": "approve",
+        "git_commit_sha": "7cb179889a9ebad245a47b1bb7da565bb210800e",
+        "node_visits": {
+          "analyze": 4,
+          "select": 4,
+          "start": 1,
+          "approve": 3,
+          "file": 4
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\nindex ae8ca35..c0a86f7 100644\n--- a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\n+++ b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\n@@ -13,3 +13,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"approve\",\"visit\":3,\"status\":\"succeeded\",\"ts\":\"2026-09-02T19:07:31Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"select\",\"visit\":4,\"status\":\"succeeded\",\"ts\":\"2026-09-02T19:07:51Z\",\"data\":{\"painpoints\":[],\"observations\":[\"19 unrevised terminal runs blocked, no live sandbox; 1 non-terminal run (01M0QTMF0NZNFH72VEVZNB8XFY, submitted) skipped; selected oldest unrevised terminal run with a live sandbox.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"analyze\",\"visit\":4,\"status\":\"succeeded\",\"ts\":\"2026-09-02T19:13:05Z\",\"data\":{\"painpoints\":[{\"text\":\"Engine run-status handling demotes goal-complete runs: run `01M0SFEYVC9TD6MP816RHEBFQY` achieved its goal (planner verified all seeds closed, took 'Tracker empty' exit) but a publish 403 marked it `failed(publish_failed)`. Platform fix: demote publish_failed on an otherwise-green run to a warning, not terminal failure (engine run-status logic).\"},{\"text\":\"Develop graph spends an agent call on a deterministic check: the planner's 27.7s / $0.019 stage (with ~1.5k tokens of irrelevant skills and ~1.2k of memory in context) concluded what `sd ready --format json` answered in 323ms (count: 0). Platform fix: insert a `preflight` script node between `start` and `planner` in workflow.fabro with a 'Tracker empty' edge to `exit` when count is 0 and no seed is in progress.\"},{\"text\":\"Planner prompt lacks the sd flag vocabulary: this run wasted one LLM round-trip (~7.3s) on `sd list --status all` (invalid; valid values are open, in_progress, closed) before the correct call. Platform fix: add one line to the tracker-mechanics section of the develop planner prompt: 'sd list --status accepts only open|in_progress|closed'.\"},{\"text\":\"Engine publish path asks the LLM for free-form JSON without output_schema enforcement: worker WARN at 08:53:53 showed unparseable PR-content JSON saved only by the deterministic fallback. Platform fix: in `pipeline::pull_request`, use the same schema-enforced output tooling as agent nodes, or skip LLM generation for journal-only diffs (removes a guaranteed warning and ~5-10s finalize latency).\"},{\"text\":\"Run projection misreports terminal-edge skips: the snapshot read '1 of 5 non-meta stages completed' although start, planner, and exit completed and implement, test, evidence, and review were correctly skipped by the 'Tracker empty' edge. Platform fix: mark nodes downstream of a taken terminal edge as 'skipped (goal complete)' instead of uncompleted.\"}],\"observations\":[\"Analyst answer for run `01M0SFEYVC9TD6MP816RHEBFQY` persisted verbatim at `/workspace/fabro/.fabro/reviews/develop/01M0SFEYVC9TD6MP816RHEBFQY.md`; the graph itself worked (correct tracker-empty exit in 27.7s planner stage), and the failure was entirely in the publish epilogue, so the cheapest wins are around the loop (setup, no-op detection, publish), not inside it.\",\"Workflow assets (workflow.fabro, develop prompts) and engine code are synced from the platform world per AGENTS.md, so recommendations targeting them were routed to painpoints; only product-world config seeds (`project.toml`, `Dockerfile.mise`, `.mise.toml`) went into revision_findings.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"file\",\"visit\":4,\"status\":\"succeeded\",\"ts\":\"2026-09-02T19:13:58Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Seed fabro-a54d overlaps in theme with existing fabro-80ec but targets MISE_DATA_DIR env propagation and stale .mise.toml docs rather than image baking; noted as related in the seed description and revision marker at /workspace/fabro/.fabro/revisions/01M0SFEYVC9TD6MP816RHEBFQY.md\"]}}\ndiff --git a/.fabro/revisions/01M0SFEYVC9TD6MP816RHEBFQY.md b/.fabro/revisions/01M0SFEYVC9TD6MP816RHEBFQY.md\nnew file mode 100644\nindex 0000000..5955697\n--- /dev/null\n+++ b/.fabro/revisions/01M0SFEYVC9TD6MP816RHEBFQY.md\n@@ -0,0 +1,19 @@\n+# Revision — run 01M0SFEYVC9TD6MP816RHEBFQY\n+\n+- status reviewed: failed\n+- review: .fabro/reviews/develop/01M0SFEYVC9TD6MP816RHEBFQY.md\n+- seeds filed: fabro-9f97 Skip PR creation when the run diff is journal-only; fabro-696c Fix PR publishing: provision a PR-capable credential or disable PRs; fabro-a54d Make the baked mise toolchain a no-op in run containers\n+\n+## Findings\n+\n+### Skip PR creation when the run diff is journal-only\n+- filed: fabro-9f97\n+- Change: in `.fabro/project.toml` `[run.pull_request]`, skip PR creation when the diff excluding `.fabro/journal/` is empty. Expected effect: no-op runs report success instead of `failed(publish_failed)`; no squash-merged journal churn into the base branch.\n+\n+### Fix PR publishing: provision a PR-capable credential or disable PRs\n+- filed: fabro-696c\n+- Change: provision the GitHub App credential `project.toml` says PR creation requires, or set `enabled = false` under `[run.pull_request]` until it exists. Expected effect: publish stops being the sole cause of failed runs.\n+\n+### Make the baked mise toolchain a no-op in run containers\n+- filed: fabro-a54d (related to fabro-80ec, distinct: env propagation + stale docs)\n+- Change: fix `MISE_DATA_DIR` propagation in `.fabro/Dockerfile.mise` and `[run.prepare]`, log `mise ls` when install is slow, update stale `.mise.toml` header. Expected effect: ~95s saved per run; setup stops dominating run time.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex e26985d..3d6b98b 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -33,3 +33,6 @@\n {\"id\":\"fabro-46a4\",\"title\":\"Stop restating the full painpoint list in every prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T18:49:02.369Z\",\"updatedAt\":\"2026-09-02T18:49:02.369Z\",\"description\":\"Change the painpoint sections in prompts/planner.md, prompts/implementer.md, and prompts/reviewer.md to emit only NEW entries appended directly to the append-only .fabro/run-painpoints.jsonl (which refiner.nu already delivers from), dropping the restate-the-full-accumulated-list instruction. In this run ~2.8KB was mirrored into three prompts per pass and the reviewer received the list truncated — accumulation lossy at exactly the node told to restate it; also frees preamble budget to compound with the budget raise.\"}\n {\"id\":\"fabro-cc23\",\"title\":\"Projectize prime boilerplate with the real gate in AGENTS.md\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T18:55:18.535Z\",\"updatedAt\":\"2026-09-02T18:55:18.535Z\",\"description\":\"In run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ, planner@1 and implementer@1 each ran sd prime/ml prime and ingested ~5 KB of generic template including a close-protocol demanding bun test && bun run lint && bun run typecheck — commands that do not exist in this Go repo, whose gate is just qualitygate. Add a project-override note in AGENTS.md outside the tool-generated seeds-onboard markers: this repo's close protocol is just qualitygate, and bun-based prime instructions do not apply. Expected effect: removes wrong-stack misexecution risk and stops contradictory context in every agent stage.\"}\n {\"id\":\"fabro-3814\",\"title\":\"Tell implementer to skip sd prime when the brief is already in context\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T18:55:18.711Z\",\"updatedAt\":\"2026-09-02T18:55:18.711Z\",\"description\":\"In run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ, implementer@1 ran sd prime even though current_seed_brief already carried the seed context, adding ~5 KB to the costliest stage (implementer was /bin/bash.118 of the run's /bin/bash.181, 65%). Add one line to .fabro/workflows/develop/prompts/implementer.md: skip sd prime when current_seed_brief is already in context. Expected effect: trims ~5 KB per implementer visit with no information loss.\"}\n+{\"id\":\"fabro-9f97\",\"title\":\"Skip PR creation when the run diff is journal-only\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T19:13:26.609Z\",\"updatedAt\":\"2026-09-02T19:13:26.609Z\",\"description\":\"In .fabro/project.toml [run.pull_request], skip PR creation when the diff excluding .fabro/journal/ is empty. Run 01M0SFEYVC9TD6MP816RHEBFQY verified its goal (6 of 6 seeds closed, 'Tracker empty' exit) with an 18-line journal-only diff, yet attempted a PR with auto_merge = true, hit a deterministic 403, and flipped to failed(publish_failed) — same 403 noted in the 01M0T9B7T6 review at project.toml line 74. Effect: no-op runs report success instead of failed, and no squash-merged journal churn into the base branch.\"}\n+{\"id\":\"fabro-696c\",\"title\":\"Fix PR publishing: provision a PR-capable credential or disable PRs\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T19:13:30.865Z\",\"updatedAt\":\"2026-09-02T19:13:30.865Z\",\"description\":\"Two git.push events succeeded with token_provenance: static, then PR creation returned 403 (deterministic, retry-proof), while .fabro/project.toml line 59 states PR creation requires the GitHub App integration the static token lacks (run 01M0SFEYVC9TD6MP816RHEBFQY). Provision that credential or set enabled = false under [run.pull_request] until it exists. Effect: publish stops being the sole cause of failed runs; with a preflight the failure would surface in seconds instead of after the full 2m41s workflow.\"}\n+{\"id\":\"fabro-a54d\",\"title\":\"Make the baked mise toolchain a no-op in run containers\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:13:36.182Z\",\"updatedAt\":\"2026-09-02T19:13:36.182Z\",\"description\":\"Run 01M0SFEYVC9TD6MP816RHEBFQY: mise install took 95.5s (61% of end-to-end) re-installing tool versions Dockerfile.mise already bakes, likely because MISE_DATA_DIR=/mise is not honored in the run container; .mise.toml's header also still claims 'no baked-in tools', contradicting project.toml. Fix env propagation in .fabro/Dockerfile.mise and [run.prepare] in .fabro/project.toml, add mise ls output to the prepare log when install exceeds a few seconds, and update the stale .mise.toml header. Related to fabro-80ec (pre-install toolset in runner image) but targets env propagation and stale docs. Effect: ~95s saved on every run; setup stops dominating run time.\"}\n",
+        "summary": {
+          "files_changed": 10,
+          "additions": 334,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-02T19:15:27.613046728Z",
+        "current_node": "approve",
+        "completed_nodes": [
+          "start",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve"
         ],
         "node_retries": {},
         "context_values": {
@@ -5379,8 +5728,8 @@
           "last_response": "All three seeds were filed (`fabro-9f97`, `fabro-696c`, `fabro-a54d`), the marker was written to `/workspace/fabro/.fabro/revisions/01M0SFEYVC9TD6MP816RHEBFQY.md`, and the exact artifact paths were co",
           "revisor_target_wall": "0.9 min",
           "thread.start.current_node": "select",
-          "internal.thread_id": "analyze",
-          "current_node": "file",
+          "internal.thread_id": "file",
+          "current_node": "approve",
           "graph.rankdir": "LR",
           "internal.fidelity": "compact",
           "internal.node_visit_count": 4,
@@ -5393,7 +5742,7 @@
             "preview": "Run selected:\n{\n  \"outcome\": \"succeeded\",\n  \"preferred_next_label\": \"Run selected\",\n  \"context_updates\": {\n    \"revisor_target_run_id\": \"01M0SFEYVC9TD6MP816RHEBFQY\",\n    \"revisor_target_title\": \"Devel"
           },
           "revisor_target_title": "Develop the project seed-by-seed: plan from the tracker, implement, gate, review, repeat until no open seed remains",
-          "preferred_label": "Staged",
+          "preferred_label": "[A] Approved",
           "graph.preamble_budget_kb": "24",
           "last_stage": "file",
           "internal.retry_count.analyze": 0,
@@ -5402,7 +5751,8 @@
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
-            "file": 1
+            "file": 1,
+            "approve": 1
           },
           "thread.select.current_node": "analyze",
           "filed_seed_ids": [
@@ -5574,10 +5924,10 @@
             ],
             "context_updates": {
               "human.gate.approve.label": "[A] Approved",
-              "human.gate.approve.answer": "A",
               "human.gate.label": "[A] Approved",
-              "human.gate.approve.question": "Approve filing + merge",
-              "human.gate.selected": "A"
+              "human.gate.approve.answer": "A",
+              "human.gate.selected": "A",
+              "human.gate.approve.question": "Approve filing + merge"
             },
             "usage": null
           },
@@ -5634,12 +5984,12 @@
             }
           }
         },
-        "next_node_id": "approve",
+        "next_node_id": "select",
         "node_visits": {
           "start": 1,
           "analyze": 4,
           "select": 4,
-          "approve": 3,
+          "approve": 4,
           "file": 4
         }
       },
@@ -8299,6 +8649,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "approve@4": {
+      "first_event_seq": 686,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-02T19:15:27.333314176Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T19:14:03.328535081Z",
+      "handler": "human",
+      "graph_visit": 4,
+      "timing": {
+        "wall_time_ms": 75349,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
