@@ -102,6 +102,14 @@ decision, not an accident - it needs the user plus an ADR.
   restoration by comparing `git status` before/after. Never suppress
   `git stash pop` output — a silently dropped pop can lose fixes and
   surface only at final verification (e47c lesson, 2026-09-02).
+- Red/green-case SIMULATIONS on throwaway branches are the same class
+  (fabro-1dae, 2026-09-02): a `git add -A <scope>` + commit + reset
+  --hard cycle on the sim branch silently swept uncommitted review
+  fixes into the sim commit and destroyed the unstaged rest. Before any
+  simulation: stash the working tree (or commit first), snapshot the
+  diff, then cut the sim branch from a CLEAN tree; restore and VERIFY
+  byte-identity (the workflow.fabro closing brace has no trailing
+  newline — a whole-line `sed` can eat structural bytes).
 - PROOF OF WORK (user directive 2026-08-27, after the fabro_run_logs
   cycle skipped the guide): the cycle report NAMES the guideline pages
   loaded for the diff and the verification commands actually run
