@@ -510,8 +510,8 @@
   "status": {
     "kind": "running"
   },
-  "status_updated_at": "2026-09-02T18:50:03.823288187Z",
-  "last_event_at": "2026-09-02T18:55:38.313582277Z",
+  "status_updated_at": "2026-09-02T19:07:31.694204813Z",
+  "last_event_at": "2026-09-02T19:07:31.713323169Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -3977,9 +3977,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 527,
       "checkpoint": {
-        "timestamp": "2026-09-02T18:55:38.529721006Z",
+        "timestamp": "2026-09-02T18:55:45.916534407Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -3994,6 +3994,329 @@
           "select",
           "analyze",
           "file"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "human.gate.selected": "A",
+          "internal.retry_count.start": 0,
+          "failure_class": "",
+          "preferred_label": "Staged",
+          "revisor_target_title": "Develop seed-by-seed until no open seed remains",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+          "failure_signature": "",
+          "graph.inspects": "develop",
+          "internal.node_visit_count": 3,
+          "revisor_target_wall": "4.8 min",
+          "graph.rankdir": "LR",
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "current_node": "file",
+          "internal.seed_cycle_anchor": "01M0QTNF6GWHGPKHSQ2Y2PB8CQ",
+          "human.gate.approve.question": "Approve filing + merge",
+          "internal.work_dir": "/workspace/fabro",
+          "outcome": "succeeded",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 3768,
+            "preview": "Review asked once, persisted verbatim to `.fabro/reviews/develop/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md`, then cross-checked each recommendation against the current assets: recs 2, 3, 4, 5, 6 are already addre"
+          },
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "thread.select.current_node": "analyze",
+          "internal.retry_count.analyze": 0,
+          "thread.start.current_node": "select",
+          "filed_seed_ids": [
+            "fabro-cc23",
+            "fabro-3814"
+          ],
+          "graph.max_node_visits": "30",
+          "revisor_target_status": "failed",
+          "thread.file.current_node": "approve",
+          "last_stage": "file",
+          "human.gate.approve.label": "[A] Approved",
+          "internal.retry_count.file": 0,
+          "internal.thread_id": "analyze",
+          "thread.approve.current_node": "select",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 793,
+            "preview": "Staged: filed `fabro-cc23` and `fabro-3814` (no duplicates), wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md`, and committed exactly the allowed paths as "
+          },
+          "thread.analyze.current_node": "file",
+          "internal.retry_count.select": 0,
+          "revisor_target_run_id": "01M0QTNF6GWHGPKHSQ2Y2PB8CQ",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 1007,
+            "preview": "Marker check: only `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md` and `.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md` exist. Among terminal unrevised runs with `sandbox_available == true`, the olde"
+          },
+          "last_response": "Staged: filed `fabro-cc23` and `fabro-3814` (no duplicates), wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md`, and committed exactly the allowed paths as ",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.approve": 0,
+          "human.gate.approve.answer": "A",
+          "revision_findings": [
+            {
+              "title": "Projectize prime boilerplate with the real gate in AGENTS.md",
+              "description": "In run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ, planner@1 and implementer@1 each ran `sd prime`/`ml prime` and ingested ~5 KB of generic template including a close-protocol demanding `bun test && bun run lint && bun run typecheck` — commands that do not exist in this Go repo, whose gate is `just qualitygate`. Add a project-override note in `AGENTS.md` outside the tool-generated seeds-onboard markers: this repo's close protocol is `just qualitygate`, and bun-based prime instructions do not apply. Expected effect: removes wrong-stack misexecution risk and stops contradictory context in every agent stage.",
+              "priority": 2
+            },
+            {
+              "title": "Tell implementer to skip sd prime when the brief is already in context",
+              "description": "In the same run, implementer@1 ran `sd prime` even though `current_seed_brief` already carried the seed context, adding ~5 KB to the costliest stage (implementer was $0.118 of the run's $0.181, 65%). Add one line to `.fabro/workflows/develop/prompts/implementer.md`: skip `sd prime` when `current_seed_brief` is already in context. Expected effect: trims ~5 KB per implementer visit with no information loss.",
+              "priority": 2
+            }
+          ],
+          "internal.fidelity": "compact",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Six review recommendations were already addressed in current assets and were not re-filed; only the two prime-boilerplate seeds were repo-actionable. Engine-side publish fail-safe and progress-counter defects were routed via the painpoint channel per AGENTS.md."
+            ]
+          },
+          "internal.run_id": "01M1HKRE686W833SE86D8WD319",
+          "human.gate.label": "[A] Approved"
+        },
+        "node_outcomes": {
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Six review recommendations were already addressed in current assets and were not re-filed; only the two prime-boilerplate seeds were repo-actionable. Engine-side publish fail-safe and progress-counter defects were routed via the painpoint channel per AGENTS.md."
+                ]
+              },
+              "last_response": "Staged: filed `fabro-cc23` and `fabro-3814` (no duplicates), wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md`, and committed exactly the allowed paths as ",
+              "filed_seed_ids": [
+                "fabro-cc23",
+                "fabro-3814"
+              ],
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 793,
+                "preview": "Staged: filed `fabro-cc23` and `fabro-3814` (no duplicates), wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md`, and committed exactly the allowed paths as "
+              },
+              "last_stage": "file"
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 12459,
+                    "output_tokens": 1254,
+                    "reasoning_tokens": 46,
+                    "cache_read_tokens": 56000,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 37718
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 27709,
+              "tool_time_ms": 1222,
+              "active_time_ms": 28931
+            }
+          },
+          "approve": {
+            "status": "succeeded",
+            "preferred_label": "[A] Approved",
+            "suggested_next_ids": [
+              "select"
+            ],
+            "context_updates": {
+              "human.gate.label": "[A] Approved",
+              "human.gate.approve.label": "[A] Approved",
+              "human.gate.selected": "A",
+              "human.gate.approve.answer": "A",
+              "human.gate.approve.question": "Approve filing + merge"
+            },
+            "usage": null
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "revisor_target_wall": "4.8 min",
+              "last_stage": "select",
+              "last_response": "Marker check: only `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md` and `.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md` exist. Among terminal unrevised runs with `sandbox_available == true`, the olde",
+              "revisor_target_run_id": "01M0QTNF6GWHGPKHSQ2Y2PB8CQ",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Selected 01M0QTNF6GWHGPKHSQ2Y2PB8CQ (oldest unrevised terminal run with live sandbox). Backlog visibility: 17 runs blocked, no live sandbox; 1 run submitted/non-terminal skipped."
+                ]
+              },
+              "revisor_target_status": "failed",
+              "revisor_target_title": "Develop seed-by-seed until no open seed remains",
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 1007,
+                "preview": "Marker check: only `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md` and `.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md` exist. Among terminal unrevised runs with `sandbox_available == true`, the olde"
+              }
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14920,
+                    "output_tokens": 382,
+                    "reasoning_tokens": 253,
+                    "cache_read_tokens": 7040,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 25511
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 11539,
+              "tool_time_ms": 586,
+              "active_time_ms": 12125
+            }
+          },
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "last_stage": "analyze",
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 3768,
+                "preview": "Review asked once, persisted verbatim to `.fabro/reviews/develop/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md`, then cross-checked each recommendation against the current assets: recs 2, 3, 4, 5, 6 are already addre"
+              },
+              "last_response": "Review asked once, persisted verbatim to `.fabro/reviews/develop/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md`, then cross-checked each recommendation against the current assets: recs 2, 3, 4, 5, 6 are already addre",
+              "revision_findings": [
+                {
+                  "title": "Projectize prime boilerplate with the real gate in AGENTS.md",
+                  "description": "In run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ, planner@1 and implementer@1 each ran `sd prime`/`ml prime` and ingested ~5 KB of generic template including a close-protocol demanding `bun test && bun run lint && bun run typecheck` — commands that do not exist in this Go repo, whose gate is `just qualitygate`. Add a project-override note in `AGENTS.md` outside the tool-generated seeds-onboard markers: this repo's close protocol is `just qualitygate`, and bun-based prime instructions do not apply. Expected effect: removes wrong-stack misexecution risk and stops contradictory context in every agent stage.",
+                  "priority": 2
+                },
+                {
+                  "title": "Tell implementer to skip sd prime when the brief is already in context",
+                  "description": "In the same run, implementer@1 ran `sd prime` even though `current_seed_brief` already carried the seed context, adding ~5 KB to the costliest stage (implementer was $0.118 of the run's $0.181, 65%). Add one line to `.fabro/workflows/develop/prompts/implementer.md`: skip `sd prime` when `current_seed_brief` is already in context. Expected effect: trims ~5 KB per implementer visit with no information loss.",
+                  "priority": 2
+                }
+              ],
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Engine publish path is not fail-safe: run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ had all 7 stage executions green and final commit `ee9ca75` pushed, then terminal-failed as `failed(publish_failed)` because the PR title/body LLM generation returned non-JSON (`total_retries: 0`, no PR exists, events seq 265-268). Fix in the engine publish stage after `exit`: one retry, then a deterministic PR title/body from goal + stage outcomes + commits, plus a `republish` control — platform change, routed via painpoint channel, not editable in this repo."
+                  },
+                  {
+                    "text": "Engine progress renderer reports impossible counts: run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ snapshot said '6 of 5 non-meta stages completed' and the implementer prompt said '0 of 5 stages completed' immediately after planner@1 finished. It counts stage executions instead of nodes and does not refresh per `checkpoint.completed`. Fix in the engine's progress/preamble renderer — platform change, routed via painpoint channel."
+                  }
+                ],
+                "observations": [
+                  "Review persisted verbatim at `.fabro/reviews/develop/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md`. Recommendations 2 (reviewer agent node + `preamble_budget_kb` 24 + `summary:high`), 3 (toolchain incl. ripgrep baked into `.fabro/Dockerfile.mise`), 4 (gate allowlist in `prompts/implementer.md`), 5 (journal bridge fabro-31b2 in `scripts/stage-journal.nu`), and 6 (`sd ready`-first guidance in `prompts/planner.md`) verified as already addressed in current assets — filer should not re-file them. Only the two prime-boilerplate seeds remain repo-actionable; publish fail-safe and progress counter are engine-side and routed as painpoints per AGENTS.md."
+                ]
+              }
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 19693,
+                    "output_tokens": 4256,
+                    "reasoning_tokens": 6437,
+                    "cache_read_tokens": 163904,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 117217
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 141998,
+              "tool_time_ms": 104267,
+              "active_time_ms": 246265
+            }
+          }
+        },
+        "next_node_id": "approve",
+        "git_commit_sha": "7e5f19d0dd82f86ebc1142152b46256fe2a00090",
+        "node_visits": {
+          "approve": 2,
+          "file": 3,
+          "select": 3,
+          "analyze": 3,
+          "start": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\nindex c84e740..0eb2280 100644\n--- a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\n+++ b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\n@@ -9,3 +9,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"approve\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-02T18:50:04Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"select\",\"visit\":3,\"status\":\"succeeded\",\"ts\":\"2026-09-02T18:50:25Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Selected 01M0QTNF6GWHGPKHSQ2Y2PB8CQ (oldest unrevised terminal run with live sandbox). Backlog visibility: 17 runs blocked, no live sandbox; 1 run submitted/non-terminal skipped.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"analyze\",\"visit\":3,\"status\":\"succeeded\",\"ts\":\"2026-09-02T18:55:00Z\",\"data\":{\"painpoints\":[{\"text\":\"Engine publish path is not fail-safe: run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ had all 7 stage executions green and final commit `ee9ca75` pushed, then terminal-failed as `failed(publish_failed)` because the PR title/body LLM generation returned non-JSON (`total_retries: 0`, no PR exists, events seq 265-268). Fix in the engine publish stage after `exit`: one retry, then a deterministic PR title/body from goal + stage outcomes + commits, plus a `republish` control — platform change, routed via painpoint channel, not editable in this repo.\"},{\"text\":\"Engine progress renderer reports impossible counts: run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ snapshot said '6 of 5 non-meta stages completed' and the implementer prompt said '0 of 5 stages completed' immediately after planner@1 finished. It counts stage executions instead of nodes and does not refresh per `checkpoint.completed`. Fix in the engine's progress/preamble renderer — platform change, routed via painpoint channel.\"}],\"observations\":[\"Review persisted verbatim at `.fabro/reviews/develop/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md`. Recommendations 2 (reviewer agent node + `preamble_budget_kb` 24 + `summary:high`), 3 (toolchain incl. ripgrep baked into `.fabro/Dockerfile.mise`), 4 (gate allowlist in `prompts/implementer.md`), 5 (journal bridge fabro-31b2 in `scripts/stage-journal.nu`), and 6 (`sd ready`-first guidance in `prompts/planner.md`) verified as already addressed in current assets — filer should not re-file them. Only the two prime-boilerplate seeds remain repo-actionable; publish fail-safe and progress counter are engine-side and routed as painpoints per AGENTS.md.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"file\",\"visit\":3,\"status\":\"succeeded\",\"ts\":\"2026-09-02T18:55:38Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Six review recommendations were already addressed in current assets and were not re-filed; only the two prime-boilerplate seeds were repo-actionable. Engine-side publish fail-safe and progress-counter defects were routed via the painpoint channel per AGENTS.md.\"]}}\ndiff --git a/.fabro/revisions/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md b/.fabro/revisions/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md\nnew file mode 100644\nindex 0000000..696bb44\n--- /dev/null\n+++ b/.fabro/revisions/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md\n@@ -0,0 +1,21 @@\n+# Revision — run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ\n+\n+- status reviewed: failed\n+- review: .fabro/reviews/develop/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md\n+- seeds filed: fabro-cc23 — Projectize prime boilerplate with the real gate in AGENTS.md; fabro-3814 — Tell implementer to skip sd prime when the brief is already in context\n+\n+## Findings\n+\n+### Projectize prime boilerplate with the real gate in AGENTS.md\n+- filed: fabro-cc23\n+- Change: add a project-override note in `AGENTS.md` outside the tool-generated seeds-onboard markers stating this repo's close protocol is `just qualitygate` and bun-based prime instructions do not apply.\n+- Expected effect: removes wrong-stack misexecution risk and stops contradictory context in every agent stage (planner@1 and implementer@1 each ingested ~5 KB of generic template demanding nonexistent bun commands).\n+\n+### Tell implementer to skip sd prime when the brief is already in context\n+- filed: fabro-3814\n+- Change: one line in `.fabro/workflows/develop/prompts/implementer.md` to skip `sd prime` when `current_seed_brief` is already in context.\n+- Expected effect: trims ~5 KB per implementer visit with no information loss (implementer was $0.118 of the run's $0.181, 65%).\n+\n+### Not filed (already addressed or engine-side)\n+- Reviewer agent node, `preamble_budget_kb` 24, `summary:high`, toolchain incl. ripgrep in `.fabro/Dockerfile.mise`, gate allowlist in `prompts/implementer.md`, journal bridge fabro-31b2 in `scripts/stage-journal.nu`, `sd ready`-first guidance in `prompts/planner.md` — verified already present in current assets.\n+- Publish fail-safe (retry + deterministic PR title/body + `republish` control) and progress counter fix (counts stage executions instead of nodes; not refreshed per `checkpoint.completed`) — engine-side, routed via painpoint channel.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex 501ffa3..e26985d 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -31,3 +31,5 @@\n {\"id\":\"fabro-578a\",\"title\":\"Restrict verification-only briefs to smoke-level commands\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T18:48:53.955Z\",\"updatedAt\":\"2026-09-02T18:48:53.955Z\",\"description\":\"Add one sentence to prompts/planner.md verification-only guidance: \\\"list smoke-level commands only (go build, go test, go run smokes); the gate belongs to the tester stage.\\\" In this run planner@2 and planner@3 briefs mandated just qualitygate under Required verification commands while implementer.md rule 4 forbids running the full gate, forcing implementer@3 to resolve the contradiction itself (painpoint #3 in .fabro/run-painpoints.jsonl).\"}\n {\"id\":\"fabro-eaa0\",\"title\":\"Require English responses in implementer prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T18:48:57.978Z\",\"updatedAt\":\"2026-09-02T18:48:57.978Z\",\"description\":\"Add \\\"Always respond in English\\\" to .fabro/workflows/develop/prompts/implementer.md. In this run implementer@2 replied in German (\\\"Verstanden — ich beende den Run…\\\") to a German stop steer, and that reply leaked into later stages' context.\"}\n {\"id\":\"fabro-46a4\",\"title\":\"Stop restating the full painpoint list in every prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T18:49:02.369Z\",\"updatedAt\":\"2026-09-02T18:49:02.369Z\",\"description\":\"Change the painpoint sections in prompts/planner.md, prompts/implementer.md, and prompts/reviewer.md to emit only NEW entries appended directly to the append-only .fabro/run-painpoints.jsonl (which refiner.nu already delivers from), dropping the restate-the-full-accumulated-list instruction. In this run ~2.8KB was mirrored into three prompts per pass and the reviewer received the list truncated — accumulation lossy at exactly the node told to restate it; also frees preamble budget to compound with the budget raise.\"}\n+{\"id\":\"fabro-cc23\",\"title\":\"Projectize prime boilerplate with the real gate in AGENTS.md\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T18:55:18.535Z\",\"updatedAt\":\"2026-09-02T18:55:18.535Z\",\"description\":\"In run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ, planner@1 and implementer@1 each ran sd prime/ml prime and ingested ~5 KB of generic template including a close-protocol demanding bun test && bun run lint && bun run typecheck — commands that do not exist in this Go repo, whose gate is just qualitygate. Add a project-override note in AGENTS.md outside the tool-generated seeds-onboard markers: this repo's close protocol is just qualitygate, and bun-based prime instructions do not apply. Expected effect: removes wrong-stack misexecution risk and stops contradictory context in every agent stage.\"}\n+{\"id\":\"fabro-3814\",\"title\":\"Tell implementer to skip sd prime when the brief is already in context\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T18:55:18.711Z\",\"updatedAt\":\"2026-09-02T18:55:18.711Z\",\"description\":\"In run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ, implementer@1 ran sd prime even though current_seed_brief already carried the seed context, adding ~5 KB to the costliest stage (implementer was /bin/bash.118 of the run's /bin/bash.181, 65%). Add one line to .fabro/workflows/develop/prompts/implementer.md: skip sd prime when current_seed_brief is already in context. Expected effect: trims ~5 KB per implementer visit with no information loss.\"}\n",
+        "summary": {
+          "files_changed": 8,
+          "additions": 271,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-02T19:07:31.938903920Z",
+        "current_node": "approve",
+        "completed_nodes": [
+          "start",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve"
         ],
         "node_retries": {},
         "context_values": {
@@ -4041,8 +4364,8 @@
           "last_response": "Staged: filed `fabro-cc23` and `fabro-3814` (no duplicates), wrote the revision marker at `/workspace/fabro/.fabro/revisions/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md`, and committed exactly the allowed paths as ",
           "revisor_target_wall": "4.8 min",
           "thread.start.current_node": "select",
-          "internal.thread_id": "analyze",
-          "current_node": "file",
+          "internal.thread_id": "file",
+          "current_node": "approve",
           "graph.rankdir": "LR",
           "internal.fidelity": "compact",
           "internal.node_visit_count": 3,
@@ -4055,7 +4378,7 @@
             "preview": "Marker check: only `.fabro/revisions/01M0QJ01P9E6EKX8S6TQN91G8E.md` and `.fabro/revisions/01M0QJ5FNE9XZJ72YN31K3X451.md` exist. Among terminal unrevised runs with `sandbox_available == true`, the olde"
           },
           "revisor_target_title": "Develop seed-by-seed until no open seed remains",
-          "preferred_label": "Staged",
+          "preferred_label": "[A] Approved",
           "graph.preamble_budget_kb": "24",
           "last_stage": "file",
           "internal.retry_count.analyze": 0,
@@ -4064,7 +4387,8 @@
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
-            "file": 1
+            "file": 1,
+            "approve": 1
           },
           "thread.select.current_node": "analyze",
           "filed_seed_ids": [
@@ -4218,11 +4542,11 @@
               "select"
             ],
             "context_updates": {
-              "human.gate.label": "[A] Approved",
               "human.gate.approve.label": "[A] Approved",
-              "human.gate.selected": "A",
               "human.gate.approve.answer": "A",
-              "human.gate.approve.question": "Approve filing + merge"
+              "human.gate.label": "[A] Approved",
+              "human.gate.approve.question": "Approve filing + merge",
+              "human.gate.selected": "A"
             },
             "usage": null
           },
@@ -4279,12 +4603,12 @@
             }
           }
         },
-        "next_node_id": "approve",
+        "next_node_id": "select",
         "node_visits": {
           "start": 1,
           "analyze": 3,
           "select": 3,
-          "approve": 2,
+          "approve": 3,
           "file": 3
         }
       },
@@ -6172,6 +6496,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "approve@3": {
+      "first_event_seq": 530,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-02T19:07:31.713323169Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T18:55:45.938541963Z",
+      "handler": "human",
+      "graph_visit": 3,
+      "timing": {
+        "wall_time_ms": 648097,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
