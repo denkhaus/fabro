@@ -157,7 +157,18 @@ impl RunStatus {
                     Self::Submitted
                 )
                 | (Self::Pending { .. }, Self::Runnable)
-                | (Self::Runnable, Self::Starting)
+                // A worker can fail before it appends RunStarting, while the durable run is still
+                // Runnable. Keep this set aligned with the audited pre-Starting failure callers.
+                | (
+                    Self::Runnable,
+                    Self::Starting
+                        | Self::Failed {
+                            reason: FailureReason::LaunchFailed
+                                | FailureReason::WorkflowError
+                                | FailureReason::Terminated
+                                | FailureReason::BootstrapFailed,
+                        }
+                )
                 | (
                     Self::Submitted | Self::Pending { .. } | Self::Runnable,
                     Self::Failed {
@@ -417,15 +428,55 @@ mod tests {
         assert!(runnable.can_transition_to(RunStatus::Failed {
             reason: FailureReason::Cancelled,
         }));
-        assert!(!runnable.can_transition_to(RunStatus::Failed {
-            reason: FailureReason::Terminated,
-        }));
         assert!(running.can_transition_to(blocked));
         assert!(blocked.can_transition_to(running));
         assert!(blocked.can_transition_to(paused));
         assert!(blocked.can_transition_to(RunStatus::Failed {
             reason: FailureReason::WorkflowError,
         }));
+    }
+
+    #[test]
+    fn runnable_pre_start_failures_allow_only_audited_reasons() {
+        for reason in [
+            FailureReason::LaunchFailed,
+            FailureReason::WorkflowError,
+            FailureReason::Terminated,
+            FailureReason::BootstrapFailed,
+        ] {
+            let failed = RunStatus::Failed { reason };
+            assert!(
+                RunStatus::Runnable.can_transition_to(failed),
+                "Runnable should accept {reason} before Starting"
+            );
+            assert!(
+                !RunStatus::Submitted.can_transition_to(failed),
+                "Submitted should reject {reason}"
+            );
+            assert!(
+                !RunStatus::Pending {
+                    reason: PendingReason::ApprovalRequired,
+                }
+                .can_transition_to(failed),
+                "Pending should reject {reason}"
+            );
+        }
+
+        assert!(RunStatus::Runnable.can_transition_to(RunStatus::Failed {
+            reason: FailureReason::Cancelled,
+        }));
+        for reason in [
+            FailureReason::SandboxInitFailed,
+            FailureReason::PublishFailed,
+            FailureReason::TransientInfra,
+            FailureReason::BudgetExhausted,
+            FailureReason::ApprovalDenied,
+        ] {
+            assert!(
+                !RunStatus::Runnable.can_transition_to(RunStatus::Failed { reason }),
+                "Runnable should reject unrelated failure {reason}"
+            );
+        }
     }
 
     #[test]

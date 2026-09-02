@@ -4,7 +4,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc as StdArc, Mutex as StdMutex};
 
 use async_zip::base::read::mem::ZipFileReader;
@@ -58,7 +58,7 @@ use crate::worker_control::{
     LocalWorkerControlBus, WorkerControlBus, WorkerControlCursor, WorkerControlReceiver,
 };
 use crate::worker_runtime::{
-    LocalWorkerRuntime, StartedWorker, WorkerLaunchSpec, WorkerRef, WorkerRuntime,
+    LocalWorkerRuntime, StartedWorker, WorkerExit, WorkerLaunchSpec, WorkerRef, WorkerRuntime,
 };
 
 const MINIMAL_DOT: &str = r#"digraph Test {
@@ -2982,6 +2982,96 @@ impl RecordingWorkerRuntime {
     }
 }
 
+#[derive(Clone, Copy)]
+enum PreStartWorkerOutcome {
+    LaunchFailure,
+    EarlyExit,
+}
+
+struct PreStartWorkerRuntime {
+    outcome:             PreStartWorkerOutcome,
+    starts:              AtomicUsize,
+    hold_launch_failure: bool,
+    start_entered:       Notify,
+    release_start:       Notify,
+}
+
+impl PreStartWorkerRuntime {
+    fn new(outcome: PreStartWorkerOutcome) -> Self {
+        Self {
+            outcome,
+            starts: AtomicUsize::new(0),
+            hold_launch_failure: false,
+            start_entered: Notify::new(),
+            release_start: Notify::new(),
+        }
+    }
+
+    fn held_launch_failure() -> Self {
+        Self {
+            hold_launch_failure: true,
+            ..Self::new(PreStartWorkerOutcome::LaunchFailure)
+        }
+    }
+
+    fn start_count(&self) -> usize {
+        self.starts.load(Ordering::Relaxed)
+    }
+
+    async fn wait_for_start(&self) {
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                let notified = self.start_entered.notified();
+                if self.start_count() > 0 {
+                    return;
+                }
+                notified.await;
+            }
+        })
+        .await
+        .expect("test worker runtime should receive one start request");
+    }
+
+    fn release_held_start(&self) {
+        self.release_start.notify_one();
+    }
+}
+
+#[async_trait::async_trait]
+impl WorkerRuntime for PreStartWorkerRuntime {
+    async fn start(&self, _spec: WorkerLaunchSpec) -> anyhow::Result<StartedWorker> {
+        self.starts.fetch_add(1, Ordering::Relaxed);
+        self.start_entered.notify_waiters();
+        if self.hold_launch_failure {
+            self.release_start.notified().await;
+        }
+
+        match self.outcome {
+            PreStartWorkerOutcome::LaunchFailure => {
+                anyhow::bail!("test worker launch failed")
+            }
+            PreStartWorkerOutcome::EarlyExit => Ok(StartedWorker {
+                worker_ref: test_worker_ref(u32::MAX),
+                stderr:     Box::pin(tokio::io::empty()),
+                wait:       Box::pin(async {
+                    Ok(WorkerExit {
+                        success: false,
+                        detail:  "test worker exited before starting".to_string(),
+                    })
+                }),
+            }),
+        }
+    }
+
+    async fn request_stop(&self, _worker_ref: &WorkerRef) {}
+
+    async fn force_stop(&self, _worker_ref: &WorkerRef) {}
+
+    async fn is_alive(&self, _worker_ref: &WorkerRef) -> bool {
+        false
+    }
+}
+
 #[async_trait::async_trait]
 impl WorkerRuntime for RecordingWorkerRuntime {
     async fn start(&self, _spec: WorkerLaunchSpec) -> anyhow::Result<StartedWorker> {
@@ -5698,6 +5788,232 @@ async fn create_and_start_run(app: &Router, dot_source: &str) -> String {
     app.clone().oneshot(req).await.unwrap();
 
     run_id
+}
+
+fn subprocess_pre_start_failure_state(runtime: StdArc<PreStartWorkerRuntime>) -> Arc<AppState> {
+    let state = TestAppStateBuilder::new()
+        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .worker_runtime(runtime)
+        .build();
+    let runtime_directory = Storage::new(state.server_storage_dir()).runtime_directory();
+    ServerDaemon::new(
+        std::process::id(),
+        Bind::Tcp("127.0.0.1:32276".parse().expect("test bind should parse")),
+        runtime_directory.log_path(),
+    )
+    .write(&runtime_directory)
+    .expect("test server record should be written");
+    state
+}
+
+async fn assert_subprocess_pre_start_failure(
+    outcome: PreStartWorkerOutcome,
+    expected_reason: FailureReason,
+) {
+    let runtime = StdArc::new(PreStartWorkerRuntime::new(outcome));
+    let state = subprocess_pre_start_failure_state(StdArc::clone(&runtime));
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_and_start_run(&app, MINIMAL_DOT)
+        .await
+        .parse::<RunId>()
+        .expect("created run id should parse");
+    let run_store = state
+        .stores
+        .runs
+        .open_run_reader(&run_id)
+        .await
+        .expect("created run should remain readable");
+
+    assert_eq!(
+        run_store
+            .state()
+            .await
+            .expect("runnable run state should load")
+            .status,
+        RunStatus::Runnable
+    );
+
+    execute_run(Arc::clone(&state), run_id).await;
+
+    assert_eq!(runtime.start_count(), 1);
+    let events = run_store
+        .list_events()
+        .await
+        .expect("failed run events should remain readable");
+    let lifecycle_events = events
+        .iter()
+        .map(|envelope| envelope.event.event_name())
+        .filter(|name| matches!(*name, "run.runnable" | "run.starting" | "run.failed"))
+        .collect::<Vec<_>>();
+    assert_eq!(lifecycle_events, vec!["run.runnable", "run.failed"]);
+    let failure_reasons = events
+        .iter()
+        .filter_map(|envelope| match &envelope.event.body {
+            EventBody::RunFailed(props) => Some(props.failure.reason),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(failure_reasons, vec![expected_reason]);
+
+    let expected_status = RunStatus::Failed {
+        reason: expected_reason,
+    };
+    assert_eq!(
+        run_store
+            .state()
+            .await
+            .expect("failed run state should load")
+            .status,
+        expected_status
+    );
+    assert_eq!(
+        state
+            .runs
+            .lock()
+            .expect("runs lock poisoned")
+            .get(&run_id)
+            .expect("managed run should remain present")
+            .status,
+        expected_status
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{run_id}")))
+                .body(Body::empty())
+                .expect("run request should build"),
+        )
+        .await
+        .expect("run request should complete");
+    let body = response_json!(response, StatusCode::OK).await;
+    assert_eq!(run_json_status(&body)["kind"], "failed");
+    assert_eq!(
+        run_json_status(&body)["reason"],
+        expected_reason.to_string()
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api("/runs"))
+                .body(Body::empty())
+                .expect("run list request should build"),
+        )
+        .await
+        .expect("run list request should complete");
+    let body = response_json!(response, StatusCode::OK).await;
+    let run_id_string = run_id.to_string();
+    let listed = body["data"]
+        .as_array()
+        .expect("run list data should be an array")
+        .iter()
+        .find(|run| run_json_id(run) == Some(run_id_string.as_str()))
+        .expect("failed run should remain listed");
+    assert_eq!(run_json_status(listed)["kind"], "failed");
+    assert_eq!(
+        run_json_status(listed)["reason"],
+        expected_reason.to_string()
+    );
+}
+
+#[tokio::test]
+async fn subprocess_pre_start_failure_persists_launch_failure_from_runnable() {
+    assert_subprocess_pre_start_failure(
+        PreStartWorkerOutcome::LaunchFailure,
+        FailureReason::LaunchFailed,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn subprocess_pre_start_failure_persists_early_worker_exit_from_runnable() {
+    assert_subprocess_pre_start_failure(
+        PreStartWorkerOutcome::EarlyExit,
+        FailureReason::Terminated,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn subprocess_pre_start_failure_preserves_pending_cancellation() {
+    let runtime = StdArc::new(PreStartWorkerRuntime::held_launch_failure());
+    let state = subprocess_pre_start_failure_state(StdArc::clone(&runtime));
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_and_start_run(&app, MINIMAL_DOT)
+        .await
+        .parse::<RunId>()
+        .expect("created run id should parse");
+
+    let execution = tokio::spawn(execute_run(Arc::clone(&state), run_id));
+    runtime.wait_for_start().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/cancel")))
+                .body(Body::empty())
+                .expect("cancel request should build"),
+        )
+        .await
+        .expect("cancel request should complete");
+    assert_status!(response, StatusCode::ACCEPTED).await;
+
+    runtime.release_held_start();
+    execution.await.expect("run execution task should complete");
+
+    assert_eq!(runtime.start_count(), 1);
+    let run_store = state
+        .stores
+        .runs
+        .open_run_reader(&run_id)
+        .await
+        .expect("cancelled run should remain readable");
+    let events = run_store
+        .list_events()
+        .await
+        .expect("cancelled run events should remain readable");
+    let failure_reasons = events
+        .iter()
+        .filter_map(|envelope| match &envelope.event.body {
+            EventBody::RunFailed(props) => Some(props.failure.reason),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(failure_reasons, vec![FailureReason::Cancelled]);
+    assert!(!events.iter().any(|envelope| {
+        matches!(
+            &envelope.event.body,
+            EventBody::RunFailed(props)
+                if props.failure.reason == FailureReason::LaunchFailed
+        )
+    }));
+
+    let expected_status = RunStatus::Failed {
+        reason: FailureReason::Cancelled,
+    };
+    assert_eq!(
+        run_store
+            .state()
+            .await
+            .expect("cancelled run state should load")
+            .status,
+        expected_status
+    );
+    assert_eq!(
+        state
+            .runs
+            .lock()
+            .expect("runs lock poisoned")
+            .get(&run_id)
+            .expect("managed run should remain present")
+            .status,
+        expected_status
+    );
 }
 
 async fn create_durable_run_with_events(
