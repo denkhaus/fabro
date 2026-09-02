@@ -48,6 +48,12 @@ digraph Develop {
         retry_policy="standard",
         reasoning_effort="high",
         preamble_stages_ignore="planner,implementer,evidence",
+        // fabro-1dae (stage envelope fs scope): planning never touches
+        // platform assets — the tracker is reached via the sd CLI (shell
+        // is the documented escape hatch), never by file tools, and the
+        // planner writes no files at all (context_updates + sd only).
+        fs_hide=".fabro/**,.seeds/**,scripts/**,justfile",
+        fs_write="",
         // fabro-900e (envelope write side): the planner's context_updates
         // contract is stable — declare it so the preamble_allow_keys lint
         // (fabro-e47c) can prove producers, and drift (an undocumented new
@@ -77,6 +83,12 @@ digraph Develop {
         reasoning_effort="low",
         retry_policy="standard",
         preamble_stages_ignore="planner,reviewer,implementer",
+        // fabro-1dae: same platform scope as the planner — hidden means no
+        // read, no discovery, no write through file tools. fs_write stays
+        // unset: hidden paths are unwritable anyway, and product seeds may
+        // legitimately touch files outside src/ (README, fixtures). Gate
+        // re-runs keep working through the shell escape hatch.
+        fs_hide=".fabro/**,.seeds/**,scripts/**,justfile",
         // fabro-900e: stable context_updates contract (see planner).
         // lesson_capture added by seed fabro-f831 (run 01M1EGK6J8): the
         // implementer prompt REQUIRES the mx-id-or-skip answer as data —
@@ -170,6 +182,12 @@ digraph Develop {
         // with the aggregate demote pass (preamble_inline_max_within_budget
         // stays quiet).
         preamble_inline_max_kb=16,
+        // fabro-1dae: read-only is a CAPABILITY, not just policy — an empty
+        // fs_write denies every file-tool write (deletes and patch targets
+        // included). Deliberately NO fs_hide: review must see every diff,
+        // including illegal platform touches, to reject them. Shell remains
+        // the documented escape hatch; the prompt's policy line governs it.
+        fs_write="",
         output_schema="routing",
         output_retries=2,
         max_visits=20,

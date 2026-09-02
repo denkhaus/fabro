@@ -96,12 +96,61 @@ def check-go-build []: nothing -> bool {
     true
 }
 
+# a9bb step 2 — deterministic run-scope rule: run diffs must not touch
+# the workflow assets (.fabro/workflows/). Platform work happens via
+# platform-namespace PRs, never run merge-backs. Journal
+# (.fabro/journal/) and tracker (.seeds/) writes are legitimate
+# run-branch content and deliberately stay out of the rule.
+def current-branch []: nothing -> string {
+    git branch --show-current | str trim
+}
+
+def check-run-scope []: nothing -> bool {
+    print "== run scope (workflow assets untouchable from runs) =="
+    let branch = (current-branch)
+    if not ($branch | str starts-with "fabro/run/") {
+        print $"skip: '($branch)' is not a run branch"
+        return true
+    }
+    # The world the run was cut from. Run workspaces carry the local
+    # world branch plus its origin ref (verified in a real run sandbox);
+    # prefer the local branch — it names exactly the commit the run
+    # started from.
+    let bases = (
+        ["denkhaus-lab" "origin/denkhaus-lab"]
+        | each {|ref| do -i { git merge-base HEAD $ref } | default '' | str trim }
+        | compact
+    )
+    if ($bases | is-empty) {
+        print "skip: no world-branch merge base resolvable in this workspace"
+        return true
+    }
+    let base = ($bases | first)
+    # base -> working tree (staged + unstaged) is the real run diff;
+    # untracked files need git status (git diff cannot see them).
+    let touched = (
+        [(git diff --name-only $base -- .fabro/workflows/ | lines | compact)
+         (git status --porcelain -- .fabro/workflows/ | lines | compact | each {|l| $l | str substring 3..})]
+        | flatten
+        | uniq
+    )
+    if ($touched | is-not-empty) {
+        print "run diff touches workflow assets — platform work belongs in platform-namespace PRs (a9bb step 2):"
+        $touched | each {|p| print $"  ($p)"}
+        return false
+    }
+    let short = ($base | str substring 0..7)
+    print $"no workflow assets in run diff — base ($short)"
+    true
+}
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
 def main []: nothing -> nothing {
     if not (check-sync) { exit 1 }
+    if not (check-run-scope) { exit 1 }
     if not (check-scripts) { exit 1 }
     if not (check-large-files) { exit 1 }
     if not (check-gofmt) { exit 1 }

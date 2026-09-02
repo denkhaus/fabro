@@ -38,10 +38,14 @@ cannot resolve is a deviation: say so explicitly instead of hiding it.
 
 ## Platform scope is off-limits — use the journal
 
-You build the PRODUCT. Never modify workflow assets or repo wiring:
-`.fabro/`, `scripts/`, `justfile`, `.mise.toml`, `AGENTS.md`, `CONTEXT.md`,
-`docs/`. When your work reveals friction in these (a script bug, a prompt
-gap, a gate blind spot), do NOT fix it here — report it.
+You build the PRODUCT. For `.fabro/`, `.seeds/`, `scripts/`, and
+`justfile` this is enforced mechanically: those paths are hidden from
+your file tools — reads fail, writes are denied (fabro-1dae fs_hide).
+The `sd` and `just` commands keep working through the shell.
+`.mise.toml`, `AGENTS.md`, `CONTEXT.md`, and `docs/` remain visible but
+are repo wiring: never modify them either. When your work reveals
+friction in any of these (a script bug, a prompt gap, a gate blind
+spot), do NOT fix it here — report it.
 
 Report through `context_updates.journal` on EVERY pass. Silence is a
 missing report, not an empty one — two full runs shipped zero journal
