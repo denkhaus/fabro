@@ -1,0 +1,37 @@
+# Improve review — run 01M0SFEYVC9TD6MP816RHEBFQY
+
+- workflow: develop
+- branch integrated: this revisor pass (unmerged until approved)
+- status: failed (0.9 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-02 19:11+0000 by revisor `fabro_ask`
+
+---
+
+All evidence gathered — run events, worker log, and the workspace config files. Here is what actually happened, then the recommendations.
+
+**Run facts (from run events + worker log):** The graph itself worked perfectly: sandbox ready in 5.5s, `mise install` ran **95.5s** (event seq 15), `just bootstrap` 2.6s, planner ran 27.7s (25.4s inference, 0.97s tools, $0.019, 7,736 in / 235 out tokens), correctly discovered the tracker drained (6/6 seeds closed, `sd ready` count 0 in 323ms), routed "Tracker empty" → exit. Both branch pushes succeeded. Then publish failed: worker log shows the PR-content LLM call returned unparseable JSON (WARN, fallback used), and PR creation returned **403** (deterministic) → run marked `failed(publish_failed)`. End-to-end 2m41s; the only diff is 18 lines of journal churn.
+
+## Recommendations, by expected impact
+
+**1. Gate PR creation on a real product diff — and don't let publish failure flip a goal-complete run to `failed`.**
+Evidence: the run achieved its goal (planner verified all seeds closed) and its entire diff is `.fabro/journal/{start,planner}@1.json` — yet it tried to open a PR (with `auto_merge = true`, which would have squash-merged journal churn into the base branch) and its 403 turned a successful run into "failed". Change: `.fabro/project.toml` `[run.pull_request]` — skip PR creation when the diff excluding `.fabro/journal/` is empty; engine-side, demote `publish_failed` on an otherwise-green run to a warning, not a terminal failure. Effect: this exact run reports succeeded, no PR spam on no-op runs, ~11s of finalize time recovered.
+
+**2. Fix or preflight the GitHub credential — it can push but not open PRs.**
+Evidence: two `git.push` events succeeded with `token_provenance: "static"`, then `pull_request.failed: Authentication failed creating pull request (403)`, category *deterministic* (retry can't help). `project.toml` declares `pull_requests = "write"` but its own comment says PR creation "Requires the GitHub App integration" — the static token evidently lacks that scope. Change: provision the GitHub App credential (or set `pull_request.enabled = false` until then), and add an engine preflight at run start that verifies PR-create permission before any work runs. Effect: the failure surfaces in seconds at 08:51 instead of at 08:53:53 after the workflow — critical for real dev runs where hours of implement/gate/review would be lost to a terminal publish failure.
+
+**3. Make the baked-toolchain image actually eliminate `mise install` (95.5s → ~0s).**
+Evidence: setup event shows `mise install` at **95,457ms** — 61% of end-to-end time and 4× the ~24.5s the `Dockerfile.mise` header claims to have beaten. The versions in `.mise.toml` (bun 1.4.0, nushell 0.115.0, go 1.27.0, just 1.58.0) *exactly match* what the image bakes via `mise use -g`, so the "no-op check" premise failed — likely `MISE_DATA_DIR=/mise` isn't honored in the run container, so tools re-download to a different data dir. Note also the stale contradiction: `.mise.toml`'s header still says "image: fabro-runner:mise — lean base, no baked-in tools" while `project.toml`/`Dockerfile.mise` say tools are baked in. Change: `.fabro/Dockerfile.mise` + `[run.prepare]` in `.fabro/project.toml` — verify env propagation of `MISE_DATA_DIR`, add `mise ls` output to the prepare log when install exceeds a few seconds, and fix the stale `.mise.toml` comment. Effect: ~95s saved on *every* run; setup stops being the dominant cost.
+
+**4. Add a deterministic preflight node so tracker-empty runs never spend an agent call.**
+Evidence: the planner's entire 27.7s / $0.019 stage — including 1.5k tokens of irrelevant skills and 1.2k of memory in its context — concluded what `sd ready` answered in 323ms: `count: 0`. Change: `workflow.fabro` — insert `preflight` (script node, `sd ready --format json`) between `start` and `planner`, with an edge `preflight -> exit [label="Tracker empty"]` when count is 0 and no seed is in_progress; planner keeps the agent path for real work. Effect: no-op runs (which this was) complete in seconds with zero LLM cost; the planner agent is only invoked when there's something to plan.
+
+**5. Put the `sd` flag vocabulary in the planner prompt — one wasted LLM round-trip this run.**
+Evidence: tool call `sd list --status all` returned `✗ Invalid --status value: all. Valid: open|in_progress|closed`, costing an extra LLM turn of ~7.3s (llm.started 08:53:20.6 → first_output 08:53:27.8) plus tokens, before the correct `sd list --status closed` call. Change: `.fabro/workflows/develop/prompts/planner.md`, in the tracker-mechanics section: one line — "sd list --status accepts only open|in_progress|closed". Effect: one fewer inference round (~7s) on every planning pass that sanity-checks the tracker; also fewer spurious errors in transcripts.
+
+**6. Stop asking the PR-body generator for free-form JSON.**
+Evidence: worker WARN at 08:53:53 — "PR content generation failed; using deterministic fallback title and skeleton body… Failed to parse response as JSON: expected value at line 1 column 1". The publish path asked glm-5.3 for JSON without the enforcement (`output_schema=routing`) that in-graph nodes use; this run was saved only by the fallback. Change: engine `pipeline::pull_request` — use the same schema-enforced output tooling as agent nodes, or skip LLM generation entirely when the diff is journal-only (overlaps #1). Effect: removes a guaranteed warning from the publish path and ~5–10s of finalize latency.
+
+**7. Report conditionally-skipped stages honestly in progress.**
+Evidence: the snapshot reads "failed(publish_failed), 1 of 5 non-meta stages completed" — but start, planner, and exit all completed and the goal was verifiably achieved; implementer/tester/evidence/reviewer were *correctly* never visited. Change: engine run projection — mark nodes downstream of a taken terminal edge (planner → exit "Tracker empty") as "skipped (goal complete)" instead of uncompleted. Effect: a user glancing at the run no longer misreads a finished effort as a broken one — which is exactly the misread this run's status invites.
+
+One structural observation tying #1 and #4 together: this run's failure was entirely in the *publish epilogue*, not the graph. The seed-loop design (planner/implementer/gate/reviewer with cycle guards) got a correct answer with minimal work; the cheapest wins are around it — setup, no-op detection, and publish — not inside the loop itself.
