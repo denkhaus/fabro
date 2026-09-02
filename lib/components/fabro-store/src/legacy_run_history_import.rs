@@ -16,7 +16,7 @@ use tokio::sync::Barrier;
 use tracing::debug;
 
 use crate::keys::SlateKey;
-use crate::slate::CachedRunProjection;
+use crate::slate::ProjectedRun;
 use crate::{Database, EventPayload, RunProjectionReducer, RunSummaryStore, keys};
 
 /// Count-only observations about the legacy catalog and session indexes.
@@ -458,7 +458,7 @@ struct ValidatedLegacyRunEvent {
 struct ValidatedLegacyRunHistory {
     run_id:  RunId,
     events:  Vec<ValidatedLegacyRunEvent>,
-    current: CachedRunProjection,
+    current: ProjectedRun,
 }
 
 struct LegacyRunHistorySource {
@@ -534,7 +534,7 @@ impl LegacyRunHistorySource {
             .expect("a validated history contains at least one event")
             .envelope
             .seq;
-        let current = CachedRunProjection::from_projection(run_id, projection, last_seq);
+        let current = ProjectedRun::new(run_id, projection, last_seq);
         Ok(Some(ValidatedLegacyRunHistory {
             run_id,
             events,
@@ -1159,7 +1159,7 @@ fn require_exact_prefix(
 fn replay_destination(
     run_id: &RunId,
     events: &[(EventEnvelope, String)],
-) -> crate::Result<CachedRunProjection> {
+) -> crate::Result<ProjectedRun> {
     let Some((first, _event_json)) = events.first() else {
         return Err(crate::Error::InvalidEvent(
             "run projection requires an event".to_owned(),
@@ -1181,9 +1181,7 @@ fn replay_destination(
         .last()
         .expect("a destination history validated as nonempty")
         .seq;
-    Ok(CachedRunProjection::from_projection(
-        *run_id, projection, last_seq,
-    ))
+    Ok(ProjectedRun::new(*run_id, projection, last_seq))
 }
 
 fn usize_to_import_count(value: usize) -> Result<u64, LegacyRunHistoryImportFailure> {
@@ -1273,7 +1271,7 @@ mod tests {
         parse_source_event,
     };
     use crate::keys::SlateKey;
-    use crate::slate::CachedRunProjection;
+    use crate::slate::ProjectedRun;
     use crate::{
         Database, EventEnvelope, EventPayload, RunProjectionReducer, RunSummaryStore, keys,
         test_support as store_test_support,
@@ -1479,8 +1477,7 @@ mod tests {
             .map(|(_payload, envelope)| envelope.clone())
             .collect::<Vec<_>>();
         let projection = RunProjection::apply_events(&envelopes)?;
-        let current =
-            CachedRunProjection::from_projection(*run_id, projection, events.last().unwrap().0);
+        let current = ProjectedRun::new(*run_id, projection, events.last().unwrap().0);
         let mut transaction = pool.begin().await?;
         RunSummaryStore::insert_imported_run_on_connection(&mut transaction, &current).await?;
         for ((_, event_json), (payload, envelope)) in events.iter().zip(&decoded) {
@@ -1514,7 +1511,7 @@ mod tests {
             .map(|(_payload, envelope)| envelope.clone())
             .collect::<Vec<_>>();
         let projection = RunProjection::apply_events(&envelopes)?;
-        let current = CachedRunProjection::from_projection(*run_id, projection, next.0);
+        let current = ProjectedRun::new(*run_id, projection, next.0);
         let mut transaction = pool.begin().await?;
         RunSummaryStore::append_event_on_connection(
             &mut transaction,

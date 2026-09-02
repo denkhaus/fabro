@@ -3,8 +3,8 @@ use std::sync::LazyLock;
 
 use chrono::{DateTime, Utc};
 use fabro_types::{
-    BilledTokenCounts, EventEnvelope, Run, RunEvent, RunId, RunSize, RunStatusKind, RunTiming,
-    SessionId, StageId, timing,
+    BilledTokenCounts, EventEnvelope, Run, RunEvent, RunId, RunProjection, RunSize, RunStatusKind,
+    RunTiming, SessionId, StageId, timing,
 };
 use sqlx::pool::PoolConnection;
 use sqlx::query::Query;
@@ -12,8 +12,8 @@ use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
 use sqlx::{Connection as _, QueryBuilder, Row as _, Sqlite, SqlitePool, Transaction};
 use strum::VariantArray as _;
 
-use crate::run_state::{build_summary, projected_billing};
-use crate::slate::CachedRunProjection;
+use crate::run_state::{RunProjectionReducer, build_summary, projected_billing};
+use crate::slate::ProjectedRun;
 use crate::{Error, EventPayload, Result, keys};
 
 const INSERT_RUN_SQL: &str = r"
@@ -288,14 +288,14 @@ ON CONFLICT(singleton) DO NOTHING
     }
 
     #[cfg(test)]
-    pub(crate) async fn upsert_projection(&self, entry: &CachedRunProjection) -> Result<()> {
+    pub(crate) async fn upsert_projection(&self, entry: &ProjectedRun) -> Result<()> {
         let record = PreparedRunSummary::from_entry(entry);
         let mut connection = self.pool.acquire().await?;
         upsert_run_on_connection(&mut connection, &record).await
     }
 
     #[cfg(test)]
-    pub(crate) async fn reconcile(&self, entries: &[CachedRunProjection]) -> Result<()> {
+    pub(crate) async fn reconcile(&self, entries: &[ProjectedRun]) -> Result<()> {
         use std::collections::{HashMap, HashSet};
 
         let mut transaction = self.pool.begin().await?;
@@ -349,6 +349,22 @@ ON CONFLICT(singleton) DO NOTHING
     pub(crate) async fn head(&self, run_id: &RunId) -> Result<Option<u32>> {
         let mut connection = self.acquire().await?;
         select_run_head(&mut connection, run_id).await
+    }
+
+    /// Replays one run's canonical history from one validated SQLite snapshot,
+    /// returning `None` when the run does not exist.
+    pub(crate) async fn load_projection(&self, run_id: &RunId) -> Result<Option<ProjectedRun>> {
+        let events = match self.list_events_for_run(run_id).await {
+            Ok(events) => events,
+            Err(Error::RunNotFound(_)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        let last_seq = events
+            .last()
+            .map(|event| event.seq)
+            .ok_or_else(|| Error::InvalidEvent(format!("run {run_id} has no run.created event")))?;
+        let projection = RunProjection::apply_events(&events)?;
+        Ok(Some(ProjectedRun::new(*run_id, projection, last_seq)))
     }
 
     pub(crate) async fn list_events_for_run(&self, run_id: &RunId) -> Result<Vec<EventEnvelope>> {
@@ -638,7 +654,7 @@ FROM runs",
 impl RunSummaryStore {
     pub(crate) async fn insert_first_event_on_connection(
         connection: &mut SqliteConnection,
-        entry: &CachedRunProjection,
+        entry: &ProjectedRun,
         payload: &EventPayload,
     ) -> Result<EventEnvelope> {
         let record = PreparedRunSummary::from_entry(entry);
@@ -657,7 +673,7 @@ impl RunSummaryStore {
     pub(crate) async fn append_event_on_connection(
         connection: &mut SqliteConnection,
         expected_last_seq: u32,
-        entry: &CachedRunProjection,
+        entry: &ProjectedRun,
         payload: &EventPayload,
     ) -> Result<EventEnvelope> {
         let next_seq = next_event_seq_after(expected_last_seq)?;
@@ -734,7 +750,7 @@ impl RunSummaryStore {
 
     pub(crate) async fn insert_imported_run_on_connection(
         connection: &mut SqliteConnection,
-        entry: &CachedRunProjection,
+        entry: &ProjectedRun,
     ) -> Result<()> {
         let record = PreparedRunSummary::from_entry(entry);
         ensure_entry_identity(entry, &record, entry.last_seq)?;
@@ -768,7 +784,7 @@ impl RunSummaryStore {
 
     pub(crate) async fn verify_current_run_on_connection(
         connection: &mut SqliteConnection,
-        entry: &CachedRunProjection,
+        entry: &ProjectedRun,
     ) -> Result<()> {
         let record = PreparedRunSummary::from_entry(entry);
         ensure_entry_identity(entry, &record, entry.last_seq)?;
@@ -1004,7 +1020,7 @@ struct PreparedRunSummary {
 }
 
 impl PreparedRunSummary {
-    fn from_entry(entry: &CachedRunProjection) -> Self {
+    fn from_entry(entry: &ProjectedRun) -> Self {
         let mut run = build_summary(&entry.projection, &entry.run_id);
         if run.timing.is_none() {
             let at = run
@@ -1036,7 +1052,7 @@ impl PreparedRunSummary {
 }
 
 fn ensure_entry_identity(
-    entry: &CachedRunProjection,
+    entry: &ProjectedRun,
     record: &PreparedRunSummary,
     seq: u32,
 ) -> Result<()> {
@@ -1544,8 +1560,8 @@ mod tests {
         INSERT_EVENT_SQL, RunSummaryListQuery, RunSummarySort, RunSummarySortDirection,
         RunSummaryStore, RunSummaryVisibility, decode_event_row,
     };
-    use crate::slate::CachedRunProjection;
-    use crate::{Error, EventPayload, test_support as store_test_support};
+    use crate::slate::ProjectedRun;
+    use crate::{Error, EventPayload, RunProjectionReducer, test_support as store_test_support};
 
     fn dt(value: &str) -> DateTime<Utc> {
         value.parse().unwrap()
@@ -1580,8 +1596,8 @@ mod tests {
         )
     }
 
-    fn entry(projection: RunProjection, last_seq: u32) -> CachedRunProjection {
-        CachedRunProjection::from_projection(projection.spec.run_id, projection, last_seq)
+    fn entry(projection: RunProjection, last_seq: u32) -> ProjectedRun {
+        ProjectedRun::new(projection.spec.run_id, projection, last_seq)
     }
 
     async fn store() -> (tempfile::TempDir, RunSummaryStore) {
@@ -1918,6 +1934,94 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(sequences, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn load_projection_replays_committed_events_and_reports_missing_run() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 31);
+        let first = entry(projection(id, "created", created_at), 1);
+        let first_payload = created_payload(&id);
+
+        let mut transaction = store.pool.begin().await.unwrap();
+        let first_envelope = RunSummaryStore::insert_first_event_on_connection(
+            &mut transaction,
+            &first,
+            &first_payload,
+        )
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+
+        let second = entry(projection(id, "updated", created_at), 2);
+        let second_payload = sql_event_payload(
+            &id,
+            "run.title.updated",
+            None,
+            None,
+            None,
+            serde_json::json!({ "title": "updated" }),
+        );
+        let mut transaction = store.pool.begin().await.unwrap();
+        let second_envelope = RunSummaryStore::append_event_on_connection(
+            &mut transaction,
+            1,
+            &second,
+            &second_payload,
+        )
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+
+        let expected = RunProjection::apply_events(&[first_envelope, second_envelope]).unwrap();
+
+        let loaded = store.load_projection(&id).await.unwrap().unwrap();
+        assert_eq!(loaded.run_id, id);
+        assert_eq!(loaded.last_seq, 2);
+        assert_eq!(
+            serde_json::to_value(loaded.projection.as_ref()).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+
+        let missing = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 32);
+        assert!(store.load_projection(&missing).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn load_projection_reports_removed_events_without_poisoning_following_reads() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let broken_id = run_id(created_at.timestamp_millis().cast_unsigned(), 33);
+        let healthy_id = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 34);
+
+        for id in [broken_id, healthy_id] {
+            let current = entry(projection(id, "created", created_at), 1);
+            let mut transaction = store.pool.begin().await.unwrap();
+            RunSummaryStore::insert_first_event_on_connection(
+                &mut transaction,
+                &current,
+                &created_payload(&id),
+            )
+            .await
+            .unwrap();
+            transaction.commit().await.unwrap();
+        }
+        store.test_delete_run_events(&broken_id).await.unwrap();
+
+        assert!(matches!(
+            store.load_projection(&broken_id).await,
+            Err(Error::RunHeadMismatch {
+                expected_last_seq: 1,
+                actual_last_seq: None,
+                ..
+            })
+        ));
+
+        let loaded = store.load_projection(&healthy_id).await.unwrap().unwrap();
+        assert_eq!(loaded.run_id, healthy_id);
+        assert_eq!(loaded.last_seq, 1);
+        assert_eq!(loaded.projection.title, "created");
     }
 
     #[tokio::test]
