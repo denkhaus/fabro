@@ -1041,6 +1041,11 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
                 error.to_string(),
                 "target_environment_unsupported",
             ),
+            EnvironmentSelectionError::AutomaticPullRequestUnsupported => intent_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                error.to_string(),
+                "pull_request_environment_unsupported",
+            ),
             EnvironmentSelectionError::ProviderDisabled { .. }
             | EnvironmentSelectionError::MissingCredential { .. } => intent_error(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -1117,6 +1122,15 @@ async fn validate_intent_environment(
     };
     if image_incompatible || target_incompatible {
         return Err(EnvironmentSelectionError::TargetUnsupported { detail });
+    }
+    if configured_provider == SandboxProviderKind::Local
+        && settings
+            .run
+            .pull_request
+            .as_ref()
+            .is_some_and(|pull_request| pull_request.enabled)
+    {
+        return Err(EnvironmentSelectionError::AutomaticPullRequestUnsupported);
     }
     if let Some(detail) =
         run_manifest::sandbox_provider_policy_error(&state.server_settings(), effective_provider)

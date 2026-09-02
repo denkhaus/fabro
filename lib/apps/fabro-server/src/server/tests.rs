@@ -4252,6 +4252,123 @@ async fn post_runs_run_intent_canonicalizes_and_persists_a_local_folder_target()
 }
 
 #[tokio::test]
+async fn post_runs_run_intent_rejects_automatic_pull_requests_for_local_environment() {
+    let target = tempfile::tempdir().unwrap();
+    let state = local_test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(
+        &state,
+        MINIMAL_DOT,
+        Some("_version = 1\n[run.pull_request]\nenabled = true\n"),
+    )
+    .await;
+
+    let response =
+        post_run_intent_response(&app, folder_intent(workflow_version_id, target.path())).await;
+    let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+
+    assert_eq!(
+        body["errors"][0]["code"],
+        "pull_request_environment_unsupported"
+    );
+    assert_eq!(
+        body["errors"][0]["detail"],
+        "automatic pull requests require a clone-based Docker or Daytona environment; disable run.pull_request.enabled for Local execution"
+    );
+    assert!(state.runs.lock().expect("runs lock poisoned").is_empty());
+    assert!(
+        state
+            .stores
+            .run_summaries
+            .list_identities()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_accepts_disabled_pull_requests_for_local_environment() {
+    let target = tempfile::tempdir().unwrap();
+    let state = local_test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(
+        &state,
+        MINIMAL_DOT,
+        Some("_version = 1\n[run.pull_request]\nenabled = false\n"),
+    )
+    .await;
+
+    let body = post_run_manifest(&app, folder_intent(workflow_version_id, target.path())).await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+    let projection = state
+        .stores
+        .runs
+        .open_run_reader(&run_id)
+        .await
+        .unwrap()
+        .state()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        projection.spec.settings.run.environment.provider,
+        EnvironmentProvider::Local
+    );
+    assert!(projection.spec.settings.run.pull_request.is_none());
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_accepts_automatic_pull_requests_for_configured_docker_dry_run() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(
+        &state,
+        MINIMAL_DOT,
+        Some("_version = 1\n[run.pull_request]\nenabled = true\n"),
+    )
+    .await;
+
+    let body = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": {
+                "kind": "git",
+                "repo": "fabro-sh/fabro",
+                "branch": "main"
+            },
+            "args": { "dry_run": true }
+        }),
+    )
+    .await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+    let projection = state
+        .stores
+        .runs
+        .open_run_reader(&run_id)
+        .await
+        .unwrap()
+        .state()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        projection.spec.settings.run.environment.provider,
+        EnvironmentProvider::Docker
+    );
+    assert_eq!(projection.spec.settings.run.execution.mode, RunMode::DryRun);
+    assert!(
+        projection
+            .spec
+            .settings
+            .run
+            .pull_request
+            .is_some_and(|pull_request| pull_request.enabled)
+    );
+}
+
+#[tokio::test]
 async fn post_runs_run_intent_observes_folder_git_metadata_without_a_remote_call() {
     let dir = tempfile::tempdir().unwrap();
     let repo = git2::Repository::init(dir.path()).unwrap();
