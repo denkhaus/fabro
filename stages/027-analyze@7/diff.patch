@@ -1,0 +1,70 @@
+diff --git a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
+index 6ff9763..4ecc566 100644
+--- a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
++++ b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
+@@ -24,3 +24,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"file","visit":6,"status":"succeeded","ts":"2026-09-02T19:24:52Z","data":{"painpoints":[],"observations":["Findings 1 (PR publish downgrade), 3 (preamble budget), 4 (skill discovery), and 5 (sd prime ban) were merged as near-duplicates of fabro-6a77/fabro-696c, fabro-83f9/fabro-699f, fabro-2c81, and fabro-3814 respectively; the planner-side sd prime ban should be folded into fabro-3814 when implemented."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"approve","visit":6,"status":"succeeded","ts":"2026-09-02T19:25:09Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"select","visit":7,"status":"succeeded","ts":"2026-09-02T19:25:31Z","data":{"painpoints":[],"observations":["Selected oldest unrevised terminal run with live sandbox; 6 runs already revised via `.fabro/revisions/<run-id>.md` markers; 19 older terminal runs remain unrevised but blocked, no live sandbox; 1 non-terminal run skipped."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"analyze","visit":7,"status":"succeeded","ts":"2026-09-02T19:29:25Z","data":{"painpoints":[{"text":"Engine run projection reports progress as stage completions over node count, so this finished run displayed '6 of 5 non-meta stages completed' (>100%) because planner completes twice per seed (claim, then close). Fix: count distinct nodes in the denominator or render completions and nodes separately. Platform criticism — route via painpoint channel, not workflow asset edits."}],"observations":["Review of run 01M0TKB7H7DCWCR8TZY6SZPXD2 persisted verbatim to `.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md`; 6 seed candidates distilled. Cost concentrated in implementer + reviewer (73% of active time, 74% of cost); keep-as-is per analyst: file-based prompts (82% token cache hit), PASS/FAIL per-criterion summary, implementer reasoning_effort=low.","No failure path was exercised in this run (0 retries, one review verdict, gate green first try), so Blocked edges, the once-per-seed 'Verification blocked' re-capture, and red-gate bounce behavior remain unvalidated; prioritize revising a future run that exercises them."]}}
+diff --git a/.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md b/.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md
+new file mode 100644
+index 0000000..0417c3e
+--- /dev/null
++++ b/.fabro/reviews/develop/01M0TKB7H7DCWCR8TZY6SZPXD2.md
+@@ -0,0 +1,55 @@
++# Improve review — run 01M0TKB7H7DCWCR8TZY6SZPXD2
++
++- workflow: develop
++- branch integrated: this revisor pass (unmerged until approved)
++- status: succeeded (5.8 min, revisor pass — reason and cost in run detail)
++- generated: 2026-09-02 19:28+0000 by revisor `fabro_ask`
++
++---
++
++All findings below are grounded in this run's events (stage timings, billing, prompts, checkpoints). Vital stats first, for scale: one seed (fabro-cfb6), 7 stage completions, 299s wall / 255s active (93% inference, 18.7s tools), $0.2258 total, 0 retries, 82% of tokens served from cache. Implementer + reviewer = 73% of active time and 74% of cost — that's where the recommendations concentrate.
++
++## Recommendations, ordered by expected impact
++
++**1. Cap the reviewer's redundant live re-verification — `.fabro/workflows/develop/prompts/reviewer.md`**
++Evidence: reviewer@1 burned 61.0s of its 62.2s active time on inference (tools: 1.2s) rebuilding the binary, re-running `go test`/`go vet`, and reproducing README outputs "byte-for-byte" — yet every fact it re-established was already pinned by exact-string test assertions visible in the evidence diff (e.g. `TestRunSeed "negative seed rejected"`) and by the green tester stage ~30s earlier. Its verdict found zero discrepancies.
++Change: add a "verification economy" clause: judge from the capture; use tools only for claims the capture *cannot* show (unread blob refs, untracked files, gate doubt); never re-run a check whose exact assertion already appears in the diff.
++Effect: review cycle ~62s → ~35–40s, ~$0.02 saved per seed; independent verification retained where it adds information.
++
++**2. Stop the implementer running the full gate; make the spec re-fetch conditional — `prompts/implementer.md`**
++Evidence: implementer@1 is the dominant stage (125s active, 111s of it inference; $0.109 = 48% of run cost). Its own summary admits "Smoke checks and `just qualitygate` both green" — a full gate run that prompt step 4 forbids — plus live CLI checks of every criterion, all re-verified again by tester@1 (1.03s, green). Its *first* tool call was `sd show fabro-cfb6`, re-fetching the spec the planner had distilled 60s earlier, because step 1 mandates it while the Input section declares the brief "authoritative" — two contradictory sources of truth.
++Change: (a) replace "a quick smoke check is fine" with a hard whitelist (build + affected test package only; never `just qualitygate`); (b) make step 1 conditional ("fetch `sd show` only if the brief is thin or ambiguous").
++Effect: fewer agent turns per pass — ~25–40% off implementer inference (~30–45s, ~$0.03/seed) and the brief/spec authority ambiguity disappears.
++
++**3. Raise `preamble_budget_kb` from 12 to 24 — graph attr in `workflow.fabro`**
++Evidence: at 12KB, *all three* of the reviewer's primary inputs arrived as blob refs in its prompt (evidence capture 14.3KB, `current_seed_brief` 1.5KB, `implementation_summary` 2.0KB — visible in the reviewer@1 stage prompt), so "judge primarily from context" first required sandbox file reads (`read_file` invoked) — extra turns before any analysis. Actual inline need ≈ 18KB against a 1M-token window.
++Change: `preamble_budget_kb=24`.
++Effect: brief + summary + capture render inline; saves 2–3 tool round-trips per review and lets you delete the prompt's blob-ref lecturing.
++
++**4. Give tester and evidence distinct output context keys — `scripts/evidence.nu` / command-node keying in `workflow.fabro`**
++Evidence: both command nodes write the same key `command.output` — tester wrote the gate log (blob `9526fbd7…`, checkpoint seq 199), then evidence silently overwrote it (blob `b87a8083…`, seq 209). The reviewer prompt already papers over this ("the gate's own output is NOT part of the evidence capture; read the tester stage section") — i.e., the context key is known-unreliable. This is the run's one latent error-handling defect; it didn't bite only because everything was green.
++Change: evidence writes `evidence.output` (or evidence.nu embeds the last gate log in its integrity header).
++Effect: no last-writer-wins clobber; on a red-gate bounce or "Verification blocked" re-capture, the gate result is always readable from context instead of preamble archaeology.
++
++**5. Add a `review_notes` channel for non-blocking findings — `prompts/reviewer.md` + `prompts/planner.md`**
++Evidence: the reviewer's only substantive observation — "the pretty branch calls `Fib(seed)` twice … a local var would suffice" — was explicitly "not a deviation", so Changes requested didn't apply, and the painpoint channel is scoped to loop friction, not product code. The observation was lost at approval.
++Change: Approved JSON gains optional `context_updates.review_notes`; the planner folds them into a future brief or parks them as a low-priority polish seed.
++Effect: non-blocking hygiene findings accumulate durably; over a multi-seed effort they become one tractable cleanup seed instead of evaporating.
++
++**6. Fix the progress-counter overshoot — engine run projection (source of this run's "6 of 5 non-meta stages completed")**
++Evidence: the graph has 5 non-meta stages, but planner completes twice per seed (claim, then close/tracker-empty — `node_visits: planner: 2`), so the finished run reports >100% progress.
++Change: count distinct nodes in the denominator, or render "stage completions (6) / nodes (5)".
++Effect: progress never exceeds 100% — exactly at the moment users check whether the run succeeded.
++
++**7. Planner hygiene: don't duplicate the brief in prose; don't double-confirm an empty tracker — `prompts/planner.md`**
++Evidence: planner@1 emitted the full 1.5KB bullet brief *twice* (as prose before the JSON and inside `current_seed_brief`) despite the prompt's "one short paragraph maximum" — `response.planner` carries both copies through every checkpoint. planner@2 ran `sd list --format json` after `sd ready` had already returned nothing, which the prompt's own sd table forbids.
++Change: make the closing rule absolute ("prose MUST NOT repeat the brief — routing rationale only") and move the sd-list restriction into the decision order ("`sd ready` empty + nothing in progress ⇒ route Tracker empty; do not run `sd list`").
++Effect: ~1.5KB less carried context per cycle, one turn (~5s) off every terminal planner pass — modest but free.
++
++## Keep as-is (working, measured here)
++- File-based prompts (`@prompts/*.md`) + stable per-node system prompts: 331k of 402k tokens were cache reads — don't inline-edit prompts per run.
++- The PASS/FAIL per-criterion report in `implementation_summary`: it's what made a first-pass approval possible; don't trim it when you trim implementer verification (rec 2 targets *re-running* checks, not reporting them).
++- `implementer reasoning_effort=low`: 1,325 reasoning tokens for a full feature + tests — the graph comment's claim holds.
++
++## Limits of this analysis
++No failure path was exercised (0 retries, one review verdict, gate green first try, `seed_cycles` never exceeded 2), so the Blocked edges, the once-per-seed "Verification blocked" re-capture, and red-gate bounce behavior remain unvalidated by evidence — I did not recommend changes to them beyond the output-key fix (rec 4).
