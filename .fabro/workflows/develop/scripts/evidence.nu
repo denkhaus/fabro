@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
-# Capture review evidence for the reviewer (read-only by policy; tools
-# available for verification).
+# Capture review evidence for the reviewer (read-only by capability and
+# policy since fabro-1dae; tools available for verification).
 #
 # PIPE (agent-reviewer era, run 01M0T2GW): the reviewer is an agent node
 # with real tools, and the engine materializes demoted values as blob
