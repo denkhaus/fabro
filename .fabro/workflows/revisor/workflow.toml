@@ -1,0 +1,22 @@
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# fabro-7461 (ADR-0011): the revisor's agents hold the inspection tool
+# catalog. fabro_runs_list (select) and fabro_ask (analyze) additionally
+# require the graph's inspects attribute; node-level fabro_tools keeps
+# the grant least-privilege per stage.
+[run.agent]
+fabro_tools = true
+
+# Stage journal (same contract as develop, seed fabro-176b): one durable
+# JSON line per stage execution, engine provenance, checkpointed with the
+# run. Non-blocking; failures must never affect the run.
+[[run.hooks]]
+name = "stage-journal"
+event = "stage_complete"
+script = "nu .fabro/workflows/revisor/scripts/stage-journal.nu"
+blocking = false
+timeout = "10s"
+sandbox = true
