@@ -22,8 +22,8 @@ Write the answer to `.fabro/reviews/develop/<run-id>.md` with this header (same 
 # Improve review — run <run-id>
 
 - workflow: develop
-- branch integrated: (unknown to you — write: this revisor pass)
-- status: <revisor_target_status>
+- branch integrated: this revisor pass (unmerged until approved)
+- status: <revisor_target_status> (<revisor_target_wall>, revisor pass — reason and cost in run detail)
 - generated: <current date, YYYY-MM-DD HH:MM+ZZZZ> by revisor `fabro_ask`
 
 ---
@@ -39,11 +39,13 @@ Convert the answer into `revision_findings`: an array of seed candidates. A cand
 
 - One `fabro_ask` call per pass. If it errors, route failure — never retry by re-asking with rewritten wording.
 - Writes go to `.fabro/reviews/` only (the engine enforces this).
-- The analyst answer may contain file paths: wrap any absolute path you re-emit in backticks.
+- Output hygiene — hard rule: wrap every absolute path in backticks in every text you emit. Never write a bare slash-word surrounded by spaces — later agent stages parse such tokens as skill references and crash on them.
 
 ## Journal — every pass answers
 
-{"journal": {"painpoints": [], "observations": ["at least one; 'none' valid"]}}
+Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:
+
+{"journal": {"painpoints": [{"text": "<what hurt, where, evidence, fix idea>"}], "observations": ["<what the next analyst should know; 'none' is valid when unremarkable>"]}}
 
 ## Outcome contract
 
@@ -61,4 +63,4 @@ End with exactly one JSON object:
   }
 }
 
-The JSON object must be the final thing in your response. Keep everything before it to two short paragraphs maximum.
+The JSON object must be the final thing in your response. Keep everything before it to one short paragraph of reasoning maximum.

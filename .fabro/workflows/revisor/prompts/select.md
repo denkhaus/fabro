@@ -8,10 +8,14 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 ## Selection procedure
 
-1. Call `fabro_runs_list` with `{"workflow": "develop"}`. The result lists runs with id, status, and timing. Terminal statuses (succeeded, failed, or any terminal classification) qualify; a run that is still running, waiting, or scheduled does NOT — skip it.
+1. Call `fabro_runs_list` with `{"workflow": "develop"}`. The result lists runs with id, status, created/started/completed timestamps, and goal. Terminal statuses (succeeded, failed, or any terminal classification) qualify; a run that is still running, waiting, or scheduled does NOT — skip it. Derive the wall time from started_at..completed_at when both are present; otherwise "unknown".
 2. A run is ALREADY REVISED when a marker file `.fabro/revisions/<run-id>.md` exists in the worktree (list the directory with your file tools; markers arrive merged from previous revisor passes).
 3. Among unrevised terminal runs, pick the OLDEST by creation time — evidence ages fastest, and oldest-first keeps the marker set growing monotonically.
 4. Exactly ONE run per pass. Do not batch.
+
+## Hygiene — hard rule
+
+Wrap every absolute path in backticks (e.g. `.fabro/revisions/<run-id>.md`) in every text you emit. Never write a bare slash-word surrounded by spaces — later agent stages parse such tokens as skill references and crash on them.
 
 ## Ramp discipline (ADR-0011, manual-start phase)
 
@@ -41,6 +45,7 @@ Run selected:
     "revisor_target_run_id": "<run id>",
     "revisor_target_title": "<its title or goal, short>",
     "revisor_target_status": "<its terminal status>",
+    "revisor_target_wall": "<e.g. 4.9 min, or unknown>",
     "journal": {"painpoints": [], "observations": ["none"]}
   }
 }
