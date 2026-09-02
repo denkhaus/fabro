@@ -1,0 +1,123 @@
+digraph Revisor {
+    graph [
+        goal="Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+        // ADR-0011 / fabro-7461: the capability grant, named neutrally —
+        // this workflow inspects develop's runs (read-only enumeration +
+        // Ask-Fabro authority). Enforced at token, tool, and server layers.
+        inspects="develop",
+        rankdir=LR,
+        max_node_visits=30,
+        // Same posture as develop (fabro-45d0 measured there): bounded
+        // preambles, deterministic cycle counters.
+        preamble_budget_kb=24,
+        cycle_counter_reset_key="revisor_target_run_id"
+    ]
+
+    start [shape=Mdiamond, label="Start"]
+    // Exit kinds (fabro-b907, ADR-0010): deadlock -> human decides (run
+    // branch stays unmerged, no base marker — the run counts as unrevised
+    // and a later pass may re-pick it; known ramp edge, ADR-0011
+    // defer-while-active notes the cron-phase fix); soft -> next pass
+    // re-enters. Natural completion = approved revision, merged by the
+    // host-side integrate step (run_workflow.nu PR + auto-merge).
+    exit  [shape=Msquare, label="Exit"]
+
+    // Select: pick the oldest unrevised TERMINAL develop run. Markers are
+    // merged .fabro/revisions/<run-id>.md files — absence on this branch
+    // means unrevised. ONE run per pass keeps each revision reviewable
+    // (ramp decision, fabro-7461). Read-only node: fs_write empty,
+    // product code and tracker hidden; fabro_runs_list is the only
+    // fabro tool it needs.
+    select [
+        label="Select",
+        prompt="@prompts/select.md",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=15,
+        retry_policy="standard",
+        reasoning_effort="low",
+        preamble_stages_ignore="select,analyze,file",
+        fs_hide="src/**,docs/**,.seeds/**",
+        fs_write="",
+        fabro_tools="fabro_runs_list",
+        context_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,journal"
+    ]
+
+    // Analyze: the intellectual core. ONE fabro_ask call with the proven
+    // improve.md question verbatim (no untested prompt — ramp fork 4),
+    // grounded at the selected run. The answer is persisted in the manual
+    // review shape so the artifact stays diff-compatible with
+    // run_workflow.nu output. Writes are limited to the reviews tree;
+    // the analyst distills revision_findings (seed candidates) as a
+    // context key for the bookkeeper.
+    analyze [
+        label="Analyze",
+        prompt="@prompts/analyze.md",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=10,
+        retry_policy="standard",
+        reasoning_effort="high",
+        preamble_stages_ignore="select,analyze,file",
+        fs_hide="src/**,docs/**,.seeds/**",
+        fs_write=".fabro/reviews/**",
+        fabro_tools="fabro_ask",
+        context_allow_keys="revision_findings,journal"
+    ]
+
+    // File: deterministic bookkeeping. sd create per finding (English
+    // seeds, one change each), the revision report doubles as the
+    // bookkeeping marker (.fabro/revisions/<run-id>.md — no marker on the
+    // base branch = run not yet revised), then git add+commit of exactly
+    // the artifact paths via shell. The run-scope gate rule (a9bb step 2)
+    // mechanically blocks any workflow-asset touch from this run too —
+    // the revisor never changes code or its own definition.
+    file [
+        label="File",
+        prompt="@prompts/file.md",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=10,
+        retry_policy="standard",
+        reasoning_effort="low",
+        preamble_stages_ignore="select,analyze,file",
+        fs_hide="src/**,docs/**",
+        fs_write=".fabro/revisions/**",
+        fabro_tools="",
+        context_allow_keys="filed_seed_ids,journal"
+    ]
+
+    // Approve: the HITL control (ADR-0011: auto-merge from day one, the
+    // interview gate is the control — first production hexagon gate).
+    // Fail-closed by engine semantics: an unanswered gate routes only via
+    // the explicit failed edge below. Approval releases the run branch to
+    // the host-side integrate; rejection leaves everything unmerged.
+    approve [
+        shape=hexagon,
+        label="Approve filing + merge"
+    ]
+
+    start -> select
+
+    // Tracker-clean analog of develop's "Tracker empty": a plain natural
+    // completion, not an error.
+    select -> exit [label="Nothing to revise", condition="preferred_label=\"Nothing to revise\""]
+    select -> exit [label="Selector failed", condition="outcome=failed"]
+    select -> analyze [label="Run selected"]
+
+    // A zero-finding analysis is a legitimate outcome: file writes the
+    // marker-only revision (healthy run, no seeds).
+    analyze -> file [label="Findings ready", condition="outcome=succeeded"]
+    // Ask-Fabro hiccup (session creation, analyst failure): soft exit —
+    // the run stays unrevised, the next pass retries it.
+    analyze -> exit [kind="soft", label="Ask failed (next pass retries)"]
+
+    file -> approve [label="Staged", condition="outcome=succeeded"]
+    // Bookkeeping failure (sd/git error): nothing staged, nothing merged.
+    file -> exit [kind="soft", label="Bookkeeping failed (nothing merged)"]
+
+    approve -> exit [label="[A] Approved"]
+    approve -> exit [kind="deadlock", label="[R] Rejected (run stays unmerged, human decides)"]
+    // Unanswered gate: fail-closed, nothing merges, next pass re-enters.
+    approve -> exit [condition="outcome=failed", label="Unanswered (fail-closed)"]
+}
