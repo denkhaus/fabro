@@ -71,6 +71,13 @@ decision, not an accident - it needs the user plus an ADR.
   workflow (`just run <workflow> ...`); quality gates run inside the run.
 - ADR-0008: change graph, prompts, scripts, and settings as ONE unit
   in the same change.
+- Apply file edits as single-flow assert->write cells (fabro-8d30a,
+  2026-09-02): a Python edit cell whose write_text sits in an early-exit
+  branch silently drops the edit — the OpenAPI path block and a struct
+  field were both lost this way and only the compiler/codegen revealed
+  them minutes later. One cell, one write, assert before it; never a
+  conditional write path. Verify with a grep of the written anchor
+  immediately after the cell.
 - Fork-to-edge checklist before the first commit (fabro-7461, 2026-09-02):
   when the user approved a design with numbered forks (loop, fail modes,
   gate routing), re-check EACH fork is literally visible in the artifact
