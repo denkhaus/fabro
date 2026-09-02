@@ -9,6 +9,7 @@ domains:
   testing: {}
   gofib: {}
   develop-workflow: {}
+  lab: {}
 governance:
   max_entries: 100
   warn_entries: 150
