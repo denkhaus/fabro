@@ -7,6 +7,12 @@ digraph Develop {
         // the 1M window while a 14 KB evidence capture got blob-ref'd,
         // forcing a tool round-trip per review. The window is not the
         // constraint; the blob detour is (first auto-merge run review).
+        // Gate measurement (run 01M11P68SHF, fabro-29f7 step 3): with
+        // scoping + budget, stage.prompt sizes stayed CONSTANT across 3
+        // review cycles (planner 12.7-13.0k, implementer 13.2-13.5k,
+        // reviewer 12.8-13.7k chars) — the old linear growth (25.6k by
+        // cycle 3) is gone. Residual duplication (per-visit stage
+        // sections) is engine-side dedup work, not a budget problem.
         preamble_budget_kb=24,
         // Deterministic cycle guards (fabro-45d0): engine injects
         // seed_cycles = { node -> completed visits since current_seed_id
@@ -41,7 +47,18 @@ digraph Develop {
         goal_gate=true,
         retry_policy="standard",
         reasoning_effort="high",
-        preamble_stages_ignore="planner,implementer,evidence"
+        preamble_stages_ignore="planner,implementer,evidence",
+        // fabro-1dae (stage envelope fs scope): planning never touches
+        // platform assets — the tracker is reached via the sd CLI (shell
+        // is the documented escape hatch), never by file tools, and the
+        // planner writes no files at all (context_updates + sd only).
+        fs_hide=".fabro/**,.seeds/**,scripts/**,justfile",
+        fs_write="",
+        // fabro-900e (envelope write side): the planner's context_updates
+        // contract is stable — declare it so the preamble_allow_keys lint
+        // (fabro-e47c) can prove producers, and drift (an undocumented new
+        // key) drops visibly with a notice instead of leaking silently.
+        context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal"
     ]
 
     // Implementer: builds exactly what the claimed seed specifies.
@@ -65,7 +82,18 @@ digraph Develop {
         fidelity="summary:high",
         reasoning_effort="low",
         retry_policy="standard",
-        preamble_stages_ignore="planner,reviewer,implementer"
+        preamble_stages_ignore="planner,reviewer,implementer",
+        // fabro-1dae: same platform scope as the planner — hidden means no
+        // read, no discovery, no write through file tools. fs_write stays
+        // unset: hidden paths are unwritable anyway, and product seeds may
+        // legitimately touch files outside src/ (README, fixtures). Gate
+        // re-runs keep working through the shell escape hatch.
+        fs_hide=".fabro/**,.seeds/**,scripts/**,justfile",
+        // fabro-900e: stable context_updates contract (see planner).
+        // lesson_capture added by seed fabro-f831 (run 01M1EGK6J8): the
+        // implementer prompt REQUIRES the mx-id-or-skip answer as data —
+        // the envelope dropped it once (visible notice) until declared here.
+        context_allow_keys="implementation_summary,lesson_capture,journal"
     ]
 
     // Tester: deterministic quality gate, no agent. The host project defines
@@ -127,14 +155,26 @@ digraph Develop {
     // costliest stage (first auto-merge run). The inline PASS/FAIL report
     // and the evidence capture do the heavy lifting; low keeps live
     // verification (blob reads, byte-compares) which is tool work, not
-    // reasoning. Re-measure next run; revert to high if verification
-    // quality degrades (false approvals, more Verification-blocked).
+    // reasoning. Re-measured run 01M11P68SHF (3 seeds, 3/3 first-pass
+    // approvals): 346-595 reasoning tokens, $0.043-$0.078 per review —
+    // locked in as the steady state.
     reviewer [
         label="Reviewer",
         prompt="@prompts/reviewer.md",
         fidelity="summary:high",
         reasoning_effort="low",
         preamble_stages_ignore="planner,implementer,reviewer",
+        // fabro-e47c (read side): the ## Context section is a strict input
+        // contract — exactly the keys the prompt names as inputs. Seed trio
+        // + implementation_summary + the evidence capture (command.output;
+        // deduped into the evidence stage section when that renders it).
+        // Deliberately OUT: seed_cycles (planner/gate input), review_verdict
+        // and review_feedback (the reviewer's own stale verdicts), and any
+        // future key another node starts writing — the section stays
+        // deterministic no matter how the graph grows.
+        preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,implementation_summary,command.output",
+        // fabro-900e: stable context_updates contract (see planner).
+        context_allow_keys="review_verdict,review_feedback,journal",
         // fabro-9467: the reviewer is a prompt node (no tools) — a demoted
         // evidence value (8KB default ceiling) is a preview it can never
         // open. Evidence captures reach ~14KB (first auto-merge run), so
@@ -142,6 +182,12 @@ digraph Develop {
         // with the aggregate demote pass (preamble_inline_max_within_budget
         // stays quiet).
         preamble_inline_max_kb=16,
+        // fabro-1dae: read-only is a CAPABILITY, not just policy — an empty
+        // fs_write denies every file-tool write (deletes and patch targets
+        // included). Deliberately NO fs_hide: review must see every diff,
+        // including illegal platform touches, to reject them. Shell remains
+        // the documented escape hatch; the prompt's policy line governs it.
+        fs_write="",
         output_schema="routing",
         output_retries=2,
         max_visits=20,
