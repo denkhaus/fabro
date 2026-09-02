@@ -10,12 +10,13 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 | Command | Purpose |
 |---|---|
-| `sd create --title "..." --type task --priority <1-2> --desc "..."` | File one seed. English title and description (repo rule). Output names the new id — record it. |
-| `sd list --format compact` | Existing seeds; check for near-duplicates by title BEFORE creating. The analyzer pre-deduplicates against open AND closed seeds — you are the guard for races and content-duplicates behind different titles, not the first line of defense. |
+| `sd create --title "..." --type task --priority <1-2> --labels revision --desc "..."` | File one seed. English title and description (repo rule). `--labels revision` is MANDATORY: it marks revisor-originated seeds so they can be classified as a set (`sd list --label revision`). Output names the new id — record it. |
+| `sd list --format compact` | Existing seeds; the title-level overview before creating. |
+| `sd search "<theme keyword>" --format compact` | Run ONE search per finding's central theme BEFORE creating — content duplicates hide behind different titles. Only create when no existing seed (open OR closed) names the same concrete change; the analyzer pre-deduplicates, you are the guard for races and title-blind misses. |
 
 ## Procedure
 
-1. If `revision_findings` is non-empty: for each finding, check it is not already filed (near-duplicate title), then `sd create` with its title, description, and priority. Record every created id.
+1. If `revision_findings` is non-empty: for each finding, `sd search` its central theme (see the reference above); only when nothing matches the concrete change, `sd create` with `--labels revision`, its title, description, and priority. Record every created id.
 2. Write the revision report to `.fabro/revisions/<run-id>.md`. This file IS the bookkeeping marker — its absence from the base branch is what marks the run unrevised. Shape:
 
 ```

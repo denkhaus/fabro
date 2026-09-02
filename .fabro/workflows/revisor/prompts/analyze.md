@@ -39,6 +39,8 @@ The backlog runs share root causes; without a tracker check every pass re-distil
 2. For each recurring theme in the answer, run `sd search "<theme keyword>"` — title matches are not enough; content duplicates hide behind different titles.
 3. A finding that names the SAME concrete change as an existing seed is a duplicate: OPEN seed → drop it and record `duplicate_of: <id>` for the journal; CLOSED seed → the change is already implemented, drop it likewise. Only a genuinely NEW change (different file/mechanism/effect — a superset or an orthogonal fix) survives.
 
+Filed seeds carry the `revision` label (the bookkeeper sets it), so `sd list --label revision` shows this loop's whole output — assume that set exists and grows.
+
 ## Step 4 — distill
 
 Convert the SURVIVING recommendations into `revision_findings`: an array of seed candidates. A candidate is actionable only when it names ONE concrete change (file or node, what to change, expected effect) attributable to THIS run's evidence. Drop generic advice, drop praise, merge duplicates among themselves. Each entry: {"title": "<short imperative, English>", "description": "<what/where/effect, grounded in this run>", "priority": <2 normal, 1 high impact>}. An empty array is a valid outcome: a healthy run gets a marker-only revision. Name the dropped duplicates with their seed ids in the journal observation — the report must show what was withheld and why.
