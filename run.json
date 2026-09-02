@@ -510,8 +510,8 @@
   "status": {
     "kind": "running"
   },
-  "status_updated_at": "2026-09-02T20:07:20.755510623Z",
-  "last_event_at": "2026-09-02T20:16:39.260484333Z",
+  "status_updated_at": "2026-09-02T20:19:05.079749828Z",
+  "last_event_at": "2026-09-02T20:19:05.101789324Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -14745,9 +14745,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 1565,
       "checkpoint": {
-        "timestamp": "2026-09-02T20:16:39.482063983Z",
+        "timestamp": "2026-09-02T20:16:47.167672227Z",
         "current_node": "file",
         "completed_nodes": [
           "start",
@@ -14790,6 +14790,412 @@
           "select",
           "analyze",
           "file"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "thread.approve.current_node": "select",
+          "internal.retry_count.analyze": 0,
+          "human.gate.approve.question": "Approve filing + merge",
+          "seed_cycles": {
+            "select": 1,
+            "analyze": 1,
+            "file": 1
+          },
+          "graph.cycle_counter_reset_key": "revisor_target_run_id",
+          "internal.node_visit_count": 10,
+          "last_stage": "file",
+          "response.file": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.file",
+            "chars": 889,
+            "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Staged\", \"context_updates\": {\"filed_seed_ids\": [\"fabro-6a5a\", \"fabro-e702\", \"fabro-8d2c\", \"fabro-a23f\", \"fabro-f4cd\", \"fabro-f8f8\"], \"journal\": {\"pain"
+          },
+          "internal.fidelity": "compact",
+          "failure_signature": "",
+          "human.gate.approve.label": "[A] Approved",
+          "revisor_target_run_id": "01M0WWKAQCWZC0Q0JK019H0ZC7",
+          "thread.analyze.current_node": "file",
+          "thread.select.current_node": "analyze",
+          "thread.start.current_node": "select",
+          "internal.retry_count.file": 0,
+          "thread.file.current_node": "approve",
+          "graph.max_node_visits": "30",
+          "response.analyze": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.analyze",
+            "chars": 6688,
+            "preview": "Dedupe complete. Dropped rec 8 (duplicate of open `fabro-2c81`) and rec 3 (substance already in open `fabro-a67f`); kept the rest with overlap notes for the filer. Review written to `.fabro/reviews/de"
+          },
+          "failure_class": "",
+          "human.gate.selected": "A",
+          "internal.retry_count.approve": 0,
+          "outcome": "succeeded",
+          "revision_findings": [
+            {
+              "title": "Fix PR postlude: disable auto-merge and stop the failing PR-body model call",
+              "description": "In the run-spec pull_request block (see `.fabro/project.toml` [run.pull_request]) set `auto_merge=false` — this run's worker log shows the auto-merge GraphQL call deterministically failing ('Auto merge is not allowed for this repository') despite `auto_merge=true` — and fix or disable the PR-body LLM call, which failed ('No object generated: Failed to parse response as JSON', worker log 16:44:33) and fell back to a skeleton. The postlude burned ~53s after the exit node finished (16:43:46 to 16:44:39), 18% of the 293s wall, and emits two warn-level failures every run. Expected effect: run completes ~50s sooner with two fewer recurring warnings. Partial overlap with open fabro-9f97 (journal-only-diff case); this covers real-diff runs.",
+              "priority": 1
+            },
+            {
+              "title": "Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt",
+              "description": "In `.fabro/workflows/develop/prompts/implementer.md` ('Your job this pass') add two hard rules: (a) any shell call that compiles or tests MUST pass `timeout_ms` of at least 60000 — this run's chained append+gofmt+vet+test died at the default 10s with zero output (seq 163-164, 10,345ms, is_error), forcing a blind re-run; (b) never append placeholder code to fix later — the implementer appended a mangled placeholder test via heredoc, then `head -n -28` cut the wrong lines leaving a dangling comment, costing ~48s and ~6 wasted calls (a third of its 149.5s stage). Expected effect: implementer pass ~100s instead of ~150s and the silent-timeout failure class is eliminated.",
+              "priority": 1
+            },
+            {
+              "title": "Raise preamble_budget_kb from 24 to 32 — the evidence blob detour is back",
+              "description": "In `.fabro/workflows/develop/workflow.fabro` (graph attr, currently 24 after the 12-to-24 raise) set `preamble_budget_kb=32`. This run's 22.1KB evidence capture (seq 209) still rendered as a blob ref in the reviewer prompt (seq 218) because 22.9KB + tester section + context keys (~28KB aggregate) exceeds 24KB; the reviewer recovered via one 102ms `read_file`, but the same detour produced the false rejection in run 01M0SS23MJM8972CBJD0SP7T4Q. Expected effect: evidence arrives inline in the preamble, one fewer tool round-trip per review, preview-misread mode removed. Supersedes the targets of open seeds fabro-83f9 and fabro-35ab (both still say raise from 12) — amend those rather than filing a third budget seed.",
+              "priority": 2
+            },
+            {
+              "title": "Make implementer journal report errored or timed-out tool calls",
+              "description": "In `.fabro/workflows/develop/prompts/implementer.md` (Journal section) add: a tool call that errored or timed out ALWAYS goes in `observations`, even when recovered — name the call, the timeout, and the workaround. This run's implementer journaled observations as none (seq 187) despite the 10.3s shell timeout, an is_error grep, and a signature change forcing edits at ~28 test call-sites; the signal reached the improve loop only via this review's event-stream archaeology. Complements open fabro-b809 (mandatory painpoints array). Expected effect: friction self-reports on the run where it happens, so prompt fixes surface through the journal pipeline instead of manual analysis.",
+              "priority": 2
+            },
+            {
+              "title": "Fast-path planner to sd show when the goal names a seed id",
+              "description": "In `.fabro/workflows/develop/prompts/planner.md` step 1 add: if the goal names a seed id, run `sd show <id>` directly; run `sd ready` only when it doesn't, and never run `sd list` to re-confirm a count `sd ready` already printed. This run's goal named `fabro-f74b`; `sd ready` returned exactly that one seed (seq 39), yet the planner still ran `sd list --format json` purely to double-check the count (its reasoning at seq 67), after `sd show` + `sd update` + two globs + a full 10.4KB read of `main.go` — 7 tool calls and 76.6s inference for a single-candidate claim. Expected effect: two fewer shell calls and one LLM turn on named-seed runs, the common case for this workflow's goals. Overlaps the tracker-empty case in open fabro-b382 and fabro-e4fa; this covers the named-seed case.",
+              "priority": 2
+            },
+            {
+              "title": "Derive files_touched from the stage git diff, not write-tool calls",
+              "description": "Engine-side: compute stage `files_touched` from the stage checkpoint's git diff (the data already exists per checkpoint, seq 194). This run's implementer metadata reported `files_touched: [README.md, main.go]` (seq 190) while the actual stage diff — and the evidence capture — shows `fib_test.go` at +159/-28, the largest product change of the run, missed because the file was edited through shell (`perl`, `head`, heredoc append) invisible to write-tool instrumentation. Expected effect: accurate per-stage change attribution with no silently missing files for any consumer keying on `files_touched`.",
+              "priority": 2
+            }
+          ],
+          "internal.run_id": "01M1HKRE686W833SE86D8WD319",
+          "graph.inspects": "develop",
+          "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Staged\", \"context_updates\": {\"filed_seed_ids\": [\"fabro-6a5a\", \"fabro-e702\", \"fabro-8d2c\", \"fabro-a23f\", \"fabro-f4cd\", \"fabro-f8f8\"], \"journal\": {\"pain",
+          "current_node": "file",
+          "graph.goal": "Improve the develop workflow from run evidence: inspect unrevised runs via Ask-Fabro, distill actionable seeds, file them for develop to implement, repeat until no unrevised run remains",
+          "graph.preamble_budget_kb": "24",
+          "internal.retry_count.start": 0,
+          "internal.retry_count.select": 0,
+          "internal.seed_cycle_anchor": "01M0WWKAQCWZC0Q0JK019H0ZC7",
+          "human.gate.label": "[A] Approved",
+          "revisor_target_title": "Implement product seed fabro-f74b: gofib -sum flag printing the checksum of the selected range",
+          "response.select": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.select",
+            "chars": 993,
+            "preview": "Run selected: `01M0WWKAQCWZC0Q0JK019H0ZC7` — the oldest terminal unrevised run with a live sandbox (`sandbox_available: true`, succeeded, created 2026-08-25, wall ~6.0 min, goal: implement product s"
+          },
+          "internal.thread_id": "analyze",
+          "human.gate.approve.answer": "A",
+          "journal": {
+            "painpoints": [
+              {
+                "text": "Bookkeeper command reference only permits sd create/list, so the preamble-budget finding's instruction to amend superseded seeds fabro-83f9/fabro-35ab could not be executed; instead fabro-8d2c carries an explicit SUPERSEDES note in its description. Fix idea: add `sd close`/`sd update` to the bookkeeper command reference so supersession can be enforced mechanically."
+              }
+            ],
+            "observations": [
+              "fabro-8d2c supersedes the targets of open fabro-83f9 and fabro-35ab — treat those as stale when picking budget work.",
+              "fabro-6a5a overlaps open fabro-9f97 (journal-only-diff case) and fabro-f4cd overlaps open fabro-b382/fabro-e4fa — complementary cases, not duplicates."
+            ]
+          },
+          "revisor_target_status": "succeeded",
+          "preferred_label": "Staged",
+          "graph.rankdir": "LR",
+          "internal.work_dir": "/workspace/fabro",
+          "filed_seed_ids": [
+            "fabro-6a5a",
+            "fabro-e702",
+            "fabro-8d2c",
+            "fabro-a23f",
+            "fabro-f4cd",
+            "fabro-f8f8"
+          ],
+          "revisor_target_wall": "6.0 min"
+        },
+        "node_outcomes": {
+          "approve": {
+            "status": "succeeded",
+            "preferred_label": "[A] Approved",
+            "suggested_next_ids": [
+              "select"
+            ],
+            "context_updates": {
+              "human.gate.approve.answer": "A",
+              "human.gate.label": "[A] Approved",
+              "human.gate.selected": "A",
+              "human.gate.approve.question": "Approve filing + merge",
+              "human.gate.approve.label": "[A] Approved"
+            },
+            "usage": null
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "analyze": {
+            "status": "succeeded",
+            "preferred_label": "Findings ready",
+            "context_updates": {
+              "last_response": "Dedupe complete. Dropped rec 8 (duplicate of open `fabro-2c81`) and rec 3 (substance already in open `fabro-a67f`); kept the rest with overlap notes for the filer. Review written to `.fabro/reviews/de",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Run 01M0WWKAQCWZC0Q0JK019H0ZC7 already had a review file at `.fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md` from the old manual pipeline (2026-08-25, header 'branch integrated: denkhaus-lab') despite having no revision marker — confusing state between the two review sources. Selector correctly keyed on `.fabro/revisions/` markers; this revisor pass overwrote the stale file per template. Fix idea: none needed beyond the overwrite, but consumers must never treat a review file alone as evidence of revision."
+                  }
+                ],
+                "observations": [
+                  "Findings deduped against the open seed tracker: skill-discovery scoping dropped (duplicate of open fabro-2c81) and the implementer gate-rule promotion dropped (substance covered by open fabro-a67f); the preamble-budget candidate supersedes the stale targets of open fabro-83f9/fabro-35ab, so the filer should amend those rather than create a third."
+                ]
+              },
+              "response.analyze": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.analyze",
+                "chars": 6688,
+                "preview": "Dedupe complete. Dropped rec 8 (duplicate of open `fabro-2c81`) and rec 3 (substance already in open `fabro-a67f`); kept the rest with overlap notes for the filer. Review written to `.fabro/reviews/de"
+              },
+              "last_stage": "analyze",
+              "revision_findings": [
+                {
+                  "title": "Fix PR postlude: disable auto-merge and stop the failing PR-body model call",
+                  "description": "In the run-spec pull_request block (see `.fabro/project.toml` [run.pull_request]) set `auto_merge=false` — this run's worker log shows the auto-merge GraphQL call deterministically failing ('Auto merge is not allowed for this repository') despite `auto_merge=true` — and fix or disable the PR-body LLM call, which failed ('No object generated: Failed to parse response as JSON', worker log 16:44:33) and fell back to a skeleton. The postlude burned ~53s after the exit node finished (16:43:46 to 16:44:39), 18% of the 293s wall, and emits two warn-level failures every run. Expected effect: run completes ~50s sooner with two fewer recurring warnings. Partial overlap with open fabro-9f97 (journal-only-diff case); this covers real-diff runs.",
+                  "priority": 1
+                },
+                {
+                  "title": "Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt",
+                  "description": "In `.fabro/workflows/develop/prompts/implementer.md` ('Your job this pass') add two hard rules: (a) any shell call that compiles or tests MUST pass `timeout_ms` of at least 60000 — this run's chained append+gofmt+vet+test died at the default 10s with zero output (seq 163-164, 10,345ms, is_error), forcing a blind re-run; (b) never append placeholder code to fix later — the implementer appended a mangled placeholder test via heredoc, then `head -n -28` cut the wrong lines leaving a dangling comment, costing ~48s and ~6 wasted calls (a third of its 149.5s stage). Expected effect: implementer pass ~100s instead of ~150s and the silent-timeout failure class is eliminated.",
+                  "priority": 1
+                },
+                {
+                  "title": "Raise preamble_budget_kb from 24 to 32 — the evidence blob detour is back",
+                  "description": "In `.fabro/workflows/develop/workflow.fabro` (graph attr, currently 24 after the 12-to-24 raise) set `preamble_budget_kb=32`. This run's 22.1KB evidence capture (seq 209) still rendered as a blob ref in the reviewer prompt (seq 218) because 22.9KB + tester section + context keys (~28KB aggregate) exceeds 24KB; the reviewer recovered via one 102ms `read_file`, but the same detour produced the false rejection in run 01M0SS23MJM8972CBJD0SP7T4Q. Expected effect: evidence arrives inline in the preamble, one fewer tool round-trip per review, preview-misread mode removed. Supersedes the targets of open seeds fabro-83f9 and fabro-35ab (both still say raise from 12) — amend those rather than filing a third budget seed.",
+                  "priority": 2
+                },
+                {
+                  "title": "Make implementer journal report errored or timed-out tool calls",
+                  "description": "In `.fabro/workflows/develop/prompts/implementer.md` (Journal section) add: a tool call that errored or timed out ALWAYS goes in `observations`, even when recovered — name the call, the timeout, and the workaround. This run's implementer journaled observations as none (seq 187) despite the 10.3s shell timeout, an is_error grep, and a signature change forcing edits at ~28 test call-sites; the signal reached the improve loop only via this review's event-stream archaeology. Complements open fabro-b809 (mandatory painpoints array). Expected effect: friction self-reports on the run where it happens, so prompt fixes surface through the journal pipeline instead of manual analysis.",
+                  "priority": 2
+                },
+                {
+                  "title": "Fast-path planner to sd show when the goal names a seed id",
+                  "description": "In `.fabro/workflows/develop/prompts/planner.md` step 1 add: if the goal names a seed id, run `sd show <id>` directly; run `sd ready` only when it doesn't, and never run `sd list` to re-confirm a count `sd ready` already printed. This run's goal named `fabro-f74b`; `sd ready` returned exactly that one seed (seq 39), yet the planner still ran `sd list --format json` purely to double-check the count (its reasoning at seq 67), after `sd show` + `sd update` + two globs + a full 10.4KB read of `main.go` — 7 tool calls and 76.6s inference for a single-candidate claim. Expected effect: two fewer shell calls and one LLM turn on named-seed runs, the common case for this workflow's goals. Overlaps the tracker-empty case in open fabro-b382 and fabro-e4fa; this covers the named-seed case.",
+                  "priority": 2
+                },
+                {
+                  "title": "Derive files_touched from the stage git diff, not write-tool calls",
+                  "description": "Engine-side: compute stage `files_touched` from the stage checkpoint's git diff (the data already exists per checkpoint, seq 194). This run's implementer metadata reported `files_touched: [README.md, main.go]` (seq 190) while the actual stage diff — and the evidence capture — shows `fib_test.go` at +159/-28, the largest product change of the run, missed because the file was edited through shell (`perl`, `head`, heredoc append) invisible to write-tool instrumentation. Expected effect: accurate per-stage change attribution with no silently missing files for any consumer keying on `files_touched`.",
+                  "priority": 2
+                }
+              ]
+            },
+            "notes": "Stage completed: analyze",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 23748,
+                    "output_tokens": 4875,
+                    "reasoning_tokens": 6278,
+                    "cache_read_tokens": 136448,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 117784
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 126608,
+              "tool_time_ms": 299321,
+              "active_time_ms": 425929
+            }
+          },
+          "select": {
+            "status": "succeeded",
+            "preferred_label": "Run selected",
+            "context_updates": {
+              "response.select": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.select",
+                "chars": 993,
+                "preview": "Run selected: `01M0WWKAQCWZC0Q0JK019H0ZC7` — the oldest terminal unrevised run with a live sandbox (`sandbox_available: true`, succeeded, created 2026-08-25, wall ~6.0 min, goal: implement product s"
+              },
+              "revisor_target_title": "Implement product seed fabro-f74b: gofib -sum flag printing the checksum of the selected range",
+              "revisor_target_status": "succeeded",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "19 unrevised terminal runs blocked, no live sandbox (fabro-8d30a); 9 runs revised via `.fabro/revisions/` markers; 1 run non-terminal (submitted) skipped."
+                ]
+              },
+              "last_stage": "select",
+              "revisor_target_wall": "6.0 min",
+              "revisor_target_run_id": "01M0WWKAQCWZC0Q0JK019H0ZC7",
+              "last_response": "Run selected: `01M0WWKAQCWZC0Q0JK019H0ZC7` — the oldest terminal unrevised run with a live sandbox (`sandbox_available: true`, succeeded, created 2026-08-25, wall ~6.0 min, goal: implement product s"
+            },
+            "notes": "Stage completed: select",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14915,
+                    "output_tokens": 330,
+                    "reasoning_tokens": 565,
+                    "cache_read_tokens": 7232,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 26696
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 12133,
+              "tool_time_ms": 532,
+              "active_time_ms": 12665
+            }
+          },
+          "file": {
+            "status": "succeeded",
+            "preferred_label": "Staged",
+            "context_updates": {
+              "filed_seed_ids": [
+                "fabro-6a5a",
+                "fabro-e702",
+                "fabro-8d2c",
+                "fabro-a23f",
+                "fabro-f4cd",
+                "fabro-f8f8"
+              ],
+              "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Staged\", \"context_updates\": {\"filed_seed_ids\": [\"fabro-6a5a\", \"fabro-e702\", \"fabro-8d2c\", \"fabro-a23f\", \"fabro-f4cd\", \"fabro-f8f8\"], \"journal\": {\"pain",
+              "response.file": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.file",
+                "chars": 889,
+                "preview": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Staged\", \"context_updates\": {\"filed_seed_ids\": [\"fabro-6a5a\", \"fabro-e702\", \"fabro-8d2c\", \"fabro-a23f\", \"fabro-f4cd\", \"fabro-f8f8\"], \"journal\": {\"pain"
+              },
+              "last_stage": "file",
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "Bookkeeper command reference only permits sd create/list, so the preamble-budget finding's instruction to amend superseded seeds fabro-83f9/fabro-35ab could not be executed; instead fabro-8d2c carries an explicit SUPERSEDES note in its description. Fix idea: add `sd close`/`sd update` to the bookkeeper command reference so supersession can be enforced mechanically."
+                  }
+                ],
+                "observations": [
+                  "fabro-8d2c supersedes the targets of open fabro-83f9 and fabro-35ab — treat those as stale when picking budget work.",
+                  "fabro-6a5a overlaps open fabro-9f97 (journal-only-diff case) and fabro-f4cd overlaps open fabro-b382/fabro-e4fa — complementary cases, not duplicates."
+                ]
+              }
+            },
+            "notes": "Stage completed: file",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 16341,
+                    "output_tokens": 3124,
+                    "reasoning_tokens": 466,
+                    "cache_read_tokens": 110400,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 67365
+            },
+            "files_touched": [
+              "/workspace/fabro/.fabro/revisions/01M0WWKAQCWZC0Q0JK019H0ZC7.md"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 50815,
+              "tool_time_ms": 1644,
+              "active_time_ms": 52459
+            }
+          }
+        },
+        "next_node_id": "approve",
+        "git_commit_sha": "33a9f54dd3d3f44d9670f34675dcae02c17bdfae",
+        "node_visits": {
+          "approve": 9,
+          "select": 10,
+          "analyze": 10,
+          "start": 1,
+          "file": 10
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\nindex 9f60738..9aa9563 100644\n--- a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\n+++ b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl\n@@ -37,3 +37,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"approve\",\"visit\":9,\"status\":\"succeeded\",\"ts\":\"2026-09-02T20:07:20Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"select\",\"visit\":10,\"status\":\"succeeded\",\"ts\":\"2026-09-02T20:07:42Z\",\"data\":{\"painpoints\":[],\"observations\":[\"19 unrevised terminal runs blocked, no live sandbox (fabro-8d30a); 9 runs revised via `.fabro/revisions/` markers; 1 run non-terminal (submitted) skipped.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"analyze\",\"visit\":10,\"status\":\"succeeded\",\"ts\":\"2026-09-02T20:15:35Z\",\"data\":{\"painpoints\":[{\"text\":\"Run 01M0WWKAQCWZC0Q0JK019H0ZC7 already had a review file at `.fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md` from the old manual pipeline (2026-08-25, header 'branch integrated: denkhaus-lab') despite having no revision marker — confusing state between the two review sources. Selector correctly keyed on `.fabro/revisions/` markers; this revisor pass overwrote the stale file per template. Fix idea: none needed beyond the overwrite, but consumers must never treat a review file alone as evidence of revision.\"}],\"observations\":[\"Findings deduped against the open seed tracker: skill-discovery scoping dropped (duplicate of open fabro-2c81) and the implementer gate-rule promotion dropped (substance covered by open fabro-a67f); the preamble-budget candidate supersedes the stale targets of open fabro-83f9/fabro-35ab, so the filer should amend those rather than create a third.\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1HKRE686W833SE86D8WD319\",\"node\":\"file\",\"visit\":10,\"status\":\"succeeded\",\"ts\":\"2026-09-02T20:16:39Z\",\"data\":{\"painpoints\":[{\"text\":\"Bookkeeper command reference only permits sd create/list, so the preamble-budget finding's instruction to amend superseded seeds fabro-83f9/fabro-35ab could not be executed; instead fabro-8d2c carries an explicit SUPERSEDES note in its description. Fix idea: add `sd close`/`sd update` to the bookkeeper command reference so supersession can be enforced mechanically.\"}],\"observations\":[\"fabro-8d2c supersedes the targets of open fabro-83f9 and fabro-35ab — treat those as stale when picking budget work.\",\"fabro-6a5a overlaps open fabro-9f97 (journal-only-diff case) and fabro-f4cd overlaps open fabro-b382/fabro-e4fa — complementary cases, not duplicates.\"]}}\ndiff --git a/.fabro/revisions/01M0WWKAQCWZC0Q0JK019H0ZC7.md b/.fabro/revisions/01M0WWKAQCWZC0Q0JK019H0ZC7.md\nnew file mode 100644\nindex 0000000..b6686d9\n--- /dev/null\n+++ b/.fabro/revisions/01M0WWKAQCWZC0Q0JK019H0ZC7.md\n@@ -0,0 +1,31 @@\n+# Revision — run 01M0WWKAQCWZC0Q0JK019H0ZC7\n+\n+- status reviewed: succeeded\n+- review: .fabro/reviews/develop/01M0WWKAQCWZC0Q0JK019H0ZC7.md\n+- seeds filed:\n+  - fabro-6a5a — Fix PR postlude: disable auto-merge and stop the failing PR-body model call\n+  - fabro-e702 — Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt\n+  - fabro-8d2c — Raise preamble_budget_kb from 24 to 32 — evidence blob detour persists\n+  - fabro-a23f — Make implementer journal report errored or timed-out tool calls\n+  - fabro-f4cd — Fast-path planner to sd show when the goal names a seed id\n+  - fabro-f8f8 — Derive files_touched from the stage git diff, not write-tool calls\n+\n+## Findings\n+\n+### Fix PR postlude: disable auto-merge and stop the failing PR-body model call\n+Filed as fabro-6a5a (partial overlap with open fabro-9f97, which covers the journal-only-diff case; this covers real-diff runs). Change: set `auto_merge=false` in the run-spec pull_request block and fix/disable the PR-body LLM call that fails JSON parsing. Expected effect: ~50s faster run completion, two fewer recurring warn-level failures.\n+\n+### Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt\n+Filed as fabro-e702. Change: two hard rules in `.fabro/workflows/develop/prompts/implementer.md` — compile/test shells must pass `timeout_ms>=60000`, and no placeholder appends. Expected effect: implementer pass ~100s instead of ~150s; silent-timeout failure class eliminated.\n+\n+### Raise preamble_budget_kb from 24 to 32 — the evidence blob detour is back\n+Filed as fabro-8d2c — SUPERSEDES the targets of open fabro-83f9 and fabro-35ab (both still say raise from 12); those should be closed/amended rather than implemented separately. Change: `preamble_budget_kb=32` in `.fabro/workflows/develop/workflow.fabro`. Expected effect: evidence arrives inline in the reviewer preamble, removing one read_file round-trip and the preview-misread false-rejection mode.\n+\n+### Make implementer journal report errored or timed-out tool calls\n+Filed as fabro-a23f (complements open fabro-b809). Change: Journal section of the implementer prompt must always record errored/timed-out calls in observations. Expected effect: friction self-reports on the run where it happens.\n+\n+### Fast-path planner to sd show when the goal names a seed id\n+Filed as fabro-f4cd (overlaps the tracker-empty case in open fabro-b382 and fabro-e4fa; covers the named-seed case). Change: planner prompt step 1 routes named-seed goals straight to `sd show`, bans redundant `sd list` re-confirmation. Expected effect: two fewer shell calls and one LLM turn on the common named-seed case.\n+\n+### Derive files_touched from the stage git diff, not write-tool calls\n+Filed as fabro-f8f8 (engine-side). Change: compute stage `files_touched` from the stage checkpoint git diff. Expected effect: accurate change attribution even for shell-edited files.\ndiff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl\nindex afba9d6..688ed50 100644\n--- a/.seeds/issues.jsonl\n+++ b/.seeds/issues.jsonl\n@@ -65,3 +65,9 @@\n {\"id\":\"fabro-ad1b\",\"title\":\"Cite acceptance bullets in implementer verification, don't restate them\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.652Z\",\"updatedAt\":\"2026-09-02T19:59:23.652Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md, require each PASS line to reference the brief bullet number (e.g. PASS (3)) instead of quoting the criterion, and cap prose before the JSON at 3 sentences. In run 01M0TXPX09279433MGWSWPVVP4, implementer@2 restated all 10 acceptance criteria in full, driving 186 s inference and 0.281 USD (47 percent of run cost). Expected effect: roughly 1.5-2.5k fewer output tokens per pass plus smaller reviewer preambles.\"}\n {\"id\":\"fabro-1d94\",\"title\":\"Enforce one edit per file path per tool batch\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.761Z\",\"updatedAt\":\"2026-09-02T19:59:23.761Z\",\"description\":\"Add one line to .fabro/workflows/develop/prompts/implementer.md: at most one edit per file path per tool batch; sequence dependent edits across batches. In run 01M0TXPX09279433MGWSWPVVP4 the worker log showed 3 concurrent-write-to-same-file-in-one-batch serializing warnings for main.go, README.md, and fib_test.go. Expected effect: eliminates the write-lock warnings and the silent-ordering hazard they signal, at zero cost.\"}\n {\"id\":\"fabro-e4fa\",\"title\":\"Tighten planner sd call economy\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T19:59:23.883Z\",\"updatedAt\":\"2026-09-02T19:59:23.883Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md, make the rule conditional and checkable (sd list only if sd ready output is truncated or lacks needed blocker info) and add sd ready --format json to the command table. In run 01M0TXPX09279433MGWSWPVVP4 planner@1 ran sd ready then sd list with byte-identical ~3.3 KB payloads, and used a --format flag on ready not listed in the table. Expected effect: one fewer tracker call and ~10 s less deliberation per cycle while keeping the no-invented-flags rule credible.\"}\n+{\"id\":\"fabro-e702\",\"title\":\"Require timeout_ms on compile/test shells and ban placeholder appends in implementer prompt\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T20:15:59.086Z\",\"updatedAt\":\"2026-09-02T20:15:59.086Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md ('Your job this pass') add two hard rules: (a) any shell call that compiles or tests MUST pass timeout_ms of at least 60000 — run 01M0WWKAQCWZC0Q0JK019H0ZC7's chained append+gofmt+vet+test died at the default 10s with zero output (seq 163-164, 10,345ms, is_error), forcing a blind re-run; (b) never append placeholder code to fix later — the implementer appended a mangled placeholder test via heredoc, then head -n -28 cut the wrong lines leaving a dangling comment, costing ~48s and ~6 wasted calls (a third of its 149.5s stage). Expected effect: implementer pass ~100s instead of ~150s and the silent-timeout failure class eliminated.\"}\n+{\"id\":\"fabro-6a5a\",\"title\":\"Fix PR postlude: disable auto-merge and stop the failing PR-body model call\",\"status\":\"open\",\"type\":\"task\",\"priority\":1,\"createdAt\":\"2026-09-02T20:15:59.090Z\",\"updatedAt\":\"2026-09-02T20:15:59.090Z\",\"description\":\"In the run-spec pull_request block (see .fabro/project.toml [run.pull_request]) set auto_merge=false — the auto-merge GraphQL call deterministically fails ('Auto merge is not allowed for this repository') despite auto_merge=true — and fix or disable the PR-body LLM call, which failed ('No object generated: Failed to parse response as JSON', worker log 16:44:33 in run 01M0WWKAQCWZC0Q0JK019H0ZC7) and fell back to a skeleton. The postlude burned ~53s after the exit node finished (16:43:46 to 16:44:39), 18% of the 293s wall, and emits two warn-level failures every run. Expected effect: run completes ~50s sooner with two fewer recurring warnings. Partial overlap with open fabro-9f97 (journal-only-diff case); this covers real-diff runs.\"}\n+{\"id\":\"fabro-a23f\",\"title\":\"Make implementer journal report errored or timed-out tool calls\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T20:16:05.689Z\",\"updatedAt\":\"2026-09-02T20:16:05.689Z\",\"description\":\"In .fabro/workflows/develop/prompts/implementer.md (Journal section) add: a tool call that errored or timed out ALWAYS goes in observations, even when recovered — name the call, the timeout, and the workaround. Run 01M0WWKAQCWZC0Q0JK019H0ZC7's implementer journaled observations as none (seq 187) despite a 10.3s shell timeout, an is_error grep, and a signature change forcing edits at ~28 test call-sites; the signal reached the improve loop only via event-stream archaeology. Complements open fabro-b809 (mandatory painpoints array). Expected effect: friction self-reports on the run where it happens, so prompt fixes surface through the journal pipeline instead of manual analysis.\"}\n+{\"id\":\"fabro-8d2c\",\"title\":\"Raise preamble_budget_kb from 24 to 32 — evidence blob detour persists\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T20:16:05.701Z\",\"updatedAt\":\"2026-09-02T20:16:05.701Z\",\"description\":\"In .fabro/workflows/develop/workflow.fabro (graph attr, currently 24 after the 12-to-24 raise) set preamble_budget_kb=32. Run 01M0WWKAQCWZC0Q0JK019H0ZC7's 22.1KB evidence capture (seq 209) still rendered as a blob ref in the reviewer prompt (seq 218) because 22.9KB + tester section + context keys (~28KB aggregate) exceeds 24KB; the reviewer recovered via one 102ms read_file, but the same detour produced the false rejection in run 01M0SS23MJM8972CBJD0SP7T4Q. Expected effect: evidence arrives inline in the preamble, one fewer tool round-trip per review, preview-misread mode removed. SUPERSEDES the targets of open seeds fabro-83f9 and fabro-35ab (both still say raise from 12) — close or amend those to avoid triple filing.\"}\n+{\"id\":\"fabro-f4cd\",\"title\":\"Fast-path planner to sd show when the goal names a seed id\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T20:16:14.678Z\",\"updatedAt\":\"2026-09-02T20:16:14.678Z\",\"description\":\"In .fabro/workflows/develop/prompts/planner.md step 1 add: if the goal names a seed id, run sd show <id> directly; run sd ready only when it doesn't, and never run sd list to re-confirm a count sd ready already printed. Run 01M0WWKAQCWZC0Q0JK019H0ZC7's goal named fabro-f74b; sd ready returned exactly that one seed (seq 39), yet the planner still ran sd list --format json purely to double-check the count (reasoning at seq 67), after sd show + sd update + two globs + a full 10.4KB read of main.go — 7 tool calls and 76.6s inference for a single-candidate claim. Expected effect: two fewer shell calls and one LLM turn on named-seed runs, the common case for this workflow's goals. Overlaps the tracker-empty case in open fabro-b382 and fabro-e4fa; this covers the named-seed case.\"}\n+{\"id\":\"fabro-f8f8\",\"title\":\"Derive files_touched from the stage git diff, not write-tool calls\",\"status\":\"open\",\"type\":\"task\",\"priority\":2,\"createdAt\":\"2026-09-02T20:16:14.687Z\",\"updatedAt\":\"2026-09-02T20:16:14.687Z\",\"description\":\"Engine-side: compute stage files_touched from the stage checkpoint's git diff (the data already exists per checkpoint, seq 194 of run 01M0WWKAQCWZC0Q0JK019H0ZC7). That run's implementer metadata reported files_touched: [README.md, main.go] (seq 190) while the actual stage diff — and the evidence capture — shows fib_test.go at +159/-28, the largest product change of the run, missed because the file was edited through shell (perl, head, heredoc append) invisible to write-tool instrumentation. Expected effect: accurate per-stage change attribution with no silently missing files for any consumer keying on files_touched.\"}\n",
+        "summary": {
+          "files_changed": 22,
+          "additions": 916,
+          "deletions": 26
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-02T20:19:05.355467096Z",
+        "current_node": "approve",
+        "completed_nodes": [
+          "start",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve",
+          "select",
+          "analyze",
+          "file",
+          "approve"
         ],
         "node_retries": {},
         "context_values": {
@@ -14862,8 +15268,8 @@
           "last_response": "{\"outcome\": \"succeeded\", \"preferred_next_label\": \"Staged\", \"context_updates\": {\"filed_seed_ids\": [\"fabro-6a5a\", \"fabro-e702\", \"fabro-8d2c\", \"fabro-a23f\", \"fabro-f4cd\", \"fabro-f8f8\"], \"journal\": {\"pain",
           "revisor_target_wall": "6.0 min",
           "thread.start.current_node": "select",
-          "internal.thread_id": "analyze",
-          "current_node": "file",
+          "internal.thread_id": "file",
+          "current_node": "approve",
           "graph.rankdir": "LR",
           "internal.fidelity": "compact",
           "internal.node_visit_count": 10,
@@ -14876,7 +15282,7 @@
             "preview": "Run selected: `01M0WWKAQCWZC0Q0JK019H0ZC7` — the oldest terminal unrevised run with a live sandbox (`sandbox_available: true`, succeeded, created 2026-08-25, wall ~6.0 min, goal: implement product s"
           },
           "revisor_target_title": "Implement product seed fabro-f74b: gofib -sum flag printing the checksum of the selected range",
-          "preferred_label": "Staged",
+          "preferred_label": "[A] Approved",
           "graph.preamble_budget_kb": "24",
           "last_stage": "file",
           "internal.retry_count.analyze": 0,
@@ -14885,7 +15291,8 @@
           "seed_cycles": {
             "select": 1,
             "analyze": 1,
-            "file": 1
+            "file": 1,
+            "approve": 1
           },
           "thread.select.current_node": "analyze",
           "filed_seed_ids": [
@@ -15069,11 +15476,11 @@
               "select"
             ],
             "context_updates": {
-              "human.gate.approve.answer": "A",
               "human.gate.label": "[A] Approved",
-              "human.gate.selected": "A",
               "human.gate.approve.question": "Approve filing + merge",
-              "human.gate.approve.label": "[A] Approved"
+              "human.gate.approve.label": "[A] Approved",
+              "human.gate.selected": "A",
+              "human.gate.approve.answer": "A"
             },
             "usage": null
           },
@@ -15130,12 +15537,12 @@
             }
           }
         },
-        "next_node_id": "approve",
+        "next_node_id": "select",
         "node_visits": {
           "start": 1,
           "analyze": 10,
           "select": 10,
-          "approve": 9,
+          "approve": 10,
           "file": 10
         }
       },
@@ -24170,6 +24577,42 @@
           }
         ],
         "warnings": []
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "approve@10": {
+      "first_event_seq": 1568,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": null,
+        "failure_reason": null,
+        "timestamp": "2026-09-02T20:19:05.101789324Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-02T20:16:47.193817344Z",
+      "handler": "human",
+      "graph_visit": 10,
+      "timing": {
+        "wall_time_ms": 126394,
+        "inference_time_ms": 0,
+        "tool_time_ms": 0,
+        "active_time_ms": 0
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
       },
       "agent_control": "running",
       "state": "succeeded"
