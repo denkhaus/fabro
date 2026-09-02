@@ -42,7 +42,9 @@ digraph Revisor {
         fabro_tools="fabro_runs_list",
         // Read window (e47c pattern): selection re-derives from the run
         // list every pass — stale target keys from the previous cycle
-        // must not render. journal carries the prior pass's observations.
+        // must not render. journal is the ONLY input: the prior selector's
+        // observations (blocked-backlog counts, skipped non-terminal runs)
+        // are the continuity this loop-closing stage needs.
         preamble_allow_keys="journal",
         context_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revisor_target_wall,journal"
     ]
@@ -68,7 +70,9 @@ digraph Revisor {
         fabro_tools="fabro_ask",
         // Read window: the CURRENT target trio (+wall) and journal;
         // revision_findings stays out — a previous cycle's findings are
-        // stale, analyze re-emits fresh ones.
+        // stale, analyze re-emits fresh ones. journal stays: the prior
+        // analyst's observations carried real threads across cycles
+        // (the d810 cross-world blocker surfaced twice this way).
         preamble_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revisor_target_wall,journal",
         context_allow_keys="revision_findings,journal"
     ]
@@ -95,9 +99,13 @@ digraph Revisor {
         fs_hide="src/**,docs/**,.seeds/**",
         fs_write=".fabro/revisions/**",
         fabro_tools="",
-        // Read window: current target + current findings + journal; the
-        // node's own filed_seed_ids never render back (stale on loops).
-        preamble_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revision_findings,journal",
+        // Read window: current target + current findings ONLY. Filing,
+        // marker, and commit need no journal history — prior-pass
+        // observations serve select/analyze continuity, not bookkeeping
+        // (2026-09-02 preamble review). The node's own filed_seed_ids
+        // never render back either (stale on loops); its journal EMISSION
+        // is unaffected (that is the write side, context_allow_keys).
+        preamble_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revision_findings",
         context_allow_keys="filed_seed_ids,journal"
     ]
 
