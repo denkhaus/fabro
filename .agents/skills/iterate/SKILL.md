@@ -71,6 +71,13 @@ decision, not an accident - it needs the user plus an ADR.
   workflow (`just run <workflow> ...`); quality gates run inside the run.
 - ADR-0008: change graph, prompts, scripts, and settings as ONE unit
   in the same change.
+- Fork-to-edge checklist before the first commit (fabro-7461, 2026-09-02):
+  when the user approved a design with numbered forks (loop, fail modes,
+  gate routing), re-check EACH fork is literally visible in the artifact
+  (an edge, an attribute, a prompt line) — the revisor's approved LOOP
+  was missing from the first graph draft; only the spec reviewer caught
+  it. Approved-but-invisible forks are the most expensive class of drift
+  because everything else looks done.
 - English everywhere written; no inline shell logic in the justfile
   (scripts/*.nu only); shell_quote for sandbox command strings.
 - After programmatic (slice/regex) edits to large files, verify uniqueness
