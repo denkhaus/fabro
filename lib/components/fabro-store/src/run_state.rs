@@ -28,8 +28,8 @@ use crate::{Error, EventEnvelope, Result};
 #[derive(Debug, Clone, Default)]
 pub(crate) struct EventProjectionCache {
     pub last_seq: u32,
-    // Arc-shared with the shared projection cache so opening a run does not
-    // deep-copy the projection; mutated copy-on-write via `Arc::make_mut`.
+    // Arc-shared with readers so a snapshot never deep-copies the projection;
+    // mutated copy-on-write via `Arc::make_mut`.
     pub state:    Option<Arc<RunProjection>>,
 }
 

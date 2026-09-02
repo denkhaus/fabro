@@ -131,11 +131,18 @@ async fn read_run_blob(
 }
 
 async fn ensure_run_exists(state: &AppState, run_id: &RunId) -> Result<(), Response> {
-    state
-        .load_run_projection(run_id)
+    match state
+        .stores
+        .run_summaries
+        .get(run_id, chrono::Utc::now())
         .await
-        .map(|_| ())
-        .map_err(IntoResponse::into_response)
+    {
+        Ok(Some(_)) => Ok(()),
+        Ok(None) => Err(ApiError::not_found("Run not found.").into_response()),
+        Err(err) => {
+            Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response())
+        }
+    }
 }
 
 async fn list_run_artifacts(

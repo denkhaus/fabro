@@ -4534,8 +4534,14 @@ async fn append_control_request(
 /// run is currently archived. Returns `None` otherwise (including when the run
 /// doesn't exist — the caller's own not-found handling will surface that).
 async fn reject_if_archived(state: &AppState, run_id: &RunId) -> Option<Response> {
-    let projection = state.load_run_projection(run_id).await.ok()?;
-    projection.archived_at.is_some().then(|| {
+    let summary = state
+        .stores
+        .run_summaries
+        .get(run_id, Utc::now())
+        .await
+        .ok()
+        .flatten()?;
+    summary.lifecycle.archived_at.is_some().then(|| {
         ApiError::new(
             StatusCode::CONFLICT,
             operations::archived_rejection_message(run_id),

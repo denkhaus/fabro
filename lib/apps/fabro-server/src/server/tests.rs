@@ -11629,27 +11629,37 @@ async fn get_run_state_exposes_pending_interviews() {
     );
 }
 
+/// Builds an app state over shared object, blob, and summary stores so a test
+/// can drop it and open a second state that sees the same durable data.
+fn test_app_state_over_shared_stores(
+    object_store: &Arc<dyn object_store::ObjectStore>,
+    blobs: &Arc<fabro_store::BlobStore>,
+    summaries: &Arc<fabro_store::RunSummaryStore>,
+) -> Arc<AppState> {
+    let store = Arc::new(fabro_store::test_support::test_database_with_stores(
+        Arc::clone(object_store),
+        "runs",
+        std::time::Duration::from_millis(1),
+        None,
+        Arc::clone(blobs),
+        Arc::clone(summaries),
+    ));
+    test_app_state_with_store(
+        default_test_server_settings(),
+        RunLayer::default(),
+        5,
+        store,
+        ArtifactStore::new(Arc::clone(object_store), "artifacts"),
+    )
+}
+
 #[tokio::test]
 async fn restarted_run_state_details_load_from_sql_and_preserve_error_statuses() {
     let object_store: Arc<dyn object_store::ObjectStore> =
         Arc::new(object_store::memory::InMemory::new());
     let summaries = fabro_store::test_support::test_run_summary_store();
     let blobs = fabro_store::test_support::test_blob_store();
-    let first_store = Arc::new(fabro_store::test_support::test_database_with_stores(
-        Arc::clone(&object_store),
-        "runs",
-        std::time::Duration::from_millis(1),
-        None,
-        Arc::clone(&blobs),
-        Arc::clone(&summaries),
-    ));
-    let first_state = test_app_state_with_store(
-        default_test_server_settings(),
-        RunLayer::default(),
-        5,
-        first_store,
-        ArtifactStore::new(Arc::clone(&object_store), "artifacts"),
-    );
+    let first_state = test_app_state_over_shared_stores(&object_store, &blobs, &summaries);
     let healthy_id = fixtures::RUN_1;
     let broken_id = fixtures::RUN_2;
     create_durable_run_with_events(&first_state, healthy_id, &[
@@ -11667,21 +11677,7 @@ async fn restarted_run_state_details_load_from_sql_and_preserve_error_statuses()
         .unwrap();
     drop(first_state);
 
-    let reopened_store = Arc::new(fabro_store::test_support::test_database_with_stores(
-        Arc::clone(&object_store),
-        "runs",
-        std::time::Duration::from_millis(1),
-        None,
-        blobs,
-        summaries,
-    ));
-    let reopened_state = test_app_state_with_store(
-        default_test_server_settings(),
-        RunLayer::default(),
-        5,
-        reopened_store,
-        ArtifactStore::new(object_store, "artifacts"),
-    );
+    let reopened_state = test_app_state_over_shared_stores(&object_store, &blobs, &summaries);
     assert_eq!(
         reconcile_incomplete_runs_on_startup(&reopened_state)
             .await
