@@ -3564,10 +3564,17 @@ async fn store_workflow_version(
     graph: &str,
     workflow_toml: Option<&str>,
 ) -> fabro_types::WorkflowVersionId {
-    let mut files = std::collections::BTreeMap::from([(
-        fabro_types::WorkflowPath::new("workflow.fabro").unwrap(),
-        graph.to_string(),
-    )]);
+    store_workflow_version_with_entrypoint(state, "workflow.fabro", graph, workflow_toml).await
+}
+
+async fn store_workflow_version_with_entrypoint(
+    state: &AppState,
+    entrypoint: &str,
+    graph: &str,
+    workflow_toml: Option<&str>,
+) -> fabro_types::WorkflowVersionId {
+    let entrypoint = fabro_types::WorkflowPath::new(entrypoint).unwrap();
+    let mut files = std::collections::BTreeMap::from([(entrypoint.clone(), graph.to_string())]);
     if let Some(workflow_toml) = workflow_toml {
         files.insert(
             fabro_types::WorkflowPath::new("workflow.toml").unwrap(),
@@ -3582,18 +3589,57 @@ async fn store_workflow_version(
             "FROM alpine:3".to_string(),
         );
     }
-    let version = fabro_types::WorkflowVersion::new(
-        fabro_types::WorkflowPath::new("workflow.fabro").unwrap(),
-        files,
-        std::collections::BTreeMap::new(),
-    )
-    .unwrap();
+    let version =
+        fabro_types::WorkflowVersion::new(entrypoint, files, std::collections::BTreeMap::new())
+            .unwrap();
     let version = fabro_workflow_version::ValidatedWorkflowVersion::new(version).unwrap();
     let blobs = state.store_ref().blobs();
     fabro_workflow_version::WorkflowVersionStore::new(blobs)
         .put(&version)
         .await
         .unwrap()
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_derives_workflow_slug_from_immutable_entrypoint() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    for (entrypoint, expected_slug) in [
+        ("deploy/workflow.fabro", "deploy"),
+        ("workflow.fabro", "workflow"),
+    ] {
+        let workflow_version_id =
+            store_workflow_version_with_entrypoint(&state, entrypoint, MINIMAL_DOT, None).await;
+        let body = post_run_manifest(
+            &app,
+            json!({
+                "workflow_version_id": workflow_version_id,
+                "target": { "kind": "none" },
+                "args": {}
+            }),
+        )
+        .await;
+        let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+        let projection = state
+            .stores
+            .runs
+            .open_run_reader(&run_id)
+            .await
+            .unwrap()
+            .state()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            projection.spec.workflow_slug.as_deref(),
+            Some(expected_slug)
+        );
+        assert_eq!(
+            projection.spec.workflow_version_id,
+            Some(workflow_version_id)
+        );
+    }
 }
 
 #[tokio::test]
@@ -3812,6 +3858,234 @@ async fn post_runs_run_intent_args_true_override_resolved_settings_without_start
         ApprovalMode::Auto
     );
     assert!(projection.spec.settings.run.environment.lifecycle.preserve);
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_dry_run_uses_configured_target_provider() {
+    let folder = tempfile::tempdir().unwrap();
+    let folder_path = folder
+        .path()
+        .canonicalize()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let cases = [
+        (
+            test_app_state(),
+            None,
+            json!({
+                "kind": "git",
+                "repo": "fabro-sh/fabro",
+                "branch": "main"
+            }),
+            json!({ "dry_run": true }),
+        ),
+        (
+            test_app_state(),
+            None,
+            json!({ "kind": "none" }),
+            json!({ "dry_run": true }),
+        ),
+        (
+            TestAppStateBuilder::new()
+                .default_environment_provider(Some(EnvironmentProvider::Daytona))
+                .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+                .build(),
+            Some("_version = 1\n[run.execution]\nmode = \"dry_run\"\n"),
+            json!({ "kind": "none" }),
+            json!({}),
+        ),
+        (
+            TestAppStateBuilder::new()
+                .default_environment_provider(Some(EnvironmentProvider::Daytona))
+                .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+                .build(),
+            Some("_version = 1\n[run.execution]\nmode = \"dry_run\"\n"),
+            json!({
+                "kind": "git",
+                "repo": "fabro-sh/fabro",
+                "branch": "main"
+            }),
+            json!({}),
+        ),
+        (
+            TestAppStateBuilder::new()
+                .runtime_settings(
+                    default_test_server_settings(),
+                    manifest_run_defaults_from_toml("[run.execution]\nmode = \"dry_run\"\n"),
+                )
+                .default_environment_provider(Some(EnvironmentProvider::Local))
+                .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+                .build(),
+            None,
+            json!({ "kind": "folder", "path": folder_path }),
+            json!({}),
+        ),
+    ];
+
+    for (state, workflow_toml, target, args) in cases {
+        let app = crate::test_support::build_test_router(Arc::clone(&state));
+        let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, workflow_toml).await;
+        let body = post_run_manifest(
+            &app,
+            json!({
+                "workflow_version_id": workflow_version_id,
+                "target": target,
+                "args": args
+            }),
+        )
+        .await;
+        let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+        let projection = state
+            .stores
+            .runs
+            .open_run_reader(&run_id)
+            .await
+            .unwrap()
+            .state()
+            .await
+            .unwrap();
+
+        assert_eq!(projection.spec.settings.run.execution.mode, RunMode::DryRun);
+        assert_eq!(
+            serde_json::to_value(projection.spec.target.unwrap()).unwrap(),
+            target
+        );
+    }
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_dry_run_rejects_configured_target_mismatches() {
+    let states_and_targets = [
+        (
+            local_test_app_state(),
+            json!({
+                "kind": "git",
+                "repo": "fabro-sh/fabro",
+                "branch": "main"
+            }),
+        ),
+        (local_test_app_state(), json!({ "kind": "none" })),
+        (
+            test_app_state(),
+            json!({ "kind": "folder", "path": "/path-that-must-not-be-read" }),
+        ),
+        (
+            TestAppStateBuilder::new()
+                .default_environment_provider(Some(EnvironmentProvider::Daytona))
+                .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+                .build(),
+            json!({ "kind": "folder", "path": "/path-that-must-not-be-read" }),
+        ),
+    ];
+
+    for (state, target) in states_and_targets {
+        let app = crate::test_support::build_test_router(Arc::clone(&state));
+        let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+        let response = post_run_intent_response(
+            &app,
+            json!({
+                "workflow_version_id": workflow_version_id,
+                "target": target,
+                "args": { "dry_run": true }
+            }),
+        )
+        .await;
+        let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+
+        assert_eq!(body["errors"][0]["code"], "target_environment_unsupported");
+        assert!(
+            state
+                .stores
+                .run_summaries
+                .list_identities()
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn post_runs_run_intent_dry_run_starts_in_isolated_scratch_workspace() {
+    let source = r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[[run.prepare.steps]]
+script = "pwd > setup-working-directory.txt"
+"#;
+    let state = test_app_state_with_settings_and_registry_factory(
+        server_settings_from_toml(source),
+        manifest_run_defaults_from_toml(source),
+        |interviewer| fabro_workflow::handler::default_registry(interviewer, || None),
+    );
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let external_target = tempfile::tempdir().unwrap();
+    let external_sentinel = external_target.path().join("existing-target-file.txt");
+    tokio::fs::write(&external_sentinel, b"must remain unchanged")
+        .await
+        .unwrap();
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let body = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": {
+                "kind": "git",
+                "repo": "fabro-sh/fabro",
+                "branch": "main"
+            },
+            "args": { "dry_run": true }
+        }),
+    )
+    .await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/start")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    response_json!(response, StatusCode::OK).await;
+
+    execute_run(Arc::clone(&state), run_id).await;
+
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    assert_eq!(
+        run_store.state().await.unwrap().status,
+        RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        }
+    );
+    let scratch_workspace = Storage::new(state.server_storage_dir())
+        .run_scratch(&run_id)
+        .root()
+        .join("dry-run-workspace")
+        .canonicalize()
+        .unwrap();
+    let setup_working_directory =
+        tokio::fs::read_to_string(scratch_workspace.join("setup-working-directory.txt"))
+            .await
+            .unwrap();
+    assert_eq!(Path::new(setup_working_directory.trim()), scratch_workspace);
+    assert_eq!(
+        tokio::fs::read(&external_sentinel).await.unwrap(),
+        b"must remain unchanged"
+    );
+    assert!(
+        !external_target
+            .path()
+            .join("setup-working-directory.txt")
+            .exists()
+    );
 }
 
 #[tokio::test]

@@ -18,7 +18,7 @@ use fabro_api::types::{
     BoardColumn, ManifestConfigType, ManifestGoalType, RunIntent, RunManifest, SubmitAnswerRequest,
     UpdateRunParentRequest, UpdateRunRequest,
 };
-use fabro_config::{CliLayer, RunLayer, Storage};
+use fabro_config::{CliLayer, RunLayer, Storage, project};
 use fabro_environment::{DEFAULT_ENVIRONMENT_ID, EnvironmentId};
 use fabro_interview::AnswerSubmission;
 use fabro_llm::client::Client as LlmClient;
@@ -704,6 +704,7 @@ pub(crate) async fn create_run_from_intent(
     });
 
     let entrypoint = lowered.entrypoint.clone();
+    let workflow_slug = project::workflow_slug_from_path(entrypoint.as_path());
     let raw_compiler_input = RawRunCompilerInput {
         workflow_bundle: lowered.workflow_bundle,
         entrypoint: lowered.entrypoint,
@@ -729,7 +730,7 @@ pub(crate) async fn create_run_from_intent(
         // admission via `with_target_and_git`; the compiler never reads them.
         git: None,
         storage_root: state.server_storage_dir(),
-        workflow_slug: None,
+        workflow_slug,
         workflow_version_id: Some(intent.workflow_version_id),
         target: None,
         provenance: run_provenance(&headers, &actor),
@@ -1093,23 +1094,24 @@ async fn validate_intent_environment(
     settings: &fabro_types::WorkflowSettings,
     target: &RunTarget,
 ) -> Result<(), EnvironmentSelectionError> {
-    let provider = run_manifest::effective_sandbox_provider(&settings.run);
+    let configured_provider = run_manifest::configured_sandbox_provider(&settings.run);
+    let effective_provider = run_manifest::effective_sandbox_provider(&settings.run);
     let image = &settings.run.environment.image;
-    let image_incompatible = match provider {
+    let image_incompatible = match effective_provider {
         SandboxProviderKind::Docker => image.docker.is_none() && image.dockerfile.is_some(),
         SandboxProviderKind::Local | SandboxProviderKind::Daytona => false,
     };
     let (target_incompatible, detail) = match target {
         RunTarget::Git(_) => (
-            provider == SandboxProviderKind::Local || !settings.run.clone.enabled,
+            configured_provider == SandboxProviderKind::Local || !settings.run.clone.enabled,
             "Git targets require a compatible clone-enabled Docker or Daytona environment",
         ),
         RunTarget::None {} => (
-            provider == SandboxProviderKind::Local,
+            configured_provider == SandboxProviderKind::Local,
             "none targets require a compatible Docker or Daytona environment",
         ),
         RunTarget::Folder { .. } => (
-            provider != SandboxProviderKind::Local,
+            configured_provider != SandboxProviderKind::Local,
             "folder targets require a Local environment",
         ),
     };
@@ -1117,17 +1119,20 @@ async fn validate_intent_environment(
         return Err(EnvironmentSelectionError::TargetUnsupported { detail });
     }
     if let Some(detail) =
-        run_manifest::sandbox_provider_policy_error(&state.server_settings(), provider)
+        run_manifest::sandbox_provider_policy_error(&state.server_settings(), effective_provider)
     {
-        return Err(EnvironmentSelectionError::ProviderDisabled { provider, detail });
+        return Err(EnvironmentSelectionError::ProviderDisabled {
+            provider: effective_provider,
+            detail,
+        });
     }
-    if provider == SandboxProviderKind::Daytona {
+    if effective_provider == SandboxProviderKind::Daytona {
         match state.vault_secret(EnvVars::DAYTONA_API_KEY).await {
             Ok(Some(key)) if !key.trim().is_empty() => {}
             Ok(_) => {
                 return Err(EnvironmentSelectionError::MissingCredential {
-                    provider,
-                    name: EnvVars::DAYTONA_API_KEY,
+                    provider: effective_provider,
+                    name:     EnvVars::DAYTONA_API_KEY,
                 });
             }
             Err(source) => {

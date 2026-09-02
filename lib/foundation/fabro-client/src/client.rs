@@ -701,6 +701,17 @@ impl Client {
         self.submit_create_run(manifest.into()).await
     }
 
+    /// Retrieves one canonical server-managed environment by ID.
+    pub async fn retrieve_environment(&self, id: &str) -> Result<types::Environment> {
+        let response = self
+            .send_api(|client| {
+                let id = id.to_string();
+                async move { client.retrieve_environment().id(id).send().await }
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// Registers one workflow version and verifies the server assigned the
     /// content-derived id, so a mismatched response fails loudly here rather
     /// than being trusted downstream.
@@ -2326,6 +2337,7 @@ mod tests {
 
     use chrono::Duration as ChronoDuration;
     use fabro_types::WorkflowPath;
+    use fabro_types::settings::run::EnvironmentProvider;
     use fabro_util::exit;
     use httpmock::Method::{GET, POST};
     use httpmock::{HttpMockResponse, MockServer};
@@ -2408,6 +2420,72 @@ mod tests {
             .header("content-type", "application/json")
             .body(json!({ "workflow_version_id": id }).to_string())
             .build()
+    }
+
+    fn environment_json(id: &str, provider: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "revision": "0".repeat(64),
+            "provider": provider,
+            "image": { "docker": null, "dockerfile": null },
+            "resources": { "cpu": null, "memory": null, "disk": null },
+            "network": { "mode": "allow_all", "allow": [] },
+            "lifecycle": {
+                "preserve": false,
+                "stop_on_terminal": true,
+                "auto_stop": null
+            },
+            "labels": {},
+            "env": {}
+        })
+    }
+
+    #[tokio::test]
+    async fn retrieve_environment_returns_the_canonical_environment() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/api/v1/environments/local");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .json_body(environment_json("local", "local"));
+            })
+            .await;
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+
+        let environment = client.retrieve_environment("local").await.unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(environment.id.as_str(), "local");
+        assert_eq!(environment.settings.provider, EnvironmentProvider::Local);
+    }
+
+    #[tokio::test]
+    async fn retrieve_environment_preserves_api_failure_metadata() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/api/v1/environments/missing");
+                then.status(404)
+                    .header("content-type", "application/json")
+                    .json_body(json!({
+                        "errors": [{
+                            "status": "404",
+                            "title": "Not Found",
+                            "detail": "environment not found",
+                            "code": "environment_not_found"
+                        }]
+                    }));
+            })
+            .await;
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+
+        let error = client.retrieve_environment("missing").await.unwrap_err();
+
+        mock.assert_async().await;
+        let failure = api_failure_for(&error).expect("API failure metadata should be preserved");
+        assert_eq!(failure.status, fabro_http::StatusCode::NOT_FOUND);
+        assert_eq!(failure.code.as_deref(), Some("environment_not_found"));
     }
 
     #[tokio::test]
