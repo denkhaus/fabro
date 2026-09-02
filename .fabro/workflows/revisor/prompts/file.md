@@ -11,7 +11,7 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 | Command | Purpose |
 |---|---|
 | `sd create --title "..." --type task --priority <1-2> --desc "..."` | File one seed. English title and description (repo rule). Output names the new id — record it. |
-| `sd list --format compact` | Existing seeds; check for near-duplicates by title BEFORE creating. |
+| `sd list --format compact` | Existing seeds; check for near-duplicates by title BEFORE creating. The analyzer pre-deduplicates against open AND closed seeds — you are the guard for races and content-duplicates behind different titles, not the first line of defense. |
 
 ## Procedure
 
