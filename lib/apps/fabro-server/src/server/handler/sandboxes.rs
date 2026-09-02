@@ -4,8 +4,9 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
-use fabro_sandbox::SandboxLookupError;
-use fabro_types::{SandboxInfo, SandboxListResponse, SandboxProviderKind};
+use fabro_sandbox::{RUN_ID_LABEL, SandboxLookupError};
+use fabro_types::{RunSandboxAvailability, SandboxInfo, SandboxListResponse, SandboxProviderKind};
+use tracing::warn;
 
 use super::super::AppState;
 use crate::error::ApiError;
@@ -15,6 +16,37 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/sandboxes", get(list_sandboxes))
         .route("/sandboxes/{id}", get(retrieve_sandbox))
+        .route(
+            "/runs/sandbox-availability",
+            get(list_run_sandbox_availability),
+        )
+}
+
+/// Narrow live probe for run-management callers (fabro-8d30a): which run
+/// sandboxes still exist on this host. Stopped counts, removed does not.
+/// A provider that fails to answer fails the whole request — an
+/// incomplete set would read absent runs as "removed".
+async fn list_run_sandbox_availability(
+    State(state): State<Arc<AppState>>,
+    _auth: RequiredRunManagementActor,
+) -> Result<Json<RunSandboxAvailability>, ApiError> {
+    let inventory = state.sandbox_provider_registry().list_managed().await;
+    if !inventory.meta.provider_errors.is_empty() {
+        let failures = provider_errors_summary(&inventory.meta.provider_errors);
+        warn!(failures = %failures, "Sandbox availability probe incomplete");
+        return Err(ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            format!("Sandbox availability is incomplete: {failures}."),
+        ));
+    }
+    let mut run_ids = inventory
+        .data
+        .iter()
+        .filter_map(|info| info.labels.get(RUN_ID_LABEL).cloned())
+        .collect::<Vec<_>>();
+    run_ids.sort();
+    run_ids.dedup();
+    Ok(Json(RunSandboxAvailability { run_ids }))
 }
 
 async fn list_sandboxes(
@@ -35,6 +67,14 @@ async fn retrieve_sandbox(
         .await
         .map(Json)
         .map_err(sandbox_lookup_error)
+}
+
+fn provider_errors_summary(errors: &[fabro_types::SandboxProviderLookupError]) -> String {
+    errors
+        .iter()
+        .map(|error| format!("{}: {}", error.provider, error.message))
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 fn sandbox_lookup_error(err: SandboxLookupError) -> ApiError {
@@ -79,10 +119,10 @@ fn provider_list(providers: &[SandboxProviderKind]) -> String {
 mod tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
-    use fabro_sandbox::SandboxProviderRegistry;
     use fabro_sandbox::test_support::{
         FakeGet, FakeList, FakeSandboxProvider, fake_registry, fake_sandbox_info,
     };
+    use fabro_sandbox::{RUN_ID_LABEL, SandboxProviderRegistry};
     use fabro_types::SandboxProviderKind;
     use serde_json::{Value, json};
     use tower::ServiceExt;
@@ -109,6 +149,67 @@ mod tests {
             .await
             .expect("response body should fit in memory");
         serde_json::from_slice(&bytes).expect("response body should be valid JSON")
+    }
+
+    #[tokio::test]
+    async fn sandbox_availability_extracts_sorted_deduped_run_ids() {
+        let mut docker_alive = fake_sandbox_info(SandboxProviderKind::Docker, "container-1");
+        docker_alive.labels.insert(
+            RUN_ID_LABEL.to_string(),
+            "01M1EGK6J8CNP9APJ7PWE6WE74".to_string(),
+        );
+        let mut daytona_alive = fake_sandbox_info(SandboxProviderKind::Daytona, "snapshot-9");
+        daytona_alive.labels.insert(
+            RUN_ID_LABEL.to_string(),
+            "01M0WWKAQCWZC0Q0JK019H0ZC7".to_string(),
+        );
+        // Same run reachable through a second provider entry: deduplicated.
+        let mut duplicate = fake_sandbox_info(SandboxProviderKind::Docker, "container-2");
+        duplicate.labels.insert(
+            RUN_ID_LABEL.to_string(),
+            "01M0WWKAQCWZC0Q0JK019H0ZC7".to_string(),
+        );
+        // Non-run sandboxes (no run label) never appear.
+        let unmanaged_scope = fake_sandbox_info(SandboxProviderKind::Docker, "container-3");
+        let app = app_with_registry(fake_registry(vec![FakeSandboxProvider::new(
+            SandboxProviderKind::Docker,
+            FakeList::Ok(vec![unmanaged_scope, duplicate, docker_alive]),
+            FakeGet::Missing,
+        )]));
+
+        let response = app
+            .oneshot(req_get("/api/v1/runs/sandbox-availability"))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_json(response).await;
+        assert_eq!(
+            body["run_ids"],
+            json!(["01M0WWKAQCWZC0Q0JK019H0ZC7", "01M1EGK6J8CNP9APJ7PWE6WE74"])
+        );
+    }
+
+    #[tokio::test]
+    async fn sandbox_availability_fails_closed_on_provider_error() {
+        let app = app_with_registry(fake_registry(vec![FakeSandboxProvider::new(
+            SandboxProviderKind::Docker,
+            FakeList::Err("daemon unreachable"),
+            FakeGet::Missing,
+        )]));
+
+        let response = app
+            .oneshot(req_get("/api/v1/runs/sandbox-availability"))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        let body = body_json(response).await;
+        let message = body["errors"][0]["detail"].as_str().unwrap_or_default();
+        assert!(
+            message.contains("incomplete"),
+            "502 must name the incomplete view: {message}"
+        );
     }
 
     #[tokio::test]

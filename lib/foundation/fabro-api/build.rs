@@ -656,6 +656,11 @@ fn main() {
             "fabro_types::SandboxListResponse",
             &[],
         ),
+        (
+            "RunSandboxAvailability",
+            "fabro_types::RunSandboxAvailability",
+            &[],
+        ),
         ("SandboxNetwork", "fabro_types::SandboxNetwork", &[]),
         (
             "SandboxNetworkPolicy",

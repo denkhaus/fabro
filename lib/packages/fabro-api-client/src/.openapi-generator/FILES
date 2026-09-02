@@ -399,6 +399,7 @@ models/run-provenance.ts
 models/run-question.ts
 models/run-reference.ts
 models/run-runnable-source.ts
+models/run-sandbox-availability.ts
 models/run-sandbox-failure.ts
 models/run-sandbox-instance.ts
 models/run-sandbox-kind.ts

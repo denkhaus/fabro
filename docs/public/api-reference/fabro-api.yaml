@@ -3842,6 +3842,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/runs/sandbox-availability:
+    get:
+      operationId: listRunSandboxAvailability
+      tags: [Sandboxes]
+      summary: List Run Sandbox Availability
+      description: |
+        Narrow live view for run-management callers (workers with run tools
+        and users): the run ids whose sandboxes still exist on this host,
+        gathered from the configured providers. Stopped sandboxes count as
+        existing; removed ones do not. When any provider fails to answer,
+        the request fails instead of returning an incomplete set that could
+        read as "removed".
+      responses:
+        "200":
+          description: Run ids with existing sandboxes, sorted and deduplicated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunSandboxAvailability"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller lacks run-management authority
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: A sandbox provider failed to answer; the availability view is incomplete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/sandboxes:
     get:
       operationId: listSandboxes
@@ -14121,6 +14159,21 @@ components:
             $ref: "#/components/schemas/SandboxInfo"
         meta:
           $ref: "#/components/schemas/SandboxListMeta"
+
+    RunSandboxAvailability:
+      description: |
+        Narrow live sandbox-existence view for run-management callers.
+        Run ids whose sandboxes still exist on this host (stopped counts,
+        removed does not).
+      type: object
+      required:
+        - run_ids
+      properties:
+        run_ids:
+          type: array
+          description: Sorted, deduplicated run ids (canonical string form).
+          items:
+            type: string
 
     SandboxFileEntry:
       description: A directory entry in a run sandbox.

@@ -61,7 +61,7 @@ additional tools register:
 | Tool | Purpose |
 |---|---|
 | `fabro_ask` | Ask one question to the Ask-Fabro analyst of another run and wait for the final answer |
-| `fabro_runs_list` | Enumerate runs of one declared workflow, optionally bounded by `created_since` |
+| `fabro_runs_list` | Enumerate runs of one declared workflow, optionally bounded by `created_since`. Each entry carries `sandbox_available`: `true` when the run's sandbox still exists on this host (stopped counts, removed does not), `false` when it is gone, and absent when no live view exists — treat absent and `false` as "not verifiably available" when picking targets |
 
 The declaration is the authority contract, enforced at three layers: the
 worker token carries the declared slugs, the tools reject targets outside

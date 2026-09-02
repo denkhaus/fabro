@@ -101,6 +101,17 @@ pub trait FabroToolBackend: Send + Sync {
         created_since: Option<chrono::DateTime<chrono::Utc>>,
     ) -> anyhow::Result<Vec<Run>>;
 
+    /// Live view of which runs' sandboxes still exist on this host, by
+    /// run id string. Stopped containers count (a later ask turn restarts
+    /// them); removed ones do not. `Ok(None)` means no live view — the
+    /// backend is unwired or the probe failed — and callers must treat
+    /// every run as not verifiably available.
+    async fn existing_sandbox_run_ids(
+        &self,
+    ) -> anyhow::Result<Option<std::collections::HashSet<String>>> {
+        Ok(None)
+    }
+
     async fn list_run_questions(&self, run_id: &RunId) -> anyhow::Result<Vec<types::ApiQuestion>>;
     async fn submit_run_answer(
         &self,
@@ -179,6 +190,11 @@ pub struct RunSummaryResult {
     pub workflow_graph_name: Option<String>,
     pub workflow_slug:       Option<String>,
     pub status:              String,
+    /// True when the run's sandbox still exists on this host (live probe,
+    /// stopped counts); false when it is gone; absent when no live view
+    /// exists. Only `fabro_runs_list` populates it (fabro-8d30a).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sandbox_available:   Option<bool>,
     pub archived:            bool,
     pub created_at:          String,
     pub started_at:          Option<String>,
@@ -302,6 +318,7 @@ pub(crate) fn run_summary_result(run: &Run) -> RunSummaryResult {
         workflow_graph_name: run.workflow.graph_name.clone(),
         workflow_slug:       run.workflow.slug.clone(),
         status:              run.lifecycle.status.kind().to_string(),
+        sandbox_available:   None,
         archived:            run.lifecycle.archived,
         created_at:          run.timestamps.created_at.to_rfc3339(),
         started_at:          run

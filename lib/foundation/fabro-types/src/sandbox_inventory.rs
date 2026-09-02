@@ -50,3 +50,13 @@ pub struct SandboxListResponse {
     pub data: Vec<SandboxInfo>,
     pub meta: SandboxListMeta,
 }
+
+/// Narrow live view for run-scoped callers (fabro-8d30a): the run ids
+/// whose sandboxes still exist on this host. Stopped counts, removed
+/// does not. An incomplete provider view fails the request instead of
+/// returning a set that could read as "removed".
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RunSandboxAvailability {
+    /// Sorted, deduplicated run ids (canonical string form).
+    pub run_ids: Vec<String>,
+}

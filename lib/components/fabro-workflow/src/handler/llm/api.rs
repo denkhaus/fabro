@@ -2893,6 +2893,60 @@ reasoning = false
     }
 
     #[tokio::test]
+    async fn runs_list_annotates_live_sandbox_availability() {
+        let alive = run(run_id("01KRBZW5C0000000000000000A"), None, 0);
+        let pruned = run(run_id("01KRBZW5C0000000000000000B"), None, 0);
+        let backend = Arc::new(MockRunToolBackend {
+            runs_to_list: vec![alive, pruned],
+            existing_sandboxes: Some(std::collections::HashSet::from([
+                "01KRBZW5C0000000000000000A".to_string(),
+            ])),
+            ..mock_backend()
+        });
+        let result = fabro_tool::runs_list(
+            Arc::clone(&backend) as Arc<dyn fabro_tool::FabroToolBackend>,
+            fabro_tool::ValidatedRunsList::try_from(fabro_tool::FabroRunsListParams {
+                workflow:      Some("develop".to_string()),
+                created_since: None,
+            })
+            .unwrap(),
+            &["develop".to_string()],
+        )
+        .await
+        .expect("in-scope enumeration succeeds");
+        assert_eq!(result.runs.len(), 2);
+        assert_eq!(result.runs[0].sandbox_available, Some(true));
+        assert_eq!(result.runs[1].sandbox_available, Some(false));
+        assert_eq!(
+            serde_json::to_value(&result.runs[0]).unwrap()["sandbox_available"],
+            serde_json::json!(true)
+        );
+    }
+
+    #[tokio::test]
+    async fn runs_list_leaves_availability_absent_without_a_probe() {
+        let backend = Arc::new(MockRunToolBackend {
+            runs_to_list: vec![run(run_id("01KRBZW5C0000000000000000C"), None, 0)],
+            ..mock_backend()
+        });
+        let result = fabro_tool::runs_list(
+            Arc::clone(&backend) as Arc<dyn fabro_tool::FabroToolBackend>,
+            fabro_tool::ValidatedRunsList::try_from(fabro_tool::FabroRunsListParams {
+                workflow:      Some("develop".to_string()),
+                created_since: None,
+            })
+            .unwrap(),
+            &["develop".to_string()],
+        )
+        .await
+        .expect("in-scope enumeration succeeds");
+        // Absent, not false: no live view must never read as "removed".
+        assert_eq!(result.runs[0].sandbox_available, None);
+        let serialized = serde_json::to_value(&result.runs[0]).unwrap();
+        assert!(serialized.get("sandbox_available").is_none());
+    }
+
+    #[tokio::test]
     async fn agent_run_interact_rejects_approval_actions_before_backend_dispatch() {
         for action in ["approve", "deny"] {
             let (services, backend) = fabro_run_tool_services();
@@ -2963,6 +3017,8 @@ reasoning = false
             ask_session_run_ids:   Mutex::new(Vec::new()),
             ask_turns:             Mutex::new(Vec::new()),
             listed_workflows:      Mutex::new(Vec::new()),
+            runs_to_list:          Vec::new(),
+            existing_sandboxes:    None,
         });
         let services = FabroRunToolServices {
             backend:            backend.clone(),
@@ -2987,6 +3043,8 @@ reasoning = false
             ask_session_run_ids:   Mutex::new(Vec::new()),
             ask_turns:             Mutex::new(Vec::new()),
             listed_workflows:      Mutex::new(Vec::new()),
+            runs_to_list:          Vec::new(),
+            existing_sandboxes:    None,
         }
     }
 
@@ -3089,6 +3147,8 @@ reasoning = false
         ask_session_run_ids:   Mutex<Vec<RunId>>,
         ask_turns:             Mutex<Vec<(String, String)>>,
         listed_workflows:      Mutex<Vec<(String, Option<chrono::DateTime<chrono::Utc>>)>>,
+        runs_to_list:          Vec<Run>,
+        existing_sandboxes:    Option<std::collections::HashSet<String>>,
     }
 
     #[async_trait]
@@ -3147,7 +3207,13 @@ reasoning = false
                 .lock()
                 .unwrap()
                 .push((workflow.to_string(), created_since));
-            Ok(Vec::new())
+            Ok(self.runs_to_list.clone())
+        }
+
+        async fn existing_sandbox_run_ids(
+            &self,
+        ) -> anyhow::Result<Option<std::collections::HashSet<String>>> {
+            Ok(self.existing_sandboxes.clone())
         }
 
         async fn start_run(&self, run_id: &RunId, resume: bool) -> anyhow::Result<Run> {

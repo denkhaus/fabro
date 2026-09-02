@@ -15,6 +15,8 @@ mod git_retry;
 #[cfg(any(feature = "docker", feature = "daytona", test))]
 mod managed_labels;
 
+pub use managed_labels::RUN_ID_LABEL;
+
 mod push_credentials;
 
 pub mod redact;

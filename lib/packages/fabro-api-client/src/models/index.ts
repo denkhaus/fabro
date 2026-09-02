@@ -370,6 +370,7 @@ export * from './run-question';
 export * from './run-reference';
 export * from './run-runnable-source';
 export * from './run-sandbox';
+export * from './run-sandbox-availability';
 export * from './run-sandbox-failure';
 export * from './run-sandbox-instance';
 export * from './run-sandbox-kind';

@@ -83,11 +83,27 @@ pub async fn runs_list(
         .list_runs_of_workflow(workflow, params.created_since)
         .await
         .map_err(|err| ToolError::from_anyhow(&err))?;
-    let runs = runs.iter().map(super::common::run_summary_result).collect();
+    let mut results: Vec<RunSummaryResult> =
+        runs.iter().map(super::common::run_summary_result).collect();
+    annotate_sandbox_availability(&mut results, &backend).await;
     Ok(RunsListResult {
         workflow: workflow.to_string(),
-        runs,
+        runs:     results,
     })
+}
+
+/// Fill `sandbox_available` from one live probe (fabro-8d30a). A probe
+/// that is unwired or fails leaves every entry absent (`None`) — callers
+/// treat absent as not verifiably available, never as available.
+async fn annotate_sandbox_availability(
+    results: &mut [RunSummaryResult],
+    backend: &Arc<dyn FabroToolBackend>,
+) {
+    let existing = backend.existing_sandbox_run_ids().await.unwrap_or(None);
+    let Some(existing) = existing else { return };
+    for result in results {
+        result.sandbox_available = Some(existing.contains(&result.run_id));
+    }
 }
 
 pub fn runs_list_text(result: &RunsListResult) -> String {

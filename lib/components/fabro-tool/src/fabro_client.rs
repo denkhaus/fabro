@@ -189,6 +189,15 @@ impl FabroToolBackend for ClientBackend {
             .await
     }
 
+    async fn existing_sandbox_run_ids(
+        &self,
+    ) -> anyhow::Result<Option<std::collections::HashSet<String>>> {
+        // fabro-8d30a: one call to the narrow server endpoint; the worker
+        // never touches the broad host-inventory sandbox route.
+        let availability = self.client.list_run_sandbox_availability().await?;
+        Ok(Some(availability.run_ids.into_iter().collect()))
+    }
+
     async fn list_store_runs(&self) -> anyhow::Result<Vec<Run>> {
         if let Some(run_id) = self.run_scope {
             return Ok(vec![self.retrieve_run(&run_id).await?]);

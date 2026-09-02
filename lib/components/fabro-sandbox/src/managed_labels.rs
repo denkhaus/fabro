@@ -4,7 +4,10 @@ use fabro_types::RunId;
 
 pub(crate) const MANAGED_LABEL: &str = "sh.fabro.managed";
 pub(crate) const MANAGED_LABEL_VALUE: &str = "true";
-pub(crate) const RUN_ID_LABEL: &str = "sh.fabro.run_id";
+/// Public because server handlers read the run id off provider inventory
+/// entries (sandbox-availability probe, fabro-8d30a); the label is part
+/// of the managed-container contract, not an internal detail.
+pub const RUN_ID_LABEL: &str = "sh.fabro.run_id";
 
 /// True when the provided label map carries the Fabro managed sentinel.
 #[cfg(any(feature = "docker", feature = "daytona", test))]

@@ -161,7 +161,8 @@ pub use sandbox_details::{
     SandboxResources, SandboxState, SandboxTimestamps,
 };
 pub use sandbox_inventory::{
-    SandboxInfo, SandboxListMeta, SandboxListResponse, SandboxProviderLookupError,
+    RunSandboxAvailability, SandboxInfo, SandboxListMeta, SandboxListResponse,
+    SandboxProviderLookupError,
 };
 pub use sandbox_provider::SandboxProviderKind;
 pub use sandbox_services::{

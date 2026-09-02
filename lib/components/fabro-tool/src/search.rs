@@ -145,6 +145,8 @@ fn search_run_summary_result(run: &Run) -> SearchRunSummaryResult {
         parent_id,
         children_count,
         workflow_name,
+        // fabro-8d30a: search results do not carry a live sandbox view.
+        sandbox_available: _,
         workflow_graph_name,
         workflow_slug,
         status,

@@ -24,6 +24,8 @@ import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError
 // @ts-ignore
 import type { ErrorResponse } from '../models';
 // @ts-ignore
+import type { RunSandboxAvailability } from '../models';
+// @ts-ignore
 import type { SandboxInfo } from '../models';
 // @ts-ignore
 import type { SandboxListResponse } from '../models';
@@ -32,6 +34,42 @@ import type { SandboxListResponse } from '../models';
  */
 export const SandboxesApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
+        /**
+         * Narrow live view for run-management callers (workers with run tools and users): the run ids whose sandboxes still exist on this host, gathered from the configured providers. Stopped sandboxes count as existing; removed ones do not. When any provider fails to answer, the request fails instead of returning an incomplete set that could read as \"removed\".
+         * @summary List Run Sandbox Availability
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunSandboxAvailability: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/runs/sandbox-availability`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
         /**
          * Lists Fabro-managed sandboxes directly from configured sandbox providers.
          * @summary List Sandboxes
@@ -118,6 +156,18 @@ export const SandboxesApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = SandboxesApiAxiosParamCreator(configuration)
     return {
         /**
+         * Narrow live view for run-management callers (workers with run tools and users): the run ids whose sandboxes still exist on this host, gathered from the configured providers. Stopped sandboxes count as existing; removed ones do not. When any provider fails to answer, the request fails instead of returning an incomplete set that could read as \"removed\".
+         * @summary List Run Sandbox Availability
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listRunSandboxAvailability(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunSandboxAvailability>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunSandboxAvailability(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SandboxesApi.listRunSandboxAvailability']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Lists Fabro-managed sandboxes directly from configured sandbox providers.
          * @summary List Sandboxes
          * @param {*} [options] Override http request option.
@@ -152,6 +202,15 @@ export const SandboxesApiFactory = function (configuration?: Configuration, base
     const localVarFp = SandboxesApiFp(configuration)
     return {
         /**
+         * Narrow live view for run-management callers (workers with run tools and users): the run ids whose sandboxes still exist on this host, gathered from the configured providers. Stopped sandboxes count as existing; removed ones do not. When any provider fails to answer, the request fails instead of returning an incomplete set that could read as \"removed\".
+         * @summary List Run Sandbox Availability
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunSandboxAvailability(options?: RawAxiosRequestConfig): AxiosPromise<RunSandboxAvailability> {
+            return localVarFp.listRunSandboxAvailability(options).then((request) => request(axios, basePath));
+        },
+        /**
          * Lists Fabro-managed sandboxes directly from configured sandbox providers.
          * @summary List Sandboxes
          * @param {*} [options] Override http request option.
@@ -177,6 +236,16 @@ export const SandboxesApiFactory = function (configuration?: Configuration, base
  * SandboxesApi - object-oriented interface
  */
 export class SandboxesApi extends BaseAPI {
+    /**
+     * Narrow live view for run-management callers (workers with run tools and users): the run ids whose sandboxes still exist on this host, gathered from the configured providers. Stopped sandboxes count as existing; removed ones do not. When any provider fails to answer, the request fails instead of returning an incomplete set that could read as \"removed\".
+     * @summary List Run Sandbox Availability
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listRunSandboxAvailability(options?: RawAxiosRequestConfig) {
+        return SandboxesApiFp(this.configuration).listRunSandboxAvailability(options).then((request) => request(this.axios, this.basePath));
+    }
+
     /**
      * Lists Fabro-managed sandboxes directly from configured sandbox providers.
      * @summary List Sandboxes

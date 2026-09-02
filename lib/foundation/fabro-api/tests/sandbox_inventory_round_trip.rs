@@ -3,14 +3,15 @@ use std::collections::BTreeMap;
 
 use chrono::{TimeZone, Utc};
 use fabro_api::types::{
-    SandboxInfo as ApiSandboxInfo, SandboxListMeta as ApiSandboxListMeta,
-    SandboxListResponse as ApiSandboxListResponse, SandboxProviderKind as ApiSandboxProviderKind,
+    RunSandboxAvailability as ApiRunSandboxAvailability, SandboxInfo as ApiSandboxInfo,
+    SandboxListMeta as ApiSandboxListMeta, SandboxListResponse as ApiSandboxListResponse,
+    SandboxProviderKind as ApiSandboxProviderKind,
     SandboxProviderLookupError as ApiSandboxProviderLookupError,
 };
 use fabro_types::{
-    SandboxInfo, SandboxListMeta, SandboxListResponse, SandboxNetwork, SandboxNetworkPolicy,
-    SandboxProviderKind, SandboxProviderLookupError, SandboxResources, SandboxState,
-    SandboxTimestamps,
+    RunSandboxAvailability, SandboxInfo, SandboxListMeta, SandboxListResponse, SandboxNetwork,
+    SandboxNetworkPolicy, SandboxProviderKind, SandboxProviderLookupError, SandboxResources,
+    SandboxState, SandboxTimestamps,
 };
 use serde_json::json;
 
@@ -21,6 +22,25 @@ fn sandbox_inventory_round_trip_reuses_domain_types() {
     assert_same_type::<ApiSandboxProviderLookupError, SandboxProviderLookupError>();
     assert_same_type::<ApiSandboxListMeta, SandboxListMeta>();
     assert_same_type::<ApiSandboxListResponse, SandboxListResponse>();
+    assert_same_type::<ApiRunSandboxAvailability, RunSandboxAvailability>();
+}
+
+#[test]
+fn run_sandbox_availability_json_matches_openapi_shape() {
+    let availability = RunSandboxAvailability {
+        run_ids: vec!["01M1EGK6J8CNP9APJ7PWE6WE74".to_string()],
+    };
+    assert_eq!(
+        serde_json::to_value(&availability).unwrap(),
+        json!({"run_ids": ["01M1EGK6J8CNP9APJ7PWE6WE74"]})
+    );
+    let parsed: RunSandboxAvailability = serde_json::from_value(json!({
+        "run_ids": ["01M1EGK6J8CNP9APJ7PWE6WE74", "01M1EGK6J8CNP9APJ7PWE6WE74"]
+    }))
+    .unwrap();
+    // Serialization shape is the contract; duplicates pass through as the
+    // server always sends sorted, deduplicated ids.
+    assert_eq!(parsed.run_ids.len(), 2);
 }
 
 #[test]

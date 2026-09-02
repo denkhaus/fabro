@@ -1350,6 +1350,17 @@ impl Client {
         .await
     }
 
+    /// Live probe backing `sandbox_available` in the run tools
+    /// (fabro-8d30a): run ids whose sandboxes still exist on this host.
+    pub async fn list_run_sandbox_availability(
+        &self,
+    ) -> Result<fabro_types::RunSandboxAvailability> {
+        let response = self
+            .send_api(|client| async move { client.list_run_sandbox_availability().send().await })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// Enumerate runs of one workflow slug, newest first, including
     /// archived runs. Used by the ADR-0011 revisor bookkeeping tool.
     pub async fn list_runs_of_workflow(
