@@ -159,7 +159,7 @@ fn run_target_for_environment(
         ));
     }
     let Some(observation) = fabro_manifest::observe_git_run_target(canonical_cwd, None) else {
-        return Ok((RunTarget::None {}, false));
+        return Ok((none_target_for_unversioned_directory(canonical_cwd)?, false));
     };
     let dirty = observation.legacy_git_context.dirty == DirtyStatus::Dirty;
     let target = observation.run_target.ok_or_else(|| {
@@ -171,4 +171,51 @@ fn run_target_for_environment(
         );
     }
     Ok((RunTarget::Git(target), dirty))
+}
+
+fn none_target_for_unversioned_directory(canonical_cwd: &Path) -> anyhow::Result<RunTarget> {
+    let repository = match git2::Repository::discover(canonical_cwd) {
+        Ok(repository) => repository,
+        Err(source) if source.code() == git2::ErrorCode::NotFound => return Ok(RunTarget::None {}),
+        Err(source) => {
+            return Err(anyhow::Error::new(source)).with_context(|| {
+                format!(
+                    "failed to inspect caller working directory {} for Git metadata",
+                    canonical_cwd.display()
+                )
+            });
+        }
+    };
+
+    if repository.is_bare() {
+        bail!(
+            "the caller directory resolves to a bare Git repository; clone-based runs require a non-bare checkout with an attached branch"
+        );
+    }
+    match repository.head() {
+        Err(source)
+            if matches!(
+                source.code(),
+                git2::ErrorCode::UnbornBranch | git2::ErrorCode::NotFound
+            ) =>
+        {
+            bail!(
+                "the caller Git checkout has no commits; create a commit before using a clone-based environment"
+            );
+        }
+        Err(source) => {
+            return Err(anyhow::Error::new(source))
+                .context("failed to inspect the caller Git checkout HEAD");
+        }
+        Ok(head) if !head.is_branch() => {
+            bail!(
+                "the caller Git checkout has a detached HEAD; check out a branch before using a clone-based environment"
+            );
+        }
+        Ok(_) => {}
+    }
+
+    bail!(
+        "the caller Git checkout does not have a usable attached branch for a clone-based run target"
+    )
 }

@@ -438,9 +438,14 @@ impl RunSession {
         } else {
             clone_source_for_run(record)?
         };
-        // An empty-workspace run has no repository for PR creation or the
-        // sandbox environment, regardless of any persisted Git metadata.
-        let runtime_origin_url = (!clone_source.skip_clone)
+        // Clone avoidance and repository identity are independent for Local
+        // folder targets: their files are already present, but GitHub tokens
+        // and pull-request publication still need the persisted origin. Only
+        // an explicit empty target or a clone-target dry-run uses a repository-
+        // free scratch workspace.
+        let repository_free_workspace =
+            dry_run_clone_target || matches!(record.target.as_ref(), Some(RunTarget::None {}));
+        let runtime_origin_url = (!repository_free_workspace)
             .then(|| record.repo_origin_url().map(str::to_string))
             .flatten();
         let catalog = Arc::clone(&services.catalog);
@@ -1315,8 +1320,8 @@ mod tests {
         RunMode, RunPrepareSettings,
     };
     use fabro_types::{
-        BilledModelUsage, ManifestPath, RunTarget, StageTiming, WorkflowSettings, fixtures,
-        test_support,
+        BilledModelUsage, GitContext, ManifestPath, RunTarget, StageTiming, WorkflowSettings,
+        fixtures, test_support,
     };
     use fabro_vault::SecretType;
     use object_store::memory::InMemory;
@@ -2174,7 +2179,7 @@ reasoning = false
     }
 
     #[tokio::test]
-    async fn run_session_new_folder_target_uses_canonical_path_over_environment_cwd() {
+    async fn run_session_new_folder_target_uses_canonical_path_and_preserves_git_identity() {
         let temp = tempfile::tempdir().unwrap();
         let (storage_root, _run_dir) = storage_root_and_run_dir(&temp);
         let (canonical_folder, canonical_text) = canonical_folder(&temp);
@@ -2192,6 +2197,13 @@ reasoning = false
             },
             Some(canonical_text),
         );
+        let origin_url = "https://github.com/acme/widgets";
+        let persisted = persisted_with_git_projection(persisted, GitContext {
+            origin_url: origin_url.to_string(),
+            branch:     "feature".to_string(),
+            sha:        Some("0123456789abcdef0123456789abcdef01234567".to_string()),
+            dirty:      fabro_types::DirtyStatus::Clean,
+        });
         let emitter = Arc::new(Emitter::new(fixtures::RUN_1));
         let registry = Arc::new(test_registry());
 
@@ -2207,6 +2219,8 @@ reasoning = false
         };
         assert_eq!(working_directory, canonical_folder);
         assert_ne!(working_directory, environment_cwd);
+        assert_eq!(session.sandbox_env.origin_url.as_deref(), Some(origin_url));
+        assert_eq!(session.pr_origin_url.as_deref(), Some(origin_url));
     }
 
     #[tokio::test]
@@ -2494,6 +2508,12 @@ reasoning = false
         let (graph, source, diagnostics, run_dir, mut run_spec) = persisted.into_parts();
         run_spec.target = Some(target);
         run_spec.source_directory = source_directory;
+        Persisted::new(graph, source, diagnostics, run_dir, run_spec)
+    }
+
+    fn persisted_with_git_projection(persisted: Persisted, git: GitContext) -> Persisted {
+        let (graph, source, diagnostics, run_dir, mut run_spec) = persisted.into_parts();
+        run_spec.git = Some(git);
         Persisted::new(graph, source, diagnostics, run_dir, run_spec)
     }
 

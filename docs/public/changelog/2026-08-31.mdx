@@ -15,7 +15,11 @@ Workflows can still be selected by project name, from user workflow storage,
 from another local checkout, or as loose local files. The workflow source is
 independent from the execution target: local environments use the directory
 where Fabro was invoked, while Docker and Daytona derive a GitHub target from
-that directory. Remote Git workflow acquisition is not included.
+that directory. Clone-based runs invoked from a Git checkout require a
+non-bare checkout with an attached branch and at least one commit; detached
+HEAD and unborn checkouts fail before workflow registration instead of being
+treated as empty workspaces. A directory outside Git still selects an empty
+workspace. Remote Git workflow acquisition is not included.
 
 CLI input overrides retain string, Boolean, integer, and finite-float types,
 and Boolean flags remain sparse. `--goal-file` is read locally and sent by

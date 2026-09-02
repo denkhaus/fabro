@@ -808,6 +808,75 @@ fn create_clone_targets_require_exact_git_observations() {
 }
 
 #[test]
+fn create_rejects_unusable_git_checkouts_instead_of_sending_an_empty_target() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let environment_mock = mock_environment(&server, "default", "docker");
+    let version_mock = mock_workflow_version_registrations(&server);
+    let run_id = unique_run_id();
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let create_mock = mock_intent_create(&server, &run_id, requests);
+    let fixture_root = tempfile::tempdir().unwrap();
+    let workflow = write_workflow(fixture_root.path(), "workflow", "UnusableCheckout");
+
+    let detached = tempfile::tempdir().unwrap();
+    run_git(detached.path(), &[
+        "-c",
+        "init.defaultBranch=feature",
+        "init",
+        "--quiet",
+    ]);
+    std::fs::write(detached.path().join("tracked.txt"), "tracked").unwrap();
+    run_git(detached.path(), &["add", "tracked.txt"]);
+    run_git(detached.path(), &[
+        "-c",
+        "user.name=test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "-m",
+        "initial",
+    ]);
+    run_git(detached.path(), &["checkout", "--detach", "--quiet"]);
+
+    let unborn = tempfile::tempdir().unwrap();
+    run_git(unborn.path(), &[
+        "-c",
+        "init.defaultBranch=feature",
+        "init",
+        "--quiet",
+    ]);
+
+    for (working_directory, expected_error) in [
+        (
+            detached.path(),
+            "the caller Git checkout has a detached HEAD",
+        ),
+        (unborn.path(), "the caller Git checkout has no commits"),
+    ] {
+        let output = context
+            .create_cmd()
+            .current_dir(working_directory)
+            .args([
+                "--server",
+                &format!("{}/api/v1", server.base_url()),
+                workflow.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+
+        assert!(!output.status.success());
+        let stderr = output_stderr(&output);
+        assert!(stderr.contains(expected_error), "{stderr}");
+    }
+
+    environment_mock.assert_calls(2);
+    version_mock.assert_calls(0);
+    create_mock.assert_calls(0);
+}
+
+#[test]
 fn create_rejects_an_unsupported_attached_origin_before_upload() {
     let context = test_context!();
     let server = MockServer::start();
