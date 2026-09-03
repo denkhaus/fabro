@@ -64,3 +64,26 @@ planner closing seeds, acting on approved verdicts (ADR-0010).
 (`fabro-journal-v1` line shape), one file per run, visits run-local.
 _Avoid_: per-node journal files (they collide across runs sharing a base);
 unattributable journal lines. See ADR-0009.
+
+**Revision marker**:
+`.fabro/revisions/<run-id>.md` — the bookkeeping file a revisor pass writes
+after filing; its absence from the base branch is what marks a run
+unrevised. _Avoid_: treating the review file as the marker.
+
+**Review (revisor)**:
+`.fabro/reviews/<workflow>/<run-id>.md` — the verbatim Ask-Fabro analyst
+answer a revisor pass persists for a target run. Feeds distillation; never
+the marker itself.
+
+**duplicate_of**:
+The analyzer relation: a finding names the same concrete change as an
+existing seed (open or closed), so it is dropped before filing; the journal
+records `duplicate_of: <id>`. _Avoid_: filing the duplicate and merging
+later (ADR-0014).
+
+**supersedes**:
+The bookkeeper relation: a new seed replaces the SAME target with a
+strictly better solution, so the old open seed is closed with
+`sd close --reason "superseded by <new-id>: ..."`. Thematic overlap is not
+supersession — cross-reference instead, close nothing. _Avoid_: SUPERSEDES
+notes in descriptions without closing (stale open seeds). See ADR-0014.
