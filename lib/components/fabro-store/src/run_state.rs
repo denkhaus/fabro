@@ -33,6 +33,45 @@ pub(crate) struct EventProjectionCache {
     pub state:    Option<Arc<RunProjection>>,
 }
 
+/// A run's projection at its committed head. `RunSummaryStore` replays it
+/// from SQLite history and derives summary rows from it; `RunDatabase` builds
+/// it from a newly committed event and seeds its in-memory cache with it.
+#[derive(Debug, Clone)]
+pub(crate) struct ProjectedRun {
+    pub(crate) run_id:     RunId,
+    pub(crate) projection: Arc<RunProjection>,
+    pub(crate) last_seq:   u32,
+}
+
+impl ProjectedRun {
+    pub(crate) fn new(run_id: RunId, projection: Arc<RunProjection>, last_seq: u32) -> Self {
+        Self {
+            run_id,
+            projection,
+            last_seq,
+        }
+    }
+
+    /// Replays a run's full history; the last event's `seq` becomes the head.
+    pub(crate) fn replay(run_id: RunId, events: &[EventEnvelope]) -> Result<Self> {
+        let projection = RunProjection::apply_events(events)?;
+        let last_seq = events
+            .last()
+            .expect("a successfully replayed history contains at least one event")
+            .seq;
+        Ok(Self::new(run_id, Arc::new(projection), last_seq))
+    }
+}
+
+impl From<ProjectedRun> for EventProjectionCache {
+    fn from(projected: ProjectedRun) -> Self {
+        Self {
+            last_seq: projected.last_seq,
+            state:    Some(projected.projection),
+        }
+    }
+}
+
 pub trait RunProjectionReducer {
     fn apply_events(events: &[EventEnvelope]) -> Result<Self>
     where

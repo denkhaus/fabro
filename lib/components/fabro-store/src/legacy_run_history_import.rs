@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::error::Error as StdError;
 use std::fmt;
 
-use fabro_types::{EventEnvelope, RunEvent, RunId, RunProjection};
+use fabro_types::{EventEnvelope, RunEvent, RunId};
 use sha2::{Digest as _, Sha256};
 use sqlx::SqlitePool;
 #[cfg(test)]
@@ -16,8 +16,8 @@ use tokio::sync::Barrier;
 use tracing::debug;
 
 use crate::keys::SlateKey;
-use crate::slate::CachedRunProjection;
-use crate::{Database, EventPayload, RunProjectionReducer, RunSummaryStore, keys};
+use crate::run_state::ProjectedRun;
+use crate::{Database, EventPayload, RunSummaryStore, keys};
 
 /// Count-only observations about the legacy catalog and session indexes.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -458,7 +458,7 @@ struct ValidatedLegacyRunEvent {
 struct ValidatedLegacyRunHistory {
     run_id:  RunId,
     events:  Vec<ValidatedLegacyRunEvent>,
-    current: CachedRunProjection,
+    current: ProjectedRun,
 }
 
 struct LegacyRunHistorySource {
@@ -527,14 +527,8 @@ impl LegacyRunHistorySource {
             .iter()
             .map(|event| event.envelope.clone())
             .collect::<Vec<_>>();
-        let projection = RunProjection::apply_events(&envelopes)
+        let current = ProjectedRun::replay(run_id, &envelopes)
             .map_err(LegacyRunHistorySourceFailure::Replay)?;
-        let last_seq = events
-            .last()
-            .expect("a validated history contains at least one event")
-            .envelope
-            .seq;
-        let current = CachedRunProjection::from_projection(run_id, projection, last_seq);
         Ok(Some(ValidatedLegacyRunHistory {
             run_id,
             events,
@@ -1159,31 +1153,21 @@ fn require_exact_prefix(
 fn replay_destination(
     run_id: &RunId,
     events: &[(EventEnvelope, String)],
-) -> crate::Result<CachedRunProjection> {
-    let Some((first, _event_json)) = events.first() else {
-        return Err(crate::Error::InvalidEvent(
-            "run projection requires an event".to_owned(),
-        ));
-    };
-    if first.seq != 1 {
-        return Err(crate::Error::RunEventMismatch {
-            run_id: run_id.to_string(),
-            seq:    first.seq,
-            field:  "seq",
-        });
+) -> crate::Result<ProjectedRun> {
+    if let Some((first, _event_json)) = events.first() {
+        if first.seq != 1 {
+            return Err(crate::Error::RunEventMismatch {
+                run_id: run_id.to_string(),
+                seq:    first.seq,
+                field:  "seq",
+            });
+        }
     }
     let envelopes = events
         .iter()
         .map(|(envelope, _event_json)| envelope.clone())
         .collect::<Vec<_>>();
-    let projection = RunProjection::apply_events(&envelopes)?;
-    let last_seq = envelopes
-        .last()
-        .expect("a destination history validated as nonempty")
-        .seq;
-    Ok(CachedRunProjection::from_projection(
-        *run_id, projection, last_seq,
-    ))
+    ProjectedRun::replay(*run_id, &envelopes)
 }
 
 fn usize_to_import_count(value: usize) -> Result<u64, LegacyRunHistoryImportFailure> {
@@ -1258,9 +1242,7 @@ mod tests {
     use std::time::Duration;
 
     use chrono::{TimeZone as _, Utc};
-    use fabro_types::{
-        Graph, RunEvent, RunId, RunProjection, SessionId, WorkflowSettings, test_support,
-    };
+    use fabro_types::{Graph, RunEvent, RunId, SessionId, WorkflowSettings, test_support};
     use fabro_util::error;
     use object_store::memory::InMemory;
     use tokio::sync::Barrier;
@@ -1273,9 +1255,9 @@ mod tests {
         parse_source_event,
     };
     use crate::keys::SlateKey;
-    use crate::slate::CachedRunProjection;
+    use crate::run_state::ProjectedRun;
     use crate::{
-        Database, EventEnvelope, EventPayload, RunProjectionReducer, RunSummaryStore, keys,
+        Database, EventEnvelope, EventPayload, RunSummaryStore, keys,
         test_support as store_test_support,
     };
 
@@ -1478,9 +1460,7 @@ mod tests {
             .iter()
             .map(|(_payload, envelope)| envelope.clone())
             .collect::<Vec<_>>();
-        let projection = RunProjection::apply_events(&envelopes)?;
-        let current =
-            CachedRunProjection::from_projection(*run_id, projection, events.last().unwrap().0);
+        let current = ProjectedRun::replay(*run_id, &envelopes)?;
         let mut transaction = pool.begin().await?;
         RunSummaryStore::insert_imported_run_on_connection(&mut transaction, &current).await?;
         for ((_, event_json), (payload, envelope)) in events.iter().zip(&decoded) {
@@ -1513,8 +1493,7 @@ mod tests {
             .iter()
             .map(|(_payload, envelope)| envelope.clone())
             .collect::<Vec<_>>();
-        let projection = RunProjection::apply_events(&envelopes)?;
-        let current = CachedRunProjection::from_projection(*run_id, projection, next.0);
+        let current = ProjectedRun::replay(*run_id, &envelopes)?;
         let mut transaction = pool.begin().await?;
         RunSummaryStore::append_event_on_connection(
             &mut transaction,

@@ -8,7 +8,6 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use fabro_types::{RunId, SessionId};
 use object_store::ObjectStore;
-pub(crate) use run_store::CachedRunProjection;
 pub use run_store::RunDatabase;
 use run_store::RunDatabaseInner;
 use slatedb::config::{CompressionCodec, Settings};
@@ -128,8 +127,8 @@ impl Database {
         payload: &EventPayload,
     ) -> Result<RunDatabase> {
         let (mut active_runs, run_store) = self.reserve_new_run(run_id).await?;
-        let (envelope, cached) = run_store.commit_first_event(payload).await?;
-        run_store.install_in_memory_state(&cached);
+        let (envelope, projected) = run_store.commit_first_event(payload).await?;
+        run_store.install_in_memory_state(projected);
         Self::cache_active_run(&mut active_runs, &run_store);
         run_store.publish(&envelope);
         Ok(run_store)
@@ -170,9 +169,6 @@ impl Database {
         if let Some(active) = active_run_from(&active_runs, run_id) {
             return Ok(active);
         }
-        if !self.run_summary_store.contains(run_id).await? {
-            return Err(Error::RunNotFound(run_id.to_string()));
-        }
         let run_store = self.open_run_database(run_id, false).await?;
         Self::cache_active_run(&mut active_runs, &run_store);
         Ok(run_store)
@@ -182,9 +178,6 @@ impl Database {
         if let Some(active) = self.get_active_run(run_id).await {
             return Ok(active.read_only_clone());
         }
-        if !self.run_summary_store.contains(run_id).await? {
-            return Err(Error::RunNotFound(run_id.to_string()));
-        }
         self.open_run_database(run_id, true).await
     }
 
@@ -192,18 +185,12 @@ impl Database {
         let run_ids = self.run_summary_store.list_run_ids().await?;
         let mut unreadable = Vec::new();
         for run_id in run_ids {
-            match RunDatabase::build_projection(&self.run_summary_store, &run_id).await {
-                Ok(Some(_)) => {}
-                Ok(None) => unreadable.push(UnreadableRun {
-                    run_id,
-                    created_at: run_id.created_at(),
-                    error: "run has no events".to_string(),
-                }),
-                Err(err) => unreadable.push(UnreadableRun {
+            if let Err(err) = self.run_summary_store.load_projection(&run_id).await {
+                unreadable.push(UnreadableRun {
                     run_id,
                     created_at: run_id.created_at(),
                     error: err.to_string(),
-                }),
+                });
             }
         }
         unreadable.sort_by(|left, right| {
@@ -249,11 +236,11 @@ impl Database {
         if let Some(active) = self.get_active_run(run_id).await {
             return active.projection_snapshot().await.map(Some);
         }
-        Ok(
-            RunDatabase::build_projection(&self.run_summary_store, run_id)
-                .await?
-                .map(|entry| entry.projection),
-        )
+        match self.run_summary_store.load_projection(run_id).await {
+            Ok(projected) => Ok(Some(projected.projection)),
+            Err(Error::RunNotFound(_)) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     /// Resolves the run that owns `session_id` from the canonical typed
@@ -338,6 +325,7 @@ mod tests {
     use object_store::path::Path;
 
     use super::*;
+    use crate::run_state::ProjectedRun;
     use crate::{EventPayload, keys, test_support as store_test_support};
 
     fn dt(value: &str) -> DateTime<Utc> {
@@ -903,6 +891,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_run_open_paths_return_run_not_found() {
+        let (_object_store, store) = make_store();
+        let run_id = test_run_id("run-4");
+
+        assert!(matches!(
+            store.open_run(&run_id).await,
+            Err(Error::RunNotFound(id)) if id == run_id.to_string()
+        ));
+        assert!(matches!(
+            store.open_run_reader(&run_id).await,
+            Err(Error::RunNotFound(id)) if id == run_id.to_string()
+        ));
+    }
+
+    #[tokio::test]
     async fn open_run_reader_is_read_only() {
         let (_object_store, store) = make_store();
         let run = store.create_run(&test_run_id("run-1")).await.unwrap();
@@ -1016,11 +1019,7 @@ mod tests {
 
         let projection = store.load_run_projection(&run_id).await.unwrap().unwrap();
         let last_seq = run.last_event_seq().await.unwrap().unwrap();
-        let entries = [CachedRunProjection::from_projection(
-            run_id,
-            Arc::unwrap_or_clone(projection),
-            last_seq,
-        )];
+        let entries = [ProjectedRun::new(run_id, projection, last_seq)];
         summaries.reconcile(&entries).await.unwrap();
         let summary = summaries.get(&run_id, Utc::now()).await.unwrap().unwrap();
         assert_eq!(summary.lifecycle.status, RunStatus::Runnable);

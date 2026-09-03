@@ -6,7 +6,7 @@ use futures::Stream;
 use tokio::sync::{Mutex as AsyncMutex, broadcast, mpsc};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
-use crate::run_state::{EventProjectionCache, RunProjectionReducer};
+use crate::run_state::{EventProjectionCache, ProjectedRun, RunProjectionReducer};
 use crate::{
     BlobStore, Error, EventEnvelope, EventPayload, Result, RunProjection, RunSummaryStore, StageId,
     run_summary_store,
@@ -15,35 +15,6 @@ use crate::{
 /// Broadcast capacity for live event subscribers; a lagging subscriber refills
 /// from SQLite.
 const EVENT_BROADCAST_CAPACITY: usize = 1024;
-
-/// A run's projection as of its last committed event. Produced by replaying
-/// SQLite history or by applying a newly committed event, and consumed by
-/// `RunSummaryStore` writes that must stay in step with the event log.
-#[derive(Debug, Clone)]
-pub(crate) struct CachedRunProjection {
-    pub(crate) run_id:     RunId,
-    pub(crate) projection: Arc<RunProjection>,
-    pub(crate) last_seq:   u32,
-}
-
-impl CachedRunProjection {
-    pub(crate) fn from_projection(run_id: RunId, projection: RunProjection, last_seq: u32) -> Self {
-        Self {
-            run_id,
-            projection: Arc::new(projection),
-            last_seq,
-        }
-    }
-}
-
-impl From<CachedRunProjection> for EventProjectionCache {
-    fn from(cached: CachedRunProjection) -> Self {
-        Self {
-            last_seq: cached.last_seq,
-            state:    Some(cached.projection),
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct RunDatabase {
@@ -85,15 +56,13 @@ impl RunDatabase {
         blob_store: Arc<BlobStore>,
         run_summary_store: Arc<RunSummaryStore>,
     ) -> Result<Self> {
-        let cached = Self::build_projection(&run_summary_store, &run_id)
-            .await?
-            .ok_or_else(|| Error::RunNotFound(run_id.to_string()))?;
+        let projected = run_summary_store.load_projection(&run_id).await?;
         Ok(Self::from_event_projection_cache(
             run_id,
             read_only,
             blob_store,
             run_summary_store,
-            cached.into(),
+            projected.into(),
         ))
     }
 
@@ -158,25 +127,6 @@ impl RunDatabase {
         self.inner.event_tx.subscribe()
     }
 
-    pub(crate) async fn build_projection(
-        store: &RunSummaryStore,
-        run_id: &RunId,
-    ) -> Result<Option<CachedRunProjection>> {
-        let events = match store.list_events_for_run(run_id).await {
-            Ok(events) => events,
-            Err(Error::RunNotFound(_)) => return Ok(None),
-            Err(error) => return Err(error),
-        };
-        let last_seq = events
-            .last()
-            .map(|event| event.seq)
-            .ok_or_else(|| Error::InvalidEvent(format!("run {run_id} has no run.created event")))?;
-        let state = RunProjection::apply_events(&events)?;
-        Ok(Some(CachedRunProjection::from_projection(
-            *run_id, state, last_seq,
-        )))
-    }
-
     pub(super) async fn projection_snapshot(&self) -> Result<Arc<RunProjection>> {
         let _state_guard = self.inner.state_lock.lock().await;
         self.projection_snapshot_locked()
@@ -195,10 +145,8 @@ impl RunDatabase {
             })
     }
 
-    pub(crate) fn install_in_memory_state(&self, cached: &CachedRunProjection) {
-        let mut projection_cache = self.inner.lock_projection_cache();
-        projection_cache.state = Some(Arc::clone(&cached.projection));
-        projection_cache.last_seq = cached.last_seq;
+    pub(crate) fn install_in_memory_state(&self, projected: ProjectedRun) {
+        *self.inner.lock_projection_cache() = projected.into();
     }
 
     pub(crate) fn publish(&self, event: &EventEnvelope) {
@@ -208,7 +156,7 @@ impl RunDatabase {
     pub(crate) async fn commit_first_event(
         &self,
         payload: &EventPayload,
-    ) -> Result<(EventEnvelope, CachedRunProjection)> {
+    ) -> Result<(EventEnvelope, ProjectedRun)> {
         payload.validate(&self.inner.run_id)?;
         let event = RunEvent::try_from(payload)?;
         let _state_guard = self.inner.state_lock.lock().await;
@@ -269,10 +217,10 @@ impl RunDatabase {
         payload: &EventPayload,
         event: RunEvent,
     ) -> Result<EventEnvelope> {
-        let (envelope, cached) = self.commit_event_locked(payload, event).await?;
+        let (envelope, projected) = self.commit_event_locked(payload, event).await?;
         // Keep post-commit propagation await-free: cancellation after SQLite
         // commits must not leave in-memory state stale or omit the broadcast.
-        self.install_in_memory_state(&cached);
+        self.install_in_memory_state(projected);
         self.publish(&envelope);
         Ok(envelope)
     }
@@ -281,7 +229,7 @@ impl RunDatabase {
         &self,
         payload: &EventPayload,
         event: RunEvent,
-    ) -> Result<(EventEnvelope, CachedRunProjection)> {
+    ) -> Result<(EventEnvelope, ProjectedRun)> {
         let (expected_last_seq, mut next_state) = {
             let cache = self.inner.lock_projection_cache();
             (cache.last_seq, cache.state.clone())
@@ -291,27 +239,23 @@ impl RunDatabase {
         apply_cached_projection_event(&mut next_state, &prospective).map_err(event_rejected)?;
         let next_projection =
             next_state.expect("applying a valid event should always produce a projection");
-        let cached = CachedRunProjection::from_projection(
-            self.inner.run_id,
-            Arc::unwrap_or_clone(next_projection),
-            seq,
-        );
+        let projected = ProjectedRun::new(self.inner.run_id, next_projection, seq);
 
         let mut transaction = self.inner.run_summary_store.begin().await?;
         let envelope = if expected_last_seq == 0 {
-            RunSummaryStore::insert_first_event_on_connection(&mut transaction, &cached, payload)
+            RunSummaryStore::insert_first_event_on_connection(&mut transaction, &projected, payload)
                 .await?
         } else {
             RunSummaryStore::append_event_on_connection(
                 &mut transaction,
                 expected_last_seq,
-                &cached,
+                &projected,
                 payload,
             )
             .await?
         };
         transaction.commit().await?;
-        Ok((envelope, cached))
+        Ok((envelope, projected))
     }
 
     pub async fn list_events(&self) -> Result<Vec<EventEnvelope>> {
