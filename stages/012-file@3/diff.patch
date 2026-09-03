@@ -1,0 +1,46 @@
+diff --git a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
+index c84e740..0eb2280 100644
+--- a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
++++ b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
+@@ -9,3 +9,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"approve","visit":2,"status":"succeeded","ts":"2026-09-02T18:50:04Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"select","visit":3,"status":"succeeded","ts":"2026-09-02T18:50:25Z","data":{"painpoints":[],"observations":["Selected 01M0QTNF6GWHGPKHSQ2Y2PB8CQ (oldest unrevised terminal run with live sandbox). Backlog visibility: 17 runs blocked, no live sandbox; 1 run submitted/non-terminal skipped."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"analyze","visit":3,"status":"succeeded","ts":"2026-09-02T18:55:00Z","data":{"painpoints":[{"text":"Engine publish path is not fail-safe: run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ had all 7 stage executions green and final commit `ee9ca75` pushed, then terminal-failed as `failed(publish_failed)` because the PR title/body LLM generation returned non-JSON (`total_retries: 0`, no PR exists, events seq 265-268). Fix in the engine publish stage after `exit`: one retry, then a deterministic PR title/body from goal + stage outcomes + commits, plus a `republish` control — platform change, routed via painpoint channel, not editable in this repo."},{"text":"Engine progress renderer reports impossible counts: run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ snapshot said '6 of 5 non-meta stages completed' and the implementer prompt said '0 of 5 stages completed' immediately after planner@1 finished. It counts stage executions instead of nodes and does not refresh per `checkpoint.completed`. Fix in the engine's progress/preamble renderer — platform change, routed via painpoint channel."}],"observations":["Review persisted verbatim at `.fabro/reviews/develop/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md`. Recommendations 2 (reviewer agent node + `preamble_budget_kb` 24 + `summary:high`), 3 (toolchain incl. ripgrep baked into `.fabro/Dockerfile.mise`), 4 (gate allowlist in `prompts/implementer.md`), 5 (journal bridge fabro-31b2 in `scripts/stage-journal.nu`), and 6 (`sd ready`-first guidance in `prompts/planner.md`) verified as already addressed in current assets — filer should not re-file them. Only the two prime-boilerplate seeds remain repo-actionable; publish fail-safe and progress counter are engine-side and routed as painpoints per AGENTS.md."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"file","visit":3,"status":"succeeded","ts":"2026-09-02T18:55:38Z","data":{"painpoints":[],"observations":["Six review recommendations were already addressed in current assets and were not re-filed; only the two prime-boilerplate seeds were repo-actionable. Engine-side publish fail-safe and progress-counter defects were routed via the painpoint channel per AGENTS.md."]}}
+diff --git a/.fabro/revisions/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md b/.fabro/revisions/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md
+new file mode 100644
+index 0000000..696bb44
+--- /dev/null
++++ b/.fabro/revisions/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md
+@@ -0,0 +1,21 @@
++# Revision — run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ
++
++- status reviewed: failed
++- review: .fabro/reviews/develop/01M0QTNF6GWHGPKHSQ2Y2PB8CQ.md
++- seeds filed: fabro-cc23 — Projectize prime boilerplate with the real gate in AGENTS.md; fabro-3814 — Tell implementer to skip sd prime when the brief is already in context
++
++## Findings
++
++### Projectize prime boilerplate with the real gate in AGENTS.md
++- filed: fabro-cc23
++- Change: add a project-override note in `AGENTS.md` outside the tool-generated seeds-onboard markers stating this repo's close protocol is `just qualitygate` and bun-based prime instructions do not apply.
++- Expected effect: removes wrong-stack misexecution risk and stops contradictory context in every agent stage (planner@1 and implementer@1 each ingested ~5 KB of generic template demanding nonexistent bun commands).
++
++### Tell implementer to skip sd prime when the brief is already in context
++- filed: fabro-3814
++- Change: one line in `.fabro/workflows/develop/prompts/implementer.md` to skip `sd prime` when `current_seed_brief` is already in context.
++- Expected effect: trims ~5 KB per implementer visit with no information loss (implementer was $0.118 of the run's $0.181, 65%).
++
++### Not filed (already addressed or engine-side)
++- Reviewer agent node, `preamble_budget_kb` 24, `summary:high`, toolchain incl. ripgrep in `.fabro/Dockerfile.mise`, gate allowlist in `prompts/implementer.md`, journal bridge fabro-31b2 in `scripts/stage-journal.nu`, `sd ready`-first guidance in `prompts/planner.md` — verified already present in current assets.
++- Publish fail-safe (retry + deterministic PR title/body + `republish` control) and progress counter fix (counts stage executions instead of nodes; not refreshed per `checkpoint.completed`) — engine-side, routed via painpoint channel.
+diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl
+index 501ffa3..e26985d 100644
+--- a/.seeds/issues.jsonl
++++ b/.seeds/issues.jsonl
+@@ -31,3 +31,5 @@
+ {"id":"fabro-578a","title":"Restrict verification-only briefs to smoke-level commands","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T18:48:53.955Z","updatedAt":"2026-09-02T18:48:53.955Z","description":"Add one sentence to prompts/planner.md verification-only guidance: \"list smoke-level commands only (go build, go test, go run smokes); the gate belongs to the tester stage.\" In this run planner@2 and planner@3 briefs mandated just qualitygate under Required verification commands while implementer.md rule 4 forbids running the full gate, forcing implementer@3 to resolve the contradiction itself (painpoint #3 in .fabro/run-painpoints.jsonl)."}
+ {"id":"fabro-eaa0","title":"Require English responses in implementer prompt","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T18:48:57.978Z","updatedAt":"2026-09-02T18:48:57.978Z","description":"Add \"Always respond in English\" to .fabro/workflows/develop/prompts/implementer.md. In this run implementer@2 replied in German (\"Verstanden — ich beende den Run…\") to a German stop steer, and that reply leaked into later stages' context."}
+ {"id":"fabro-46a4","title":"Stop restating the full painpoint list in every prompt","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T18:49:02.369Z","updatedAt":"2026-09-02T18:49:02.369Z","description":"Change the painpoint sections in prompts/planner.md, prompts/implementer.md, and prompts/reviewer.md to emit only NEW entries appended directly to the append-only .fabro/run-painpoints.jsonl (which refiner.nu already delivers from), dropping the restate-the-full-accumulated-list instruction. In this run ~2.8KB was mirrored into three prompts per pass and the reviewer received the list truncated — accumulation lossy at exactly the node told to restate it; also frees preamble budget to compound with the budget raise."}
++{"id":"fabro-cc23","title":"Projectize prime boilerplate with the real gate in AGENTS.md","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T18:55:18.535Z","updatedAt":"2026-09-02T18:55:18.535Z","description":"In run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ, planner@1 and implementer@1 each ran sd prime/ml prime and ingested ~5 KB of generic template including a close-protocol demanding bun test && bun run lint && bun run typecheck — commands that do not exist in this Go repo, whose gate is just qualitygate. Add a project-override note in AGENTS.md outside the tool-generated seeds-onboard markers: this repo's close protocol is just qualitygate, and bun-based prime instructions do not apply. Expected effect: removes wrong-stack misexecution risk and stops contradictory context in every agent stage."}
++{"id":"fabro-3814","title":"Tell implementer to skip sd prime when the brief is already in context","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T18:55:18.711Z","updatedAt":"2026-09-02T18:55:18.711Z","description":"In run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ, implementer@1 ran sd prime even though current_seed_brief already carried the seed context, adding ~5 KB to the costliest stage (implementer was /bin/bash.118 of the run's /bin/bash.181, 65%). Add one line to .fabro/workflows/develop/prompts/implementer.md: skip sd prime when current_seed_brief is already in context. Expected effect: trims ~5 KB per implementer visit with no information loss."}

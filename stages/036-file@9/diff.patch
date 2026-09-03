@@ -1,0 +1,82 @@
+diff --git a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
+index 5384ab6..7ae7d14 100644
+--- a/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
++++ b/.fabro/journal/01M1HKRE686W833SE86D8WD319.jsonl
+@@ -33,3 +33,4 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"approve","visit":8,"status":"succeeded","ts":"2026-09-02T19:55:25Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"select","visit":9,"status":"succeeded","ts":"2026-09-02T19:55:43Z","data":{"painpoints":[],"observations":["19 of 32 runs remain unrevised but only 4 are sandbox-live (01M0TXPX09279433MGWSWPVVP4 selected, then 01M0WWKAQCWZC0Q0JK019H0ZC7, 01M11P68SHFS165HP9ATK6094V, 01M1EGK6J8CNP9APJ7PWE6WE74); 15 unrevised runs blocked, no live sandbox."]}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"analyze","visit":9,"status":"succeeded","ts":"2026-09-02T19:58:57Z","data":{"painpoints":[{"text":"Develop stages never emit painpoints even when performing real friction (both reviewers in run 01M0TXPX09279433MGWSWPVVP4 did the evidence-blob detour yet logged zero painpoints), so the revisor loop is the only channel capturing it; fix by making `painpoints` a mandatory key in stage outcome JSON in `.fabro/workflows/develop/prompts/`."}],"observations":["Run 01M0TXPX09279433MGWSWPVVP4 review written to `.fabro/reviews/develop/01M0TXPX09279433MGWSWPVVP4.md`; 8 findings distilled (2 high priority: per-seed evidence diff base, latest-visit-only preamble history); the blob-detour and duplicated-preamble patterns corroborate what other develop run reviews show, so expect overlap merges at filing time."]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1HKRE686W833SE86D8WD319","node":"file","visit":9,"status":"succeeded","ts":"2026-09-02T19:59:48Z","data":{"painpoints":[],"observations":["Finding 'Keep only the latest visit per non-ignored stage in preambles' was deduped into existing open seed fabro-699f; next analyst for develop runs can expect overlap merges as reviews corroborate patterns."]}}
+diff --git a/.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md b/.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md
+new file mode 100644
+index 0000000..c137c95
+--- /dev/null
++++ b/.fabro/revisions/01M0TXPX09279433MGWSWPVVP4.md
+@@ -0,0 +1,52 @@
++# Revision — run 01M0TXPX09279433MGWSWPVVP4
++
++- status reviewed: succeeded
++- review: `.fabro/reviews/develop/01M0TXPX09279433MGWSWPVVP4.md`
++- seeds filed:
++  - fabro-1e9f — Diff evidence against the last seed boundary, not the run base
++  - fabro-5870 — Clear transient context keys in closeout
++  - fabro-2e66 — Surface PR pipeline degradation instead of succeeding silently
++  - fabro-b809 — Make the painpoint channel mandatory-output
++  - fabro-ad1b — Cite acceptance bullets in implementer verification, don't restate them
++  - fabro-1d94 — Enforce one edit per file path per tool batch
++  - fabro-e4fa — Tighten planner sd call economy
++
++## Findings
++
++### Diff evidence against the last seed boundary, not the run base
++- filed: fabro-1e9f (priority 1)
++- Change: diff against the commit the previous `closeout` produced in `.fabro/workflows/develop/scripts/evidence.nu`, record that SHA as the per-seed base, raise `preamble_budget_kb` in `.fabro/workflows/develop/workflow.fabro` to ~48.
++- Expected effect: constant ~18 KB per-seed captures judged inline, zero blob detours, structurally removing preview-only review.
++
++### Keep only the latest visit per non-ignored stage in preambles
++- filed: none — duplicate of open seed fabro-699f ("Stop re-rendering every past cycle in preambles"), which covers the same per-cycle preamble growth (input 14,735 → 25,693 tokens, +75% cost from $0.030 to $0.051).
++
++### Clear transient context keys in closeout
++- filed: fabro-5870 (priority 2)
++- Change: reset `review_verdict`, `review_feedback`, `implementation_summary` via context updates in `.fabro/workflows/develop/scripts/closeout.nu`; delete the stale-verdict compensation paragraph from `.fabro/workflows/develop/prompts/planner.md`.
++- Expected effect: stale-verdict ambiguity (seed 1's `approved` surviving into seed-2 stages) eliminated structurally instead of by prose guard.
++
++### Surface PR pipeline degradation instead of succeeding silently
++- filed: fabro-2e66 (priority 2)
++- Change: force JSON output for PR title/body generation with one repair retry; preflight auto-merge when `auto_merge=true`; degrade terminal report to `succeeded with degraded delivery`.
++- Expected effect: no silent gap between run success and an unmerged skeleton PR.
++
++### Make the painpoint channel mandatory-output
++- filed: fabro-b809 (priority 2)
++- Change: require a `painpoints` array (possibly empty) in outcome JSON of `.fabro/workflows/develop/prompts/planner.md`, `implementer.md`, and `reviewer.md`.
++- Expected effect: friction lands in `.fabro/journal/` on the run where it happened, feeding the improve loop with evidence.
++
++### Cite acceptance bullets in implementer verification, don't restate them
++- filed: fabro-ad1b (priority 2)
++- Change: require `PASS (n)` bullet references instead of quoted criteria, cap prose before JSON at 3 sentences in `.fabro/workflows/develop/prompts/implementer.md`.
++- Expected effect: ~1.5–2.5k fewer output tokens per pass, ~$0.05–0.08 and 30–60 s saved per seed, smaller reviewer preambles.
++
++### Enforce one edit per file path per tool batch
++- filed: fabro-1d94 (priority 2)
++- Change: one line in `.fabro/workflows/develop/prompts/implementer.md` — at most one edit per file path per tool batch; sequence dependent edits across batches.
++- Expected effect: eliminates 3 observed concurrent-write serialization warnings and the silent-ordering hazard they signal.
++
++### Tighten planner sd call economy
++- filed: fabro-e4fa (priority 2)
++- Change: conditional `sd list` rule and `sd ready --format json` in the command table of `.fabro/workflows/develop/prompts/planner.md`.
++- Expected effect: one fewer redundant tracker call (byte-identical ~3.3 KB payloads observed) and ~10 s less deliberation per cycle.
+diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl
+index c4b9013..afba9d6 100644
+--- a/.seeds/issues.jsonl
++++ b/.seeds/issues.jsonl
+@@ -58,3 +58,10 @@
+ {"id":"fabro-35ab","title":"Raise develop preamble budget to 20 KB","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:50:41.043Z","updatedAt":"2026-09-02T19:50:41.043Z","description":"In .fabro/workflows/develop/workflow.fabro, raise graph attr preamble_budget_kb from 12 to about 20 (input shrinkage from the implementer-output fix helps for free). Worker logs for run 01M0T9B7T6XNM1D7JNY35Y6H8K show the preamble budget exceeded even after demotion at four consecutive prompts (up to 18,053 bytes vs 12,288 budget), firing blob-ref demotion every cycle. Expected effect: fewer blob-ref round-trips (each costs a reviewer tool call plus turn) and no per-cycle budget warnings. Related to existing seed fabro-83f9 (reviewer node scope); this one covers the graph-wide budget."}
+ {"id":"fabro-1399","title":"Add sd syntax cheat-sheet and call-order rule to planner prompt","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:50:46.516Z","updatedAt":"2026-09-02T19:50:46.516Z","description":"In .fabro/workflows/develop/prompts/planner.md, document exact write syntax (sd update <id> --status in_progress, sd close <id>, no --format on writes) and instruct sd ready first with sd list only when ready is empty or blockers matter. In run 01M0T9B7T6XNM1D7JNY35Y6H8K planner@1 wasted a call on sd update --format json (unknown option error, event seq 62-63) and ran redundant parallel sd ready and sd list on a one-seed tracker. Expected effect: 1-2 fewer tool calls and one fewer LLM round-trip per planning visit."}
+ {"id":"fabro-4881","title":"Gate implementer sd show re-fetch on brief quality","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:50:46.712Z","updatedAt":"2026-09-02T19:50:46.712Z","description":"In .fabro/workflows/develop/prompts/implementer.md, make the sd show re-read conditional: only when the brief is thin, ambiguous, or verification-only. In run 01M0T9B7T6XNM1D7JNY35Y6H8K the prompt called the brief authoritative yet numbered step 1 ordered re-reading the seed, and the implementer obeyed (event seq 94-98), risking re-import of ambiguity the planner had settled (raw seed Default: no limit vs the brief's pinned 0-sentinel). Expected effect: one fewer call and turn per cycle, planner's resolved reading stays authoritative. Overlaps partially with fabro-a67f (spec re-fetch conditional) but targets the sd seed re-read specifically."}
++{"id":"fabro-1e9f","title":"Diff evidence against the last seed boundary, not the run base","status":"open","type":"task","priority":1,"createdAt":"2026-09-02T19:59:23.001Z","updatedAt":"2026-09-02T19:59:23.001Z","description":"In .fabro/workflows/develop/scripts/evidence.nu, diff against the commit the previous closeout produced (record that SHA as the per-seed base) and raise preamble_budget_kb in .fabro/workflows/develop/workflow.fabro to ~48. Evidence captures compounded from 18.1 KB to 38.5 KB in run 01M0TXPX09279433MGWSWPVVP4 because they diffed against run base de65cd6, forcing reviewers into a blob detour to read the full diff. Expected effect: constant ~18 KB per-seed captures judged inline, zero blob detours, structurally removing preview-only review."}
++{"id":"fabro-5870","title":"Clear transient context keys in closeout","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:59:23.164Z","updatedAt":"2026-09-02T19:59:23.164Z","description":"In .fabro/workflows/develop/scripts/closeout.nu, after closing the seed emit context updates resetting review_verdict, review_feedback, and implementation_summary to empty string; then delete the stale-verdict compensation paragraph from .fabro/workflows/develop/prompts/planner.md. In run 01M0TXPX09279433MGWSWPVVP4, seed 1 review_verdict approved survived into planner@2, implementer@2, reviewer@2, and the exit checkpoint. Expected effect: stale-verdict ambiguity eliminated structurally instead of by prose guard."}
++{"id":"fabro-2e66","title":"Surface PR pipeline degradation instead of succeeding silently","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:59:23.328Z","updatedAt":"2026-09-02T19:59:23.328Z","description":"In the PR pipeline: force JSON output for title/body generation (tool-call/schema mode) with one repair retry, and preflight the repo auto-merge setting when auto_merge=true, degrading the terminal report to succeeded with degraded delivery when the PR could not auto-merge. In run 01M0TXPX09279433MGWSWPVVP4, PR content generation fell back to a skeleton body and auto-merge was rejected, yet the run reported plain success. Expected effect: no silent gap between run success and unmerged skeleton PR."}
++{"id":"fabro-b809","title":"Make the painpoint channel mandatory-output","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:59:23.551Z","updatedAt":"2026-09-02T19:59:23.551Z","description":"In .fabro/workflows/develop/prompts/planner.md, implementer.md, and reviewer.md, require a painpoints array (possibly empty) in every outcome JSON. In run 01M0TXPX09279433MGWSWPVVP4 both reviewers performed the exact friction the channel exists to capture (the blob detour) yet emitted zero painpoints, so the improve loop got no data from a run with real friction. Expected effect: friction lands in .fabro/journal/ on the run where it happened, feeding the improve loop with evidence."}
++{"id":"fabro-ad1b","title":"Cite acceptance bullets in implementer verification, don't restate them","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:59:23.652Z","updatedAt":"2026-09-02T19:59:23.652Z","description":"In .fabro/workflows/develop/prompts/implementer.md, require each PASS line to reference the brief bullet number (e.g. PASS (3)) instead of quoting the criterion, and cap prose before the JSON at 3 sentences. In run 01M0TXPX09279433MGWSWPVVP4, implementer@2 restated all 10 acceptance criteria in full, driving 186 s inference and 0.281 USD (47 percent of run cost). Expected effect: roughly 1.5-2.5k fewer output tokens per pass plus smaller reviewer preambles."}
++{"id":"fabro-1d94","title":"Enforce one edit per file path per tool batch","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:59:23.761Z","updatedAt":"2026-09-02T19:59:23.761Z","description":"Add one line to .fabro/workflows/develop/prompts/implementer.md: at most one edit per file path per tool batch; sequence dependent edits across batches. In run 01M0TXPX09279433MGWSWPVVP4 the worker log showed 3 concurrent-write-to-same-file-in-one-batch serializing warnings for main.go, README.md, and fib_test.go. Expected effect: eliminates the write-lock warnings and the silent-ordering hazard they signal, at zero cost."}
++{"id":"fabro-e4fa","title":"Tighten planner sd call economy","status":"open","type":"task","priority":2,"createdAt":"2026-09-02T19:59:23.883Z","updatedAt":"2026-09-02T19:59:23.883Z","description":"In .fabro/workflows/develop/prompts/planner.md, make the rule conditional and checkable (sd list only if sd ready output is truncated or lacks needed blocker info) and add sd ready --format json to the command table. In run 01M0TXPX09279433MGWSWPVVP4 planner@1 ran sd ready then sd list with byte-identical ~3.3 KB payloads, and used a --format flag on ready not listed in the table. Expected effect: one fewer tracker call and ~10 s less deliberation per cycle while keeping the no-invented-flags rule credible."}
