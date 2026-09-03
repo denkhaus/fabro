@@ -1,0 +1,343 @@
+diff --git a/.fabro/journal/01M1MHGS7PH26EP20B2RTAPN4G.jsonl b/.fabro/journal/01M1MHGS7PH26EP20B2RTAPN4G.jsonl
+index 96637de..0639c31 100644
+--- a/.fabro/journal/01M1MHGS7PH26EP20B2RTAPN4G.jsonl
++++ b/.fabro/journal/01M1MHGS7PH26EP20B2RTAPN4G.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1MHGS7PH26EP20B2RTAPN4G","node":"start","visit":1,"status":"succeeded","ts":"2026-09-03T21:07:06Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1MHGS7PH26EP20B2RTAPN4G","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-03T21:08:12Z","data":{"painpoints":[],"observations":["Seed description said positive -seed ignores -step (not an error) without saying whether invalid -step values error in that combination; brief resolves it by mirroring -n's documented ignore-invalid-under-seed semantics — reviewer should check that choice, not flag it as deviation","fabro-87cf (-last flag) is also ready in the tracker; goal named fabro-93f2 so it was picked first, fabro-87cf remains for a later cycle"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1MHGS7PH26EP20B2RTAPN4G","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-03T21:11:23Z","data":{"painpoints":[],"observations":["run() must defensively clamp stride-like flags because validation is skipped under -seed and -version (fabro-93f2): an unvalidated -step 0 under -seed would otherwise infinite-loop the print loop; main.go now forces step=1 in lookup mode."]}}
+diff --git a/.mulch/expertise/gofib.jsonl b/.mulch/expertise/gofib.jsonl
+index 28ddfb1..0c2d9d5 100644
+--- a/.mulch/expertise/gofib.jsonl
++++ b/.mulch/expertise/gofib.jsonl
+@@ -2,3 +2,4 @@
+ {"type":"failure","classification":"tactical","recorded_at":"2026-08-22T18:08:57.202Z","evidence":{"commit":"423d296789e3a8c6f97e29e6f03f4fe41fb56356"},"description":"A previous implementer pass left a compiled 'gofib' binary in the worktree root (gitignored, so the gate stayed green). Hard rule: build smoke checks must not leave binaries behind — use 'go run .' (builds to cache) or build into a temp dir outside the worktree, and remove any stray binary before finishing the pass.","resolution":"Binary removed with 'rm -f gofib'; smoke checks now use 'go run .' which builds into the Go cache and never touches the worktree.","id":"mx-a58327"}
+ {"type":"decision","classification":"tactical","recorded_at":"2026-08-24T14:30:15.783Z","evidence":{"commit":"7812d1e4afe42f9ddb6ec6f7aee45413c5ea1d49"},"title":"-start 0 normalizes to 1 inside run()","rationale":"gofib indices are 1-based and pinned by README ('100: 354224848179261915075') and existing tests, so a -start flag defaulting to 0 must reproduce today's output exactly; the seed's 'Default 0' was resolved to '0 behaves like unset'","id":"mx-5dcb01"}
+ {"type":"convention","classification":"tactical","recorded_at":"2026-08-24T16:28:18.182Z","evidence":{"seeds":"fabro-8208","commit":"36dcce50b7bf833585864aad18bc6b7fabfd7997"},"content":"Optional range flags in gofib (-start, -limit) use 0 as the 'no-op sentinel' default so unset output stays historically identical; validate with the exact error format 'invalid value <v> for flag -<name>: must be >= 0', checked in run() AFTER the -version early-return so -version always wins even with invalid values; compose by shrinking the effective last index before any output or pretty-width computation. New range flags should mirror all three parts.","id":"mx-549132"}
++{"type":"pattern","classification":"tactical","recorded_at":"2026-09-03T21:10:58.136Z","evidence":{"seeds":"fabro-93f2","commit":"39abfb8c6096c7e4bf4045acb38a24660fa48dd0"},"name":"new-flag-without-helper-ripple","description":"When adding a new flag to gofib's options struct, avoid rippling the positional opts() test helper through ~40 call sites: add a small clone helper (stepOpts) that sets the new field, and only touch existing tests where defaults change (TestParseOptionsDefaults literal). run() must defensively clamp new stride-like fields to safe values because validation is skipped under -seed/-version.","files":["fib_test.go","main.go"],"id":"mx-7eaa5a"}
+diff --git a/fib_test.go b/fib_test.go
+index fa1ee09..d6846c1 100644
+--- a/fib_test.go
++++ b/fib_test.go
+@@ -1047,7 +1047,7 @@ func TestParseOptionsDefaults(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatalf("parseOptions(nil) returned error: %v", err)
+ 	}
+-	want := options{n: 100, start: 0, limit: 0, seed: 0, format: "", json: false, pretty: false, version: false, sum: false}
++	want := options{n: 100, start: 0, limit: 0, step: 1, seed: 0, format: "", json: false, pretty: false, version: false, sum: false}
+ 	if got != want {
+ 		t.Errorf("parseOptions(nil) = %+v, want %+v", got, want)
+ 	}
+@@ -1118,6 +1118,189 @@ func TestParseOptionsVersionShortCircuit(t *testing.T) {
+ 	}
+ }
+ 
++// stepOpts clones an opts-built value with -step set, keeping the
++// existing call sites untouched.
++func stepOpts(o options, step int) options {
++	o.step = step
++	return o
++}
++
++// TestRunStep pins the -step semantics across every output mode: with
++// -step k only every k-th number of the selected range prints,
++// starting with the first (indices start, start+k, ... up to last).
++// gofib -n 6 -step 2 prints exactly indices 1, 3, 5.
++func TestRunStep(t *testing.T) {
++	for _, tt := range []struct {
++		name   string
++		opts   options
++		step   int
++		want   string
++	}{
++		{"text n=6 step=2 prints indices 1,3,5", opts(0, 6, 0, 0, "", false, false, false, false), 2, "1: 1\n3: 2\n5: 5\n"},
++		{"text step=3 prints indices 1,4", opts(0, 6, 0, 0, "", false, false, false, false), 3, "1: 1\n4: 3\n"},
++		{"text with -start strides the window", opts(5, 4, 0, 0, "", false, false, false, false), 2, "5: 5\n7: 13\n"},
++		{"text with -limit strides the capped range", opts(1, 100, 5, 0, "", false, false, false, false), 2, "1: 1\n3: 2\n5: 5\n"},
++		{"text step larger than the range prints only the first", opts(0, 3, 0, 0, "", false, false, false, false), 10, "1: 1\n"},
++		{"json n=6 step=2 emits exactly the stepped indices", opts(0, 6, 0, 0, "", true, false, false, false), 2,
++			wantJSONLine(1) + "\n" + wantJSONLine(3) + "\n" + wantJSONLine(5) + "\n"},
++		{"csv n=6 step=2 emits the stepped records", opts(0, 6, 0, 0, "csv", false, false, false, false), 2,
++			csvRecord(1) + "\n" + csvRecord(3) + "\n" + csvRecord(5) + "\n"},
++		{"table sizes the value column from the stepped last index", opts(0, 12, 0, 0, "table", false, false, false, false), 2,
++			tableLine(11, "1") + "\n" + tableLine(11, "2") + "\n" + tableLine(11, "5") + "\n" +
++				tableLine(11, "13") + "\n" + tableLine(11, "34") + "\n" + tableLine(11, "89") + "\n"},
++		// Pretty widths come from the largest index and value actually
++		// printed (5 and Fib(5) = 5), not from the range's last (6).
++		{"pretty sizes columns from the stepped last index", opts(0, 6, 0, 0, "", false, true, false, false), 2,
++			prettyLine(5, 1, "1") + "\n" + prettyLine(5, 3, "2") + "\n" + prettyLine(5, 5, "5") + "\n"},
++	} {
++		t.Run(tt.name, func(t *testing.T) {
++			var buf bytes.Buffer
++			if err := run(&buf, stepOpts(tt.opts, tt.step)); err != nil {
++				t.Fatalf("run(step=%d) returned error: %v", tt.step, err)
++			}
++			if buf.String() != tt.want {
++				t.Errorf("run(step=%d) = %q, want exactly %q", tt.step, buf.String(), tt.want)
++			}
++		})
++	}
++}
++
++// TestRunStepOneEquivalence pins that -step 1 (and unset) behaves
++// exactly as before, byte for byte, in every output mode.
++func TestRunStepOneEquivalence(t *testing.T) {
++	for _, tt := range []struct {
++		name string
++		opts options
++	}{
++		{"text", opts(0, 5, 0, 0, "", false, false, false, false)},
++		{"json", opts(0, 5, 0, 0, "", true, false, false, false)},
++		{"pretty", opts(8, 5, 0, 0, "", false, true, false, false)},
++		{"table", opts(8, 5, 0, 0, "table", false, false, false, false)},
++		{"csv", opts(8, 5, 10, 0, "csv", false, false, false, false)},
++		{"sum text", opts(0, 10, 0, 0, "", false, false, false, true)},
++		{"sum json", opts(0, 10, 0, 0, "json", false, false, false, true)},
++	} {
++		t.Run(tt.name, func(t *testing.T) {
++			var unset, one bytes.Buffer
++			if err := run(&unset, tt.opts); err != nil {
++				t.Fatalf("run(unset step) returned error: %v", err)
++			}
++			if err := run(&one, stepOpts(tt.opts, 1)); err != nil {
++				t.Fatalf("run(step=1) returned error: %v", err)
++			}
++			if one.String() != unset.String() {
++				t.Errorf("run(step=1) = %q, want identical to unset: %q", one.String(), unset.String())
++			}
++		})
++	}
++}
++
++// TestRunRejectsInvalidStep pins the -step validation contract: a step
++// below 1 exits non-zero with the exact -n-style error message naming
++// the flag (parseOptions is the rejection point).
++func TestRunRejectsInvalidStep(t *testing.T) {
++	for _, mode := range []struct {
++		name   string
++		asJSON bool
++	}{{"text", false}, {"json", true}} {
++		for _, step := range []int{0, -2} {
++			args := []string{"-step", strconv.Itoa(step)}
++			if mode.asJSON {
++				args = append(args, "-json")
++			}
++			_, err := parseOptions(args)
++			if err == nil {
++				t.Fatalf("parseOptions(step=%d, %s) succeeded, want error", step, mode.name)
++			}
++			want := fmt.Sprintf("invalid value %d for flag -step: must be >= 1", step)
++			if err.Error() != want {
++				t.Errorf("parseOptions(step=%d, %s) error = %q, want exactly %q", step, mode.name, err.Error(), want)
++			}
++		}
++	}
++}
++
++// TestRunStepSeedInteraction pins that a positive -seed keeps
++// single-index semantics and ignores -step entirely: an even invalid
++// -step is not an error under -seed (mirroring the other range flags'
++// ignore-invalid-under--seed semantics).
++func TestRunStepSeedInteraction(t *testing.T) {
++	t.Run("seed ignores a valid -step", func(t *testing.T) {
++		o, err := parseOptions([]string{"-seed", "5", "-step", "2"})
++		if err != nil {
++			t.Fatalf("parseOptions(seed, step) returned error: %v", err)
++		}
++		var buf bytes.Buffer
++		if err := run(&buf, o); err != nil {
++			t.Fatalf("run(seed=5, step=2) returned error: %v", err)
++		}
++		if buf.String() != "5: 5\n" {
++			t.Errorf("run(seed=5, step=2) = %q, want %q", buf.String(), "5: 5\n")
++		}
++	})
++	t.Run("seed skips -step validation", func(t *testing.T) {
++		o, err := parseOptions([]string{"-seed", "5", "-step", "0"})
++		if err != nil {
++			t.Fatalf("parseOptions(seed, step=0) returned error: %v", err)
++		}
++		var buf bytes.Buffer
++		if err := run(&buf, o); err != nil {
++			t.Fatalf("run(seed=5, step=0) returned error: %v", err)
++		}
++		if buf.String() != "5: 5\n" {
++			t.Errorf("run(seed=5, step=0) = %q, want %q", buf.String(), "5: 5\n")
++		}
++	})
++	t.Run("version short-circuits -step validation", func(t *testing.T) {
++		o, err := parseOptions([]string{"-version", "-step", "0"})
++		if err != nil {
++			t.Fatalf("parseOptions(version, step=0) returned error: %v", err)
++		}
++		if !o.version {
++			t.Errorf("parseOptions(version, step=0) version = false, want true")
++		}
++	})
++}
++
++// TestRunStepSum pins that -sum sums the numbers that remain AFTER
++// stepping, while the reported range bounds stay the full effective
++// range [start, last]: -n 6 -step 2 sums F(1)+F(3)+F(5) = 1+2+5 = 8
++// but still reports the range 1..6.
++func TestRunStepSum(t *testing.T) {
++	steppedSum := func(first, last, step int) string {
++		total := new(big.Int)
++		for i := first; i <= last; i += step {
++			total.Add(total, Fib(i))
++		}
++		b, err := json.Marshal(sumLine{IndexRange: []int{first, last}, Sum: total.String()})
++		if err != nil {
++			panic("marshal sumLine: " + err.Error())
++		}
++		return string(b)
++	}
++	for _, tt := range []struct {
++		name   string
++		opts   options
++		step   int
++		want   string
++	}{
++		{"sum after stepping in text mode", opts(0, 6, 0, 0, "", false, false, false, true), 2, "sum: 8\n"},
++		{"sum after stepping in json keeps full bounds", opts(0, 6, 0, 0, "json", false, false, false, true), 2, steppedSum(1, 6, 2) + "\n"},
++		{"sum after stepping in csv keeps full bounds", opts(0, 6, 0, 0, "csv", false, false, false, true), 2, "sum,1,6,8\n"},
++		{"sum with -start and -step", opts(4, 5, 0, 0, "", false, false, false, true), 2, "sum: 32\n"}, // F(4)+F(6)+F(8) = 3+8+21
++	} {
++		t.Run(tt.name, func(t *testing.T) {
++			var buf bytes.Buffer
++			if err := run(&buf, stepOpts(tt.opts, tt.step)); err != nil {
++				t.Fatalf("run(sum, step=%d) returned error: %v", tt.step, err)
++			}
++			if buf.String() != tt.want {
++				t.Errorf("run(sum, step=%d) = %q, want exactly %q", tt.step, buf.String(), tt.want)
++			}
++		})
++	}
++}
++
+ // TestResolveOutputEmptyStdout pins the default: an empty -o path means
+ // stdout, signalled by a nil writer and no error.
+ func TestResolveOutputEmptyStdout(t *testing.T) {
+diff --git a/main.go b/main.go
+index dbdb484..348edff 100644
+--- a/main.go
++++ b/main.go
+@@ -3,7 +3,11 @@
+ // 100; the -n flag changes how many are printed, -start changes the
+ // first index printed (it does not change what -n counts), -limit caps
+ // the largest index printed (it does not change what -n counts either;
+-// 0, the default, means no limit), -seed prints only the Fibonacci
++// 0, the default, means no limit), -step strides the selected range so
++// only every step-th number prints, starting with the first (indices
++// start, start+k, start+2k, ... up to last; 1, the default, prints
++// every number; it must be >= 1 and is ignored, not an error, when a
++// positive -seed is set), -seed prints only the Fibonacci
+ // number at a single index (0, the default, means unset), and -format
+ // selects the output mode globally: text (the default), json (JSON
+ // Lines), pretty (right-aligned text columns), table (values only,
+@@ -151,6 +155,7 @@ type options struct {
+ 	n       int
+ 	start   int
+ 	limit   int
++	step    int
+ 	seed    int
+ 	format  string
+ 	json    bool
+@@ -172,7 +177,8 @@ type options struct {
+ //     shortcut/format disagreement, is rejected.
+ //   - a negative -seed is rejected.
+ //   - a positive -seed combined with -sum is rejected.
+-//   - range checks (-n >= 1, -start >= 0, -limit >= 0) run only when
++//   - range checks (-n >= 1, -start >= 0, -limit >= 0, -step >= 1)
++//     run only when
+ //     -seed is unset (0): a positive -seed overrides the range flags,
+ //     whose values are then ignored, mirroring -version's
+ //     ignore-invalid semantics.
+@@ -186,6 +192,7 @@ func parseOptions(args []string) (options, error) {
+ 	fs.IntVar(&opts.n, "n", defaultCount, "how many Fibonacci numbers to print (must be >= 1; default 100)")
+ 	fs.IntVar(&opts.start, "start", 0, "index of the first Fibonacci number to print (must be >= 0; 0 starts at 1 like the default)")
+ 	fs.IntVar(&opts.limit, "limit", 0, "largest index to print (must be >= 0; 0 means no limit)")
++	fs.IntVar(&opts.step, "step", 1, "print only every step-th number of the selected range, starting with the first (must be >= 1; default 1 prints every number; ignored when -seed is positive)")
+ 	fs.IntVar(&opts.seed, "seed", 0, "print only the Fibonacci number at this index, overriding -n, -start, and -limit (must be >= 0; 0 means unset)")
+ 	fs.StringVar(&opts.format, "format", "", "output mode: text, json, pretty, table, or csv (default text); must agree with -json/-pretty when those are also set")
+ 	fs.BoolVar(&opts.json, "json", false, `shortcut for -format json: emit JSON Lines instead of text (one {"index": i, "fib": "value"} object per number)`)
+@@ -216,6 +223,9 @@ func parseOptions(args []string) (options, error) {
+ 		if opts.limit < 0 {
+ 			return opts, fmt.Errorf("invalid value %d for flag -limit: must be >= 0", opts.limit)
+ 		}
++		if opts.step < 1 {
++			return opts, fmt.Errorf("invalid value %d for flag -step: must be >= 1", opts.step)
++		}
+ 	}
+ 	return opts, nil
+ }
+@@ -226,7 +236,11 @@ func parseOptions(args []string) (options, error) {
+ // "gofib <Version>" and ignores every other flag. A positive seed
+ // selects lookup mode: only the single index seed prints (in the active
+ // output mode, with -pretty sized from that sole index), overriding
+-// -n, -start, and -limit. With sum set, run prints exactly one line
++// -n, -start, and -limit, and ignoring -step. A positive -step k
++// strides the selected range so only every k-th number prints,
++// starting with the first; -sum then sums the numbers that remain
++// after stepping while its reported range bounds stay [start, last].
++// With sum set, run prints exactly one line
+ // carrying the big.Int sum of the Fibonacci numbers in the same
+ // selected range instead of the per-number output. An empty selected
+ // range (e.g. limit below start) sums to 0 and prints zero lines in
+@@ -259,13 +273,31 @@ func run(w io.Writer, opts options) error {
+ 	if limit > 0 && limit < last {
+ 		last = limit
+ 	}
++	// -step strides the selection: only every step-th number of the
++	// range prints, starting with the first. A positive -seed ignores
++	// -step (and its validation is skipped under -seed, so a zero or
++	// negative stride is defensively clamped to 1 to keep the loops
++	// terminating).
++	step := opts.step
++	if opts.seed > 0 || step < 1 {
++		step = 1
++	}
++	// steppedLast is the largest index actually printed: the last
++	// member of the arithmetic sequence start, start+step, ... <= last.
++	// Pretty/table column widths are sized from it, not from last.
++	steppedLast := last
++	if step > 1 && last >= start {
++		steppedLast = start + ((last-start)/step)*step
++	}
+ 	enc := json.NewEncoder(w)
+ 	if opts.sum {
+-		// Sum mode: one line with the big.Int total of the selected
+-		// range instead of the per-number output. An empty range
++		// Sum mode: one line with the big.Int total of the stepped
++		// selection instead of the per-number output. The reported
++		// bounds stay the full effective range [start, last]: stepping
++		// filters the selection, not the range. An empty range
+ 		// (start > last) leaves the total at 0 — not an error.
+ 		total := new(big.Int)
+-		for i := start; i <= last; i++ {
++		for i := start; i <= last; i += step {
+ 			total.Add(total, Fib(i))
+ 		}
+ 		switch mode {
+@@ -281,16 +313,16 @@ func run(w io.Writer, opts options) error {
+ 		return nil
+ 	}
+ 	// Pretty and table text modes size their columns from the largest
+-	// index and value printed: last and Fib(last).
++	// index and value actually printed: steppedLast and Fib(steppedLast).
+ 	idxW, valW := 0, 0
+ 	switch mode {
+ 	case modePretty:
+-		idxW = len(strconv.Itoa(last))
+-		valW = len(Fib(last).String())
++		idxW = len(strconv.Itoa(steppedLast))
++		valW = len(Fib(steppedLast).String())
+ 	case modeTable:
+-		valW = len(Fib(last).String())
++		valW = len(Fib(steppedLast).String())
+ 	}
+-	for i := start; i <= last; i++ {
++	for i := start; i <= last; i += step {
+ 		switch mode {
+ 		case modeJSON:
+ 			if err := enc.Encode(fibLine{Index: i, Fib: Fib(i).String()}); err != nil {
