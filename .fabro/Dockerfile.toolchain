@@ -1,8 +1,26 @@
-FROM buildpack-deps:noble
+# Toolchain image for the merged world (fabro-5453): Rust workspace gate
+# plus workspace toolset (just, nu, rg via mise — same pins as the lab
+# runner image .fabro/Dockerfile.mise on denkhaus-lab until the worlds
+# unify).
+#
+# Base is ubuntu:24.04, NOT buildpack-deps:noble: the buildpack image
+# carries 5 critical and 112 high CVEs from its kitchen-sink library set
+# (user directive 2026-09-03 — the lab runner image already made this
+# switch). Only the packages the workspace actually needs get installed.
+FROM ubuntu:24.04
 
-# Toolchain image for the smoke workflow (lint/test pipeline on the fabro repo).
-# Mirrors the toolchain parts of .fabro/Dockerfile without the desktop layers.
 ARG RUST_NIGHTLY=nightly-2026-04-14
+
+# Native build dependencies: gcc/make for the linker, pkg-config + perl +
+# cmake + xz for the vendored native crates in Cargo.lock (openssl-sys,
+# libz-sys, libgit2 via cmake), git for checkouts, curl + ca-certificates
+# for toolchain installs.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        bash git ca-certificates curl xz-utils \
+        build-essential pkg-config perl cmake; \
+    rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_NIGHTLY}; \
@@ -29,3 +47,25 @@ RUN set -eux; \
     python3 -m pip --version >/dev/null 2>&1 || apt-get update && apt-get install -y --no-install-recommends python3-pip; \
     python3 -m pip install --break-system-packages --no-cache-dir pytest; \
     python3 -m pytest --version
+
+# Workspace toolset via mise (fabro-5453 world merger): the develop workflow
+# on the merged world invokes `just qualitygate` (tester) and `nu` hook
+# scripts (stage journal), and agents need rg. Mirrors the lab runner image:
+# mise pins the versions, shims resolve them; per-run `mise install` stays a
+# no-op version check. bun/just/nushell/ripgrep pins MUST match the lab
+# image until the worlds are unified.
+ARG MISE_VERSION=v2026.8.10
+ENV MISE_DATA_DIR=/mise \
+    PATH=/mise/shims:${PATH}
+
+RUN set -eux; \
+    curl -fsSL "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64" \
+        -o /usr/local/bin/mise; \
+    chmod +x /usr/local/bin/mise; \
+    mise use -g \
+        aqua:nushell/nushell@0.115.0 \
+        just@1.58.0 \
+        aqua:BurntSushi/ripgrep@15.2.0 \
+    && nu --version \
+    && just --version \
+    && rg --version
