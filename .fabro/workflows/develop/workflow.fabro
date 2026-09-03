@@ -83,6 +83,16 @@ digraph Develop {
         reasoning_effort="low",
         retry_policy="standard",
         preamble_stages_ignore="planner,reviewer,implementer",
+        // fabro-e47c pattern, closed on the implementer 2026-09-03: the ##
+        // Context section is a strict input contract — exactly the seed trio
+        // the prompt names (review feedback rides INSIDE the brief the
+        // planner writes; gate log arrives via the kept tester SECTION, not
+        // a key). Deliberately OUT: `journal` and `implementation_summary`
+        // (the implementer's OWN outputs echoing back), review_verdict
+        // (planner input), seed_cycles (planner/gate input) — and with them
+        // the planner's painpoints, which never were implementer inputs
+        // (stage_ignore alone cannot filter ## Context).
+        preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief",
         // fabro-1dae: same platform scope as the planner — hidden means no
         // read, no discovery, no write through file tools. fs_write stays
         // unset: hidden paths are unwritable anyway, and product seeds may
