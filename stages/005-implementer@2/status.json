@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Seed fabro-4b57 mandates modifying exactly `.fabro/workflows/develop/scripts/evidence.nu`, but the quality gate's run-scope check (a9bb step 2) deterministically rejects any run diff touching `.fabro/workflows/` assets — see tester output 'run diff touches workflow assets — platform work belongs in platform-namespace PRs'. The implementation exists and is verified (commit 3ff22db), yet no in-run change can ever pass the gate because the diff target itself is the violation. The seed must be routed as platform-namespace work outside runs, or the gate needs a run-scope exemption for dev-loop scripts. Recorded as mx-a5071f.",
+  "timestamp": "2026-09-03T20:52:47.179273840Z"
+}
