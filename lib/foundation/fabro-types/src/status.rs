@@ -142,6 +142,12 @@ impl RunStatus {
         if self.is_immutable() {
             return false;
         }
+        // A worker can fail before it appends `RunStarting`, while the durable run is
+        // still Runnable. This guards live appends only: replay synthesizes the
+        // missing intermediate statuses instead of rejecting the event.
+        if let (Self::Runnable, Self::Failed { reason }) = (self, to) {
+            return reason.can_occur_before_start();
+        }
         matches!(
             (self, to),
             (Self::Submitted, Self::Pending { .. } | Self::Runnable)
@@ -157,24 +163,10 @@ impl RunStatus {
                     Self::Submitted
                 )
                 | (Self::Pending { .. }, Self::Runnable)
-                // A worker can fail before it appends RunStarting, while the durable run is still
-                // Runnable. Keep this set aligned with the audited pre-Starting failure callers.
-                | (
-                    Self::Runnable,
-                    Self::Starting
-                        | Self::Failed {
-                            reason: FailureReason::LaunchFailed
-                                | FailureReason::WorkflowError
-                                | FailureReason::Terminated
-                                | FailureReason::BootstrapFailed,
-                        }
-                )
-                | (
-                    Self::Submitted | Self::Pending { .. } | Self::Runnable,
-                    Self::Failed {
-                        reason: FailureReason::Cancelled,
-                    }
-                )
+                | (Self::Runnable, Self::Starting)
+                | (Self::Submitted | Self::Pending { .. }, Self::Failed {
+                    reason: FailureReason::Cancelled,
+                })
                 | (Self::Pending { .. }, Self::Failed {
                     reason: FailureReason::ApprovalDenied,
                 })
@@ -295,7 +287,17 @@ pub enum SuccessReason {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumString, IntoStaticStr,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Display,
+    EnumString,
+    IntoStaticStr,
+    VariantArray,
 )]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
@@ -310,6 +312,32 @@ pub enum FailureReason {
     LaunchFailed,
     BootstrapFailed,
     SandboxInitFailed,
+}
+
+impl FailureReason {
+    /// Whether a run can fail for this reason before its worker reaches
+    /// `Starting`.
+    ///
+    /// Launch, bootstrap, and engine failures, a worker dying early, and
+    /// cancellation all happen before the worker appends `RunStarting`.
+    /// Every other reason implies the run already progressed past
+    /// `Starting` (sandbox init, publish, budget, transient infra) or
+    /// belongs to the approval flow.
+    #[must_use]
+    pub fn can_occur_before_start(self) -> bool {
+        match self {
+            Self::Cancelled
+            | Self::LaunchFailed
+            | Self::WorkflowError
+            | Self::Terminated
+            | Self::BootstrapFailed => true,
+            Self::PublishFailed
+            | Self::ApprovalDenied
+            | Self::TransientInfra
+            | Self::BudgetExhausted
+            | Self::SandboxInitFailed => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -359,6 +387,8 @@ pub enum RunControlAction {
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
+
+    use strum::VariantArray;
 
     use super::{
         BlockedReason, FailureReason, InvalidTransition, PendingReason, RunStatus, SuccessReason,
@@ -437,45 +467,41 @@ mod tests {
     }
 
     #[test]
-    fn runnable_pre_start_failures_allow_only_audited_reasons() {
-        for reason in [
+    fn runnable_accepts_only_failures_that_can_occur_before_start() {
+        let pre_start = [
+            FailureReason::Cancelled,
             FailureReason::LaunchFailed,
             FailureReason::WorkflowError,
             FailureReason::Terminated,
             FailureReason::BootstrapFailed,
-        ] {
+        ];
+        for reason in FailureReason::VARIANTS.iter().copied() {
+            let expected = pre_start.contains(&reason);
+            assert_eq!(
+                reason.can_occur_before_start(),
+                expected,
+                "{reason} pre-start classification"
+            );
             let failed = RunStatus::Failed { reason };
-            assert!(
+            assert_eq!(
                 RunStatus::Runnable.can_transition_to(failed),
-                "Runnable should accept {reason} before Starting"
+                expected,
+                "Runnable -> {reason}"
             );
-            assert!(
-                !RunStatus::Submitted.can_transition_to(failed),
-                "Submitted should reject {reason}"
-            );
-            assert!(
-                !RunStatus::Pending {
-                    reason: PendingReason::ApprovalRequired,
-                }
-                .can_transition_to(failed),
-                "Pending should reject {reason}"
-            );
-        }
-
-        assert!(RunStatus::Runnable.can_transition_to(RunStatus::Failed {
-            reason: FailureReason::Cancelled,
-        }));
-        for reason in [
-            FailureReason::SandboxInitFailed,
-            FailureReason::PublishFailed,
-            FailureReason::TransientInfra,
-            FailureReason::BudgetExhausted,
-            FailureReason::ApprovalDenied,
-        ] {
-            assert!(
-                !RunStatus::Runnable.can_transition_to(RunStatus::Failed { reason }),
-                "Runnable should reject unrelated failure {reason}"
-            );
+            if reason != FailureReason::Cancelled {
+                assert!(
+                    !RunStatus::Submitted.can_transition_to(failed),
+                    "Submitted should reject {reason}"
+                );
+                assert_eq!(
+                    RunStatus::Pending {
+                        reason: PendingReason::ApprovalRequired,
+                    }
+                    .can_transition_to(failed),
+                    reason == FailureReason::ApprovalDenied,
+                    "Pending -> {reason}"
+                );
+            }
         }
     }
 

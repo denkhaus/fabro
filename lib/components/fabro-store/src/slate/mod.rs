@@ -611,16 +611,16 @@ mod tests {
         .unwrap();
     }
 
-    fn workflow_failure_payload(label: &str) -> EventPayload {
+    fn failure_payload(label: &str, reason: FailureReason, message: &str) -> EventPayload {
         event_payload(
             label,
             "2026-03-27T12:00:04Z",
             "run.failed",
             &serde_json::json!({
                 "failure": {
-                    "reason": "workflow_error",
+                    "reason": reason.to_string(),
                     "detail": {
-                        "message": "workflow failed",
+                        "message": message,
                         "category": "deterministic"
                     }
                 },
@@ -634,26 +634,18 @@ mod tests {
         )
     }
 
+    fn workflow_failure_payload(label: &str) -> EventPayload {
+        failure_payload(label, FailureReason::WorkflowError, "workflow failed")
+    }
+
+    /// A failure that can only occur after `Starting`, so a `Runnable` run must
+    /// reject it.
     fn sandbox_init_failure_payload(label: &str) -> EventPayload {
-        event_payload(
+        assert!(!FailureReason::SandboxInitFailed.can_occur_before_start());
+        failure_payload(
             label,
-            "2026-03-27T12:00:04Z",
-            "run.failed",
-            &serde_json::json!({
-                "failure": {
-                    "reason": "sandbox_init_failed",
-                    "detail": {
-                        "message": "sandbox initialization failed",
-                        "category": "deterministic"
-                    }
-                },
-                "timing": {
-                    "wall_time_ms": 1,
-                    "inference_time_ms": 0,
-                    "tool_time_ms": 0,
-                    "active_time_ms": 0
-                },
-            }),
+            FailureReason::SandboxInitFailed,
+            "sandbox initialization failed",
         )
     }
 

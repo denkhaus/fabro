@@ -2859,14 +2859,7 @@ allowed_usernames = ["octocat"]
             .collect::<Vec<_>>()
             .join(", ")
     );
-    let runtime_directory = Storage::new(storage_dir).runtime_directory();
-    ServerDaemon::new(
-        std::process::id(),
-        Bind::Tcp("127.0.0.1:32276".parse::<std::net::SocketAddr>().unwrap()),
-        runtime_directory.log_path(),
-    )
-    .write(&runtime_directory)
-    .unwrap();
+    write_test_server_record(storage_dir);
 
     let mut server_secret_env: HashMap<String, String> = dev_token
         .map(|token| HashMap::from([("FABRO_DEV_TOKEN".to_string(), token)]))
@@ -2943,6 +2936,37 @@ fn worker_token_claims(cmd: &Command, state: &AppState) -> crate::worker_token::
     .claims
 }
 
+fn write_test_server_record(storage_dir: &Path) {
+    let runtime_directory = Storage::new(storage_dir).runtime_directory();
+    ServerDaemon::new(
+        std::process::id(),
+        Bind::Tcp(
+            "127.0.0.1:32276"
+                .parse::<std::net::SocketAddr>()
+                .expect("test bind should parse"),
+        ),
+        runtime_directory.log_path(),
+    )
+    .write(&runtime_directory)
+    .expect("test server record should be written");
+}
+
+/// Waits up to one second for `condition` to hold, re-checking whenever
+/// `notify` fires.
+async fn wait_until(notify: &Notify, condition: impl Fn() -> bool, expectation: &str) {
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            let notified = notify.notified();
+            if condition() {
+                return;
+            }
+            notified.await;
+        }
+    })
+    .await
+    .expect(expectation);
+}
+
 #[derive(Default)]
 struct RecordingWorkerRuntime {
     requested:     StdMutex<Vec<WorkerRef>>,
@@ -2968,17 +2992,12 @@ impl RecordingWorkerRuntime {
     }
 
     async fn wait_for_forced_ref(&self, worker_ref: &WorkerRef) {
-        tokio::time::timeout(std::time::Duration::from_secs(1), async {
-            loop {
-                let notified = self.forced_notify.notified();
-                if self.forced_refs().contains(worker_ref) {
-                    return;
-                }
-                notified.await;
-            }
-        })
-        .await
-        .expect("worker should be force-stopped after the cancellation grace period");
+        wait_until(
+            &self.forced_notify,
+            || self.forced_refs().contains(worker_ref),
+            "worker should be force-stopped after the cancellation grace period",
+        )
+        .await;
     }
 }
 
@@ -2988,12 +3007,15 @@ enum PreStartWorkerOutcome {
     EarlyExit,
 }
 
+/// Test worker runtime whose `start` fails before the worker reaches
+/// `Starting`, either by refusing to launch or by exiting immediately. When
+/// built with `held`, `start` blocks until `release_held_start` so a test can
+/// act while the launch is in flight.
 struct PreStartWorkerRuntime {
-    outcome:             PreStartWorkerOutcome,
-    starts:              AtomicUsize,
-    hold_launch_failure: bool,
-    start_entered:       Notify,
-    release_start:       Notify,
+    outcome:       PreStartWorkerOutcome,
+    starts:        AtomicUsize,
+    start_entered: Notify,
+    release_start: Option<Notify>,
 }
 
 impl PreStartWorkerRuntime {
@@ -3001,16 +3023,15 @@ impl PreStartWorkerRuntime {
         Self {
             outcome,
             starts: AtomicUsize::new(0),
-            hold_launch_failure: false,
             start_entered: Notify::new(),
-            release_start: Notify::new(),
+            release_start: None,
         }
     }
 
-    fn held_launch_failure() -> Self {
+    fn held(outcome: PreStartWorkerOutcome) -> Self {
         Self {
-            hold_launch_failure: true,
-            ..Self::new(PreStartWorkerOutcome::LaunchFailure)
+            release_start: Some(Notify::new()),
+            ..Self::new(outcome)
         }
     }
 
@@ -3019,21 +3040,19 @@ impl PreStartWorkerRuntime {
     }
 
     async fn wait_for_start(&self) {
-        tokio::time::timeout(std::time::Duration::from_secs(1), async {
-            loop {
-                let notified = self.start_entered.notified();
-                if self.start_count() > 0 {
-                    return;
-                }
-                notified.await;
-            }
-        })
-        .await
-        .expect("test worker runtime should receive one start request");
+        wait_until(
+            &self.start_entered,
+            || self.start_count() > 0,
+            "test worker runtime should receive one start request",
+        )
+        .await;
     }
 
     fn release_held_start(&self) {
-        self.release_start.notify_one();
+        self.release_start
+            .as_ref()
+            .expect("runtime should have been built with a held start")
+            .notify_one();
     }
 }
 
@@ -3042,8 +3061,8 @@ impl WorkerRuntime for PreStartWorkerRuntime {
     async fn start(&self, _spec: WorkerLaunchSpec) -> anyhow::Result<StartedWorker> {
         self.starts.fetch_add(1, Ordering::Relaxed);
         self.start_entered.notify_waiters();
-        if self.hold_launch_failure {
-            self.release_start.notified().await;
+        if let Some(release_start) = &self.release_start {
+            release_start.notified().await;
         }
 
         match self.outcome {
@@ -5795,15 +5814,63 @@ fn subprocess_pre_start_failure_state(runtime: StdArc<PreStartWorkerRuntime>) ->
         .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
         .worker_runtime(runtime)
         .build();
-    let runtime_directory = Storage::new(state.server_storage_dir()).runtime_directory();
-    ServerDaemon::new(
-        std::process::id(),
-        Bind::Tcp("127.0.0.1:32276".parse().expect("test bind should parse")),
-        runtime_directory.log_path(),
-    )
-    .write(&runtime_directory)
-    .expect("test server record should be written");
+    write_test_server_record(&state.server_storage_dir());
     state
+}
+
+fn run_failed_reasons(events: &[EventEnvelope]) -> Vec<FailureReason> {
+    events
+        .iter()
+        .filter_map(|envelope| match &envelope.event.body {
+            EventBody::RunFailed(props) => Some(props.failure.reason),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Asserts that a run which failed before its worker reached `Starting`
+/// recorded exactly one `run.failed` event with `expected_reason` and that the
+/// durable and in-memory statuses agree. Returns the run's events for further
+/// inspection.
+async fn assert_run_failed_before_start(
+    state: &Arc<AppState>,
+    run_id: RunId,
+    expected_reason: FailureReason,
+) -> Vec<EventEnvelope> {
+    let run_store = state
+        .stores
+        .runs
+        .open_run_reader(&run_id)
+        .await
+        .expect("failed run should remain readable");
+    let events = run_store
+        .list_events()
+        .await
+        .expect("failed run events should remain readable");
+    assert_eq!(run_failed_reasons(&events), vec![expected_reason]);
+
+    let expected_status = RunStatus::Failed {
+        reason: expected_reason,
+    };
+    assert_eq!(
+        run_store
+            .state()
+            .await
+            .expect("failed run state should load")
+            .status,
+        expected_status
+    );
+    assert_eq!(
+        state
+            .runs
+            .lock()
+            .expect("runs lock poisoned")
+            .get(&run_id)
+            .expect("managed run should remain present")
+            .status,
+        expected_status
+    );
+    events
 }
 
 async fn assert_subprocess_pre_start_failure(
@@ -5836,46 +5903,13 @@ async fn assert_subprocess_pre_start_failure(
     execute_run(Arc::clone(&state), run_id).await;
 
     assert_eq!(runtime.start_count(), 1);
-    let events = run_store
-        .list_events()
-        .await
-        .expect("failed run events should remain readable");
+    let events = assert_run_failed_before_start(&state, run_id, expected_reason).await;
     let lifecycle_events = events
         .iter()
         .map(|envelope| envelope.event.event_name())
         .filter(|name| matches!(*name, "run.runnable" | "run.starting" | "run.failed"))
         .collect::<Vec<_>>();
     assert_eq!(lifecycle_events, vec!["run.runnable", "run.failed"]);
-    let failure_reasons = events
-        .iter()
-        .filter_map(|envelope| match &envelope.event.body {
-            EventBody::RunFailed(props) => Some(props.failure.reason),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(failure_reasons, vec![expected_reason]);
-
-    let expected_status = RunStatus::Failed {
-        reason: expected_reason,
-    };
-    assert_eq!(
-        run_store
-            .state()
-            .await
-            .expect("failed run state should load")
-            .status,
-        expected_status
-    );
-    assert_eq!(
-        state
-            .runs
-            .lock()
-            .expect("runs lock poisoned")
-            .get(&run_id)
-            .expect("managed run should remain present")
-            .status,
-        expected_status
-    );
 
     let response = app
         .clone()
@@ -5940,7 +5974,9 @@ async fn subprocess_pre_start_failure_persists_early_worker_exit_from_runnable()
 
 #[tokio::test]
 async fn subprocess_pre_start_failure_preserves_pending_cancellation() {
-    let runtime = StdArc::new(PreStartWorkerRuntime::held_launch_failure());
+    let runtime = StdArc::new(PreStartWorkerRuntime::held(
+        PreStartWorkerOutcome::LaunchFailure,
+    ));
     let state = subprocess_pre_start_failure_state(StdArc::clone(&runtime));
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = create_and_start_run(&app, MINIMAL_DOT)
@@ -5967,53 +6003,7 @@ async fn subprocess_pre_start_failure_preserves_pending_cancellation() {
     execution.await.expect("run execution task should complete");
 
     assert_eq!(runtime.start_count(), 1);
-    let run_store = state
-        .stores
-        .runs
-        .open_run_reader(&run_id)
-        .await
-        .expect("cancelled run should remain readable");
-    let events = run_store
-        .list_events()
-        .await
-        .expect("cancelled run events should remain readable");
-    let failure_reasons = events
-        .iter()
-        .filter_map(|envelope| match &envelope.event.body {
-            EventBody::RunFailed(props) => Some(props.failure.reason),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(failure_reasons, vec![FailureReason::Cancelled]);
-    assert!(!events.iter().any(|envelope| {
-        matches!(
-            &envelope.event.body,
-            EventBody::RunFailed(props)
-                if props.failure.reason == FailureReason::LaunchFailed
-        )
-    }));
-
-    let expected_status = RunStatus::Failed {
-        reason: FailureReason::Cancelled,
-    };
-    assert_eq!(
-        run_store
-            .state()
-            .await
-            .expect("cancelled run state should load")
-            .status,
-        expected_status
-    );
-    assert_eq!(
-        state
-            .runs
-            .lock()
-            .expect("runs lock poisoned")
-            .get(&run_id)
-            .expect("managed run should remain present")
-            .status,
-        expected_status
-    );
+    assert_run_failed_before_start(&state, run_id, FailureReason::Cancelled).await;
 }
 
 async fn create_durable_run_with_events(
