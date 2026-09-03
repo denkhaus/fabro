@@ -1,0 +1,585 @@
+diff --git a/.fabro/journal/01M1MMK5C6B313SY70Y2EPKE82.jsonl b/.fabro/journal/01M1MMK5C6B313SY70Y2EPKE82.jsonl
+index 078c79c..84a377e 100644
+--- a/.fabro/journal/01M1MMK5C6B313SY70Y2EPKE82.jsonl
++++ b/.fabro/journal/01M1MMK5C6B313SY70Y2EPKE82.jsonl
+@@ -1,2 +1,3 @@
+ {"$schema":"fabro-journal-v1","run_id":"01M1MMK5C6B313SY70Y2EPKE82","node":"start","visit":1,"status":"succeeded","ts":"2026-09-03T22:00:53Z","data":{}}
+ {"$schema":"fabro-journal-v1","run_id":"01M1MMK5C6B313SY70Y2EPKE82","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-03T22:01:38Z","data":{"painpoints":[],"observations":["fabro-1f5b is a fresh implementation, not verification-only: worktree still has positional opts() plus stepOpts/lastOpts clones in fib_test.go","Spec's default list cross-checked against main.go flag registration — accurate, no contradictions; only nuance is that the new helper must also expose step/last/output which the old opts() signature could not set"]}}
++{"$schema":"fabro-journal-v1","run_id":"01M1MMK5C6B313SY70Y2EPKE82","node":"implementer","visit":1,"status":"succeeded","ts":"2026-09-03T22:06:10Z","data":{"painpoints":[{"text":"The seed-workflow environment has no python3 anywhere on PATH (only mise shims, and `go` itself is unset outside the project dir — `go run` from `/tmp` fails with 'mise ERROR No version is set for shim: go'). Run scripted transforms as `go run /tmp/.../main.go` from the project root, or document a python provider in the run image. Run 01M1MMK5C6B313SY70Y2EPKE82, cost: two failed tool calls rediscovering this."}],"observations":["Composite stepOpts(lastOpts(...)) call sites collapsed naturally into a single newOpts closure starting with `*o = tt.opts` — the fallback kept the transform total rather than needing per-test restructuring of table structs.","TestParseOptionsDefaults now compares parseOptions(nil) against newOpts() defaults instead of a hand-written literal: it still pins parseOptions, but the defaults' single source of truth lives in the helper — a future flag added to options{} must update newOpts or that test catches the drift."]}}
+diff --git a/.mulch/expertise/gofib.jsonl b/.mulch/expertise/gofib.jsonl
+index 09a3718..e6373dd 100644
+--- a/.mulch/expertise/gofib.jsonl
++++ b/.mulch/expertise/gofib.jsonl
+@@ -5,3 +5,4 @@
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-03T21:10:58.136Z","evidence":{"seeds":"fabro-93f2","commit":"39abfb8c6096c7e4bf4045acb38a24660fa48dd0"},"name":"new-flag-without-helper-ripple","description":"When adding a new flag to gofib's options struct, avoid rippling the positional opts() test helper through ~40 call sites: add a small clone helper (stepOpts) that sets the new field, and only touch existing tests where defaults change (TestParseOptionsDefaults literal). run() must defensively clamp new stride-like fields to safe values because validation is skipped under -seed/-version.","files":["fib_test.go","main.go"],"id":"mx-7eaa5a"}
+ {"type":"failure","classification":"tactical","recorded_at":"2026-09-03T21:12:02.934Z","evidence":{"commit":"bf28cd61e31bce89215839e4217e61c2fd63b2de"},"description":"gofib run 01M1MHGS7PH26EP20B2RTAPN4G: implementer committed hand-aligned struct fields in fib_test.go that violated gofmt alignment (extra spaces in name/opts/step/want columns); qualitygate gofmt check failed. Convention: run gofmt -w on Go files after hand-editing struct literal blocks before finishing the pass.","resolution":"gofmt -w fib_test.go applied; gofmt -l clean, go vet + focused Step tests pass","id":"mx-e40184"}
+ {"type":"pattern","classification":"tactical","recorded_at":"2026-09-03T21:17:13.557Z","evidence":{"commit":"d47ed1da5977a19eb9313670e0bbe98eb3217a04"},"name":"gofib-flag-pipeline-tail","description":"-last tail flag follows the established flag pipeline: selection (-n/-start/-limit) -> -step stride -> -last tail, implemented as an iteration-start adjustment (first = steppedLast-(k-1)*step) so loops, steppedLast-based widths, and [start,last] sum bounds stay untouched; conflicts (seed vs last) mirror seed vs sum as hard errors while step is merely ignored under -seed","files":["fib_test.go","main.go"],"id":"mx-e96d5a"}
++{"type":"convention","classification":"tactical","recorded_at":"2026-09-03T22:05:38.075Z","evidence":{"seeds":"fabro-1f5b","commit":"28da5be3687230b4f3d28ccfb1459228064dd587"},"content":"fib_test.go options construction: use the single newOpts(mod ...func(*options)) helper (defaults n=100, step=1, rest zero, matching parseOptions in main.go); override only exercised fields via closures (e.g. newOpts(func(o *options) { o.n = 6; o.sum = true })). Never reintroduce per-flag wrappers like opts/stepOpts/lastOpts and never write inline options{} literals in tests.","id":"mx-b472b6"}
+diff --git a/fib_test.go b/fib_test.go
+index 50bb474..bf47578 100644
+--- a/fib_test.go
++++ b/fib_test.go
+@@ -12,11 +12,15 @@ import (
+ 	"testing"
+ )
+ 
+-// opts builds an options value in the old run-argument order (start,
+-// n, limit, seed, format, json, pretty, version, sum), keeping the
+-// table-driven call sites compact.
+-func opts(start, n, limit, seed int, format string, asJSON, pretty, version, sum bool) options {
+-	return options{n: n, start: start, limit: limit, seed: seed, format: format, json: asJSON, pretty: pretty, version: version, sum: sum}
++// newOpts builds an options value starting from the real flag defaults
++// (see parseOptions in main.go) and applying only the overrides a test
++// exercises; with no modifiers it is exactly the default invocation.
++func newOpts(mod ...func(*options)) options {
++	o := options{n: defaultCount, step: 1}
++	for _, m := range mod {
++		m(&o)
++	}
++	return o
+ }
+ 
+ func mustBig(s string) *big.Int {
+@@ -63,7 +67,7 @@ func TestRun(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(0, tt.n, 0, 0, "", false, false, false, false)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) { o.n = tt.n })); err != nil {
+ 				t.Fatalf("run(%d) returned error: %v", tt.n, err)
+ 			}
+ 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -104,7 +108,7 @@ func TestRunStart(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(tt.start, tt.n, 0, 0, "", false, false, false, false)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) { o.start = tt.start; o.n = tt.n })); err != nil {
+ 				t.Fatalf("run(%d, %d) returned error: %v", tt.start, tt.n, err)
+ 			}
+ 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -145,7 +149,7 @@ func TestRunJSON(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(0, tt.n, 0, 0, "", true, false, false, false)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) { o.n = tt.n; o.json = true })); err != nil {
+ 				t.Fatalf("run(%d, json) returned error: %v", tt.n, err)
+ 			}
+ 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -178,7 +182,7 @@ func TestRunJSON(t *testing.T) {
+ func TestRunStartJSON(t *testing.T) {
+ 	const start, n = 10, 5
+ 	var buf bytes.Buffer
+-	if err := run(&buf, opts(start, n, 0, 0, "", true, false, false, false)); err != nil {
++	if err := run(&buf, newOpts(func(o *options) { o.start = start; o.n = n; o.json = true })); err != nil {
+ 		t.Fatalf("run(%d, %d, json) returned error: %v", start, n, err)
+ 	}
+ 	out := buf.String()
+@@ -228,7 +232,7 @@ func TestRunPretty(t *testing.T) {
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(0, tt.n, 0, 0, "", false, true, false, false)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) { o.n = tt.n; o.pretty = true })); err != nil {
+ 				t.Fatalf("run(%d, pretty) returned error: %v", tt.n, err)
+ 			}
+ 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -248,7 +252,7 @@ func TestRunPretty(t *testing.T) {
+ 	// index right-aligned to len("100"), value to len(Fib(100)).
+ 	t.Run("pretty default prints 100 aligned numbers", func(t *testing.T) {
+ 		var buf bytes.Buffer
+-		if err := run(&buf, opts(0, defaultCount, 0, 0, "", false, true, false, false)); err != nil {
++		if err := run(&buf, newOpts(func(o *options) { o.pretty = true })); err != nil {
+ 			t.Fatalf("run(default, pretty) returned error: %v", err)
+ 		}
+ 		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -270,7 +274,7 @@ func TestRunStartPretty(t *testing.T) {
+ 	fibs := map[int]string{8: "21", 9: "34", 10: "55", 11: "89", 12: "144"}
+ 	const start, n = 8, 5
+ 	var buf bytes.Buffer
+-	if err := run(&buf, opts(start, n, 0, 0, "", false, true, false, false)); err != nil {
++	if err := run(&buf, newOpts(func(o *options) { o.start = start; o.n = n; o.pretty = true })); err != nil {
+ 		t.Fatalf("run(%d, %d, pretty) returned error: %v", start, n, err)
+ 	}
+ 	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -291,10 +295,10 @@ func TestRunPrettyJSON(t *testing.T) {
+ 	// -pretty only affects text mode: with -json the output must be
+ 	// identical, line for line.
+ 	var jsonOnly, prettyJSON bytes.Buffer
+-	if err := run(&jsonOnly, opts(0, 3, 0, 0, "", true, false, false, false)); err != nil {
++	if err := run(&jsonOnly, newOpts(func(o *options) { o.n = 3; o.json = true })); err != nil {
+ 		t.Fatalf("run(3, json) returned error: %v", err)
+ 	}
+-	if err := run(&prettyJSON, opts(0, 3, 0, 0, "", true, true, false, false)); err != nil {
++	if err := run(&prettyJSON, newOpts(func(o *options) { o.n = 3; o.json = true; o.pretty = true })); err != nil {
+ 		t.Fatalf("run(3, json, pretty) returned error: %v", err)
+ 	}
+ 	if prettyJSON.String() != jsonOnly.String() {
+@@ -384,7 +388,15 @@ func TestRunVersion(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(tt.start, tt.count, tt.limit, tt.seed, "", tt.asJSON, tt.pretty, true, false)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) {
++				o.start = tt.start
++				o.n = tt.count
++				o.limit = tt.limit
++				o.seed = tt.seed
++				o.json = tt.asJSON
++				o.pretty = tt.pretty
++				o.version = true
++			})); err != nil {
+ 				t.Fatalf("run(version) returned error: %v", err)
+ 			}
+ 			if want := "gofib " + Version + "\n"; buf.String() != want {
+@@ -428,7 +440,7 @@ func TestRunLimit(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(tt.start, tt.n, tt.limit, 0, "", tt.asJSON, false, false, false)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) { o.start = tt.start; o.n = tt.n; o.limit = tt.limit; o.json = tt.asJSON })); err != nil {
+ 				t.Fatalf("run(%d, %d, %d) returned error: %v", tt.start, tt.n, tt.limit, err)
+ 			}
+ 			if tt.wantLines == 0 {
+@@ -458,7 +470,7 @@ func TestRunLimit(t *testing.T) {
+ 	t.Run("limit with -pretty sizes columns from the capped last index", func(t *testing.T) {
+ 		const start, n, limit = 8, 5, 10
+ 		var buf bytes.Buffer
+-		if err := run(&buf, opts(start, n, limit, 0, "", false, true, false, false)); err != nil {
++		if err := run(&buf, newOpts(func(o *options) { o.start = start; o.n = n; o.limit = limit; o.pretty = true })); err != nil {
+ 			t.Fatalf("run(%d, %d, %d, pretty) returned error: %v", start, n, limit, err)
+ 		}
+ 		lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -546,7 +558,14 @@ func TestRunSeed(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(tt.start, tt.n, tt.limit, tt.seed, "", tt.asJSON, tt.pretty, false, false)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) {
++				o.start = tt.start
++				o.n = tt.n
++				o.limit = tt.limit
++				o.seed = tt.seed
++				o.json = tt.asJSON
++				o.pretty = tt.pretty
++			})); err != nil {
+ 				t.Fatalf("run(seed=%d) returned error: %v", tt.seed, err)
+ 			}
+ 			lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+@@ -610,7 +629,7 @@ func TestRunFormatModes(t *testing.T) {
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(8, 5, 0, 0, tt.format, false, false, false, false)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) { o.start = 8; o.n = 5; o.format = tt.format })); err != nil {
+ 				t.Fatalf("run(format=%q) returned error: %v", tt.format, err)
+ 			}
+ 			if buf.String() != tt.want {
+@@ -641,10 +660,10 @@ func TestRunFormatShortcutEquivalence(t *testing.T) {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var viaFormat, viaShortcut bytes.Buffer
+ 			n := defaultCount
+-			if err := run(&viaFormat, opts(0, n, 0, tt.seed, tt.format, false, false, false, false)); err != nil {
++			if err := run(&viaFormat, newOpts(func(o *options) { o.n = n; o.seed = tt.seed; o.format = tt.format })); err != nil {
+ 				t.Fatalf("run(format=%q) returned error: %v", tt.format, err)
+ 			}
+-			if err := run(&viaShortcut, opts(0, n, 0, tt.seed, "", tt.asJSON, tt.pretty, false, false)); err != nil {
++			if err := run(&viaShortcut, newOpts(func(o *options) { o.n = n; o.seed = tt.seed; o.json = tt.asJSON; o.pretty = tt.pretty })); err != nil {
+ 				t.Fatalf("run(shortcut) returned error: %v", err)
+ 			}
+ 			if viaFormat.String() != viaShortcut.String() {
+@@ -657,7 +676,7 @@ func TestRunFormatShortcutEquivalence(t *testing.T) {
+ 	// pinned in TestRunFormatConflicts).
+ 	t.Run("csv has no shortcut: -format csv alone is its only spelling", func(t *testing.T) {
+ 		var buf bytes.Buffer
+-		if err := run(&buf, opts(0, 3, 0, 0, "csv", false, false, false, false)); err != nil {
++		if err := run(&buf, newOpts(func(o *options) { o.n = 3; o.format = "csv" })); err != nil {
+ 			t.Fatalf("run(format=csv) returned error: %v", err)
+ 		}
+ 		if want := "1,1\n2,1\n3,2\n"; buf.String() != want {
+@@ -700,7 +719,7 @@ func TestRunFormatConflicts(t *testing.T) {
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			err := run(&buf, opts(0, 5, 0, 0, tt.format, tt.asJSON, tt.pretty, false, false))
++			err := run(&buf, newOpts(func(o *options) { o.n = 5; o.format = tt.format; o.json = tt.asJSON; o.pretty = tt.pretty }))
+ 			if err == nil {
+ 				t.Fatalf("run(format=%q) succeeded, want conflict error", tt.format)
+ 			}
+@@ -715,7 +734,7 @@ func TestRunFormatConflicts(t *testing.T) {
+ 	// Legacy, no -format: -json -pretty is not an error (JSON wins).
+ 	t.Run("legacy -json -pretty without -format is not a conflict", func(t *testing.T) {
+ 		var buf bytes.Buffer
+-		if err := run(&buf, opts(0, 3, 0, 0, "", true, true, false, false)); err != nil {
++		if err := run(&buf, newOpts(func(o *options) { o.n = 3; o.json = true; o.pretty = true })); err != nil {
+ 			t.Fatalf("run(-json -pretty, no -format) returned error: %v", err)
+ 		}
+ 		if want := wantJSONLine(1) + "\n" + wantJSONLine(2) + "\n" + wantJSONLine(3) + "\n"; buf.String() != want {
+@@ -730,7 +749,7 @@ func TestRunFormatConflicts(t *testing.T) {
+ func TestRunRejectsInvalidFormat(t *testing.T) {
+ 	for _, format := range []string{"xml", "TEXT", "jso"} {
+ 		var buf bytes.Buffer
+-		err := run(&buf, opts(0, 5, 0, 0, format, false, false, false, false))
++		err := run(&buf, newOpts(func(o *options) { o.n = 5; o.format = format }))
+ 		if err == nil {
+ 			t.Fatalf("run(format=%q) succeeded, want error", format)
+ 		}
+@@ -776,7 +795,14 @@ func TestRunCSV(t *testing.T) {
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(tt.start, tt.n, tt.limit, tt.seed, "csv", false, false, false, tt.sum)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) {
++				o.start = tt.start
++				o.n = tt.n
++				o.limit = tt.limit
++				o.seed = tt.seed
++				o.format = "csv"
++				o.sum = tt.sum
++			})); err != nil {
+ 				t.Fatalf("run(csv) returned error: %v", err)
+ 			}
+ 			out := buf.String()
+@@ -830,7 +856,13 @@ func TestRunTableCombinations(t *testing.T) {
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(tt.start, tt.n, tt.limit, tt.seed, "table", false, false, false, false)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) {
++				o.start = tt.start
++				o.n = tt.n
++				o.limit = tt.limit
++				o.seed = tt.seed
++				o.format = "table"
++			})); err != nil {
+ 				t.Fatalf("run(table) returned error: %v", err)
+ 			}
+ 			if tt.wantLines == 0 {
+@@ -859,10 +891,10 @@ func TestRunTableCombinations(t *testing.T) {
+ func TestRunFormatSeed(t *testing.T) {
+ 	t.Run("-seed with -format json equals -seed -json", func(t *testing.T) {
+ 		var viaFormat, viaShortcut bytes.Buffer
+-		if err := run(&viaFormat, opts(0, defaultCount, 0, 10, "json", false, false, false, false)); err != nil {
++		if err := run(&viaFormat, newOpts(func(o *options) { o.seed = 10; o.format = "json" })); err != nil {
+ 			t.Fatalf("run(-seed -format json) returned error: %v", err)
+ 		}
+-		if err := run(&viaShortcut, opts(0, defaultCount, 0, 10, "", true, false, false, false)); err != nil {
++		if err := run(&viaShortcut, newOpts(func(o *options) { o.seed = 10; o.json = true })); err != nil {
+ 			t.Fatalf("run(-seed -json) returned error: %v", err)
+ 		}
+ 		if viaFormat.String() != viaShortcut.String() {
+@@ -874,7 +906,7 @@ func TestRunFormatSeed(t *testing.T) {
+ 	})
+ 	t.Run("-seed with -format table prints just the value", func(t *testing.T) {
+ 		var buf bytes.Buffer
+-		if err := run(&buf, opts(0, defaultCount, 0, 10, "table", false, false, false, false)); err != nil {
++		if err := run(&buf, newOpts(func(o *options) { o.seed = 10; o.format = "table" })); err != nil {
+ 			t.Fatalf("run(-seed -format table) returned error: %v", err)
+ 		}
+ 		if buf.String() != "55\n" {
+@@ -900,7 +932,13 @@ func TestRunVersionFormat(t *testing.T) {
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(0, 5, 0, 0, tt.format, tt.asJSON, tt.pretty, true, false)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) {
++				o.n = 5
++				o.format = tt.format
++				o.json = tt.asJSON
++				o.pretty = tt.pretty
++				o.version = true
++			})); err != nil {
+ 				t.Fatalf("run(version) returned error: %v", err)
+ 			}
+ 			if want := "gofib " + Version + "\n"; buf.String() != want {
+@@ -969,7 +1007,15 @@ func TestRunSum(t *testing.T) {
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(tt.start, tt.n, tt.limit, 0, tt.format, tt.asJSON, tt.pretty, false, true)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) {
++				o.start = tt.start
++				o.n = tt.n
++				o.limit = tt.limit
++				o.format = tt.format
++				o.json = tt.asJSON
++				o.pretty = tt.pretty
++				o.sum = true
++			})); err != nil {
+ 				t.Fatalf("run(sum) returned error: %v", err)
+ 			}
+ 			if buf.String() != tt.want {
+@@ -998,7 +1044,7 @@ func TestRunSumSeedConflict(t *testing.T) {
+ 	// seed 0 is the unset sentinel: legal with -sum.
+ 	t.Run("seed 0 with -sum is legal", func(t *testing.T) {
+ 		var buf bytes.Buffer
+-		if err := run(&buf, opts(0, 5, 0, 0, "", false, false, false, true)); err != nil {
++		if err := run(&buf, newOpts(func(o *options) { o.n = 5; o.sum = true })); err != nil {
+ 			t.Fatalf("run(seed=0, sum) returned error: %v", err)
+ 		}
+ 		if buf.String() != "sum: 12\n" {
+@@ -1029,7 +1075,7 @@ func TestRunSumVersionPrecedence(t *testing.T) {
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, opts(0, 5, 0, tt.seed, "", false, false, true, true)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) { o.n = 5; o.seed = tt.seed; o.version = true; o.sum = true })); err != nil {
+ 				t.Fatalf("run(version, sum) returned error: %v", err)
+ 			}
+ 			if want := "gofib " + Version + "\n"; buf.String() != want {
+@@ -1047,7 +1093,8 @@ func TestParseOptionsDefaults(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatalf("parseOptions(nil) returned error: %v", err)
+ 	}
+-	want := options{n: 100, start: 0, limit: 0, step: 1, seed: 0, format: "", json: false, pretty: false, version: false, sum: false}
++	// newOpts() defaults mirror the real flag defaults in main.go.
++	want := newOpts()
+ 	if got != want {
+ 		t.Errorf("parseOptions(nil) = %+v, want %+v", got, want)
+ 	}
+@@ -1118,13 +1165,6 @@ func TestParseOptionsVersionShortCircuit(t *testing.T) {
+ 	}
+ }
+ 
+-// stepOpts clones an opts-built value with -step set, keeping the
+-// existing call sites untouched.
+-func stepOpts(o options, step int) options {
+-	o.step = step
+-	return o
+-}
+-
+ // TestRunStep pins the -step semantics across every output mode: with
+ // -step k only every k-th number of the selected range prints,
+ // starting with the first (indices start, start+k, ... up to last).
+@@ -1136,26 +1176,26 @@ func TestRunStep(t *testing.T) {
+ 		step int
+ 		want string
+ 	}{
+-		{"text n=6 step=2 prints indices 1,3,5", opts(0, 6, 0, 0, "", false, false, false, false), 2, "1: 1\n3: 2\n5: 5\n"},
+-		{"text step=3 prints indices 1,4", opts(0, 6, 0, 0, "", false, false, false, false), 3, "1: 1\n4: 3\n"},
+-		{"text with -start strides the window", opts(5, 4, 0, 0, "", false, false, false, false), 2, "5: 5\n7: 13\n"},
+-		{"text with -limit strides the capped range", opts(1, 100, 5, 0, "", false, false, false, false), 2, "1: 1\n3: 2\n5: 5\n"},
+-		{"text step larger than the range prints only the first", opts(0, 3, 0, 0, "", false, false, false, false), 10, "1: 1\n"},
+-		{"json n=6 step=2 emits exactly the stepped indices", opts(0, 6, 0, 0, "", true, false, false, false), 2,
++		{"text n=6 step=2 prints indices 1,3,5", newOpts(func(o *options) { o.n = 6 }), 2, "1: 1\n3: 2\n5: 5\n"},
++		{"text step=3 prints indices 1,4", newOpts(func(o *options) { o.n = 6 }), 3, "1: 1\n4: 3\n"},
++		{"text with -start strides the window", newOpts(func(o *options) { o.start = 5; o.n = 4 }), 2, "5: 5\n7: 13\n"},
++		{"text with -limit strides the capped range", newOpts(func(o *options) { o.start = 1; o.n = 100; o.limit = 5 }), 2, "1: 1\n3: 2\n5: 5\n"},
++		{"text step larger than the range prints only the first", newOpts(func(o *options) { o.n = 3 }), 10, "1: 1\n"},
++		{"json n=6 step=2 emits exactly the stepped indices", newOpts(func(o *options) { o.n = 6; o.json = true }), 2,
+ 			wantJSONLine(1) + "\n" + wantJSONLine(3) + "\n" + wantJSONLine(5) + "\n"},
+-		{"csv n=6 step=2 emits the stepped records", opts(0, 6, 0, 0, "csv", false, false, false, false), 2,
++		{"csv n=6 step=2 emits the stepped records", newOpts(func(o *options) { o.n = 6; o.format = "csv" }), 2,
+ 			csvRecord(1) + "\n" + csvRecord(3) + "\n" + csvRecord(5) + "\n"},
+-		{"table sizes the value column from the stepped last index", opts(0, 12, 0, 0, "table", false, false, false, false), 2,
++		{"table sizes the value column from the stepped last index", newOpts(func(o *options) { o.n = 12; o.format = "table" }), 2,
+ 			tableLine(11, "1") + "\n" + tableLine(11, "2") + "\n" + tableLine(11, "5") + "\n" +
+ 				tableLine(11, "13") + "\n" + tableLine(11, "34") + "\n" + tableLine(11, "89") + "\n"},
+ 		// Pretty widths come from the largest index and value actually
+ 		// printed (5 and Fib(5) = 5), not from the range's last (6).
+-		{"pretty sizes columns from the stepped last index", opts(0, 6, 0, 0, "", false, true, false, false), 2,
++		{"pretty sizes columns from the stepped last index", newOpts(func(o *options) { o.n = 6; o.pretty = true }), 2,
+ 			prettyLine(5, 1, "1") + "\n" + prettyLine(5, 3, "2") + "\n" + prettyLine(5, 5, "5") + "\n"},
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, stepOpts(tt.opts, tt.step)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) { *o = tt.opts; o.step = tt.step })); err != nil {
+ 				t.Fatalf("run(step=%d) returned error: %v", tt.step, err)
+ 			}
+ 			if buf.String() != tt.want {
+@@ -1172,20 +1212,20 @@ func TestRunStepOneEquivalence(t *testing.T) {
+ 		name string
+ 		opts options
+ 	}{
+-		{"text", opts(0, 5, 0, 0, "", false, false, false, false)},
+-		{"json", opts(0, 5, 0, 0, "", true, false, false, false)},
+-		{"pretty", opts(8, 5, 0, 0, "", false, true, false, false)},
+-		{"table", opts(8, 5, 0, 0, "table", false, false, false, false)},
+-		{"csv", opts(8, 5, 10, 0, "csv", false, false, false, false)},
+-		{"sum text", opts(0, 10, 0, 0, "", false, false, false, true)},
+-		{"sum json", opts(0, 10, 0, 0, "json", false, false, false, true)},
++		{"text", newOpts(func(o *options) { o.n = 5 })},
++		{"json", newOpts(func(o *options) { o.n = 5; o.json = true })},
++		{"pretty", newOpts(func(o *options) { o.start = 8; o.n = 5; o.pretty = true })},
++		{"table", newOpts(func(o *options) { o.start = 8; o.n = 5; o.format = "table" })},
++		{"csv", newOpts(func(o *options) { o.start = 8; o.n = 5; o.limit = 10; o.format = "csv" })},
++		{"sum text", newOpts(func(o *options) { o.n = 10; o.sum = true })},
++		{"sum json", newOpts(func(o *options) { o.n = 10; o.format = "json"; o.sum = true })},
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var unset, one bytes.Buffer
+ 			if err := run(&unset, tt.opts); err != nil {
+ 				t.Fatalf("run(unset step) returned error: %v", err)
+ 			}
+-			if err := run(&one, stepOpts(tt.opts, 1)); err != nil {
++			if err := run(&one, newOpts(func(o *options) { *o = tt.opts; o.step = 1 })); err != nil {
+ 				t.Fatalf("run(step=1) returned error: %v", err)
+ 			}
+ 			if one.String() != unset.String() {
+@@ -1284,14 +1324,14 @@ func TestRunStepSum(t *testing.T) {
+ 		step int
+ 		want string
+ 	}{
+-		{"sum after stepping in text mode", opts(0, 6, 0, 0, "", false, false, false, true), 2, "sum: 8\n"},
+-		{"sum after stepping in json keeps full bounds", opts(0, 6, 0, 0, "json", false, false, false, true), 2, steppedSum(1, 6, 2) + "\n"},
+-		{"sum after stepping in csv keeps full bounds", opts(0, 6, 0, 0, "csv", false, false, false, true), 2, "sum,1,6,8\n"},
+-		{"sum with -start and -step", opts(4, 5, 0, 0, "", false, false, false, true), 2, "sum: 32\n"}, // F(4)+F(6)+F(8) = 3+8+21
++		{"sum after stepping in text mode", newOpts(func(o *options) { o.n = 6; o.sum = true }), 2, "sum: 8\n"},
++		{"sum after stepping in json keeps full bounds", newOpts(func(o *options) { o.n = 6; o.format = "json"; o.sum = true }), 2, steppedSum(1, 6, 2) + "\n"},
++		{"sum after stepping in csv keeps full bounds", newOpts(func(o *options) { o.n = 6; o.format = "csv"; o.sum = true }), 2, "sum,1,6,8\n"},
++		{"sum with -start and -step", newOpts(func(o *options) { o.start = 4; o.n = 5; o.sum = true }), 2, "sum: 32\n"}, // F(4)+F(6)+F(8) = 3+8+21
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, stepOpts(tt.opts, tt.step)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) { *o = tt.opts; o.step = tt.step })); err != nil {
+ 				t.Fatalf("run(sum, step=%d) returned error: %v", tt.step, err)
+ 			}
+ 			if buf.String() != tt.want {
+@@ -1380,13 +1420,6 @@ func TestOutputToFile(t *testing.T) {
+ 	}
+ }
+ 
+-// lastOpts clones an opts-built value with -last set, keeping the
+-// existing call sites untouched.
+-func lastOpts(o options, last int) options {
+-	o.last = last
+-	return o
+-}
+-
+ // TestRunLast pins the -last semantics across every output mode: with
+ // -last k only the last k numbers of the (already stepped) selection
+ // print, in every mode; a selection shorter than k clamps to the whole
+@@ -1399,33 +1432,33 @@ func TestRunLast(t *testing.T) {
+ 		last int
+ 		want string
+ 	}{
+-		{"text n=10 last=3 prints indices 8,9,10", opts(0, 10, 0, 0, "", false, false, false, false), 3,
++		{"text n=10 last=3 prints indices 8,9,10", newOpts(func(o *options) { o.n = 10 }), 3,
+ 			"8: 21\n9: 34\n10: 55\n"},
+-		{"text last=1 prints only the final index", opts(0, 10, 0, 0, "", false, false, false, false), 1,
++		{"text last=1 prints only the final index", newOpts(func(o *options) { o.n = 10 }), 1,
+ 			"10: 55\n"},
+-		{"text last larger than the selection clamps", opts(0, 2, 0, 0, "", false, false, false, false), 5,
++		{"text last larger than the selection clamps", newOpts(func(o *options) { o.n = 2 }), 5,
+ 			"1: 1\n2: 1\n"},
+-		{"text last equal to the selection size prints all", opts(0, 3, 0, 0, "", false, false, false, false), 3,
++		{"text last equal to the selection size prints all", newOpts(func(o *options) { o.n = 3 }), 3,
+ 			"1: 1\n2: 1\n3: 2\n"},
+-		{"text with -start tails the window", opts(5, 4, 0, 0, "", false, false, false, false), 2,
++		{"text with -start tails the window", newOpts(func(o *options) { o.start = 5; o.n = 4 }), 2,
+ 			"7: 13\n8: 21\n"},
+-		{"text with -limit tails the capped range", opts(1, 100, 5, 0, "", false, false, false, false), 2,
++		{"text with -limit tails the capped range", newOpts(func(o *options) { o.start = 1; o.n = 100; o.limit = 5 }), 2,
+ 			"4: 3\n5: 5\n"},
+-		{"json n=10 last=3 emits exactly the tailed indices", opts(0, 10, 0, 0, "", true, false, false, false), 3,
++		{"json n=10 last=3 emits exactly the tailed indices", newOpts(func(o *options) { o.n = 10; o.json = true }), 3,
+ 			wantJSONLine(8) + "\n" + wantJSONLine(9) + "\n" + wantJSONLine(10) + "\n"},
+-		{"csv n=10 last=3 emits the tailed records", opts(0, 10, 0, 0, "csv", false, false, false, false), 3,
++		{"csv n=10 last=3 emits the tailed records", newOpts(func(o *options) { o.n = 10; o.format = "csv" }), 3,
+ 			csvRecord(8) + "\n" + csvRecord(9) + "\n" + csvRecord(10) + "\n"},
+ 		// Pretty widths keep coming from the largest index and value
+ 		// actually printed — tailing keeps the range's final index, so
+ 		// widths track the unchanged steppedLast (= 6 here).
+-		{"pretty sizes columns from the tailed last index", opts(0, 6, 0, 0, "", false, true, false, false), 2,
++		{"pretty sizes columns from the tailed last index", newOpts(func(o *options) { o.n = 6; o.pretty = true }), 2,
+ 			prettyLine(6, 5, "5") + "\n" + prettyLine(6, 6, "8") + "\n"},
+-		{"table sizes the value column from the tailed last index", opts(0, 6, 0, 0, "table", false, false, false, false), 2,
++		{"table sizes the value column from the tailed last index", newOpts(func(o *options) { o.n = 6; o.format = "table" }), 2,
+ 			tableLine(6, "5") + "\n" + tableLine(6, "8") + "\n"},
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, lastOpts(tt.opts, tt.last)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) { *o = tt.opts; o.last = tt.last })); err != nil {
+ 				t.Fatalf("run(last=%d) returned error: %v", tt.last, err)
+ 			}
+ 			if buf.String() != tt.want {
+@@ -1442,20 +1475,20 @@ func TestRunLastZeroEquivalence(t *testing.T) {
+ 		name string
+ 		opts options
+ 	}{
+-		{"text", opts(0, 5, 0, 0, "", false, false, false, false)},
+-		{"json", opts(0, 5, 0, 0, "", true, false, false, false)},
+-		{"pretty", opts(8, 5, 0, 0, "", false, true, false, false)},
+-		{"table", opts(8, 5, 0, 0, "table", false, false, false, false)},
+-		{"csv", opts(8, 5, 10, 0, "csv", false, false, false, false)},
+-		{"sum text", opts(0, 10, 0, 0, "", false, false, false, true)},
+-		{"sum json", opts(0, 10, 0, 0, "json", false, false, false, true)},
++		{"text", newOpts(func(o *options) { o.n = 5 })},
++		{"json", newOpts(func(o *options) { o.n = 5; o.json = true })},
++		{"pretty", newOpts(func(o *options) { o.start = 8; o.n = 5; o.pretty = true })},
++		{"table", newOpts(func(o *options) { o.start = 8; o.n = 5; o.format = "table" })},
++		{"csv", newOpts(func(o *options) { o.start = 8; o.n = 5; o.limit = 10; o.format = "csv" })},
++		{"sum text", newOpts(func(o *options) { o.n = 10; o.sum = true })},
++		{"sum json", newOpts(func(o *options) { o.n = 10; o.format = "json"; o.sum = true })},
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var unset, zero bytes.Buffer
+ 			if err := run(&unset, tt.opts); err != nil {
+ 				t.Fatalf("run(unset last) returned error: %v", err)
+ 			}
+-			if err := run(&zero, lastOpts(tt.opts, 0)); err != nil {
++			if err := run(&zero, newOpts(func(o *options) { *o = tt.opts; o.last = 0 })); err != nil {
+ 				t.Fatalf("run(last=0) returned error: %v", err)
+ 			}
+ 			if zero.String() != unset.String() {
+@@ -1476,18 +1509,18 @@ func TestRunLastStepOrdering(t *testing.T) {
+ 		last int
+ 		want string
+ 	}{
+-		{"last 2 of the stepped selection", opts(0, 6, 0, 0, "", false, false, false, false), 2, 2,
++		{"last 2 of the stepped selection", newOpts(func(o *options) { o.n = 6 }), 2, 2,
+ 			"3: 2\n5: 5\n"},
+-		{"last 3 of the stepped selection", opts(0, 6, 0, 0, "", false, false, false, false), 2, 3,
++		{"last 3 of the stepped selection", newOpts(func(o *options) { o.n = 6 }), 2, 3,
+ 			"1: 1\n3: 2\n5: 5\n"},
+-		{"last clamps to the stepped selection", opts(0, 6, 0, 0, "", false, false, false, false), 2, 5,
++		{"last clamps to the stepped selection", newOpts(func(o *options) { o.n = 6 }), 2, 5,
+ 			"1: 1\n3: 2\n5: 5\n"},
+-		{"json last 2 of the stepped selection", opts(0, 6, 0, 0, "", true, false, false, false), 2, 2,
++		{"json last 2 of the stepped selection", newOpts(func(o *options) { o.n = 6; o.json = true }), 2, 2,
+ 			wantJSONLine(3) + "\n" + wantJSONLine(5) + "\n"},
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+-			if err := run(&buf, lastOpts(stepOpts(tt.opts, tt.step), tt.last)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) { *o = tt.opts; o.step = tt.step; o.last = tt.last })); err != nil {
+ 				t.Fatalf("run(step=%d, last=%d) returned error: %v", tt.step, tt.last, err)
+ 			}
+ 			if buf.String() != tt.want {
+@@ -1530,10 +1563,10 @@ func TestRunLastSum(t *testing.T) {
+ 		last int
+ 		want string
+ 	}{
+-		{"sum after tailing in text mode", opts(0, 6, 0, 0, "", false, false, false, true), 3, "sum: 16\n"},
+-		{"sum after tailing in json keeps full bounds", opts(0, 6, 0, 0, "json", false, false, false, true), 3, tailedSum(1, 6, 1, 3) + "\n"},
+-		{"sum after tailing in csv keeps full bounds", opts(0, 6, 0, 0, "csv", false, false, false, true), 3, "sum,1,6,16\n"},
+-		{"sum after stepping and tailing keeps full bounds", opts(0, 6, 0, 0, "json", false, false, false, true), 1, tailedSum(1, 6, 2, 1) + "\n"},
++		{"sum after tailing in text mode", newOpts(func(o *options) { o.n = 6; o.sum = true }), 3, "sum: 16\n"},
++		{"sum after tailing in json keeps full bounds", newOpts(func(o *options) { o.n = 6; o.format = "json"; o.sum = true }), 3, tailedSum(1, 6, 1, 3) + "\n"},
++		{"sum after tailing in csv keeps full bounds", newOpts(func(o *options) { o.n = 6; o.format = "csv"; o.sum = true }), 3, "sum,1,6,16\n"},
++		{"sum after stepping and tailing keeps full bounds", newOpts(func(o *options) { o.n = 6; o.format = "json"; o.sum = true }), 1, tailedSum(1, 6, 2, 1) + "\n"},
+ 	} {
+ 		t.Run(tt.name, func(t *testing.T) {
+ 			var buf bytes.Buffer
+@@ -1541,7 +1574,7 @@ func TestRunLastSum(t *testing.T) {
+ 			if tt.name == "sum after stepping and tailing keeps full bounds" {
+ 				step = 2
+ 			}
+-			if err := run(&buf, lastOpts(stepOpts(tt.opts, step), tt.last)); err != nil {
++			if err := run(&buf, newOpts(func(o *options) { *o = tt.opts; o.step = step; o.last = tt.last })); err != nil {
+ 				t.Fatalf("run(sum, last=%d) returned error: %v", tt.last, err)
+ 			}
+ 			if buf.String() != tt.want {
+@@ -1593,7 +1626,7 @@ func TestRunLastSeedConflict(t *testing.T) {
+ 	}
+ 	t.Run("seed 0 with -last is legal", func(t *testing.T) {
+ 		var buf bytes.Buffer
+-		if err := run(&buf, lastOpts(opts(0, 5, 0, 0, "", false, false, false, false), 2)); err != nil {
++		if err := run(&buf, newOpts(func(o *options) { o.n = 5; o.last = 2 })); err != nil {
+ 			t.Fatalf("run(seed=0, last=2) returned error: %v", err)
+ 		}
+ 		if buf.String() != "4: 3\n5: 5\n" {
