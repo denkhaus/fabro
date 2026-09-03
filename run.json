@@ -677,7 +677,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-03T22:00:50.755825376Z",
-  "last_event_at": "2026-09-03T22:06:23.983464716Z",
+  "last_event_at": "2026-09-03T22:06:50.256883743Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -1274,9 +1274,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 257,
       "checkpoint": {
-        "timestamp": "2026-09-03T22:06:24.191322813Z",
+        "timestamp": "2026-09-03T22:06:28.168121977Z",
         "current_node": "evidence",
         "completed_nodes": [
           "start",
@@ -1287,24 +1287,47 @@
         ],
         "node_retries": {},
         "context_values": {
-          "preferred_label": "Implemented",
-          "implementation_summary": "Refactored `/workspace/fabro/fib_test.go`: deleted opts/stepOpts/lastOpts, added one newOpts(mod ...func(*options)) helper defaulting to the real main.go flag defaults, and migrated all 82 call sites via a single scripted transform (gofmt/vet clean, focused tests pass, assertions untouched); lesson captured as mx-b472b6. Per-criterion report: PASS one helper remains (newOpts in fib_test.go); PASS defaults match main.go flags (pinned by TestParseOptionsDefaults via newOpts()); PASS all fields settable incl. step/last (TestRunStep, TestRunLast, TestRunLastStepOrdering); PASS old wrappers deleted, zero references; PASS no inline options{} literals outside the helper; PASS behavior-neutral (focused go test subset PASS, full gate left to tester).",
-          "internal.thread_id": "tester",
-          "current_node": "evidence",
-          "failure_signature": "",
-          "graph.cycle_counter_reset_key": "current_seed_id",
-          "graph.preamble_budget_kb": "24",
+          "outcome": "succeeded",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1,
             "tester": 1,
             "evidence": 1
           },
-          "outcome": "succeeded",
-          "internal.retry_count.planner": 0,
-          "graph.max_node_visits": "40",
+          "internal.work_dir": "/workspace/fabro",
+          "current_node": "evidence",
+          "current_seed_id": "fabro-1f5b",
+          "internal.thread_id": "tester",
+          "thread.start.current_node": "planner",
+          "graph.preamble_budget_kb": "24",
+          "internal.seed_cycle_anchor": "fabro-1f5b",
+          "last_stage": "implementer",
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3944,
+            "preview": "Done. Implementation summary:\n\n**Files touched:** `/workspace/fabro/fib_test.go` only (plus the mulch record). Deleted the `opts()`, `stepOpts()`, and `lastOpts()` wrappers; added a single `newOpts(mo"
+          },
+          "implementation_summary": "Refactored `/workspace/fabro/fib_test.go`: deleted opts/stepOpts/lastOpts, added one newOpts(mod ...func(*options)) helper defaulting to the real main.go flag defaults, and migrated all 82 call sites via a single scripted transform (gofmt/vet clean, focused tests pass, assertions untouched); lesson captured as mx-b472b6. Per-criterion report: PASS one helper remains (newOpts in fib_test.go); PASS defaults match main.go flags (pinned by TestParseOptionsDefaults via newOpts()); PASS all fields settable incl. step/last (TestRunStep, TestRunLast, TestRunLastStepOrdering); PASS old wrappers deleted, zero references; PASS no inline options{} literals outside the helper; PASS behavior-neutral (focused go test subset PASS, full gate left to tester).",
+          "failure_class": "",
+          "preferred_label": "Implemented",
+          "last_response": "Done. Implementation summary:\n\n**Files touched:** `/workspace/fabro/fib_test.go` only (plus the mulch record). Deleted the `opts()`, `stepOpts()`, and `lastOpts()` wrappers; added a single `newOpts(mo",
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 2165,
+            "preview": "Seed claimed fresh — the refactor is not yet in the worktree (positional `opts()` plus `stepOpts`/`lastOpts` clones still present in `/workspace/fabro/fib_test.go`), and the spec's default values cr"
+          },
+          "internal.retry_count.evidence": 0,
+          "thread.tester.current_node": "evidence",
+          "internal.retry_count.implementer": 0,
+          "graph.cycle_counter_reset_key": "current_seed_id",
           "graph.goal": "Implement product seed fabro-1f5b: gofib tests replace per-flag opts wrappers with one options-literal builder",
-          "command.output": "blob://sha256/4ad3101d8a57b1edf85988a1d95cd53c5aa5a15c468200990ebef08f7a211024",
+          "graph.max_node_visits": "40",
+          "failure_signature": "",
+          "internal.retry_count.planner": 0,
+          "internal.run_id": "01M1MMK5C6B313SY70Y2EPKE82",
+          "current_seed_title": "gofib tests: replace per-flag opts() wrappers with one options-literal builder",
           "internal.fidelity": "compact",
           "journal": {
             "painpoints": [
@@ -1317,6 +1340,225 @@
               "TestParseOptionsDefaults now compares parseOptions(nil) against newOpts() defaults instead of a hand-written literal: it still pins parseOptions, but the defaults' single source of truth lives in the helper — a future flag added to options{} must update newOpts or that test catches the drift."
             ]
           },
+          "current_seed_brief": "Refactor `/workspace/fabro/fib_test.go` test scaffolding, not product behavior. Today tests build options via the 9-arg positional `opts()` wrapper plus `stepOpts`/`lastOpts` clone wrappers; every new flag adds another wrapper. Replace with ONE helper that starts from defaults and overrides only what a test exercises. Acceptance criteria:\n- exactly ONE options-construction helper remains in `/workspace/fabro/fib_test.go` (e.g. `newOpts(mod ...func(*options)) options` or an options-literal override pattern)\n- helper defaults match the real flag defaults verified in `/workspace/fabro/main.go`: n=100, start=0, limit=0, step=1, last=0, seed=0, format=\"\", json/pretty/sum/version=false, output=\"\"\n- helper covers ALL options fields including step, last, and output (the old `opts()` could not set these)\n- old wrappers deleted: `opts()`, `stepOpts()`, `lastOpts()` are gone\n- no test constructs `options{...}` literals or calls the old wrappers inline; every test goes through the single helper\n- behavior-neutral: all existing assertions unchanged; `go test ./...` passes\n- `just qualitygate` stays green",
+          "internal.node_visit_count": 1,
+          "internal.retry_count.tester": 0,
+          "command.output": "blob://sha256/4ad3101d8a57b1edf85988a1d95cd53c5aa5a15c468200990ebef08f7a211024",
+          "lesson_capture": "mx-b472b6",
+          "graph.rankdir": "LR",
+          "internal.retry_count.start": 0,
+          "thread.implementer.current_node": "tester",
+          "thread.planner.current_node": "implementer"
+        },
+        "node_outcomes": {
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/36e8d42c1ca102c05d98bbf315170dfe2a78bd64eddc0d4ba3d6db9936638c22"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1411,
+              "active_time_ms": 1411
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "journal": {
+                "painpoints": [
+                  {
+                    "text": "The seed-workflow environment has no python3 anywhere on PATH (only mise shims, and `go` itself is unset outside the project dir — `go run` from `/tmp` fails with 'mise ERROR No version is set for shim: go'). Run scripted transforms as `go run /tmp/.../main.go` from the project root, or document a python provider in the run image. Run 01M1MMK5C6B313SY70Y2EPKE82, cost: two failed tool calls rediscovering this."
+                  }
+                ],
+                "observations": [
+                  "Composite stepOpts(lastOpts(...)) call sites collapsed naturally into a single newOpts closure starting with `*o = tt.opts` — the fallback kept the transform total rather than needing per-test restructuring of table structs.",
+                  "TestParseOptionsDefaults now compares parseOptions(nil) against newOpts() defaults instead of a hand-written literal: it still pins parseOptions, but the defaults' single source of truth lives in the helper — a future flag added to options{} must update newOpts or that test catches the drift."
+                ]
+              },
+              "implementation_summary": "Refactored `/workspace/fabro/fib_test.go`: deleted opts/stepOpts/lastOpts, added one newOpts(mod ...func(*options)) helper defaulting to the real main.go flag defaults, and migrated all 82 call sites via a single scripted transform (gofmt/vet clean, focused tests pass, assertions untouched); lesson captured as mx-b472b6. Per-criterion report: PASS one helper remains (newOpts in fib_test.go); PASS defaults match main.go flags (pinned by TestParseOptionsDefaults via newOpts()); PASS all fields settable incl. step/last (TestRunStep, TestRunLast, TestRunLastStepOrdering); PASS old wrappers deleted, zero references; PASS no inline options{} literals outside the helper; PASS behavior-neutral (focused go test subset PASS, full gate left to tester).",
+              "lesson_capture": "mx-b472b6",
+              "last_stage": "implementer",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3944,
+                "preview": "Done. Implementation summary:\n\n**Files touched:** `/workspace/fabro/fib_test.go` only (plus the mulch record). Deleted the `opts()`, `stepOpts()`, and `lastOpts()` wrappers; added a single `newOpts(mo"
+              },
+              "last_response": "Done. Implementation summary:\n\n**Files touched:** `/workspace/fabro/fib_test.go` only (plus the mulch record). Deleted the `opts()`, `stepOpts()`, and `lastOpts()` wrappers; added a single `newOpts(mo"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 52054,
+                    "output_tokens": 5901,
+                    "reasoning_tokens": 8503,
+                    "cache_read_tokens": 991808,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 394094
+            },
+            "files_touched": [
+              "/tmp/transform.py",
+              "/tmp/transform/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 224574,
+              "tool_time_ms": 14251,
+              "active_time_ms": 238825
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/4ad3101d8a57b1edf85988a1d95cd53c5aa5a15c468200990ebef08f7a211024"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 379,
+              "active_time_ms": 379
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-1f5b is a fresh implementation, not verification-only: worktree still has positional opts() plus stepOpts/lastOpts clones in fib_test.go",
+                  "Spec's default list cross-checked against main.go flag registration — accurate, no contradictions; only nuance is that the new helper must also expose step/last/output which the old opts() signature could not set"
+                ]
+              },
+              "current_seed_title": "gofib tests: replace per-flag opts() wrappers with one options-literal builder",
+              "last_stage": "planner",
+              "current_seed_brief": "Refactor `/workspace/fabro/fib_test.go` test scaffolding, not product behavior. Today tests build options via the 9-arg positional `opts()` wrapper plus `stepOpts`/`lastOpts` clone wrappers; every new flag adds another wrapper. Replace with ONE helper that starts from defaults and overrides only what a test exercises. Acceptance criteria:\n- exactly ONE options-construction helper remains in `/workspace/fabro/fib_test.go` (e.g. `newOpts(mod ...func(*options)) options` or an options-literal override pattern)\n- helper defaults match the real flag defaults verified in `/workspace/fabro/main.go`: n=100, start=0, limit=0, step=1, last=0, seed=0, format=\"\", json/pretty/sum/version=false, output=\"\"\n- helper covers ALL options fields including step, last, and output (the old `opts()` could not set these)\n- old wrappers deleted: `opts()`, `stepOpts()`, `lastOpts()` are gone\n- no test constructs `options{...}` literals or calls the old wrappers inline; every test goes through the single helper\n- behavior-neutral: all existing assertions unchanged; `go test ./...` passes\n- `just qualitygate` stays green",
+              "last_response": "Seed claimed fresh — the refactor is not yet in the worktree (positional `opts()` plus `stepOpts`/`lastOpts` clones still present in `/workspace/fabro/fib_test.go`), and the spec's default values cr",
+              "current_seed_id": "fabro-1f5b",
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 2165,
+                "preview": "Seed claimed fresh — the refactor is not yet in the worktree (positional `opts()` plus `stepOpts`/`lastOpts` clones still present in `/workspace/fabro/fib_test.go`), and the spec's default values cr"
+              }
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 10539,
+                    "output_tokens": 804,
+                    "reasoning_tokens": 862,
+                    "cache_read_tokens": 47168,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 34342
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 40140,
+              "tool_time_ms": 1480,
+              "active_time_ms": 41620
+            }
+          }
+        },
+        "next_node_id": "reviewer",
+        "git_commit_sha": "c3db7b9217a30fd18ef4535454175d9640e86281",
+        "node_visits": {
+          "planner": 1,
+          "tester": 1,
+          "start": 1,
+          "evidence": 1,
+          "implementer": 1
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1MMK5C6B313SY70Y2EPKE82.jsonl b/.fabro/journal/01M1MMK5C6B313SY70Y2EPKE82.jsonl\nindex 5be0573..040c328 100644\n--- a/.fabro/journal/01M1MMK5C6B313SY70Y2EPKE82.jsonl\n+++ b/.fabro/journal/01M1MMK5C6B313SY70Y2EPKE82.jsonl\n@@ -2,3 +2,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1MMK5C6B313SY70Y2EPKE82\",\"node\":\"planner\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-03T22:01:38Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-1f5b is a fresh implementation, not verification-only: worktree still has positional opts() plus stepOpts/lastOpts clones in fib_test.go\",\"Spec's default list cross-checked against main.go flag registration — accurate, no contradictions; only nuance is that the new helper must also expose step/last/output which the old opts() signature could not set\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1MMK5C6B313SY70Y2EPKE82\",\"node\":\"implementer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-03T22:06:10Z\",\"data\":{\"painpoints\":[{\"text\":\"The seed-workflow environment has no python3 anywhere on PATH (only mise shims, and `go` itself is unset outside the project dir — `go run` from `/tmp` fails with 'mise ERROR No version is set for shim: go'). Run scripted transforms as `go run /tmp/.../main.go` from the project root, or document a python provider in the run image. Run 01M1MMK5C6B313SY70Y2EPKE82, cost: two failed tool calls rediscovering this.\"}],\"observations\":[\"Composite stepOpts(lastOpts(...)) call sites collapsed naturally into a single newOpts closure starting with `*o = tt.opts` — the fallback kept the transform total rather than needing per-test restructuring of table structs.\",\"TestParseOptionsDefaults now compares parseOptions(nil) against newOpts() defaults instead of a hand-written literal: it still pins parseOptions, but the defaults' single source of truth lives in the helper — a future flag added to options{} must update newOpts or that test catches the drift.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1MMK5C6B313SY70Y2EPKE82\",\"node\":\"tester\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-03T22:06:15Z\",\"data\":{}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1MMK5C6B313SY70Y2EPKE82\",\"node\":\"evidence\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-03T22:06:24Z\",\"data\":{}}\n",
+        "summary": {
+          "files_changed": 4,
+          "additions": 142,
+          "deletions": 103
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-03T22:06:50.482679985Z",
+        "current_node": "reviewer",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "preferred_label": "Approved",
+          "implementation_summary": "Refactored `/workspace/fabro/fib_test.go`: deleted opts/stepOpts/lastOpts, added one newOpts(mod ...func(*options)) helper defaulting to the real main.go flag defaults, and migrated all 82 call sites via a single scripted transform (gofmt/vet clean, focused tests pass, assertions untouched); lesson captured as mx-b472b6. Per-criterion report: PASS one helper remains (newOpts in fib_test.go); PASS defaults match main.go flags (pinned by TestParseOptionsDefaults via newOpts()); PASS all fields settable incl. step/last (TestRunStep, TestRunLast, TestRunLastStepOrdering); PASS old wrappers deleted, zero references; PASS no inline options{} literals outside the helper; PASS behavior-neutral (focused go test subset PASS, full gate left to tester).",
+          "internal.thread_id": "evidence",
+          "current_node": "reviewer",
+          "failure_signature": "",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "graph.preamble_budget_kb": "24",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1,
+            "evidence": 1,
+            "reviewer": 1
+          },
+          "thread.evidence.current_node": "reviewer",
+          "review_verdict": "approved",
+          "outcome": "succeeded",
+          "internal.retry_count.planner": 0,
+          "graph.max_node_visits": "40",
+          "graph.goal": "Implement product seed fabro-1f5b: gofib tests replace per-flag opts wrappers with one options-literal builder",
+          "command.output": "blob://sha256/4ad3101d8a57b1edf85988a1d95cd53c5aa5a15c468200990ebef08f7a211024",
+          "internal.fidelity": "summary:high",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "Evidence arrived as a 34.5 KB blob ref; read it in full via read_file — the capture was complete (integrity header, per-file counts, full diff, clean worktree), so no re-capture was needed.",
+              "Verified beyond the diff: grep confirms the only options{} literal left in the repo is inside newOpts (fib_test.go:19), defaultCount=100 in main.go:44, and re-ran go test ./... (ok gofib 0.029s).",
+              "TestParseOptionsDefaults now derives its expectation from newOpts() while the value under test comes from parseOptions(nil) — the helper stays pinned to the real parser, not to itself."
+            ]
+          },
           "internal.work_dir": "/workspace/fabro",
           "current_seed_brief": "Refactor `/workspace/fabro/fib_test.go` test scaffolding, not product behavior. Today tests build options via the 9-arg positional `opts()` wrapper plus `stepOpts`/`lastOpts` clone wrappers; every new flag adds another wrapper. Replace with ONE helper that starts from defaults and overrides only what a test exercises. Acceptance criteria:\n- exactly ONE options-construction helper remains in `/workspace/fabro/fib_test.go` (e.g. `newOpts(mod ...func(*options)) options` or an options-literal override pattern)\n- helper defaults match the real flag defaults verified in `/workspace/fabro/main.go`: n=100, start=0, limit=0, step=1, last=0, seed=0, format=\"\", json/pretty/sum/version=false, output=\"\"\n- helper covers ALL options fields including step, last, and output (the old `opts()` could not set these)\n- old wrappers deleted: `opts()`, `stepOpts()`, `lastOpts()` are gone\n- no test constructs `options{...}` literals or calls the old wrappers inline; every test goes through the single helper\n- behavior-neutral: all existing assertions unchanged; `go test ./...` passes\n- `just qualitygate` stays green",
           "graph.rankdir": "LR",
@@ -1324,6 +1566,13 @@
           "lesson_capture": "mx-b472b6",
           "current_seed_id": "fabro-1f5b",
           "thread.implementer.current_node": "tester",
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2240,
+            "preview": "All acceptance criteria verified against the complete evidence diff:\n\n1. **One helper**: `newOpts(mod ...func(*options))` is the sole options-construction helper; `opts()`, `stepOpts()`, `lastOpts()` "
+          },
+          "internal.retry_count.reviewer": 0,
           "response.implementer": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.implementer",
@@ -1336,8 +1585,8 @@
           "internal.node_visit_count": 1,
           "failure_class": "",
           "internal.seed_cycle_anchor": "fabro-1f5b",
-          "last_stage": "implementer",
-          "last_response": "Done. Implementation summary:\n\n**Files touched:** `/workspace/fabro/fib_test.go` only (plus the mulch record). Deleted the `opts()`, `stepOpts()`, and `lastOpts()` wrappers; added a single `newOpts(mo",
+          "last_stage": "reviewer",
+          "last_response": "All acceptance criteria verified against the complete evidence diff:\n\n1. **One helper**: `newOpts(mod ...func(*options))` is the sole options-construction helper; `opts()`, `stepOpts()`, `lastOpts()` ",
           "response.planner": {
             "dedup": "response text omitted — payload lives in structured context keys",
             "output_key": "output.planner",
@@ -1351,6 +1600,57 @@
           "internal.retry_count.start": 0
         },
         "node_outcomes": {
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "last_response": "All acceptance criteria verified against the complete evidence diff:\n\n1. **One helper**: `newOpts(mod ...func(*options))` is the sole options-construction helper; `opts()`, `stepOpts()`, `lastOpts()` ",
+              "last_stage": "reviewer",
+              "review_verdict": "approved",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Evidence arrived as a 34.5 KB blob ref; read it in full via read_file — the capture was complete (integrity header, per-file counts, full diff, clean worktree), so no re-capture was needed.",
+                  "Verified beyond the diff: grep confirms the only options{} literal left in the repo is inside newOpts (fib_test.go:19), defaultCount=100 in main.go:44, and re-ran go test ./... (ok gofib 0.029s).",
+                  "TestParseOptionsDefaults now derives its expectation from newOpts() while the value under test comes from parseOptions(nil) — the helper stays pinned to the real parser, not to itself."
+                ]
+              },
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2240,
+                "preview": "All acceptance criteria verified against the complete evidence diff:\n\n1. **One helper**: `newOpts(mod ...func(*options))` is the sole options-construction helper; `opts()`, `stepOpts()`, `lastOpts()` "
+              }
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 21914,
+                    "output_tokens": 695,
+                    "reasoning_tokens": 294,
+                    "cache_read_tokens": 29760,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 42766
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 20153,
+              "tool_time_ms": 521,
+              "active_time_ms": 20674
+            }
+          },
           "planner": {
             "status": "succeeded",
             "preferred_label": "Seed claimed",
@@ -1495,12 +1795,13 @@
             }
           }
         },
-        "next_node_id": "reviewer",
+        "next_node_id": "closeout",
         "node_visits": {
           "evidence": 1,
           "tester": 1,
           "planner": 1,
           "implementer": 1,
+          "reviewer": 1,
           "start": 1
         }
       },
@@ -2096,6 +2397,383 @@
         "reasoning_tokens": 0,
         "cache_read_tokens": 0,
         "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "reviewer@1": {
+      "first_event_seq": 260,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Stage completed: reviewer",
+        "failure_reason": null,
+        "timestamp": "2026-09-03T22:06:50.256883743Z"
+      },
+      "provider_used": {
+        "mode": "agent",
+        "provider": "zai",
+        "model": "glm-5.3",
+        "reasoning_effort": "low"
+      },
+      "diff": null,
+      "script_invocation": null,
+      "script_timing": null,
+      "parallel_results": null,
+      "output": null,
+      "started_at": "2026-09-03T22:06:28.470059914Z",
+      "handler": "agent",
+      "graph_visit": 1,
+      "timing": {
+        "wall_time_ms": 21770,
+        "inference_time_ms": 20153,
+        "tool_time_ms": 521,
+        "active_time_ms": 20674
+      },
+      "usage": {
+        "input_tokens": 21914,
+        "output_tokens": 695,
+        "total_tokens": 52663,
+        "reasoning_tokens": 294,
+        "cache_read_tokens": 29760,
+        "cache_write_tokens": 0,
+        "total_usd_micros": 42766
+      },
+      "model": {
+        "provider": "zai",
+        "model_id": "glm-5.3"
+      },
+      "skills": {
+        "available": [
+          {
+            "name": "ask-matt",
+            "description": "Ask which skill or flow fits your situation. A router over the skills in this repo."
+          },
+          {
+            "name": "claude-handoff",
+            "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately."
+          },
+          {
+            "name": "code-review",
+            "description": "\"Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \\\"review since X\\\".\""
+          },
+          {
+            "name": "codebase-design",
+            "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary."
+          },
+          {
+            "name": "diagnosing-bugs",
+            "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow."
+          },
+          {
+            "name": "domain-modeling",
+            "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a CONTEXT.md, or recording or editing an ADR."
+          },
+          {
+            "name": "git-guardrails-claude-code",
+            "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code."
+          },
+          {
+            "name": "grill-me",
+            "description": "A relentless interview to sharpen a plan or design."
+          },
+          {
+            "name": "grill-with-docs",
+            "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go."
+          },
+          {
+            "name": "grilling",
+            "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases."
+          },
+          {
+            "name": "handoff",
+            "description": "Compact the current conversation into a handoff document for another agent to pick up."
+          },
+          {
+            "name": "implement",
+            "description": "\"Implement a piece of work based on a spec or set of tickets.\""
+          },
+          {
+            "name": "implement-spec",
+            "description": "\"Implement a specification in code.\""
+          },
+          {
+            "name": "improve-codebase-architecture",
+            "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick."
+          },
+          {
+            "name": "loop-me",
+            "description": "Grill me about specs for the workflows I want to build, within this workspace."
+          },
+          {
+            "name": "migrate-to-shoehorn",
+            "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data."
+          },
+          {
+            "name": "prototype",
+            "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like."
+          },
+          {
+            "name": "research",
+            "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent."
+          },
+          {
+            "name": "resolving-merge-conflicts",
+            "description": "\"Use when you need to resolve an in-progress git merge/rebase conflict.\""
+          },
+          {
+            "name": "scaffold-exercises",
+            "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section."
+          },
+          {
+            "name": "setup-matt-pocock-skills",
+            "description": "\"Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.\""
+          },
+          {
+            "name": "setup-pre-commit",
+            "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing."
+          },
+          {
+            "name": "setup-ts-deep-modules",
+            "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked."
+          },
+          {
+            "name": "tdd",
+            "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests."
+          },
+          {
+            "name": "teach",
+            "description": "Teach the user a new skill or concept, within this workspace."
+          },
+          {
+            "name": "to-questionnaire",
+            "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in."
+          },
+          {
+            "name": "to-spec",
+            "description": "\"Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.\""
+          },
+          {
+            "name": "to-tickets",
+            "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker)."
+          },
+          {
+            "name": "triage",
+            "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs."
+          },
+          {
+            "name": "wait-what",
+            "description": "\"Stop. That last message did not land: re-pitch it.\""
+          },
+          {
+            "name": "wayfinder",
+            "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear."
+          },
+          {
+            "name": "wizard",
+            "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself."
+          },
+          {
+            "name": "writing-beats",
+            "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it."
+          },
+          {
+            "name": "writing-for-agents",
+            "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md."
+          },
+          {
+            "name": "writing-fragments",
+            "description": "\"Writing, explore: mine raw fragments, no structure yet.\""
+          },
+          {
+            "name": "writing-shape",
+            "description": "\"Writing, exploit: shape raw material into an article, paragraph by paragraph.\""
+          }
+        ],
+        "activated": []
+      },
+      "permission_level": "full",
+      "agent_tools": [
+        {
+          "name": "close_agent",
+          "description": "Close a running or completed subagent that is no longer needed.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "context_read",
+          "description": "Read one workflow context value by key, read-only. Values over the stage's inline budget return a preview plus a sandbox file path instead of the full value.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "edit_file",
+          "description": "Edit a file by replacing an exact string. The old_string must be an exact match and unique unless replace_all is true; include surrounding context when needed. Read the file first and preserve existing indentation.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        },
+        {
+          "name": "glob",
+          "description": "Find files by search-root-relative path using a glob pattern. Use path to choose the search root. `*` stays within one path segment and `**` searches recursively. Prefer this over shell find or ls when locating repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": false
+        },
+        {
+          "name": "grep",
+          "description": "Search file contents with a regex pattern. Use path to choose the search root, glob_filter to limit matching files, case_insensitive for case folding, and max_results to cap output.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "read_file",
+          "description": "Read files before editing them. Returns line-numbered text and supports offset/limit for large files. Use this instead of shell cat, head, tail, or sed when inspecting repository files.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "read",
+          "invoked": true
+        },
+        {
+          "name": "request_user_input",
+          "description": "Ask the human one or more questions and wait for their answers before continuing this stage.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "send_input",
+          "description": "Send a follow-up message to a subagent. A running agent receives it at a safe turn boundary. A completed agent starts another turn in the same session with its existing history.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "shell",
+          "description": "Execute Bash commands for terminal operations, package managers, tests and builds. Use dedicated tools for file reads, file edits, filename searches, and content searches. Provide timeout_ms for long-running commands.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "shell",
+          "invoked": true
+        },
+        {
+          "name": "spawn_agent",
+          "description": "Spawn a subagent for independent work or context isolation. Use it for tasks that can proceed separately, and avoid duplicating the same work in the parent session.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "update_plan",
+          "description": "Update the multi-step plan for the current task. Submit the entire plan; existing steps are reconciled by exact step text.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "use_skill",
+          "description": "Load a skill's instructions by name. Call this when the user's request matches an available skill.",
+          "source": {
+            "kind": "skill"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "wait",
+          "description": "Wait for a subagent to complete, then use the result to synthesize the outcome for the user.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "subagent",
+          "invoked": false
+        },
+        {
+          "name": "web_fetch",
+          "description": "Fetch content from a URL that starts with http:// or https://. Pass a prompt to extract specific information or summarize the page; omit prompt to return the page content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "other",
+          "invoked": false
+        },
+        {
+          "name": "write_file",
+          "description": "Create new files, or overwrite an existing file only when replacement is explicitly intended. Prefer edit_file for targeted changes to existing files because write_file overwrites the full file content.",
+          "source": {
+            "kind": "native"
+          },
+          "category": "write",
+          "invoked": false
+        }
+      ],
+      "context_window": {
+        "provider": "zai",
+        "model": "glm-5.3",
+        "context_window_tokens": 1048576,
+        "input_tokens": 21826,
+        "usage_percent": 2.0814895629882812,
+        "count_method": "response_usage_scaled_breakdown",
+        "staleness": "live",
+        "generated_at": "2026-09-03T22:06:50.236377314Z",
+        "event_seq": 284,
+        "breakdown": [
+          {
+            "category": "system_prompt",
+            "tokens": 1327,
+            "usage_percent": 0.12655258178710938
+          },
+          {
+            "category": "tools",
+            "tokens": 1952,
+            "usage_percent": 0.1861572265625
+          },
+          {
+            "category": "skills",
+            "tokens": 1867,
+            "usage_percent": 0.17805099487304688
+          },
+          {
+            "category": "memory",
+            "tokens": 1519,
+            "usage_percent": 0.14486312866210938
+          },
+          {
+            "category": "conversation",
+            "tokens": 15152,
+            "usage_percent": 1.44500732421875
+          },
+          {
+            "category": "other",
+            "tokens": 9,
+            "usage_percent": 0.000858306884765625
+          }
+        ],
+        "warnings": []
       },
       "agent_control": "running",
       "state": "succeeded"
