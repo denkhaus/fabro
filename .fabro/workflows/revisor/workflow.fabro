@@ -37,7 +37,9 @@ digraph Revisor {
         reasoning_effort="low",
         // 2026-09-03 grilling: per-node cap removed — graph max_node_visits=30
         // bounds every node; node caps only bind earlier and killed the fork at
-        // cycle 11 (fabro-8fb5). AGENTS.md is product-world noise here.
+        // cycle 11 (fabro-8fb5). AGENTS.md is product-world noise here — but project_memory is INERT
+        // for agent nodes until fabro-9588 threads it into AgentSession;
+        // kept as the declared intent.
         project_memory=false,
         preamble_stages_ignore="select,analyze,file",
         fs_hide="src/**,docs/**,.seeds/**",
@@ -67,7 +69,7 @@ digraph Revisor {
         retry_policy="standard",
         reasoning_effort="high",
         // 2026-09-03 grilling: cap removed (see select), AGENTS.md hidden —
-        // the analyst prompt is self-contained.
+        // self-contained prompt; inert until fabro-9588 (see select).
         project_memory=false,
         preamble_stages_ignore="select,analyze,file",
         fs_hide="src/**,docs/**,.seeds/**",
@@ -97,7 +99,7 @@ digraph Revisor {
         retry_policy="standard",
         reasoning_effort="low",
         // 2026-09-03 grilling: cap removed (see select), AGENTS.md hidden —
-        // bookkeeping needs no repo memory.
+        // bookkeeping needs no repo memory; inert until fabro-9588.
         project_memory=false,
         preamble_stages_ignore="select,analyze,file",
         // .seeds hidden from FILE tools too: sd create/list and the git
