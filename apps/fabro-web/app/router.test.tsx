@@ -46,4 +46,10 @@ describe("browser router", () => {
     expect(paths).toContain("/settings/mcps/new");
     expect(paths).toContain("/settings/mcps/:id/edit");
   });
+
+  test("does not expose the removed playground route", () => {
+    const paths = collectPaths(routes);
+
+    expect(paths).not.toContain("/playground");
+  });
 });

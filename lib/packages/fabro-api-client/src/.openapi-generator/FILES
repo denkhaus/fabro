@@ -11,7 +11,6 @@ api/install-api.ts
 api/integrations-api.ts
 api/mcpservers-api.ts
 api/models-api.ts
-api/playground-api.ts
 api/repos-api.ts
 api/run-internals-api.ts
 api/run-outputs-api.ts
@@ -101,7 +100,6 @@ models/create-automation-request.ts
 models/create-completion-request.ts
 models/create-environment-request.ts
 models/create-mcp-server-request.ts
-models/create-playground-chat-request.ts
 models/create-run-pull-request-request.ts
 models/create-run-request.ts
 models/create-run-session-request.ts

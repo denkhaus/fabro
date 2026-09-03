@@ -56,6 +56,33 @@ async fn old_unversioned_routes_return_404() {
 }
 
 #[tokio::test]
+async fn removed_playground_chat_route_returns_404() {
+    let app = fabro_server::test_support::build_test_router(test_app_state());
+
+    for (mode, demo_header) in [("normal", None), ("demo", Some("1"))] {
+        let mut request = Request::builder()
+            .method(Method::POST)
+            .uri("/api/v1/playground/chat")
+            .header("content-type", "application/json");
+        if let Some(value) = demo_header {
+            request = request.header("X-Fabro-Demo", value);
+        }
+
+        let response = app
+            .clone()
+            .oneshot(request.body(Body::from("{}")).unwrap())
+            .await
+            .unwrap();
+        response_status(
+            response,
+            StatusCode::NOT_FOUND,
+            format!("POST /api/v1/playground/chat in {mode} mode"),
+        )
+        .await;
+    }
+}
+
+#[tokio::test]
 async fn root_and_health_stay_at_root() {
     let app = fabro_server::test_support::build_test_router_with_options(
         test_app_state(),
