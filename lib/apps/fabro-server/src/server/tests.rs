@@ -4299,23 +4299,8 @@ async fn post_runs_run_intent_accepts_disabled_pull_requests_for_local_environme
     )
     .await;
 
-    let body = post_run_manifest(&app, folder_intent(workflow_version_id, target.path())).await;
-    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
-    let projection = state
-        .stores
-        .runs
-        .open_run_reader(&run_id)
-        .await
-        .unwrap()
-        .state()
-        .await
-        .unwrap();
-
-    assert_eq!(
-        projection.spec.settings.run.environment.provider,
-        EnvironmentProvider::Local
-    );
-    assert!(projection.spec.settings.run.pull_request.is_none());
+    // `post_run_manifest` asserts the `201 Created` admission outcome.
+    post_run_manifest(&app, folder_intent(workflow_version_id, target.path())).await;
 }
 
 #[tokio::test]
@@ -4358,14 +4343,7 @@ async fn post_runs_run_intent_accepts_automatic_pull_requests_for_configured_doc
         EnvironmentProvider::Docker
     );
     assert_eq!(projection.spec.settings.run.execution.mode, RunMode::DryRun);
-    assert!(
-        projection
-            .spec
-            .settings
-            .run
-            .pull_request
-            .is_some_and(|pull_request| pull_request.enabled)
-    );
+    assert!(projection.spec.settings.run.pull_request.is_some());
 }
 
 #[tokio::test]

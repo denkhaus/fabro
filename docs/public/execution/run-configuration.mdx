@@ -555,9 +555,7 @@ The `sandbox` transport runs the MCP server inside the workflow's sandbox. This 
 
 ### `[run.pull_request]`
 
-Automatically open a GitHub pull request when the workflow run completes successfully. Requires a [GitHub App](/integrations/github) to be configured.
-
-Automatic pull requests require a clone-based Docker or Daytona environment. For in-place Local runs, leave pull requests disabled; run creation rejects a Local environment when `enabled = true`.
+Automatically open a GitHub pull request when the workflow run completes successfully. Requires a [GitHub App](/integrations/github) to be configured and a clone-based Docker or Daytona environment; run creation rejects `enabled = true` on a Local environment.
 
 ```toml title="run.toml"
 [run.pull_request]

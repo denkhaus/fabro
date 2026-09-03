@@ -1123,13 +1123,9 @@ async fn validate_intent_environment(
     if image_incompatible || target_incompatible {
         return Err(EnvironmentSelectionError::TargetUnsupported { detail });
     }
-    if configured_provider == SandboxProviderKind::Local
-        && settings
-            .run
-            .pull_request
-            .as_ref()
-            .is_some_and(|pull_request| pull_request.enabled)
-    {
+    // Settings resolution drops `run.pull_request` unless it is enabled, so
+    // `Some` means automatic pull requests were requested.
+    if !configured_provider.is_clone_based() && settings.run.pull_request.is_some() {
         return Err(EnvironmentSelectionError::AutomaticPullRequestUnsupported);
     }
     if let Some(detail) =
