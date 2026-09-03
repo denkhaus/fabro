@@ -298,6 +298,45 @@ def loop-churn-section [churn_rows: list]: nothing -> string {
     }
 }
 
+# Loop-work diff (fabro-4b57): when ONLY loop-churn files changed, the
+# counts-only churn section left reviewers running their own git diff.
+# This section carries the per-file diff of loop files against the SAME
+# per-seed claim base the header names (the seed-claim-base result main
+# already computed — no re-resolution), so a loop-only review verifies
+# from the capture alone. Emitted ONLY when seed_rows is empty: with
+# mixed changes the seed-work diff already covers project files and loop
+# churn stays counts-only ('when only churn files changed'). Same
+# source-before-docs ordering and HARD_CAP discipline as diff-section.
+def loop-diff-section [base: string, churn_rows: list]: nothing -> string {
+    let head = "\n== loop work: complete diff (git diff -U3 against the per-seed claim base named in the header, loop-churn files above; shown because no project files changed) ==\n"
+    let loop_files = ($churn_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })
+    mut used = 0
+    mut parts = []
+    mut included = []
+    for f in $loop_files {
+        let res = (do { git diff -U3 $base -- $f } | complete)
+        if $res.exit_code != 0 {
+            continue
+        }
+        $included = ($included | append $f)
+        let text = (sanitize ($res.stdout | str trim -r -c "\n"))
+        if ($text | is-empty) {
+            continue
+        }
+        let cost = ($text | str length)
+        if ($used + $cost) > $HARD_CAP { break }
+        $used = ($used + $cost)
+        $parts = ($parts | append $"($text)\n")
+    }
+    let omitted = ($loop_files | where {|f| $f not-in $included })
+    let body = ($parts | str join)
+    if ($omitted | is-empty) {
+        $head + $body
+    } else {
+        $head + $body + "\n(hard cap hit: " + ($omitted | length | into string) + " of " + ($loop_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
+    }
+}
+
 def worktree-section [wt_lines: list<string>]: nothing -> string {
     let head = "\n== working tree == git status --porcelain (untracked files show here; they are in NO diff above) ==\n"
     if ($wt_lines | is-empty) {
@@ -352,6 +391,14 @@ def main []: nothing -> nothing {
     # (tail sections reserved so a cut lands in the diff, never in them).
     let diff = (diff-section $claim.base $seed_rows)
 
+    # Loop-work diff: only when NO project files changed — the counts-only
+    # churn section is the sole loop coverage otherwise, and the reviewer
+    # had to detour to git. With mixed changes this stays absent (the
+    # seed-work diff already covers project files; churn stays counts-only).
+    let loopdiff = (if ($seed_rows | is-empty) and (not ($churn_rows | is-empty)) {
+        loop-diff-section $claim.base $churn_rows
+    })
+
     # Critical-first emission. No size games: a large capture is the
     # engine's to demote (blobref link) and the agent reviewer's to read.
     print ($no_base_note | str trim -r -c "\n")
@@ -359,6 +406,7 @@ def main []: nothing -> nothing {
     print $spec
     print $files
     print $diff
+    if ($loopdiff != null) { print $loopdiff }
     print $churn
     print $worktree
     # Duplicate of the header line: survives a tail-anchored truncation too.
