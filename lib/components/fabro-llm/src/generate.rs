@@ -942,16 +942,41 @@ pub async fn generate_object(
 
     let mut result = generate(params).await?;
 
-    // Try to parse the text as JSON
-    match serde_json::from_str::<serde_json::Value>(&result.text()) {
+    // Try to parse the text as JSON. Models occasionally wrap the object in
+    // a markdown code fence despite response_format; the fenced content is
+    // still the answer, so strip one wrapping fence before giving up.
+    let text = result.text();
+    let candidate = unwrap_code_fence(&text).trim();
+    match serde_json::from_str::<serde_json::Value>(candidate) {
         Ok(parsed) => {
             result.output = Some(parsed);
             Ok(result)
         }
-        Err(e) => Err(Error::NoObjectGenerated {
-            message: format!("Failed to parse response as JSON: {e}"),
-        }),
+        Err(e) => {
+            let head: String = text.chars().take(200).collect();
+            Err(Error::NoObjectGenerated {
+                message: format!("Failed to parse response as JSON: {e}; response head: {head:?}"),
+            })
+        }
     }
+}
+
+/// Strip one markdown code fence wrapping the WHOLE payload
+/// (```json ... ``` or ``` ... ```). Interior fences and partial wraps are
+/// left untouched: only a fence that opens at the start and closes at the
+/// end is a wrapper, anything else is part of the answer.
+#[must_use]
+pub fn unwrap_code_fence(text: &str) -> &str {
+    let trimmed = text.trim();
+    let Some(after_open) = trimmed.strip_prefix("```") else {
+        return text;
+    };
+    // Skip the info string (e.g. `json`) on the opening fence line.
+    let body = match after_open.find('\n') {
+        Some(newline) => &after_open[newline + 1..],
+        None => return text,
+    };
+    body.strip_suffix("```").map_or(text, str::trim)
 }
 
 /// Stream type for `stream_object()`.
@@ -1454,6 +1479,67 @@ mod tests {
             result.unwrap_err(),
             Error::NoObjectGenerated { .. }
         ));
+    }
+
+    #[test]
+    fn unwrap_code_fence_strips_json_fence_with_info_string() {
+        assert_eq!(unwrap_code_fence("```json\n{\"a\": 1}\n```"), "{\"a\": 1}");
+    }
+
+    #[test]
+    fn unwrap_code_fence_strips_bare_fence() {
+        assert_eq!(unwrap_code_fence("```\n[1, 2]\n```"), "[1, 2]");
+    }
+
+    #[test]
+    fn unwrap_code_fence_leaves_partial_and_interior_fences_alone() {
+        // No trailing fence: not a wrapper, the text is part of the answer.
+        assert_eq!(
+            unwrap_code_fence("```json\n{\"a\": 1}"),
+            "```json\n{\"a\": 1}"
+        );
+        // No newline after the opening fence: no body to unwrap.
+        assert_eq!(unwrap_code_fence("```json```"), "```json```");
+        // Plain JSON passes through untouched (trimmed by the caller).
+        assert_eq!(unwrap_code_fence("  {\"a\": 1}  "), "  {\"a\": 1}  ");
+    }
+
+    #[tokio::test]
+    async fn generate_object_parses_fenced_json() {
+        let client = mock_client("```json\n{\"name\": \"Alice\"}\n```");
+
+        let result = generate_object(
+            GenerateParams::new("mock-model", client).prompt("Extract data"),
+            serde_json::json!({"type": "object"}),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.output.unwrap()["name"], "Alice");
+    }
+
+    #[tokio::test]
+    async fn generate_object_error_includes_response_head() {
+        let long_prose = "prose ".repeat(100);
+        let client = mock_client(&long_prose);
+
+        let error = generate_object(
+            GenerateParams::new("mock-model", client).prompt("Extract data"),
+            serde_json::json!({"type": "object"}),
+        )
+        .await
+        .unwrap_err();
+
+        match error {
+            Error::NoObjectGenerated { message } => {
+                assert!(message.contains("response head"), "{message}");
+                assert!(message.contains("prose prose"), "{message}");
+                let head_marker = message.find("response head: ").unwrap();
+                let shown = &message[head_marker + "response head: ".len()..];
+                assert!(shown.len() <= 220, "head should be bounded, got {shown:?}");
+            }
+            other => panic!("expected NoObjectGenerated, got {other:?}"),
+        }
     }
 
     #[tokio::test]

@@ -7,7 +7,7 @@ use fabro_auth::CredentialSource;
 use fabro_github::{self as github_app, ssh_url_to_https};
 use fabro_graphviz::parser;
 use fabro_llm::client::Client;
-use fabro_llm::generate::{GenerateParams, generate_object};
+use fabro_llm::generate::{GenerateParams, generate, generate_object, unwrap_code_fence};
 use fabro_model::reasoning::ReasoningEffort;
 use fabro_model::{Catalog, ProviderId};
 use fabro_store::RunProjection;
@@ -361,6 +361,75 @@ pub async fn build_pr_content(
     .await
 }
 
+/// Effort for the PR content call. A configured effort always wins.
+/// Otherwise reasoning-capable models default to Low: zai/glm-4.7 ALWAYS
+/// reasons on the coding endpoint (probe 2026-09-03, fabro-cd27 —
+/// enable_thinking=false rejected with code 1210 naming low/high/max), and
+/// full-reasoning mode is slow and occasionally answers prose to
+/// JSON-schema requests (run 01M1MHGS7PH26EP20B2RTAPN4G: 71s, non-JSON).
+/// Models without effort support send nothing.
+fn pr_content_effort(
+    configured: Option<ReasoningEffort>,
+    model: &str,
+    catalog: &Catalog,
+    eligible: &HashSet<ProviderId>,
+) -> Option<ReasoningEffort> {
+    configured.or_else(|| {
+        let offering = eligible
+            .iter()
+            .find_map(|provider| catalog.get_on_provider(provider, model))?;
+        if !offering.supports_reasoning_effort() {
+            return None;
+        }
+        ReasoningEffort::Low.closest_supported(&offering.controls.reasoning_effort)
+    })
+}
+
+/// Generate the PR content: one structured attempt (json_schema), then a
+/// single plain retry without response_format. The retry parses leniently
+/// (fences unwrapped) and, failing that, salvages usable prose as the body
+/// with a deterministic title (empty title -> the caller's goal-derived
+/// fallback). Never panics, never retries transport errors — the caller's
+/// invariant holds: PR-content failure degrades, publish never fails.
+async fn generate_pr_content(params: GenerateParams) -> Result<PrContent, String> {
+    let structured = match generate_object(params.clone(), PR_CONTENT_SCHEMA.clone()).await {
+        Ok(result) => match result.output {
+            Some(output) => serde_json::from_value::<PrContent>(output)
+                .map_err(|e| format!("Failed to deserialize PR content: {e}")),
+            None => Err("LLM generation returned no structured output".to_string()),
+        },
+        Err(e) => Err(format!("LLM generation failed: {e}")),
+    };
+    match structured {
+        Ok(content) => Ok(content),
+        Err(first_error) => {
+            warn!(
+                error = %first_error,
+                "PR content structured generation failed; retrying once without strict JSON output"
+            );
+            let plain = generate(params)
+                .await
+                .map_err(|e| format!("LLM generation failed: {e}"))?;
+            let text = plain.text();
+            if let Ok(content) = serde_json::from_str::<PrContent>(unwrap_code_fence(&text).trim())
+            {
+                return Ok(content);
+            }
+            let prose = text.trim();
+            if prose.len() >= 40 {
+                warn!(
+                    "PR content retry was not JSON; salvaging prose body with deterministic title"
+                );
+                return Ok(PrContent {
+                    title: String::new(),
+                    body:  prose.to_string(),
+                });
+            }
+            Err("PR content retry returned no usable text".to_string())
+        }
+    }
+}
+
 async fn build_pr_content_with_client(
     diff: &str,
     goal: &str,
@@ -404,24 +473,20 @@ async fn build_pr_content_with_client(
         format!("Goal: {goal}\n\nDiff:\n```\n{truncated_diff}\n```")
     };
 
+    let effort = pr_content_effort(reasoning_effort, model, catalog, &eligible);
     let mut params = GenerateParams::new(model, client)
         .system(PR_BODY_SYSTEM_PROMPT)
         .prompt(prompt);
-    if let Some(effort) = reasoning_effort {
+    if let Some(effort) = effort {
         params = params.reasoning_effort(effort);
     }
 
     // A failed PR-content call must never fail the publish step: the run's
-    // work is already pushed; only the narrative is missing. Fall back to
-    // the deterministic goal-derived title and a skeleton body.
-    let generated = match generate_object(params, PR_CONTENT_SCHEMA.clone()).await {
-        Ok(result) => match result.output {
-            Some(output) => serde_json::from_value::<PrContent>(output)
-                .map_err(|e| format!("Failed to deserialize PR content: {e}")),
-            None => Err("LLM generation returned no structured output".to_string()),
-        },
-        Err(e) => Err(format!("LLM generation failed: {e}")),
-    };
+    // work is already pushed; only the narrative is missing. generate_pr_content
+    // runs one structured attempt plus a single plain retry with prose salvage;
+    // both failing falls back to the deterministic goal-derived title and a
+    // skeleton body.
+    let generated = generate_pr_content(params).await;
 
     let (title, llm_body) = match generated {
         Ok(generated) => {
@@ -961,6 +1026,78 @@ mod tests {
         )
     }
 
+    /// Provider that answers `complete` with one fixed text per call, in
+    /// order; the last text repeats. Drives the PR-content retry tests.
+    struct SequenceMockProvider {
+        name:  String,
+        texts: std::sync::Mutex<std::collections::VecDeque<String>>,
+    }
+
+    impl SequenceMockProvider {
+        fn new(name: &str, texts: Vec<String>) -> Self {
+            Self {
+                name:  name.to_string(),
+                texts: std::sync::Mutex::new(texts.into()),
+            }
+        }
+
+        fn next_text(&self) -> String {
+            let mut texts = self.texts.lock().expect("sequence mock lock poisoned");
+            match texts.len() {
+                0 => String::new(),
+                1 => texts[0].clone(),
+                _ => texts.pop_front().expect("non-empty checked above"),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ProviderAdapter for SequenceMockProvider {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        async fn complete(&self, _request: &Request) -> Result<Response, LlmError> {
+            Ok(Response {
+                id:            "resp_1".into(),
+                model:         "mock-model".into(),
+                provider:      "mock".into(),
+                message:       Message::assistant(&self.next_text()),
+                finish_reason: FinishReason::Stop,
+                usage:         TokenCounts {
+                    input_tokens: 10,
+                    output_tokens: 20,
+                    ..Default::default()
+                },
+                raw:           None,
+                warnings:      vec![],
+                rate_limit:    None,
+                cost_usd:      None,
+                cost_source:   None,
+            })
+        }
+
+        async fn stream(&self, _request: &Request) -> Result<StreamEventStream, LlmError> {
+            Err(LlmError::Configuration {
+                message: "sequence mock does not stream".to_string(),
+                source:  None,
+            })
+        }
+    }
+
+    fn sequence_client(provider_name: &str, texts: Vec<String>) -> Arc<Client> {
+        let mut providers: HashMap<String, Arc<dyn ProviderAdapter>> = HashMap::new();
+        providers.insert(
+            provider_name.to_string(),
+            Arc::new(SequenceMockProvider::new(provider_name, texts)),
+        );
+        Arc::new(Client::new(
+            providers,
+            Some(provider_name.to_string()),
+            vec![],
+        ))
+    }
+
     fn explicit_client(provider_name: &str, text: &str) -> Arc<Client> {
         let mut providers: HashMap<String, Arc<dyn ProviderAdapter>> = HashMap::new();
         providers.insert(
@@ -1251,6 +1388,119 @@ mod tests {
         assert!(body.contains("### Fabro Details"));
         assert!(body.contains("Ran 3 stages in 2m 30s for $0.42"));
         assert!(body.contains("| **Total** | **2m 30s** | **$0.42** | **0** |"));
+    }
+
+    #[tokio::test]
+    async fn build_pr_content_retries_structured_failure_with_plain_json() {
+        let store = test_store();
+        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
+        let PrContent { title, body } = build_pr_content_with_client(
+            "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
+            "Implement feature",
+            "mock-model",
+            None,
+            &run_store.clone().into(),
+            Catalog::builtin(),
+            Some(&make_test_conclusion()),
+            None,
+            sequence_client("mock", vec![
+                "Sure, here is the PR content you asked for:".to_string(),
+                pr_content_json("Retry title", "Narrative from the retry."),
+            ]),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(title, "Retry title");
+        assert!(body.contains("Narrative from the retry."));
+    }
+
+    #[tokio::test]
+    async fn build_pr_content_salvages_prose_body_when_retry_not_json() {
+        let store = test_store();
+        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
+        let PrContent { title, body } = build_pr_content_with_client(
+            "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
+            "Implement feature",
+            "mock-model",
+            None,
+            &run_store.clone().into(),
+            Catalog::builtin(),
+            Some(&make_test_conclusion()),
+            None,
+            sequence_client(
+                "mock",
+                vec![
+                    "junk first answer".to_string(),
+                    "This change adds the stride flag to gofib and keeps the                      default behavior unchanged for existing callers."
+                        .to_string(),
+                ],
+            ),
+        )
+        .await
+        .unwrap();
+
+        // Salvage: prose body survives, title falls back to the goal.
+        assert_eq!(title, "Implement feature");
+        assert!(body.contains("stride flag"));
+        assert!(!body.contains(FALLBACK_BODY_NOTICE));
+    }
+
+    #[tokio::test]
+    async fn build_pr_content_falls_back_after_failed_retry() {
+        let store = test_store();
+        let run_store = store.create_run(&fixtures::RUN_1).await.unwrap();
+        let PrContent { title, body } = build_pr_content_with_client(
+            "diff --git a/src/lib.rs b/src/lib.rs\n+fn new_feature() {}\n",
+            "Implement feature",
+            "mock-model",
+            None,
+            &run_store.clone().into(),
+            Catalog::builtin(),
+            Some(&make_test_conclusion()),
+            None,
+            sequence_client("mock", vec!["junk first answer".to_string(), String::new()]),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(title, "Implement feature");
+        assert!(body.contains(FALLBACK_BODY_NOTICE));
+    }
+
+    #[test]
+    fn pr_content_effort_defaults_to_low_for_reasoning_models() {
+        let catalog = Catalog::builtin();
+        let mut eligible = HashSet::new();
+        eligible.insert(fabro_model::ProviderId::new("zai"));
+
+        // glm-4.7 declares effort levels (probe 2026-09-03): the unconfigured
+        // call pins low instead of running full-reasoning.
+        assert_eq!(
+            pr_content_effort(None, "glm-4.7", catalog, &eligible),
+            Some(ReasoningEffort::Low)
+        );
+        assert_eq!(
+            pr_content_effort(None, "glm-5.3", catalog, &eligible),
+            Some(ReasoningEffort::Low)
+        );
+    }
+
+    #[test]
+    fn pr_content_effort_respects_configured_and_unknown_models() {
+        let catalog = Catalog::builtin();
+        let mut eligible = HashSet::new();
+        eligible.insert(fabro_model::ProviderId::new("zai"));
+
+        assert_eq!(
+            pr_content_effort(Some(ReasoningEffort::High), "glm-4.7", catalog, &eligible),
+            Some(ReasoningEffort::High)
+        );
+        // Unknown model: no default is invented, nothing is sent.
+        assert_eq!(
+            pr_content_effort(None, "mock-model", catalog, &eligible),
+            None
+        );
     }
 
     #[tokio::test]

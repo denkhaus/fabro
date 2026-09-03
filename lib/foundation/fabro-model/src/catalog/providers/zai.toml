@@ -71,7 +71,17 @@ max_output = 16384
 [providers.zai.models."glm-4.7".features]
 tools = true
 vision = false
-reasoning = false
+# Probe 2026-09-03 (fabro-cd27, api.z.ai/api/coding/paas/v4): glm-4.7
+# ALWAYS reasons on the coding endpoint — enable_thinking=false is
+# rejected with code 1210 naming low/high/max, and reasoning_effort=low
+# yields zero visible reasoning at 5x speed. The old reasoning=false
+# label starved the PR-content call of an effort pin, running it in
+# full-reasoning mode (71s, occasional non-JSON output).
+reasoning = true
+reasoning_effort = "levels"
+
+[providers.zai.models."glm-4.7".controls]
+reasoning_effort = ["low", "high", "max"]
 
 [providers.zai.models."glm-4.7".costs]
 input_cost_per_mtok = 0.6
