@@ -1,0 +1,56 @@
+# Improve review — run 01M0QTNF6GWHGPKHSQ2Y2PB8CQ
+
+- workflow: develop
+- branch integrated: this revisor pass (unmerged until approved)
+- status: failed (4.8 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-02 18:52+0000 by revisor `fabro_ask`
+
+---
+
+All evidence gathered. Here are the recommendations, ordered by expected impact — each grounded in what this run actually did.
+
+---
+
+**1. Make PR publish fail-safe — a green run was reported `failed` with no PR and zero retries.**
+- **What happened:** All 7 stage executions succeeded, the tracker hit empty (goal achieved), and the final commit `ee9ca75` was pushed at 17:34:08. Eleven seconds later `pull_request.failed`: "LLM generation failed: No object generated: Failed to parse response as JSON" — the PR *title/body generator* returned non-JSON. `total_retries: 0`; the run terminal state became `failed(publish_failed)` and no PR exists (from run events seq 265–268).
+- **Change:** In the engine's publish path (after `exit`): retry the metadata generation (1 retry would likely suffice — it's a transient parse failure), and on final failure fall back to a deterministic PR title/body built from goal + stage outcomes + commit list, plus a `republish` control on the run instead of a hard fail.
+- **Expected effect:** No fully-green run is ever labeled `failed` by a cosmetics-generation hiccup; the branch/PR deliverable always materializes. This is the single change that alters this run's outcome.
+
+**2. Give the reviewer node real tools, or inline the evidence — it approved from previews it was contract-bound to read.**
+- **What happened:** `reviewer` is a prompt node (`handler: prompt`, `tool_time_ms: 0`, no tool list in the stage), but `.fabro/workflows/develop/prompts/reviewer.md` says "read it with your tools before judging" and "re-run `just qualitygate` yourself — you have tools." The 12 KB preamble budget blob-ified the 6.2 KB evidence capture and the 1.3 KB brief into previews; the reviewer couldn't read the blobs and approved anyway — violating its own rule that an unread blob ref is grounds for routing Changes requested. The reviewer itself flagged this as a painpoint in `review_feedback` (from run events), and the worker log shows the budget is structurally too tight: `preamble values exceed aggregate budget even after demotion; keeping remainder inline total_bytes=15862 budget=12288` at planner@2.
+- **Change:** In `.fabro/workflows/develop/workflow.fabro`: (a) raise `preamble_budget_kb` from 12 to ~20 (brief + feedback + evidence + gate output measured 15.9 KB this run), and (b) either convert `reviewer` to an agent node with read-only tools, or strip the tool-dependent instructions from `prompts/reviewer.md` and make the engine inline `current_seed_brief` and the evidence `command.output` as must-keep values.
+- **Expected effect:** Review verdicts rest on the full diff, not 300-char previews; the prompt stops promising capabilities the node doesn't have. This run's "Approved" would be auditable instead of lucky.
+
+**3. Bake toolchains into the runner image — `mise install` burned 54 s (22% of wall time).**
+- **What happened:** setup ran 55.9 s total; `mise install` alone was 54,186 ms vs `just bootstrap` at 1.7 s (events seq 15–17). The image is already `fabro-runner:mise`, yet tools install per run.
+- **Change:** Pin the mise tool versions into the `fabro-runner:mise` Dockerfile (or mount a warm mise cache volume) so `prepare.steps` in the run settings becomes a no-op check.
+- **Expected effect:** ~54 s saved per run, 22% of this run's 246 s wall clock — compounding across every seed-loop run.
+
+**4. Stop the implementer from pre-running the whole gate — it duplicated the tester node and dominated cost.**
+- **What happened:** `prompts/implementer.md` says "Do NOT run the full quality gate yourself — a quick smoke check (build, single test) is fine," but implementer@1 ran gofmt, `go vet`, full `go test ./...`, and four `go run` invocations — the entire gate (which is exactly gofmt+build+vet+test). The tester node then passed in 1.0 s purely from cache. Implementer was 130.6 s active and $0.118 of the run's $0.181 (65%).
+- **Change:** Replace the vague smoke-check sentence in `prompts/implementer.md` with an allowlist: "`go build ./...` plus only the new/changed test; never gofmt/vet/full suite — the tester node owns those."
+- **Expected effect:** Fewer tool turns and less output in the most expensive stage — estimated 20–40 s and a meaningful slice of its 3,745 output tokens per pass — with zero risk coverage lost.
+
+**5. Fix the journal data channel — every journal file is empty, so the improve-loop's premise is hollow.**
+- **What happened:** All 7 files under `.fabro/journal/` contain `"data": {}`. `scripts/stage-journal.nu` line 57 hardcodes `data: {}` and its own comment admits why ("until HookContext carries context_updates — engine work item 2"). Meanwhile the reviewer *did* emit a real painpoint via `context_updates.journal` — it lives only in run events, not in the journals that the platform-side improve workflow scans run branches for.
+- **Change:** Complete engine work item 2 (pass `context_updates` through `FABRO_HOOK_CONTEXT`) and read it in `stage-journal.nu` (`data: ($ctx.context_updates?.journal? | default {})`).
+- **Expected effect:** The one genuine painpoint this run produced (the blob-ref/budget issue in #2) actually reaches the improve workflow; today it's silently dropped.
+
+**6. Trim planner tool waste: missing `rg`, duplicate tracker queries.**
+- **What happened:** planner@1 first tried `rg -n ...` in shell — `rg: command not found` — then redid it with the native grep tool (events seq 56–65). It also ran `sd ready --format json` and `sd list --format json` in parallel; both returned the identical single seed. 39.7 s and ~11 LLM turns for a one-seed tracker.
+- **Change:** Two lines in `prompts/planner.md`: "the sandbox has no ripgrep — use the grep tool" and "`sd ready` alone; only run `sd list` when ready is empty or ambiguous."
+- **Expected effect:** One wasted call and one redundant 285 ms query + re-ingested duplicate JSON eliminated per planning pass.
+
+**7. Projectize the `sd prime`/`ml prime` boilerplate — it injects wrong-stack instructions into every stage.**
+- **What happened:** Both planner@1 and implementer@1 opened with `sd prime`/`ml prime` (per AGENTS.md), each pulling ~5 KB of generic template including a "Session Close Protocol" demanding `bun test && bun run lint && bun run typecheck` — commands that don't exist in this Go repo, whose gate is `just qualitygate`.
+- **Change:** Edit the seeds prime template / `AGENTS.md` to this project's commands, and add to `prompts/implementer.md`: "skip `sd prime` when `current_seed_brief` is already in context."
+- **Expected effect:** Removes misleading bun instructions from agent context (a real misexecution risk) and trims ~5 KB of tokens from every agent stage.
+
+**8. Fix the progress counter — it rendered "6 of 5 stages".**
+- **What happened:** The run snapshot reports "6 of 5 non-meta stages completed" (>100%), and the implementer prompt claimed "Pipeline progress: 0 of 5 stages completed" immediately after planner@1 finished (from stage transcripts).
+- **Change:** In the engine's progress/preamble renderer: count completed *nodes* (not stage executions — planner legitimately ran twice), and update the count after each `checkpoint.completed`.
+- **Expected effect:** Honest progress for the user and non-misleading context for downstream agents; cosmetic, but it's the first thing an operator sees.
+
+---
+
+**What I could not inspect:** the PR-generator's exact prompt/model config (engine-internal, not in the run spec), and GitHub-side state after the failed publish. Everything above is sourced from run events/checkpoints, the worker warn/error log, `.fabro/journal/*`, and `.fabro/workflows/develop/*` in the workspace.

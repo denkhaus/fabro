@@ -1,0 +1,54 @@
+# Improve review — run 01M0TXPX09279433MGWSWPVVP4
+
+- workflow: develop
+- branch integrated: this revisor pass (unmerged until approved)
+- status: succeeded (11.4 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-02 19:58+0000 by revisor `fabro_ask`
+
+---
+
+All evidence below is from this run's events, checkpoints, stage prompts, and the persisted worker log. Run shape for scale: 2 seeds closed (`fabro-cfb6` `-seed`, `fabro-d920` `-format`), 13 stage completions, 0 retries, 569 s wall / 458 s inference, $0.595 total, reviewer context peaked at 2.5% of the 1M window.
+
+## Recommendations, ordered by expected impact
+
+**1. Diff evidence against the last seed boundary, not the run base — and size the preamble budget to match.**
+What happened: `evidence@1` produced an 18.1 KB capture and `evidence@2` a 38.5 KB capture, both blob-ref'd in the reviewer prompt ("Output (38.5 KB; full value: …/blobs/4c4c76….json)"). Both reviewers paid a tool round-trip to read the blob (their responses open with "I read the full evidence blob…"). The capture grows because it diffs against run base `de65cd6` — seed 2's reviewer read a diff containing *both* seeds' work (+609/−51 lines, of which seed 1 contributed +161/−35). The `workflow.fabro` comment already admits "the window is not the constraint; the blob detour is" after raising `preamble_budget_kb` 12→24, and 24 KB still wasn't enough for either capture.
+Change: in `.fabro/workflows/develop/scripts/evidence.nu`, diff against the commit the previous `closeout` produced (closeout already commits per stage — tag or record that SHA as the per-seed base), and raise `preamble_budget_kb` in `.fabro/workflows/develop/workflow.fabro` to ~48.
+Expected effect: capture size stops compounding per seed (~18 KB/seed instead of 18→38→58…), the reviewer judges a per-seed diff inline with zero blob detours, and the known failure mode (approving/rejecting from a preview) is structurally removed.
+
+**2. Keep only the latest visit per non-ignored stage in the preamble.**
+What happened: reviewer@2's prompt contains the `tester` and `evidence` sections **twice each** (seed-1 and seed-2 visits), because `preamble_stages_ignore="planner,implementer,reviewer"` keeps all history of the kept nodes. Reviewer input grew 14,735 → 25,693 tokens (+75%) and cost $0.030 → $0.051 for the same checklist job; the stale seed-1 evidence preview also invites judging seed 2 against seed-1 context.
+Change: `reviewer` node in `workflow.fabro` (and `planner`, same mechanism) — keep only the most recent visit per kept stage, or reset kept history when `current_seed_id` changes (the same reset key `cycle_counter_reset_key` already exists).
+Expected effect: reviewer/planner preambles stay constant per cycle regardless of how many seeds the run processes; ~40% cheaper reviews from seed 3 on, less cross-seed confusion risk.
+
+**3. Make closeout clear the transient context keys it consumes.**
+What happened: `review_verdict: "approved"` from seed 1 survived closeout@1 → planner@2 → implementer@2 (visible in its `## Context` table) → reviewer@2 → and even the final exit checkpoint. The planner prompt spends a full paragraph compensating ("if one is visible in context, it is stale bookkeeping from a consumed cycle") — a prose guard doing a script's job.
+Change: `.fabro/workflows/develop/scripts/closeout.nu` — after closing the seed, emit context updates resetting `review_verdict`, `review_feedback`, and `implementation_summary` to `""`; then delete the compensation paragraph from `.fabro/workflows/develop/prompts/planner.md`.
+Expected effect: stale-verdict ambiguity is eliminated structurally instead of by model compliance; one less prompt liability on every re-plan.
+
+**4. Fail fast / surface degradation in the PR pipeline instead of succeeding silently.**
+What happened (worker log, end of run): "PR content generation failed; using deterministic fallback title and skeleton body" (glm-5.3 returned non-JSON) followed by "Failed to enable auto-merge … Auto merge is not allowed for this repository" — yet the run ended `succeeded(completed)` and Slack only receives `run.completed`/`run.failed`. The configured outcome (`pull_request.auto_merge=true`) did not happen: PR #2 has a skeleton body and sits unmerged, and nothing tells the user.
+Change: in the PR pipeline — (a) force JSON output for title/body generation (tool-call/schema mode) with one repair retry instead of accepting the parse failure, and (b) preflight the repo's auto-merge setting when `auto_merge=true`, degrading the run's terminal report/notification to "succeeded with degraded delivery" when the PR couldn't auto-merge.
+Expected effect: no silent gap between "run succeeded" and "PR actually merged"; the two concrete end-of-run failures in this run would have been either prevented or reported.
+
+**5. Make the painpoint channel mandatory-output, not optional.**
+What happened: both reviewers performed exactly the friction the channel exists to capture (the blob detour, recommendation 1) and emitted **zero** painpoints; so did the planner and implementers. The durable journal recorded only bare stage-success lines — the improve loop got no data from a run that had real, nameable friction.
+Change: in `.fabro/workflows/develop/prompts/{planner,implementer,reviewer}.md`, change the painpoint section to require `"painpoints": []` (possibly empty) in every outcome JSON.
+Expected effect: friction like the blob detour lands in `.fabro/journal/` on the run where it happened, feeding the platform-side improve workflow with evidence instead of nothing.
+
+**6. Tighten the implementer verification report: cite bullets, don't restate them.**
+What happened: implementer@2 was the run's dominant stage — 186 s inference (33% of wall), $0.281 of $0.595 (47%), 9,325 output tokens. A large share is the PASS/FAIL report restating each of the 10 acceptance criteria in full before the verdict, and the summary is then carried in triplicate through context (`implementation_summary` + `last_response` + `response.implementer`) into every later preamble and checkpoint.
+Change: `.fabro/workflows/develop/prompts/implementer.md` — require each PASS line to reference the brief's bullet number ("PASS (3): `resolveMode` + `TestRunFormatConflicts`") instead of quoting the criterion; cap the prose before the JSON at 3 sentences.
+Expected effect: roughly 1.5–2.5k fewer output tokens per implementer pass (~$0.05–0.08 and 30–60 s per seed), and smaller preambles for the reviewer that reads it.
+
+**7. Enforce one edit per file per tool batch.**
+What happened (worker log, 3 warnings): "concurrent write to the same file in one batch; serializing" for `main.go`, `README.md`, and `fib_test.go` during both implementer passes — the model batched multiple `edit_file` calls against the same path and the engine had to serialize them. No corruption this time, but a same-path batch is exactly where a conflicting edit gets silently ordered rather than reviewed.
+Change: one line in `.fabro/workflows/develop/prompts/implementer.md` ("at most one edit per file path per tool batch; sequence dependent edits across batches").
+Expected effect: eliminates the write-lock warnings and the ordering hazard they signal, at zero cost.
+
+**8. Planner `sd` economy (minor).**
+What happened: planner@1 ran `sd ready --format json`, then `sd list --format json` — byte-identical payloads (~3.3 KB each), despite the prompt's "If it answers the question, do NOT also run `sd list`" — and used a `--format` flag on `ready` that the command table doesn't list (it happened to work).
+Change: in `.fabro/workflows/develop/prompts/planner.md`, make the rule conditional and checkable: "`sd list` only if `sd ready` output is truncated or lacks blocker info you need"; add `sd ready --format json` to the table since it's evidently supported.
+Expected effect: one fewer tracker call and ~10 s less planner deliberation per cycle; the "never invent flags" rule stays credible.
+
+Not worth changing based on this run: `reasoning_effort` tuning (planner high / implementer+reviewer low produced two correct first-pass approvals and the graph's own measurements already justify it), the gate split (tester ran in 1.3–2.3 s, no redundancy observed), and caching (1.13 M of 1.29 M tokens were cache reads — already near-optimal).
