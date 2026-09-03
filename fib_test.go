@@ -1047,7 +1047,7 @@ func TestParseOptionsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseOptions(nil) returned error: %v", err)
 	}
-	want := options{n: 100, start: 0, limit: 0, seed: 0, format: "", json: false, pretty: false, version: false, sum: false}
+	want := options{n: 100, start: 0, limit: 0, step: 1, seed: 0, format: "", json: false, pretty: false, version: false, sum: false}
 	if got != want {
 		t.Errorf("parseOptions(nil) = %+v, want %+v", got, want)
 	}
@@ -1113,6 +1113,189 @@ func TestParseOptionsVersionShortCircuit(t *testing.T) {
 			}
 			if !opts.version {
 				t.Errorf("parseOptions(%v) version = false, want true", tt.args)
+			}
+		})
+	}
+}
+
+// stepOpts clones an opts-built value with -step set, keeping the
+// existing call sites untouched.
+func stepOpts(o options, step int) options {
+	o.step = step
+	return o
+}
+
+// TestRunStep pins the -step semantics across every output mode: with
+// -step k only every k-th number of the selected range prints,
+// starting with the first (indices start, start+k, ... up to last).
+// gofib -n 6 -step 2 prints exactly indices 1, 3, 5.
+func TestRunStep(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		opts   options
+		step   int
+		want   string
+	}{
+		{"text n=6 step=2 prints indices 1,3,5", opts(0, 6, 0, 0, "", false, false, false, false), 2, "1: 1\n3: 2\n5: 5\n"},
+		{"text step=3 prints indices 1,4", opts(0, 6, 0, 0, "", false, false, false, false), 3, "1: 1\n4: 3\n"},
+		{"text with -start strides the window", opts(5, 4, 0, 0, "", false, false, false, false), 2, "5: 5\n7: 13\n"},
+		{"text with -limit strides the capped range", opts(1, 100, 5, 0, "", false, false, false, false), 2, "1: 1\n3: 2\n5: 5\n"},
+		{"text step larger than the range prints only the first", opts(0, 3, 0, 0, "", false, false, false, false), 10, "1: 1\n"},
+		{"json n=6 step=2 emits exactly the stepped indices", opts(0, 6, 0, 0, "", true, false, false, false), 2,
+			wantJSONLine(1) + "\n" + wantJSONLine(3) + "\n" + wantJSONLine(5) + "\n"},
+		{"csv n=6 step=2 emits the stepped records", opts(0, 6, 0, 0, "csv", false, false, false, false), 2,
+			csvRecord(1) + "\n" + csvRecord(3) + "\n" + csvRecord(5) + "\n"},
+		{"table sizes the value column from the stepped last index", opts(0, 12, 0, 0, "table", false, false, false, false), 2,
+			tableLine(11, "1") + "\n" + tableLine(11, "2") + "\n" + tableLine(11, "5") + "\n" +
+				tableLine(11, "13") + "\n" + tableLine(11, "34") + "\n" + tableLine(11, "89") + "\n"},
+		// Pretty widths come from the largest index and value actually
+		// printed (5 and Fib(5) = 5), not from the range's last (6).
+		{"pretty sizes columns from the stepped last index", opts(0, 6, 0, 0, "", false, true, false, false), 2,
+			prettyLine(5, 1, "1") + "\n" + prettyLine(5, 3, "2") + "\n" + prettyLine(5, 5, "5") + "\n"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, stepOpts(tt.opts, tt.step)); err != nil {
+				t.Fatalf("run(step=%d) returned error: %v", tt.step, err)
+			}
+			if buf.String() != tt.want {
+				t.Errorf("run(step=%d) = %q, want exactly %q", tt.step, buf.String(), tt.want)
+			}
+		})
+	}
+}
+
+// TestRunStepOneEquivalence pins that -step 1 (and unset) behaves
+// exactly as before, byte for byte, in every output mode.
+func TestRunStepOneEquivalence(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		opts options
+	}{
+		{"text", opts(0, 5, 0, 0, "", false, false, false, false)},
+		{"json", opts(0, 5, 0, 0, "", true, false, false, false)},
+		{"pretty", opts(8, 5, 0, 0, "", false, true, false, false)},
+		{"table", opts(8, 5, 0, 0, "table", false, false, false, false)},
+		{"csv", opts(8, 5, 10, 0, "csv", false, false, false, false)},
+		{"sum text", opts(0, 10, 0, 0, "", false, false, false, true)},
+		{"sum json", opts(0, 10, 0, 0, "json", false, false, false, true)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var unset, one bytes.Buffer
+			if err := run(&unset, tt.opts); err != nil {
+				t.Fatalf("run(unset step) returned error: %v", err)
+			}
+			if err := run(&one, stepOpts(tt.opts, 1)); err != nil {
+				t.Fatalf("run(step=1) returned error: %v", err)
+			}
+			if one.String() != unset.String() {
+				t.Errorf("run(step=1) = %q, want identical to unset: %q", one.String(), unset.String())
+			}
+		})
+	}
+}
+
+// TestRunRejectsInvalidStep pins the -step validation contract: a step
+// below 1 exits non-zero with the exact -n-style error message naming
+// the flag (parseOptions is the rejection point).
+func TestRunRejectsInvalidStep(t *testing.T) {
+	for _, mode := range []struct {
+		name   string
+		asJSON bool
+	}{{"text", false}, {"json", true}} {
+		for _, step := range []int{0, -2} {
+			args := []string{"-step", strconv.Itoa(step)}
+			if mode.asJSON {
+				args = append(args, "-json")
+			}
+			_, err := parseOptions(args)
+			if err == nil {
+				t.Fatalf("parseOptions(step=%d, %s) succeeded, want error", step, mode.name)
+			}
+			want := fmt.Sprintf("invalid value %d for flag -step: must be >= 1", step)
+			if err.Error() != want {
+				t.Errorf("parseOptions(step=%d, %s) error = %q, want exactly %q", step, mode.name, err.Error(), want)
+			}
+		}
+	}
+}
+
+// TestRunStepSeedInteraction pins that a positive -seed keeps
+// single-index semantics and ignores -step entirely: an even invalid
+// -step is not an error under -seed (mirroring the other range flags'
+// ignore-invalid-under--seed semantics).
+func TestRunStepSeedInteraction(t *testing.T) {
+	t.Run("seed ignores a valid -step", func(t *testing.T) {
+		o, err := parseOptions([]string{"-seed", "5", "-step", "2"})
+		if err != nil {
+			t.Fatalf("parseOptions(seed, step) returned error: %v", err)
+		}
+		var buf bytes.Buffer
+		if err := run(&buf, o); err != nil {
+			t.Fatalf("run(seed=5, step=2) returned error: %v", err)
+		}
+		if buf.String() != "5: 5\n" {
+			t.Errorf("run(seed=5, step=2) = %q, want %q", buf.String(), "5: 5\n")
+		}
+	})
+	t.Run("seed skips -step validation", func(t *testing.T) {
+		o, err := parseOptions([]string{"-seed", "5", "-step", "0"})
+		if err != nil {
+			t.Fatalf("parseOptions(seed, step=0) returned error: %v", err)
+		}
+		var buf bytes.Buffer
+		if err := run(&buf, o); err != nil {
+			t.Fatalf("run(seed=5, step=0) returned error: %v", err)
+		}
+		if buf.String() != "5: 5\n" {
+			t.Errorf("run(seed=5, step=0) = %q, want %q", buf.String(), "5: 5\n")
+		}
+	})
+	t.Run("version short-circuits -step validation", func(t *testing.T) {
+		o, err := parseOptions([]string{"-version", "-step", "0"})
+		if err != nil {
+			t.Fatalf("parseOptions(version, step=0) returned error: %v", err)
+		}
+		if !o.version {
+			t.Errorf("parseOptions(version, step=0) version = false, want true")
+		}
+	})
+}
+
+// TestRunStepSum pins that -sum sums the numbers that remain AFTER
+// stepping, while the reported range bounds stay the full effective
+// range [start, last]: -n 6 -step 2 sums F(1)+F(3)+F(5) = 1+2+5 = 8
+// but still reports the range 1..6.
+func TestRunStepSum(t *testing.T) {
+	steppedSum := func(first, last, step int) string {
+		total := new(big.Int)
+		for i := first; i <= last; i += step {
+			total.Add(total, Fib(i))
+		}
+		b, err := json.Marshal(sumLine{IndexRange: []int{first, last}, Sum: total.String()})
+		if err != nil {
+			panic("marshal sumLine: " + err.Error())
+		}
+		return string(b)
+	}
+	for _, tt := range []struct {
+		name   string
+		opts   options
+		step   int
+		want   string
+	}{
+		{"sum after stepping in text mode", opts(0, 6, 0, 0, "", false, false, false, true), 2, "sum: 8\n"},
+		{"sum after stepping in json keeps full bounds", opts(0, 6, 0, 0, "json", false, false, false, true), 2, steppedSum(1, 6, 2) + "\n"},
+		{"sum after stepping in csv keeps full bounds", opts(0, 6, 0, 0, "csv", false, false, false, true), 2, "sum,1,6,8\n"},
+		{"sum with -start and -step", opts(4, 5, 0, 0, "", false, false, false, true), 2, "sum: 32\n"}, // F(4)+F(6)+F(8) = 3+8+21
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := run(&buf, stepOpts(tt.opts, tt.step)); err != nil {
+				t.Fatalf("run(sum, step=%d) returned error: %v", tt.step, err)
+			}
+			if buf.String() != tt.want {
+				t.Errorf("run(sum, step=%d) = %q, want exactly %q", tt.step, buf.String(), tt.want)
 			}
 		})
 	}
