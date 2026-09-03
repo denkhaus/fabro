@@ -677,7 +677,7 @@
     "kind": "running"
   },
   "status_updated_at": "2026-09-03T21:07:04.145396688Z",
-  "last_event_at": "2026-09-03T21:17:36.981064378Z",
+  "last_event_at": "2026-09-03T21:17:42.691700906Z",
   "pending_control": null,
   "checkpoints": [
     {
@@ -2876,9 +2876,9 @@
       }
     },
     {
-      "seq": 0,
+      "seq": 516,
       "checkpoint": {
-        "timestamp": "2026-09-03T21:17:37.177695679Z",
+        "timestamp": "2026-09-03T21:17:41.237825891Z",
         "current_node": "implementer",
         "completed_nodes": [
           "start",
@@ -2895,14 +2895,333 @@
         ],
         "node_retries": {},
         "context_values": {
+          "outcome": "succeeded",
           "lesson_capture": "mx-e96d5a",
+          "current_node": "implementer",
+          "review_verdict": "approved",
+          "implementation_summary": "Implemented fabro-87cf (-last k tail flag) in `/workspace/fabro/main.go` (flag registration, validation, -seed/-last hard conflict, tail-as-iteration-start in run so widths and [start,last] sum bounds are preserved) and table-driven tests in `/workspace/fabro/fib_test.go`; go build/vet/test all green; lesson captured as mx-e96d5a. Per-criterion report: all 10 brief bullets PASS as itemized above.",
+          "current_seed_brief": "Add a `-last <int>` flag (default 0 = unset sentinel) to `/workspace/fabro/main.go` that keeps only the LAST k numbers of the selected range, in every output mode. Acceptance criteria: - `-last` registered in `parseOptions` (`options` struct field + `fs.IntVar`) with help text documenting the pipeline order: selection (`-n`/`-start`/`-limit`) then `-step` stride then `-last` tail; package doc comment in `main.go` updated - `gofib -n 10 -last 3` prints exactly the 3 highest indices of the default sequence - clamp, not error: `gofib -n 2 -last 5` prints both numbers when the selection has fewer than k - `-last 0` (or unset) behaves exactly as today — chosen reading of the ambiguous 'k must be >= 1 when set': 0 is the unset sentinel, so only negative values are invalid; `-last -1` exits non-zero with a stderr line naming the flag, same style as `-n` (e.g. `invalid value -1 for flag -last: must be >= 1 or 0 to unset`); validation follows the established convention (skipped under `-version`) - positive `-seed` + non-zero `-last` exits non-zero with stderr naming BOTH flags, mirroring the `-seed`/`-sum` conflict — annotated contrast: `-step` is silently ignored under `-seed`, `-last` is a hard conflict; `-seed 0` with `-last` is fine - `-last 2 -step 2` takes the last 2 of the STEPPED selection (step applies before tail); `gofib -n 6 -step 2 -last 2` prints indices 3 and 5 - `-sum` sums the numbers remaining after tailing (annotated choice mirroring the `-step` decision: tail filters the selection, not the range), and `index_range` in the `-sum -json` record plus the CSV `sum,start,last,...` record keep the full effective range bounds [start, last] - pretty/table column widths sized from the largest index and value actually printed (unchanged rule; tailing keeps the range's final index, so widths track steppedLast/last as before) - tests in `/workspace/fabro/fib_test.go`: table-driven, covering tail selection across modes, clamping, validation (`-last -1`), unset-equivalence (`-last 0`), ordering with `-step`, the `-seed` conflict, and `-sum` after tailing - `just qualitygate` stays green",
+          "last_stage": "implementer",
+          "internal.retry_count.tester": 0,
+          "graph.rankdir": "LR",
           "seed_cycles": {
             "planner": 1,
             "implementer": 1
           },
+          "internal.run_id": "01M1MHGS7PH26EP20B2RTAPN4G",
+          "internal.seed_cycle_anchor": "fabro-87cf",
+          "graph.cycle_counter_reset_key": "current_seed_id",
+          "current_seed_id": "fabro-87cf",
+          "internal.retry_count.reviewer": 0,
+          "thread.closeout.current_node": "planner",
+          "graph.max_node_visits": "40",
+          "thread.tester.current_node": "evidence",
+          "last_response": "Implemented seed fabro-87cf: the `-last <int>` flag (default 0 = unset) now tails the selected range in every output mode. In `/workspace/fabro/main.go` I added the `last` field plus `fs.IntVar` with ",
+          "internal.retry_count.start": 0,
+          "command.output": "blob://sha256/1c8995a63804796d2f6f64dae281bfd1e457b607dad9ee1f6b8ef05225554901",
+          "journal": {
+            "painpoints": [],
+            "observations": [
+              "fib_test.go's opts() helper predates -step/-last and each new flag needed its own wrapper (stepOpts, lastOpts) — composing flags in tests is drifting toward wrapper soup; a future builder/options-literal pattern would flatten this."
+            ]
+          },
+          "failure_class": "",
+          "internal.retry_count.planner": 0,
+          "response.implementer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.implementer",
+            "chars": 3751,
+            "preview": "Implemented seed fabro-87cf: the `-last <int>` flag (default 0 = unset) now tails the selected range in every output mode. In `/workspace/fabro/main.go` I added the `last` field plus `fs.IntVar` with "
+          },
+          "response.planner": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.planner",
+            "chars": 3259,
+            "preview": "`-last` is not implemented (no flag registration in `main.go`) — fresh implementation seed, claimed. Spec has two spots needing annotation: \"k must be >= 1 when set\" vs acceptance (3) `-last 0` beha"
+          },
+          "thread.start.current_node": "planner",
+          "internal.node_visit_count": 3,
+          "internal.retry_count.closeout": 0,
+          "response.reviewer": {
+            "dedup": "response text omitted — payload lives in structured context keys",
+            "output_key": "output.reviewer",
+            "chars": 2483,
+            "preview": "I read the full evidence blob (complete diff, no truncation) and verified each criterion against the in-progress seed spec:\n\n1. **`-step` registered** — `options.step` field, `fs.IntVar` with defaul"
+          },
+          "internal.fidelity": "summary:high",
+          "graph.preamble_budget_kb": "24",
+          "thread.planner.current_node": "implementer",
+          "failure_signature": "",
           "current_seed_title": "gofib: add -last <int> flag printing only the last k numbers of the selected range",
           "preferred_label": "Implemented",
-          "internal.fidelity": "summary:high",
+          "thread.implementer.current_node": "tester",
+          "thread.evidence.current_node": "reviewer",
+          "graph.goal": "Implement product seed fabro-93f2: gofib -step flag printing every step-th number of the selected range",
+          "internal.retry_count.evidence": 0,
+          "internal.retry_count.implementer": 0,
+          "internal.thread_id": "planner",
+          "internal.work_dir": "/workspace/fabro",
+          "thread.reviewer.current_node": "closeout"
+        },
+        "node_outcomes": {
+          "reviewer": {
+            "status": "succeeded",
+            "preferred_label": "Approved",
+            "context_updates": {
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "Verified the full evidence blob (/tmp/fabro/runtime/blobs/7e4dcf...json) end-to-end: integrity header counts (2 seed-work files +227/-12) match the visible diff; every acceptance criterion in the in-progress seed spec is visibly implemented and tested, including the annotated choices (validation skipped under -seed/-version, sum range bounds stay full, pretty/table widths from steppedLast). Defensive step clamping in run() for seed>0 is justified against the skipped-validation path."
+                ]
+              },
+              "last_stage": "reviewer",
+              "response.reviewer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.reviewer",
+                "chars": 2483,
+                "preview": "I read the full evidence blob (complete diff, no truncation) and verified each criterion against the in-progress seed spec:\n\n1. **`-step` registered** — `options.step` field, `fs.IntVar` with defaul"
+              },
+              "review_verdict": "approved",
+              "last_response": "I read the full evidence blob (complete diff, no truncation) and verified each criterion against the in-progress seed spec:\n\n1. **`-step` registered** — `options.step` field, `fs.IntVar` with defaul"
+            },
+            "notes": "Stage completed: reviewer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 14946,
+                    "output_tokens": 729,
+                    "reasoning_tokens": 229,
+                    "cache_read_tokens": 8832,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 27434
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 19822,
+              "tool_time_ms": 17,
+              "active_time_ms": 19839
+            }
+          },
+          "tester": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/3163ece490da2481ddafeeff62bed51e35746d80a0fa9c77625b5b88d3ac56a8"
+            },
+            "notes": "Script completed: just qualitygate",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 1079,
+              "active_time_ms": 1079
+            }
+          },
+          "implementer": {
+            "status": "succeeded",
+            "preferred_label": "Implemented",
+            "context_updates": {
+              "implementation_summary": "Implemented fabro-87cf (-last k tail flag) in `/workspace/fabro/main.go` (flag registration, validation, -seed/-last hard conflict, tail-as-iteration-start in run so widths and [start,last] sum bounds are preserved) and table-driven tests in `/workspace/fabro/fib_test.go`; go build/vet/test all green; lesson captured as mx-e96d5a. Per-criterion report: all 10 brief bullets PASS as itemized above.",
+              "last_response": "Implemented seed fabro-87cf: the `-last <int>` flag (default 0 = unset) now tails the selected range in every output mode. In `/workspace/fabro/main.go` I added the `last` field plus `fs.IntVar` with ",
+              "lesson_capture": "mx-e96d5a",
+              "response.implementer": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.implementer",
+                "chars": 3751,
+                "preview": "Implemented seed fabro-87cf: the `-last <int>` flag (default 0 = unset) now tails the selected range in every output mode. In `/workspace/fabro/main.go` I added the `last` field plus `fs.IntVar` with "
+              },
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fib_test.go's opts() helper predates -step/-last and each new flag needed its own wrapper (stepOpts, lastOpts) — composing flags in tests is drifting toward wrapper soup; a future builder/options-literal pattern would flatten this."
+                ]
+              },
+              "last_stage": "implementer"
+            },
+            "notes": "Stage completed: implementer",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 40802,
+                    "output_tokens": 7307,
+                    "reasoning_tokens": 1679,
+                    "cache_read_tokens": 734336,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 287562
+            },
+            "files_touched": [
+              "/workspace/fabro/fib_test.go",
+              "/workspace/fabro/main.go"
+            ],
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 175060,
+              "tool_time_ms": 5915,
+              "active_time_ms": 180975
+            }
+          },
+          "planner": {
+            "status": "succeeded",
+            "preferred_label": "Seed claimed",
+            "context_updates": {
+              "response.planner": {
+                "dedup": "response text omitted — payload lives in structured context keys",
+                "output_key": "output.planner",
+                "chars": 3259,
+                "preview": "`-last` is not implemented (no flag registration in `main.go`) — fresh implementation seed, claimed. Spec has two spots needing annotation: \"k must be >= 1 when set\" vs acceptance (3) `-last 0` beha"
+              },
+              "last_response": "`-last` is not implemented (no flag registration in `main.go`) — fresh implementation seed, claimed. Spec has two spots needing annotation: \"k must be >= 1 when set\" vs acceptance (3) `-last 0` beha",
+              "journal": {
+                "painpoints": [],
+                "observations": [
+                  "fabro-93f2 (-step) was closed by closeout before this pass; planner correctly ignored the stale approval in context",
+                  "fabro-87cf spec says 'k must be >= 1 when set' while acceptance (3) allows -last 0 — brief resolves this as 0=unset sentinel, only negatives invalid",
+                  "spec's -seed interaction for -last is a hard conflict (like -sum), the opposite of -step's silent ignore — flagged in the brief so the implementer doesn't copy -step semantics"
+                ]
+              },
+              "current_seed_title": "gofib: add -last <int> flag printing only the last k numbers of the selected range",
+              "current_seed_brief": "Add a `-last <int>` flag (default 0 = unset sentinel) to `/workspace/fabro/main.go` that keeps only the LAST k numbers of the selected range, in every output mode. Acceptance criteria: - `-last` registered in `parseOptions` (`options` struct field + `fs.IntVar`) with help text documenting the pipeline order: selection (`-n`/`-start`/`-limit`) then `-step` stride then `-last` tail; package doc comment in `main.go` updated - `gofib -n 10 -last 3` prints exactly the 3 highest indices of the default sequence - clamp, not error: `gofib -n 2 -last 5` prints both numbers when the selection has fewer than k - `-last 0` (or unset) behaves exactly as today — chosen reading of the ambiguous 'k must be >= 1 when set': 0 is the unset sentinel, so only negative values are invalid; `-last -1` exits non-zero with a stderr line naming the flag, same style as `-n` (e.g. `invalid value -1 for flag -last: must be >= 1 or 0 to unset`); validation follows the established convention (skipped under `-version`) - positive `-seed` + non-zero `-last` exits non-zero with stderr naming BOTH flags, mirroring the `-seed`/`-sum` conflict — annotated contrast: `-step` is silently ignored under `-seed`, `-last` is a hard conflict; `-seed 0` with `-last` is fine - `-last 2 -step 2` takes the last 2 of the STEPPED selection (step applies before tail); `gofib -n 6 -step 2 -last 2` prints indices 3 and 5 - `-sum` sums the numbers remaining after tailing (annotated choice mirroring the `-step` decision: tail filters the selection, not the range), and `index_range` in the `-sum -json` record plus the CSV `sum,start,last,...` record keep the full effective range bounds [start, last] - pretty/table column widths sized from the largest index and value actually printed (unchanged rule; tailing keeps the range's final index, so widths track steppedLast/last as before) - tests in `/workspace/fabro/fib_test.go`: table-driven, covering tail selection across modes, clamping, validation (`-last -1`), unset-equivalence (`-last 0`), ordering with `-step`, the `-seed` conflict, and `-sum` after tailing - `just qualitygate` stays green",
+              "current_seed_id": "fabro-87cf",
+              "last_stage": "planner"
+            },
+            "notes": "Stage completed: planner",
+            "usage": {
+              "input": {
+                "usage": {
+                  "model": {
+                    "provider": "zai",
+                    "model_id": "glm-5.3"
+                  },
+                  "tokens": {
+                    "input_tokens": 9600,
+                    "output_tokens": 978,
+                    "reasoning_tokens": 1185,
+                    "cache_read_tokens": 22976,
+                    "cache_write_tokens": 0
+                  }
+                },
+                "facts": {
+                  "algorithm": "openai"
+                }
+              },
+              "total_usd_micros": 28926
+            },
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 40841,
+              "tool_time_ms": 523,
+              "active_time_ms": 41364
+            }
+          },
+          "start": {
+            "status": "succeeded",
+            "usage": null
+          },
+          "closeout": {
+            "status": "succeeded",
+            "preferred_label": "More seeds",
+            "context_updates": {
+              "command.output": "blob://sha256/1c8995a63804796d2f6f64dae281bfd1e457b607dad9ee1f6b8ef05225554901"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/closeout.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 596,
+              "active_time_ms": 596
+            }
+          },
+          "evidence": {
+            "status": "succeeded",
+            "context_updates": {
+              "command.output": "blob://sha256/7e4dcf3213addc26a32078c51d73968139ba2387496097571c17bd5d4c8257be"
+            },
+            "notes": "Script completed: nu .fabro/workflows/develop/scripts/evidence.nu",
+            "usage": null,
+            "timing": {
+              "wall_time_ms": 0,
+              "inference_time_ms": 0,
+              "tool_time_ms": 372,
+              "active_time_ms": 372
+            }
+          }
+        },
+        "next_node_id": "tester",
+        "git_commit_sha": "f35eee5e64275e7b1bda25f1f83aae453c70459a",
+        "loop_failure_signatures": {
+          "tester|deterministic|script failed with exit code: <n> ## output nu scripts/qualitygate.nu == workflow sync (product <-> meta) == sync-check: no world pairing — skip == run scope (workflow assets untouchable from runs) == no workflow assets in run diff — ba": 1
+        },
+        "node_visits": {
+          "evidence": 1,
+          "start": 1,
+          "planner": 2,
+          "reviewer": 1,
+          "closeout": 1,
+          "tester": 2,
+          "implementer": 3
+        }
+      },
+      "diff": {
+        "patch": "diff --git a/.fabro/journal/01M1MHGS7PH26EP20B2RTAPN4G.jsonl b/.fabro/journal/01M1MHGS7PH26EP20B2RTAPN4G.jsonl\nindex 7fd90f0..6a1d95d 100644\n--- a/.fabro/journal/01M1MHGS7PH26EP20B2RTAPN4G.jsonl\n+++ b/.fabro/journal/01M1MHGS7PH26EP20B2RTAPN4G.jsonl\n@@ -7,3 +7,4 @@\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1MHGS7PH26EP20B2RTAPN4G\",\"node\":\"reviewer\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-03T21:13:12Z\",\"data\":{\"painpoints\":[],\"observations\":[\"Verified the full evidence blob (/tmp/fabro/runtime/blobs/7e4dcf...json) end-to-end: integrity header counts (2 seed-work files +227/-12) match the visible diff; every acceptance criterion in the in-progress seed spec is visibly implemented and tested, including the annotated choices (validation skipped under -seed/-version, sum range bounds stay full, pretty/table widths from steppedLast). Defensive step clamping in run() for seed>0 is justified against the skipped-validation path.\"]}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1MHGS7PH26EP20B2RTAPN4G\",\"node\":\"closeout\",\"visit\":1,\"status\":\"succeeded\",\"ts\":\"2026-09-03T21:13:17Z\",\"data\":{}}\n {\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1MHGS7PH26EP20B2RTAPN4G\",\"node\":\"planner\",\"visit\":2,\"status\":\"succeeded\",\"ts\":\"2026-09-03T21:14:10Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fabro-93f2 (-step) was closed by closeout before this pass; planner correctly ignored the stale approval in context\",\"fabro-87cf spec says 'k must be >= 1 when set' while acceptance (3) allows -last 0 — brief resolves this as 0=unset sentinel, only negatives invalid\",\"spec's -seed interaction for -last is a hard conflict (like -sum), the opposite of -step's silent ignore — flagged in the brief so the implementer doesn't copy -step semantics\"]}}\n+{\"$schema\":\"fabro-journal-v1\",\"run_id\":\"01M1MHGS7PH26EP20B2RTAPN4G\",\"node\":\"implementer\",\"visit\":3,\"status\":\"succeeded\",\"ts\":\"2026-09-03T21:17:37Z\",\"data\":{\"painpoints\":[],\"observations\":[\"fib_test.go's opts() helper predates -step/-last and each new flag needed its own wrapper (stepOpts, lastOpts) — composing flags in tests is drifting toward wrapper soup; a future builder/options-literal pattern would flatten this.\"]}}\ndiff --git a/.mulch/expertise/gofib.jsonl b/.mulch/expertise/gofib.jsonl\nindex 6048ee0..09a3718 100644\n--- a/.mulch/expertise/gofib.jsonl\n+++ b/.mulch/expertise/gofib.jsonl\n@@ -4,3 +4,4 @@\n {\"type\":\"convention\",\"classification\":\"tactical\",\"recorded_at\":\"2026-08-24T16:28:18.182Z\",\"evidence\":{\"seeds\":\"fabro-8208\",\"commit\":\"36dcce50b7bf833585864aad18bc6b7fabfd7997\"},\"content\":\"Optional range flags in gofib (-start, -limit) use 0 as the 'no-op sentinel' default so unset output stays historically identical; validate with the exact error format 'invalid value <v> for flag -<name>: must be >= 0', checked in run() AFTER the -version early-return so -version always wins even with invalid values; compose by shrinking the effective last index before any output or pretty-width computation. New range flags should mirror all three parts.\",\"id\":\"mx-549132\"}\n {\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-03T21:10:58.136Z\",\"evidence\":{\"seeds\":\"fabro-93f2\",\"commit\":\"39abfb8c6096c7e4bf4045acb38a24660fa48dd0\"},\"name\":\"new-flag-without-helper-ripple\",\"description\":\"When adding a new flag to gofib's options struct, avoid rippling the positional opts() test helper through ~40 call sites: add a small clone helper (stepOpts) that sets the new field, and only touch existing tests where defaults change (TestParseOptionsDefaults literal). run() must defensively clamp new stride-like fields to safe values because validation is skipped under -seed/-version.\",\"files\":[\"fib_test.go\",\"main.go\"],\"id\":\"mx-7eaa5a\"}\n {\"type\":\"failure\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-03T21:12:02.934Z\",\"evidence\":{\"commit\":\"bf28cd61e31bce89215839e4217e61c2fd63b2de\"},\"description\":\"gofib run 01M1MHGS7PH26EP20B2RTAPN4G: implementer committed hand-aligned struct fields in fib_test.go that violated gofmt alignment (extra spaces in name/opts/step/want columns); qualitygate gofmt check failed. Convention: run gofmt -w on Go files after hand-editing struct literal blocks before finishing the pass.\",\"resolution\":\"gofmt -w fib_test.go applied; gofmt -l clean, go vet + focused Step tests pass\",\"id\":\"mx-e40184\"}\n+{\"type\":\"pattern\",\"classification\":\"tactical\",\"recorded_at\":\"2026-09-03T21:17:13.557Z\",\"evidence\":{\"commit\":\"d47ed1da5977a19eb9313670e0bbe98eb3217a04\"},\"name\":\"gofib-flag-pipeline-tail\",\"description\":\"-last tail flag follows the established flag pipeline: selection (-n/-start/-limit) -> -step stride -> -last tail, implemented as an iteration-start adjustment (first = steppedLast-(k-1)*step) so loops, steppedLast-based widths, and [start,last] sum bounds stay untouched; conflicts (seed vs last) mirror seed vs sum as hard errors while step is merely ignored under -seed\",\"files\":[\"fib_test.go\",\"main.go\"],\"id\":\"mx-e96d5a\"}\ndiff --git a/fib_test.go b/fib_test.go\nindex 0a63d2d..50bb474 100644\n--- a/fib_test.go\n+++ b/fib_test.go\n@@ -1379,3 +1379,243 @@ func TestOutputToFile(t *testing.T) {\n \t\t})\n \t}\n }\n+\n+// lastOpts clones an opts-built value with -last set, keeping the\n+// existing call sites untouched.\n+func lastOpts(o options, last int) options {\n+\to.last = last\n+\treturn o\n+}\n+\n+// TestRunLast pins the -last semantics across every output mode: with\n+// -last k only the last k numbers of the (already stepped) selection\n+// print, in every mode; a selection shorter than k clamps to the whole\n+// selection instead of erroring. gofib -n 10 -last 3 prints exactly\n+// indices 8, 9, 10.\n+func TestRunLast(t *testing.T) {\n+\tfor _, tt := range []struct {\n+\t\tname string\n+\t\topts options\n+\t\tlast int\n+\t\twant string\n+\t}{\n+\t\t{\"text n=10 last=3 prints indices 8,9,10\", opts(0, 10, 0, 0, \"\", false, false, false, false), 3,\n+\t\t\t\"8: 21\\n9: 34\\n10: 55\\n\"},\n+\t\t{\"text last=1 prints only the final index\", opts(0, 10, 0, 0, \"\", false, false, false, false), 1,\n+\t\t\t\"10: 55\\n\"},\n+\t\t{\"text last larger than the selection clamps\", opts(0, 2, 0, 0, \"\", false, false, false, false), 5,\n+\t\t\t\"1: 1\\n2: 1\\n\"},\n+\t\t{\"text last equal to the selection size prints all\", opts(0, 3, 0, 0, \"\", false, false, false, false), 3,\n+\t\t\t\"1: 1\\n2: 1\\n3: 2\\n\"},\n+\t\t{\"text with -start tails the window\", opts(5, 4, 0, 0, \"\", false, false, false, false), 2,\n+\t\t\t\"7: 13\\n8: 21\\n\"},\n+\t\t{\"text with -limit tails the capped range\", opts(1, 100, 5, 0, \"\", false, false, false, false), 2,\n+\t\t\t\"4: 3\\n5: 5\\n\"},\n+\t\t{\"json n=10 last=3 emits exactly the tailed indices\", opts(0, 10, 0, 0, \"\", true, false, false, false), 3,\n+\t\t\twantJSONLine(8) + \"\\n\" + wantJSONLine(9) + \"\\n\" + wantJSONLine(10) + \"\\n\"},\n+\t\t{\"csv n=10 last=3 emits the tailed records\", opts(0, 10, 0, 0, \"csv\", false, false, false, false), 3,\n+\t\t\tcsvRecord(8) + \"\\n\" + csvRecord(9) + \"\\n\" + csvRecord(10) + \"\\n\"},\n+\t\t// Pretty widths keep coming from the largest index and value\n+\t\t// actually printed — tailing keeps the range's final index, so\n+\t\t// widths track the unchanged steppedLast (= 6 here).\n+\t\t{\"pretty sizes columns from the tailed last index\", opts(0, 6, 0, 0, \"\", false, true, false, false), 2,\n+\t\t\tprettyLine(6, 5, \"5\") + \"\\n\" + prettyLine(6, 6, \"8\") + \"\\n\"},\n+\t\t{\"table sizes the value column from the tailed last index\", opts(0, 6, 0, 0, \"table\", false, false, false, false), 2,\n+\t\t\ttableLine(6, \"5\") + \"\\n\" + tableLine(6, \"8\") + \"\\n\"},\n+\t} {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tvar buf bytes.Buffer\n+\t\t\tif err := run(&buf, lastOpts(tt.opts, tt.last)); err != nil {\n+\t\t\t\tt.Fatalf(\"run(last=%d) returned error: %v\", tt.last, err)\n+\t\t\t}\n+\t\t\tif buf.String() != tt.want {\n+\t\t\t\tt.Errorf(\"run(last=%d) = %q, want exactly %q\", tt.last, buf.String(), tt.want)\n+\t\t\t}\n+\t\t})\n+\t}\n+}\n+\n+// TestRunLastZeroEquivalence pins that -last 0 (and unset) behaves\n+// exactly as before, byte for byte, in every output mode.\n+func TestRunLastZeroEquivalence(t *testing.T) {\n+\tfor _, tt := range []struct {\n+\t\tname string\n+\t\topts options\n+\t}{\n+\t\t{\"text\", opts(0, 5, 0, 0, \"\", false, false, false, false)},\n+\t\t{\"json\", opts(0, 5, 0, 0, \"\", true, false, false, false)},\n+\t\t{\"pretty\", opts(8, 5, 0, 0, \"\", false, true, false, false)},\n+\t\t{\"table\", opts(8, 5, 0, 0, \"table\", false, false, false, false)},\n+\t\t{\"csv\", opts(8, 5, 10, 0, \"csv\", false, false, false, false)},\n+\t\t{\"sum text\", opts(0, 10, 0, 0, \"\", false, false, false, true)},\n+\t\t{\"sum json\", opts(0, 10, 0, 0, \"json\", false, false, false, true)},\n+\t} {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tvar unset, zero bytes.Buffer\n+\t\t\tif err := run(&unset, tt.opts); err != nil {\n+\t\t\t\tt.Fatalf(\"run(unset last) returned error: %v\", err)\n+\t\t\t}\n+\t\t\tif err := run(&zero, lastOpts(tt.opts, 0)); err != nil {\n+\t\t\t\tt.Fatalf(\"run(last=0) returned error: %v\", err)\n+\t\t\t}\n+\t\t\tif zero.String() != unset.String() {\n+\t\t\t\tt.Errorf(\"run(last=0) = %q, want identical to unset: %q\", zero.String(), unset.String())\n+\t\t\t}\n+\t\t})\n+\t}\n+}\n+\n+// TestRunLastStepOrdering pins the pipeline order: -step strides the\n+// selection first, then -last tails the STEPPED selection. gofib\n+// -n 6 -step 2 -last 2 prints exactly indices 3 and 5.\n+func TestRunLastStepOrdering(t *testing.T) {\n+\tfor _, tt := range []struct {\n+\t\tname string\n+\t\topts options\n+\t\tstep int\n+\t\tlast int\n+\t\twant string\n+\t}{\n+\t\t{\"last 2 of the stepped selection\", opts(0, 6, 0, 0, \"\", false, false, false, false), 2, 2,\n+\t\t\t\"3: 2\\n5: 5\\n\"},\n+\t\t{\"last 3 of the stepped selection\", opts(0, 6, 0, 0, \"\", false, false, false, false), 2, 3,\n+\t\t\t\"1: 1\\n3: 2\\n5: 5\\n\"},\n+\t\t{\"last clamps to the stepped selection\", opts(0, 6, 0, 0, \"\", false, false, false, false), 2, 5,\n+\t\t\t\"1: 1\\n3: 2\\n5: 5\\n\"},\n+\t\t{\"json last 2 of the stepped selection\", opts(0, 6, 0, 0, \"\", true, false, false, false), 2, 2,\n+\t\t\twantJSONLine(3) + \"\\n\" + wantJSONLine(5) + \"\\n\"},\n+\t} {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tvar buf bytes.Buffer\n+\t\t\tif err := run(&buf, lastOpts(stepOpts(tt.opts, tt.step), tt.last)); err != nil {\n+\t\t\t\tt.Fatalf(\"run(step=%d, last=%d) returned error: %v\", tt.step, tt.last, err)\n+\t\t\t}\n+\t\t\tif buf.String() != tt.want {\n+\t\t\t\tt.Errorf(\"run(step=%d, last=%d) = %q, want exactly %q\", tt.step, tt.last, buf.String(), tt.want)\n+\t\t\t}\n+\t\t})\n+\t}\n+}\n+\n+// TestRunLastSum pins that -sum sums the numbers remaining AFTER\n+// tailing, while the reported range bounds stay the full effective\n+// range [start, last]: -n 6 -last 3 sums F(4)+F(5)+F(6) = 3+5+8 = 16\n+// but still reports the range 1..6.\n+func TestRunLastSum(t *testing.T) {\n+\ttailedSum := func(first, last, step, k int) string {\n+\t\tsteppedLast := last\n+\t\tif step > 1 && last >= first {\n+\t\t\tsteppedLast = first + ((last-first)/step)*step\n+\t\t}\n+\t\titer := first\n+\t\tif k > 0 && last >= first {\n+\t\t\tcount := (steppedLast-first)/step + 1\n+\t\t\tif k < count {\n+\t\t\t\titer = steppedLast - (k-1)*step\n+\t\t\t}\n+\t\t}\n+\t\ttotal := new(big.Int)\n+\t\tfor i := iter; i <= last; i += step {\n+\t\t\ttotal.Add(total, Fib(i))\n+\t\t}\n+\t\tb, err := json.Marshal(sumLine{IndexRange: []int{first, last}, Sum: total.String()})\n+\t\tif err != nil {\n+\t\t\tpanic(\"marshal sumLine: \" + err.Error())\n+\t\t}\n+\t\treturn string(b)\n+\t}\n+\tfor _, tt := range []struct {\n+\t\tname string\n+\t\topts options\n+\t\tlast int\n+\t\twant string\n+\t}{\n+\t\t{\"sum after tailing in text mode\", opts(0, 6, 0, 0, \"\", false, false, false, true), 3, \"sum: 16\\n\"},\n+\t\t{\"sum after tailing in json keeps full bounds\", opts(0, 6, 0, 0, \"json\", false, false, false, true), 3, tailedSum(1, 6, 1, 3) + \"\\n\"},\n+\t\t{\"sum after tailing in csv keeps full bounds\", opts(0, 6, 0, 0, \"csv\", false, false, false, true), 3, \"sum,1,6,16\\n\"},\n+\t\t{\"sum after stepping and tailing keeps full bounds\", opts(0, 6, 0, 0, \"json\", false, false, false, true), 1, tailedSum(1, 6, 2, 1) + \"\\n\"},\n+\t} {\n+\t\tt.Run(tt.name, func(t *testing.T) {\n+\t\t\tvar buf bytes.Buffer\n+\t\t\tstep := 1\n+\t\t\tif tt.name == \"sum after stepping and tailing keeps full bounds\" {\n+\t\t\t\tstep = 2\n+\t\t\t}\n+\t\t\tif err := run(&buf, lastOpts(stepOpts(tt.opts, step), tt.last)); err != nil {\n+\t\t\t\tt.Fatalf(\"run(sum, last=%d) returned error: %v\", tt.last, err)\n+\t\t\t}\n+\t\t\tif buf.String() != tt.want {\n+\t\t\t\tt.Errorf(\"run(sum, last=%d) = %q, want exactly %q\", tt.last, buf.String(), tt.want)\n+\t\t\t}\n+\t\t})\n+\t}\n+}\n+\n+// TestRunRejectsInvalidLast pins the -last validation contract: a\n+// negative k exits non-zero with the exact -n-style error message\n+// naming the flag (parseOptions is the rejection point).\n+func TestRunRejectsInvalidLast(t *testing.T) {\n+\tfor _, mode := range []struct {\n+\t\tname   string\n+\t\tasJSON bool\n+\t}{{\"text\", false}, {\"json\", true}} {\n+\t\tfor _, last := range []int{-1, -5} {\n+\t\t\targs := []string{\"-last\", strconv.Itoa(last)}\n+\t\t\tif mode.asJSON {\n+\t\t\t\targs = append(args, \"-json\")\n+\t\t\t}\n+\t\t\t_, err := parseOptions(args)\n+\t\t\tif err == nil {\n+\t\t\t\tt.Fatalf(\"parseOptions(last=%d, %s) succeeded, want error\", last, mode.name)\n+\t\t\t}\n+\t\t\twant := fmt.Sprintf(\"invalid value %d for flag -last: must be >= 1 or 0 to unset\", last)\n+\t\t\tif err.Error() != want {\n+\t\t\t\tt.Errorf(\"parseOptions(last=%d, %s) error = %q, want exactly %q\", last, mode.name, err.Error(), want)\n+\t\t\t}\n+\t\t}\n+\t}\n+}\n+\n+// TestRunLastSeedConflict pins that a positive -last is a HARD conflict\n+// with a positive -seed (mirroring -sum, unlike -step which is merely\n+// ignored under -seed): parseOptions rejects it naming both flags,\n+// while -seed 0 with -last combines freely and -version outranks both.\n+func TestRunLastSeedConflict(t *testing.T) {\n+\tfor _, seed := range []int{1, 5, 100} {\n+\t\t_, err := parseOptions([]string{\"-seed\", strconv.Itoa(seed), \"-last\", \"2\"})\n+\t\tif err == nil {\n+\t\t\tt.Fatalf(\"parseOptions(seed=%d, last) succeeded, want error\", seed)\n+\t\t}\n+\t\twant := \"flags -seed and -last conflict: -seed prints a single index but -last tails the range\"\n+\t\tif err.Error() != want {\n+\t\t\tt.Errorf(\"parseOptions(seed=%d, last) error = %q, want exactly %q\", seed, err.Error(), want)\n+\t\t}\n+\t}\n+\tt.Run(\"seed 0 with -last is legal\", func(t *testing.T) {\n+\t\tvar buf bytes.Buffer\n+\t\tif err := run(&buf, lastOpts(opts(0, 5, 0, 0, \"\", false, false, false, false), 2)); err != nil {\n+\t\t\tt.Fatalf(\"run(seed=0, last=2) returned error: %v\", err)\n+\t\t}\n+\t\tif buf.String() != \"4: 3\\n5: 5\\n\" {\n+\t\t\tt.Errorf(\"run(seed=0, last=2) = %q, want %q\", buf.String(), \"4: 3\\n5: 5\\n\")\n+\t\t}\n+\t})\n+\tt.Run(\"version short-circuits the seed/last conflict\", func(t *testing.T) {\n+\t\topts, err := parseOptions([]string{\"-version\", \"-seed\", \"5\", \"-last\", \"2\"})\n+\t\tif err != nil {\n+\t\t\tt.Fatalf(\"parseOptions(version, seed, last) returned error: %v\", err)\n+\t\t}\n+\t\tif !opts.version {\n+\t\t\tt.Errorf(\"parseOptions(version, seed, last) version = false, want true\")\n+\t\t}\n+\t})\n+\tt.Run(\"version short-circuits -last validation\", func(t *testing.T) {\n+\t\topts, err := parseOptions([]string{\"-version\", \"-last\", \"-1\"})\n+\t\tif err != nil {\n+\t\t\tt.Fatalf(\"parseOptions(version, last=-1) returned error: %v\", err)\n+\t\t}\n+\t\tif !opts.version {\n+\t\t\tt.Errorf(\"parseOptions(version, last=-1) version = false, want true\")\n+\t\t}\n+\t})\n+}\ndiff --git a/main.go b/main.go\nindex 348edff..d972cb7 100644\n--- a/main.go\n+++ b/main.go\n@@ -7,7 +7,13 @@\n // only every step-th number prints, starting with the first (indices\n // start, start+k, start+2k, ... up to last; 1, the default, prints\n // every number; it must be >= 1 and is ignored, not an error, when a\n-// positive -seed is set), -seed prints only the Fibonacci\n+// positive -seed is set), -last keeps only the last k numbers of the\n+// already-selected, already-stepped selection (the pipeline order is\n+// selection via -n/-start/-limit, then -step stride, then -last tail;\n+// 0, the default, means unset, a selection shorter than k is clamped\n+// to the whole selection rather than an error, and a positive -last\n+// conflicts with a positive -seed the way -sum does, while -step is\n+// merely ignored under -seed), -seed prints only the Fibonacci\n // number at a single index (0, the default, means unset), and -format\n // selects the output mode globally: text (the default), json (JSON\n // Lines), pretty (right-aligned text columns), table (values only,\n@@ -156,6 +162,7 @@ type options struct {\n \tstart   int\n \tlimit   int\n \tstep    int\n+\tlast    int\n \tseed    int\n \tformat  string\n \tjson    bool\n@@ -177,7 +184,9 @@ type options struct {\n //     shortcut/format disagreement, is rejected.\n //   - a negative -seed is rejected.\n //   - a positive -seed combined with -sum is rejected.\n-//   - range checks (-n >= 1, -start >= 0, -limit >= 0, -step >= 1)\n+//   - a positive -seed combined with a positive -last is rejected.\n+//   - range checks (-n >= 1, -start >= 0, -limit >= 0, -step >= 1,\n+//     -last >= 0)\n //     run only when\n //     -seed is unset (0): a positive -seed overrides the range flags,\n //     whose values are then ignored, mirroring -version's\n@@ -193,6 +202,7 @@ func parseOptions(args []string) (options, error) {\n \tfs.IntVar(&opts.start, \"start\", 0, \"index of the first Fibonacci number to print (must be >= 0; 0 starts at 1 like the default)\")\n \tfs.IntVar(&opts.limit, \"limit\", 0, \"largest index to print (must be >= 0; 0 means no limit)\")\n \tfs.IntVar(&opts.step, \"step\", 1, \"print only every step-th number of the selected range, starting with the first (must be >= 1; default 1 prints every number; ignored when -seed is positive)\")\n+\tfs.IntVar(&opts.last, \"last\", 0, \"print only the last k numbers of the selected range, applied after -n/-start/-limit selection and -step stride (must be >= 1; 0 means unset; clamps to the selection size; conflicts with a positive -seed)\")\n \tfs.IntVar(&opts.seed, \"seed\", 0, \"print only the Fibonacci number at this index, overriding -n, -start, and -limit (must be >= 0; 0 means unset)\")\n \tfs.StringVar(&opts.format, \"format\", \"\", \"output mode: text, json, pretty, table, or csv (default text); must agree with -json/-pretty when those are also set\")\n \tfs.BoolVar(&opts.json, \"json\", false, `shortcut for -format json: emit JSON Lines instead of text (one {\"index\": i, \"fib\": \"value\"} object per number)`)\n@@ -213,6 +223,9 @@ func parseOptions(args []string) (options, error) {\n \tif opts.seed > 0 && opts.sum {\n \t\treturn opts, fmt.Errorf(\"flags -seed and -sum conflict: -seed prints a single index but -sum prints the range sum\")\n \t}\n+\tif opts.seed > 0 && opts.last > 0 {\n+\t\treturn opts, fmt.Errorf(\"flags -seed and -last conflict: -seed prints a single index but -last tails the range\")\n+\t}\n \tif opts.seed == 0 {\n \t\tif opts.n < 1 {\n \t\t\treturn opts, fmt.Errorf(\"invalid value %d for flag -n: must be >= 1\", opts.n)\n@@ -226,6 +239,9 @@ func parseOptions(args []string) (options, error) {\n \t\tif opts.step < 1 {\n \t\t\treturn opts, fmt.Errorf(\"invalid value %d for flag -step: must be >= 1\", opts.step)\n \t\t}\n+\t\tif opts.last < 0 {\n+\t\t\treturn opts, fmt.Errorf(\"invalid value %d for flag -last: must be >= 1 or 0 to unset\", opts.last)\n+\t\t}\n \t}\n \treturn opts, nil\n }\n@@ -240,6 +256,10 @@ func parseOptions(args []string) (options, error) {\n // strides the selected range so only every k-th number prints,\n // starting with the first; -sum then sums the numbers that remain\n // after stepping while its reported range bounds stay [start, last].\n+// A positive -last k tails the stepped selection: only the last k\n+// members of start, start+step, ... <= last print (and -sum sums only\n+// those), clamped to the whole selection when it has fewer than k\n+// members; the reported range bounds still stay [start, last].\n // With sum set, run prints exactly one line\n // carrying the big.Int sum of the Fibonacci numbers in the same\n // selected range instead of the per-number output. An empty selected\n@@ -289,15 +309,30 @@ func run(w io.Writer, opts options) error {\n \tif step > 1 && last >= start {\n \t\tsteppedLast = start + ((last-start)/step)*step\n \t}\n+\t// -last tails the stepped selection: iteration advances past the\n+\t// first (count-k) members so exactly the last k remain. The loop\n+\t// bound stays `last` (and steppedLast, which tails keep, still\n+\t// sizes the pretty/table columns); a selection shorter than k is\n+\t// clamped to the whole selection, not an error. A positive -seed\n+\t// conflicts with -last in parseOptions, and its validation is\n+\t// skipped under -seed, so a negative k is defensively ignored\n+\t// here.\n+\tfirst := start\n+\tif opts.last > 0 && last >= start {\n+\t\tcount := (steppedLast-start)/step + 1\n+\t\tif opts.last < count {\n+\t\t\tfirst = steppedLast - (opts.last-1)*step\n+\t\t}\n+\t}\n \tenc := json.NewEncoder(w)\n \tif opts.sum {\n \t\t// Sum mode: one line with the big.Int total of the stepped\n \t\t// selection instead of the per-number output. The reported\n \t\t// bounds stay the full effective range [start, last]: stepping\n-\t\t// filters the selection, not the range. An empty range\n+\t\t// and tailing filter the selection, not the range. An empty range\n \t\t// (start > last) leaves the total at 0 — not an error.\n \t\ttotal := new(big.Int)\n-\t\tfor i := start; i <= last; i += step {\n+\t\tfor i := first; i <= last; i += step {\n \t\t\ttotal.Add(total, Fib(i))\n \t\t}\n \t\tswitch mode {\n@@ -322,7 +357,7 @@ func run(w io.Writer, opts options) error {\n \tcase modeTable:\n \t\tvalW = len(Fib(steppedLast).String())\n \t}\n-\tfor i := start; i <= last; i += step {\n+\tfor i := first; i <= last; i += step {\n \t\tswitch mode {\n \t\tcase modeJSON:\n \t\t\tif err := enc.Encode(fibLine{Index: i, Fib: Fib(i).String()}); err != nil {\n",
+        "summary": {
+          "files_changed": 5,
+          "additions": 537,
+          "deletions": 34
+        }
+      }
+    },
+    {
+      "seq": 0,
+      "checkpoint": {
+        "timestamp": "2026-09-03T21:17:42.895046579Z",
+        "current_node": "tester",
+        "completed_nodes": [
+          "start",
+          "planner",
+          "implementer",
+          "tester",
+          "implementer",
+          "tester",
+          "evidence",
+          "reviewer",
+          "closeout",
+          "planner",
+          "implementer",
+          "tester"
+        ],
+        "node_retries": {},
+        "context_values": {
+          "lesson_capture": "mx-e96d5a",
+          "seed_cycles": {
+            "planner": 1,
+            "implementer": 1,
+            "tester": 1
+          },
+          "current_seed_title": "gofib: add -last <int> flag printing only the last k numbers of the selected range",
+          "preferred_label": "Implemented",
+          "internal.fidelity": "compact",
           "failure_signature": "",
           "graph.rankdir": "LR",
           "internal.retry_count.start": 0,
@@ -2932,7 +3251,7 @@
           "graph.goal": "Implement product seed fabro-93f2: gofib -step flag printing every step-th number of the selected range",
           "internal.run_id": "01M1MHGS7PH26EP20B2RTAPN4G",
           "last_stage": "implementer",
-          "command.output": "blob://sha256/1c8995a63804796d2f6f64dae281bfd1e457b607dad9ee1f6b8ef05225554901",
+          "command.output": "blob://sha256/ab0ea9a12d9a6148fc3575d24832a543e7ef7539223ba691a6e40a408a2f4dab",
           "thread.evidence.current_node": "reviewer",
           "internal.retry_count.planner": 0,
           "failure_class": "",
@@ -2948,9 +3267,9 @@
           "internal.node_visit_count": 3,
           "graph.max_node_visits": "40",
           "graph.preamble_budget_kb": "24",
-          "internal.thread_id": "planner",
+          "internal.thread_id": "implementer",
           "graph.cycle_counter_reset_key": "current_seed_id",
-          "current_node": "implementer",
+          "current_node": "tester",
           "current_seed_id": "fabro-87cf",
           "thread.implementer.current_node": "tester",
           "internal.retry_count.closeout": 0,
@@ -3156,25 +3475,25 @@
           "tester": {
             "status": "succeeded",
             "context_updates": {
-              "command.output": "blob://sha256/3163ece490da2481ddafeeff62bed51e35746d80a0fa9c77625b5b88d3ac56a8"
+              "command.output": "blob://sha256/ab0ea9a12d9a6148fc3575d24832a543e7ef7539223ba691a6e40a408a2f4dab"
             },
             "notes": "Script completed: just qualitygate",
             "usage": null,
             "timing": {
               "wall_time_ms": 0,
               "inference_time_ms": 0,
-              "tool_time_ms": 1079,
-              "active_time_ms": 1079
+              "tool_time_ms": 1286,
+              "active_time_ms": 1286
             }
           }
         },
-        "next_node_id": "tester",
+        "next_node_id": "evidence",
         "node_visits": {
           "reviewer": 1,
           "start": 1,
           "evidence": 1,
           "closeout": 1,
-          "tester": 2,
+          "tester": 3,
           "implementer": 3,
           "planner": 2
         }
@@ -4293,6 +4612,57 @@
         "inference_time_ms": 0,
         "tool_time_ms": 596,
         "active_time_ms": 596
+      },
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reasoning_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "agent_control": "running",
+      "state": "succeeded"
+    },
+    "tester@3": {
+      "first_event_seq": 519,
+      "prompt": null,
+      "response": null,
+      "completion": {
+        "outcome": "succeeded",
+        "notes": "Script completed: just qualitygate",
+        "failure_reason": null,
+        "timestamp": "2026-09-03T21:17:42.691700906Z"
+      },
+      "provider_used": null,
+      "diff": null,
+      "script_invocation": {
+        "script": "just qualitygate",
+        "command": "exec 2>&1\njust qualitygate",
+        "language": "shell",
+        "timeout_ms": 600000
+      },
+      "script_timing": {
+        "output": "blob://sha256/ab0ea9a12d9a6148fc3575d24832a543e7ef7539223ba691a6e40a408a2f4dab",
+        "exit_code": 0,
+        "duration_ms": 1286,
+        "termination": "exited",
+        "output_bytes": 393,
+        "live_streaming": true
+      },
+      "parallel_results": null,
+      "output": null,
+      "output_bytes": 393,
+      "live_streaming": true,
+      "termination": "exited",
+      "started_at": "2026-09-03T21:17:41.387419477Z",
+      "handler": "command",
+      "graph_visit": 3,
+      "timing": {
+        "wall_time_ms": 1291,
+        "inference_time_ms": 0,
+        "tool_time_ms": 1286,
+        "active_time_ms": 1286
       },
       "usage": {
         "input_tokens": 0,
