@@ -1,55 +1,56 @@
 # Improve review — run 01M1EGK6J8CNP9APJ7PWE6WE74
 
 - workflow: develop
-- branch integrated: denkhaus-lab
-- status: succeeded (completed), 14.2 min, $0.54666
-- generated: 2026-09-01 15:13+0200 by `fabro ask` with `scripts/prompts/improve.md`
+- branch integrated: this revisor pass (unmerged until approved)
+- status: succeeded (15.9 min, revisor pass — reason and cost in run detail)
+- generated: 2026-09-03 17:43+0000 by revisor `fabro_ask`
 
 ---
 
-# Improve review — run `01M1EGK6J8CNP9APJ7PWE6WE74`
+All findings below are grounded in this run's events, stage transcripts, journals, and the shipped diff (final cost $0.547, 14.2 min active, 2 seeds closed, zero retries).
 
-Run shape (from run events + conclusion): 2 seeds (fabro-7e44, fabro-f831), 2 clean cycles, 0 retries, 15m51s wall / 12m29s inference / 26s tool time, $0.547 total. The loop itself is healthy — first-pass approvals on both seeds, journals on every agent pass. The recommendations below are ordered by expected impact; the top two are correctness bugs in what this run just shipped.
+## Ordered by expected impact
 
----
+**1. Declare `lesson_capture` in the implementer's `context_allow_keys` — the contract this run shipped is currently self-defeating.**
+Seed fabro-f831 (implemented in implementer@2) added a required `lesson_capture` key to the Implemented JSON in `.fabro/workflows/develop/prompts/implementer.md`, but the run's diff never touches `workflow.fabro`, where the implementer node declares `context_allow_keys="implementation_summary,journal"`. Per the graph's own comment (fabro-900e), an undeclared context_updates key "drops visibly with a notice instead of leaking silently" — so the very first run that obeys the new prompt will have its answer discarded as drift. The planner half-suspected this (criterion 5 forced the fact into `implementation_summary` prose "so it survives even where context keys are not forwarded").
+*Change:* one line in `workflow.fabro` (implementer node): `context_allow_keys="implementation_summary,lesson_capture,journal"`; optionally add it to the reviewer's `preamble_allow_keys` so review can check it mechanically.
+*Effect:* the enforced record-or-skip answer lands durably instead of being dropped on every future implementer pass.
 
-**1. The new `lesson_capture` contract is being silently discarded — declare it in the graph.**
-Evidence: worker log WARN at 13:08:58, `context_update_dropped ... dropped: lesson_capture`, fired on implementer@2 — the very pass that implemented seed fabro-f831 ("make lesson capture enforceable in the implementer outcome contract"). The seed added a required `lesson_capture` key to the outcome JSON in `prompts/implementer.md`, but the implementer node in `workflow.fabro` still declares `context_allow_keys="implementation_summary,journal"`, so the fabro-900e allow-keys lint drops the structured key; only the prose clause in `implementation_summary` survived. The seed's deliverable is half-dead on arrival.
-Change: add `lesson_capture` to the implementer node's `context_allow_keys` in `.fabro/workflows/develop/workflow.fabro` (one line), and add a check to the next improve cycle that greps prompt outcome templates for keys missing from the graph's allow-list.
-Effect: the record-or-skip answer round-trips as data the reviewer/planner can verify, instead of living only in prose and a buried WARN.
+**2. Give the planner a repo-layout map — first-pass orientation burned 40% of the run's cost.**
+planner@1: 354.7 s inference / $0.219 of $0.547 total (50,460 input tokens, 4.7 s tool time). The event stream shows ~10 exploratory calls just to locate the target files (`grep evidence`, `ls`+CONTEXT.md, README+justfile, `find / -name evidence.nu`, `git ls-files`, worktree topology) before discovering assets live at `.fabro/workflows/develop/` in the same repo. planner@2, with the layout already in context: 98 s / $0.064.
+*Change:* add a 5-line "Repo layout" section to `AGENTS.md` (loaded as memory into every stage) or `prompts/planner.md`: gofib at repo root; dev-loop assets at `.fabro/workflows/develop/`; reviews `.fabro/reviews/`; journals `.fabro/journal/`.
+*Effect:* first planner pass drops from ~6 min toward planner@2's ~100 s — roughly −4.5 min wall and −$0.15 per run.
 
-**2. Evidence captures are blind to seeds that target `.fabro/` itself — make the seed-work classifier seed-aware.**
-Evidence: both evidence outputs this run report `integrity: seed-work=0 files +0/-0` and `(no seed-work files to diff)` (evidence@1/@2 stage outputs), because evidence.nu classifies `.fabro/**` as loop churn. Both remaining seeds target exactly those paths, so reviewer@1/@2 had to verify by reading files with tools (their journals say so explicitly: "reviewers of workflow-file seeds must read the churn section, not the seed-work section"). Ironically, fabro-7e44 *built* the per-seed claim-base diff this run and the mechanism never rendered for the only seeds in the tracker.
-Change: in `.fabro/workflows/develop/scripts/evidence.nu`, when the in-progress seed exists, classify changed files against the seed's target paths (or simply: loop-classified files that differ vs `diff-base` get a "seed work (loop-classified)" section diffed against the same claim base) instead of path-prefix-only churn classification.
-Effect: workflow-file seeds get the same complete-diff review path as product seeds, removes the tool-detour workaround, and satisfies fabro-7e44's own done-criterion ("second capture contains ONLY the second seed's hunks") on the next meta-seed run.
+**3. Make evidence.nu show the diff for dev-loop seeds — both reviews this run had to bypass the capture.**
+Both seeds target `.fabro/` paths, which evidence.nu classifies as loop churn, so both captures read `seed-work=0 files +0/-0` / "(no seed-work files to diff)". Reviewer@1 verified "by reading evidence.nu and reviewer.md directly"; reviewer@2 had to run its own `git diff` against `diff-base=71366e9` and journaled: "reviewers of workflow-file seeds must read the churn section, not the seed-work section, to find the diff." The per-seed diff-base machinery this run built is exactly what's needed — it's just not applied to churn files.
+*Change:* in `.fabro/workflows/develop/scripts/evidence.nu`, when `seed_rows` is empty but `churn_rows` isn't, emit the per-seed (claim-base) diff of changed loop files under a "loop-work diff" section.
+*Effect:* reviews of dev-loop seeds verify from context; removes the per-review git detour and the reliance on each planner brief pre-empting the blind spot.
 
-**3. Stop demoting the reviewer's spec to a blob ref.**
-Evidence: reviewer@2's preamble shows `current_seed_brief | 2.2 KB; full value: /tmp/fabro/runtime/blobs/f4ec…json; Preview: …` — the 2.2 KB brief (the distilled spec the reviewer judges against) was demoted by the aggregate 24 KB budget while the evidence capture stayed inline via `preamble_inline_max_kb=16`. The reviewer then burned a tool call (shell, 228 ms) reading its own spec.
-Change: give contract-critical context keys an inline floor in the demote pass — never demote `current_seed_id`/`current_seed_brief` (or set a per-key `preamble_inline_min` analogous to the existing per-key max). Engine-side, but expressible as a graph lint today.
-Effect: one fewer tool round-trip per review and eliminates the risk of a verdict reasoned from a 300-char preview of the spec.
+**4. Suppress the `sd prime` banner in workflow stages — it instructs the exact actions the loop forbids.**
+planner@1 ran `sd prime` because AGENTS.md memory tells it to (reasoning trace: "per AGENTS.md, run `sd prime`"), pulling a 4.7 KB banner whose "Session Close Protocol" mandates `sd close` + `sd sync && git push` — both reserved for the deterministic Closeout. The planner journaled this as the run's top painpoint: "an LLM skimming the banner could comply."
+*Change:* one line in `prompts/planner.md` (and `implementer.md`): "Never run `sd prime` in this loop — its close/push protocol contradicts the role rules; the context brief supersedes it" (or scope the prime instruction in AGENTS.md to interactive sessions).
+*Effect:* removes a directly contradicting instruction from every planner context; eliminates the mis-close/push risk and one wasted call per pass.
 
-**4. Planner first-visit cost is the run's biggest line item — feed it the facts it keeps rediscovering.**
-Evidence: planner@1 = 354.7 s inference, $0.219, 14,936 reasoning tokens, 50,460 input tokens — ~42% of wall time and ~40% of total cost for one claim+brief. planner@2 did the same job in 98 s / $0.064 / 3.9k reasoning. The delta is first-visit repo archaeology (checkpoint-commit subject format, tracker transition semantics, evidence.nu internals) amplified by `reasoning_effort=high`.
-Change: persist the durable discoveries into planner-visible memory (the `.mulch/expertise/develop-workflow` mechanism already exists — mx-0b966a landed this run), specifically: claim-commit subject shape `fabro(<run-id>): planner (succeeded)`, status-transition claim detection, and "remaining seeds are loop-classified" context. Keep effort=high; cut the rediscovery, not the reasoning.
-Effect: ~3–4 min and ~$0.15 off a typical 2-seed run, with brief quality unchanged (planner@2 is the proof it survives at lower spend).
+**5. Make the authorized-exception pattern standing instead of per-brief boilerplate.**
+Both briefs this run carried manual override prose — fabro-f831's brief opens "CONTRADICTION RESOLVED: that file's own 'Platform scope is off-limits' section forbids `.fabro/` edits — this brief authorizes exactly that one file" — and implementer@2 journaled the pattern "has now recurred across fabro-7e44 and fabro-f831; worth a platform-level 'authorized exception' convention."
+*Change:* in `prompts/implementer.md`'s "Platform scope" section: "Exception: a brief that names a specific platform file authorizes editing exactly that file."
+*Effect:* planner briefs shed ~a third of their text (f831's was 2.2 KB, largely authorization), and the implementer no longer has to reconcile a contradiction before starting.
 
-**5. The gate is blind to file-mode changes — the exec bit on `evidence.nu` shipped broken.**
-Evidence: the run's final merged diff carries `old mode 100755 / new mode 100644` on `.fabro/workflows/develop/scripts/evidence.nu`; reviewer@1's journal flagged it ("Unintended hygiene rider … a future commit could restore it") but approved, and nothing downstream restored it — it landed in PR #9.
-Change: add a mode-change check to the project's `qualitygate` (fail on tracked scripts losing the executable bit), or make closeout restore/flag mode-only deltas. The deterministic gate is the right owner — the reviewer demonstrably won't block on it.
-Effect: no silent permission drift in workflow assets; reviewers stop approving known deviations.
+**6. Make null/no-seed path exercise a standing rule for workflow-script seeds.**
+implementer@1 found a latent crash: a `string`-typed Nushell param rejects runtime null, which "would have crashed evidence.nu's no-seed-in-progress path" (recorded as mulch `mx-0b966a`). The gate's nu-check is syntax-only ("syntax-clean 7 scripts") and would never have caught it — it surfaced only because this particular brief demanded fallback/null/empty-diff exercises.
+*Change:* add to `prompts/implementer.md` step 2: "When editing workflow scripts, exercise the null/no-seed/fallback paths via `nu -c` before finishing."
+*Effect:* rarely-hit paths get verified every time, not only when a brief remembers to ask.
 
-**6. PR-body generation fails every time on the configured model — fix or drop the call.**
-Evidence: worker log WARN at 13:10:56: `PR content generation failed; using deterministic fallback ... model=glm-4.7 error=LLM generation failed: No object generated: Failed to parse response as JSON`. The fallback worked (PR #9 exists), but the LLM call is wasted and the failure sits in the post-exit window (exit 13:09:46 → completed 13:11:02).
-Change: either repair the JSON-mode prompt/response parsing for the `pull_request.model` (glm-4.7 apparently returns non-JSON), or make the deterministic title/body the default and skip the generation call.
-Effect: clean logs, no flaky dependency on the completion path, ~1 min shaved off run finalization.
+**7. Deduplicate the reviewer preamble across cycles.**
+reviewer@2's prompt carried the identical ~2 KB evidence capture **twice** plus two tester sections and the prior cycle's closeout block — `preamble_stages_ignore` keeps tester+evidence per visit, and `command.output` is deduped into the evidence stage section rather than replacing it. The graph comment already flags "residual duplication (per-visit stage sections) is engine-side dedup work."
+*Change:* workflow-side mitigation until the engine dedups: add `evidence` to the reviewer's `preamble_stages_ignore` (the current capture still arrives via the `command.output` context key, which the prompt already teaches the reviewer to read as a blob ref).
+*Effect:* ~2 KB less preamble per review cycle and stale prior-cycle captures disappear; small but compounding on multi-cycle seeds.
 
-**7. `sd prime` banner contradicts role rules — role-scope it.**
-Evidence: planner@1's journal painpoint: the seeds-cli onboarding banner instructs every session to `sd close` / `sd sync && git push`, directly contradicting the graph's role rules (only deterministic Closeout closes; stages never push). The prompt overrides it, but a skimming model on a bad day complies with the banner.
-Change: `sd prime --role implementer|planner|reviewer` (suppress close/push instructions), or a workflow-level note that the Session Close Protocol applies to human interactive sessions only.
-Effect: removes a standing instruction-injection vector inside the loop's own tooling.
+**8. Right-size the gate for prompt-only seeds.**
+Both tester runs executed the full Go gate (build/vet/test, 11.1 s cold, 1.1 s cached) on a tree where gofib was never touched — both seeds changed only `.fabro/` and `.mulch/` files.
+*Change:* path-scope the tester (e.g. a `just qualitygate-lite` running nu-check + sync when only `.fabro/`/`.md` files changed), routed from the same node.
+*Effect:* seconds per cycle only — lowest impact here, but it removes a structurally meaningless check from dev-loop seeds.
 
----
+## What I could not inspect
 
-Lower-priority notes (noted, not actioned): the engine serialized two concurrent writes to `implementer.md` during implementer@2 (harmless WARNs, but the agent issued parallel edits to one file); reviewer@2's preamble carried the tester/evidence stage sections from *both* cycles — the known engine-side per-visit dedup work, negligible at 2 KB captures but it will matter at 15–25 KB.
-
-Sources: run events and checkpoints (stage timings, usage, journals, evidence outputs), worker log (4 WARN lines), and the final run diff — all for run `01M1EGK6J8CNP9APJ7PWE6WE74`.
+The live terminal/Slack notification behavior and the auto-merge PR flow (PR #9) were not observable from run events, so I can't ground recommendations about intermediate progress notifications (currently only `run.completed`/`run.failed` fire, per the run settings) — worth checking whether seed-close events would help operators watching 15-minute multi-cycle runs.
