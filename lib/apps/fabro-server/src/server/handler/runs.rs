@@ -18,7 +18,7 @@ use fabro_api::types::{
     BoardColumn, ManifestConfigType, ManifestGoalType, RunIntent, RunManifest, SubmitAnswerRequest,
     UpdateRunParentRequest, UpdateRunRequest,
 };
-use fabro_config::{CliLayer, RunLayer, Storage};
+use fabro_config::{CliLayer, RunLayer, Storage, project};
 use fabro_environment::{DEFAULT_ENVIRONMENT_ID, EnvironmentId};
 use fabro_interview::AnswerSubmission;
 use fabro_llm::client::Client as LlmClient;
@@ -340,7 +340,7 @@ async fn run_summary_at(
         return Ok(None);
     };
     if summary.timestamps.completed_at.is_none() {
-        let projection = state.stores.runs.get_cached_projection(run_id).await?;
+        let projection = state.stores.runs.load_run_projection(run_id).await?;
         if let Some(timing) = projection.and_then(|projection| projection.live_run_timing(now)) {
             summary.timing = Some(timing);
         }
@@ -730,6 +730,7 @@ pub(crate) async fn create_run_from_intent(
     });
 
     let entrypoint = lowered.entrypoint.clone();
+    let workflow_slug = project::workflow_slug_from_path(entrypoint.as_path());
     let raw_compiler_input = RawRunCompilerInput {
         workflow_bundle: lowered.workflow_bundle,
         entrypoint: lowered.entrypoint,
@@ -755,7 +756,7 @@ pub(crate) async fn create_run_from_intent(
         // admission via `with_target_and_git`; the compiler never reads them.
         git: None,
         storage_root: state.server_storage_dir(),
-        workflow_slug: None,
+        workflow_slug,
         workflow_version_id: Some(intent.workflow_version_id),
         target: None,
         provenance: run_provenance(&headers, &actor),
@@ -1066,6 +1067,11 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
                 error.to_string(),
                 "target_environment_unsupported",
             ),
+            EnvironmentSelectionError::AutomaticPullRequestUnsupported => intent_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                error.to_string(),
+                "pull_request_environment_unsupported",
+            ),
             EnvironmentSelectionError::ProviderDisabled { .. }
             | EnvironmentSelectionError::MissingCredential { .. } => intent_error(
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -1119,41 +1125,50 @@ async fn validate_intent_environment(
     settings: &fabro_types::WorkflowSettings,
     target: &RunTarget,
 ) -> Result<(), EnvironmentSelectionError> {
-    let provider = run_manifest::effective_sandbox_provider(&settings.run);
+    let configured_provider = run_manifest::configured_sandbox_provider(&settings.run);
+    let effective_provider = run_manifest::effective_sandbox_provider(&settings.run);
     let image = &settings.run.environment.image;
-    let image_incompatible = match provider {
+    let image_incompatible = match effective_provider {
         SandboxProviderKind::Docker => image.docker.is_none() && image.dockerfile.is_some(),
         SandboxProviderKind::Local | SandboxProviderKind::Daytona => false,
     };
     let (target_incompatible, detail) = match target {
         RunTarget::Git(_) => (
-            provider == SandboxProviderKind::Local || !settings.run.clone.enabled,
+            configured_provider == SandboxProviderKind::Local || !settings.run.clone.enabled,
             "Git targets require a compatible clone-enabled Docker or Daytona environment",
         ),
         RunTarget::None {} => (
-            provider == SandboxProviderKind::Local,
+            configured_provider == SandboxProviderKind::Local,
             "none targets require a compatible Docker or Daytona environment",
         ),
         RunTarget::Folder { .. } => (
-            provider != SandboxProviderKind::Local,
+            configured_provider != SandboxProviderKind::Local,
             "folder targets require a Local environment",
         ),
     };
     if image_incompatible || target_incompatible {
         return Err(EnvironmentSelectionError::TargetUnsupported { detail });
     }
-    if let Some(detail) =
-        run_manifest::sandbox_provider_policy_error(&state.server_settings(), provider)
-    {
-        return Err(EnvironmentSelectionError::ProviderDisabled { provider, detail });
+    // Settings resolution drops `run.pull_request` unless it is enabled, so
+    // `Some` means automatic pull requests were requested.
+    if !configured_provider.is_clone_based() && settings.run.pull_request.is_some() {
+        return Err(EnvironmentSelectionError::AutomaticPullRequestUnsupported);
     }
-    if provider == SandboxProviderKind::Daytona {
+    if let Some(detail) =
+        run_manifest::sandbox_provider_policy_error(&state.server_settings(), effective_provider)
+    {
+        return Err(EnvironmentSelectionError::ProviderDisabled {
+            provider: effective_provider,
+            detail,
+        });
+    }
+    if effective_provider == SandboxProviderKind::Daytona {
         match state.vault_secret(EnvVars::DAYTONA_API_KEY).await {
             Ok(Some(key)) if !key.trim().is_empty() => {}
             Ok(_) => {
                 return Err(EnvironmentSelectionError::MissingCredential {
-                    provider,
-                    name: EnvVars::DAYTONA_API_KEY,
+                    provider: effective_provider,
+                    name:     EnvVars::DAYTONA_API_KEY,
                 });
             }
             Err(source) => {
@@ -1634,7 +1649,7 @@ async fn get_run_settings(
         Ok(id) => id,
         Err(response) => return response,
     };
-    let projection = match state.cached_run_projection(&id).await {
+    let projection = match state.load_run_projection(&id).await {
         Ok(projection) => projection,
         Err(err) => return err.into_response(),
     };
@@ -1645,7 +1660,7 @@ async fn get_questions(
     RequireRunManagementTarget(id, _actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    match state.cached_run_projection(&id).await {
+    match state.load_run_projection(&id).await {
         Ok(projection) => {
             let questions = projection
                 .pending_interviews
@@ -1686,7 +1701,7 @@ async fn get_run_state(
     RequireRunManagementTarget(id, _actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
 ) -> Response {
-    match state.cached_run_projection(&id).await {
+    match state.load_run_projection(&id).await {
         Ok(projection) => Json(&*projection).into_response(),
         Err(err) => err.into_response(),
     }
@@ -1723,7 +1738,7 @@ async fn get_run_stage_context_window(
         Ok(stage_id) => stage_id,
         Err(response) => return response,
     };
-    let projection = match state.cached_run_projection(&id).await {
+    let projection = match state.load_run_projection(&id).await {
         Ok(projection) => projection,
         Err(err) => return err.into_response(),
     };
@@ -1779,7 +1794,7 @@ async fn get_run_stage_command_log(
         return ApiError::bad_request("limit must be greater than 0").into_response();
     }
     let limit = query.limit.min(MAX_COMMAND_LOG_LIMIT);
-    let projection = match state.cached_run_projection(&id).await {
+    let projection = match state.load_run_projection(&id).await {
         Ok(projection) => projection,
         Err(err) => return err.into_response(),
     };

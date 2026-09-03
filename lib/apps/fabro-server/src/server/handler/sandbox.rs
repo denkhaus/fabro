@@ -906,7 +906,7 @@ async fn reconnect_run_sandbox_for_inspection(
     run_id: &RunId,
 ) -> Result<InspectionSandbox, Response> {
     let status = state
-        .cached_run_projection(run_id)
+        .load_run_projection(run_id)
         .await
         .map_err(IntoResponse::into_response)?
         .status;
@@ -980,7 +980,7 @@ async fn load_run_sandbox_instance(
     run_id: &RunId,
 ) -> Result<fabro_types::RunSandboxInstance, Response> {
     let projection = state
-        .cached_run_projection(run_id)
+        .load_run_projection(run_id)
         .await
         .map_err(IntoResponse::into_response)?;
     projection

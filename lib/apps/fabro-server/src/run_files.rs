@@ -1207,7 +1207,7 @@ async fn load_projection(
     state: &Arc<AppState>,
     run_id: &RunId,
 ) -> std::result::Result<Arc<fabro_store::RunProjection>, ApiError> {
-    state.cached_run_projection(run_id).await
+    state.load_run_projection(run_id).await
 }
 
 /// A run sandbox borrowed by a read-only inspection.

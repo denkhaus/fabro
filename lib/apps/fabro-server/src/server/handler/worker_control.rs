@@ -35,7 +35,7 @@ async fn worker_control_stream(
     Query(query): Query<WorkerControlStreamQuery>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    let projection = match state.cached_run_projection(&id).await {
+    let projection = match state.load_run_projection(&id).await {
         Ok(projection) => projection,
         Err(err) => return err.into_response(),
     };

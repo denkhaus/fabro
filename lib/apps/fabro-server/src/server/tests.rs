@@ -4,7 +4,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc as StdArc, Mutex as StdMutex};
 
 use async_zip::base::read::mem::ZipFileReader;
@@ -58,7 +58,7 @@ use crate::worker_control::{
     LocalWorkerControlBus, WorkerControlBus, WorkerControlCursor, WorkerControlReceiver,
 };
 use crate::worker_runtime::{
-    LocalWorkerRuntime, StartedWorker, WorkerLaunchSpec, WorkerRef, WorkerRuntime,
+    LocalWorkerRuntime, StartedWorker, WorkerExit, WorkerLaunchSpec, WorkerRef, WorkerRuntime,
 };
 
 const MINIMAL_DOT: &str = r#"digraph Test {
@@ -2861,14 +2861,7 @@ allowed_usernames = ["octocat"]
             .collect::<Vec<_>>()
             .join(", ")
     );
-    let runtime_directory = Storage::new(storage_dir).runtime_directory();
-    ServerDaemon::new(
-        std::process::id(),
-        Bind::Tcp("127.0.0.1:32276".parse::<std::net::SocketAddr>().unwrap()),
-        runtime_directory.log_path(),
-    )
-    .write(&runtime_directory)
-    .unwrap();
+    write_test_server_record(storage_dir);
 
     let mut server_secret_env: HashMap<String, String> = dev_token
         .map(|token| HashMap::from([("FABRO_DEV_TOKEN".to_string(), token)]))
@@ -2945,6 +2938,37 @@ fn worker_token_claims(cmd: &Command, state: &AppState) -> crate::worker_token::
     .claims
 }
 
+fn write_test_server_record(storage_dir: &Path) {
+    let runtime_directory = Storage::new(storage_dir).runtime_directory();
+    ServerDaemon::new(
+        std::process::id(),
+        Bind::Tcp(
+            "127.0.0.1:32276"
+                .parse::<std::net::SocketAddr>()
+                .expect("test bind should parse"),
+        ),
+        runtime_directory.log_path(),
+    )
+    .write(&runtime_directory)
+    .expect("test server record should be written");
+}
+
+/// Waits up to one second for `condition` to hold, re-checking whenever
+/// `notify` fires.
+async fn wait_until(notify: &Notify, condition: impl Fn() -> bool, expectation: &str) {
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            let notified = notify.notified();
+            if condition() {
+                return;
+            }
+            notified.await;
+        }
+    })
+    .await
+    .expect(expectation);
+}
+
 #[derive(Default)]
 struct RecordingWorkerRuntime {
     requested:     StdMutex<Vec<WorkerRef>>,
@@ -2970,17 +2994,102 @@ impl RecordingWorkerRuntime {
     }
 
     async fn wait_for_forced_ref(&self, worker_ref: &WorkerRef) {
-        tokio::time::timeout(std::time::Duration::from_secs(1), async {
-            loop {
-                let notified = self.forced_notify.notified();
-                if self.forced_refs().contains(worker_ref) {
-                    return;
-                }
-                notified.await;
+        wait_until(
+            &self.forced_notify,
+            || self.forced_refs().contains(worker_ref),
+            "worker should be force-stopped after the cancellation grace period",
+        )
+        .await;
+    }
+}
+
+#[derive(Clone, Copy)]
+enum PreStartWorkerOutcome {
+    LaunchFailure,
+    EarlyExit,
+}
+
+/// Test worker runtime whose `start` fails before the worker reaches
+/// `Starting`, either by refusing to launch or by exiting immediately. When
+/// built with `held`, `start` blocks until `release_held_start` so a test can
+/// act while the launch is in flight.
+struct PreStartWorkerRuntime {
+    outcome:       PreStartWorkerOutcome,
+    starts:        AtomicUsize,
+    start_entered: Notify,
+    release_start: Option<Notify>,
+}
+
+impl PreStartWorkerRuntime {
+    fn new(outcome: PreStartWorkerOutcome) -> Self {
+        Self {
+            outcome,
+            starts: AtomicUsize::new(0),
+            start_entered: Notify::new(),
+            release_start: None,
+        }
+    }
+
+    fn held(outcome: PreStartWorkerOutcome) -> Self {
+        Self {
+            release_start: Some(Notify::new()),
+            ..Self::new(outcome)
+        }
+    }
+
+    fn start_count(&self) -> usize {
+        self.starts.load(Ordering::Relaxed)
+    }
+
+    async fn wait_for_start(&self) {
+        wait_until(
+            &self.start_entered,
+            || self.start_count() > 0,
+            "test worker runtime should receive one start request",
+        )
+        .await;
+    }
+
+    fn release_held_start(&self) {
+        self.release_start
+            .as_ref()
+            .expect("runtime should have been built with a held start")
+            .notify_one();
+    }
+}
+
+#[async_trait::async_trait]
+impl WorkerRuntime for PreStartWorkerRuntime {
+    async fn start(&self, _spec: WorkerLaunchSpec) -> anyhow::Result<StartedWorker> {
+        self.starts.fetch_add(1, Ordering::Relaxed);
+        self.start_entered.notify_waiters();
+        if let Some(release_start) = &self.release_start {
+            release_start.notified().await;
+        }
+
+        match self.outcome {
+            PreStartWorkerOutcome::LaunchFailure => {
+                anyhow::bail!("test worker launch failed")
             }
-        })
-        .await
-        .expect("worker should be force-stopped after the cancellation grace period");
+            PreStartWorkerOutcome::EarlyExit => Ok(StartedWorker {
+                worker_ref: test_worker_ref(u32::MAX),
+                stderr:     Box::pin(tokio::io::empty()),
+                wait:       Box::pin(async {
+                    Ok(WorkerExit {
+                        success: false,
+                        detail:  "test worker exited before starting".to_string(),
+                    })
+                }),
+            }),
+        }
+    }
+
+    async fn request_stop(&self, _worker_ref: &WorkerRef) {}
+
+    async fn force_stop(&self, _worker_ref: &WorkerRef) {}
+
+    async fn is_alive(&self, _worker_ref: &WorkerRef) -> bool {
+        false
     }
 }
 
@@ -3566,10 +3675,17 @@ async fn store_workflow_version(
     graph: &str,
     workflow_toml: Option<&str>,
 ) -> fabro_types::WorkflowVersionId {
-    let mut files = std::collections::BTreeMap::from([(
-        fabro_types::WorkflowPath::new("workflow.fabro").unwrap(),
-        graph.to_string(),
-    )]);
+    store_workflow_version_with_entrypoint(state, "workflow.fabro", graph, workflow_toml).await
+}
+
+async fn store_workflow_version_with_entrypoint(
+    state: &AppState,
+    entrypoint: &str,
+    graph: &str,
+    workflow_toml: Option<&str>,
+) -> fabro_types::WorkflowVersionId {
+    let entrypoint = fabro_types::WorkflowPath::new(entrypoint).unwrap();
+    let mut files = std::collections::BTreeMap::from([(entrypoint.clone(), graph.to_string())]);
     if let Some(workflow_toml) = workflow_toml {
         files.insert(
             fabro_types::WorkflowPath::new("workflow.toml").unwrap(),
@@ -3584,18 +3700,57 @@ async fn store_workflow_version(
             "FROM alpine:3".to_string(),
         );
     }
-    let version = fabro_types::WorkflowVersion::new(
-        fabro_types::WorkflowPath::new("workflow.fabro").unwrap(),
-        files,
-        std::collections::BTreeMap::new(),
-    )
-    .unwrap();
+    let version =
+        fabro_types::WorkflowVersion::new(entrypoint, files, std::collections::BTreeMap::new())
+            .unwrap();
     let version = fabro_workflow_version::ValidatedWorkflowVersion::new(version).unwrap();
     let blobs = state.store_ref().blobs();
     fabro_workflow_version::WorkflowVersionStore::new(blobs)
         .put(&version)
         .await
         .unwrap()
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_derives_workflow_slug_from_immutable_entrypoint() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    for (entrypoint, expected_slug) in [
+        ("deploy/workflow.fabro", "deploy"),
+        ("workflow.fabro", "workflow"),
+    ] {
+        let workflow_version_id =
+            store_workflow_version_with_entrypoint(&state, entrypoint, MINIMAL_DOT, None).await;
+        let body = post_run_manifest(
+            &app,
+            json!({
+                "workflow_version_id": workflow_version_id,
+                "target": { "kind": "none" },
+                "args": {}
+            }),
+        )
+        .await;
+        let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+        let projection = state
+            .stores
+            .runs
+            .open_run_reader(&run_id)
+            .await
+            .unwrap()
+            .state()
+            .await
+            .unwrap();
+
+        assert_eq!(
+            projection.spec.workflow_slug.as_deref(),
+            Some(expected_slug)
+        );
+        assert_eq!(
+            projection.spec.workflow_version_id,
+            Some(workflow_version_id)
+        );
+    }
 }
 
 #[tokio::test]
@@ -3817,6 +3972,234 @@ async fn post_runs_run_intent_args_true_override_resolved_settings_without_start
 }
 
 #[tokio::test]
+async fn post_runs_run_intent_dry_run_uses_configured_target_provider() {
+    let folder = tempfile::tempdir().unwrap();
+    let folder_path = folder
+        .path()
+        .canonicalize()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let cases = [
+        (
+            test_app_state(),
+            None,
+            json!({
+                "kind": "git",
+                "repo": "fabro-sh/fabro",
+                "branch": "main"
+            }),
+            json!({ "dry_run": true }),
+        ),
+        (
+            test_app_state(),
+            None,
+            json!({ "kind": "none" }),
+            json!({ "dry_run": true }),
+        ),
+        (
+            TestAppStateBuilder::new()
+                .default_environment_provider(Some(EnvironmentProvider::Daytona))
+                .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+                .build(),
+            Some("_version = 1\n[run.execution]\nmode = \"dry_run\"\n"),
+            json!({ "kind": "none" }),
+            json!({}),
+        ),
+        (
+            TestAppStateBuilder::new()
+                .default_environment_provider(Some(EnvironmentProvider::Daytona))
+                .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+                .build(),
+            Some("_version = 1\n[run.execution]\nmode = \"dry_run\"\n"),
+            json!({
+                "kind": "git",
+                "repo": "fabro-sh/fabro",
+                "branch": "main"
+            }),
+            json!({}),
+        ),
+        (
+            TestAppStateBuilder::new()
+                .runtime_settings(
+                    default_test_server_settings(),
+                    manifest_run_defaults_from_toml("[run.execution]\nmode = \"dry_run\"\n"),
+                )
+                .default_environment_provider(Some(EnvironmentProvider::Local))
+                .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+                .build(),
+            None,
+            json!({ "kind": "folder", "path": folder_path }),
+            json!({}),
+        ),
+    ];
+
+    for (state, workflow_toml, target, args) in cases {
+        let app = crate::test_support::build_test_router(Arc::clone(&state));
+        let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, workflow_toml).await;
+        let body = post_run_manifest(
+            &app,
+            json!({
+                "workflow_version_id": workflow_version_id,
+                "target": target,
+                "args": args
+            }),
+        )
+        .await;
+        let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+        let projection = state
+            .stores
+            .runs
+            .open_run_reader(&run_id)
+            .await
+            .unwrap()
+            .state()
+            .await
+            .unwrap();
+
+        assert_eq!(projection.spec.settings.run.execution.mode, RunMode::DryRun);
+        assert_eq!(
+            serde_json::to_value(projection.spec.target.unwrap()).unwrap(),
+            target
+        );
+    }
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_dry_run_rejects_configured_target_mismatches() {
+    let states_and_targets = [
+        (
+            local_test_app_state(),
+            json!({
+                "kind": "git",
+                "repo": "fabro-sh/fabro",
+                "branch": "main"
+            }),
+        ),
+        (local_test_app_state(), json!({ "kind": "none" })),
+        (
+            test_app_state(),
+            json!({ "kind": "folder", "path": "/path-that-must-not-be-read" }),
+        ),
+        (
+            TestAppStateBuilder::new()
+                .default_environment_provider(Some(EnvironmentProvider::Daytona))
+                .vault_entries([(fabro_static::EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+                .build(),
+            json!({ "kind": "folder", "path": "/path-that-must-not-be-read" }),
+        ),
+    ];
+
+    for (state, target) in states_and_targets {
+        let app = crate::test_support::build_test_router(Arc::clone(&state));
+        let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+        let response = post_run_intent_response(
+            &app,
+            json!({
+                "workflow_version_id": workflow_version_id,
+                "target": target,
+                "args": { "dry_run": true }
+            }),
+        )
+        .await;
+        let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+
+        assert_eq!(body["errors"][0]["code"], "target_environment_unsupported");
+        assert!(
+            state
+                .stores
+                .run_summaries
+                .list_identities()
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn post_runs_run_intent_dry_run_starts_in_isolated_scratch_workspace() {
+    let source = r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[[run.prepare.steps]]
+script = "pwd > setup-working-directory.txt"
+"#;
+    let state = test_app_state_with_settings_and_registry_factory(
+        server_settings_from_toml(source),
+        manifest_run_defaults_from_toml(source),
+        |interviewer| fabro_workflow::handler::default_registry(interviewer, || None),
+    );
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let external_target = tempfile::tempdir().unwrap();
+    let external_sentinel = external_target.path().join("existing-target-file.txt");
+    tokio::fs::write(&external_sentinel, b"must remain unchanged")
+        .await
+        .unwrap();
+    let workflow_version_id = store_workflow_version(&state, MINIMAL_DOT, None).await;
+    let body = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": {
+                "kind": "git",
+                "repo": "fabro-sh/fabro",
+                "branch": "main"
+            },
+            "args": { "dry_run": true }
+        }),
+    )
+    .await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/start")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    response_json!(response, StatusCode::OK).await;
+
+    execute_run(Arc::clone(&state), run_id).await;
+
+    let run_store = state.stores.runs.open_run_reader(&run_id).await.unwrap();
+    assert_eq!(
+        run_store.state().await.unwrap().status,
+        RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        }
+    );
+    let scratch_workspace = Storage::new(state.server_storage_dir())
+        .run_scratch(&run_id)
+        .root()
+        .join("dry-run-workspace")
+        .canonicalize()
+        .unwrap();
+    let setup_working_directory =
+        tokio::fs::read_to_string(scratch_workspace.join("setup-working-directory.txt"))
+            .await
+            .unwrap();
+    assert_eq!(Path::new(setup_working_directory.trim()), scratch_workspace);
+    assert_eq!(
+        tokio::fs::read(&external_sentinel).await.unwrap(),
+        b"must remain unchanged"
+    );
+    assert!(
+        !external_target
+            .path()
+            .join("setup-working-directory.txt")
+            .exists()
+    );
+}
+
+#[tokio::test]
 async fn post_runs_run_intent_args_false_are_distinct_from_omitted_overrides() {
     let dir = tempfile::tempdir().unwrap();
     let workspace = dir.path().join("workspace");
@@ -3977,6 +4360,101 @@ async fn post_runs_run_intent_canonicalizes_and_persists_a_local_folder_target()
     );
     assert_eq!(projection.spec.manifest_blob, None);
     assert!(projection.spec.definition_blob.is_some());
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_rejects_automatic_pull_requests_for_local_environment() {
+    let target = tempfile::tempdir().unwrap();
+    let state = local_test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(
+        &state,
+        MINIMAL_DOT,
+        Some("_version = 1\n[run.pull_request]\nenabled = true\n"),
+    )
+    .await;
+
+    let response =
+        post_run_intent_response(&app, folder_intent(workflow_version_id, target.path())).await;
+    let body = response_json!(response, StatusCode::UNPROCESSABLE_ENTITY).await;
+
+    assert_eq!(
+        body["errors"][0]["code"],
+        "pull_request_environment_unsupported"
+    );
+    assert_eq!(
+        body["errors"][0]["detail"],
+        "automatic pull requests require a clone-based Docker or Daytona environment; disable run.pull_request.enabled for Local execution"
+    );
+    assert!(state.runs.lock().expect("runs lock poisoned").is_empty());
+    assert!(
+        state
+            .stores
+            .run_summaries
+            .list_identities()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_accepts_disabled_pull_requests_for_local_environment() {
+    let target = tempfile::tempdir().unwrap();
+    let state = local_test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(
+        &state,
+        MINIMAL_DOT,
+        Some("_version = 1\n[run.pull_request]\nenabled = false\n"),
+    )
+    .await;
+
+    // `post_run_manifest` asserts the `201 Created` admission outcome.
+    post_run_manifest(&app, folder_intent(workflow_version_id, target.path())).await;
+}
+
+#[tokio::test]
+async fn post_runs_run_intent_accepts_automatic_pull_requests_for_configured_docker_dry_run() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let workflow_version_id = store_workflow_version(
+        &state,
+        MINIMAL_DOT,
+        Some("_version = 1\n[run.pull_request]\nenabled = true\n"),
+    )
+    .await;
+
+    let body = post_run_manifest(
+        &app,
+        json!({
+            "workflow_version_id": workflow_version_id,
+            "target": {
+                "kind": "git",
+                "repo": "fabro-sh/fabro",
+                "branch": "main"
+            },
+            "args": { "dry_run": true }
+        }),
+    )
+    .await;
+    let run_id = body["id"].as_str().unwrap().parse::<RunId>().unwrap();
+    let projection = state
+        .stores
+        .runs
+        .open_run_reader(&run_id)
+        .await
+        .unwrap()
+        .state()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        projection.spec.settings.run.environment.provider,
+        EnvironmentProvider::Docker
+    );
+    assert_eq!(projection.spec.settings.run.execution.mode, RunMode::DryRun);
+    assert!(projection.spec.settings.run.pull_request.is_some());
 }
 
 #[tokio::test]
@@ -5426,6 +5904,203 @@ async fn create_and_start_run(app: &Router, dot_source: &str) -> String {
     app.clone().oneshot(req).await.unwrap();
 
     run_id
+}
+
+fn subprocess_pre_start_failure_state(runtime: StdArc<PreStartWorkerRuntime>) -> Arc<AppState> {
+    let state = TestAppStateBuilder::new()
+        .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .worker_runtime(runtime)
+        .build();
+    write_test_server_record(&state.server_storage_dir());
+    state
+}
+
+fn run_failed_reasons(events: &[EventEnvelope]) -> Vec<FailureReason> {
+    events
+        .iter()
+        .filter_map(|envelope| match &envelope.event.body {
+            EventBody::RunFailed(props) => Some(props.failure.reason),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Asserts that a run which failed before its worker reached `Starting`
+/// recorded exactly one `run.failed` event with `expected_reason` and that the
+/// durable and in-memory statuses agree. Returns the run's events for further
+/// inspection.
+async fn assert_run_failed_before_start(
+    state: &Arc<AppState>,
+    run_id: RunId,
+    expected_reason: FailureReason,
+) -> Vec<EventEnvelope> {
+    let run_store = state
+        .stores
+        .runs
+        .open_run_reader(&run_id)
+        .await
+        .expect("failed run should remain readable");
+    let events = run_store
+        .list_events()
+        .await
+        .expect("failed run events should remain readable");
+    assert_eq!(run_failed_reasons(&events), vec![expected_reason]);
+
+    let expected_status = RunStatus::Failed {
+        reason: expected_reason,
+    };
+    assert_eq!(
+        run_store
+            .state()
+            .await
+            .expect("failed run state should load")
+            .status,
+        expected_status
+    );
+    assert_eq!(
+        state
+            .runs
+            .lock()
+            .expect("runs lock poisoned")
+            .get(&run_id)
+            .expect("managed run should remain present")
+            .status,
+        expected_status
+    );
+    events
+}
+
+async fn assert_subprocess_pre_start_failure(
+    outcome: PreStartWorkerOutcome,
+    expected_reason: FailureReason,
+) {
+    let runtime = StdArc::new(PreStartWorkerRuntime::new(outcome));
+    let state = subprocess_pre_start_failure_state(StdArc::clone(&runtime));
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_and_start_run(&app, MINIMAL_DOT)
+        .await
+        .parse::<RunId>()
+        .expect("created run id should parse");
+    let run_store = state
+        .stores
+        .runs
+        .open_run_reader(&run_id)
+        .await
+        .expect("created run should remain readable");
+
+    assert_eq!(
+        run_store
+            .state()
+            .await
+            .expect("runnable run state should load")
+            .status,
+        RunStatus::Runnable
+    );
+
+    execute_run(Arc::clone(&state), run_id).await;
+
+    assert_eq!(runtime.start_count(), 1);
+    let events = assert_run_failed_before_start(&state, run_id, expected_reason).await;
+    let lifecycle_events = events
+        .iter()
+        .map(|envelope| envelope.event.event_name())
+        .filter(|name| matches!(*name, "run.runnable" | "run.starting" | "run.failed"))
+        .collect::<Vec<_>>();
+    assert_eq!(lifecycle_events, vec!["run.runnable", "run.failed"]);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{run_id}")))
+                .body(Body::empty())
+                .expect("run request should build"),
+        )
+        .await
+        .expect("run request should complete");
+    let body = response_json!(response, StatusCode::OK).await;
+    assert_eq!(run_json_status(&body)["kind"], "failed");
+    assert_eq!(
+        run_json_status(&body)["reason"],
+        expected_reason.to_string()
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api("/runs"))
+                .body(Body::empty())
+                .expect("run list request should build"),
+        )
+        .await
+        .expect("run list request should complete");
+    let body = response_json!(response, StatusCode::OK).await;
+    let run_id_string = run_id.to_string();
+    let listed = body["data"]
+        .as_array()
+        .expect("run list data should be an array")
+        .iter()
+        .find(|run| run_json_id(run) == Some(run_id_string.as_str()))
+        .expect("failed run should remain listed");
+    assert_eq!(run_json_status(listed)["kind"], "failed");
+    assert_eq!(
+        run_json_status(listed)["reason"],
+        expected_reason.to_string()
+    );
+}
+
+#[tokio::test]
+async fn subprocess_pre_start_failure_persists_launch_failure_from_runnable() {
+    assert_subprocess_pre_start_failure(
+        PreStartWorkerOutcome::LaunchFailure,
+        FailureReason::LaunchFailed,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn subprocess_pre_start_failure_persists_early_worker_exit_from_runnable() {
+    assert_subprocess_pre_start_failure(
+        PreStartWorkerOutcome::EarlyExit,
+        FailureReason::Terminated,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn subprocess_pre_start_failure_preserves_pending_cancellation() {
+    let runtime = StdArc::new(PreStartWorkerRuntime::held(
+        PreStartWorkerOutcome::LaunchFailure,
+    ));
+    let state = subprocess_pre_start_failure_state(StdArc::clone(&runtime));
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_and_start_run(&app, MINIMAL_DOT)
+        .await
+        .parse::<RunId>()
+        .expect("created run id should parse");
+
+    let execution = tokio::spawn(execute_run(Arc::clone(&state), run_id));
+    runtime.wait_for_start().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(&format!("/runs/{run_id}/cancel")))
+                .body(Body::empty())
+                .expect("cancel request should build"),
+        )
+        .await
+        .expect("cancel request should complete");
+    assert_status!(response, StatusCode::ACCEPTED).await;
+
+    runtime.release_held_start();
+    execution.await.expect("run execution task should complete");
+
+    assert_eq!(runtime.start_count(), 1);
+    assert_run_failed_before_start(&state, run_id, FailureReason::Cancelled).await;
 }
 
 async fn create_durable_run_with_events(
@@ -11922,16 +12597,112 @@ async fn get_run_state_exposes_pending_interviews() {
     );
 }
 
+/// Builds an app state over shared object, blob, and summary stores so a test
+/// can drop it and open a second state that sees the same durable data.
+fn test_app_state_over_shared_stores(
+    object_store: &Arc<dyn object_store::ObjectStore>,
+    blobs: &Arc<fabro_store::BlobStore>,
+    summaries: &Arc<fabro_store::RunSummaryStore>,
+) -> Arc<AppState> {
+    let store = Arc::new(fabro_store::test_support::test_database_with_stores(
+        Arc::clone(object_store),
+        "runs",
+        std::time::Duration::from_millis(1),
+        None,
+        Arc::clone(blobs),
+        Arc::clone(summaries),
+    ));
+    test_app_state_with_store(
+        default_test_server_settings(),
+        RunLayer::default(),
+        5,
+        store,
+        ArtifactStore::new(Arc::clone(object_store), "artifacts"),
+    )
+}
+
 #[tokio::test]
-async fn cache_backed_run_endpoints_reflect_events_appended_after_warmup() {
+async fn restarted_run_state_details_load_from_sql_and_preserve_error_statuses() {
+    let object_store: Arc<dyn object_store::ObjectStore> =
+        Arc::new(object_store::memory::InMemory::new());
+    let summaries = fabro_store::test_support::test_run_summary_store();
+    let blobs = fabro_store::test_support::test_blob_store();
+    let first_state = test_app_state_over_shared_stores(&object_store, &blobs, &summaries);
+    let healthy_id = fixtures::RUN_1;
+    let broken_id = fixtures::RUN_2;
+    create_durable_run_with_events(&first_state, healthy_id, &[
+        workflow_event::Event::RunSubmitted {
+            definition_blob: None,
+        },
+    ])
+    .await;
+    create_succeeded_run(&first_state, broken_id).await;
+    first_state
+        .stores
+        .run_summaries
+        .test_delete_run_events(&broken_id)
+        .await
+        .unwrap();
+    drop(first_state);
+
+    let reopened_state = test_app_state_over_shared_stores(&object_store, &blobs, &summaries);
+    assert_eq!(
+        reconcile_incomplete_runs_on_startup(&reopened_state)
+            .await
+            .unwrap(),
+        0,
+        "startup reconciliation must not replay terminal histories"
+    );
+    let app = crate::test_support::build_test_router(reopened_state);
+
+    let healthy = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{healthy_id}/state")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let healthy_body = response_json!(healthy, StatusCode::OK).await;
+    assert_eq!(healthy_body["spec"]["run_id"], healthy_id.to_string());
+
+    let missing = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{}/state", fixtures::RUN_3)))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(missing, StatusCode::NOT_FOUND).await;
+
+    let broken = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{broken_id}/state")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(broken, StatusCode::INTERNAL_SERVER_ERROR).await;
+}
+
+#[tokio::test]
+async fn run_projection_endpoints_reflect_events_appended_to_an_open_run() {
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
     let run_id = create_run(&app, MINIMAL_DOT)
         .await
         .parse::<RunId>()
         .unwrap();
-
-    state.stores.runs.warm_projection_cache().await.unwrap();
 
     let run_store = state.stores.runs.open_run(&run_id).await.unwrap();
     workflow_event::append_event(&run_store, &run_id, &workflow_event::Event::RunRunnable {
@@ -13882,14 +14653,14 @@ async fn run_tool_worker_cross_run_routes_require_inspects_scope() {
     // Creator allowance: a run created BY the worker stays manageable even
     // before any parent link exists — the sub-workflow pattern.
     let created_child = create_run_with_bearer(&app, &run_tool_worker_token).await;
-    let cached = state
+    let projection = state
         .stores
         .runs
-        .get_cached_projection(&created_child)
+        .load_run_projection(&created_child)
         .await
         .unwrap()
-        .expect("created run should be cached");
-    assert_eq!(cached.spec.provenance.subject, Principal::Worker {
+        .expect("created run should have a projection");
+    assert_eq!(projection.spec.provenance.subject, Principal::Worker {
         run_id: parent_run_id,
     },);
 
@@ -14043,10 +14814,10 @@ async fn run_tool_worker_ancestor_allowance_independent_of_creator() {
     let cached = state
         .stores
         .runs
-        .get_cached_projection(&user_child)
+        .load_run_projection(&user_child)
         .await
         .unwrap()
-        .expect("child should be cached");
+        .expect("child should have a projection");
     assert!(
         !matches!(
             &cached.spec.provenance.subject,

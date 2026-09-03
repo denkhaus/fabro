@@ -86,7 +86,7 @@ async fn get_checkpoint(
         Ok(id) => id,
         Err(response) => return response,
     };
-    match state.cached_run_projection(&id).await {
+    match state.load_run_projection(&id).await {
         Ok(projection) => match projection.current_checkpoint() {
             Some(cp) => (StatusCode::OK, Json(cp.clone())).into_response(),
             None => (StatusCode::OK, Json(serde_json::json!(null))).into_response(),
@@ -131,11 +131,18 @@ async fn read_run_blob(
 }
 
 async fn ensure_run_exists(state: &AppState, run_id: &RunId) -> Result<(), Response> {
-    state
-        .cached_run_projection(run_id)
+    match state
+        .stores
+        .run_summaries
+        .get(run_id, chrono::Utc::now())
         .await
-        .map(|_| ())
-        .map_err(IntoResponse::into_response)
+    {
+        Ok(Some(_)) => Ok(()),
+        Ok(None) => Err(ApiError::not_found("Run not found.").into_response()),
+        Err(err) => {
+            Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response())
+        }
+    }
 }
 
 async fn list_run_artifacts(
@@ -330,7 +337,7 @@ async fn download_run_artifacts(
         Ok(id) => id,
         Err(response) => return response,
     };
-    let projection = match state.cached_run_projection(&id).await {
+    let projection = match state.load_run_projection(&id).await {
         Ok(projection) => projection,
         Err(error) => return error.into_response(),
     };

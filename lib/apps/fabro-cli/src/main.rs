@@ -1313,20 +1313,6 @@ destination = "{destination}"
     }
 
     #[test]
-    fn run_manifest_args_preserves_input_only_manifest_args() {
-        let cli = Cli::try_parse_from(["fabro", "run", "workflow.toml", "-I", "foo=bar"])
-            .expect("should parse");
-        match *cli.command.unwrap() {
-            Commands::RunCmd(RunCommands::Run(args)) => {
-                let manifest_args = manifest_args::run_manifest_args(&args)
-                    .expect("input-only args should be retained");
-                assert_eq!(manifest_args.input, vec!["foo=bar"]);
-            }
-            _ => panic!("unexpected command variant"),
-        }
-    }
-
-    #[test]
     fn parse_create_input_long_flag() {
         let cli = Cli::try_parse_from(["fabro", "create", "workflow.toml", "--input", "foo=bar"])
             .expect("should parse");

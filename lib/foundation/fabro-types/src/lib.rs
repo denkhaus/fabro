@@ -82,7 +82,10 @@ pub use graph::{
     AttrValue, AttributeScope, ContextKeyAttr, Edge, Graph, KNOWN_HANDLER_TYPES, Node, OnFailure,
     ResolvedOnFailure, is_known_handler_type, is_llm_handler_type, shape_to_handler_type,
 };
-pub use input_scalar::{JsonScalarToTomlError, json_scalar_to_toml_value};
+pub use input_scalar::{
+    JsonScalarToTomlError, TomlScalarToJsonError, json_scalar_to_toml_value,
+    toml_scalar_to_json_value,
+};
 pub use interview::{
     InterviewQuestionRecord, QuestionType, ReviewTarget, ReviewTargetError, ReviewTargetKind,
 };

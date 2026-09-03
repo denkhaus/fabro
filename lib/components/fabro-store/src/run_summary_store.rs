@@ -12,8 +12,7 @@ use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
 use sqlx::{Connection as _, QueryBuilder, Row as _, Sqlite, SqlitePool, Transaction};
 use strum::VariantArray as _;
 
-use crate::run_state::{build_summary, projected_billing};
-use crate::slate::CachedRunProjection;
+use crate::run_state::{ProjectedRun, build_summary, projected_billing};
 use crate::{Error, EventPayload, Result, keys};
 
 const INSERT_RUN_SQL: &str = r"
@@ -294,14 +293,14 @@ ON CONFLICT(singleton) DO NOTHING
     }
 
     #[cfg(test)]
-    pub(crate) async fn upsert_projection(&self, entry: &CachedRunProjection) -> Result<()> {
+    pub(crate) async fn upsert_projection(&self, entry: &ProjectedRun) -> Result<()> {
         let record = PreparedRunSummary::from_entry(entry);
         let mut connection = self.pool.acquire().await?;
         upsert_run_on_connection(&mut connection, &record).await
     }
 
     #[cfg(test)]
-    pub(crate) async fn reconcile(&self, entries: &[CachedRunProjection]) -> Result<()> {
+    pub(crate) async fn reconcile(&self, entries: &[ProjectedRun]) -> Result<()> {
         use std::collections::{HashMap, HashSet};
 
         let mut transaction = self.pool.begin().await?;
@@ -355,6 +354,13 @@ ON CONFLICT(singleton) DO NOTHING
     pub(crate) async fn head(&self, run_id: &RunId) -> Result<Option<u32>> {
         let mut connection = self.acquire().await?;
         select_run_head(&mut connection, run_id).await
+    }
+
+    /// Replays one run's canonical history from one validated SQLite snapshot.
+    /// Fails with `RunNotFound` when the run does not exist.
+    pub(crate) async fn load_projection(&self, run_id: &RunId) -> Result<ProjectedRun> {
+        let events = self.list_events_for_run(run_id).await?;
+        ProjectedRun::replay(*run_id, &events)
     }
 
     pub(crate) async fn list_events_for_run(&self, run_id: &RunId) -> Result<Vec<EventEnvelope>> {
@@ -542,9 +548,6 @@ ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms
         decode_run_rows(&rows, now)
     }
 
-    /// Run ids that have ever recorded an explicit pull request creation
-    /// request. Callers replay these candidate histories to determine whether
-    /// their latest request is still pending.
     /// Newest non-terminal run created by the given automation, if any
     /// (fabro-09ea overlap guard). Terminal statuses are exactly the
     /// immutable kinds: succeeded, failed, dead.
@@ -575,10 +578,36 @@ LIMIT 1
             .transpose()
     }
 
+    /// Run ids whose latest explicit pull request creation request has no
+    /// later event that would resolve it. This mirrors the projection reducer:
+    /// a newer request supersedes the old one; `created`, `linked`, and
+    /// `unlinked` resolve any pending request; `failed` resolves only the
+    /// request whose creation id it names. Callers still replay each candidate
+    /// to confirm, so this must never omit a genuinely pending run, but it
+    /// keeps the replayed set bounded by in-flight requests rather than by
+    /// every run that ever asked for a pull request.
     pub async fn list_pull_request_creation_candidate_run_ids(&self) -> Result<Vec<RunId>> {
         sqlx::query_scalar::<_, String>(
-            "SELECT DISTINCT run_id FROM run_events \
-             WHERE event_name = 'pull_request.creation_requested'",
+            "SELECT DISTINCT requested.run_id FROM run_events AS requested \
+             WHERE requested.event_name = 'pull_request.creation_requested' \
+               AND NOT EXISTS ( \
+                 SELECT 1 FROM run_events AS later \
+                 WHERE later.run_id = requested.run_id \
+                   AND later.seq > requested.seq \
+                   AND ( \
+                     later.event_name IN ( \
+                       'pull_request.creation_requested', \
+                       'pull_request.created', \
+                       'pull_request.linked', \
+                       'pull_request.unlinked' \
+                     ) \
+                     OR ( \
+                       later.event_name = 'pull_request.failed' \
+                       AND json_extract(later.event_json, '$.properties.creation_id') \
+                         = json_extract(requested.event_json, '$.properties.creation_id') \
+                     ) \
+                   ) \
+               )",
         )
         .fetch_all(&self.pool)
         .await?
@@ -651,7 +680,7 @@ FROM runs",
 impl RunSummaryStore {
     pub(crate) async fn insert_first_event_on_connection(
         connection: &mut SqliteConnection,
-        entry: &CachedRunProjection,
+        entry: &ProjectedRun,
         payload: &EventPayload,
     ) -> Result<EventEnvelope> {
         let record = PreparedRunSummary::from_entry(entry);
@@ -670,7 +699,7 @@ impl RunSummaryStore {
     pub(crate) async fn append_event_on_connection(
         connection: &mut SqliteConnection,
         expected_last_seq: u32,
-        entry: &CachedRunProjection,
+        entry: &ProjectedRun,
         payload: &EventPayload,
     ) -> Result<EventEnvelope> {
         let next_seq = next_event_seq_after(expected_last_seq)?;
@@ -747,7 +776,7 @@ impl RunSummaryStore {
 
     pub(crate) async fn insert_imported_run_on_connection(
         connection: &mut SqliteConnection,
-        entry: &CachedRunProjection,
+        entry: &ProjectedRun,
     ) -> Result<()> {
         let record = PreparedRunSummary::from_entry(entry);
         ensure_entry_identity(entry, &record, entry.last_seq)?;
@@ -781,7 +810,7 @@ impl RunSummaryStore {
 
     pub(crate) async fn verify_current_run_on_connection(
         connection: &mut SqliteConnection,
-        entry: &CachedRunProjection,
+        entry: &ProjectedRun,
     ) -> Result<()> {
         let record = PreparedRunSummary::from_entry(entry);
         ensure_entry_identity(entry, &record, entry.last_seq)?;
@@ -1017,7 +1046,7 @@ struct PreparedRunSummary {
 }
 
 impl PreparedRunSummary {
-    fn from_entry(entry: &CachedRunProjection) -> Self {
+    fn from_entry(entry: &ProjectedRun) -> Self {
         let mut run = build_summary(&entry.projection, &entry.run_id);
         if run.timing.is_none() {
             let at = run
@@ -1049,7 +1078,7 @@ impl PreparedRunSummary {
 }
 
 fn ensure_entry_identity(
-    entry: &CachedRunProjection,
+    entry: &ProjectedRun,
     record: &PreparedRunSummary,
     seq: u32,
 ) -> Result<()> {
@@ -1549,6 +1578,7 @@ fn overlay_live_wall_time(run: &mut Run, now: DateTime<Utc>) {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::sync::Arc;
     use std::time::Duration;
 
     use chrono::{DateTime, Utc};
@@ -1566,8 +1596,8 @@ mod tests {
         INSERT_EVENT_SQL, RunSummaryListQuery, RunSummarySort, RunSummarySortDirection,
         RunSummaryStore, RunSummaryVisibility, decode_event_row,
     };
-    use crate::slate::CachedRunProjection;
-    use crate::{Error, EventPayload, test_support as store_test_support};
+    use crate::run_state::ProjectedRun;
+    use crate::{Error, EventPayload, RunProjectionReducer, test_support as store_test_support};
 
     fn dt(value: &str) -> DateTime<Utc> {
         value.parse().unwrap()
@@ -1602,8 +1632,8 @@ mod tests {
         )
     }
 
-    fn entry(projection: RunProjection, last_seq: u32) -> CachedRunProjection {
-        CachedRunProjection::from_projection(projection.spec.run_id, projection, last_seq)
+    fn entry(projection: RunProjection, last_seq: u32) -> ProjectedRun {
+        ProjectedRun::new(projection.spec.run_id, Arc::new(projection), last_seq)
     }
 
     async fn store() -> (tempfile::TempDir, RunSummaryStore) {
@@ -1940,6 +1970,88 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(sequences, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn load_projection_replays_committed_events_and_reports_missing_run() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 31);
+        let first = entry(projection(id, "created", created_at), 1);
+        let first_payload = created_payload(&id);
+
+        let mut transaction = store.pool.begin().await.unwrap();
+        let first_envelope = RunSummaryStore::insert_first_event_on_connection(
+            &mut transaction,
+            &first,
+            &first_payload,
+        )
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+
+        let second = entry(projection(id, "updated", created_at), 2);
+        let second_payload = sql_event_payload(
+            &id,
+            "run.title.updated",
+            None,
+            None,
+            None,
+            serde_json::json!({ "title": "updated" }),
+        );
+        let mut transaction = store.pool.begin().await.unwrap();
+        let second_envelope = RunSummaryStore::append_event_on_connection(
+            &mut transaction,
+            1,
+            &second,
+            &second_payload,
+        )
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+
+        let expected = RunProjection::apply_events(&[first_envelope, second_envelope]).unwrap();
+
+        let loaded = store.load_projection(&id).await.unwrap();
+        assert_eq!(loaded.run_id, id);
+        assert_eq!(loaded.last_seq, 2);
+        assert_eq!(
+            serde_json::to_value(loaded.projection.as_ref()).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+
+        let missing = run_id(created_at.timestamp_millis().cast_unsigned() + 1, 32);
+        assert!(matches!(
+            store.load_projection(&missing).await,
+            Err(Error::RunNotFound(text)) if text == missing.to_string()
+        ));
+    }
+
+    #[tokio::test]
+    async fn load_projection_reports_removed_events() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let id = run_id(created_at.timestamp_millis().cast_unsigned(), 33);
+        let current = entry(projection(id, "created", created_at), 1);
+        let mut transaction = store.pool.begin().await.unwrap();
+        RunSummaryStore::insert_first_event_on_connection(
+            &mut transaction,
+            &current,
+            &created_payload(&id),
+        )
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+        store.test_delete_run_events(&id).await.unwrap();
+
+        assert!(matches!(
+            store.load_projection(&id).await,
+            Err(Error::RunHeadMismatch {
+                expected_last_seq: 1,
+                actual_last_seq: None,
+                ..
+            })
+        ));
     }
 
     #[tokio::test]
@@ -2700,6 +2812,213 @@ mod tests {
             .unwrap();
         candidates.sort_unstable();
         let mut expected = vec![first_id, second_id];
+        expected.sort_unstable();
+        assert_eq!(candidates, expected);
+    }
+
+    /// The candidate query must agree with the projection reducer about which
+    /// later events resolve a creation request, so recovery replays only runs
+    /// that are still plausibly pending and never skips one that is.
+    #[tokio::test]
+    async fn pull_request_creation_candidates_exclude_requests_resolved_by_later_events() {
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-08-27T12:00:00Z");
+        let base = created_at.timestamp_millis().cast_unsigned();
+        let link = serde_json::json!({ "owner": "acme", "repo": "widgets", "number": 7 });
+        let created = serde_json::json!({
+            "pr_url": "https://github.com/acme/widgets/pull/7",
+            "pr_number": 7,
+            "owner": "acme",
+            "repo": "widgets",
+            "base_branch": "main",
+            "head_branch": "fabro/run/7",
+            "title": "Widgets",
+            "draft": false,
+        });
+        let request = |creation_id: PullRequestCreationId| {
+            serde_json::json!({
+                "creation_id": creation_id,
+                "model": "test-model",
+                "force": false,
+            })
+        };
+
+        let resolved_by_created = run_id(base, 1);
+        let resolved_by_linked = run_id(base + 1, 2);
+        let resolved_by_unlinked = run_id(base + 2, 3);
+        let resolved_by_matching_failure = run_id(base + 3, 4);
+        let failed_for_other_request = run_id(base + 4, 5);
+        let failed_without_creation_id = run_id(base + 5, 6);
+        let retried_after_failure = run_id(base + 6, 7);
+        let superseded_then_resolved = run_id(base + 7, 8);
+        let all_ids = [
+            resolved_by_created,
+            resolved_by_linked,
+            resolved_by_unlinked,
+            resolved_by_matching_failure,
+            failed_for_other_request,
+            failed_without_creation_id,
+            retried_after_failure,
+            superseded_then_resolved,
+        ];
+        for id in all_ids {
+            store
+                .upsert_projection(&entry(projection(id, "candidate", id.created_at()), 9))
+                .await
+                .unwrap();
+        }
+
+        let seed = async |id: RunId, seq: u32, event: &str, properties: serde_json::Value| {
+            let payload = sql_event_payload(&id, event, None, None, None, properties);
+            seed_sql_event(&store, &id, seq, &payload).await;
+        };
+
+        let id_a = PullRequestCreationId::new();
+        seed(
+            resolved_by_created,
+            2,
+            "pull_request.creation_requested",
+            request(id_a),
+        )
+        .await;
+        seed(
+            resolved_by_created,
+            3,
+            "pull_request.created",
+            created.clone(),
+        )
+        .await;
+
+        let id_b = PullRequestCreationId::new();
+        seed(
+            resolved_by_linked,
+            2,
+            "pull_request.creation_requested",
+            request(id_b),
+        )
+        .await;
+        seed(
+            resolved_by_linked,
+            3,
+            "pull_request.linked",
+            serde_json::json!({ "pull_request": link }),
+        )
+        .await;
+
+        let id_c = PullRequestCreationId::new();
+        seed(
+            resolved_by_unlinked,
+            2,
+            "pull_request.creation_requested",
+            request(id_c),
+        )
+        .await;
+        seed(
+            resolved_by_unlinked,
+            3,
+            "pull_request.unlinked",
+            serde_json::json!({ "pull_request": link }),
+        )
+        .await;
+
+        let id_d = PullRequestCreationId::new();
+        seed(
+            resolved_by_matching_failure,
+            2,
+            "pull_request.creation_requested",
+            request(id_d),
+        )
+        .await;
+        seed(
+            resolved_by_matching_failure,
+            3,
+            "pull_request.failed",
+            serde_json::json!({ "creation_id": id_d, "error": "boom" }),
+        )
+        .await;
+
+        let id_e = PullRequestCreationId::new();
+        seed(
+            failed_for_other_request,
+            2,
+            "pull_request.creation_requested",
+            request(id_e),
+        )
+        .await;
+        seed(
+            failed_for_other_request,
+            3,
+            "pull_request.failed",
+            serde_json::json!({ "creation_id": PullRequestCreationId::new(), "error": "other" }),
+        )
+        .await;
+
+        let id_f = PullRequestCreationId::new();
+        seed(
+            failed_without_creation_id,
+            2,
+            "pull_request.creation_requested",
+            request(id_f),
+        )
+        .await;
+        seed(
+            failed_without_creation_id,
+            3,
+            "pull_request.failed",
+            serde_json::json!({ "error": "publish stage failure" }),
+        )
+        .await;
+
+        let id_g = PullRequestCreationId::new();
+        seed(
+            retried_after_failure,
+            2,
+            "pull_request.creation_requested",
+            request(id_g),
+        )
+        .await;
+        seed(
+            retried_after_failure,
+            3,
+            "pull_request.failed",
+            serde_json::json!({ "creation_id": id_g, "error": "boom" }),
+        )
+        .await;
+        seed(
+            retried_after_failure,
+            4,
+            "pull_request.creation_requested",
+            request(PullRequestCreationId::new()),
+        )
+        .await;
+
+        let id_h = PullRequestCreationId::new();
+        seed(
+            superseded_then_resolved,
+            2,
+            "pull_request.creation_requested",
+            request(id_h),
+        )
+        .await;
+        seed(
+            superseded_then_resolved,
+            3,
+            "pull_request.creation_requested",
+            request(PullRequestCreationId::new()),
+        )
+        .await;
+        seed(superseded_then_resolved, 4, "pull_request.created", created).await;
+
+        let mut candidates = store
+            .list_pull_request_creation_candidate_run_ids()
+            .await
+            .unwrap();
+        candidates.sort_unstable();
+        let mut expected = vec![
+            failed_for_other_request,
+            failed_without_creation_id,
+            retried_after_failure,
+        ];
         expected.sort_unstable();
         assert_eq!(candidates, expected);
     }
