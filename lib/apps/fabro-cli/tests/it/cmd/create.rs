@@ -1560,7 +1560,7 @@ draft = false
     let workflow_owned = context
         .create_cmd()
         .current_dir(project.path())
-        .args(["--environment", "local", workflow.to_str().unwrap()])
+        .args(["--environment", "default", workflow.to_str().unwrap()])
         .assert()
         .success();
     let workflow_owned_id = created_run_id(workflow_owned.get_output());

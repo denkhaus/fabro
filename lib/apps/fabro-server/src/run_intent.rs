@@ -133,6 +133,10 @@ pub(crate) enum EnvironmentSelectionError {
     NotFound { id: EnvironmentId },
     #[error("{detail}")]
     TargetUnsupported { detail: &'static str },
+    #[error(
+        "automatic pull requests require a clone-based Docker or Daytona environment; disable run.pull_request.enabled for Local execution"
+    )]
+    AutomaticPullRequestUnsupported,
     #[error("{detail}")]
     ProviderDisabled {
         provider: SandboxProviderKind,
