@@ -1131,10 +1131,10 @@ func stepOpts(o options, step int) options {
 // gofib -n 6 -step 2 prints exactly indices 1, 3, 5.
 func TestRunStep(t *testing.T) {
 	for _, tt := range []struct {
-		name   string
-		opts   options
-		step   int
-		want   string
+		name string
+		opts options
+		step int
+		want string
 	}{
 		{"text n=6 step=2 prints indices 1,3,5", opts(0, 6, 0, 0, "", false, false, false, false), 2, "1: 1\n3: 2\n5: 5\n"},
 		{"text step=3 prints indices 1,4", opts(0, 6, 0, 0, "", false, false, false, false), 3, "1: 1\n4: 3\n"},
@@ -1279,10 +1279,10 @@ func TestRunStepSum(t *testing.T) {
 		return string(b)
 	}
 	for _, tt := range []struct {
-		name   string
-		opts   options
-		step   int
-		want   string
+		name string
+		opts options
+		step int
+		want string
 	}{
 		{"sum after stepping in text mode", opts(0, 6, 0, 0, "", false, false, false, true), 2, "sum: 8\n"},
 		{"sum after stepping in json keeps full bounds", opts(0, 6, 0, 0, "json", false, false, false, true), 2, steppedSum(1, 6, 2) + "\n"},
