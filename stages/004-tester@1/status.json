@@ -1,0 +1,6 @@
+{
+  "outcome": "failed",
+  "notes": null,
+  "failure_reason": "Script failed with exit code: 1\n\n## output\nnu scripts/qualitygate.nu\n== workflow sync (product <-> meta) ==\nsync-check: no world pairing — skip\n== run scope (workflow assets untouchable from runs) ==\nrun diff touches workflow assets — platform work belongs in platform-namespace PRs (a9bb step 2):\n  .fabro/workflows/develop/scripts/evidence.nu\nerror: recipe `qualitygate` failed on line 12 with exit code 1\n",
+  "timestamp": "2026-09-03T20:51:51.912660898Z"
+}
